@@ -73,12 +73,10 @@
             </div>
         }
 
-        <!--        TODO refactor to use app-llm-library-card-->
         @for (provider of filteredVoiceProviders(); track provider.key) {
             <div class="section">
-                <div class="section-header">
-                    <h4 class="section-title">{{ provider.label }}:</h4>
-                </div>
+                <h4 class="section-title">{{ provider.label }}:</h4>
+
                 @if (provider.hasError) {
                     <app-fetch-error-state
                         mod="small"
@@ -88,42 +86,13 @@
                     />
                 } @else {
                     <div class="grid">
-                        @for (c of provider.configs; track c.id) {
-                            <article class="voice-card">
-                                <div class="top">
-                                    <span class="model">{{ c.model_name }}</span>
-                                    <div class="actions">
-                                        <app-config-card-more-menu
-                                            (viewDetailsClick)="onViewConfigDetails(c, $event)"
-                                        />
-                                        <button
-                                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
-                                            type="button"
-                                            class="action"
-                                            title="Edit"
-                                            (click)="onEditConfig(provider, c)"
-                                        >
-                                            <i
-                                                class="ti ti-pencil"
-                                                aria-hidden="true"
-                                            ></i>
-                                        </button>
-                                        <button
-                                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
-                                            type="button"
-                                            class="action delete"
-                                            title="Delete"
-                                            (click)="onDeleteConfig(provider, c)"
-                                        >
-                                            <i
-                                                class="ti ti-x"
-                                                aria-hidden="true"
-                                            ></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="name">{{ c.custom_name }}</div>
-                            </article>
+                        @for (card of provider.cards; track card.config.id) {
+                            <app-llm-library-card
+                                [model]="card.model"
+                                (editClick)="onEditConfig(provider, card.config)"
+                                (deleteClick)="onDeleteConfig(provider, card.config)"
+                                (viewDetailsClick)="onViewConfigDetails(card.config, $event.trigger)"
+                            />
                         }
                     </div>
                 }

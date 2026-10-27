@@ -50,12 +50,6 @@ describe('AddConfigurationDialogComponent embedding extra headers and LLM pricin
                     provide: LlmConfigStorageService,
                     useValue: { createConfig: createLlmConfig } as unknown as LlmConfigStorageService,
                 },
-                { provide: OpenAIRealtimeConfigStorageService, useValue: {} as OpenAIRealtimeConfigStorageService },
-                {
-                    provide: ElevenLabsRealtimeConfigStorageService,
-                    useValue: {} as ElevenLabsRealtimeConfigStorageService,
-                },
-                { provide: GeminiRealtimeConfigStorageService, useValue: {} as GeminiRealtimeConfigStorageService },
                 {
                     provide: SecretsStorageService,
                     useValue: {
@@ -276,9 +270,12 @@ async function render(
                     secrets: signal([]),
                     getSecrets: () => of([]),
                     maskTail: () => '',
+                    selectItems: () => [],
+                    isBinned: () => false,
                 } as unknown as SecretsStorageService,
             },
             { provide: EmbeddingConfigStorageService, useValue: {} },
+            // The voice form stays rendered (hidden) on every tab; it reaches storage only on save.
             { provide: OpenAIRealtimeConfigStorageService, useValue: {} },
             { provide: ElevenLabsRealtimeConfigStorageService, useValue: {} },
             { provide: GeminiRealtimeConfigStorageService, useValue: {} },
@@ -477,5 +474,61 @@ describe('AddConfigurationDialogComponent LLM reasoning effort', () => {
         fixture.componentInstance.onSubmit();
 
         expect(toastError).toHaveBeenCalledWith(reason);
+    });
+});
+
+describe('AddConfigurationDialogComponent voice tab', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    function typeVoiceName(
+        fixture: ComponentFixture<AddConfigurationDialogComponent>,
+        value: string
+    ): HTMLInputElement {
+        const field = Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll('app-realtime-config-form app-custom-input')
+        ).find((element) => element.textContent!.includes('Configuration Name'))!;
+        const nameInput = field.querySelector('input')!;
+        nameInput.value = value;
+        nameInput.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+        return nameInput;
+    }
+
+    it('keeps what was typed on the voice tab after visiting another tab', async () => {
+        const { fixture } = await render();
+        fixture.componentInstance.setActiveTab('realtime');
+        fixture.detectChanges();
+        const nameInput = typeVoiceName(fixture, 'Support line');
+
+        fixture.componentInstance.setActiveTab('llm');
+        fixture.detectChanges();
+        fixture.componentInstance.setActiveTab('realtime');
+        fixture.detectChanges();
+
+        expect(nameInput.isConnected).toBe(true);
+        expect(nameInput.value).toBe('Support line');
+    });
+
+    it('finishes a voice save started before switching tabs, and starts no second save meanwhile', async () => {
+        const voiceResponse = new Subject<unknown>();
+        TestBed.overrideProvider(OpenAIRealtimeConfigStorageService, {
+            useValue: { createConfig: () => voiceResponse },
+        });
+        const createLlmConfig = vi.fn(() => EMPTY);
+        const { fixture } = await render(getCachedModelById, createLlmConfig);
+        await pickModel(fixture, PLAIN_MODEL_ID); // a complete LLM form, so only the guard can stop its save
+        const close = TestBed.inject(DialogRef).close;
+        fixture.componentInstance.setActiveTab('realtime');
+        fixture.detectChanges();
+        typeVoiceName(fixture, 'Support line');
+
+        fixture.componentInstance.onSubmit();
+        fixture.componentInstance.setActiveTab('llm');
+        fixture.componentInstance.onSubmit();
+        voiceResponse.next({ id: 1 });
+
+        expect(createLlmConfig).not.toHaveBeenCalled();
+        expect(close).toHaveBeenCalledWith(true);
     });
 });
