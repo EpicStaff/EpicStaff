@@ -16,7 +16,7 @@ from manager.application.ports import (
     AbstractUnitOfWork,
     AbstractUVProvider,
 )
-from manager.domain.enums import VenvStatus
+from manager.domain.enums import VenvOrder, VenvStatus
 from manager.domain.errors import VenvNotFoundError
 from manager.domain.models import Job, Library, StorageCredentials, Venv
 from manager.domain.types import NotRunReason
@@ -41,11 +41,19 @@ class VenvCRUDOrchestrator:
         self,
         *,
         ids: List[int] | None = None,
+        name_contains: str | None = None,
+        order: VenvOrder = VenvOrder.DEFAULT,
         limit: int | None = None,
         offset: int | None = None,
     ) -> tuple[list[Venv], int]:
         async with self.uow:
-            return await self.uow.venv_repo.list(ids=ids, limit=limit, offset=offset)
+            return await self.uow.venv_repo.list(
+                ids=ids,
+                name_contains=name_contains,
+                order=order,
+                limit=limit,
+                offset=offset,
+            )
 
     async def retrieve(self, id: int) -> Venv:
         async with self.uow:
