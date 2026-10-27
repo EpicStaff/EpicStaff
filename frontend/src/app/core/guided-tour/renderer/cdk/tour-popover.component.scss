@@ -1,8 +1,7 @@
-// Looks like the driver.js Quick Start card it replaces (styles/_quick-start-tour.scss): same surface, border, radius,
-// shadow, paddings, progress bar and close button.
+// The Quick Start tour card design: its surface, border, radius, shadow, paddings, progress bar and close button.
 $card-padding: 24px;
 // Token gap (docs/design-tokens.md): the design fills the card with Figma "Line" #2B2D30, which has no exact variable;
-// --color-ks-line is the documented closest match (the Quick Start tour card uses it too).
+// --color-ks-line is the documented closest match.
 $card-surface: var(--color-ks-line);
 // Below this viewport height the decorative image is left out: shrunk to fit, it would be too small to be worth its
 // room. Above it, the image shrinks before the text has to scroll.

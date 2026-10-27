@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Wed, 21 Oct 2026 11:34:33 GMT -->
-<!-- commit: 194dcf41e306422f4b430ee854aa1012151e34ff -->
-<!-- package-lock.json sha256: 73fa392e524e9942 -->
+<!-- generated: Tue, 27 Oct 2026 09:44:56 GMT -->
+<!-- commit: cee5c9b86ad3837f9bf49afdbdc9969804b8dc4e -->
+<!-- package-lock.json sha256: bd8e950999419a7c -->
 
 ## Frontend license summary
 
@@ -22,7 +22,7 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 
 | License | Packages |
 |---|---|
-| MIT | 48 |
+| MIT | 47 |
 | Apache-2.0 | 2 |
 | ISC | 2 |
 | OFL-1.1 | 1 |
@@ -31,7 +31,7 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **58** |
+| **Total** | **57** |
 
 ## Package index
 
@@ -62,7 +62,6 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | `core-util-is` | 1.0.3 | MIT |
 | `docx-preview` | 0.3.7 | Apache-2.0 |
 | `dompurify` | 3.4.17 | (MPL-2.0 OR Apache-2.0) |
-| `driver.js` | 1.8.0 | MIT |
 | `entities` | 8.0.0 | BSD-2-Clause |
 | `fflate` | 0.8.3 | MIT |
 | `graceful-fs` | 4.2.11 | ISC |
@@ -1768,40 +1767,6 @@ Apache License
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-```
-
-</details>
-
-### driver.js@1.8.0
-
-- **License:** MIT
-- **Publisher:** Kamran Ahmed <kamranahmed.se@gmail.com>
-- **Repository:** https://github.com/nilbuild/driver.js
-
-<details><summary>License text</summary>
-
-```
-The MIT License
-
-Copyright (c) Kamran Ahmed
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
 ```
 
 </details>

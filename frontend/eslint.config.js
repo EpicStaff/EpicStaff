@@ -5,7 +5,7 @@ const simpleImportSort = require('eslint-plugin-simple-import-sort');
 
 /** How a guided tour is drawn stays behind TOUR_RENDERER_LOADER (core/guided-tour/renderer/tour-renderer.ts). */
 const TOUR_RENDERER_IMPORTS = {
-  group: ['@angular/cdk/overlay', 'driver.js', '**/renderer/cdk', '**/renderer/cdk/**'],
+  group: ['@angular/cdk/overlay', '**/renderer/cdk', '**/renderer/cdk/**'],
   message: 'Tour definitions and the tour engine talk to the TourRenderer interface only, so the renderer can be replaced.',
 };
 

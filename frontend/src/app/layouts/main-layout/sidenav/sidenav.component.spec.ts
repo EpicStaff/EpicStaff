@@ -7,6 +7,7 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { GetMeResponse, ResourceCode } from '@shared/models';
 
+import { ProfileTourProgressStore, TOUR_PROGRESS_STORE } from '../../../core/guided-tour';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
@@ -52,10 +53,11 @@ describe('LeftSidebarComponent', () => {
                         can: () => true,
                         resolveStorageTab: () => 'files',
                         canOpenConfigureModelsDialog: () => true,
-                        canApplyQuickstart: () => false,
                         canAccessWorkspace: () => true,
                     },
                 },
+                // The account menu lists the tours, as in the app; none is registered here.
+                { provide: TOUR_PROGRESS_STORE, useExisting: ProfileTourProgressStore },
                 { provide: ConfigService, useValue: { isAuditTrailEnabled: false, isChatEnabled: true } },
                 {
                     provide: ChatInboxStreamService,
@@ -331,10 +333,11 @@ describe('LeftSidebarComponent page shortcuts', () => {
                         can: (resource: ResourceCode) => !hiddenResources.has(resource),
                         resolveStorageTab: () => 'files',
                         canOpenConfigureModelsDialog: () => settingsAllowed,
-                        canApplyQuickstart: () => false,
                         canAccessWorkspace: () => workspaceAllowed,
                     },
                 },
+                // The account menu lists the tours, as in the app; none is registered here.
+                { provide: TOUR_PROGRESS_STORE, useExisting: ProfileTourProgressStore },
                 { provide: ConfigService, useValue: config },
             ],
         });

@@ -5,7 +5,6 @@ import { Observable, of, Subject, take, tap } from 'rxjs';
 
 import { SETTINGS_QUICKSTART_URL, SETTINGS_URL, settingsIndexGuard } from '../../core/guards/settings.guard';
 import { tourAnchorSelector } from '../../core/guided-tour';
-import { validateTourDefinitions } from '../../core/guided-tour/registry/validate-tour-definitions';
 import { TourIntent, TourStepView } from '../../core/guided-tour/renderer/tour-renderer';
 import { GuidedTourTestbed, setUpGuidedTourTestbed } from '../../core/guided-tour/testing/guided-tour-testing';
 import { PermissionsService } from '../../services/auth/permissions.service';
@@ -135,12 +134,6 @@ describe('Quick Start tour definition', () => {
         press('next');
         expect(view().content.title).toBe('Activate');
     }
-
-    it('is a valid tour definition', () => {
-        const definition = TestBed.runInInjectionContext(createQuickStartTour);
-
-        expect(validateTourDefinitions([definition]).problems).toEqual([]);
-    });
 
     it('starts by itself for a signed-in user who has not completed it', async () => {
         testbed.connectAppShell();

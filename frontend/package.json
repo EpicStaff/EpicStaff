@@ -51,7 +51,6 @@
         "ag-grid-community": "36.1.0",
         "docx-preview": "^0.3.7",
         "dompurify": "^3.4.14",
-        "driver.js": "1.8.0",
         "jsonc-parser": "3.3.1",
         "marked": "18.0.10",
         "monaco-editor": "0.55.1",
