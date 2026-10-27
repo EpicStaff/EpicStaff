@@ -423,4 +423,49 @@ describe('ConversationRowComponent', () => {
             expect(textOf('.conversation-row__desk')).toBe('Sales');
         });
     });
+
+    describe('compact', () => {
+        const rowTooltip = (): MatTooltip => tooltipOf('button.conversation-row');
+
+        it('shows only the avatar, the visitor in a tooltip on the row, and the full accessible name', () => {
+            render(waiting(), { isCompact: true });
+            expect(rowButton().children).toHaveLength(1);
+            expect(rowButton().firstElementChild?.tagName.toLowerCase()).toBe('app-conversation-avatar');
+            expect(rowTooltip().message).toBe('Visitor 1');
+            expect(rowTooltip().disabled).toBe(false);
+            expect(accessibleName()).toMatch(/^Visitor 1, /);
+            expect(accessibleName()).toContain('waiting for a person since');
+            expect(rowButton().getAttribute('aria-describedby') ?? '').not.toContain('conversation-preview');
+        });
+
+        it('names the visitor in a tooltip only while compact', () => {
+            render(waiting());
+            expect(rowTooltip().disabled).toBe(true);
+        });
+
+        it('rings the open conversation instead of filling its row', () => {
+            render(conversation(), { isCompact: true, isSelected: true });
+            expect(rowButton().classList).toContain('conversation-row--compact');
+            expect(rowButton().classList).toContain('conversation-row--selected');
+            expect(rowButton().getAttribute('aria-current')).toBe('true');
+        });
+
+        it('offers no Take over: there is no room for it', () => {
+            render(waiting(), { isCompact: true, canTakeOver: true });
+            expect(takeOverButton()).toBeNull();
+        });
+
+        it('opens on click and moves with the keys as the full row does', () => {
+            render(conversation(), { isCompact: true });
+            const opened = vi.fn();
+            const moves: ConversationRowMove[] = [];
+            fixture.componentInstance.selectRequested.subscribe(opened);
+            fixture.componentInstance.moveRequested.subscribe((move) => moves.push(move));
+
+            rowButton().click();
+            rowButton().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true }));
+            expect(opened).toHaveBeenCalledTimes(1);
+            expect(moves).toEqual(['next']);
+        });
+    });
 });

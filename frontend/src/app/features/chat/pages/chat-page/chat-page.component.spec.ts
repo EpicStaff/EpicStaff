@@ -23,6 +23,7 @@ import {
     ChatConversation,
     ChatConversationPage,
     ChatInboxMessageEvent,
+    ChatInboxSection,
     ChatMyAlias,
     ChatOperatorMessage,
 } from '../../models/chat.model';
@@ -144,6 +145,7 @@ describe('ChatPageComponent', () => {
     // What the bindings endpoint returns; the desks storage loads it (the page only for a route desk it lacks).
     let serverBindings: ChatBinding[] = [];
     let fixture: ComponentFixture<ChatPageComponent>;
+    let nextPages: Partial<Record<ChatInboxSection, Observable<ChatConversationPage>>> = {};
     let navigate: ReturnType<typeof vi.spyOn>;
     const conversationUpdated$ = new Subject<ChatConversation>();
     const messageCreated$ = new Subject<ChatInboxMessageEvent>();
@@ -154,10 +156,14 @@ describe('ChatPageComponent', () => {
         getBindings: vi.fn(() => of(serverBindings)),
         getMyAliases: vi.fn(() => of([] as ChatMyAlias[])),
         // By default Waiting, In progress and Tests are empty and Bot holds one conversation.
-        getConversations: vi.fn(
-            (params: ConversationListParams): Observable<ChatConversationPage> =>
-                page(params.section === 'bot' ? [row({ id: 'c-1' })] : [])
-        ),
+        getConversations: vi.fn((params: ConversationListParams): Observable<ChatConversationPage> => {
+            const answer = nextPages[params.section];
+            if (answer) {
+                delete nextPages[params.section];
+                return answer;
+            }
+            return page(params.section === 'bot' ? [row({ id: 'c-1' })] : []);
+        }),
         getMessages: vi.fn(() => of([] as ChatOperatorMessage[])),
         createTestConversation: vi.fn(),
         // Selecting a test conversation fetches its visitor token: by default the request has not answered yet.
@@ -208,16 +214,29 @@ describe('ChatPageComponent', () => {
         );
     }
 
-    const collapsedSections = (): string[] => [...TestBed.inject(ConversationListPreferencesService).collapsed()];
+    const rememberedSection = (): ChatInboxSection | null =>
+        TestBed.inject(ConversationListPreferencesService).expanded();
+    const openSections = (): ChatInboxSection[] =>
+        Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.conversation-list__section'))
+            .filter(
+                (section) =>
+                    section.querySelector('.conversation-section-header')?.getAttribute('aria-expanded') === 'true'
+            )
+            .map((section) => section.dataset['section'] as ChatInboxSection);
 
-    /** A reload requests the open sections in column order: Waiting, In progress, then Bot (Tests start collapsed). */
-    function reloadWith(
-        waiting: Observable<ChatConversationPage>,
-        bot: Observable<ChatConversationPage>,
-        inProgress: Observable<ChatConversationPage> = page([])
-    ): void {
-        chatApi.getConversations.mockReturnValueOnce(waiting).mockReturnValueOnce(inProgress).mockReturnValueOnce(bot);
+    /** A reload requests the sections open now (only Waiting for a person at first): each answers its page, else nothing. */
+    function reloadWith(pages: Partial<Record<ChatInboxSection, Observable<ChatConversationPage>>>): void {
+        nextPages = Object.fromEntries(openSections().map((section) => [section, pages[section] ?? page([])]));
         readyEpoch.update((value) => value + 1);
+        fixture.detectChanges();
+    }
+
+    function openSection(label: string): void {
+        Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.conversation-section-header')
+        )
+            .find((button) => button.textContent?.trim() === label)!
+            .click();
         fixture.detectChanges();
     }
 
@@ -269,6 +288,7 @@ describe('ChatPageComponent', () => {
         IntersectionObserverStub.instances = [];
         Element.prototype.scrollIntoView = vi.fn();
         vi.clearAllMocks();
+        nextPages = {};
         serverBindings = [];
         isPhone.set(false);
         TestBed.configureTestingModule({
@@ -337,10 +357,12 @@ describe('ChatPageComponent', () => {
         expect(list().selectedId()).toBe('c-4');
     });
 
-    it('expands Tests, not Bot or Closed, in the conversations column when a test conversation starts', () => {
-        expect(collapsedSections()).toEqual(['test', 'closed']);
+    it('opens Tests in the conversations column when a test conversation starts, the remembered section unchanged', () => {
+        expect(openSections()).toEqual(['waiting']);
         fixture.componentInstance.onTestConversationStarted(row({ id: 'c-9', is_test: true, last_message_at: null }));
-        expect(collapsedSections()).toEqual(['closed']);
+        fixture.detectChanges();
+        expect(openSections()).toEqual(['waiting', 'test']);
+        expect(rememberedSection()).toBe('waiting');
     });
 
     it('tests the route binding from the header, expands Tests, selects it and writes as the visitor', () => {
@@ -367,7 +389,7 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
 
         expect(chatApi.createTestConversation).toHaveBeenCalledWith('b-2');
-        expect(collapsedSections()).not.toContain('test');
+        expect(openSections()).toContain('test');
         expect(component.selectedId()).toBe('c-9');
         expect(text('.thread-header .test-chip')).toEqual(['Test']);
         expect(host.querySelector('app-tab-button button[aria-pressed="true"]')?.textContent?.trim()).toBe('Visitor');
@@ -378,18 +400,18 @@ describe('ChatPageComponent', () => {
         expect(chatApi.reply).not.toHaveBeenCalled();
     });
 
-    // Waiting, In progress and Bot: Tests start collapsed and load only when opened.
+    // Waiting for a person only: the other sections load once opened.
     it('lists only the route binding conversations', () => {
         chatApi.getConversations.mockClear();
         scopeTo('b-2');
-        expect(chatApi.getConversations.mock.calls.map(([params]) => params.binding)).toEqual(['b-2', 'b-2', 'b-2']);
+        expect(chatApi.getConversations.mock.calls.map(([params]) => params.binding)).toEqual(['b-2']);
     });
 
     it('shows the all-bindings inbox unscoped, without My name, Settings, Get snippet, Pause or Test', () => {
         listBindings([binding]);
         fixture.detectChanges();
         expect(text('.desk-toolbar__title')).toEqual(['All desks']);
-        expect(chatApi.getConversations.mock.calls.map(([params]) => params.binding)).toEqual([null, null, null]);
+        expect(chatApi.getConversations.mock.calls.map(([params]) => params.binding)).toEqual([null]);
         expect(fixture.nativeElement.querySelector('.header-actions')).toBeNull();
     });
 
@@ -535,6 +557,84 @@ describe('ChatPageComponent', () => {
         } finally {
             permissions.can = can;
         }
+    });
+
+    describe('the conversations column beside the thread', () => {
+        const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+        const column = (): HTMLElement => host().querySelector('.inbox__sidebar') as HTMLElement;
+        const handle = (): HTMLElement | null => host().querySelector('[role="separator"]');
+        const compactToggle = (): HTMLButtonElement | null =>
+            host().querySelector('app-conversation-list-toolbar button[aria-controls]');
+        const searchField = (): HTMLInputElement | null => host().querySelector('app-conversation-list-toolbar input');
+        const list = (): ConversationListComponent =>
+            fixture.debugElement.query(By.directive(ConversationListComponent)).componentInstance;
+
+        function press(key: string, times = 1): void {
+            for (let time = 0; time < times; time++) {
+                handle()!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+                fixture.detectChanges();
+            }
+        }
+
+        function pressToggle(): void {
+            compactToggle()!.click();
+            fixture.detectChanges();
+        }
+
+        it('starts 340px wide beside a handle that resizes it, with a toggle that controls the list', () => {
+            expect(column().style.width).toBe('340px');
+            expect(handle()?.getAttribute('aria-label')).toBe('Resize conversations column');
+            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
+            expect(compactToggle()?.getAttribute('aria-expanded')).toBe('true');
+            expect(compactToggle()?.getAttribute('aria-controls')).toBe(
+                host().querySelector('app-conversation-list')!.id
+            );
+        });
+
+        it('makes the same live list compact with the toggle, and lists it in full again at 280px', () => {
+            const shown = list();
+            pressToggle();
+            expect(column().style.width).toBe('64px');
+            expect(list()).toBe(shown);
+            expect(searchField()).toBeNull();
+            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
+            expect(compactToggle()?.getAttribute('aria-expanded')).toBe('false');
+
+            pressToggle();
+            expect(column().style.width).toBe('280px');
+            expect(searchField()).not.toBeNull();
+        });
+
+        it('resizes between 280px and 480px with the handle, and goes compact past the narrowest', () => {
+            press('ArrowRight', 20);
+            expect(column().style.width).toBe('480px');
+
+            press('ArrowLeft', 13);
+            expect(column().style.width).toBe('280px');
+            expect(searchField()).not.toBeNull();
+
+            press('ArrowLeft');
+            expect(column().style.width).toBe('64px');
+            expect(searchField()).toBeNull();
+        });
+
+        it('keeps its width when the page opens again', () => {
+            press('ArrowRight');
+            fixture.destroy();
+            fixture = TestBed.createComponent(ChatPageComponent);
+            fixture.detectChanges();
+            expect(column().style.width).toBe('356px');
+        });
+
+        it('is never compact nor resizable on a phone: the full list, whatever the width', () => {
+            pressToggle();
+            isPhone.set(true);
+            fixture.detectChanges();
+            expect(handle()).toBeNull();
+            expect(compactToggle()).toBeNull();
+            expect(column().style.width).toBe('');
+            expect(searchField()).not.toBeNull();
+        });
     });
 
     describe('my name on the desk', () => {
@@ -1192,7 +1292,7 @@ describe('ChatPageComponent', () => {
                 visible_name: null,
             } as ChatOperatorMessage)
         );
-        reloadWith(page([claimed]), page([]));
+        reloadWith({ waiting: page([claimed]) });
         fixture.componentInstance.selectConversation(claimed);
         fixture.detectChanges();
         const host: HTMLElement = fixture.nativeElement;
@@ -1239,7 +1339,8 @@ describe('ChatPageComponent', () => {
         const page$ = new Subject<ChatConversationPage>();
         const thread$ = new Subject<ChatOperatorMessage[]>();
         chatApi.getMessages.mockReturnValueOnce(thread$);
-        reloadWith(page([]), page$);
+        openSection('Bot');
+        reloadWith({ bot: page$ });
         expect(component.selectedId()).toBe('c-1');
         expect(text('.message__content')).toEqual(['first', 'second']);
         expect(text('.conversation-row__preview')).toEqual(['hello']);
@@ -1267,14 +1368,14 @@ describe('ChatPageComponent', () => {
         const component = fixture.componentInstance;
         const mine = handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 3 });
         listBindings([binding]);
-        reloadWith(page([mine]), page([]));
+        reloadWith({ waiting: page([mine]) });
         component.selectConversation(mine);
         fixture.detectChanges();
         expect(threadView().isClaimedByMe()).toBe(true);
         expect(composerInput().disabled).toBe(false);
 
         // The stream dropped meanwhile, and another operator took the conversation with force: no event reached us.
-        reloadWith(page([{ ...mine, assigned_operator_id: 7 }]), page([]));
+        reloadWith({ waiting: page([{ ...mine, assigned_operator_id: 7 }]) });
 
         expect(component.selected()?.assigned_operator_id).toBe(7);
         expect(threadView().isClaimedByMe()).toBe(false);
@@ -1710,7 +1811,7 @@ describe('ChatPageComponent', () => {
             );
 
             // The close never reached the stream, and the reload lists the conversation in no open section.
-            reloadWith(page([]), page([]));
+            reloadWith({});
 
             expect(chatApi.getConversation).toHaveBeenCalledWith('c-1');
             expect(fixture.nativeElement.querySelector('app-chat-thread-composer')).toBeNull();
@@ -1811,6 +1912,7 @@ describe('ChatPageComponent', () => {
         });
 
         it('moves the focus to Back when a thread opens and to its row when it closes', async () => {
+            openSection('Bot');
             fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
             fixture.detectChanges();
             await fixture.whenStable();

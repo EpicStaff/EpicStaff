@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Thu, 22 Oct 2026 11:19:43 GMT -->
-<!-- commit: 991edb9ee5592e7dff3cc4242fae942be3a3815d -->
-<!-- package-lock.json sha256: 8ded58d34f90824f -->
+<!-- generated: Tue, 27 Oct 2026 12:37:41 GMT -->
+<!-- commit: 612e28dc2a146d5237d5f2ca8badfc5e583f0da0 -->
+<!-- package-lock.json sha256: df34f81eaa00dac8 -->
 
 ## Frontend license summary
 
@@ -22,16 +22,16 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 
 | License | Packages |
 |---|---|
-| MIT | 48 |
-| ISC | 3 |
+| MIT | 47 |
 | Apache-2.0 | 2 |
+| ISC | 2 |
 | OFL-1.1 | 1 |
 | (MPL-2.0 OR Apache-2.0) | 1 |
 | BSD-2-Clause | 1 |
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **59** |
+| **Total** | **57** |
 
 ## Package index
 
@@ -59,11 +59,9 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | `ag-grid-angular` | 36.1.0 | MIT |
 | `ag-grid-community` | 36.1.0 | MIT |
 | `ag-stack` | 36.1.0 | MIT |
-| `canvas-confetti` | 1.9.4 | ISC |
 | `core-util-is` | 1.0.3 | MIT |
 | `docx-preview` | 0.3.7 | Apache-2.0 |
 | `dompurify` | 3.4.17 | (MPL-2.0 OR Apache-2.0) |
-| `driver.js` | 1.8.0 | MIT |
 | `entities` | 8.0.0 | BSD-2-Clause |
 | `fflate` | 0.8.3 | MIT |
 | `graceful-fs` | 4.2.11 | ISC |
@@ -1313,34 +1311,6 @@ SOFTWARE.
 
 </details>
 
-### canvas-confetti@1.9.4
-
-- **License:** ISC
-- **Publisher:** Kiril Vatev <vatev.1@gmail.com>
-- **Repository:** https://github.com/catdad/canvas-confetti
-
-<details><summary>License text</summary>
-
-```
-ISC License
-
-Copyright (c) 2020, Kiril Vatev
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-```
-
-</details>
-
 ### core-util-is@1.0.3
 
 - **License:** MIT
@@ -1797,40 +1767,6 @@ Apache License
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-```
-
-</details>
-
-### driver.js@1.8.0
-
-- **License:** MIT
-- **Publisher:** Kamran Ahmed <kamranahmed.se@gmail.com>
-- **Repository:** https://github.com/nilbuild/driver.js
-
-<details><summary>License text</summary>
-
-```
-The MIT License
-
-Copyright (c) Kamran Ahmed
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
 ```
 
 </details>
@@ -3766,9 +3702,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-23T13:22:12Z UTC -->
-<!-- commit: 97bbedaee771fe3be02b4fe3a138f4d2d8696ca7 -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:4479f1e45def5816, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:3d46a714e418362f, manager:b4bef382144a5a4a, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, sandbox_new:4438d1e7c09f00dc, webhook:6e6a68286cd96f18 -->
+<!-- generated: 2026-10-26T13:22:53Z UTC -->
+<!-- commit: 255eb09d88e7d4ef0832371f02eee4925572383d -->
+<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:b1ab4ff5012d5ac4, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:d1d991c84d05eedb, manager:b4bef382144a5a4a, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, sandbox_new:4438d1e7c09f00dc, webhook:6e6a68286cd96f18 -->
 
 ## Backend (Python)
 
@@ -3779,16 +3715,17 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | License | Packages |
 |---|---|
 | MIT License | 75 |
-| MIT | 73 |
+| MIT | 74 |
+| BSD-3-Clause | 29 |
 | Apache Software License | 28 |
-| BSD-3-Clause | 28 |
 | Apache-2.0 | 25 |
-| BSD License | 24 |
+| BSD License | 25 |
 | BSD-2-Clause | 6 |
 | Apache Software License; MIT License | 4 |
 | Apache License 2.0 | 3 |
 | Apache Software License; BSD License | 3 |
 | LGPL-3.0-only | 3 |
+| MIT AND PSF-2.0 | 3 |
 | Mozilla Public License 2.0 (MPL 2.0) | 3 |
 | 3-Clause BSD License | 2 |
 | Apache-2.0 AND CNRI-Python | 2 |
@@ -3805,13 +3742,14 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | BSD | 1 |
 | BSD 3-Clause OR Apache-2.0 | 1 |
 | BSD-3-Clause, Apache-2.0, dependency licenses | 1 |
+| GNU Library or Lesser General Public License (LGPL) | 1 |
 | MIT-0 | 1 |
 | MIT-CMU | 1 |
 | MPL-2.0 AND (Apache-2.0 OR MIT) | 1 |
 | MPL-2.0 AND MIT | 1 |
 | PSF-2.0 | 1 |
 | The Unlicense (Unlicense) | 1 |
-| **Total** | **303** |
+| **Total** | **310** |
 
 ### Python package index
 
@@ -3883,6 +3821,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `django-filter` | 24.3 | BSD License | Copyright (c) Alex Gaynor and individual contributors. |
 | `django-health-check` | 3.18.3 | MIT License | Copyright (C) 2011-2019 Kristian Øllegaard and contributors |
 | `django-redis` | 5.4.0 | BSD License | Copyright (c) 2011-2016 Andrey Antukh <niwi@niwi.nz> |
+| `django-storages` | 1.14.6 | BSD License | Copyright (c) 2008 - 2023, Josh Schneier, David Larlet, et al. |
 | `djangorestframework` | 3.17.2 | BSD-3-Clause | Copyright © 2011-present, [Encode OSS Ltd](https://www.encode.io/). |
 | `djangorestframework_simplejwt` | 5.4.0 | MIT License | Copyright 2017 David Sanders |
 | `dnspython` | 2.8.0 | ISC License (ISCL) | Copyright (C) Dnspython Contributors |
@@ -3915,6 +3854,9 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `graphrag-storage` | 3.1.1 | MIT | Copyright (c) Microsoft Corporation. |
 | `graphrag-vectors` | 3.1.1 | MIT | Copyright (c) Microsoft Corporation. |
 | `graspologic-native` | 1.2.5 | MIT License | Copyright (c) daxpryce@microsoft.com |
+| `greenlet` | 3.5.4 | MIT AND PSF-2.0 | Copyright (c) Armin Rigo, Christian Tismer and contributors |
+| `greenlet` | 3.5.5 | MIT AND PSF-2.0 | Copyright (c) Armin Rigo, Christian Tismer and contributors |
+| `greenlet` | 3.5.6 | MIT AND PSF-2.0 | Copyright (c) Armin Rigo, Christian Tismer and contributors |
 | `griffelib` | 2.3.0 | ISC | Copyright (c) 2021, Timothée Mazzucotelli |
 | `grpcio` | 1.83.1 | Apache-2.0 | copyright notice that is included in or attached to the work |
 | `gunicorn` | 23.0.0 | MIT License | Copyright (c) Benoit Chesneau <benoitc@gunicorn.org> |
@@ -3937,6 +3879,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `jaraco.classes` | 3.4.0 | MIT License | Copyright (c) Jason R. Coombs |
 | `jaraco.context` | 6.1.2 | MIT | Copyright (c) 2026 <copyright holders> |
 | `jaraco.functools` | 4.6.0 | MIT | Copyright (c) 2026 <copyright holders> |
+| `jeepney` | 0.9.0 | MIT | Copyright (c) 2017 Thomas Kluyver |
 | `Jinja2` | 3.1.6 | BSD License | Copyright 2007 Pallets |
 | `jiter` | 0.16.0 | MIT | Copyright (c) 2022 to present Samuel Colvin |
 | `jmespath` | 1.1.0 | MIT License | Copyright (c) 2013 Amazon.com, Inc. or its affiliates.  All Rights Reserved |
@@ -4018,6 +3961,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pathspec` | 1.1.1 | Mozilla Public License 2.0 (MPL 2.0) | Copyright (c) "Caleb P. Burns" <cpburnz@gmail.com> |
 | `pdfminer.six` | 20260107 | MIT | Copyright (c) 2004-2016  Yusuke Shinyama <yusuke at shinyama dot jp> |
 | `pdfplumber` | 0.11.10 | MIT License | Copyright (c) 2015, Jeremy Singer-Vine |
+| `Pebble` | 5.2.3 | GNU Library or Lesser General Public License (LGPL) | Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/> |
 | `pgvector` | 0.3.6 | MIT | Copyright (c) 2021-2024 Andrew Kane |
 | `pgvector` | 0.4.2 | MIT | Copyright (c) 2021-2025 Andrew Kane |
 | `piccolo` | 1.36.0 | MIT License | Copyright (c) 2018 Daniel Townsend |
@@ -4068,6 +4012,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `rpds-py` | 2026.6.3 | MIT | Copyright (c) 2023 Julian Berman |
 | `s3transfer` | 0.17.1 | Apache Software License | copyright notice that is included in or attached to the work |
 | `s3transfer` | 0.19.2 | Apache Software License | copyright notice that is included in or attached to the work |
+| `SecretStorage` | 3.5.0 | BSD-3-Clause | Copyright 2012-2025 Dmitry Shachnev <mitya57@gmail.com> |
 | `shellingham` | 1.5.4 | ISC License (ISCL) | Copyright (c) 2018, Tzu-ping Chung <uranusjr@gmail.com> |
 | `six` | 1.17.0 | MIT License | Copyright (c) 2010-2024 Benjamin Peterson |
 | `smart_open` | 8.0.1 | MIT License | Copyright (c) 2015 Radim Řehůřek |
@@ -9670,6 +9615,49 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 > No NOTICE file shipped by upstream.
 
+#### django-storages@1.14.6
+
+- **License:** BSD License
+- **Author:** Josh Schneier <josh.schneier@gmail.com>
+
+<details><summary>License text</summary>
+
+<pre>
+BSD 3-Clause License
+
+Copyright (c) 2008 - 2023, Josh Schneier, David Larlet, et al.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+</pre>
+
+</details>
+
+> No NOTICE file shipped by upstream.
+
 #### djangorestframework@3.17.2
 
 - **License:** BSD-3-Clause
@@ -11507,6 +11495,138 @@ MIT License
 - **Author:** daxpryce@microsoft.com
 
 > No LICENSE file shipped by upstream wheel.
+> No NOTICE file shipped by upstream.
+
+#### greenlet@3.5.4
+
+- **License:** MIT AND PSF-2.0
+- **Author:** Alexey Borzenkov <snaury@gmail.com>
+
+<details><summary>License text</summary>
+
+<pre>
+The following files are derived from Stackless Python and are subject to the
+same license as Stackless Python:
+
+	src/greenlet/slp_platformselect.h
+	files in src/greenlet/platform/ directory
+
+See LICENSE.PSF and http://www.stackless.com/ for details.
+
+Unless otherwise noted, the files in greenlet have been released under the
+following MIT license:
+
+Copyright (c) Armin Rigo, Christian Tismer and contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+</pre>
+
+</details>
+
+> No NOTICE file shipped by upstream.
+
+#### greenlet@3.5.5
+
+- **License:** MIT AND PSF-2.0
+- **Author:** Alexey Borzenkov <snaury@gmail.com>
+
+<details><summary>License text</summary>
+
+<pre>
+The following files are derived from Stackless Python and are subject to the
+same license as Stackless Python:
+
+	src/greenlet/slp_platformselect.h
+	files in src/greenlet/platform/ directory
+
+See LICENSE.PSF and http://www.stackless.com/ for details.
+
+Unless otherwise noted, the files in greenlet have been released under the
+following MIT license:
+
+Copyright (c) Armin Rigo, Christian Tismer and contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+</pre>
+
+</details>
+
+> No NOTICE file shipped by upstream.
+
+#### greenlet@3.5.6
+
+- **License:** MIT AND PSF-2.0
+- **Author:** Alexey Borzenkov <snaury@gmail.com>
+
+<details><summary>License text</summary>
+
+<pre>
+The following files are derived from Stackless Python and are subject to the
+same license as Stackless Python:
+
+	src/greenlet/slp_platformselect.h
+	files in src/greenlet/platform/ directory
+
+See LICENSE.PSF and http://www.stackless.com/ for details.
+
+Unless otherwise noted, the files in greenlet have been released under the
+following MIT license:
+
+Copyright (c) Armin Rigo, Christian Tismer and contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+</pre>
+
+</details>
+
 > No NOTICE file shipped by upstream.
 
 #### griffelib@2.3.0
@@ -13513,6 +13633,41 @@ LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE A
 EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 USE OR OTHER DEALINGS IN THE SOFTWARE.
+</pre>
+
+</details>
+
+> No NOTICE file shipped by upstream.
+
+#### jeepney@0.9.0
+
+- **License:** MIT
+- **Author:** Thomas Kluyver <thomas@kluyver.me.uk>
+
+<details><summary>License text</summary>
+
+<pre>
+The MIT License (MIT)
+
+Copyright (c) 2017 Thomas Kluyver
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 </pre>
 
 </details>
@@ -16864,8 +17019,9 @@ License: BSD-3
 
 This binary distribution of NumPy also bundles the following software:
 
+
 Name: OpenBLAS
-Files: numpy/.dylibs/libopenblas*.so
+Files: numpy.libs/libopenblas*.so
 Description: bundled as a dynamically linked library
 Availability: https://github.com/OpenMathLib/OpenBLAS/
 License: BSD-3-Clause
@@ -16901,7 +17057,7 @@ License: BSD-3-Clause
 
 
 Name: LAPACK
-Files: numpy/.dylibs/libopenblas*.so
+Files: numpy.libs/libopenblas*.so
 Description: bundled in OpenBLAS
 Availability: https://github.com/OpenMathLib/OpenBLAS/
 License: BSD-3-Clause-Attribution
@@ -16956,7 +17112,7 @@ License: BSD-3-Clause-Attribution
 
 
 Name: GCC runtime library
-Files: numpy/.dylibs/libgfortran*, numpy/.dylibs/libgcc*
+Files: numpy.libs/libgfortran*.so
 Description: dynamically linked to files compiled with gcc
 Availability: https://gcc.gnu.org/git/?p=gcc.git;a=tree;f=libgfortran
 License: GPL-3.0-with-GCC-exception
@@ -17740,7 +17896,7 @@ Public License instead of this License.  But first, please read
 &lt;http://www.gnu.org/philosophy/why-not-lgpl.html&gt;.
 
 Name: libquadmath
-Files: numpy/.dylibs/libquadmath*.so
+Files: numpy.libs/libquadmath*.so
 Description: dynamically linked to files compiled with gcc
 Availability: https://gcc.gnu.org/git/?p=gcc.git;a=tree;f=libquadmath
 License: LGPL-2.1-or-later
@@ -17814,7 +17970,7 @@ This binary distribution of NumPy also bundles the following software:
 
 
 Name: OpenBLAS
-Files: numpy/.dylibs/libscipy_openblas*.so
+Files: numpy.libs/libscipy_openblas*.so
 Description: bundled as a dynamically linked library
 Availability: https://github.com/OpenMathLib/OpenBLAS/
 License: BSD-3-Clause
@@ -17850,7 +18006,7 @@ License: BSD-3-Clause
 
 
 Name: LAPACK
-Files: numpy/.dylibs/libscipy_openblas*.so
+Files: numpy.libs/libscipy_openblas*.so
 Description: bundled in OpenBLAS
 Availability: https://github.com/OpenMathLib/OpenBLAS/
 License: BSD-3-Clause-Open-MPI
@@ -17905,7 +18061,7 @@ License: BSD-3-Clause-Open-MPI
 
 
 Name: GCC runtime library
-Files: numpy/.dylibs/libgfortran*, numpy/.dylibs/libgcc*
+Files: numpy.libs/libgfortran*.so
 Description: dynamically linked to files compiled with gcc
 Availability: https://gcc.gnu.org/git/?p=gcc.git;a=tree;f=libgfortran
 License: GPL-3.0-or-later WITH GCC-exception-3.1
@@ -18689,7 +18845,7 @@ Public License instead of this License.  But first, please read
 &lt;https://www.gnu.org/licenses/why-not-lgpl.html&gt;.
 
 Name: libquadmath
-Files: numpy/.dylibs/libquadmath*.so
+Files: numpy.libs/libquadmath*.so
 Description: dynamically linked to files compiled with gcc
 Availability: https://gcc.gnu.org/git/?p=gcc.git;a=tree;f=libquadmath
 License: LGPL-2.1-or-later
@@ -18763,7 +18919,7 @@ This binary distribution of NumPy also bundles the following software:
 
 
 Name: OpenBLAS
-Files: numpy/.dylibs/libscipy_openblas*.so
+Files: numpy.libs/libscipy_openblas*.so
 Description: bundled as a dynamically linked library
 Availability: https://github.com/OpenMathLib/OpenBLAS/
 License: BSD-3-Clause
@@ -18799,7 +18955,7 @@ License: BSD-3-Clause
 
 
 Name: LAPACK
-Files: numpy/.dylibs/libscipy_openblas*.so
+Files: numpy.libs/libscipy_openblas*.so
 Description: bundled in OpenBLAS
 Availability: https://github.com/OpenMathLib/OpenBLAS/
 License: BSD-3-Clause-Open-MPI
@@ -18854,7 +19010,7 @@ License: BSD-3-Clause-Open-MPI
 
 
 Name: GCC runtime library
-Files: numpy/.dylibs/libgfortran*, numpy/.dylibs/libgcc*
+Files: numpy.libs/libgfortran*.so
 Description: dynamically linked to files compiled with gcc
 Availability: https://gcc.gnu.org/git/?p=gcc.git;a=tree;f=libgfortran
 License: GPL-3.0-or-later WITH GCC-exception-3.1
@@ -19638,7 +19794,7 @@ Public License instead of this License.  But first, please read
 &lt;https://www.gnu.org/licenses/why-not-lgpl.html&gt;.
 
 Name: libquadmath
-Files: numpy/.dylibs/libquadmath*.so
+Files: numpy.libs/libquadmath*.so
 Description: dynamically linked to files compiled with gcc
 Availability: https://gcc.gnu.org/git/?p=gcc.git;a=tree;f=libquadmath
 License: LGPL-2.1-or-later
@@ -23036,6 +23192,185 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+</pre>
+
+</details>
+
+> No NOTICE file shipped by upstream.
+
+#### Pebble@5.2.3
+
+- **License:** GNU Library or Lesser General Public License (LGPL)
+- **Author:** Matteo Cafasso
+
+<details><summary>License text</summary>
+
+<pre>
+GNU LESSER GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. &lt;http://fsf.org/&gt;
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+
+  This version of the GNU Lesser General Public License incorporates
+the terms and conditions of version 3 of the GNU General Public
+License, supplemented by the additional permissions listed below.
+
+  0. Additional Definitions.
+
+  As used herein, "this License" refers to version 3 of the GNU Lesser
+General Public License, and the "GNU GPL" refers to version 3 of the GNU
+General Public License.
+
+  "The Library" refers to a covered work governed by this License,
+other than an Application or a Combined Work as defined below.
+
+  An "Application" is any work that makes use of an interface provided
+by the Library, but which is not otherwise based on the Library.
+Defining a subclass of a class defined by the Library is deemed a mode
+of using an interface provided by the Library.
+
+  A "Combined Work" is a work produced by combining or linking an
+Application with the Library.  The particular version of the Library
+with which the Combined Work was made is also called the "Linked
+Version".
+
+  The "Minimal Corresponding Source" for a Combined Work means the
+Corresponding Source for the Combined Work, excluding any source code
+for portions of the Combined Work that, considered in isolation, are
+based on the Application, and not on the Linked Version.
+
+  The "Corresponding Application Code" for a Combined Work means the
+object code and/or source code for the Application, including any data
+and utility programs needed for reproducing the Combined Work from the
+Application, but excluding the System Libraries of the Combined Work.
+
+  1. Exception to Section 3 of the GNU GPL.
+
+  You may convey a covered work under sections 3 and 4 of this License
+without being bound by section 3 of the GNU GPL.
+
+  2. Conveying Modified Versions.
+
+  If you modify a copy of the Library, and, in your modifications, a
+facility refers to a function or data to be supplied by an Application
+that uses the facility (other than as an argument passed when the
+facility is invoked), then you may convey a copy of the modified
+version:
+
+   a) under this License, provided that you make a good faith effort to
+   ensure that, in the event an Application does not supply the
+   function or data, the facility still operates, and performs
+   whatever part of its purpose remains meaningful, or
+
+   b) under the GNU GPL, with none of the additional permissions of
+   this License applicable to that copy.
+
+  3. Object Code Incorporating Material from Library Header Files.
+
+  The object code form of an Application may incorporate material from
+a header file that is part of the Library.  You may convey such object
+code under terms of your choice, provided that, if the incorporated
+material is not limited to numerical parameters, data structure
+layouts and accessors, or small macros, inline functions and templates
+(ten or fewer lines in length), you do both of the following:
+
+   a) Give prominent notice with each copy of the object code that the
+   Library is used in it and that the Library and its use are
+   covered by this License.
+
+   b) Accompany the object code with a copy of the GNU GPL and this license
+   document.
+
+  4. Combined Works.
+
+  You may convey a Combined Work under terms of your choice that,
+taken together, effectively do not restrict modification of the
+portions of the Library contained in the Combined Work and reverse
+engineering for debugging such modifications, if you also do each of
+the following:
+
+   a) Give prominent notice with each copy of the Combined Work that
+   the Library is used in it and that the Library and its use are
+   covered by this License.
+
+   b) Accompany the Combined Work with a copy of the GNU GPL and this license
+   document.
+
+   c) For a Combined Work that displays copyright notices during
+   execution, include the copyright notice for the Library among
+   these notices, as well as a reference directing the user to the
+   copies of the GNU GPL and this license document.
+
+   d) Do one of the following:
+
+       0) Convey the Minimal Corresponding Source under the terms of this
+       License, and the Corresponding Application Code in a form
+       suitable for, and under terms that permit, the user to
+       recombine or relink the Application with a modified version of
+       the Linked Version to produce a modified Combined Work, in the
+       manner specified by section 6 of the GNU GPL for conveying
+       Corresponding Source.
+
+       1) Use a suitable shared library mechanism for linking with the
+       Library.  A suitable mechanism is one that (a) uses at run time
+       a copy of the Library already present on the user's computer
+       system, and (b) will operate properly with a modified version
+       of the Library that is interface-compatible with the Linked
+       Version.
+
+   e) Provide Installation Information, but only if you would otherwise
+   be required to provide such information under section 6 of the
+   GNU GPL, and only to the extent that such information is
+   necessary to install and execute a modified version of the
+   Combined Work produced by recombining or relinking the
+   Application with a modified version of the Linked Version. (If
+   you use option 4d0, the Installation Information must accompany
+   the Minimal Corresponding Source and Corresponding Application
+   Code. If you use option 4d1, you must provide the Installation
+   Information in the manner specified by section 6 of the GNU GPL
+   for conveying Corresponding Source.)
+
+  5. Combined Libraries.
+
+  You may place library facilities that are a work based on the
+Library side by side in a single library together with other library
+facilities that are not Applications and are not covered by this
+License, and convey such a combined library under terms of your
+choice, if you do both of the following:
+
+   a) Accompany the combined library with a copy of the same work based
+   on the Library, uncombined with any other library facilities,
+   conveyed under the terms of this License.
+
+   b) Give prominent notice with the combined library that part of it
+   is a work based on the Library, and explaining where to find the
+   accompanying uncombined form of the same work.
+
+  6. Revised Versions of the GNU Lesser General Public License.
+
+  The Free Software Foundation may publish revised and/or new versions
+of the GNU Lesser General Public License from time to time. Such new
+versions will be similar in spirit to the present version, but may
+differ in detail to address new problems or concerns.
+
+  Each version is given a distinguishing version number. If the
+Library as you received it specifies that a certain numbered version
+of the GNU Lesser General Public License "or any later version"
+applies to it, you have the option of following the terms and
+conditions either of that published version or of any later version
+published by the Free Software Foundation. If the Library as you
+received it does not specify a version number of the GNU Lesser
+General Public License, you may choose any version of the GNU Lesser
+General Public License ever published by the Free Software Foundation.
+
+  If the Library as you received it specifies that a proxy can decide
+whether future versions of the GNU Lesser General Public License shall
+apply, that proxy's public statement of acceptance of any version is
+permanent authorization for you to choose that version for the
+Library.
 </pre>
 
 </details>
@@ -30722,6 +31057,45 @@ Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 </pre>
 
 </details>
+
+#### SecretStorage@3.5.0
+
+- **License:** BSD-3-Clause
+- **Author:** Dmitry Shachnev <mitya57@gmail.com>
+
+<details><summary>License text</summary>
+
+<pre>
+Copyright 2012-2025 Dmitry Shachnev &lt;mitya57@gmail.com&gt;
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name of the University nor the names of its contributors may be
+   used to endorse or promote products derived from this software without
+   specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+</pre>
+
+</details>
+
+> No NOTICE file shipped by upstream.
 
 #### shellingham@1.5.4
 

@@ -33,12 +33,7 @@ def build_pipeline() -> Pipeline:
     return (
         Pipeline()
         .register(ResolveVenvStep(venvs_dir=settings.VENVS_DIR))
-        .register(
-            PrepareWorkspaceStep(
-                executions_dir=settings.EXECUTIONS_DIR,
-                savefiles_root=settings.SAVEFILES_DIR,
-            )
-        )
+        .register(PrepareWorkspaceStep(executions_dir=settings.EXECUTIONS_DIR))
         .register(
             ConfigureStorageStep(
                 storage_endpoint=settings.STORAGE_ENDPOINT,
@@ -62,8 +57,8 @@ def build_pipeline() -> Pipeline:
                 max_timeout=settings.MAX_EXECUTION_TIMEOUT,
             )
         )
-        .register(CaptureMutationsStep())
-        .register(CaptureResultStep())
+        .register(CaptureMutationsStep(max_bytes=settings.MAX_RESULT_SIZE))
+        .register(CaptureResultStep(max_bytes=settings.MAX_RESULT_SIZE))
     )
 
 

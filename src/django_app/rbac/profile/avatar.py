@@ -61,7 +61,9 @@ class UserAvatarStorageService:
             user.save(update_fields=["avatar", "updated_at"])
 
             if old_name:
-                transaction.on_commit(lambda: old_storage.delete(old_name))
+                # robust: the delete is a bucket call; its failure is logged and
+                # never turns the committed avatar change into an error response.
+                transaction.on_commit(lambda: old_storage.delete(old_name), robust=True)
 
         return user
 
@@ -73,7 +75,8 @@ class UserAvatarStorageService:
             old_name = user.avatar.name
             user.avatar = None
             user.save(update_fields=["avatar", "updated_at"])
-            transaction.on_commit(lambda: old_storage.delete(old_name))
+            # robust: see store().
+            transaction.on_commit(lambda: old_storage.delete(old_name), robust=True)
         return user
 
     # ---- private ----

@@ -26,18 +26,21 @@ from tables.services.graph_bulk_save_service.saveables import (
     _NodeSaveable,
 )
 from tables.services.node_number_service import NodeNumberService
+from tables.services.secrets import SecretUseDeniedError
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
+from tables.services.secrets.request_actor import actor_from_request
 
 
 def _stored_secret_prefetches(model) -> list[Prefetch]:
     """Prefetch, once for all of `model`'s rows, the secrets each of its PythonCodes links to.
 
-    The secret reference guard reads a node's stored links when the payload leaves
-    `secret_ids` out (always for a plugin's service account); without this it costs a
-    query per node. Through `all_objects`, because the guard counts a link to a binned
-    secret as linked. These instances are used only to validate and save: the response
-    is serialized from a fresh read of the graph, so nothing reads this cache expecting
-    live secrets only.
+    The secret Use check reads a node's stored links when the payload changes
+    `secret_ids`, and always for a plugin's service account, which may write only rows
+    whose links it may reference; without this it costs a query per node. Through
+    `all_objects`, because the check counts a link to a binned secret as linked.
+    These instances are used only to validate and save: the response is serialized
+    from a fresh read of the graph, so nothing reads this cache expecting live
+    secrets only.
     """
     return [
         Prefetch(f"{site.code_field}__secrets", queryset=Secret.all_objects.all())
@@ -275,6 +278,14 @@ class GraphBulkSaveService:
         )
         if not s.is_valid():
             return BuildSaveableResult(error={"index": index, "errors": s.errors})
+
+        if config.secret_use_check is not None:
+            try:
+                config.secret_use_check(
+                    actor_from_request(self._request), instance, s.validated_data
+                )
+            except SecretUseDeniedError as denial:
+                return BuildSaveableResult(error={"index": index, "errors": denial.field_errors()})
 
         inner = config.saveable_factory.build(s, extra, instance)
         deferred = config.saveable_factory.build_deferred(inner, extra)

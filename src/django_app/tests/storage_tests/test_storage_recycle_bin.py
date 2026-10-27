@@ -10,8 +10,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
-from rbac.models import OrganizationUser, Role, RolePermission
-from rbac.models.enums import Permission, ResourceType
+from rbac.models.enums import Permission
 from tables.exceptions import NotInRecycleBinError, StorageRestoreConflictError
 from tables.models import StorageFile
 from tables.services.storage_service.manager import StorageManager
@@ -200,20 +199,6 @@ def real_manager():
     storage_manager = StorageManager(InMemoryStorageBackend(organization_prefix=""))
     with patch("tables.views.storage_views.get_storage_manager", return_value=storage_manager):
         yield storage_manager
-
-
-@pytest.fixture
-def client_with_files_bits(client_as, django_user_model, acme):
-    def _make(bits: Permission) -> APIClient:
-        role = Role.objects.create(name=f"Files {int(bits)}", org=acme, is_built_in=False)
-        RolePermission.objects.create(role=role, resource_type=ResourceType.FILES.value, permissions=int(bits))
-        user = django_user_model.objects.create_user(email=f"files-{int(bits)}@example.com", password="StrongPass123!")
-        OrganizationUser.objects.create(user=user, org=acme, role=role)
-        client = client_as(user)
-        client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-        return client
-
-    return _make
 
 
 def _binned(manager, org, path, content=b"x") -> StorageFile:

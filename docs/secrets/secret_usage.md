@@ -226,7 +226,7 @@ the list serializer's `.context` **the same dict**.
 `_effective_for` (`tables/serializers/model_serializers/secret_serializers.py`) resolves the
 requesting user's `EffectivePermissions` in the active org via `PermissionResolver` —
 `HasOrgPermission` does not stash this on the request, so the serializer resolves it itself,
-the same pattern `SecretReferenceGuard` uses
+the same pattern `SecretUseService` uses
 ([DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6).
 
 `SimpleLazyObject` keeps an empty page from paying for a query nothing will read. The load-
@@ -413,12 +413,13 @@ they did, with nothing to re-link.
 ## 6. Changing a reference vs. reading one: `secrets:USE`
 
 Everything above governs who can **see** that a secret is referenced. A separate mechanism,
-`SecretReferenceGuardMixin`, governs who can **change** which secret a resource references —
+`SecretUseService` and its per-entity `check_<entity>_write` functions, governs who can
+**change** which secret a resource references, or where a secret-bearing resource sends it —
 documented in [DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6, not here,
-because it is a serializer-layer write guard rather than part of the usage/counting registry.
+because it is a write-point permission check rather than part of the usage/counting registry.
 The short version: a reference is treated as *state*, not an operation — omitted from a
 payload or resent unchanged needs nothing; actually changing it requires `secrets:USE`. This
-is what makes the guard usable from a bulk graph save, which resubmits the whole graph on
+is what makes the check usable from a bulk graph save, which resubmits the whole graph on
 every save.
 
 If you are adding a new secret-referencing field, both mechanisms need updating — see §7,
@@ -441,9 +442,8 @@ step 5, and the RBAC guide section above.
    add a projection method, an assembler, and entries in `SHAPE_PROJECTIONS` /
    `HITS_ASSEMBLERS` — otherwise the union will fail on mismatched columns.
 4. `Cast(..., output_field=TextField())` any name column (§3.2).
-5. Register the field with `SecretReferenceGuardMixin` too if it is writable — see §6. A
-   usage source only makes deletion-safety honest; it does not gate who may repoint the
-   reference.
+5. Gate the field with a secret Use check too if it is writable — see §6. A usage source
+   only makes deletion-safety honest; it does not gate who may repoint the reference.
 6. Confirm `test_registry_covers_every_declared_source`, `TestDetailShapes`, and
    `tests/services_tests/test_secret_usage_permission_filtering.py` still pass — they assert
    the registry covers every declared site, that each shape's column count is consistent, and

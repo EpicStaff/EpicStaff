@@ -1,3 +1,4 @@
+from django.core.exceptions import PermissionDenied
 from tables.exceptions import CustomAPIExeption
 from tables.services.run_admission import RunAdmissionRefusedError
 
@@ -42,6 +43,64 @@ class UndeclaredSecretError(CustomAPIExeption):
     status_code = 400
     default_detail = "Code reads a secret that was not declared for it."
     default_code = "undeclared_secret"
+
+
+class SecretUseDeniedError(Exception):
+    """Raised when a write needs secrets:USE and the actor does not hold it.
+
+    A domain error, not an HTTP one: `utils.exception_handler` renders it as a 400
+    naming `field_path`, and the flow bulk save reports it as that node's errors.
+    """
+
+    def __init__(self, *, field_path: tuple[str, ...], message: str):
+        super().__init__(message)
+        self.field_path = field_path
+        self.message = message
+
+    def field_errors(self) -> dict:
+        """Return the message nested along `field_path`, shaped like a serializer's `errors`.
+
+        `("python_code", "secret_ids")` gives `{"python_code": {"secret_ids": [message]}}`,
+        what the nested PythonCode serializer would report for that field.
+        """
+        errors = [self.message]
+        for segment in reversed(self.field_path):
+            errors = {segment: errors}
+        return errors
+
+
+class ModelEndpointNotSettableError(Exception):
+    """Raised when a pinned-org principal (a plugin's service account) sets a model's endpoint.
+
+    A domain error, not an HTTP one: `utils.exception_handler` renders it as a 400
+    naming each field, and the model import strategy re-raises it as a validation error.
+    """
+
+    message = (
+        "This credential cannot set where a model sends requests; the organization's "
+        "configurations may use this model with their own keys."
+    )
+
+    def __init__(self, *, fields: tuple[str, ...]):
+        super().__init__(self.message)
+        self.fields = fields
+
+    def field_errors(self) -> dict:
+        """Return the message under each field, shaped like a serializer's `errors`."""
+        return {field_name: [self.message] for field_name in self.fields}
+
+
+class IncompletePluginCredentialError(PermissionDenied):
+    """Raised when a plugin credential's user does not implement `PinnedOrgPrincipal`.
+
+    Such a caller is refused, never taken for a person whose writes nothing limits. A
+    Django PermissionDenied, so `utils.exception_handler` renders it as a 403.
+    """
+
+    message = "This credential cannot write here."
+
+    def __init__(self):
+        super().__init__(self.message)
 
 
 class SecretMarkerNotReferenceableError(RunAdmissionRefusedError):

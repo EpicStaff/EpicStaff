@@ -250,7 +250,7 @@ on credentials published in this repository.
 For a public deployment, also change the host-facing values in `src/.env` by hand —
 `DOMAIN_NAME`, `API_URL`, `REALTIME_API_URL`, `FRONTEND_BASE_URL`, `ALLOWED_HOSTS`,
 `CORS_ALLOWED_ORIGINS` (see [setup/cors.md](setup/cors.md)), `NGINX_SSL_MODE` (see
-[setup/ssl.md](setup/ssl.md)), `CREW_SAVEFILES_PATH`, and `EMAIL_HOST` / `EMAIL_PORT`
+[setup/ssl.md](setup/ssl.md)), and `EMAIL_HOST` / `EMAIL_PORT`
 (see [rbac/password_recovery.md](rbac/password_recovery.md)). Note that the default
 `EMAIL_HOST=mailpit` is a development mail catcher with a web UI on port 8025 — left
 as shipped, a public deployment sends its password-reset tokens there instead of to

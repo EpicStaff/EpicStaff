@@ -108,6 +108,8 @@ Partial import/export are actions on the `Graph` viewset and run under the same 
 
 Missing permissions are collected across the whole file and raised once as a single `403 PermissionDenied` (`"Missing CREATE permission on: <resources>. No changes were made."`). Reused (already-existing) dependencies need no create permission. Superadmins bypass both the verb gate and the per-dependency checks.
 
+**Secret markers.** A new LLM or embedding config whose `extra_headers` carry an `epicstaff_secret(<name>)` marker also needs `secrets:USE`, because the marker makes runs send that secret. Without it the import is refused with a `400` whose `message` names `extra_headers`, and nothing is written. A reused config is never written, so it needs nothing.
+
 **Trigger nodes.** A file holding a webhook, Telegram or schedule trigger node also needs `FLOWS` · `USE`; without it the whole file is refused with `403 flow_with_trigger_nodes_requires_use_permission` before anything is written.
 
 **Atomicity.** The whole import runs in one `transaction.atomic()` block; a permission denial (or any error) rolls back every insert, so a rejected import leaves no partial data.

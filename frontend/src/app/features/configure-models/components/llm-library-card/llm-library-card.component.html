@@ -7,6 +7,7 @@
                 *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
                 type="button"
                 class="llm-card__action"
+                [attr.aria-label]="'Edit ' + model().customName"
                 matTooltip="Edit"
                 matTooltipPosition="above"
                 (click)="onEdit()"
@@ -20,6 +21,7 @@
                 *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
                 type="button"
                 class="llm-card__action llm-card__action--delete"
+                [attr.aria-label]="'Delete ' + model().customName"
                 matTooltip="Delete"
                 matTooltipPosition="above"
                 (click)="onDelete()"
@@ -42,24 +44,29 @@
         </div>
     }
 
-    <div class="llm-card__bottom">
-        <div class="llm-card__temp">
-            <i
-                class="ti ti-thermometer"
-                aria-hidden="true"
-            ></i>
-            {{ model().temperature }}°
-        </div>
+    @let temperature = model().temperature;
+    @if (temperature !== null || model().isDeprecated) {
+        <div class="llm-card__bottom">
+            @if (temperature !== null) {
+                <div class="llm-card__temp">
+                    <i
+                        class="ti ti-thermometer"
+                        aria-hidden="true"
+                    ></i>
+                    {{ temperature }}°
+                </div>
+            }
 
-        @if (model().isDeprecated) {
-            <div class="llm-card__deprecated">
-                <app-svg-icon
-                    icon="warning"
-                    size="12px"
-                    aria-hidden="true"
-                />
-                <span>Deprecated</span>
-            </div>
-        }
-    </div>
+            @if (model().isDeprecated) {
+                <div class="llm-card__deprecated">
+                    <app-svg-icon
+                        icon="warning"
+                        size="12px"
+                        aria-hidden="true"
+                    />
+                    <span>Deprecated</span>
+                </div>
+            }
+        </div>
+    }
 </article>

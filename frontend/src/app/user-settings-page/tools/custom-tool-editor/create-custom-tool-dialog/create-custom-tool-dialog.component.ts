@@ -25,6 +25,7 @@ import {
     ButtonComponent,
     ConfirmationDialogService,
     CustomInputComponent,
+    ErrorBannerComponent,
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
     HelpTooltipComponent,
@@ -47,6 +48,7 @@ import {
     toSecretNames,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
+import { extractHttpErrorMessage, isClientError } from '@shared/utils';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY, Observable, of, timer } from 'rxjs';
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
@@ -127,6 +129,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
         AppSvgIconComponent,
         ButtonComponent,
         CustomInputComponent,
+        ErrorBannerComponent,
         ExecutionTimeoutFieldComponent,
         HelpTooltipComponent,
         CodeEditorComponent,
@@ -245,6 +248,8 @@ export class CreateCustomToolDialogComponent {
     public readonly pythonHasError = signal(false);
     public readonly isSaving = signal(false);
     public readonly isCopying = signal(false);
+    /** What the server said when it refused a save or a copy; shown in the banner under the header. */
+    public readonly errorMessage = signal<string | null>(null);
     /**
      * The code's execution timeout, once the limits it is shown and checked against are loaded. Null until then (or
      * when they cannot be loaded): the field is not shown, and a save sends the stored timeout back, or none for a
@@ -529,6 +534,7 @@ export class CreateCustomToolDialogComponent {
         }
 
         this.isCopying.set(true);
+        this.errorMessage.set(null);
         this.customToolsService
             .copyPythonCodeTool(original.id)
             .pipe(
@@ -538,7 +544,7 @@ export class CreateCustomToolDialogComponent {
                 }),
                 catchError((err: HttpErrorResponse) => {
                     console.error('Error copying tool:', err);
-                    this.toast.error(this.nameConflictMessage(err) ?? 'Failed to copy custom tool. Please try again.');
+                    this.showSaveError(err, 'Failed to copy custom tool. Please try again.');
                     return EMPTY;
                 }),
                 finalize(() => this.isCopying.set(false)),
@@ -589,6 +595,7 @@ export class CreateCustomToolDialogComponent {
         const action: SaveAction = editingTool === null ? 'create' : editingTool.built_in ? 'fork' : 'update';
 
         this.isSaving.set(true);
+        this.errorMessage.set(null);
 
         const request$ =
             action === 'fork' && editingTool
@@ -609,7 +616,7 @@ export class CreateCustomToolDialogComponent {
                 }),
                 catchError((err: HttpErrorResponse) => {
                     console.error(`Error on tool ${action}:`, err);
-                    this.toast.error(this.nameConflictMessage(err) ?? SAVE_FAILURE_MESSAGES[action]);
+                    this.showSaveError(err, SAVE_FAILURE_MESSAGES[action]);
                     return EMPTY;
                 }),
                 finalize(() => this.isSaving.set(false)),
@@ -660,13 +667,16 @@ export class CreateCustomToolDialogComponent {
         };
     }
 
-    private nameConflictMessage(err: HttpErrorResponse): string | null {
-        if (err.status !== 400) {
-            return null;
+    /**
+     * A refusal of what was sent (4xx, e.g. a duplicate name or a secret the user may not use) goes to the banner with
+     * the server's words; anything else keeps the generic toast.
+     */
+    private showSaveError(err: HttpErrorResponse, fallback: string): void {
+        if (isClientError(err)) {
+            this.errorMessage.set(extractHttpErrorMessage(err, fallback));
+            return;
         }
-        const body = err.error as { name?: string[] } | null;
-        const message = body?.name?.[0];
-        return typeof message === 'string' ? message : null;
+        this.toast.error(fallback);
     }
 
     private adoptForkedCopy(created: GetPythonCodeToolRequest): void {

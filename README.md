@@ -116,11 +116,6 @@ also size the server and set the longest a code node may run. Run it again later
 features on or off, tune those limits, add settings a newer release introduced, or start over; it
 keeps the existing credentials, because the databases were created with them.
 
-Savefiles is deprecated and will be removed: use `epicstaff_storage` instead. Until then, on Linux,
-if the `CREW_SAVEFILES_PATH` folder (`src/savefiles` in the Quick Start) is not owned by uid 1000, the sandbox makes uid 1000 its owner
-(the folder itself, not its contents). Files already in it keep their owner: if agent code must
-write into them, run `sudo chown -R 1000 <folder>` once.
-
 Once running, open http://localhost to start building.
 
 <details>

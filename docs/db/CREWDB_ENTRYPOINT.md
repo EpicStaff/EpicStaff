@@ -37,7 +37,16 @@ Runs as soon as PostgreSQL accepts connections on the target database.
    race condition where the grant script could run before a table exists.
 
    The trigger functions contain per-table grant logic matching the permission matrix below.
-   Role names are interpolated from env vars at function-creation time via bash heredoc.
+   Role names are interpolated from env vars at function-creation time via bash heredoc,
+   which is why role, schema and database names must be plain names (letters, digits, `_`,
+   `.`, `-`). Passwords are never interpolated: psql reads them with `\getenv` and `format()`
+   quotes them, so any character is allowed.
+
+Every setup statement runs with `ON_ERROR_STOP=1`. A name that is not plain, or any failing
+statement in Phase 1, stops the setup with `[setup] ERROR` in the container log before the
+healthcheck flag is written. Fix the value and restart crewdb. A failing Phase 2 grant is
+retried on the next poll instead, because it can collide with a migration Django is running
+at the same time. Either way, crewdb never reports healthy with a role or grant missing.
 
 ### Phase 2 -- Catch-up Grants (Polling)
 

@@ -204,7 +204,7 @@ export class AgentInstructionsListComponent {
 
     private readStorageFile(item: StorageItem): void {
         this.storageApiService
-            .downloadBlob(item.path)
+            .previewBlob(item.path)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (blob) =>

@@ -85,11 +85,29 @@
             }
         }
 
+        // Shrinks first: each app-button collapses to its icon once its label no longer fits, then holds that width
+        // so the name truncates instead of the icon being clipped. The high shrink factor takes the width from the
+        // buttons ahead of the name; the name keeps a factor of 1 so it absorbs all the remaining shortfall (a
+        // factor sum below 1 would absorb only that fraction and push the icons out of view).
         .user-actions {
             display: flex;
             align-items: center;
             gap: 8px;
-            flex-shrink: 0;
+            min-width: 0;
+            flex-shrink: 1000;
+
+            &:not(:has(.btn:not(.btn--only-icon))) {
+                flex-shrink: 0;
+            }
+
+            > app-button {
+                min-width: 0;
+                flex: 0 1 auto;
+
+                &:has(.btn--only-icon) {
+                    flex-shrink: 0;
+                }
+            }
         }
     }
 
