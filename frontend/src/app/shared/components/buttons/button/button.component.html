@@ -16,7 +16,9 @@
     [disabled]="disabled()"
     [attr.aria-label]="ariaLabel"
     [attr.aria-describedby]="ariaDescribedby()"
+    [attr.aria-disabled]="ariaDisabled() || null"
     type="button"
+    (click)="stopClickWhileAriaDisabled($event)"
 >
     @if (type === 'icon') {
         @if (leftIcon) {
