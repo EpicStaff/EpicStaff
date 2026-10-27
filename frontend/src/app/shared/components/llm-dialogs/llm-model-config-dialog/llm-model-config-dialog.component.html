@@ -17,11 +17,10 @@
         </app-icon-button>
     </div>
 
-    @if (errorMessage()) {
-        <div class="error-message">
-            <p>{{ errorMessage() }}</p>
-        </div>
-    }
+    <app-error-banner
+        class="error-banner"
+        [message]="errorMessage()"
+    />
 
     <div
         class="form"

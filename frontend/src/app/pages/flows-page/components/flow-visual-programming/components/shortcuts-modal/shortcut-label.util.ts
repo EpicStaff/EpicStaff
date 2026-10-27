@@ -43,7 +43,16 @@ export function shortcutLabel(action: string, params: ShortcutParams | undefined
     }
 }
 
-export function takenByMessage(holder: ChordHolder, keys: string, flows: FlowLookup): string {
+/** `hiddenActions` are left out of the list for this user, so the message never names one. */
+export function takenByMessage(
+    holder: ChordHolder,
+    keys: string,
+    flows: FlowLookup,
+    hiddenActions: ReadonlySet<string>
+): string {
+    if (hiddenActions.has(holder.action)) {
+        return `${keys} is already in use`;
+    }
     if (holder.source === 'custom') {
         return `Already used by your ${shortcutLabel(holder.action, holder.params, flows).text} shortcut`;
     }

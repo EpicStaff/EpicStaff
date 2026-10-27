@@ -28,8 +28,8 @@ from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.models import PythonCode, PythonCodeTool
 
-STRATEGY_CLIENT = "tables.import_export.strategies.venv.SandboxVenvClient"
-IMPORT_CLIENT = "tables.import_export.services.import_service.SandboxVenvClient"
+# Both the strategy and the rollback reach the sandbox through the same service.
+SANDBOX_CLIENT = "proxies.sandbox.services.VenvService.client_class"
 
 
 class FakeSandbox:
@@ -78,7 +78,7 @@ class FakeSandbox:
 @pytest.fixture
 def sandbox():
     fake = FakeSandbox()
-    with patch(STRATEGY_CLIENT, fake), patch(IMPORT_CLIENT, fake):
+    with patch(SANDBOX_CLIENT, fake):
         yield fake
 
 

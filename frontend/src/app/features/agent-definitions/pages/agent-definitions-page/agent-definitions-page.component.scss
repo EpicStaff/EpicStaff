@@ -43,8 +43,8 @@
             color: var(--text-secondary-60);
         }
 
-        .header__add-agent {
-            flex-shrink: 0;
+        .header-actions {
+            align-items: center;
             margin-left: 1rem;
         }
     }

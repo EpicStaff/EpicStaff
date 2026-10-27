@@ -25,7 +25,12 @@ describe('ConversationListToolbarComponent', () => {
     }
 
     function setInputs(
-        inputs: Partial<Record<'order' | 'isMineOnly' | 'canFilterMine' | 'searchError', unknown>>
+        inputs: Partial<
+            Record<
+                'order' | 'isMineOnly' | 'canFilterMine' | 'searchError' | 'canCollapse' | 'isCompact' | 'columnId',
+                unknown
+            >
+        >
     ): void {
         for (const [name, value] of Object.entries(inputs)) fixture.componentRef.setInput(name, value);
         fixture.detectChanges();
@@ -116,6 +121,77 @@ describe('ConversationListToolbarComponent', () => {
         it('is not there without chats use', () => {
             setInputs({ canFilterMine: false });
             expect(button('Mine')).toBeUndefined();
+        });
+    });
+
+    describe('compact column', () => {
+        const compactToggle = (): HTMLButtonElement | null =>
+            host().querySelector<HTMLButtonElement>('button[aria-controls]');
+        const filteredDot = (): Element | null =>
+            compactToggle()?.querySelector('.conversation-list-toolbar__filtered-dot') ?? null;
+
+        it('offers no compact toggle unless the column can be compact', () => {
+            setInputs({ columnId: 'conversations' });
+            expect(compactToggle()).toBeNull();
+        });
+
+        it('puts the toggle right after the search field and asks to make the column compact', () => {
+            setInputs({ canCollapse: true, columnId: 'conversations' });
+            const requests: number[] = [];
+            fixture.componentInstance.compactToggle.subscribe(() => requests.push(1));
+
+            expect(compactToggle()?.previousElementSibling?.tagName.toLowerCase()).toBe('app-search');
+            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
+            expect(compactToggle()?.getAttribute('aria-expanded')).toBe('true');
+            expect(compactToggle()?.getAttribute('aria-controls')).toBe('conversations');
+            compactToggle()!.click();
+            expect(requests).toEqual([1]);
+        });
+
+        it('shows only the toggle while compact, which asks to expand the column', () => {
+            setInputs({ canCollapse: true, columnId: 'conversations', isCompact: true });
+            const requests: number[] = [];
+            fixture.componentInstance.compactToggle.subscribe(() => requests.push(1));
+
+            expect(host().querySelectorAll('button')).toHaveLength(1);
+            expect(host().querySelector('input')).toBeNull();
+            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
+            expect(compactToggle()?.getAttribute('aria-expanded')).toBe('false');
+            compactToggle()!.click();
+            expect(requests).toEqual([1]);
+        });
+
+        it('marks the compact toggle with a dot, and says so in its name, while Mine filters the list', () => {
+            setInputs({ canCollapse: true, columnId: 'conversations', isMineOnly: true, isCompact: true });
+            expect(filteredDot()).not.toBeNull();
+            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations, filtered');
+        });
+
+        it('marks the compact toggle while a search filters the list', () => {
+            setInputs({ canCollapse: true, columnId: 'conversations' });
+            type('ada');
+            setInputs({ isCompact: true });
+            expect(filteredDot()).not.toBeNull();
+            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations, filtered');
+        });
+
+        it('leaves the toggle unmarked when nothing filters the list, or when the filters show beside it', () => {
+            setInputs({ canCollapse: true, columnId: 'conversations', isCompact: true });
+            expect(filteredDot()).toBeNull();
+            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
+
+            setInputs({ isMineOnly: true, isCompact: false });
+            expect(filteredDot()).toBeNull();
+            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
+        });
+
+        it('keeps the typed search through a compact spell', async () => {
+            setInputs({ canCollapse: true });
+            type('ada');
+            setInputs({ isCompact: true });
+            setInputs({ isCompact: false });
+            await Promise.resolve();
+            expect(field().value).toBe('ada');
         });
     });
 

@@ -52,8 +52,7 @@
         gap: 4px;
         padding: 2px 8px;
         border-radius: 4px;
-        // A faint tint of the status colour the template sets as `color`, so every status gets a matching chip.
-        background-color: color-mix(in srgb, currentColor 12%, transparent);
+        background-color: color-mix(in srgb, currentColor 10%, transparent);
         font-size: 0.75rem;
         white-space: nowrap;
 

@@ -41,9 +41,8 @@ class FakeExecutorChain:
 
 @pytest.fixture
 def sandbox_main(tmp_path, monkeypatch):
-    # main.py changes into ./savefiles on first import; monkeypatch restores the cwd.
+    # An empty cwd: importing main must not depend on any directory being there.
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "savefiles").mkdir()
     sandbox_main = importlib.import_module("main")
     monkeypatch.setattr(settings, "OUTPUT_PATH", tmp_path / "out")
     monkeypatch.setattr(settings, "CODE_RESULT_CHANNEL", "code_results")

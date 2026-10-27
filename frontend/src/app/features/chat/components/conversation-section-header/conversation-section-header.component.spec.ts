@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 
 import { ConversationSectionHeaderComponent } from './conversation-section-header.component';
 
@@ -51,5 +53,51 @@ describe('ConversationSectionHeaderComponent', () => {
         expect(focus).toHaveBeenCalledWith({ preventScroll: true });
         expect(document.activeElement).toBe(button);
         expect(button.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    });
+
+    describe('compact', () => {
+        const button = (): HTMLButtonElement => fixture.nativeElement.querySelector('button');
+        const tooltip = (): MatTooltip => fixture.debugElement.query(By.directive(MatTooltip)).injector.get(MatTooltip);
+        const badge = (): string | null =>
+            fixture.nativeElement.querySelector('.conversation-section-header__badge')?.textContent?.trim() ?? null;
+
+        it('shows the chevron and the icon only, named and tooltipped by its label', () => {
+            render({ isExpanded: true, isCompact: true });
+            expect(button().textContent?.trim()).toBe('');
+            expect(button().getAttribute('aria-label')).toBe('Waiting for a person');
+            expect(tooltip().message).toBe('Waiting for a person');
+            expect(tooltip().disabled).toBe(false);
+            expect(button().getAttribute('aria-expanded')).toBe('true');
+        });
+
+        it('says the count in its name and draws it as a badge on the icon', () => {
+            render({ isExpanded: false, isCompact: true, count: 3 });
+            expect(button().getAttribute('aria-label')).toBe('Waiting for a person, 3');
+            expect(tooltip().message).toBe('Waiting for a person, 3');
+            expect(badge()).toBe('3');
+        });
+
+        it.each([
+            [0, null],
+            [120, '99+'],
+        ])('draws a count of %s as %s', (count, expected) => {
+            render({ isExpanded: true, isCompact: true, count });
+            expect(badge()).toBe(expected);
+        });
+
+        it('keeps the label as its content, without a tooltip or a badge, while not compact', () => {
+            render({ isExpanded: true, count: 3 });
+            expect(button().hasAttribute('aria-label')).toBe(false);
+            expect(tooltip().disabled).toBe(true);
+            expect(badge()).toBeNull();
+        });
+
+        it('asks to toggle on click', () => {
+            render({ isExpanded: true, isCompact: true });
+            const toggled = vi.fn();
+            fixture.componentInstance.toggled.subscribe(toggled);
+            button().click();
+            expect(toggled).toHaveBeenCalledTimes(1);
+        });
     });
 });

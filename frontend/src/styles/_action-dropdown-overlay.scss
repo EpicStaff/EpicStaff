@@ -29,5 +29,11 @@
         &:hover {
             background: rgba(255, 255, 255, 0.06);
         }
+
+        // The item reached from the keyboard (Alt+X, then the arrow keys).
+        &:focus-visible {
+            outline: none;
+            background: var(--color-ghost-btn-active);
+        }
     }
 }

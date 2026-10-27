@@ -76,7 +76,7 @@ class PythonTest(unittest.TestCase):
     def test_reads_that_are_not_boolean_parsing_pass(self):
         for line in [
             'DEBUG = env.bool("DJANGO_DEBUG")',
-            'path = os.getenv("CONTAINER_SAVEFILES_PATH", ".")',
+            'path = os.getenv("SANDBOX_OUTPUT_PATH", ".")',
             'IS_PROD = os.getenv("ENVIRONMENT") == "production"',
             'LEVEL = os.getenv("LOG_LEVEL", "info").lower()',
             'if env.str("MODE").lower() in ("dev", "prod"):',

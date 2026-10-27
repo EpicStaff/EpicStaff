@@ -3,9 +3,13 @@
     [isMineOnly]="isMineOnly()"
     [canFilterMine]="canUse()"
     [searchError]="store.searchError()"
+    [canCollapse]="canCollapse()"
+    [isCompact]="isCompact()"
+    [columnId]="bodyIdPrefix"
     (searchChange)="search.set($event)"
     (orderChange)="setOrder($event)"
     (mineOnlyChange)="setMineOnly($event)"
+    (compactToggle)="compactToggle.emit()"
 />
 
 <!-- The one scroller of the column: section headers stick to its top, each until its own section ends. -->
@@ -28,6 +32,7 @@
                     [label]="section.label"
                     [icon]="section.icon"
                     [isExpanded]="item.isExpanded"
+                    [isCompact]="isCompact()"
                     [controlsId]="sectionBodyId(section.id)"
                     [count]="section.id === 'waiting' ? waitingCount() : null"
                     (toggled)="toggle(section.id)"
@@ -42,7 +47,7 @@
                         @if (state.isLoading && !state.rows.length) {
                             <app-spinner
                                 class="conversation-list__loading"
-                                text="Loading conversations…"
+                                [text]="isCompact() ? '' : 'Loading conversations…'"
                                 [size]="24"
                                 [isOverlay]="false"
                             />
@@ -53,7 +58,7 @@
                                     it only after that row has faded, so the note does not vanish first and shift it.
                                 -->
                                 <div>
-                                    @if (section.orderNote) {
+                                    @if (section.orderNote && !isCompact()) {
                                         <p class="conversation-list__section-note text-body-small">
                                             {{ section.orderNote }}
                                         </p>
@@ -77,6 +82,7 @@
                                                     [isTabStop]="conversation.id === tabStopId()"
                                                     [canTakeOver]="canUse()"
                                                     [isActionPending]="isActionPending()"
+                                                    [isCompact]="isCompact()"
                                                     (selectRequested)="selectedChange.emit(conversation)"
                                                     (takeOverRequested)="takeOver(conversation)"
                                                     (moveRequested)="move(conversation, $event)"
@@ -85,7 +91,7 @@
                                         }
                                     </ul>
                                 </div>
-                            } @else {
+                            } @else if (!isCompact()) {
                                 <div class="conversation-list__section-empty">
                                     @if (store.isSearching()) {
                                         <p class="conversation-list__empty-title text-body-medium">No matches</p>

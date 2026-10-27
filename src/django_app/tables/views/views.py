@@ -102,11 +102,13 @@ from tables.services.run_admission import (
 )
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.secrets import SecretResolver
-from tables.services.secrets.reference_guard import (
+from tables.services.secrets.pinned_principal_rules import (
+    assert_may_resolve_markers,
     pinned_principal_of_user,
-    secret_reference_guard,
 )
+from tables.services.secrets.request_actor import actor_from_request
 from tables.services.secrets.secret_resolver import extract_secret_marker_names
+from tables.services.secrets.secret_use_checks import check_quickstart
 from tables.services.session_access import (
     assert_parent_session_in_org,
     get_accessible_session,
@@ -903,6 +905,9 @@ class QuickstartView(APIView):
             resource_type=self.rbac_resource_type,
             action=Permission.CREATE,
         )
+        # After the CREATE gate, so a caller who may not create configs at all gets
+        # its 403 rather than a secret Use 400.
+        check_quickstart(actor_from_request(request), serializer.validated_data)
 
         result = quickstart_service.quickstart(
             provider=provider,
@@ -913,9 +918,15 @@ class QuickstartView(APIView):
         )
 
         if not result.get("success", False):
+            # A curated refusal is the caller's to fix (400); anything else is a
+            # server failure, and its message is already the generic one.
             return Response(
                 data={"detail": "Error quickstart", "error": result.get("error")},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR
+                    if result.get("unexpected", False)
+                    else status.HTTP_400_BAD_REQUEST
+                ),
             )
 
         config_name = result["config_name"]
@@ -1017,7 +1028,7 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
         principal = pinned_principal_of_user(request.user)
         if principal is not None:
             # The headers' markers resolve below by name, as a run's do when it starts.
-            secret_reference_guard.assert_may_resolve_markers(
+            assert_may_resolve_markers(
                 principal=principal,
                 names=extract_secret_marker_names(indexing_data["embedder_extra_headers"])
                 | extract_secret_marker_names(indexing_data["llm_extra_headers"]),

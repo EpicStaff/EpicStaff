@@ -8,7 +8,7 @@
     },
     "xml": {
       "type": "string",
-      "description": "File path or URL of a XML file to be searched."
+      "description": "http:// or https:// URL of an XML file to be searched."
     },
     "similarity_threshold": {
       "type": "number",

@@ -2,7 +2,7 @@ from main import main
 
 def test():
     search_query = input("Enter search query: ")
-    xml = input("Enter XML file path or URL: ")
+    xml = input("Enter XML file URL: ")
     limit_input = input("Enter max number of results (leave blank for no limit): ")
     limit = int(limit_input) if limit_input.strip() else None
 

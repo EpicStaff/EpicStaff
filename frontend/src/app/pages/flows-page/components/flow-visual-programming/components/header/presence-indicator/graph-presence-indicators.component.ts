@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { PresentEditor } from '../../../../../../../features/flows/services/graph-collaboration.ws.service';
@@ -24,6 +24,9 @@ export class GraphPresenceIndicatorsComponent {
 
     readonly editors = input<PresentEditor[]>([]);
 
+    // Avatar links are signed and expire; a URL that failed once shows initials instead of a broken image.
+    private readonly failedAvatarUrls = signal<ReadonlySet<string>>(new Set());
+
     private readonly filtered = computed(() => {
         const currentId = this.profileService.currentUserSignal()?.id;
         return this.editors().filter((e) => e.user_id !== currentId);
@@ -32,7 +35,7 @@ export class GraphPresenceIndicatorsComponent {
     protected readonly visibleEditors = computed(() =>
         this.filtered()
             .slice(0, 3)
-            .map((e) => ({ ...e, resolvedAvatarUrl: this.resolveAvatarUrl(e.avatar_url) }))
+            .map((e) => ({ ...e, resolvedAvatarUrl: this.displayableAvatarUrl(e.avatar_url) }))
     );
     protected readonly hiddenCount = computed(() => Math.max(0, this.filtered().length - 3));
     protected readonly hiddenTooltip = computed(() =>
@@ -56,9 +59,18 @@ export class GraphPresenceIndicatorsComponent {
         return editor.display_name ?? `User ${editor.user_id}`;
     }
 
+    protected onAvatarError(url: string): void {
+        this.failedAvatarUrls.update((failed) => new Set(failed).add(url));
+    }
+
     protected resolveAvatarUrl(url: string | null | undefined): string | null {
         if (!url) return null;
         if (url.startsWith('http')) return url;
         return `${this.mediaBase}${url}`;
+    }
+
+    private displayableAvatarUrl(url: string | null | undefined): string | null {
+        const resolved = this.resolveAvatarUrl(url);
+        return resolved && !this.failedAvatarUrls().has(resolved) ? resolved : null;
     }
 }

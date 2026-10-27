@@ -81,31 +81,40 @@ Choose your operating system below, open your **Terminal** (or PowerShell on Win
 
 #### 🪟 Windows (PowerShell)
 ```
-git clone https://github.com/EpicStaff/EpicStaff.git; cd EpicStaff; docker run --rm -v "${PWD}:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --root-user-action=ignore --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --dev"; cd src; docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create media_data; docker volume create opensearch_data; docker network create mcp-network; docker compose up --build
+git clone https://github.com/EpicStaff/EpicStaff.git; cd EpicStaff; docker run --rm -it -v "${PWD}:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --root-user-action=ignore --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --setup --dev"; cd src; docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create media_data; docker volume create opensearch_data; docker network create mcp-network; docker compose up --build
 ```
 #### 🍎 macOS (Terminal)
 ```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --user --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --dev" && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker volume create opensearch_data && docker network create mcp-network && cd src && docker compose up --build
+git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --user --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --setup --dev" && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker volume create opensearch_data && docker network create mcp-network && cd src && docker compose up --build
 ```
 #### 🐧 Linux (Terminal)
 ```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --user --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --dev" && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker volume create opensearch_data && docker network create mcp-network && cd src && docker compose up --build
+git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --user --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --setup --dev" && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker volume create opensearch_data && docker network create mcp-network && cd src && docker compose up --build
 ```
 
 These blocks build every image locally from the cloned source (`docker compose up --build`). The signature and SBOM checks under [How to verify a release](#how-to-verify-a-release) apply only to images pulled from `ghcr.io/epicstaff`, never to images built on your machine. To run the signed, digest-pinned images of a release instead, see [Running a verified release](#running-a-verified-release).
 
-The blocks generate `src/.env` with `python scripts/envtool.py --dev`, run inside a `python`
-container so only Docker is needed. These are **development defaults, for trying EpicStaff on
-your own machine only**.
+The blocks generate `src/.env` with `python scripts/envtool.py --setup --dev`, run inside a
+`python` container so only Docker is needed. It asks which optional features to turn on (chat
+and the audit trail) and fills in everything else. These are **development defaults, for trying
+EpicStaff on your own machine only**.
 
-**Before running EpicStaff in production, replace this development configuration.** Generate a
-production `src/.env` with `python scripts/envtool.py` (the same content as `src/.env.example`)
-and set every line marked `# NAME=<enter your value>`.
+**Before running EpicStaff in production, replace this development configuration.** On the
+server, from the cloned `EpicStaff` folder, run the same container with `--setup` and without
+`--dev`:
 
-Savefiles is deprecated and will be removed: use `epicstaff_storage` instead. Until then, on Linux,
-if the `CREW_SAVEFILES_PATH` folder (`src/savefiles` in the Quick Start) is not owned by uid 1000, the sandbox makes uid 1000 its owner
-(the folder itself, not its contents). Files already in it keep their owner: if agent code must
-write into them, run `sudo chown -R 1000 <folder>` once.
+```
+# Windows (PowerShell)
+docker run --rm -it -v "${PWD}:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --root-user-action=ignore --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --setup"
+# macOS / Linux
+docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --user --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --setup"
+```
+
+It asks for the public URL, how HTTPS is handled, which features to turn on and which release
+tag to pull, and generates every password and key into `src/.env` (keep that file private). It can
+also size the server and set the longest a code node may run. Run it again later to turn
+features on or off, tune those limits, add settings a newer release introduced, or start over; it
+keeps the existing credentials, because the databases were created with them.
 
 Once running, open http://localhost to start building.
 
@@ -209,7 +218,7 @@ git clone -b vX.Y.Z https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff
 cp /path/to/downloaded/docker-compose.yaml src/docker-compose.yaml
 ```
 
-Prepare a production `src/.env` as described under the Quick Start, create the volumes and network as in the Quick Start block for your OS, and finish with `docker compose up` instead of `docker compose up --build`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the file, and the image checks above apply to exactly what runs.
+Prepare a production `src/.env` with `envtool.py --setup` as described under the Quick Start, create the volumes and network as in the Quick Start block for your OS, and finish with `docker compose up` instead of `docker compose up --build`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the file, and the image checks above apply to exactly what runs.
 
 ---
 

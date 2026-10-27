@@ -12,16 +12,17 @@
             </h1>
         </div>
 
-        <app-button
-            *appHasPermission="[ResourceCode.Agents, ActionCode.Create]"
-            class="header__add-agent"
-            type="primary"
-            leftIcon="plus-fit"
-            iconSize="10px"
-            (click)="onAddAgent()"
-        >
-            Add Agent
-        </app-button>
+        <div class="header-actions">
+            <app-button
+                *appHasPermission="[ResourceCode.Agents, ActionCode.Create]"
+                type="primary"
+                leftIcon="plus-fit"
+                iconSize="10px"
+                (click)="onAddAgent()"
+            >
+                Add Agent
+            </app-button>
+        </div>
     </header>
 
     <section class="body">

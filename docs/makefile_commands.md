@@ -225,7 +225,18 @@ python scripts/envtool.py --dev   # development defaults (the dev column of src/
 python scripts/envtool.py         # production defaults
 ```
 
-Both overwrite `src/.env`. After pulling new variables, `make env-update` (or
+Both overwrite `src/.env`. To answer a few questions instead, add `--setup`:
+
+```bash
+python scripts/envtool.py --setup --dev   # local: asks which features to turn on
+python scripts/envtool.py --setup         # production: asks URL, HTTPS, features, release tag; generates every secret
+```
+
+With an existing `src/.env`, `--setup` offers to change features (it rewrites only
+`CHAT_ENABLED`, `AUDIT_TRAIL_ENABLED` and `COMPOSE_PROFILES`), tune performance and limits
+(server size, the longest a code node may run, the log level of every service), add missing settings, or start
+over while keeping the existing credentials. It needs a terminal: in Docker, run it with
+`docker run -it`. After pulling new variables, `make env-update` (or
 `python scripts/envtool.py --update`, `DEV=1` / `--dev` for development defaults) appends
 only the variables your `src/.env` lacks and never changes existing lines.
 
@@ -239,7 +250,7 @@ on credentials published in this repository.
 For a public deployment, also change the host-facing values in `src/.env` by hand —
 `DOMAIN_NAME`, `API_URL`, `REALTIME_API_URL`, `FRONTEND_BASE_URL`, `ALLOWED_HOSTS`,
 `CORS_ALLOWED_ORIGINS` (see [setup/cors.md](setup/cors.md)), `NGINX_SSL_MODE` (see
-[setup/ssl.md](setup/ssl.md)), `CREW_SAVEFILES_PATH`, and `EMAIL_HOST` / `EMAIL_PORT`
+[setup/ssl.md](setup/ssl.md)), and `EMAIL_HOST` / `EMAIL_PORT`
 (see [rbac/password_recovery.md](rbac/password_recovery.md)). Note that the default
 `EMAIL_HOST=mailpit` is a development mail catcher with a web UI on port 8025 — left
 as shipped, a public deployment sends its password-reset tokens there instead of to

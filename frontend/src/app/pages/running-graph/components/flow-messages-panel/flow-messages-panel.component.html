@@ -13,7 +13,7 @@
         <app-stop-button
             *appHasPermission="[ResourceCode.Flows, ActionCode.Use]"
             variant="stop"
-            tooltip="Stop session"
+            [tooltip]="keymap.withShortcut('Stop session', 'flow.stop-session')"
             (triggered)="onStopSession()"
         />
     }

@@ -19,6 +19,7 @@ let refresh$: Observable<unknown> | null = null;
 const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>([
     'built_in_model_immutable',
     'permission_escalation_denied',
+    'in_use_restricted',
     // A flow save with a Key-Value node whose mode needs a key_value_tables permission the role lacks
     // (read: R, write: C and U, delete: D); the save's own error handling shows it.
     'key_value_mode_denied',

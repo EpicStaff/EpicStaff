@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import shutil
 
 import egress_firewall
@@ -29,8 +28,6 @@ redis_service = RedisService(
     user=settings.REDIS_USER,
     password=settings.REDIS_PASSWORD,
 )
-
-os.chdir("savefiles")
 
 
 def sweep_output_path():
