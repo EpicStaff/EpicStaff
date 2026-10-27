@@ -8,9 +8,11 @@ later -- replacing the queues with a network transport -- is a change confined t
 file; no application or domain code moves. The one exception is the queue deadline, a
 monotonic-clock reading that only means something inside this one process.
 
-The job-intake singletons the request path needs are published on ``app.state`` so
-controllers reach them through Litestar's ``State`` injection, never through a module
-global or an import of this layer.
+What the request path needs is published on ``app.state``: a ``JobOrchestrator``
+factory closed over the runtime's singletons and settings, the intake gate (for the
+route guard, which cannot take dependencies) and the execution registry. The providers
+in ``manager.bootstrap.di`` hand them to controllers as Litestar dependencies, so no
+controller reaches a module global or imports this layer.
 
 Every runner is supervised: one that dies takes the process down with it, so the
 container restarts instead of accepting jobs nothing will ever run or answer.
@@ -20,7 +22,7 @@ import asyncio
 import os
 import signal
 from collections.abc import Callable
-from dataclasses import dataclass
+from functools import partial
 
 import settings
 from foundation.utils.litestar import lifespan
@@ -29,6 +31,7 @@ from loguru import logger
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
+from manager.application.ports import AbstractUnitOfWork
 from manager.application.registry import ExecutionRegistry
 from manager.infrastructure.database.unit_of_work import PiccoloUnitOfWork
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
@@ -43,26 +46,9 @@ from common.contracts import ExecutionJobMessage, ExecutionResultMessage
 from common.observability.gate_sampler import GateSampler
 from common.runner import Runner
 
-__all__ = ["JobIntake", "supervise"]
+__all__ = ["supervise"]
 
 _RELEASE_INTERVAL_SECONDS = 2.0
-
-
-@dataclass(frozen=True)
-class JobIntake:
-    """The singletons the request path needs to accept a job.
-
-    Built once at startup and read off ``app.state`` by the execution controller and
-    its guard.
-    """
-
-    dispatcher: QueueJobDispatcher
-    holding: JobHoldingRegistry
-    failure_sink: QueueJobFailureSink
-    registry: ExecutionRegistry
-    intake_gate: IntakeGate
-    queue_timeout: float
-    hold_timeout: float
 
 
 def _terminate_process() -> None:
@@ -110,15 +96,19 @@ async def start_runtime(app: Litestar) -> None:
     )
     dispatcher = QueueJobDispatcher(job_queue)
     failure_sink = QueueJobFailureSink(result_queue)
-    app.state.job_intake = JobIntake(
-        dispatcher,
-        holding,
-        failure_sink,
-        registry,
-        intake_gate,
-        settings.QUEUE_TIMEOUT,
-        settings.HOLD_TIMEOUT,
+    build_job_orchestrator: Callable[[AbstractUnitOfWork], JobOrchestrator] = partial(
+        JobOrchestrator,
+        dispatcher=dispatcher,
+        holding=holding,
+        failure_sink=failure_sink,
+        registry=registry,
+        intake_gate=intake_gate,
+        queue_timeout=settings.QUEUE_TIMEOUT,
+        hold_timeout=settings.HOLD_TIMEOUT,
     )
+    app.state.build_job_orchestrator = build_job_orchestrator
+    app.state.intake_gate = intake_gate
+    app.state.execution_registry = registry
 
     redis = Redis(
         host=settings.REDIS_HOST,
@@ -144,17 +134,7 @@ async def start_runtime(app: Litestar) -> None:
             registry,
         ),
         "held-job releaser": HeldJobReleaser(
-            JobOrchestrator(
-                PiccoloUnitOfWork(),
-                dispatcher,
-                holding,
-                failure_sink,
-                registry,
-                intake_gate,
-                queue_timeout=settings.QUEUE_TIMEOUT,
-                hold_timeout=settings.HOLD_TIMEOUT,
-            ),
-            interval=_RELEASE_INTERVAL_SECONDS,
+            build_job_orchestrator(PiccoloUnitOfWork()), interval=_RELEASE_INTERVAL_SECONDS
         ),
         "gate sampler": GateSampler(registry, admission_gate),
     }

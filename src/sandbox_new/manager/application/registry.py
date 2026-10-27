@@ -125,6 +125,11 @@ class ExecutionRegistry:
         """
         return len(self._reserved) + len(self._queued)
 
+    def active_count_excluding(self, execution_id: str) -> int:
+        """`active_count` without this execution, so a caller can leave out its own reservation."""
+        is_active = execution_id in self._reserved or execution_id in self._queued
+        return self.active_count - is_active
+
     @property
     def held_count(self) -> int:
         """Executions waiting for their venv to finish building."""

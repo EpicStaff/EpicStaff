@@ -1,6 +1,5 @@
 from foundation.schemas import ErrorResponseSchema
 from litestar import Controller, delete, get, patch, post, status_codes
-from litestar.datastructures import State
 from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import Parameter
 from loguru import logger
@@ -8,6 +7,7 @@ from src.shared.bench_log import BENCH_LEVEL
 
 from manager.application.orchestrators import JobOrchestrator, VenvCRUDOrchestrator
 from manager.application.ports import AbstractUnitOfWork
+from manager.application.registry import ExecutionRegistry
 from manager.presentation.rest import schemas
 from manager.presentation.rest.guards import reject_when_full
 
@@ -212,7 +212,7 @@ class ExecutionController(Controller):
         responses=SUBMIT_RESPONSES,
     )
     async def submit(
-        self, data: schemas.ExecutionSubmitSchema, state: State, uow: AbstractUnitOfWork
+        self, data: schemas.ExecutionSubmitSchema, job_orchestrator: JobOrchestrator
     ) -> schemas.ExecutionAcceptedSchema:
         """Accept a code submission and hand it to the job orchestrator.
 
@@ -228,18 +228,7 @@ class ExecutionController(Controller):
             session_id=data.session_id,
             execution_id=data.execution_id,
         )
-        intake = state.job_intake
-        orchestrator = JobOrchestrator(
-            uow,
-            intake.dispatcher,
-            intake.holding,
-            intake.failure_sink,
-            intake.registry,
-            intake.intake_gate,
-            queue_timeout=intake.queue_timeout,
-            hold_timeout=intake.hold_timeout,
-        )
-        status = await orchestrator.submit(
+        status = await job_orchestrator.submit(
             execution_id=data.execution_id,
             session_id=data.session_id,
             code=data.code,
@@ -271,11 +260,13 @@ class ExecutionController(Controller):
         response_description="Where the execution is.",
         responses=STATUS_RESPONSES,
     )
-    async def retrieve(self, execution_id: str, state: State) -> schemas.ExecutionStatusSchema:
+    async def retrieve(
+        self, execution_id: str, execution_registry: ExecutionRegistry
+    ) -> schemas.ExecutionStatusSchema:
         """Return where an accepted execution is.
 
         Raises:
             ExecutionNotFoundError: The sandbox does not know the execution, rendered as 404.
         """
-        status = state.job_intake.registry.get_status(execution_id)
+        status = execution_registry.get_status(execution_id)
         return schemas.ExecutionStatusSchema(execution_id=execution_id, status=status)

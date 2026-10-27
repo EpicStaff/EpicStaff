@@ -259,7 +259,9 @@ class JobOrchestrator:
         try:
             venv = await self._resolve_venv(venv_id)
             if venv.status is not VenvStatus.FAILED:
-                self.intake_gate.admit(will_be_held=venv.status is not VenvStatus.COMPLETED)
+                self.intake_gate.admit(
+                    execution_id, will_be_held=venv.status is not VenvStatus.COMPLETED
+                )
             job = Job(
                 session_id=session_id,
                 execution_id=execution_id,

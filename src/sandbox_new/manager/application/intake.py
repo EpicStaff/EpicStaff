@@ -96,10 +96,12 @@ class IntakeGate:
         if self._registry.active_count >= self._max_accepted:
             raise self._refuse("cap", DEFAULT_RETRY_AFTER_SECONDS)
 
-    def admit(self, *, will_be_held: bool) -> None:
+    def admit(self, execution_id: str, *, will_be_held: bool) -> None:
         """Decide whether a submission that already holds a reservation may proceed.
 
         Args:
+            execution_id: The submission's own id; its reservation is not counted
+                against the in-flight cap it is being judged on.
             will_be_held: Its venv is still building, so it waits outside the queue and
                 its queue wait cannot be predicted yet; only the held cap applies.
 
@@ -111,8 +113,7 @@ class IntakeGate:
             if self._registry.held_count >= self._max_held:
                 raise self._refuse("held_cap", HELD_LIMIT_RETRY_AFTER_SECONDS)
             return
-        # The caller's own reservation is already counted in active_count.
-        if self._registry.active_count - 1 >= self._max_accepted:
+        if self._registry.active_count_excluding(execution_id) >= self._max_accepted:
             raise self._refuse("cap", DEFAULT_RETRY_AFTER_SECONDS)
         if self._has_free_slot():
             return

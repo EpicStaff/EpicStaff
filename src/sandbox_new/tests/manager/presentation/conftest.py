@@ -5,18 +5,19 @@ lifespan hooks open a database pool, connect to Redis and build the default venv
 of which belong in a unit suite. ``debug=True`` so an unexpected failure shows its
 traceback in the response body instead of a bare 500.
 
-``job_intake`` mirrors what ``common.bootstrap.lifespan`` publishes on ``app.state``. It
-is rebuilt here from fakes instead of imported, so importing this conftest does not
-register the real runtime's startup hooks.
+``runtime_state`` mirrors what ``common.bootstrap.lifespan`` publishes on ``app.state``.
+It is rebuilt here from fakes instead of imported, so importing this conftest does not
+register the real runtime's startup hooks. The dependency providers are the real ones
+from ``manager.bootstrap.di``; only ``uow`` is swapped for the fake.
 
 The error handlers are the real ones, so a test can assert the status a rejected request
 actually gets rather than the one the controller hoped for.
 """
 
-from dataclasses import dataclass
+from functools import partial
 
 import pytest
-from foundation.utils.litestar import error_handler
+from foundation.utils.litestar import di, error_handler
 from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.testing import create_test_client
@@ -24,6 +25,7 @@ from litestar.testing import create_test_client
 import manager.bootstrap  # noqa: F401  registers the error handlers below
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
+from manager.application.orchestrators import JobOrchestrator
 from manager.application.ports import AbstractUnitOfWork
 from manager.application.registry import ExecutionRegistry
 from manager.presentation.rest.controllers import ExecutionController, VenvController
@@ -34,17 +36,6 @@ MAX_ACCEPTED = 3
 MAX_HELD = 2
 QUEUE_TIMEOUT = 120.0
 HOLD_TIMEOUT = 1800.0
-
-
-@dataclass
-class JobIntakeDouble:
-    dispatcher: FakeJobDispatcher
-    holding: JobHoldingRegistry
-    failure_sink: FakeJobFailureSink
-    registry: ExecutionRegistry
-    intake_gate: IntakeGate
-    queue_timeout: float
-    hold_timeout: float
 
 
 @pytest.fixture
@@ -58,7 +49,12 @@ def registry(clock) -> ExecutionRegistry:
 
 
 @pytest.fixture
-def job_intake(dispatcher, holding, failure_sink, registry) -> JobIntakeDouble:
+def runtime_state(
+    dispatcher: FakeJobDispatcher,
+    holding: JobHoldingRegistry,
+    failure_sink: FakeJobFailureSink,
+    registry: ExecutionRegistry,
+) -> State:
     intake_gate = IntakeGate(
         registry,
         lambda: True,
@@ -66,7 +62,8 @@ def job_intake(dispatcher, holding, failure_sink, registry) -> JobIntakeDouble:
         max_held=MAX_HELD,
         queue_timeout=QUEUE_TIMEOUT,
     )
-    return JobIntakeDouble(
+    build_job_orchestrator = partial(
+        JobOrchestrator,
         dispatcher=dispatcher,
         holding=holding,
         failure_sink=failure_sink,
@@ -75,17 +72,24 @@ def job_intake(dispatcher, holding, failure_sink, registry) -> JobIntakeDouble:
         queue_timeout=QUEUE_TIMEOUT,
         hold_timeout=HOLD_TIMEOUT,
     )
+    return State(
+        {
+            "build_job_orchestrator": build_job_orchestrator,
+            "intake_gate": intake_gate,
+            "execution_registry": registry,
+        }
+    )
 
 
 @pytest.fixture
-def client(uow, job_intake):
+def client(uow, runtime_state):
     async def provide_uow() -> AbstractUnitOfWork:
         return uow
 
     with create_test_client(
         route_handlers=[VenvController, ExecutionController],
-        dependencies={"uow": Provide(provide_uow)},
-        state=State({"job_intake": job_intake}),
+        dependencies={**di.get_dependencies(), "uow": Provide(provide_uow)},
+        state=runtime_state,
         exception_handlers=error_handler.get_handlers(),
         debug=True,
     ) as test_client:

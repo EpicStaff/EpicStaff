@@ -96,6 +96,22 @@ def test_held_executions_are_counted_apart_from_the_active_ones(registry):
     assert registry.queued_count == 1
 
 
+@pytest.mark.parametrize(
+    ("excluded", "expected"),
+    [("reserved", 1), ("queued", 1), ("held", 2), ("done", 2), ("unknown", 2)],
+)
+def test_active_count_excluding_leaves_out_only_that_active_execution(
+    registry, excluded, expected
+):
+    for execution_id in ("reserved", "held", "queued", "done"):
+        registry.reserve(execution_id)
+    registry.mark_held("held")
+    registry.mark_queued("queued")
+    registry.finish("done", ran=True)
+
+    assert registry.active_count_excluding(excluded) == expected
+
+
 def test_a_released_held_execution_moves_to_the_active_count(registry):
     registry.reserve("exec-1")
     registry.mark_held("exec-1")

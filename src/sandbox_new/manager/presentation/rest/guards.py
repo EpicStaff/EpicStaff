@@ -18,4 +18,4 @@ def reject_when_full(connection: ASGIConnection, _: BaseRouteHandler) -> None:
     Raises:
         SandboxOverloadedError: Rendered as 503 with `Retry-After`.
     """
-    connection.app.state.job_intake.intake_gate.check_capacity()
+    connection.app.state.intake_gate.check_capacity()

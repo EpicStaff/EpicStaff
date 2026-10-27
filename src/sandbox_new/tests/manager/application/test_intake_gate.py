@@ -76,7 +76,7 @@ def test_admit_does_not_count_the_callers_own_reservation(registry):
     queue(registry, 1)
     reserve_caller(registry)
 
-    build_gate(registry, free_slot=True, max_accepted=2).admit(will_be_held=False)
+    build_gate(registry, free_slot=True, max_accepted=2).admit("caller", will_be_held=False)
 
 
 def test_admit_refuses_at_the_cap_even_with_a_free_slot(registry):
@@ -84,7 +84,7 @@ def test_admit_refuses_at_the_cap_even_with_a_free_slot(registry):
     reserve_caller(registry)
 
     with pytest.raises(SandboxOverloadedError) as raised:
-        build_gate(registry, free_slot=True, max_accepted=2).admit(will_be_held=False)
+        build_gate(registry, free_slot=True, max_accepted=2).admit("caller", will_be_held=False)
 
     assert raised.value.retry_after == 5
 
@@ -93,7 +93,7 @@ def test_a_held_job_is_admitted_while_the_in_flight_cap_is_full(registry):
     queue(registry, 2)
     reserve_caller(registry)
 
-    build_gate(registry, max_accepted=2, max_held=2).admit(will_be_held=True)
+    build_gate(registry, max_accepted=2, max_held=2).admit("caller", will_be_held=True)
 
 
 def test_a_held_job_is_refused_at_the_held_cap_with_a_30_second_retry_after(registry):
@@ -101,7 +101,7 @@ def test_a_held_job_is_refused_at_the_held_cap_with_a_30_second_retry_after(regi
     reserve_caller(registry)
 
     with pytest.raises(SandboxOverloadedError) as raised:
-        build_gate(registry, free_slot=True, max_held=2).admit(will_be_held=True)
+        build_gate(registry, free_slot=True, max_held=2).admit("caller", will_be_held=True)
 
     assert raised.value.retry_after == 30
 
@@ -110,14 +110,14 @@ def test_a_held_job_is_admitted_just_below_the_held_cap(registry):
     hold(registry, 1)
     reserve_caller(registry)
 
-    build_gate(registry, max_held=2).admit(will_be_held=True)
+    build_gate(registry, max_held=2).admit("caller", will_be_held=True)
 
 
 def test_a_job_to_queue_is_admitted_while_the_held_cap_is_full(registry):
     hold(registry, 2)
     reserve_caller(registry)
 
-    build_gate(registry, free_slot=True, max_accepted=2, max_held=2).admit(will_be_held=False)
+    build_gate(registry, free_slot=True, max_accepted=2, max_held=2).admit("caller", will_be_held=False)
 
 
 def test_check_capacity_does_not_count_held_jobs(registry):
@@ -131,7 +131,7 @@ def test_a_free_slot_admits_whatever_the_prediction(registry, clock):
     queue(registry, 50)
     reserve_caller(registry)
 
-    build_gate(registry, free_slot=True).admit(will_be_held=False)
+    build_gate(registry, free_slot=True).admit("caller", will_be_held=False)
 
 
 def test_a_held_job_is_not_judged_on_the_prediction(registry, clock):
@@ -139,14 +139,14 @@ def test_a_held_job_is_not_judged_on_the_prediction(registry, clock):
     queue(registry, 50)
     reserve_caller(registry)
 
-    build_gate(registry).admit(will_be_held=True)
+    build_gate(registry).admit("caller", will_be_held=True)
 
 
 def test_a_cold_start_is_judged_on_the_cap_only(registry):
     queue(registry, 50)
     reserve_caller(registry)
 
-    build_gate(registry).admit(will_be_held=False)
+    build_gate(registry).admit("caller", will_be_held=False)
 
 
 def test_a_predicted_wait_within_the_queue_timeout_is_admitted(registry, clock):
@@ -155,7 +155,7 @@ def test_a_predicted_wait_within_the_queue_timeout_is_admitted(registry, clock):
     queue(registry, 9)
     reserve_caller(registry)
 
-    build_gate(registry).admit(will_be_held=False)
+    build_gate(registry).admit("caller", will_be_held=False)
 
 
 @pytest.mark.parametrize(
@@ -171,7 +171,7 @@ def test_a_predicted_wait_over_the_queue_timeout_is_refused(
     reserve_caller(registry)
 
     with pytest.raises(SandboxOverloadedError) as raised:
-        build_gate(registry).admit(will_be_held=False)
+        build_gate(registry).admit("caller", will_be_held=False)
 
     assert raised.value.retry_after == retry_after
 
@@ -182,13 +182,13 @@ def test_a_drain_that_stalled_refuses_what_it_once_admitted(registry, clock):
     drain_one_per_second(registry, clock)
     queue(registry, 5)
     reserve_caller(registry)
-    build_gate(registry).admit(will_be_held=False)
+    build_gate(registry).admit("caller", will_be_held=False)
 
     # 20 completions over 80 s: 0.25/s, so the caller and the 5 ahead wait 24 s.
     clock.advance(60)
 
     with pytest.raises(SandboxOverloadedError) as raised:
-        build_gate(registry).admit(will_be_held=False)
+        build_gate(registry).admit("caller", will_be_held=False)
 
     assert raised.value.retry_after == 14
 
@@ -218,19 +218,19 @@ def refuse_on_the_cap_before_the_body(gate: IntakeGate, registry, clock) -> None
 def refuse_on_the_cap_after_the_body(gate: IntakeGate, registry, clock) -> None:
     queue(registry, 1)
     reserve_caller(registry)
-    gate.admit(will_be_held=False)
+    gate.admit("caller", will_be_held=False)
 
 
 def refuse_on_the_prediction(gate: IntakeGate, registry, clock) -> None:
     drain_one_per_second(registry, clock)
     queue(registry, 10)
     reserve_caller(registry)
-    gate.admit(will_be_held=False)
+    gate.admit("caller", will_be_held=False)
 
 
 def refuse_on_the_held_cap(gate: IntakeGate, registry, clock) -> None:
     hold(registry, 1)
-    gate.admit(will_be_held=True)
+    gate.admit("caller", will_be_held=True)
 
 
 def refuse_a_re_post_in_progress(gate: IntakeGate, registry, clock) -> None:
@@ -269,6 +269,6 @@ def test_an_admitted_submission_is_not_logged_as_a_refusal(registry, checkpoints
 
     gate.check_not_in_progress("other")
     gate.check_capacity()
-    gate.admit(will_be_held=False)
+    gate.admit("caller", will_be_held=False)
 
     assert refusals_logged(checkpoints) == []
