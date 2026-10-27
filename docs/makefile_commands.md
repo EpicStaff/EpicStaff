@@ -225,7 +225,18 @@ python scripts/envtool.py --dev   # development defaults (the dev column of src/
 python scripts/envtool.py         # production defaults
 ```
 
-Both overwrite `src/.env`. After pulling new variables, `make env-update` (or
+Both overwrite `src/.env`. To answer a few questions instead, add `--setup`:
+
+```bash
+python scripts/envtool.py --setup --dev   # local: asks which features to turn on
+python scripts/envtool.py --setup         # production: asks URL, HTTPS, features, release tag; generates every secret
+```
+
+With an existing `src/.env`, `--setup` offers to change features (it rewrites only
+`CHAT_ENABLED`, `AUDIT_TRAIL_ENABLED` and `COMPOSE_PROFILES`), tune performance and limits
+(server size, the longest a code node may run, the log level of every service), add missing settings, or start
+over while keeping the existing credentials. It needs a terminal: in Docker, run it with
+`docker run -it`. After pulling new variables, `make env-update` (or
 `python scripts/envtool.py --update`, `DEV=1` / `--dev` for development defaults) appends
 only the variables your `src/.env` lacks and never changes existing lines.
 
