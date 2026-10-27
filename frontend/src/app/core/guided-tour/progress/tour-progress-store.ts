@@ -12,7 +12,8 @@ export interface TourProgressStore {
 }
 
 /**
- * Bound at the composition root, next to provideGuidedTours() (which explains why it is separate); specs bind a fake.
- * No default on purpose: without a binding GuidedTourService fails to be created, rather than lose progress quietly.
+ * Bound at the composition root, next to provideGuidedTours() (which explains why it is separate), to
+ * ProfileTourProgressStore; specs bind a fake. No default on purpose: without a binding GuidedTourService fails to be
+ * created, rather than lose progress quietly.
  */
 export const TOUR_PROGRESS_STORE = new InjectionToken<TourProgressStore>('TOUR_PROGRESS_STORE');

@@ -13,8 +13,8 @@ export interface GetMeResponse {
     active_organization_id: number | null;
     active_permissions: ActivePermissions | null;
     avatar_url: string | null;
-    /** True once the user finished or skipped the Quick Start tour; the tour auto-starts only while false. */
-    quickstart_tour_completed: boolean;
+    /** Keys of the guided tours the user finished or skipped, sorted. Read-only: saved one at a time by a POST. */
+    completed_tours: string[];
     custom_shortcuts: ShortcutSettings;
 }
 

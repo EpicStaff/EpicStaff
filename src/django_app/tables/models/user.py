@@ -26,6 +26,9 @@ SHORTCUTS_MAX_TEXT_LENGTH = 64
 SHORTCUTS_MAX_PARAMS = 5
 SHORTCUTS_MAX_PARAM_INTEGER = 2**53 - 1
 
+TOUR_KEY_MAX_LENGTH = 64
+TOURS_MAX_PER_USER = 50
+
 _DIGITS = re.compile(r"\d")
 
 # Any character that is not a letter or an apostrophe starts a new word.
@@ -117,11 +120,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     avatar = models.ImageField(upload_to=_avatar_upload_path, blank=True, null=True)
     is_superadmin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
-    quickstart_tour_completed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When the user finished or skipped the Quick Start tour; null means not completed or skipped yet.",
-    )
     custom_shortcuts = models.JSONField(default=default_custom_shortcuts, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -147,3 +145,22 @@ class User(AbstractBaseUser, PermissionsMixin):
         if self.display_name and self.display_name.strip():
             return self.display_name
         return display_name_from_email(self.email)
+
+
+class UserTourProgress(models.Model):
+    """A guided tour the user finished or skipped; no row means not done yet.
+
+    Owned by the user, not by an organization: a tour is seen once per person,
+    whichever organization they are working in.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="tour_progress")
+    tour_key = models.CharField(max_length=TOUR_KEY_MAX_LENGTH)
+    completed_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "tour_key"], name="unique_user_tour_progress_tour_key"
+            ),
+        ]

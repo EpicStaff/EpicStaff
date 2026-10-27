@@ -101,14 +101,14 @@ class FakeDriver {
     }
 }
 
-function userWith(id: number, quickstartTourCompleted: boolean): GetMeResponse {
-    return { id, email: `user${id}@example.com`, quickstart_tour_completed: quickstartTourCompleted } as GetMeResponse;
+function userWith(id: number, completedTours: string[]): GetMeResponse {
+    return { id, email: `user${id}@example.com`, completed_tours: completedTours } as GetMeResponse;
 }
 
 describe('QuickStartTourService', () => {
     let service: QuickStartTourService;
     let currentUser: ReturnType<typeof signal<GetMeResponse | null>>;
-    let markQuickStartTourCompleted: ReturnType<typeof vi.fn<() => Observable<GetMeResponse>>>;
+    let markTourCompleted: ReturnType<typeof vi.fn<(tourKey: string) => Observable<readonly string[]>>>;
     let isPermitted: ReturnType<typeof signal<boolean>>;
     let router: Router;
     let editorHasUnsavedChanges: boolean;
@@ -125,7 +125,7 @@ describe('QuickStartTourService', () => {
 
     beforeEach(() => {
         currentUser = signal<GetMeResponse | null>(null);
-        markQuickStartTourCompleted = vi.fn(() => of(userWith(1, true)));
+        markTourCompleted = vi.fn<(tourKey: string) => Observable<readonly string[]>>(() => of(['quick-start']));
         isPermitted = signal(true);
         editorHasUnsavedChanges = true;
         leaveEditorAnswer = new Subject<boolean>();
@@ -146,7 +146,7 @@ describe('QuickStartTourService', () => {
                 provideLocationMocks(),
                 {
                     provide: ProfileService,
-                    useValue: { currentUserSignal: currentUser, markQuickStartTourCompleted },
+                    useValue: { currentUserSignal: currentUser, markTourCompleted },
                 },
                 {
                     provide: PermissionsService,
@@ -219,7 +219,7 @@ describe('QuickStartTourService', () => {
 
     describe('startIfNotCompleted', () => {
         it('does not start the tour for a user who already completed it', async () => {
-            currentUser.set(userWith(1, true));
+            currentUser.set(userWith(1, ['quick-start']));
 
             service.startIfNotCompleted();
             await Promise.resolve();
@@ -228,7 +228,7 @@ describe('QuickStartTourService', () => {
         });
 
         it('starts the tour once for a user who has not completed it', async () => {
-            currentUser.set(userWith(1, false));
+            currentUser.set(userWith(1, []));
 
             service.startIfNotCompleted();
             service.startIfNotCompleted();
@@ -238,11 +238,19 @@ describe('QuickStartTourService', () => {
             expect(createTour).toHaveBeenCalledTimes(1);
         });
 
+        it('starts the tour for a user who completed only other tours', async () => {
+            currentUser.set(userWith(1, ['release-notes']));
+
+            service.startIfNotCompleted();
+
+            await vi.waitFor(() => expect(createTour).toHaveBeenCalledTimes(1));
+        });
+
         it('waits until the user is loaded', async () => {
             service.startIfNotCompleted();
             expect(createTour).not.toHaveBeenCalled();
 
-            currentUser.set(userWith(1, false));
+            currentUser.set(userWith(1, []));
             service.startIfNotCompleted();
 
             await vi.waitFor(() => expect(createTour).toHaveBeenCalledTimes(1));
@@ -250,7 +258,7 @@ describe('QuickStartTourService', () => {
 
         it('does not start without permission, but does once the permission arrives (org switch)', async () => {
             isPermitted.set(false);
-            currentUser.set(userWith(1, false));
+            currentUser.set(userWith(1, []));
 
             service.startIfNotCompleted();
             await Promise.resolve();
@@ -263,14 +271,14 @@ describe('QuickStartTourService', () => {
         });
 
         it('re-arms after sign-out: signing back in without completing it starts it again', async () => {
-            currentUser.set(userWith(1, false));
+            currentUser.set(userWith(1, []));
             service.startIfNotCompleted();
             await vi.waitFor(() => expect(createTour).toHaveBeenCalledTimes(1));
             service.stop();
 
             currentUser.set(null);
             TestBed.tick();
-            currentUser.set(userWith(1, false));
+            currentUser.set(userWith(1, []));
             service.startIfNotCompleted();
 
             await vi.waitFor(() => expect(createTour).toHaveBeenCalledTimes(2));
@@ -279,7 +287,7 @@ describe('QuickStartTourService', () => {
 
     describe('start', () => {
         it('starts even when the tour was already completed (manual start)', async () => {
-            currentUser.set(userWith(1, true));
+            currentUser.set(userWith(1, ['quick-start']));
 
             await service.start();
 
@@ -315,7 +323,7 @@ describe('QuickStartTourService', () => {
 
         it('does not throw when saving the completion fails', async () => {
             const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-            markQuickStartTourCompleted.mockReturnValue(throwError(() => new Error('network')));
+            markTourCompleted.mockReturnValue(throwError(() => new Error('network')));
             await service.start();
             const tour = createdTours[0];
 
@@ -345,7 +353,7 @@ describe('QuickStartTourService', () => {
                 tour.run(welcomeStep.popover?.onPrevClick, welcomeStep);
 
                 expect(tour.destroy).toHaveBeenCalled();
-                expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(1);
+                expect(markTourCompleted).toHaveBeenCalledTimes(1);
             }
         );
 
@@ -357,7 +365,7 @@ describe('QuickStartTourService', () => {
             tour.run(tour.config.onCloseClick, {});
             await service.start();
 
-            expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(1);
+            expect(markTourCompleted).toHaveBeenCalledTimes(1);
             expect(createTour).toHaveBeenCalledTimes(2);
         });
 
@@ -369,7 +377,7 @@ describe('QuickStartTourService', () => {
             tour.run(doneStep.popover?.onNextClick, doneStep);
 
             expect(tour.destroy).toHaveBeenCalled();
-            expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(1);
+            expect(markTourCompleted).toHaveBeenCalledExactlyOnceWith('quick-start');
         });
 
         it.each([
@@ -383,7 +391,7 @@ describe('QuickStartTourService', () => {
             await router.navigateByUrl(url);
 
             expect(tour.destroy).toHaveBeenCalledTimes(1);
-            expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(1);
+            expect(markTourCompleted).toHaveBeenCalledTimes(1);
         });
 
         it('keeps the tour running, and stays on Settings, on Back from the Quickstart tab', async () => {
@@ -399,7 +407,7 @@ describe('QuickStartTourService', () => {
             // Back to the Settings icon: leaving Settings from there no longer ends the tour.
             await router.navigateByUrl('/agents');
             expect(tour.destroy).not.toHaveBeenCalled();
-            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+            expect(markTourCompleted).not.toHaveBeenCalled();
         });
 
         it('does not start, and leaves no layer behind, when stopped while driver.js is loading', async () => {
@@ -420,7 +428,7 @@ describe('QuickStartTourService', () => {
             // A late hook of the abandoned tour must not re-create the host either.
             tour.config.steps![0].popover?.onPopoverRender?.({} as PopoverDOM, tour.hookOptions());
             expect(TestBed.inject(DOCUMENT).querySelector('.quickstart-tour-layer')).toBeNull();
-            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+            expect(markTourCompleted).not.toHaveBeenCalled();
         });
 
         it('stop() ends the tour without recording it', async () => {
@@ -429,7 +437,7 @@ describe('QuickStartTourService', () => {
             service.stop();
 
             expect(createdTours[0].destroy).toHaveBeenCalled();
-            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+            expect(markTourCompleted).not.toHaveBeenCalled();
         });
 
         // A watcher left over from the previous tour would stop the next one from watching Settings at all.
@@ -445,7 +453,7 @@ describe('QuickStartTourService', () => {
                 endTour(firstTour);
                 await router.navigateByUrl('/agents');
                 expect(firstTour.destroy).toHaveBeenCalledTimes(1);
-                expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(completionsBefore);
+                expect(markTourCompleted).toHaveBeenCalledTimes(completionsBefore);
 
                 await service.start();
                 const secondTour = createdTours[1];
@@ -453,7 +461,7 @@ describe('QuickStartTourService', () => {
                 await router.navigateByUrl('/agents');
 
                 expect(secondTour.destroy).toHaveBeenCalledTimes(1);
-                expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(completionsBefore + 1);
+                expect(markTourCompleted).toHaveBeenCalledTimes(completionsBefore + 1);
             }
         );
 
@@ -470,7 +478,7 @@ describe('QuickStartTourService', () => {
 
             expect(tour.moveNext).not.toHaveBeenCalled();
             expect(tour.destroy).toHaveBeenCalledTimes(1);
-            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+            expect(markTourCompleted).not.toHaveBeenCalled();
         });
     });
 
@@ -488,7 +496,7 @@ describe('QuickStartTourService', () => {
             expect(tour.moveNext).toHaveBeenCalledTimes(1);
             // The tour's own navigation is not the user leaving Settings.
             expect(tour.destroy).not.toHaveBeenCalled();
-            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+            expect(markTourCompleted).not.toHaveBeenCalled();
         });
 
         it('moves on at once, without navigating, when the Quickstart tab is already shown', async () => {
@@ -569,7 +577,7 @@ describe('QuickStartTourService', () => {
             expect(navigateByUrl).toHaveBeenCalledWith(SETTINGS_URL);
             expect(tour.moveNext).toHaveBeenCalledTimes(1);
             expect(tour.destroy).not.toHaveBeenCalled();
-            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+            expect(markTourCompleted).not.toHaveBeenCalled();
         });
 
         it.each(['icon', 'Next'] as const)(
@@ -587,7 +595,7 @@ describe('QuickStartTourService', () => {
                 expect(askToLeaveEditor).toHaveBeenCalledTimes(1);
                 expect(tour.moveNext).toHaveBeenCalledTimes(1);
                 expect(tour.destroy).not.toHaveBeenCalled();
-                expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+                expect(markTourCompleted).not.toHaveBeenCalled();
             }
         );
 
@@ -606,7 +614,7 @@ describe('QuickStartTourService', () => {
                 expect(askToLeaveEditor).toHaveBeenCalledTimes(1);
                 expect(tour.moveNext).not.toHaveBeenCalled();
                 expect(tour.destroy).not.toHaveBeenCalled();
-                expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+                expect(markTourCompleted).not.toHaveBeenCalled();
 
                 // The user can try again from the same step.
                 await leaveEditorForSettings(tour, trigger);
@@ -666,7 +674,7 @@ describe('QuickStartTourService', () => {
             expect(tour.movePrevious).toHaveBeenCalledTimes(1);
             expect(tour.moveNext).not.toHaveBeenCalled();
             expect(tour.destroy).not.toHaveBeenCalled();
-            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+            expect(markTourCompleted).not.toHaveBeenCalled();
         });
     });
 
@@ -692,16 +700,16 @@ describe('QuickStartTourService', () => {
             await router.navigateByUrl('/agents');
 
             expect(tour.destroy).not.toHaveBeenCalled();
-            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+            expect(markTourCompleted).not.toHaveBeenCalled();
         });
 
         it('does not start a second tour after a successful completion updated the user', async () => {
-            markQuickStartTourCompleted.mockImplementation(() => {
-                // What ProfileService.setUser does with the POST response.
-                currentUser.set(userWith(1, true));
-                return of(userWith(1, true));
+            markTourCompleted.mockImplementation(() => {
+                // What ProfileService does with the POST response.
+                currentUser.set(userWith(1, ['quick-start']));
+                return of(['quick-start']);
             });
-            currentUser.set(userWith(1, false));
+            currentUser.set(userWith(1, []));
             service.startIfNotCompleted();
             await vi.waitFor(() => expect(createdTours[0]?.drive).toHaveBeenCalled());
             const tour = createdTours[0];
@@ -751,7 +759,7 @@ describe('QuickStartTourService', () => {
             // destroy() deselected the step, which removed the capture listener.
             expect(removeListener).toHaveBeenCalledWith('click', expect.any(Function), { capture: true });
             expect(tour.destroy).toHaveBeenCalledTimes(1);
-            expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(1);
+            expect(markTourCompleted).toHaveBeenCalledTimes(1);
         });
 
         it.each([

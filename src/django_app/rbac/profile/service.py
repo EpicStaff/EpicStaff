@@ -3,12 +3,14 @@ from django.db import transaction
 from django.db.models.functions import Lower
 from django.utils import timezone
 from loguru import logger
+from tables.models.user import TOURS_MAX_PER_USER, UserTourProgress
 
 from rbac.access.resolver import PermissionResolver
 from rbac.exceptions import (
     InvalidCurrentPasswordError,
     InvalidPasswordChangeTicketError,
     OrgMembershipRequiredError,
+    TourLimitExceededError,
 )
 from rbac.identity.credential_revocation import (
     CredentialRevocationService,
@@ -50,11 +52,12 @@ class UserProfileService:
     # ---- read ----
 
     def get_profile(self, user, active_org_id: int | None = None):
-        """Refetch the user and attach the memberships list.
+        """Refetch the user and attach the memberships list and completed tours.
 
         `_profile_memberships` is the caller's own active memberships, or —
         for a superadmin — every active organization with the built-in
-        Superadmin role. If `active_org_id` is provided AND the caller has
+        Superadmin role. `_completed_tours` is the user's completed tour keys,
+        sorted. If `active_org_id` is provided AND the caller has
         membership (or is superadmin), also attach `_active_organization_id`
         and `_active_permissions` for the serializer to render. Soft-fail:
         invalid `active_org_id` results in both attributes being None (NOT 403).
@@ -62,6 +65,10 @@ class UserProfileService:
         User = get_user_model()  # noqa: N806
         user = User.objects.get(pk=user.pk)
         user._profile_memberships = self._get_memberships(user)
+        # Sorted in Python: the database collation may order hyphenated keys differently.
+        user._completed_tours = sorted(
+            UserTourProgress.objects.filter(user_id=user.pk).values_list("tour_key", flat=True)
+        )
 
         user._active_organization_id = None
         user._active_permissions = None
@@ -135,20 +142,39 @@ class UserProfileService:
             )
         return user
 
-    def complete_quickstart_tour(self, user) -> None:
-        """Record that the user finished or skipped the Quick Start tour.
+    def complete_tour(self, user, tour_key: str) -> None:
+        """Record that the user finished or skipped the tour `tour_key`.
 
-        Idempotent: the first timestamp wins. The conditional UPDATE runs as a
-        single statement, so concurrent calls (two tabs closing the tour at once)
-        cannot overwrite it. `updated_at` is deliberately left alone — this is a
-        UI preference, not a profile edit.
+        Idempotent: the first completion time wins. Two calls racing for the
+        same key (two tabs closing the tour at once) are settled by the unique
+        constraint inside get_or_create: the loser reads the winner's row, so
+        the first time stays and only one call logs. The limit is counted
+        without a lock: racing calls for different new keys at the limit can
+        each land, which overshoots it by at most that burst — it bounds
+        storage, it is not a quota. `updated_at` is deliberately left alone:
+        this is a UI preference, not a profile edit.
+
+        Args:
+            tour_key: Already validated by UserValidationService.validate_tour_key.
+
+        Raises:
+            TourLimitExceededError: `tour_key` is new and the user already
+                completed TOURS_MAX_PER_USER tours.
         """
-        User = get_user_model()  # noqa: N806
-        marked = User.objects.filter(pk=user.pk, quickstart_tour_completed_at__isnull=True).update(
-            quickstart_tour_completed_at=timezone.now()
+        completed_tour_keys = set(
+            UserTourProgress.objects.filter(user_id=user.pk).values_list("tour_key", flat=True)
         )
-        if marked:
-            logger.info("profile.quickstart_tour_completed user_id={}", user.pk)
+        if tour_key in completed_tour_keys:
+            return
+        if len(completed_tour_keys) >= TOURS_MAX_PER_USER:
+            raise TourLimitExceededError(
+                detail=f"Maximum number of completed tours reached ({TOURS_MAX_PER_USER})."
+            )
+        _, created = UserTourProgress.objects.get_or_create(
+            user_id=user.pk, tour_key=tour_key, defaults={"completed_at": timezone.now()}
+        )
+        if created:
+            logger.info("profile.tour_completed user_id={} tour_key={}", user.pk, tour_key)
 
     # ---- avatar ----
 

@@ -4,8 +4,8 @@ import { isAtOrUnderPath } from '../engine/tour-url-match';
 import { TourDefinition, TourStep } from '../model/tour-definition';
 
 /**
- * The rule for tour keys, and the rule the future generic progress storage must accept. Anchors follow it too, so an
- * anchor needs no escaping in a selector.
+ * The rule for tour keys, which the profile's tour progress API enforces too. Anchors follow it as well, so an anchor
+ * needs no escaping in a selector.
  */
 const TOUR_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const TOUR_KEY_MAX_LENGTH = 64;

@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Routes } from '@angular/router';
-import { Observable, Subject, throwError } from 'rxjs';
+import { Observable, Subject } from 'rxjs';
 
 import { GuidedTourService } from '../engine/guided-tour.service';
 import { TOUR_ANCHOR_ATTRIBUTE } from '../model/tour-anchor';
@@ -62,13 +62,16 @@ export class FakeTourRenderer implements TourRenderer {
     }
 }
 
-/** Progress kept in memory. `savedTourKeys` is the side effect specs assert on: what would reach the backend. */
+/**
+ * Progress kept in memory, held to the same contract as ProfileTourProgressStore (see tour-progress-store-contract.ts).
+ * `savedTourKeys` is the side effect specs assert on: what would reach the backend.
+ */
 export class FakeTourProgressStore implements TourProgressStore {
     readonly userId = signal<number | null>(null);
     readonly completedTourKeys = signal<ReadonlySet<string>>(new Set());
     /** Every key saved, in order, including failed saves and saves still on their way. */
     readonly savedTourKeys: string[] = [];
-    /** Makes saves fail, like a network error. */
+    /** Makes saves fail as they land (at once, unless saves are held), like a network error. */
     failSaves = false;
     private isHoldingSaves = false;
     private readonly heldSaves: (() => void)[] = [];
@@ -95,14 +98,23 @@ export class FakeTourProgressStore implements TourProgressStore {
         };
     }
 
+    /**
+     * Like the backend, a save that lands after sign-out, or after another user signed in, succeeds without changing
+     * what the store reports. One made while the profile was loading counts for the user it loads.
+     */
     markCompleted(tourKey: string): Observable<void> {
         this.savedTourKeys.push(tourKey);
-        if (this.failSaves) {
-            return throwError(() => new Error('Saving failed'));
-        }
+        const savedFor = this.userId();
         return new Observable<void>((subscriber) => {
             const land = (): void => {
-                this.completedTourKeys.update((keys) => new Set([...keys, tourKey]));
+                if (this.failSaves) {
+                    subscriber.error(new Error('Saving failed'));
+                    return;
+                }
+                const signedInUserId = this.userId();
+                if (signedInUserId !== null && (savedFor === null || signedInUserId === savedFor)) {
+                    this.completedTourKeys.update((keys) => new Set([...keys, tourKey]));
+                }
                 subscriber.next();
                 subscriber.complete();
             };

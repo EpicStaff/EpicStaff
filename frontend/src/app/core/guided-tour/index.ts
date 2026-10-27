@@ -20,6 +20,7 @@ export type {
     TourStep,
     TourTarget,
 } from './model/tour-definition';
+export { ProfileTourProgressStore } from './progress/profile-tour-progress-store.service';
 export type { TourProgressStore } from './progress/tour-progress-store';
 export { TOUR_PROGRESS_STORE } from './progress/tour-progress-store';
 export type { TourDefinitionFactory } from './registry/guided-tour-registry.service';

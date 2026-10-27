@@ -18,6 +18,7 @@ import { filter, Subscription, take } from 'rxjs';
 import { SETTINGS_QUICKSTART_URL, SETTINGS_URL } from '../../core/guards/settings.guard';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
+import { QUICK_START_TOUR_KEY } from './quick-start-tour.definition';
 import { createQuickStartTourSteps, QUICK_START_TOUR_POPOVER_CLASS } from './quick-start-tour-steps';
 import { TourTopLayer, withTopLayer } from './tour-top-layer';
 
@@ -108,7 +109,7 @@ export class QuickStartTourService {
         if (!user || this.autoStartHandledForUserId === user.id) {
             return;
         }
-        if (user.quickstart_tour_completed) {
+        if (user.completed_tours.includes(QUICK_START_TOUR_KEY)) {
             this.autoStartHandledForUserId = user.id;
             return;
         }
@@ -119,7 +120,7 @@ export class QuickStartTourService {
         void this.start();
     }
 
-    /** Starts the tour regardless of the completion flag (manual start from the account menu). */
+    /** Starts the tour whether or not the user completed it (manual start from the account menu). */
     public async start(): Promise<void> {
         if (this.isStarting || this.activeTour?.isActive() || !this.isAvailable()) {
             return;
@@ -199,7 +200,7 @@ export class QuickStartTourService {
         }
         this.activeTour = null;
         this.stopWatchingSettings();
-        this.profileService.markQuickStartTourCompleted().subscribe({
+        this.profileService.markTourCompleted(QUICK_START_TOUR_KEY).subscribe({
             // Not worth a toast: the only effect is that the tour auto-starts again next session.
             error: (error: unknown) => console.error('[QuickStartTour] Failed to save tour completion:', error),
         });

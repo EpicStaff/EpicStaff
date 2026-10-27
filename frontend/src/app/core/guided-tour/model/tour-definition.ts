@@ -14,7 +14,7 @@ export type TourAutoStart = 'manual' | 'until-completed';
 export interface TourDefinition {
     /**
      * Stable id, stored with the user's progress. Lowercase letters and digits in words joined by single hyphens, at
-     * most 64 characters (e.g. `quick-start`): the rule the future generic progress storage must accept. Renaming it
+     * most 64 characters (e.g. `quick-start`): the rule the profile's tour progress API enforces too. Renaming it
      * makes the tour new to every user.
      */
     readonly key: string;
