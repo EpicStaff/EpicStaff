@@ -10,6 +10,7 @@ from app.sandbox.client import SandboxClient
 from shared.models.agent_service import ToolResult
 from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import CodeTaskData, PythonCodeToolData
+from shared.sandbox_errors import SandboxError
 
 
 class PythonCodeToolExecutor:
@@ -74,10 +75,10 @@ class PythonCodeToolExecutor:
 
         try:
             result = await self._sandbox.submit(task)
-        except (ClientError, ConnectionError) as error:
-            # Both carry a message fit for the transcript: the foundation client never
-            # puts the request (and its secrets) into one, and a ConnectionError here is
-            # the client's own "stopped" or "listener failed" notice.
+        except (SandboxError, ClientError, ConnectionError) as error:
+            # All carry a message fit for the transcript: the sandbox client never puts
+            # the request (and its secrets) into one, and a ConnectionError here is the
+            # client's own "stopped" or "listener failed" notice.
             return ToolResult(tool_call_id="", content=str(error), is_error=True)
 
         if result.returncode != 0 or result.stderr:

@@ -20,7 +20,6 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from foundation.clients.sandbox import SandboxClient
 from infrastructure.messaging.python_code_executor_service import (
     PythonCodeExecutorService,
 )
@@ -33,6 +32,7 @@ from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
 )
 from infrastructure.providers.factory import RealtimeAgentClientFactory
+from infrastructure.sandbox.sandbox_client import SandboxClient
 from infrastructure.summarization.openai_summarization_client import (
     OpenaiSummarizationClient,
 )

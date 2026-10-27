@@ -6,19 +6,20 @@ import uuid
 from functools import partial
 
 import redis.asyncio as aioredis
-from foundation.clients.sandbox import ExecutionRequest, SandboxExecutionLostError
-from foundation.clients.sandbox import SandboxClient as SandboxHttpClient
 from loguru import logger
 
+from app.sandbox.http_client import SandboxHttpClient
 from shared.bench_log import BENCH_LEVEL
+from shared.models.sandbox_execution import ExecutionRequest
 from shared.models.tools import CodeResultData, CodeTaskData
+from shared.sandbox_errors import SandboxExecutionLostError
 
 
 class SandboxClient:
     """Submits code executions to sandbox_new over HTTP; receives results on Redis.
 
-    Intake is `POST /executions` (sandbox_new's HTTP API), through the shared
-    foundation client, which retries a full sandbox and watches over each pending
+    Intake is `POST /executions` (sandbox_new's HTTP API), through
+    `SandboxHttpClient`, which retries a full sandbox and watches over each pending
     execution. Results come back on the shared Redis result channel and are matched
     to their pending request by execution_id. The task's storage credentials are
     minted upstream and only passed through here; sandbox_new rejects a task with
@@ -108,9 +109,10 @@ class SandboxClient:
         The task gets a fresh execution id; its own is ignored.
 
         Raises:
-            ClientError: The sandbox stayed full, refused or lost the execution, could
+            SandboxError: The sandbox stayed full, refused or lost the execution, could
                 not be reached, or no result arrived within `code_result_timeout`.
                 The message is fit to show the user.
+            ClientError: A status check was refused with a non-transient 4xx.
             ConnectionError: The client stopped, or its result listener failed,
                 while the execution was pending.
         """

@@ -1,6 +1,6 @@
 """SandboxClient: submits code tasks to sandbox_new over HTTP and matches results by execution id.
 
-The intake is the real foundation client over a MockTransport, so a test sees the
+The intake is the real SandboxHttpClient over a MockTransport, so a test sees the
 JSON body the agent actually posts to `POST /executions`. Results still come back on
 Redis, which is replaced by a small in-memory pub/sub (fakeredis is not an agent
 dependency); the fake sandbox answers each task the way the sandbox service does.
@@ -14,18 +14,18 @@ import json
 import httpx
 import pytest
 from app.sandbox import client as client_module
+from app.sandbox import http_client as http_client_module
 from app.sandbox.client import SandboxClient
-from foundation.clients.sandbox import (
+from loguru import logger
+from shared.bench_log import BENCH_LEVEL
+from shared.models.storage_scope import StorageCredentials
+from shared.models.tools import CodeResultData, CodeTaskData
+from shared.sandbox_errors import (
     SandboxError,
     SandboxExecutionLostError,
     SandboxOverloadedError,
     SandboxResultTimeoutError,
 )
-from foundation.clients.sandbox import client as foundation_sandbox_module
-from loguru import logger
-from shared.bench_log import BENCH_LEVEL
-from shared.models.storage_scope import StorageCredentials
-from shared.models.tools import CodeResultData, CodeTaskData
 
 RESULTS = "code_results"
 SANDBOX_BASE_URL = "http://sandbox:8000"
@@ -292,7 +292,7 @@ async def test_submit_gives_up_at_the_backstop_when_no_result_arrives(sandbox_fa
 
 
 async def test_submit_fails_when_the_sandbox_lost_the_execution(sandbox_factory, monkeypatch):
-    monkeypatch.setattr(foundation_sandbox_module, "STATUS_POLL_INTERVAL_SECONDS", 0.01)
+    monkeypatch.setattr(http_client_module, "STATUS_POLL_INTERVAL_SECONDS", 0.01)
     sandbox = sandbox_factory(answer=lambda body: [])
     sandbox.loses_executions = True
     sandbox_client = _build_client()
@@ -308,7 +308,7 @@ async def test_a_503_followed_by_a_retry_is_logged_as_sandbox_rejected(
     sandbox_factory, checkpoints, monkeypatch
 ):
     # The jittered backoff stays under Retry-After, so the logged wait is exactly it.
-    monkeypatch.setattr(foundation_sandbox_module, "BACKOFF_CAP_SECONDS", 0.001)
+    monkeypatch.setattr(http_client_module, "BACKOFF_CAP_SECONDS", 0.001)
     sandbox = sandbox_factory()
     sandbox.rejections_left = 1
     sandbox_client = _build_client(queue_timeout=60)
@@ -333,7 +333,7 @@ async def test_a_503_followed_by_a_retry_is_logged_as_sandbox_rejected(
 async def test_an_execution_the_sandbox_lost_is_logged_as_sandbox_lost(
     sandbox_factory, checkpoints, monkeypatch
 ):
-    monkeypatch.setattr(foundation_sandbox_module, "STATUS_POLL_INTERVAL_SECONDS", 0.01)
+    monkeypatch.setattr(http_client_module, "STATUS_POLL_INTERVAL_SECONDS", 0.01)
     sandbox = sandbox_factory(answer=lambda body: [])
     sandbox.loses_executions = True
     sandbox_client = _build_client()

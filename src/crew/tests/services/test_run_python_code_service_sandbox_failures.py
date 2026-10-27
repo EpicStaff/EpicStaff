@@ -11,10 +11,10 @@ import asyncio
 
 import httpx
 import pytest
-from foundation.clients.sandbox import SandboxClient
-from foundation.clients.sandbox import client as sandbox_client_module
 
 import settings
+from clients import sandbox as sandbox_client_module
+from clients.sandbox import SandboxClient
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
 from services.run_python_code_service import STOP_CHECK_INTERVAL_S, RunPythonCodeService

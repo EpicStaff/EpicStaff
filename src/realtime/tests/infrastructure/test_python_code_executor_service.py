@@ -10,10 +10,10 @@ import pytest
 
 from core import config
 from domain.ports.i_redis_messaging_service import IRedisMessagingService
-from foundation.clients.sandbox import client as sandbox_client_module
 from infrastructure.messaging.python_code_executor_service import (
     PythonCodeExecutorService,
 )
+from infrastructure.sandbox import sandbox_client as sandbox_client_module
 from src.shared.models import CodeResultData, PythonCodeData
 from tests.fixtures import RecordingSandboxIntake
 from utils.singleton_meta import SingletonMeta

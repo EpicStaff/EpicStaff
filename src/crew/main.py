@@ -3,7 +3,7 @@ import gc
 
 import settings
 from clients.key_value import KeyValueClient
-from foundation.clients.sandbox import SandboxClient
+from clients.sandbox import SandboxClient
 from services.agent_task_service import AgentTaskService
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.knowledge_search_service import KnowledgeSearchService

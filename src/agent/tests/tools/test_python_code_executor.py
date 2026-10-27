@@ -7,14 +7,14 @@ records the task it receives.
 from __future__ import annotations
 
 import pytest
-from foundation.clients.sandbox import (
+
+from app.tools.executors.python_code import PythonCodeToolExecutor
+from shared.models.storage_scope import StorageCredentials
+from shared.sandbox_errors import (
     SandboxExecutionLostError,
     SandboxOverloadedError,
     SandboxResultTimeoutError,
 )
-
-from app.tools.executors.python_code import PythonCodeToolExecutor
-from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import (
     ArgsSchema,
     CodeResultData,

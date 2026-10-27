@@ -4,18 +4,18 @@ import json
 
 import httpx
 import pytest
-from foundation.clients.sandbox import (
-    ExecutionRequest,
-    ExecutionStorageCredentials,
-    SandboxClient,
+import pytest_asyncio
+from foundation.transport.http import ClientUnauthorizedError
+from infrastructure.sandbox import sandbox_client as client_module
+from infrastructure.sandbox.sandbox_client import SandboxClient
+from src.shared.models.sandbox_execution import ExecutionRequest, ExecutionStorageCredentials
+from src.shared.sandbox_errors import (
     SandboxError,
     SandboxExecutionLostError,
     SandboxOverloadedError,
     SandboxResultTimeoutError,
     SandboxUnreachableError,
 )
-from foundation.clients.sandbox import client as client_module
-from foundation.transport.http import ClientUnauthorizedError
 
 EXECUTION_ID = "execution-1"
 SECRET = "plaintext-secret-value"
@@ -95,7 +95,7 @@ def clock(monkeypatch):
     return fake
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def connect():
     clients: list[SandboxClient] = []
 
@@ -127,6 +127,7 @@ def test_a_queue_timeout_that_is_not_zero_or_more_seconds_is_refused(queue_timeo
         SandboxClient(queue_timeout=queue_timeout, base_url="http://sandbox")
 
 
+@pytest.mark.asyncio
 async def test_a_zero_queue_timeout_makes_a_single_attempt(clock, connect):
     sandbox = ScriptedSandbox(post=[overloaded("1")])
 
@@ -139,6 +140,7 @@ async def test_a_zero_queue_timeout_makes_a_single_attempt(clock, connect):
 # --- submit ---
 
 
+@pytest.mark.asyncio
 async def test_submit_posts_the_request_and_returns_on_202(clock, connect):
     sandbox = ScriptedSandbox(post=[respond(202)])
 
@@ -149,6 +151,7 @@ async def test_submit_posts_the_request_and_returns_on_202(clock, connect):
     assert json.loads(post.content) == make_request().model_dump(mode="json")
 
 
+@pytest.mark.asyncio
 async def test_submit_waits_at_least_retry_after_between_overloaded_attempts(clock, connect):
     sandbox = ScriptedSandbox(
         post=[overloaded(retry_after="5"), overloaded(retry_after="5"), respond(202)]
@@ -161,6 +164,7 @@ async def test_submit_waits_at_least_retry_after_between_overloaded_attempts(clo
     assert all(seconds >= 5 for seconds in clock.sleeps)
 
 
+@pytest.mark.asyncio
 async def test_submit_does_not_ask_for_status_when_no_attempt_went_unanswered(clock, connect):
     sandbox = ScriptedSandbox(post=[overloaded(), respond(202)], get=[known()])
 
@@ -169,6 +173,7 @@ async def test_submit_does_not_ask_for_status_when_no_attempt_went_unanswered(cl
     assert sandbox.sent("GET") == []
 
 
+@pytest.mark.asyncio
 async def test_submit_raises_overloaded_once_the_queue_budget_is_spent(clock, connect):
     sandbox = ScriptedSandbox(post=[overloaded(retry_after="5")])
 
@@ -180,6 +185,7 @@ async def test_submit_raises_overloaded_once_the_queue_budget_is_spent(clock, co
 
 
 @pytest.mark.parametrize("retry_after", ["soon", "-3", "inf", "nan", ""])
+@pytest.mark.asyncio
 async def test_submit_falls_back_to_backoff_for_an_unusable_retry_after(
     clock, connect, retry_after
 ):
@@ -191,6 +197,7 @@ async def test_submit_falls_back_to_backoff_for_an_unusable_retry_after(
     assert 0 <= seconds <= client_module.BACKOFF_BASE_SECONDS
 
 
+@pytest.mark.asyncio
 async def test_submit_retries_an_unanswered_attempt_with_the_same_execution(clock, connect):
     sandbox = ScriptedSandbox(post=[httpx.ReadTimeout, httpx.ConnectError, respond(202)])
 
@@ -202,6 +209,7 @@ async def test_submit_retries_an_unanswered_attempt_with_the_same_execution(cloc
 
 
 @pytest.mark.parametrize("status_code", [502, 504])
+@pytest.mark.asyncio
 async def test_submit_retries_a_gateway_error(clock, connect, status_code):
     sandbox = ScriptedSandbox(post=[respond(status_code), respond(202)])
 
@@ -211,6 +219,7 @@ async def test_submit_retries_a_gateway_error(clock, connect, status_code):
 
 
 @pytest.mark.parametrize("final_status", [respond(404), httpx.ConnectError])
+@pytest.mark.asyncio
 async def test_submit_raises_unreachable_once_the_budget_is_spent_and_the_sandbox_does_not_confirm(
     clock, connect, final_status
 ):
@@ -223,6 +232,7 @@ async def test_submit_raises_unreachable_once_the_budget_is_spent_and_the_sandbo
     assert len(sandbox.sent("GET")) == 1
 
 
+@pytest.mark.asyncio
 async def test_submit_treats_an_unanswered_last_attempt_as_accepted_if_sandbox_knows_it(
     clock, connect
 ):
@@ -233,6 +243,7 @@ async def test_submit_treats_an_unanswered_last_attempt_as_accepted_if_sandbox_k
     assert sandbox.sent("GET")[0].url.path == f"/executions/{EXECUTION_ID}"
 
 
+@pytest.mark.asyncio
 async def test_submit_does_not_ask_for_status_when_the_budget_ends_on_overloaded(clock, connect):
     sandbox = ScriptedSandbox(post=[overloaded()])
 
@@ -242,6 +253,7 @@ async def test_submit_does_not_ask_for_status_when_the_budget_ends_on_overloaded
     assert sandbox.sent("GET") == []
 
 
+@pytest.mark.asyncio
 async def test_submit_treats_overloaded_after_an_unanswered_attempt_as_accepted_if_sandbox_knows_it(
     clock, connect
 ):
@@ -265,6 +277,7 @@ async def test_submit_treats_overloaded_after_an_unanswered_attempt_as_accepted_
     ],
     ids=["accepted", "rejected-then-accepted", "gives-up", "unreachable-then-rejected"],
 )
+@pytest.mark.asyncio
 async def test_submit_reports_each_retry_it_schedules_after_a_503(
     clock, connect, post, queue_timeout, rejections
 ):
@@ -279,6 +292,7 @@ async def test_submit_reports_each_retry_it_schedules_after_a_503(
     assert reported == rejections
 
 
+@pytest.mark.asyncio
 async def test_submit_keeps_retrying_overloaded_after_an_unanswered_attempt_the_sandbox_does_not_know(
     clock, connect
 ):
@@ -292,6 +306,7 @@ async def test_submit_keeps_retrying_overloaded_after_an_unanswered_attempt_the_
 
 
 @pytest.mark.parametrize("status_code", [400, 404, 422, 500])
+@pytest.mark.asyncio
 async def test_submit_raises_the_sandbox_refusal_at_once(clock, connect, status_code):
     body = '{"errors":[{"code":"venv_not_found","detail":"Venv 7 does not exist."}]}'
     sandbox = ScriptedSandbox(post=[respond(status_code, text=body)])
@@ -309,6 +324,7 @@ async def test_submit_raises_the_sandbox_refusal_at_once(clock, connect, status_
     ("reply", "error_type"),
     [(httpx.ConnectError, SandboxUnreachableError), (overloaded(), SandboxOverloadedError)],
 )
+@pytest.mark.asyncio
 async def test_submit_failure_never_shows_the_request_secrets(clock, connect, reply, error_type):
     sandbox = ScriptedSandbox(post=[reply], get=[respond(404)])
 
@@ -326,12 +342,14 @@ def test_execution_request_repr_hides_secrets_and_storage_credentials():
 # --- status ---
 
 
+@pytest.mark.asyncio
 async def test_status_returns_the_status_the_sandbox_reports(connect):
     sandbox = ScriptedSandbox(get=[known("running")])
 
     assert await connect(sandbox).status(EXECUTION_ID) == "running"
 
 
+@pytest.mark.asyncio
 async def test_status_quotes_the_execution_id_into_one_path_segment(connect):
     sandbox = ScriptedSandbox(get=[known("running")])
 
@@ -340,6 +358,7 @@ async def test_status_quotes_the_execution_id_into_one_path_segment(connect):
     assert sandbox.sent("GET")[0].url.raw_path == b"/executions/session%2F7"
 
 
+@pytest.mark.asyncio
 async def test_status_raises_lost_for_an_execution_the_sandbox_does_not_know(connect):
     sandbox = ScriptedSandbox(get=[respond(404)])
 
@@ -350,6 +369,7 @@ async def test_status_raises_lost_for_an_execution_the_sandbox_does_not_know(con
 # --- wait_for_result ---
 
 
+@pytest.mark.asyncio
 async def test_wait_returns_a_fast_result_without_asking_for_status(connect):
     sandbox = ScriptedSandbox(get=[known()])
 
@@ -362,6 +382,7 @@ async def test_wait_returns_a_fast_result_without_asking_for_status(connect):
     assert sandbox.sent("GET") == []
 
 
+@pytest.mark.asyncio
 async def test_wait_keeps_waiting_while_the_sandbox_reports_the_execution(
     connect, fast_status_polls
 ):
@@ -373,6 +394,7 @@ async def test_wait_keeps_waiting_while_the_sandbox_reports_the_execution(
     assert len(sandbox.sent("GET")) >= 2
 
 
+@pytest.mark.asyncio
 async def test_wait_raises_lost_when_the_sandbox_forgot_the_execution(connect, fast_status_polls):
     sandbox = ScriptedSandbox(get=[respond(404)])
     result = asyncio.get_running_loop().create_future()
@@ -381,6 +403,7 @@ async def test_wait_raises_lost_when_the_sandbox_forgot_the_execution(connect, f
         await connect(sandbox).wait_for_result(EXECUTION_ID, result, backstop=None)
 
 
+@pytest.mark.asyncio
 async def test_wait_returns_a_result_that_arrives_together_with_a_404(connect, fast_status_polls):
     result = asyncio.get_running_loop().create_future()
 
@@ -395,6 +418,7 @@ async def test_wait_returns_a_result_that_arrives_together_with_a_404(connect, f
     assert received == "output"
 
 
+@pytest.mark.asyncio
 async def test_wait_raises_unreachable_after_consecutive_status_failures(
     connect, fast_status_polls
 ):
@@ -409,6 +433,7 @@ async def test_wait_raises_unreachable_after_consecutive_status_failures(
     assert len(sandbox.sent("GET")) == 5
 
 
+@pytest.mark.asyncio
 async def test_wait_propagates_a_status_refusal_that_is_not_transient(connect, fast_status_polls):
     sandbox = ScriptedSandbox(get=[respond(401)])
     result = asyncio.get_running_loop().create_future()
@@ -417,6 +442,7 @@ async def test_wait_propagates_a_status_refusal_that_is_not_transient(connect, f
         await connect(sandbox).wait_for_result(EXECUTION_ID, result, backstop=None)
 
 
+@pytest.mark.asyncio
 async def test_wait_raises_result_timeout_after_the_backstop(connect, fast_status_polls):
     sandbox = ScriptedSandbox(get=[known()])
     result = asyncio.get_running_loop().create_future()
@@ -430,6 +456,7 @@ class StopRequestedError(Exception):
 
 
 @pytest.mark.parametrize("error_type", [StopRequestedError, TimeoutError])
+@pytest.mark.asyncio
 async def test_wait_propagates_the_result_own_exception_unchanged(connect, error_type):
     async def result():
         raise error_type("stopped by the user")
@@ -438,6 +465,7 @@ async def test_wait_propagates_the_result_own_exception_unchanged(connect, error
         await connect(ScriptedSandbox()).wait_for_result(EXECUTION_ID, result(), backstop=10)
 
 
+@pytest.mark.asyncio
 async def test_wait_cancels_the_pending_result_when_it_gives_up(connect, fast_status_polls):
     sandbox = ScriptedSandbox(get=[respond(404)])
     result = asyncio.get_running_loop().create_future()
@@ -448,6 +476,7 @@ async def test_wait_cancels_the_pending_result_when_it_gives_up(connect, fast_st
     assert result.cancelled()
 
 
+@pytest.mark.asyncio
 async def test_wait_cancels_the_pending_result_when_the_caller_is_cancelled(connect):
     result = asyncio.get_running_loop().create_future()
     waiting = asyncio.create_task(

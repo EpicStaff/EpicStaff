@@ -7,7 +7,7 @@ from infrastructure.messaging.redis_service import RedisService
 from infrastructure.messaging.python_code_executor_service import (
     PythonCodeExecutorService,
 )
-from foundation.clients.sandbox import SandboxClient
+from infrastructure.sandbox.sandbox_client import SandboxClient
 from src.shared.models import RealtimeAgentChatData
 from tool_executors.base_tool_executor import BaseToolExecutor
 from tests.conftest import CONNECTION_KEY

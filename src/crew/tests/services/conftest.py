@@ -18,7 +18,7 @@ import pytest_asyncio
 from loguru import logger
 
 import settings
-from foundation.clients.sandbox import SandboxClient
+from clients.sandbox import SandboxClient
 from services.redis_service import AsyncPubsubSubscriber
 from services.run_python_code_service import RunPythonCodeService
 from src.shared.bench_log import BENCH_LEVEL

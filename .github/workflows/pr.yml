@@ -107,21 +107,21 @@ jobs:
           #   src/shared/      -- imported by all four (django_app 49, crew 48 and
           #                       sandbox 4 `src.shared` imports, agent 91 `shared`
           #                       imports, plus crew's shared/dotdict path dependency)
-          #   src/foundation/  -- a path dependency of django_app, crew, agent and
-          #                       realtime (their sandbox client lives there)
+          #   src/foundation/  -- a path dependency of django_app, crew, agent,
+          #                       realtime and sandbox_new
           #   Makefile         -- defines the *-tests targets these jobs invoke
           #   this file        -- same self-testing rule as the filters above
           backend_wide='src/shared/|src/foundation/|Makefile$|\.github/workflows/pr\.yml$'
 
-          # crew, agent, foundation, plugin_sdk, es_plugins and plugins_egress
-          # need no database and nothing from the filesystem beyond an
-          # interpreter, so one matrix job covers them all and this picks its
-          # legs. A new service of that kind is not picked up by itself: add it
-          # to this list. `filter` leaves $result set, so the array is built
-          # from the same regex that writes each output rather than from a
-          # second copy of it.
+          # crew, agent, plugin_sdk, es_plugins and plugins_egress need no
+          # database and nothing from the filesystem beyond an interpreter, so
+          # one matrix job covers them all and this picks its legs. A new
+          # service of that kind is not picked up by itself: add it to this
+          # list. `filter` leaves $result set, so the array is built from the
+          # same regex that writes each output rather than from a second copy
+          # of it.
           nodb=''
-          for svc in crew agent foundation plugin_sdk es_plugins plugins_egress; do
+          for svc in crew agent plugin_sdk es_plugins plugins_egress; do
             # es_plugins installs src/plugin_sdk (package rules, signatures and
             # the runtime file contract), so a change there runs its suite too,
             # and its policy contract test runs the egress proxy's host helper
@@ -379,8 +379,8 @@ jobs:
         if: needs.changes.outputs.fe_deps == 'true'
         run: npm audit --audit-level=high
 
-  # crew, agent, foundation, plugin_sdk, es_plugins and plugins_egress: no
-  # database, no service containers, well under a minute each. One matrix job whose legs are decided at runtime,
+  # crew, agent, plugin_sdk, es_plugins and plugins_egress: no database, no
+  # service containers, well under a minute each. One matrix job whose legs are decided at runtime,
   # so a pull request touching only src/agent/ runs one leg and a pull request
   # touching none of them skips the job outright. sandbox was a leg until it
   # needed a container of its own; it has a separate job below. es_plugins'

@@ -1,9 +1,9 @@
-"""The one HTTP client every producer uses to hand code to the sandbox.
+"""HTTP client crew uses to hand python code to the sandbox.
 
-Submission is HTTP (`POST /executions`, answered 202); the result itself arrives on the
-producer's own Redis channel, which this client never touches. What it adds is the
-guarantee that a producer never waits forever: a full sandbox is retried for a bounded
-budget, and a pending result is checked against the sandbox every
+crew submits a code execution over HTTP (`POST /executions`, answered 202) and receives
+the result on its own Redis result channel, which this client never touches. What it
+adds is the guarantee that a run never waits forever: a full sandbox is retried for a
+bounded budget, and a pending result is checked against the sandbox every
 `STATUS_POLL_INTERVAL_SECONDS` so an execution the sandbox lost is reported, not awaited.
 """
 
@@ -16,17 +16,8 @@ from time import monotonic
 from urllib.parse import quote
 
 import httpx
-
-from foundation.clients.sandbox.errors import (
-    SandboxError,
-    SandboxExecutionLostError,
-    SandboxOverloadedError,
-    SandboxResultTimeoutError,
-    SandboxUnreachableError,
-)
-from foundation.clients.sandbox.schemas import ExecutionRequest
-from foundation.transport.http.client import AsyncClient
-from foundation.transport.http.errors import (
+from foundation.transport.http import (
+    AsyncClient,
     ClientBadGatewayError,
     ClientConnectionError,
     ClientError,
@@ -35,6 +26,14 @@ from foundation.transport.http.errors import (
     ClientNotFoundError,
     ClientTimeoutError,
     ClientUnavailableError,
+)
+from src.shared.models.sandbox_execution import ExecutionRequest
+from src.shared.sandbox_errors import (
+    SandboxError,
+    SandboxExecutionLostError,
+    SandboxOverloadedError,
+    SandboxResultTimeoutError,
+    SandboxUnreachableError,
 )
 
 __all__ = [
@@ -169,8 +168,8 @@ class SandboxClient(AsyncClient):
         that is cancelled if this method leaves before it finishes.
 
         Args:
-            result: Completes with the execution's result, typically when the producer's
-                Redis listener receives it. Whatever it raises propagates unchanged.
+            result: Completes with the execution's result, typically when crew's Redis
+                listener receives it. Whatever it raises propagates unchanged.
             backstop: Seconds to wait in total before giving up; None waits as long as
                 the sandbox keeps reporting the execution.
 
@@ -220,7 +219,7 @@ class SandboxClient(AsyncClient):
     async def _is_known(self, execution_id: str) -> bool:
         try:
             await self.status(execution_id)
-        except ClientError:
+        except (SandboxExecutionLostError, ClientError):
             return False
         return True
 

@@ -5,12 +5,7 @@ from functools import partial
 from typing import Any
 
 import settings
-from foundation.clients.sandbox import (
-    ExecutionRequest,
-    SandboxClient,
-    SandboxExecutionLostError,
-    SandboxResultTimeoutError,
-)
+from clients.sandbox import SandboxClient
 from foundation.transport.http import ClientError
 from loguru import logger
 from models.state import State
@@ -18,9 +13,14 @@ from pydantic import ValidationError
 from services.graph.events import StopEvent
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.bench_log import BENCH_LEVEL
-from src.shared.models import CodeResultData, PythonCodeData
+from src.shared.models import CodeResultData, ExecutionRequest, PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 from src.shared.redis_keys import crew_code_result_channel
+from src.shared.sandbox_errors import (
+    SandboxError,
+    SandboxExecutionLostError,
+    SandboxResultTimeoutError,
+)
 from utils.singleton_meta import SingletonMeta
 
 # Matches the sandbox's own timeout exit code, so callers need no new branch.
@@ -145,7 +145,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 settings.CODE_RESULT_TIMEOUT,
             )
             return _failed_result(execution_id, TIMEOUT_RETURNCODE, TIMEOUT_STDERR_MESSAGE)
-        except ClientError as error:
+        except (SandboxError, ClientError) as error:
             if isinstance(error, SandboxExecutionLostError):
                 logger.log(
                     BENCH_LEVEL,

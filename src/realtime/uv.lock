@@ -250,13 +250,6 @@ requires-dist = [
 ]
 provides-extras = ["litestar", "transitive-pins"]
 
-[package.metadata.requires-dev]
-dev = [
-    { name = "litestar", specifier = "==2.24.0" },
-    { name = "pytest", specifier = "==9.1.1" },
-    { name = "pytest-asyncio", specifier = "==1.4.0" },
-]
-
 [[package]]
 name = "google-auth"
 version = "2.57.1"

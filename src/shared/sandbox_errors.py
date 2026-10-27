@@ -1,11 +1,9 @@
-"""Errors a producer gets from `SandboxClient`.
+"""Errors a producer's sandbox client raises.
 
 Every message is fit to show a user as the failed node's stderr. None of them ever
 includes a request body or the text of an httpx exception: the request carries the
 execution's secrets in plaintext.
 """
-
-from foundation.transport.http.errors import ClientError
 
 __all__ = [
     "SandboxError",
@@ -16,7 +14,7 @@ __all__ = [
 ]
 
 
-class SandboxError(ClientError):
+class SandboxError(Exception):
     """Base class for every sandbox failure; raised as-is for a refused submission.
 
     A refused submission (400, 404 unknown venv, 422, 500 ...) carries the sandbox's

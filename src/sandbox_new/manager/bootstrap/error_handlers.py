@@ -1,6 +1,6 @@
 """Handlers for this service's own domain errors."""
 
-from foundation.schemas import ErrorDetailSchema
+from foundation.schemas import ErrorDetailSchema, ErrorResponseSchema
 from foundation.utils.litestar import error_handler
 from litestar import Request, Response, status_codes
 
@@ -19,8 +19,13 @@ def handle_not_found_error(
 
 @error_handler.registry(errors.SandboxOverloadedError)
 def handle_overloaded_error(request: Request, error: errors.SandboxOverloadedError) -> Response:
-    return error_handler.create_response(
+    # Built directly rather than through `create_response`, which takes no headers;
+    # the envelope is the same one it produces.
+    return Response(
+        content=ErrorResponseSchema.for_status(
+            status_codes.HTTP_503_SERVICE_UNAVAILABLE,
+            [ErrorDetailSchema(code="overloaded", detail=str(error))],
+        ),
         status_code=status_codes.HTTP_503_SERVICE_UNAVAILABLE,
-        errors=[ErrorDetailSchema(code="overloaded", detail=str(error))],
         headers={"Retry-After": str(error.retry_after)},
     )

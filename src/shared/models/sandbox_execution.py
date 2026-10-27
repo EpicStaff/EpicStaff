@@ -1,8 +1,6 @@
 from typing import Any
 
-from pydantic import Field
-
-from foundation.schemas import Schema
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "ExecutionRequest",
@@ -10,23 +8,27 @@ __all__ = [
 ]
 
 
-class ExecutionStorageCredentials(Schema):
+class ExecutionStorageCredentials(BaseModel):
     """Object-store credentials the producer issues for one execution.
 
     Plaintext, so both keys are kept out of `repr()` and therefore out of log lines.
     """
 
+    model_config = ConfigDict(frozen=True, from_attributes=True)
+
     access_key: str = Field(min_length=1, repr=False)
     secret_key: str = Field(min_length=1, repr=False)
 
 
-class ExecutionRequest(Schema):
+class ExecutionRequest(BaseModel):
     """The body a producer posts to the sandbox's `POST /executions`.
 
     The sandbox's submit schema subclasses this one, so the field set and types are the
     wire contract on both sides. `secrets` and `storage_credentials` carry plaintext
     and are excluded from `repr()`.
     """
+
+    model_config = ConfigDict(frozen=True, from_attributes=True)
 
     execution_id: str
     # Optional: tool paths at session start can submit without a session.

@@ -5,12 +5,20 @@ from typing import Any
 from core import config
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
 from domain.ports.i_redis_messaging_service import IRedisMessagingService
-from foundation.clients.sandbox import ExecutionRequest, SandboxClient
 from foundation.transport.http import ClientError
 from loguru import logger
 from pydantic import ValidationError
-from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData, StorageCredentials
+from src.shared.models import (
+    CodeResultData,
+    CodeTaskData,
+    ExecutionRequest,
+    PythonCodeData,
+    StorageCredentials,
+)
+from src.shared.sandbox_errors import SandboxError
 from utils.singleton_meta import SingletonMeta
+
+from infrastructure.sandbox.sandbox_client import SandboxClient
 
 
 class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonMeta):
@@ -81,7 +89,7 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 _read_result(pubsub, unique_task_id),
                 backstop=config.REALTIME_CODE_RESULT_TIMEOUT,
             )
-        except ClientError as error:
+        except (SandboxError, ClientError) as error:
             # The class name only: the message is for the user, who gets it as stderr.
             logger.error(
                 "Code execution failed (execution_id={}, {})",

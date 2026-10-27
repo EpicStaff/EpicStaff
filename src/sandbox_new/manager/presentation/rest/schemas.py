@@ -1,9 +1,9 @@
 from datetime import datetime
 from typing import Self
 
-from foundation.clients.sandbox import ExecutionRequest, ExecutionStorageCredentials
 from foundation.schemas import Schema
 from pydantic import Field, model_validator
+from src.shared.models.sandbox_execution import ExecutionRequest, ExecutionStorageCredentials
 
 from manager.domain.enums import ExecutionStatus, VenvStatus
 from manager.domain.models import Library, StorageCredentials, Venv
