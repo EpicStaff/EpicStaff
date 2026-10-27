@@ -5,6 +5,7 @@ import zipfile
 from datetime import datetime, timezone
 
 from botocore.exceptions import ClientError
+from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from tables.exceptions import RangeNotSatisfiable
 from tables.services.storage_service.base import AbstractStorageBackend, StorageUnreachable
 from tables.services.storage_service.dataclasses import (
@@ -14,7 +15,7 @@ from tables.services.storage_service.dataclasses import (
     TreeNode,
 )
 from tables.services.storage_service.manager import StorageManager
-from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
+from tables.services.storage_service.path_utils import storage_key
 from tables.services.storage_service.quota import record_files_within_quota
 from tables.services.storage_service.recycle_bin import StorageRecycleBinService
 from tables.services.storage_service.s3_backend import S3StorageBackend
