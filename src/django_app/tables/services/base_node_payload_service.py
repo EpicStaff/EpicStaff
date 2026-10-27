@@ -13,10 +13,12 @@ from src.shared.models import (
     GraphRagGlobalSearchParams,
     GraphRagLocalSearchParams,
     GraphRagSearchConfig,
+    LLMData,
     NaiveRagSearchConfig,
     S3FileSpec,
     SearchConfigEntry,
 )
+from tables.exceptions import ConfigProviderMissingError
 from tables.models.graph_models import GraphStorageFile, StorageFile
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.models.knowledge_models.graphrag_models import GraphRag
@@ -25,6 +27,7 @@ from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool
 from tables.services.converter_service import ConverterService, secret_names_prefetch
 from tables.services.rag_lookup_service import RagLookupService
+from tables.services.secrets import SecretResolutionError, secret_resolver
 
 
 class BaseNodePayloadService:
@@ -45,6 +48,7 @@ class BaseNodePayloadService:
             return None
 
         agent_definition.fill_with_defaults()
+        fallback_llm, fallback_llm_warning = self._build_fallback_llm(agent_definition)
 
         return AgentDefinitionData(
             id=agent_definition.id,
@@ -67,7 +71,52 @@ class BaseNodePayloadService:
             fcm_llm=self.converter_service.convert_llm_config_to_pydantic(
                 agent_definition.fcm_llm_config
             ),
+            fallback_llm_config_id=agent_definition.fallback_llm_config_id,
+            fallback_llm=fallback_llm,
+            fallback_llm_warning=fallback_llm_warning,
         )
+
+    def _build_fallback_llm(
+        self, agent_definition: AgentDefinition
+    ) -> tuple[LLMData | None, str | None]:
+        """Convert the agent's fallback LLM config, or skip it when it cannot be used.
+
+        A broken fallback must not stop a run that works without it, unlike the primary.
+        It is dropped when its model lost its provider or its API key secret cannot be
+        resolved. The key is only probed here: the payload keeps the secret id and
+        `redis_service` resolves it when the run is published.
+
+        Returns:
+            The fallback payload and no warning, or no payload and a warning naming the
+            config and the error class. The warning never carries the error text, which
+            may quote provider or secret details.
+        """
+        config = agent_definition.fallback_llm_config
+        if config is None:
+            return None, None
+
+        try:
+            fallback_llm = self.converter_service.convert_llm_config_to_pydantic(config)
+            secret_resolver.resolve(
+                secret_id=config.api_key_secret_id,
+                org_id=agent_definition.org_id,
+                context="AgentDefinition.fallback_llm",
+            )
+        except (ConfigProviderMissingError, SecretResolutionError) as error:
+            error_name = type(error).__name__
+            logger.warning(
+                "Fallback LLM config {} of agent definition {} is unavailable ({}), skipping it.",
+                config.pk,
+                agent_definition.pk,
+                error_name,
+            )
+            warning = (
+                f'Fallback LLM config "{config.custom_name}" is unavailable ({error_name})'
+                " and was skipped."
+            )
+            return None, warning
+
+        return fallback_llm, None
 
     def _build_tool_pool(
         self,
