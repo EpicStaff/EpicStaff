@@ -102,6 +102,7 @@ class AgentDefinitionReadSerializer(LastEditFieldsSerializerMixin, serializers.M
             "instruction_list",
             "instructions",
             "llm_config",
+            "fallback_llm_config",
             "fcm_llm_config",
             "max_iter",
             "max_rpm",
@@ -132,6 +133,11 @@ class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.
         required=False,
         allow_null=True,
     )
+    fallback_llm_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=LLMConfig.objects.all(),
+        required=False,
+        allow_null=True,
+    )
     fcm_llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(),
         required=False,
@@ -156,6 +162,7 @@ class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.
             "description",
             "instruction_list",
             "llm_config",
+            "fallback_llm_config",
             "fcm_llm_config",
             "max_iter",
             "max_rpm",
@@ -179,6 +186,8 @@ class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.
                 {"instructions": "This field is read-only. Send instruction_list instead."}
             )
 
+        self._validate_fallback_llm_config(attrs)
+
         default_surfaces_data = attrs.get("default_surfaces")
 
         if default_surfaces_data is not None:
@@ -188,6 +197,23 @@ class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.
             )
 
         return attrs
+
+    def _validate_fallback_llm_config(self, attrs):
+        # A partial update sends only some fields: judge the saved pair after the write.
+        primary = attrs.get("llm_config", self.instance.llm_config if self.instance else None)
+        fallback = attrs.get(
+            "fallback_llm_config", self.instance.fallback_llm_config if self.instance else None
+        )
+        if fallback is None:
+            return
+        if primary is None:
+            raise serializers.ValidationError(
+                {"fallback_llm_config": "Set a primary LLM config before a fallback."}
+            )
+        if fallback == primary:
+            raise serializers.ValidationError(
+                {"fallback_llm_config": "The fallback LLM config must differ from the primary one."}
+            )
 
     def create(self, validated_data):
         default_surfaces_data = validated_data.pop("default_surfaces", [])
