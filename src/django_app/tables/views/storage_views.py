@@ -4,6 +4,7 @@ from django.http import HttpResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
+from rbac.access.resolver import PermissionResolver
 from rbac.authorship import (
     authorship_prefetches,
     record_last_edit,
@@ -194,12 +195,17 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         if isinstance(data, FolderInfo) and not graph_path.endswith("/"):
             graph_path = graph_path + "/"
 
-        response["graphs"] = list(
-            Graph.objects.filter(
-                storage_files__storage_file__path=graph_path,
-                storage_files__storage_file__org_id=org_id,
-            ).values("id", "name")
-        )
+        effective_permissions = PermissionResolver().resolve(user=request.user, org_id=org_id)
+        # Flow names only for callers who could list those flows anyway.
+        if effective_permissions.can(ResourceType.FLOWS, Permission.READ):
+            response["graphs"] = list(
+                Graph.objects.filter(
+                    storage_files__storage_file__path=graph_path,
+                    storage_files__storage_file__org_id=org_id,
+                ).values("id", "name")
+            )
+        else:
+            response["graphs"] = []
         return Response(response)
 
     @extend_schema(**STORAGE_DOWNLOAD_SWAGGER)

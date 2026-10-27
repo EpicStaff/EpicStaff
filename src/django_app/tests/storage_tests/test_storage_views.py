@@ -7,8 +7,10 @@ from unittest.mock import patch
 
 import pytest
 from rest_framework import status
+from rest_framework.test import APIClient
 
-from rbac.models import Organization
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
 from tables.models import Graph, GraphStorageFile, StorageFile
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.manager import StorageManager
@@ -61,6 +63,48 @@ def test_info(auth_client, put, path, expected_status):
     assert resp.status_code == expected_status
     if expected_status == 200:
         assert (resp.data["name"], resp.data["size"], resp.data["graphs"]) == ("f.txt", 5, [])
+
+
+@pytest.fixture
+def make_files_reader_client(default_org, django_user_model):
+    """Factory for an API client of a default-org member whose custom role reads files.
+
+    The role also grants whatever `other_permissions` maps resource types to.
+    """
+
+    def _make(other_permissions: dict[ResourceType, Permission]):
+        role = Role.objects.create(name="Files reader", org=default_org, is_built_in=False)
+        for resource_type, permissions in {ResourceType.FILES: Permission.READ, **other_permissions}.items():
+            RolePermission.objects.create(role=role, resource_type=resource_type.value, permissions=int(permissions))
+        user = django_user_model.objects.create_user(email="files-reader@example.com", password="StrongPass123!")
+        OrganizationUser.objects.create(user=user, org=default_org, role=role)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+        return client
+
+    return _make
+
+
+@pytest.mark.parametrize(
+    ("other_permissions", "expect_graphs"),
+    [({ResourceType.FLOWS: Permission.READ}, True), ({}, False)],
+    ids=["with-flows-read", "without-flows-read"],
+)
+def test_info_lists_the_flows_using_the_file_only_for_a_caller_who_can_read_flows(
+    auth_client, make_files_reader_client, put, default_org, other_permissions, expect_graphs
+):
+    put("f.txt", b"hello")
+    graph = Graph.objects.create(name="secret-flow", org=default_org)
+    linked = auth_client.post(
+        "/api/storage/add-to-graph/", {"paths": ["f.txt"], "graph_ids": [graph.id]}, format="json"
+    )
+    assert linked.status_code == status.HTTP_201_CREATED
+
+    resp = make_files_reader_client(other_permissions).get("/api/storage/info/", {"path": "f.txt"})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["graphs"] == ([{"id": graph.id, "name": "secret-flow"}] if expect_graphs else [])
 
 
 @pytest.mark.parametrize(
