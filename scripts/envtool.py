@@ -113,6 +113,7 @@ GENERATED_SECRETS = (
     "AUDITOR_INGEST_API_KEY",
     "AUDIT_JWT_SECRET",
     "OPENSEARCH_PASSWORD",
+    "AVATAR_URL_SIGNING_SECRET",
 )
 PRODUCTION_USERNAMES = {
     "DB_USER": "epicstaff",
@@ -208,7 +209,6 @@ CLEAR_SCREEN = "\033[2J\033[H"
 BOLD, DIM, RED, GREEN, YELLOW, CYAN = "1", "2", "31", "32", "33", "36"
 FIXED_PRODUCTION_VALUES = {
     "DJANGO_AUTH_URL": "http://django:8000",
-    "CREW_SAVEFILES_PATH": "./savefiles",
 }
 
 
@@ -242,6 +242,8 @@ def target_defaults(schema: dict, target: Literal["prod", "dev"]) -> dict:
 
 
 def generate_secret(name: str) -> str:
+    if name == "AVATAR_URL_SIGNING_SECRET":
+        return secrets.token_hex(32)  # nginx pastes it literally into its config: hex only
     characters = [secrets.choice(SECRET_ALPHABET) for _ in range(SECRET_LENGTH)]
     if name == "OPENSEARCH_PASSWORD":
         # OpenSearch's strength policy wants upper, lower, digit and special characters.

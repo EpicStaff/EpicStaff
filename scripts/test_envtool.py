@@ -252,6 +252,10 @@ class SecretTest(unittest.TestCase):
             for pattern in (r"[A-Z]", r"[a-z]", r"[0-9]", r"_"):
                 self.assertRegex(value, pattern)
 
+    def test_avatar_signing_secret_is_hex(self):
+        # nginx pastes it literally into its config, so env.yaml allows hex only.
+        self.assertRegex(envtool.generate_secret("AVATAR_URL_SIGNING_SECRET"), r"^[0-9a-f]{64}$")
+
     def test_two_calls_differ(self):
         self.assertNotEqual(
             envtool.generate_secret("DB_PASSWORD"), envtool.generate_secret("DB_PASSWORD")
@@ -360,13 +364,23 @@ class ProductionValuesTest(unittest.TestCase):
     def test_fixed_values_and_usernames_are_included(self):
         values = envtool.production_values("https://host", "nginx-tls", "v1")
         self.assertEqual(values["DJANGO_AUTH_URL"], "http://django:8000")
-        self.assertEqual(values["CREW_SAVEFILES_PATH"], "./savefiles")
         self.assertEqual(values["DB_USER"], "epicstaff")
 
 
 class SchemaCoverageTest(unittest.TestCase):
     def test_every_production_required_variable_is_generated_asked_or_filled(self):
         self.assertEqual(envtool.production_coverage_gaps(real_schema()), [])
+
+    def test_every_name_the_wizard_writes_exists_in_the_schema(self):
+        written = set(envtool.production_values("https://host", "nginx-tls", "v1"))
+        written |= set(envtool.GENERATED_SECRETS) | {"COMPOSE_PROFILES"}
+        for group in (*envtool.SERVING_MODES.values(), *envtool.SERVER_SIZE_VALUES.values()):
+            written |= set(group)
+        for feature in envtool.FEATURES:
+            written |= {feature.flag, *feature.settings}
+        written |= set(envtool.advanced_values(None, "5m", "INFO", ALL_ON, real_schema(), {}))
+        known = set(envtool.target_defaults(real_schema(), "prod"))
+        self.assertEqual(sorted(written - known), [])
 
     def test_a_new_required_variable_is_reported(self):
         schema = {"groups": {"new": {"vars": {"BRAND_NEW": {"default": {"dev": "x"}}}}}}
