@@ -299,6 +299,29 @@ class TestAgentDefinitionStrategy:
         assert created.llm_config_id == agent_definition.llm_config_id
         assert created.fallback_llm_config_id is None
 
+    def test_create_entity_drops_fallback_when_the_primary_is_not_resolved(
+        self, agent_definition, fallback_llm_config, export_service, default_org
+    ):
+        agent_definition.fallback_llm_config = fallback_llm_config
+        agent_definition.save()
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
+        # Only the fallback config is in the mapper; the primary has no mapping.
+        mapper = IDMapper()
+        mapper.map(EntityType.LLM_CONFIG, fallback_llm_config.id, fallback_llm_config.id, was_created=False)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.llm_config_id is None
+        assert created.fallback_llm_config_id is None
+
     def test_import_into_another_org_creates_both_configs_and_links_the_fallback(
         self, agent_definition, fallback_llm_config, export_service, beta
     ):

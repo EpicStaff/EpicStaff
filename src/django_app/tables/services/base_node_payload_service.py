@@ -97,6 +97,16 @@ class BaseNodePayloadService:
 
         try:
             fallback_llm = self.converter_service.convert_llm_config_to_pydantic(config)
+            if fallback_llm is None:
+                logger.warning(
+                    "Fallback LLM config {} of agent definition {} has no model, skipping it.",
+                    config.pk,
+                    agent_definition.pk,
+                )
+                return None, (
+                    f'Fallback LLM config "{config.custom_name}" is unavailable (no model)'
+                    " and was skipped."
+                )
             secret_resolver.resolve(
                 secret_id=config.api_key_secret_id,
                 org_id=agent_definition.org_id,

@@ -560,6 +560,21 @@ class TestAgentDefinitionFallbackLLM:
         assert data.llm is not None
 
     @pytest.mark.django_db
+    def test_fallback_without_a_model_is_dropped_with_a_warning(
+        self, graph, task_node, agent_with_fallback, fallback_config
+    ):
+        fallback_config.model = None
+        fallback_config.save()
+
+        data = self.agent_data_for_run(graph, task_node, agent_with_fallback)
+
+        assert data.fallback_llm is None
+        assert data.fallback_llm_warning == (
+            'Fallback LLM config "Key B" is unavailable (no model) and was skipped.'
+        )
+        assert data.llm is not None
+
+    @pytest.mark.django_db
     def test_fallback_with_undecryptable_secret_is_dropped(
         self, graph, task_node, agent_with_fallback, fallback_config
     ):

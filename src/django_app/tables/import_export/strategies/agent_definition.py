@@ -420,7 +420,8 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         # Two exported configs with identical content can resolve to one existing
         # row. The primary then wins and the fallback is dropped, because a
         # fallback equal to the primary violates the agent's check constraint.
-        if new_fallback_llm_config_id == new_llm_config_id:
+        # A fallback without a resolved primary is dropped too: the API rejects it.
+        if new_llm_config_id is None or new_fallback_llm_config_id == new_llm_config_id:
             new_fallback_llm_config_id = None
 
         agent_definition.llm_config = LLMConfig.objects.filter(id=new_llm_config_id).first()
