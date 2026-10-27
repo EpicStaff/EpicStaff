@@ -1,9 +1,0 @@
-// Personal override (gitignored), used by `npm run start:local`. See environment.local.example.ts.
-export const environment = {
-    production: false,
-    apiUrl: '/api/',
-    realtimeApiUrl: '/realtime/',
-    auditorUrl: '/auditor/',
-    isEpicChatEnabled: true,
-    isAuditTrailEnabled: true,
-};

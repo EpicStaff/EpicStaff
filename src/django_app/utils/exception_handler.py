@@ -1,5 +1,6 @@
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
+from django.utils.log import log_response
 from django_app.settings import DEBUG
 from foundation.transport.http.errors import (
     ClientConnectionError,
@@ -13,6 +14,9 @@ from rest_framework.exceptions import APIException, NotFound, Throttled, Validat
 from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
 from rest_framework.settings import api_settings
 from rest_framework.views import exception_handler
+from tables.clients.errors import ClientError as OutboundClientError
+
+from utils.logger import logger
 
 # Keys DRF generates itself; naming them back at the client adds no information.
 _UNLABELLED_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})
@@ -78,6 +82,45 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
     return upstream_error
 
 
+def _outbound_client_error_as_api_exception(exc: OutboundClientError) -> APIException:
+    """Translate an error of an outbound service client (`tables.clients`) into a DRF exception.
+
+    The status code is the client error's own. The message is the error class's
+    static `public_detail`: `detail` can carry the upstream response body, which
+    goes to the server log only.
+    """
+    logger.warning(
+        "Outbound service call failed: {error_type}: {detail}",
+        error_type=type(exc).__name__,
+        detail=exc.detail,
+    )
+    api_exception = APIException(exc.public_detail)
+    api_exception.status_code = exc.status_code
+    api_exception.default_code = exc.code
+    return api_exception
+
+
+def _log_unhandled_exception(exc: Exception, request, response) -> None:
+    """Log the traceback of an exception answered with the generic 500.
+
+    Returning a response stops DRF from re-raising, so Django would log only
+    the status line. Django's own request logger records it with the
+    traceback, and marks the response as logged so that line is not repeated.
+    It goes through stdlib logging rather than the loguru sink on purpose: the
+    sink keeps loguru's `diagnose` on, which prints every local variable of
+    every frame -- secrets and request payloads included -- and an unhandled
+    exception can come from any code path.
+    """
+    path = request.path if request is not None else "unknown path"
+    log_response(
+        "Internal Server Error: %s",
+        path,
+        response=response,
+        request=request,
+        exception=exc,
+    )
+
+
 def custom_exception_handler(exc, context):
     """Render every exception as the project's `{status_code, code, message}` envelope."""
 
@@ -105,6 +148,8 @@ def custom_exception_handler(exc, context):
         exc = ValidationError(exc.field_errors())
     elif isinstance(exc, ClientError):
         exc = _client_error_as_api_exception(exc)
+    elif isinstance(exc, OutboundClientError):
+        exc = _outbound_client_error_as_api_exception(exc)
 
     response = exception_handler(exc, context)
 
@@ -127,7 +172,9 @@ def custom_exception_handler(exc, context):
         return response
 
     if not DEBUG:
-        return JsonResponse(
+        # The client gets a generic message: the exception text can carry
+        # internals such as database driver errors.
+        response = JsonResponse(
             {
                 "status_code": 500,
                 "code": exc.__class__.__name__,
@@ -135,5 +182,7 @@ def custom_exception_handler(exc, context):
             },
             status=500,
         )
+        _log_unhandled_exception(exc, context.get("request"), response)
+        return response
 
     return response

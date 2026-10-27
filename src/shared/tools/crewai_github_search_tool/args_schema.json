@@ -4,11 +4,11 @@
   "properties": {
     "search_query": {
       "type": "string",
-      "description": "Mandatory search query to find in the local or remote GitHub repo"
+      "description": "Mandatory search query to find in the remote GitHub repo"
     },
     "repo_path_or_url": {
       "type": "string",
-      "description": "Path to the local cloned repo or GitHub URL of the repo"
+      "description": "http:// or https:// URL of a public GitHub repo"
     },
     "file_types": {
       "type": "array",

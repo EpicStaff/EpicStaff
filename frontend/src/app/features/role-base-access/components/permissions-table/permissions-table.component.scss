@@ -38,6 +38,12 @@
     position: relative;
 }
 
+// Shared width so the headers and every group stretch to the widest group's width.
+.perm-table-content {
+    width: max-content;
+    min-width: 100%;
+}
+
 .perm-headers {
     position: sticky;
     top: 0;

@@ -91,7 +91,7 @@ class LaunchStep:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
-            cwd=str(context.savefiles_root),
+            cwd=str(context.work_dir),
             start_new_session=True,
             **privilege_drop_kwargs(),
         )

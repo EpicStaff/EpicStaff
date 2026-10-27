@@ -24,7 +24,7 @@ class ExecutionContext(BaseModel):
     exec_dir: Path | None = None
     home_dir: Path | None = None
     tmp_dir: Path | None = None
-    savefiles_root: Path | None = None
+    work_dir: Path | None = None
     code_path: Path | None = None
     result_file_path: Path | None = None
     storage_mutations_path: Path | None = None

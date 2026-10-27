@@ -46,6 +46,7 @@ from storage_credentials.exceptions import (
 )
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
+from tables.exceptions import ConfigProviderMissingError
 from tables.models import PythonCode, PythonCodeTool, Secret
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
@@ -604,8 +605,20 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def convert_llm_config_to_pydantic(self, config: LLMConfig) -> LLMData | None:
+        """Convert an LLM config into the payload sent to crew.
+
+        Returns:
+            None when the config is missing or has no model; nothing is configured.
+
+        Raises:
+            ConfigProviderMissingError: The config's model has no provider, because
+                the provider was deleted.
+        """
         if not config or not config.model:
             return None
+
+        if config.model.llm_provider is None:
+            raise ConfigProviderMissingError("LLM", config.custom_name)
 
         return LLMData(
             provider=config.model.llm_provider.name,
@@ -643,15 +656,23 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_embedding_config_to_pydantic(
         self, embedding_config: EmbeddingConfig
     ) -> EmbedderData | None:
+        """Convert an embedding config into the payload sent to crew.
+
+        Returns:
+            None when the config is missing; nothing is configured.
+
+        Raises:
+            ConfigProviderMissingError: The config has no model, or its model has no
+                provider, because the model or provider was deleted.
+        """
         if not embedding_config:
             return None
 
+        if embedding_config.model is None or embedding_config.model.embedding_provider is None:
+            raise ConfigProviderMissingError("Embedding", embedding_config.custom_name)
+
         return EmbedderData(
-            provider=(
-                embedding_config.model.embedding_provider.name
-                if embedding_config.model.embedding_provider
-                else None
-            ),
+            provider=embedding_config.model.embedding_provider.name,
             config=EmbedderConfigData(
                 model=embedding_config.model.name,
                 base_url=embedding_config.model.base_url,

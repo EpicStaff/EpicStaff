@@ -1,3 +1,0 @@
-pypdfium2
-nbformat
-charset-normalizer

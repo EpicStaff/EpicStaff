@@ -33,7 +33,6 @@ def context(tmp_path):
     return make_context(
         exec_dir=exec_dir,
         python_executable=tmp_path / "venvs" / "venv-1abc" / "bin" / "python",
-        savefiles_root=tmp_path / "savefiles",
     )
 
 
@@ -51,9 +50,8 @@ async def test_the_jail_is_rooted_at_the_execution_workspace_and_the_venv(contex
     await build_step(6)(context)
 
     jail = context.isolation.jail
-    assert str(tmp_path / "executions" / "exec-1") in jail.read_write
+    assert str(context.exec_dir) in jail.read_write
     assert str(tmp_path / "venvs" / "venv-1abc") in jail.read_exec
-    assert str(tmp_path / "savefiles") in jail.read_write
 
 
 async def test_a_kernel_without_landlock_refuses_when_isolation_is_required(context):

@@ -102,11 +102,6 @@ your own machine only**.
 production `src/.env` with `python scripts/envtool.py` (the same content as `src/.env.example`)
 and set every line marked `# NAME=<enter your value>`.
 
-Savefiles is deprecated and will be removed: use `epicstaff_storage` instead. Until then, on Linux,
-if the `CREW_SAVEFILES_PATH` folder (`src/savefiles` in the Quick Start) is not owned by uid 1000, the sandbox makes uid 1000 its owner
-(the folder itself, not its contents). Files already in it keep their owner: if agent code must
-write into them, run `sudo chown -R 1000 <folder>` once.
-
 Once running, open http://localhost to start building.
 
 <details>

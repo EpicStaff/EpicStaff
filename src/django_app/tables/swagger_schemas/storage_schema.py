@@ -47,7 +47,9 @@ STORAGE_LIST_SWAGGER = {
 STORAGE_INFO_SWAGGER = {
     "summary": "Get file metadata",
     "description": (
-        "Returns metadata for a single file (name, size, content_type, modified, created, etag)."
+        "Returns metadata for a single file (name, size, content_type, modified, created, etag) "
+        "and `graphs`, the flows using it by id and name. `graphs` is empty when the caller "
+        "lacks READ on flows."
     ),
     "parameters": [_STORAGE_PATH_PARAM],
     "responses": {
