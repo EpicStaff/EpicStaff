@@ -894,6 +894,7 @@ describe('flow toolbar keys', () => {
 
     it.each<[EditorActionId, KeyChord]>([
         ['flow.run', 'Mod+Enter'],
+        ['flow.stop-session', 'Mod+Shift+Enter'],
         ['flow.sessions', 'Alt+KeyS'],
         ['flow.chat', 'Alt+KeyC'],
         ['flow.curl', 'Alt+KeyK'],
@@ -912,6 +913,7 @@ describe('flow toolbar keys', () => {
 
     it.each<[string, boolean]>([
         ['flow.run', true],
+        ['flow.stop-session', true],
         ['flow.settings', true],
         ['node.python', true],
         ['node.subgraph', false],

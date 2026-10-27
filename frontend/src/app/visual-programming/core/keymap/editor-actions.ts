@@ -90,6 +90,7 @@ function nodeAction<const Id extends `node.${string}`>(id: Id, nodeType: MenuNod
 
 export const EDITOR_ACTIONS = [
     flowAction('flow.run', 'Run', 'Mod+Enter', FLOW_ACTION_PERMISSIONS.useFlow),
+    flowAction('flow.stop-session', 'Stop session', 'Mod+Shift+Enter', FLOW_ACTION_PERMISSIONS.useFlow),
     flowAction('flow.sessions', 'Sessions', 'Alt+KeyS'),
     flowAction('flow.chat', 'Open / close chat', 'Alt+KeyC'),
     flowAction('flow.curl', 'Get cURL', 'Alt+KeyK', FLOW_ACTION_PERMISSIONS.useFlow),

@@ -51,6 +51,7 @@ const BASE_SECTIONS = ['Editing', 'Navigating', 'Selection', 'Zoom', 'Flow actio
 
 const FLOW_ROWS_WINDOWS: readonly RenderedRow[] = [
     { label: 'Run', chords: [['Ctrl', 'Enter']] },
+    { label: 'Stop session', chords: [['Ctrl', 'Shift', 'Enter']] },
     { label: 'Sessions', chords: [['Alt', 'S']] },
     { label: 'Open / close chat', chords: [['Alt', 'C']] },
     { label: 'Get cURL', chords: [['Alt', 'K']] },
@@ -64,6 +65,7 @@ const FLOW_ROWS_WINDOWS: readonly RenderedRow[] = [
 
 const FLOW_ROWS_MAC: readonly RenderedRow[] = [
     { label: 'Run', chords: [['⌘', '↩']] },
+    { label: 'Stop session', chords: [['⌘', '⇧', '↩']] },
     { label: 'Sessions', chords: [['⌥', 'S']] },
     { label: 'Open / close chat', chords: [['⌥', 'C']] },
     { label: 'Get cURL', chords: [['⌥', 'K']] },
@@ -75,7 +77,7 @@ const FLOW_ROWS_MAC: readonly RenderedRow[] = [
     { label: 'Domain', chords: [['⌥', 'M']] },
 ];
 
-/** Every permission a flow toolbar button checks, so all ten Flow actions rows show. */
+/** Every permission a flow toolbar button checks, so every Flow actions row shows. */
 const EVERY_FLOW_PERMISSION: Partial<Record<ResourceCode, ActionCode[]>> = {
     [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Use, ActionCode.Export],
     [ResourceCode.Files]: [ActionCode.Read],
@@ -516,7 +518,7 @@ describe('ShortcutsModalComponent', () => {
                     [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Export],
                     [ResourceCode.Files]: [ActionCode.Read],
                 },
-                ['Run', 'Get cURL'],
+                ['Run', 'Stop session', 'Get cURL'],
             ],
             [
                 'neither Export nor Update on flows',
@@ -556,7 +558,7 @@ describe('ShortcutsModalComponent', () => {
             loadUser([{ action: 'flow.add-files', keys: 'Alt+KeyJ' }]);
             grantPermissions({ [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Export] });
             openModal();
-            expect(flowRowLabels()).toEqual(without('Run', 'Get cURL', 'Add files'));
+            expect(flowRowLabels()).toEqual(without('Run', 'Stop session', 'Get cURL', 'Add files'));
             expect(sectionTitles()).toEqual(BASE_SECTIONS);
 
             grantPermissions(EVERY_FLOW_PERMISSION);
@@ -927,7 +929,7 @@ describe('ShortcutsModalComponent', () => {
             press(actionPicker(), { key: 'ArrowDown', code: 'ArrowDown' });
             press(actionPicker(), { key: 'Enter', code: 'Enter' });
 
-            expect(actionPicker().value).toBe('Sessions');
+            expect(actionPicker().value).toBe('Stop session');
             expect(editor()!.querySelector('[role="listbox"]')).toBeNull();
             expect(document.activeElement).toBe(keysBox());
         });
@@ -2139,6 +2141,33 @@ describe('ShortcutsModalComponent', () => {
 
             expect(flowRow('Open / close chat')).toBe('Alt C');
             expect(hasButton('Reset Open / close chat key')).toBe(false);
+            expect(nextPatch().body).toEqual({ custom_shortcuts: { custom: [], overrides: {} } });
+        });
+
+        it('edits the Stop session key and saves the override', () => {
+            setUp();
+            openModal();
+
+            click(buttonNamed('Edit Stop session key'));
+            press(keysBox(), { key: 'j', code: 'KeyJ', altKey: true });
+            press(keysBox(), { key: 'Enter', code: 'Enter' });
+
+            expect(flowRow('Stop session')).toBe('Alt J');
+            expect(hasButton('Reset Stop session key')).toBe(true);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [], overrides: { 'flow.stop-session': 'Alt+KeyJ' } },
+            });
+        });
+
+        it('gives Stop session Ctrl+Shift+Enter back with its reset button', () => {
+            setUp();
+            loadSettings({ custom: [], overrides: { 'flow.stop-session': 'Alt+KeyJ' } });
+            openModal();
+
+            click(buttonNamed('Reset Stop session key'));
+
+            expect(flowRow('Stop session')).toBe('Ctrl Shift Enter');
+            expect(hasButton('Reset Stop session key')).toBe(false);
             expect(nextPatch().body).toEqual({ custom_shortcuts: { custom: [], overrides: {} } });
         });
 

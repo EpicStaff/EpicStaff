@@ -20,7 +20,7 @@ export type UsePermissionRefusalOperation =
     | 'unpack';
 
 /** An action on the open flow that needs Flows:Use itself, whatever the flow contains. */
-export type UsePermissionAction = 'run' | 'getCurl';
+export type UsePermissionAction = 'run' | 'getCurl' | 'stopSession';
 
 /** What holds the trigger nodes, and the operation as the subject of "… requires the Use permission". */
 const REFUSAL_COPY: Record<UsePermissionRefusalOperation, { source: string; action: string }> = {
@@ -36,6 +36,7 @@ const REFUSAL_COPY: Record<UsePermissionRefusalOperation, { source: string; acti
 const ACTION_REFUSAL_COPY: Record<UsePermissionAction, string> = {
     run: '<strong>Running</strong> this flow',
     getCurl: '<strong>Getting the cURL command</strong> for this flow',
+    stopSession: '<strong>Stopping</strong> a session of this flow',
 };
 
 function isUsePermissionRefusal(error: unknown): error is HttpErrorResponse {

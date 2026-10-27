@@ -1,6 +1,7 @@
 import { Dialog as CdkDialog, DialogRef } from '@angular/cdk/dialog';
-import { HttpErrorResponse } from '@angular/common/http';
-import { Component, forwardRef, inject, input, output, signal, WritableSignal } from '@angular/core';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Component, forwardRef, inject, input, NO_ERRORS_SCHEMA, output, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
@@ -28,6 +29,8 @@ import { FlowsApiService } from '../../../../features/flows/services/flows-api.s
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { GraphCollaborationWsService } from '../../../../features/flows/services/graph-collaboration.ws.service';
 import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
+import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
+import { GraphMessagesComponent } from '../../../../pages/running-graph/components/graph-messages/graph-messages.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionRequirement, PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
@@ -280,6 +283,9 @@ describe('FlowVisualProgrammingComponent', () => {
             imports: [FlowVisualProgrammingComponent],
             providers: [
                 provideLoadedExecutionTimeoutLimits(),
+                // The sessions panel is the real one; it loads the sessions and stops one over HTTP.
+                provideHttpClient(),
+                provideHttpClientTesting(),
                 {
                     provide: ActivatedRoute,
                     useValue: {
@@ -340,6 +346,11 @@ describe('FlowVisualProgrammingComponent', () => {
         });
         TestBed.overrideComponent(PythonNodePanelComponent, { set: { template: '', imports: [] } });
         TestBed.overrideComponent(NodePanelShellComponent, { add: { providers: [NodeAuthorshipStore] } });
+        // The message stream of a session is not what these tests look at.
+        TestBed.overrideComponent(FlowMessagesPanelComponent, {
+            remove: { imports: [GraphMessagesComponent] },
+            add: { schemas: [NO_ERRORS_SCHEMA] },
+        });
         TestBed.overrideComponent(FlowVisualProgrammingComponent, {
             set: {
                 imports: [
@@ -352,6 +363,7 @@ describe('FlowVisualProgrammingComponent', () => {
                     ShortcutsModalStubComponent,
                     VersionHistoryStubComponent,
                     FlowAssistantPanelStubComponent,
+                    FlowMessagesPanelComponent,
                 ],
             },
         });
@@ -1142,6 +1154,153 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(isAssistantOpen()).toBe(true);
             expect(liveCanvas()!.commitSidePanelToFlow).toHaveBeenCalled();
             expect(runGraph['runGraph']).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('Stop session key', () => {
+        const CTRL_SHIFT_ENTER: KeyboardEventInit = { code: 'Enter', key: 'Enter', ctrlKey: true, shiftKey: true };
+        const STOP_URL = '/api/sessions/7/stop/';
+        let httpMock: HttpTestingController;
+        let confirm: ReturnType<typeof vi.spyOn>;
+
+        beforeEach(() => {
+            httpMock = TestBed.inject(HttpTestingController);
+            confirm = vi
+                .spyOn(TestBed.inject(ConfirmationDialogService), 'confirm')
+                .mockReturnValue(of<ConfirmationResult>('close'));
+        });
+
+        function press(init: KeyboardEventInit, target: EventTarget = window): KeyboardEvent {
+            const event = new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true });
+            target.dispatchEvent(event);
+            return event;
+        }
+
+        /** Opens the sessions panel as its toggle does; it selects the newest of `sessionStatuses`, ids 7, 6, … */
+        function openSessionsPanel(sessionStatuses: readonly GraphSessionStatus[]): void {
+            fixture.nativeElement.querySelector('.collapse-toggle').click();
+            fixture.detectChanges();
+            httpMock
+                .expectOne((request) => request.method === 'GET' && request.url === '/api/sessions/')
+                .flush({
+                    count: sessionStatuses.length,
+                    next: null,
+                    previous: null,
+                    results: sessionStatuses.map((status, index) => ({
+                        id: 7 - index,
+                        graph_id: 1,
+                        graph_name: 'Flow',
+                        status,
+                        status_updated_at: '2026-01-01T00:00:00Z',
+                        created_at: `2026-01-0${7 - index}T00:00:00Z`,
+                        finished_at: null,
+                        trigger: null,
+                    })),
+                });
+            fixture.detectChanges();
+        }
+
+        function stopButton(): HTMLButtonElement | null {
+            return fixture.nativeElement.querySelector('app-flow-messages-panel app-stop-button button');
+        }
+
+        it('Ctrl+Shift+Enter stops the selected running session, and the Stop button goes away, as after its click', () => {
+            openSessionsPanel([GraphSessionStatus.RUNNING, GraphSessionStatus.ENDED]);
+
+            const event = press(CTRL_SHIFT_ENTER);
+            httpMock.expectOne({ method: 'POST', url: STOP_URL }).flush(null);
+            fixture.detectChanges();
+
+            expect(event.defaultPrevented).toBe(true);
+            expect(stopButton()).toBeNull();
+            expect(runGraph['runGraph']).not.toHaveBeenCalled();
+            expect(confirm).not.toHaveBeenCalled();
+        });
+
+        it('Ctrl+Shift+Enter stops a session that waits for the user', () => {
+            openSessionsPanel([GraphSessionStatus.WAITING_FOR_USER]);
+
+            press(CTRL_SHIFT_ENTER);
+
+            httpMock.expectOne({ method: 'POST', url: STOP_URL });
+        });
+
+        it.each([
+            ['the sessions panel is closed', null, true],
+            ['the selected session has ended', [GraphSessionStatus.ENDED], true],
+            ['the selected session was stopped', [GraphSessionStatus.STOP], true],
+            ['the flow has no session', [], true],
+            ['the sessions panel is closed, for a user without Use', null, false],
+            ['the selected session has ended, for a user without Use', [GraphSessionStatus.ENDED], false],
+        ] as const)(
+            'Ctrl+Shift+Enter does nothing and says nothing when %s, as there is no Stop button',
+            (_case, sessionStatuses, canUse) => {
+                canRunFlows.set(canUse);
+                if (sessionStatuses) {
+                    openSessionsPanel(sessionStatuses);
+                }
+
+                const event = press(CTRL_SHIFT_ENTER);
+
+                expect(event.defaultPrevented).toBe(false);
+                httpMock.expectNone({ method: 'POST' });
+                expect(confirm).not.toHaveBeenCalled();
+                expect(toast['info']).not.toHaveBeenCalled();
+            }
+        );
+
+        it('Ctrl+Shift+Enter says the Use permission is required and stops nothing for a user who cannot run flows', () => {
+            canRunFlows.set(false);
+            openSessionsPanel([GraphSessionStatus.RUNNING]);
+
+            press(CTRL_SHIFT_ENTER);
+
+            expect(confirm).toHaveBeenCalledExactlyOnceWith(
+                expect.objectContaining({
+                    title: 'Use permission required',
+                    message:
+                        '<strong>Stopping</strong> a session of this flow requires the <strong>Use</strong> permission on flows.',
+                    hideConfirm: true,
+                })
+            );
+            httpMock.expectNone({ method: 'POST' });
+        });
+
+        it('Ctrl+Shift+Enter does nothing while typing in a text field', () => {
+            openSessionsPanel([GraphSessionStatus.RUNNING]);
+            const field = document.body.appendChild(document.createElement('input'));
+
+            const event = press(CTRL_SHIFT_ENTER, field);
+            field.remove();
+
+            expect(event.defaultPrevented).toBe(false);
+            httpMock.expectNone({ method: 'POST' });
+        });
+
+        it('Ctrl+Shift+Enter does nothing while the node menu is open, as its backdrop covers the panel', () => {
+            openSessionsPanel([GraphSessionStatus.RUNNING]);
+            liveCanvas()!.isNodeMenuOpen.set(true);
+
+            press(CTRL_SHIFT_ENTER);
+
+            httpMock.expectNone({ method: 'POST' });
+        });
+
+        it('Ctrl+Shift+Enter stops the session in a version preview too, like the Stop button', () => {
+            openSessionsPanel([GraphSessionStatus.RUNNING]);
+            component.onVersionPreviewRequested(VERSION_A);
+            fixture.detectChanges();
+
+            press(CTRL_SHIFT_ENTER);
+
+            httpMock.expectOne({ method: 'POST', url: STOP_URL });
+            expect(toast['info']).not.toHaveBeenCalled();
+        });
+
+        it('names the key in the Stop button tooltip', () => {
+            openSessionsPanel([GraphSessionStatus.RUNNING]);
+
+            expect(stopButton()!.getAttribute('aria-label')).toBe('Stop session (Ctrl + Shift + Enter)');
         });
     });
 

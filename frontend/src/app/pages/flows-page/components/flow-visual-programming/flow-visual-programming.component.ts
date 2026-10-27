@@ -159,13 +159,21 @@ import {
 } from './components/shortcuts-modal/shortcuts-modal.component';
 import { SerialSaveQueue } from './serial-save-queue';
 
-/** A header button's shortcut: the handler its output is bound to, behind the checks that hide or disable it. */
-interface HeaderShortcut {
+/**
+ * The shortcut of a header or sessions panel button: the handler its output is bound to, behind the checks that hide
+ * or disable it.
+ */
+interface ButtonShortcut {
     readonly action: EditorActionId;
     /** Which "needs the Use permission" text to show when the keymap says the user may not use this action. */
     readonly usePermissionAction?: UsePermissionAction;
     /** Set when the button is disabled in a version preview; its tooltip there. */
     readonly previewBlockedMessage?: string;
+    /**
+     * Set when the button exists only in some states, whatever the user's permissions: while it is false the key
+     * does nothing and says nothing, as there is no button to press.
+     */
+    readonly isButtonPresent?: () => boolean;
     readonly handle: () => void;
 }
 
@@ -243,6 +251,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly cdtExplanationsApiService = inject(CdtExplanationsApiService);
     private readonly easterEggTrigger = inject(EasterEggTriggerService);
     private readonly flowGraphHost = viewChild(FlowGraphComponent, { read: ElementRef<HTMLElement> });
+    /** The sessions panel; there only while it is open. */
+    private readonly messagesPanel = viewChild(FlowMessagesPanelComponent);
     private readonly isSnakeGameActive = signal(false);
     /** Board element the snake-game overlay covers; null while no game is running. */
     protected readonly snakeGameBoard = computed<HTMLElement | null>(() =>
@@ -396,7 +406,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             allowInEditable: true,
             destroyRef: this.destroyRef,
         });
-        this.registerHeaderShortcuts();
+        this.registerButtonShortcuts();
 
         effect(() => {
             const params = this.routeQueryParamMap();
@@ -2107,18 +2117,26 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     /**
-     * The header's Run, Sessions, Open / close chat and Get cURL keys. The page owns them, not the header: it
-     * handles what those buttons emit and knows the state they depend on. Each key calls the same handler its
-     * button's output is bound to, after the checks the header makes by hiding or disabling that button: without
-     * Flows:Use it says the action needs it, and in a version preview it says what the button's tooltip says.
+     * The header's Run, Sessions, Open / close chat and Get cURL keys, and the sessions panel's Stop session key. The
+     * page owns them, not the header or the panel: it handles what those buttons emit, or holds the panel, and knows
+     * the state they depend on. Each key calls the same handler its button's output is bound to, after the checks
+     * made by hiding or disabling that button: without Flows:Use it says the action needs it, and in a version
+     * preview it says what the button's tooltip says.
      */
-    private registerHeaderShortcuts(): void {
-        const shortcuts: readonly HeaderShortcut[] = [
+    private registerButtonShortcuts(): void {
+        const shortcuts: readonly ButtonShortcut[] = [
             {
                 action: 'flow.run',
                 usePermissionAction: 'run',
                 previewBlockedMessage: PREVIEW_BLOCKED_MESSAGES.run,
                 handle: () => this.handleRunFlow(),
+            },
+            {
+                action: 'flow.stop-session',
+                usePermissionAction: 'stopSession',
+                // The panel decides whether its selected session can be stopped; closed, it has no Stop button.
+                isButtonPresent: () => this.messagesPanel()?.canStopSelectedSession ?? false,
+                handle: () => this.messagesPanel()?.onStopSession(),
             },
             {
                 action: 'flow.sessions',
@@ -2134,16 +2152,19 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             },
         ];
         for (const shortcut of shortcuts) {
-            this.keymap.register(shortcut.action, () => this.onHeaderShortcut(shortcut), {
+            this.keymap.register(shortcut.action, () => this.onButtonShortcut(shortcut), {
                 // The header, and with it the buttons, only exists once the flow has loaded; the node menu's backdrop
                 // covers the buttons while it is open.
-                when: () => this.isLoaded() && !this.flowGraphComponent?.isNodeMenuOpen(),
+                when: () =>
+                    this.isLoaded() &&
+                    !this.flowGraphComponent?.isNodeMenuOpen() &&
+                    (shortcut.isButtonPresent?.() ?? true),
                 destroyRef: this.destroyRef,
             });
         }
     }
 
-    private onHeaderShortcut(shortcut: HeaderShortcut): void {
+    private onButtonShortcut(shortcut: ButtonShortcut): void {
         if (this.keymap.unavailableActionIds().has(shortcut.action)) {
             if (shortcut.usePermissionAction) {
                 this.usePermissionRefusal.showActionRefusal(shortcut.usePermissionAction);

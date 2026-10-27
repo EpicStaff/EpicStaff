@@ -100,6 +100,10 @@ describe('FlowUsePermissionRefusalService', () => {
             'getCurl',
             '<strong>Getting the cURL command</strong> for this flow requires the <strong>Use</strong> permission on flows.',
         ],
+        [
+            'stopSession',
+            '<strong>Stopping</strong> a session of this flow requires the <strong>Use</strong> permission on flows.',
+        ],
     ])('says in an OK-only warning that %s needs the Use permission', (action, message) => {
         service.showActionRefusal(action);
 

@@ -835,6 +835,18 @@ describe('KeymapService', () => {
         it.each([
             ['Ctrl+Enter', false, { key: 'Enter', code: 'Enter', ctrlKey: true }, 'flow.run'],
             ['Cmd+Enter on a mac', true, { key: 'Enter', code: 'Enter', metaKey: true }, 'flow.run'],
+            [
+                'Ctrl+Shift+Enter',
+                false,
+                { key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true },
+                'flow.stop-session',
+            ],
+            [
+                'Cmd+Shift+Enter on a mac',
+                true,
+                { key: 'Enter', code: 'Enter', metaKey: true, shiftKey: true },
+                'flow.stop-session',
+            ],
             ['Alt+C on a Cyrillic layout', false, { key: 'с', code: 'KeyC', altKey: true }, 'flow.chat'],
             ['Option+C on a mac', true, { key: 'ç', code: 'KeyC', altKey: true }, 'flow.chat'],
             ['Alt+,', false, { key: ',', code: 'Comma', altKey: true }, 'flow.settings'],
@@ -853,6 +865,24 @@ describe('KeymapService', () => {
 
             expect(handler).toHaveBeenCalledOnce();
             expect(event.defaultPrevented).toBe(true);
+        });
+
+        it.each([
+            ['Ctrl+Enter runs and does not stop', { key: 'Enter', code: 'Enter', ctrlKey: true }, ['run']],
+            [
+                'Ctrl+Shift+Enter stops and does not run',
+                { key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true },
+                ['stop'],
+            ],
+        ] as const)('keeps Run and Stop session apart: %s', (_case, init, expected) => {
+            setUp();
+            const fired: string[] = [];
+            keymap().register('flow.run', () => fired.push('run'));
+            keymap().register('flow.stop-session', () => fired.push('stop'));
+
+            press(init);
+
+            expect(fired).toEqual(expected);
         });
 
         it('fires once per press, not once per auto-repeat while the key is held', () => {
@@ -915,9 +945,11 @@ describe('KeymapService', () => {
         it.each([
             [false, 'flow.domain', 'Configure domain', 'Configure domain (Alt + M)'],
             [false, 'flow.run', 'Run', 'Run (Ctrl + Enter)'],
+            [false, 'flow.stop-session', 'Stop session', 'Stop session (Ctrl + Shift + Enter)'],
             [false, 'navigating.shortcuts', 'Keyboard shortcuts', 'Keyboard shortcuts (Ctrl + /)'],
             [true, 'flow.settings', 'Flow settings', 'Flow settings (⌥,)'],
             [true, 'flow.run', 'Run', 'Run (⌘↩)'],
+            [true, 'flow.stop-session', 'Stop session', 'Stop session (⌘⇧↩)'],
         ] as const)('adds the key to the label (mac: %s, %s)', (isMac, action, label, tooltip) => {
             setUp(isMac);
 
@@ -950,6 +982,7 @@ describe('KeymapService', () => {
         const CTRL_ENTER = { key: 'Enter', code: 'Enter', ctrlKey: true };
         const ALT_L = { key: 'l', code: 'KeyL', altKey: true };
         const ALT_S = { key: 's', code: 'KeyS', altKey: true };
+        const CTRL_SHIFT_ENTER = { key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true };
 
         function dialogButton(): HTMLButtonElement {
             return document.querySelector<HTMLButtonElement>('.cdk-dialog-container button')!;
@@ -1025,6 +1058,7 @@ describe('KeymapService', () => {
                 ['Ctrl+Enter', CTRL_ENTER, 'flow.run'],
                 ['Alt+L', ALT_L, 'flow.auto-arrange'],
                 ['Alt+S', ALT_S, 'flow.sessions'],
+                ['Ctrl+Shift+Enter', CTRL_SHIFT_ENTER, 'flow.stop-session'],
             ] as const)('keeps %s from reaching the flow behind it', (_key, init, action) => {
                 // jsdom cannot lay out the Foblex canvas the diagram is drawn on, and nothing here needs it.
                 TestBed.overrideComponent(CdtDecisionTreeDialogComponent, {
