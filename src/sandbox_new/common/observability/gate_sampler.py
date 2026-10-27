@@ -4,9 +4,10 @@ The checkpoint reads the manager's intake side (queued and held executions, the 
 rate) next to the worker's run gate (slots in use, its limits, the load it last read), so
 a benchmark can tell which limit was the one holding work back.
 
-It is a neutral observer: it sees each side only through the two protocols below, never a
-concrete class, so it depends on neither side of the seam. The composition root hands it
-the real objects.
+It is a neutral observer: it sees each side only through the two protocols below. The only
+thing it takes from either side is `RunGateSnapshot`, the return type of the run gate's
+port; it imports no implementation class and nothing from infrastructure. The composition
+root hands it the real objects.
 """
 
 import asyncio
