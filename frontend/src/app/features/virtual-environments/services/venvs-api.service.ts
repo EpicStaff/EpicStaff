@@ -5,10 +5,9 @@ import { map, Observable } from 'rxjs';
 
 import { withPermission } from '../../../core/http/permission-context';
 import { ConfigService } from '../../../services/config';
-import { CreateVenvRequest, UpdateVenvRequest, Venv, VenvListResponse } from '../models/venv.model';
+import { CreateVenvRequest, UpdateVenvRequest, Venv, VenvListQuery, VenvListResponse } from '../models/venv.model';
 
-// The MVP list is client-side filtered; one high-limit page covers every venv an org owns.
-const LIST_LIMIT = '1000';
+const LIST_LIMIT = '100';
 
 @Injectable({ providedIn: 'root' })
 export class VenvsApiService {
@@ -19,8 +18,10 @@ export class VenvsApiService {
         return `${this.configService.apiUrl}venvs/`;
     }
 
-    getVenvs(): Observable<Venv[]> {
-        const params = new HttpParams().set('limit', LIST_LIMIT);
+    getVenvs(query: VenvListQuery = {}): Observable<Venv[]> {
+        let params = new HttpParams().set('limit', LIST_LIMIT);
+        if (query.search) params = params.set('search', query.search);
+        if (query.order) params = params.set('order', query.order);
         return this.http
             .get<VenvListResponse>(this.venvsUrl, {
                 params,

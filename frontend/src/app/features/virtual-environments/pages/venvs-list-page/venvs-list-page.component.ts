@@ -2,7 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
@@ -14,18 +14,31 @@ import {
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
-import { catchError, EMPTY, filter, finalize, repeat, Subscription, switchMap, timer } from 'rxjs';
+import {
+    catchError,
+    debounceTime,
+    distinctUntilChanged,
+    EMPTY,
+    filter,
+    finalize,
+    map,
+    repeat,
+    skip,
+    Subscription,
+    switchMap,
+    timer,
+} from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { VenvCardComponent } from '../../components/venv-card/venv-card.component';
 import { VenvDialogComponent, VenvDialogData } from '../../components/venv-dialog/venv-dialog.component';
-import { Venv, VenvStatus } from '../../models/venv.model';
+import { Venv, VenvListQuery, VenvSortOrder, VenvStatus } from '../../models/venv.model';
 import { VenvsApiService } from '../../services/venvs-api.service';
 
-type VenvSortOrder = 'default' | 'name_asc' | 'name_desc';
-
 const POLL_INTERVAL_MS = 2_000;
+// Long enough that typing a word is one request, short enough to feel immediate.
+const SEARCH_DEBOUNCE_MS = 300;
 const BUILDING_STATUSES: ReadonlySet<VenvStatus> = new Set(['declared', 'processing']);
 
 @Component({
@@ -56,14 +69,12 @@ export class VenvsListPageComponent {
     readonly sortOrder = signal<VenvSortOrder>('default');
     readonly filterMenuOpen = signal(false);
 
-    readonly filteredVenvs = computed<Venv[]>(() => {
-        const term = this.searchTerm().trim().toLowerCase();
-        const venvs = term ? this.venvs().filter((venv) => venv.name.toLowerCase().includes(term)) : this.venvs();
-        const sortOrder = this.sortOrder();
-        if (sortOrder === 'default') return venvs;
-        const direction = sortOrder === 'name_asc' ? 1 : -1;
-        return [...venvs].sort((a, b) => direction * a.name.localeCompare(b.name));
-    });
+    // What the backend is asked for: it does the filtering and the sorting, the page only
+    // renders what comes back.
+    readonly queryParams = computed<VenvListQuery>(() => ({
+        search: this.searchTerm().trim(),
+        order: this.sortOrder(),
+    }));
     readonly hasActiveFilter = computed(() => this.sortOrder() !== 'default');
 
     readonly canUpdate = computed(() => this.permissions.can(ResourceCode.Venvs, ActionCode.Update));
@@ -83,9 +94,22 @@ export class VenvsListPageComponent {
     private readonly destroyRef = inject(DestroyRef);
 
     private pollSubscription: Subscription | null = null;
+    // Dropped before the next request is sent, so a slow answer to an old search cannot
+    // land after a newer one and put the wrong list on screen.
+    private listSubscription: Subscription | null = null;
 
     constructor() {
         this.loadVenvs();
+        // Typing reloads the list; a sort does so from `applySort`, which needs no debounce.
+        toObservable(this.searchTerm)
+            .pipe(
+                skip(1),
+                map((term) => term.trim()),
+                debounceTime(SEARCH_DEBOUNCE_MS),
+                distinctUntilChanged(),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.loadVenvs());
     }
 
     toggleFilterMenu(): void {
@@ -99,10 +123,12 @@ export class VenvsListPageComponent {
     applySort(sortOrder: VenvSortOrder): void {
         this.sortOrder.set(sortOrder);
         this.closeFilterMenu();
+        this.loadVenvs();
     }
 
     clearAllFilters(): void {
         this.sortOrder.set('default');
+        this.loadVenvs();
     }
 
     onCreate(): void {
@@ -155,10 +181,12 @@ export class VenvsListPageComponent {
 
     private loadVenvs(): void {
         this.stopPolling();
-        this.isLoading.set(true);
         this.loadError.set(null);
-        this.venvsApi
-            .getVenvs()
+        // `isLoading` is the first load only: a skeleton on every keystroke would hide the
+        // list the search is meant to narrow.
+        this.listSubscription?.unsubscribe();
+        this.listSubscription = this.venvsApi
+            .getVenvs(this.queryParams())
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (venvs) => {
@@ -199,7 +227,7 @@ export class VenvsListPageComponent {
         this.pollSubscription = timer(POLL_INTERVAL_MS)
             .pipe(
                 filter(() => document.visibilityState === 'visible'),
-                switchMap(() => this.venvsApi.getVenvs().pipe(catchError(() => EMPTY))),
+                switchMap(() => this.venvsApi.getVenvs(this.queryParams()).pipe(catchError(() => EMPTY))),
                 repeat(),
                 takeUntilDestroyed(this.destroyRef)
             )

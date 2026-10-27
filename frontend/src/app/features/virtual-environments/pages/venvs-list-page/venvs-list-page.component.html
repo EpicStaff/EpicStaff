@@ -130,7 +130,7 @@
                     </div>
                 }
             </div>
-        } @else if (filteredVenvs().length === 0) {
+        } @else if (venvs().length === 0) {
             <div class="venvs-page__list">
                 <div class="venvs-page__empty text-body">
                     @if (searchTerm().trim()) {
@@ -142,7 +142,7 @@
             </div>
         } @else {
             <div class="venvs-page__list">
-                @for (venv of filteredVenvs(); track venv.id) {
+                @for (venv of venvs(); track venv.id) {
                     <app-venv-card
                         [venv]="venv"
                         [canEdit]="canUpdate()"

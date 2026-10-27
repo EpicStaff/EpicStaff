@@ -1,3 +1,7 @@
+// Mirrors VENV_NAME_PATTERN in the sandbox service's Venv model; keep in sync. The service
+// rejects anything else, so the form says so before the request leaves the browser.
+export const VENV_NAME_PATTERN = /^[A-Za-z0-9 _-]+$/;
+
 // Mirrors VERSION_PATTERN in the sandbox service's Library model; keep in sync.
 export const VENV_LIBRARY_VERSION_PATTERN =
     /^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_.][a-z0-9]+)*)?$/;
@@ -54,6 +58,15 @@ export interface CreateVenvRequest {
 }
 
 export type UpdateVenvRequest = Partial<CreateVenvRequest>;
+
+// How the list page asks the backend to narrow and sort the venvs. `search` is a plain
+// substring of the name; `order` mirrors the service's VenvOrder.
+export type VenvSortOrder = 'default' | 'name_asc' | 'name_desc';
+
+export interface VenvListQuery {
+    search?: string;
+    order?: VenvSortOrder;
+}
 
 // The venv list envelope uses `result` (singular), not the `results` of the shared
 // `ApiGetRequest`: it passes through sandbox_new's VenvListSchema, which also carries
