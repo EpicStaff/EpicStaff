@@ -329,6 +329,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                     description: payload.description,
                     instruction_list: payload.instruction_list,
                     llm_config: payload.llm_config,
+                    fallback_llm_config: payload.fallback_llm_config,
                     fcm_llm_config: payload.fcm_llm_config,
                 },
                 !!payload.openFirstInstructionInEdit
@@ -338,6 +339,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 name: payload.name,
                 description: payload.description,
                 llm_config: payload.llm_config,
+                fallback_llm_config: payload.fallback_llm_config,
                 fcm_llm_config: payload.fcm_llm_config,
                 max_iter: payload.max_iter,
                 max_rpm: payload.max_rpm,
