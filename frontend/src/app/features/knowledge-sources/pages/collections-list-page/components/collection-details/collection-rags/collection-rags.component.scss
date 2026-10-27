@@ -21,8 +21,11 @@
     overflow-y: auto;
     scrollbar-gutter: stable;
 
+    // No bottom padding: the header carries it, so the open usage details can reach the row's edges.
+    // `overflow: hidden` rounds the details' bottom corners with the row's.
     .item {
-        padding: 0.5rem;
+        padding: 0.5rem 0.5rem 0;
+        overflow: hidden;
         border-radius: 0.5rem;
         border: 1px solid var(--color-divider-subtle);
         cursor: pointer;
@@ -32,6 +35,7 @@
         display: flex;
         align-items: center;
         column-gap: 0.5rem;
+        padding-bottom: 0.5rem;
     }
 
     .name {
@@ -57,8 +61,73 @@
         color: var(--fog-alpha-80);
     }
 
+    .usage-toggle {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--color-ks-transparent-text-80);
+        cursor: pointer;
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+
+        &__icon {
+            transition: transform 0.2s ease;
+
+            &.collapsed {
+                transform: rotate(-90deg);
+            }
+        }
+    }
+
+    // Flush with the row's sides, as the Recycle Bin's details are with theirs.
     .usage {
-        color: var(--color-ks-transparent-text-60);
+        margin-inline: -0.5rem;
+    }
+
+    // The Recycle Bin's expanded details look (recycle-bin-table `.bin-details`): right-aligned
+    // secondary labels, primary values, on the dark details background. Text at the size of the
+    // row's own name and model.
+    .usage-details {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: 6px 16px;
+        margin: 0;
+        padding: 12px;
+        background: var(--color-ks-transparent-black-28);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+
+        &__row {
+            display: contents;
+        }
+
+        &__label {
+            margin: 0;
+            text-align: end;
+            color: var(--color-ks-transparent-text-60);
+        }
+
+        &__value {
+            margin: 0;
+            min-width: 0;
+            color: var(--color-text-primary);
+            overflow-wrap: anywhere;
+        }
+
+        // A faint dot between the parts of a value, so the numbers stand out. Its spaces are real text,
+        // so copied text and screen readers keep them.
+        &__separator {
+            white-space: pre;
+            color: var(--fog-alpha-16);
+        }
     }
 
     .nav {

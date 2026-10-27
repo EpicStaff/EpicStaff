@@ -6,15 +6,14 @@ import { Observable, of } from 'rxjs';
 import { filter, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import {
-    getIndexingConfirmationData,
-    getIndexingConfirmationDataWithEstimate,
-    IndexingDocumentInfo,
-} from '../../helpers/get-indexing-confirmation-data.util';
 import { RagType } from '../../models/base-rag.model';
 import { EstimateDocumentConfig } from '../../models/naive-rag-document.model';
+import { IndexingDocumentInfo } from '../../models/rag-configuration';
+import { CollectionsStorageService } from '../../services/collections-storage.service';
+import { IndexingConfirmationDialogService } from '../../services/indexing-confirmation-dialog.service';
 import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { RagIndexingService } from '../../services/rag-indexing.service';
+import { IndexingConfirmationDialogData } from '../indexing-confirmation-dialog/indexing-confirmation-dialog.component';
 
 @Component({
     changeDetection: ChangeDetectionStrategy.Eager,
@@ -28,6 +27,8 @@ export abstract class RagConfigurationDialogComponent {
     protected confirmation = inject(ConfirmationDialogService);
     protected ragIndexingService = inject(RagIndexingService);
     protected pollingService = inject(KnowledgeSourcesPollingService);
+    protected collectionsStorage = inject(CollectionsStorageService);
+    private indexingConfirmation = inject(IndexingConfirmationDialogService);
 
     protected readonly isPreparingIndexing = signal(false);
 
@@ -69,7 +70,13 @@ export abstract class RagConfigurationDialogComponent {
         configIds: number[],
         documentConfigs?: EstimateDocumentConfig[]
     ): Observable<ConfirmationResult> {
-        if (!this.estimatesIndexing) return this.confirmation.confirm(getIndexingConfirmationData(documents));
+        const { ragId, ragType, collectionId } = this.data;
+        const dialogData: IndexingConfirmationDialogData = {
+            documents,
+            ragType,
+            ...this.collectionsStorage.getRagModelNames(collectionId, ragId, ragType),
+        };
+        if (!this.estimatesIndexing) return this.indexingConfirmation.confirm(dialogData);
 
         const estimate$ = configIds.length
             ? this.ragIndexingService.estimateIndexingOrNull(
@@ -82,6 +89,6 @@ export abstract class RagConfigurationDialogComponent {
               )
             : of(null);
 
-        return this.confirmation.confirm(getIndexingConfirmationDataWithEstimate(documents, estimate$));
+        return this.indexingConfirmation.confirm({ ...dialogData, estimate$ });
     }
 }
