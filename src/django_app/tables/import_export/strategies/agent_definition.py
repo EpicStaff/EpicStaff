@@ -149,6 +149,8 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
             llm_config_ids.add(instance.llm_config_id)
         if instance.fcm_llm_config_id:
             llm_config_ids.add(instance.fcm_llm_config_id)
+        if instance.fallback_llm_config_id:
+            llm_config_ids.add(instance.fallback_llm_config_id)
         deps[EntityType.LLM_CONFIG] = list(llm_config_ids)
 
         owned_surface_ids = set(instance.owned_surfaces.values_list("id", flat=True))
@@ -199,6 +201,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         default_surfaces = data.pop("default_surfaces", [])
         old_llm_config_id = data.pop("llm_config", None)
         old_fcm_llm_config_id = data.pop("fcm_llm_config", None)
+        old_fallback_llm_config_id = data.pop("fallback_llm_config", None)
         data.pop("id", None)
         normalize_legacy_agent_entry(data)
 
@@ -220,7 +223,11 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         )
 
         self._assign_llm_configs(
-            agent_definition, old_llm_config_id, old_fcm_llm_config_id, id_mapper
+            agent_definition,
+            old_llm_config_id,
+            old_fcm_llm_config_id,
+            old_fallback_llm_config_id,
+            id_mapper,
         )
         # Owned surfaces are always created fresh for a new agent: a reused row
         # is never re-owned, and each agent's owned surfaces are its own. They are
@@ -258,6 +265,10 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
             EntityType.LLM_CONFIG, data.get("fcm_llm_config")
         )
 
+        new_fallback_llm_config_id = id_mapper.get_or_none(
+            EntityType.LLM_CONFIG, data.get("fallback_llm_config")
+        )
+
         if new_llm_config_id is None:
             null_filters["llm_config_id__isnull"] = True
         else:
@@ -267,6 +278,11 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
             null_filters["fcm_llm_config_id__isnull"] = True
         else:
             filters["fcm_llm_config_id"] = new_fcm_llm_config_id
+
+        if new_fallback_llm_config_id is None:
+            null_filters["fallback_llm_config_id__isnull"] = True
+        else:
+            filters["fallback_llm_config_id"] = new_fallback_llm_config_id
 
         # SQL narrows on stored columns; whether the owned and default surfaces
         # match is decided in Python.
@@ -393,13 +409,25 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         agent_definition: AgentDefinition,
         old_llm_config_id,
         old_fcm_llm_config_id,
+        old_fallback_llm_config_id,
         id_mapper: IDMapper,
     ):
         new_llm_config_id = id_mapper.get_or_none(EntityType.LLM_CONFIG, old_llm_config_id)
         new_fcm_llm_config_id = id_mapper.get_or_none(EntityType.LLM_CONFIG, old_fcm_llm_config_id)
+        new_fallback_llm_config_id = id_mapper.get_or_none(
+            EntityType.LLM_CONFIG, old_fallback_llm_config_id
+        )
+        # Two exported configs with identical content can resolve to one existing
+        # row. The primary then wins and the fallback is dropped, because a
+        # fallback equal to the primary violates the agent's check constraint.
+        if new_fallback_llm_config_id == new_llm_config_id:
+            new_fallback_llm_config_id = None
 
         agent_definition.llm_config = LLMConfig.objects.filter(id=new_llm_config_id).first()
         agent_definition.fcm_llm_config = LLMConfig.objects.filter(id=new_fcm_llm_config_id).first()
+        agent_definition.fallback_llm_config = LLMConfig.objects.filter(
+            id=new_fallback_llm_config_id
+        ).first()
         agent_definition.save()
 
     def _assign_default_surfaces(

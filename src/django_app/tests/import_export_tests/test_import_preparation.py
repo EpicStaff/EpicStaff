@@ -162,6 +162,8 @@ class TestAgentEntries:
             _agent(default_surfaces=[{"surface_id": 1}]),
             _agent(llm_config="7"),
             _agent(fcm_llm_config=[7]),
+            _agent(fallback_llm_config="7"),
+            _agent(fallback_llm_config=[7]),
             _agent(max_iter="many"),
         ],
     )
