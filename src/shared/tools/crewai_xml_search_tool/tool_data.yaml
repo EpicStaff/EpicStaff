@@ -1,6 +1,6 @@
 tool-data:
   name: "XML Search Tool TESTED"
-  description: "A tool to perform semantic-like search on XML files. Takes 'search_query' and 'xml' path or URL."
+  description: "A tool to perform semantic-like search on XML files. Takes 'search_query' and 'xml', an http(s) URL of the XML file."
   args-schema: "args_schema.json"
   code-file: "main.py"
   entrypoint: "main"

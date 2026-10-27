@@ -37,6 +37,10 @@
         cursor: pointer;
     }
 
+    &__error {
+        margin: 1rem 1.25rem 0;
+    }
+
     &__content {
         padding: 1rem 1.25rem;
         overflow: auto;

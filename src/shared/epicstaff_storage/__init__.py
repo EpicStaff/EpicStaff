@@ -3,6 +3,7 @@ from .storage import (
     StorageLineEditMismatchError,
     StoragePermissionError,
     StorageSizeLimitError,
+    check_storage_permission,
     clear_mutations,
     get_mutations,
 )
@@ -13,6 +14,7 @@ __all__ = [
     "StorageLineEditMismatchError",
     "StoragePermissionError",
     "StorageSizeLimitError",
+    "check_storage_permission",
     "clear_mutations",
     "get_mutations",
     "storage",

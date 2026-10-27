@@ -71,17 +71,17 @@
     </section>
 
     <section class="menu-section">
-        @if (canStartQuickStartTour()) {
+        @for (tour of tours(); track tour.key) {
             <button
                 class="nav-item"
-                (click)="onQuickStartTourClick()"
+                (click)="onTourClick(tour.key)"
             >
                 <app-svg-icon
                     size="16px"
-                    icon="help"
+                    [icon]="tour.icon"
                     class="nav-icon"
                 />
-                <span class="nav-label text-body-small-large">Quick Start Tour</span>
+                <span class="nav-label text-body-small-large">{{ tour.label }}</span>
             </button>
         }
         <button

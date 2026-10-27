@@ -21,10 +21,10 @@
     overflow-y: auto;
     scrollbar-gutter: stable;
 
-    // No bottom padding: the header carries it, so the open usage details can reach the row's edges.
-    // `overflow: hidden` rounds the details' bottom corners with the row's.
+    // The header row alone is 40px with the 1px borders, like the inputs above. No vertical padding, so the
+    // open usage details reach the row's edges; `overflow: hidden` rounds their bottom corners with the row's.
     .item {
-        padding: 0.5rem 0.5rem 0;
+        padding: 0 0.5rem;
         overflow: hidden;
         border-radius: 0.5rem;
         border: 1px solid var(--color-divider-subtle);
@@ -35,7 +35,7 @@
         display: flex;
         align-items: center;
         column-gap: 0.5rem;
-        padding-bottom: 0.5rem;
+        min-height: calc(2.5rem - 2px);
     }
 
     .name {

@@ -4,8 +4,11 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { ConfirmationDialogService } from '@shared/components';
-import { of, Subject, throwError } from 'rxjs';
+import { ActionCode, BulkDeleteGroup, BulkDeleteResponse, ResourceCode } from '@shared/models';
+import { BulkDeleteService } from '@shared/services';
+import { map, of, Subject, throwError } from 'rxjs';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { GraphVersionDto } from '../../models/graph.model';
 import { CreateGraphWarningsService } from '../../services/create-graph-warnings.service';
@@ -17,12 +20,24 @@ const VERSIONS: GraphVersionDto[] = [
     { id: 2, graph_id: 7, name: 'Second', description: 'Second description', created_at: '2026-09-02T10:00:00Z' },
 ];
 
+function deletedResponse(ids: number[]): BulkDeleteResponse {
+    return {
+        dry_run: false,
+        deleted_count: ids.length,
+        deleted_ids: ids,
+        deletable_ids: ids,
+        not_found_ids: [],
+        skipped: [],
+        usage: {},
+    };
+}
+
 describe('VersionHistoryPanelComponent', () => {
     let fixture: ComponentFixture<VersionHistoryPanelComponent>;
     let component: VersionHistoryPanelComponent;
     let flowsApi: {
         getGraphVersions: ReturnType<typeof vi.fn>;
-        deleteGraphVersion: ReturnType<typeof vi.fn>;
+        bulkDeleteGraphVersions: ReturnType<typeof vi.fn>;
         updateGraphVersion: ReturnType<typeof vi.fn>;
         createGraphFromVersion: ReturnType<typeof vi.fn>;
     };
@@ -35,8 +50,11 @@ describe('VersionHistoryPanelComponent', () => {
     let confirmationDialog: { confirm: ReturnType<typeof vi.fn> };
     let previewed: GraphVersionDto[];
     let deleted: GraphVersionDto[];
+    /** Read when a panel is created; every other action is always granted. */
+    let isDeleteGranted: boolean;
 
     beforeEach(() => {
+        isDeleteGranted = true;
         // The card's overflow tooltips observe their size; jsdom has no ResizeObserver.
         vi.stubGlobal(
             'ResizeObserver',
@@ -48,21 +66,40 @@ describe('VersionHistoryPanelComponent', () => {
         );
         flowsApi = {
             getGraphVersions: vi.fn().mockReturnValue(of(VERSIONS)),
-            deleteGraphVersion: vi.fn().mockReturnValue(of(undefined)),
+            bulkDeleteGraphVersions: vi.fn((ids: number[]) => of(deletedResponse(ids))),
             updateGraphVersion: vi.fn(),
             createGraphFromVersion: vi.fn(),
         };
         navigate = vi.fn().mockResolvedValue(true);
         toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
-        confirmationDialog = { confirm: vi.fn().mockReturnValue(of(true)) };
+        // Only the OK-only trigger-node refusal opens it; its result is never read.
+        confirmationDialog = { confirm: vi.fn() };
+        // Stands in for the preview + confirmation dialog as if the user confirmed: runs the panel's own delete target.
+        const bulkDelete = {
+            run: vi.fn((groups: BulkDeleteGroup[]) =>
+                groups[0].target
+                    .bulkDelete(groups[0].items.map((item) => item.id))
+                    .pipe(map((response) => [{ group: groups[0], response }]))
+            ),
+        };
 
         TestBed.configureTestingModule({
             imports: [VersionHistoryPanelComponent],
             providers: [
                 { provide: FlowsApiService, useValue: flowsApi as unknown as FlowsApiService },
+                { provide: BulkDeleteService, useValue: bulkDelete as unknown as BulkDeleteService },
                 {
                     provide: ConfirmationDialogService,
                     useValue: confirmationDialog as unknown as ConfirmationDialogService,
+                },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (_resource: ResourceCode, action: ActionCode) =>
+                            action !== ActionCode.Delete || isDeleteGranted,
+                        canAny: (_resource: ResourceCode, actions: ActionCode[]) =>
+                            actions.some((action) => action !== ActionCode.Delete || isDeleteGranted),
+                    } as unknown as PermissionsService,
                 },
                 { provide: ToastService, useValue: toast as unknown as ToastService },
                 { provide: Router, useValue: { navigate } as unknown as Router },
@@ -294,9 +331,126 @@ describe('VersionHistoryPanelComponent', () => {
     it('removes the card and emits versionDeleted when a version is deleted', () => {
         openMenuAndClick(1, 'Delete');
 
-        expect(flowsApi.deleteGraphVersion).toHaveBeenCalledWith(2);
+        expect(flowsApi.bulkDeleteGraphVersions).toHaveBeenCalledWith([2]);
         expect(deleted).toEqual([VERSIONS[1]]);
         expect(cards().length).toBe(1);
+    });
+
+    it('toggles the card instead of requesting a preview while selecting', () => {
+        component.enterSelectMode();
+        fixture.detectChanges();
+
+        click(cards()[0].querySelector('.version-date')!);
+        fixture.detectChanges();
+
+        expect(previewed).toEqual([]);
+        expect(component.isVersionSelected(1)).toBe(true);
+        expect(cards()[0].getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('gives each row a secondary (light box, dark tick) selection checkbox', () => {
+        component.enterSelectMode();
+        fixture.detectChanges();
+
+        const checkboxes = cards().map((card) => card.querySelector('.version-checkbox app-checkbox input'));
+        expect(checkboxes).toHaveLength(VERSIONS.length);
+        checkboxes.forEach((checkbox) => expect(checkbox?.classList).toContain('secondary'));
+    });
+
+    describe('select dropdown', () => {
+        function selectButton(): HTMLButtonElement {
+            return fixture.nativeElement.querySelector('app-bulk-select-dropdown .bulk-select__main');
+        }
+
+        function selectAllItem(): HTMLButtonElement {
+            return document.querySelector<HTMLButtonElement>('.bulk-select-menu__item')!;
+        }
+
+        function footerDelete(): HTMLButtonElement {
+            return fixture.nativeElement.querySelector('.footer-delete-button button');
+        }
+
+        it('enters select mode from the header and selects every version with "Select All"', () => {
+            selectButton().click();
+            fixture.detectChanges();
+            expect(component.selectMode()).toBe(true);
+            expect(footerDelete().disabled).toBe(true);
+
+            selectAllItem().click();
+            fixture.detectChanges();
+
+            expect(component.isVersionSelected(1)).toBe(true);
+            expect(component.isVersionSelected(2)).toBe(true);
+            expect(footerDelete().textContent?.trim()).toBe('Delete');
+            expect(footerDelete().classList).toContain('btn-danger');
+            expect(footerDelete().disabled).toBe(false);
+        });
+
+        it('puts the trash icon inside the Delete label, next to the text', () => {
+            selectButton().click();
+            fixture.detectChanges();
+
+            const icon = footerDelete().querySelector('.btn-content app-svg-icon use');
+            expect(icon?.getAttribute('href')).toBe('#icon-trash');
+            expect(footerDelete().querySelector('.btn-icon')).toBeNull();
+        });
+
+        it('offers "Deselect All" once every version is selected, and it clears the selection', () => {
+            selectButton().click();
+            fixture.detectChanges();
+            selectAllItem().click();
+            fixture.detectChanges();
+
+            selectButton().click();
+            fixture.detectChanges();
+            expect(selectAllItem().textContent?.trim()).toBe('Deselect All');
+            selectAllItem().click();
+            fixture.detectChanges();
+
+            expect(component.selectedCount()).toBe(0);
+            expect(component.selectMode()).toBe(true);
+        });
+
+        it('leaves select mode and clears the selection with the ×', () => {
+            selectButton().click();
+            fixture.detectChanges();
+            click(cards()[0]);
+            fixture.detectChanges();
+
+            fixture.nativeElement.querySelector('.bulk-select__clear').click();
+            fixture.detectChanges();
+
+            expect(component.selectMode()).toBe(false);
+            expect(component.selectedCount()).toBe(0);
+            expect(fixture.nativeElement.querySelector('.restore-version-btn')).not.toBeNull();
+        });
+
+        it('offers neither the select dropdown nor any Delete without the delete permission', () => {
+            isDeleteGranted = false;
+            fixture = TestBed.createComponent(VersionHistoryPanelComponent);
+            component = fixture.componentInstance;
+            fixture.componentRef.setInput('graphId', 7);
+            fixture.detectChanges();
+
+            expect(fixture.nativeElement.querySelector('app-bulk-select-dropdown')).toBeNull();
+            expect(fixture.nativeElement.querySelector('.footer-delete-button')).toBeNull();
+            openMenu(0);
+            expect(menuItemLabels()).toContain('Restore');
+            expect(menuItemLabels()).not.toContain('Delete');
+        });
+    });
+
+    it('treats a double-click as a single toggle while selecting', () => {
+        component.enterSelectMode();
+        fixture.detectChanges();
+
+        click(cards()[0], 1);
+        click(cards()[0], 2);
+        click(cards()[1].querySelector('.version-name')!, 1);
+        click(cards()[1].querySelector('.version-name')!, 2);
+
+        expect(component.isVersionSelected(1)).toBe(true);
+        expect(component.isVersionSelected(2)).toBe(true);
     });
 
     it('emits the updated version after a successful rename', () => {

@@ -25,6 +25,12 @@
     min-height: 0;
 }
 
+.desks-shell__rail {
+    position: relative;
+    display: flex;
+    flex-shrink: 0;
+}
+
 .desks-shell__page {
     flex: 1;
     min-width: 0;

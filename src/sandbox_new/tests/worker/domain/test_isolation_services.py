@@ -119,11 +119,10 @@ def build_test_jail(tmp_path: Path):
     return build_jail(
         exec_dir=tmp_path / "executions" / "exec-1",
         venv_path=tmp_path / "venvs" / "venv-1abc",
-        savefiles_root=tmp_path / "savefiles",
     )
 
 
-def test_the_jail_grants_write_access_to_the_execution_workspace(tmp_path):
+def test_the_jail_grants_write_access_only_to_the_runs_own_workspace(tmp_path):
     jail = build_test_jail(tmp_path)
     exec_dir = tmp_path / "executions" / "exec-1"
 
@@ -131,7 +130,6 @@ def test_the_jail_grants_write_access_to_the_execution_workspace(tmp_path):
         str(exec_dir),
         str(exec_dir / "home"),
         str(exec_dir / "tmp"),
-        str(tmp_path / "savefiles"),
     }
 
 

@@ -1,7 +1,0 @@
-tool-data:
-  name: "Create File Tool"
-  description: "A tool that's used to create a file in a user-provided file path"
-  args-schema: "args_schema.json"
-  code-file: "main.py"
-  entrypoint: "main"
-  requirements: "requirements.txt"

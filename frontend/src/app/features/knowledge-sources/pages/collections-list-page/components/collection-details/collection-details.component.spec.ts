@@ -14,6 +14,16 @@ import { DocumentsStorageService } from '../../../../services/documents-storage.
 import { CollectionDetailsComponent } from './collection-details.component';
 import { CollectionRagsComponent } from './collection-rags/collection-rags.component';
 
+// jsdom has no ResizeObserver; the guidance field only needs it to exist to watch its width.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 function collection(collectionId: number, collectionName: string): CreateCollectionDtoResponse {
     return {
         collection_id: collectionId,

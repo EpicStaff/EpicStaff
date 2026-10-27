@@ -31,6 +31,7 @@ import { InputNumberComponent } from '../../app-input-number/input-number.compon
 import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
 import { BinnedSecretNoteComponent } from '../../binned-secret-note/binned-secret-note.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
+import { ErrorBannerComponent } from '../../error-banner/error-banner.component';
 import { CustomInputComponent } from '../../form-input/form-input.component';
 import { HintMessageComponent } from '../../hint-message/hint-message.component';
 import { JsonEditorFormFieldComponent } from '../../json-editor/json-editor-form-field.component';
@@ -54,6 +55,7 @@ interface DialogData {
         ButtonComponent,
         ReactiveFormsModule,
         CustomInputComponent,
+        ErrorBannerComponent,
         KeyValueListComponent,
         SliderWithStepperComponent,
         InputNumberComponent,
