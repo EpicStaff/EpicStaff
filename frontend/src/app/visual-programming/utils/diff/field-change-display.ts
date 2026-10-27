@@ -1,6 +1,7 @@
 import { UnionNodeDiffState } from './build-union-flow-model';
 import { fieldFormat, FieldName } from './field-display';
 import { isSameValue, stableStringify } from './normalize';
+import { keyPrefixOf } from './semantic-projections';
 import { FieldChange, FieldChangeStatus } from './types';
 
 // How a node panel shows one field change: which change a field has, and the current value split into the
@@ -27,7 +28,27 @@ export interface MapKeyChange {
 export type CodeFieldName = Extract<FieldName, 'python_code.code' | 'pre_computation.code' | 'post_computation.code'>;
 
 /** A JSON field shown in a JSON editor: its change is shown as a code diff of the JSON text, like code. */
-export type JsonFieldName = Extract<FieldName, 'variables' | 'output_map'>;
+export type JsonFieldName = Extract<FieldName, 'variables' | 'output_map' | 'output_schema'>;
+
+/** A field whose items the diff pairs by a key of their own and compares field by field (`KEYED_COLLECTIONS`). */
+export type KeyedCollectionName = Extract<FieldName, 'tasks' | 'condition_groups' | 'prompts'>;
+
+/** What a restore does to one item of a keyed collection, e.g. the second task of an Agent node. */
+export interface KeyedItemChange {
+    /** The item's key as the diff writes it in a path: `2` for the second task, `yes` for the group named "yes". */
+    key: string;
+    /** `added` = the item is in the version only, `deleted` = on the canvas only. */
+    status: FieldChangeStatus;
+    /** For a changed item: the item fields a restore changes (`name`), in the diff's order; empty otherwise. */
+    fields: string[];
+    /**
+     * A changed item: the canvas value of each field in `fields`, by field. An added item: `null`. A deleted item: the
+     * whole item.
+     */
+    current: unknown;
+    /** A changed item: the version value of each field in `fields`, by field. An added item: the whole item. */
+    version: unknown;
+}
 
 /** Both sides of a changed code field as the code diff shows them. */
 export interface CodeChange {
@@ -56,6 +77,17 @@ const CHANGE_CONTEXT_LENGTH = 20;
 const STRUCK_PART_MAX_LENGTH = 120;
 /** How much of each end of a capped struck part is kept. */
 const STRUCK_PART_KEPT_END = 50;
+/** How many lines of the start of a long text a tooltip shows at most; also the cut of a kept list item. */
+const VALUE_START_MAX_LINES = 3;
+/**
+ * How many lines of unchanged text a tooltip keeps right before and right after the struck part at most, counting the
+ * line the struck part starts or ends on.
+ */
+const CHANGE_CONTEXT_MAX_LINES = 2;
+/** A struck part with more lines than this keeps only its ends, so a rewritten text of many lines stays short. */
+const STRUCK_PART_MAX_LINES = 6;
+/** How many lines of each end of a capped struck part are kept. */
+const STRUCK_PART_KEPT_END_LINES = 3;
 const CUT_MARK = '…';
 
 /**
@@ -108,6 +140,22 @@ export function jsonChangeFor(diff: UnionNodeDiffState | null, field: JsonFieldN
 }
 
 /**
+ * The change of a JSON field of one item of a keyed collection (e.g. `output_schema` of the second task) for the code
+ * diff, both sides as the JSON editor shows them (indented by 2); `null` when the node shows no field marks, the item
+ * is not on both sides (added or removed whole), or that field of it is unchanged.
+ */
+export function keyedItemJsonChangeFor(
+    diff: UnionNodeDiffState | null,
+    collection: KeyedCollectionName,
+    key: string,
+    field: string
+): CodeChange | null {
+    const item = keyedItemChanges(diff, collection)?.find((candidate) => candidate.key === key);
+    if (item?.status !== 'changed' || !item.fields.includes(field)) return null;
+    return { current: jsonText(asMap(item.current)[field]), version: jsonText(asMap(item.version)[field]) };
+}
+
+/**
  * What a restore does to each row of a list field (diffed whole), the rows paired by `keyOf`; `null` when the node
  * shows no field marks or the field is unchanged. A key that repeats is paired by its occurrence: the second row
  * with a key on the canvas with the second one in the version. Each change holds the whole items.
@@ -156,6 +204,48 @@ export function reordersKeyedList(
     return current
         .filter((pairingKey) => inVersion.has(pairingKey))
         .some((pairingKey, index) => pairingKey !== sharedInVersionOrder[index]);
+}
+
+/**
+ * What a restore does to each item of a keyed collection (`tasks`, `condition_groups`), one change per item with
+ * its changed fields gathered, in the diff's order (version items first); `null` when the node shows no field marks or
+ * no item changed. An item a restore keeps has no change.
+ */
+export function keyedItemChanges(
+    diff: UnionNodeDiffState | null,
+    collection: KeyedCollectionName
+): KeyedItemChange[] | null {
+    if (diff === null || !showsFieldMarks(diff)) return null;
+    const itemField = `${collection}[]`;
+    const itemPathStart = `${collection}[${keyPrefixOf(collection) ?? ''}`;
+    const items = new Map<string, KeyedItemChange>();
+    for (const change of diff.fields) {
+        if (change.field !== itemField && !change.field.startsWith(`${itemField}.`)) continue;
+        // `tasks[].name` → `name`; the whole item → ''. The key is what the path holds between the item's brackets.
+        const field = change.field.slice(itemField.length + 1);
+        const pathEnd = field === '' ? ']' : `].${field}`;
+        const key = change.path.slice(itemPathStart.length, change.path.length - pathEnd.length);
+        if (field === '') {
+            items.set(key, {
+                key,
+                status: change.status,
+                fields: [],
+                current: change.current,
+                version: change.version,
+            });
+            continue;
+        }
+        const item = items.get(key);
+        const fieldsSoFar = item?.status === 'changed' ? item : null;
+        items.set(key, {
+            key,
+            status: 'changed',
+            fields: [...(fieldsSoFar?.fields ?? []), field],
+            current: { ...asMap(fieldsSoFar?.current), [field]: change.current },
+            version: { ...asMap(fieldsSoFar?.version), [field]: change.version },
+        });
+    }
+    return items.size > 0 ? [...items.values()] : null;
 }
 
 /**
@@ -236,15 +326,21 @@ export function fieldValueSegments(
  * The current value as text segments, the parts a restore replaces struck:
  * - text: the common start and end with the version value are kept, the middle is struck. Compared by
  *   grapheme (what a reader sees as one character), so an emoji or an accent is never split. A long text is cut so
- *   the reader still sees where it is: always its start (the first `VALUE_START_LENGTH` graphemes, or up to the
- *   struck part when that starts earlier), then "…" and the last `CHANGE_CONTEXT_LENGTH` graphemes before the
- *   struck part when there is a gap between the two, then the struck part, then the first
- *   `CHANGE_CONTEXT_LENGTH` graphemes after it and "…" when more text follows. A struck part longer than
- *   `STRUCK_PART_MAX_LENGTH` keeps only its first and last `STRUCK_PART_KEPT_END` graphemes, with an unstruck "…"
- *   between them;
+ *   the reader still sees where it is: always its start, then "…" and the context right before the struck part when
+ *   there is a gap between the two, then the struck part, then the context right after it and "…" when more text
+ *   follows. Each part is cut by graphemes and by lines, whichever cuts first (a line ends at a `\n`; `\r\n` is one
+ *   break):
+ *   - the start: `VALUE_START_LENGTH` graphemes, `VALUE_START_MAX_LINES` lines (or up to the struck part when that
+ *     starts earlier);
+ *   - the context before and after: `CHANGE_CONTEXT_LENGTH` graphemes, `CHANGE_CONTEXT_MAX_LINES` lines each,
+ *     counting the line the struck part starts or ends on;
+ *   - the struck part: longer than `STRUCK_PART_MAX_LENGTH` graphemes or `STRUCK_PART_MAX_LINES` lines, it keeps
+ *     only its first and last `STRUCK_PART_KEPT_END` graphemes and `STRUCK_PART_KEPT_END_LINES` lines, with an
+ *     unstruck "…" between them.
+ *   A cut that would drop nothing but one line break is not made: "…" never stands for a line break alone;
  * - a list: the items the version does not have are struck; a repeated item is kept only as many times as the
- *   version has it. A long struck item is capped like a struck part of text, a long kept item cut to its first
- *   `VALUE_START_LENGTH` graphemes;
+ *   version has it. A long struck item is capped like a struck part of text, a long kept item cut like the start of
+ *   a text;
  * - a number, a flag, or a value of another type than the version's: struck whole;
  * - a structured value: compared as its JSON text, cut the same way;
  * - `null`, `''`, an empty list or map: one struck "empty".
@@ -303,18 +399,26 @@ function textSegments(currentText: string, versionText: string): DisplaySegment[
     const segments: DisplaySegment[] = [
         { text: keptBefore(before), struck: false },
         ...struckPart(current.slice(prefix, current.length - suffix)),
-        { text: startOf(after, CHANGE_CONTEXT_LENGTH), struck: false },
+        { text: startOf(after, CHANGE_CONTEXT_LENGTH, CHANGE_CONTEXT_MAX_LINES), struck: false },
     ];
     return segments.filter((segment) => segment.text !== '');
 }
 
 /** The part a restore replaces, struck; only its two ends when it is long, the cut mark between them not struck. */
 function struckPart(replaced: readonly string[]): DisplaySegment[] {
-    if (replaced.length <= STRUCK_PART_MAX_LENGTH) return [{ text: replaced.join(''), struck: true }];
+    if (replaced.length <= STRUCK_PART_MAX_LENGTH && lineCount(replaced) <= STRUCK_PART_MAX_LINES) {
+        return [{ text: replaced.join(''), struck: true }];
+    }
+    // Over either limit the gap between the two ends holds at least 21 graphemes or 2 line breaks: never empty.
+    const headEnd = Math.min(STRUCK_PART_KEPT_END, firstLinesEnd(replaced, STRUCK_PART_KEPT_END_LINES));
+    const tailStart = Math.max(
+        replaced.length - STRUCK_PART_KEPT_END,
+        lastLinesStart(replaced, STRUCK_PART_KEPT_END_LINES)
+    );
     return [
-        { text: replaced.slice(0, STRUCK_PART_KEPT_END).join(''), struck: true },
+        { text: replaced.slice(0, headEnd).join(''), struck: true },
         { text: CUT_MARK, struck: false },
-        { text: replaced.slice(-STRUCK_PART_KEPT_END).join(''), struck: true },
+        { text: replaced.slice(tailStart).join(''), struck: true },
     ];
 }
 
@@ -323,13 +427,48 @@ function struckPart(replaced: readonly string[]): DisplaySegment[] {
  * before the struck part meet, else the start, "…", and that context.
  */
 function keptBefore(kept: readonly string[]): string {
-    if (kept.length <= VALUE_START_LENGTH + CHANGE_CONTEXT_LENGTH) return kept.join('');
-    return kept.slice(0, VALUE_START_LENGTH).join('') + CUT_MARK + kept.slice(-CHANGE_CONTEXT_LENGTH).join('');
+    const startEnd = Math.min(VALUE_START_LENGTH, firstLinesEnd(kept, VALUE_START_MAX_LINES));
+    const contextStart = Math.max(kept.length - CHANGE_CONTEXT_LENGTH, lastLinesStart(kept, CHANGE_CONTEXT_MAX_LINES));
+    if (!isWorthCutting(kept.slice(startEnd, contextStart))) return kept.join('');
+    return kept.slice(0, startEnd).join('') + CUT_MARK + kept.slice(contextStart).join('');
 }
 
-/** The first `length` graphemes of a kept text, "…" after them when it is cut. */
-function startOf(kept: readonly string[], length: number): string {
-    return kept.length > length ? kept.slice(0, length).join('') + CUT_MARK : kept.join('');
+/** The first `length` graphemes and `maxLines` lines of a kept text, "…" after them when it is cut. */
+function startOf(kept: readonly string[], length: number, maxLines: number): string {
+    const end = Math.min(length, firstLinesEnd(kept, maxLines));
+    return isWorthCutting(kept.slice(end)) ? kept.slice(0, end).join('') + CUT_MARK : kept.join('');
+}
+
+/** A "…" in place of nothing, or of one line break only, hides nothing: such a text is kept whole. */
+function isWorthCutting(dropped: readonly string[]): boolean {
+    return dropped.length > 1 || (dropped.length === 1 && !isLineBreak(dropped[0]));
+}
+
+/** Where the first `maxLines` lines end: at the `maxLines`-th line break (not kept), else at the end of the text. */
+function firstLinesEnd(text: readonly string[], maxLines: number): number {
+    let breaks = 0;
+    for (let index = 0; index < text.length; index++) {
+        if (isLineBreak(text[index]) && ++breaks === maxLines) return index;
+    }
+    return text.length;
+}
+
+/** Where the last `maxLines` lines start: right after the `maxLines`-th line break from the end, else at 0. */
+function lastLinesStart(text: readonly string[], maxLines: number): number {
+    let breaks = 0;
+    for (let index = text.length - 1; index >= 0; index--) {
+        if (isLineBreak(text[index]) && ++breaks === maxLines) return index + 1;
+    }
+    return 0;
+}
+
+function lineCount(text: readonly string[]): number {
+    return text.filter(isLineBreak).length + 1;
+}
+
+/** `\r\n` is one grapheme, so it counts as one break. */
+function isLineBreak(grapheme: string): boolean {
+    return grapheme === '\n' || grapheme === '\r\n';
 }
 
 /** The user-perceived characters (graphemes): an emoji with its modifiers, a letter with its accents. */
@@ -344,7 +483,10 @@ function listSegments(current: readonly unknown[], version: readonly unknown[]):
         const match = unmatched.findIndex((candidate) => isSameValue(candidate, item));
         if (match !== -1) unmatched.splice(match, 1);
         const text = graphemes(itemText(item));
-        const parts = match === -1 ? struckPart(text) : [{ text: startOf(text, VALUE_START_LENGTH), struck: false }];
+        const parts =
+            match === -1
+                ? struckPart(text)
+                : [{ text: startOf(text, VALUE_START_LENGTH, VALUE_START_MAX_LINES), struck: false }];
         return index === 0 ? parts : [{ text: LIST_SEPARATOR, struck: false }, ...parts];
     });
 }

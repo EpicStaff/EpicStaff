@@ -1,10 +1,12 @@
 import { NodeType } from '@shared/models';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
-import { NodeModel } from '../../core/models/node.model';
+import { NodeModel, ScheduleTriggerNodeModel } from '../../core/models/node.model';
+import { ScheduleTriggerNodeData } from '../../core/models/schedule-trigger.model';
 import { buildFlowModelFromGraphDto } from '../load';
 import { getNodeDiff } from '../save';
 import { liveAgent, liveClassificationTable, liveGraph, liveTask } from '../testing/live-graph.fixture';
+import { diffProjections } from './diff-fields';
 import { FIELD_DISPLAY } from './field-display';
 import {
     IGNORED_NODE_PATHS,
@@ -171,5 +173,98 @@ describe('semantic projections', () => {
         const fieldNames = flow.nodes.flatMap((node) => fieldNamesOf(projectNode(node, stubContext)));
 
         expect([...new Set(fieldNames)].filter((fieldName) => !Object.hasOwn(FIELD_DISPLAY, fieldName))).toEqual([]);
+    });
+});
+
+describe('schedule projection', () => {
+    const schedule = buildFlowModelFromGraphDto(liveGraph).nodes.find(
+        (node): node is ScheduleTriggerNodeModel => node.type === NodeType.SCHEDULE_TRIGGER
+    )!;
+    const once: Partial<ScheduleTriggerNodeData> = {
+        runMode: 'once',
+        intervalEvery: null,
+        intervalUnit: null,
+        weekdays: [],
+        endType: 'never',
+        endDateTime: null,
+        maxRuns: null,
+    };
+    const repeat: Partial<ScheduleTriggerNodeData> = {
+        runMode: 'repeat',
+        intervalEvery: 1,
+        intervalUnit: 'hours',
+        weekdays: [],
+        endType: 'never',
+        endDateTime: null,
+        maxRuns: null,
+    };
+
+    function changedFields(current: Partial<ScheduleTriggerNodeData>, version: Partial<ScheduleTriggerNodeData>) {
+        const project = (data: Partial<ScheduleTriggerNodeData>) =>
+            projectNode({ ...schedule, data: { ...schedule.data, ...data } }, stubContext);
+        return diffProjections(project(current), project(version)).map((change) => change.field);
+    }
+
+    it.each<[string, Partial<ScheduleTriggerNodeData>, Partial<ScheduleTriggerNodeData>, string[]]>([
+        [
+            'once: stale interval and end settings',
+            {
+                ...once,
+                intervalEvery: 5,
+                intervalUnit: 'days',
+                weekdays: ['mon'],
+                endType: 'after_n_runs',
+                endDateTime: '2026-12-01T12:00:00',
+                maxRuns: 3,
+            },
+            once,
+            [],
+        ],
+        ['once → repeat', once, repeat, ['run_mode', 'interval_every', 'interval_unit', 'end_type']],
+        [
+            'repeat "on date": stale max runs',
+            { ...repeat, endType: 'on_date', endDateTime: '2026-12-01T12:00:00', maxRuns: 4 },
+            { ...repeat, endType: 'on_date', endDateTime: '2026-12-01T12:00:00' },
+            [],
+        ],
+        [
+            'repeat "on date": other end date',
+            { ...repeat, endType: 'on_date', endDateTime: '2026-12-01T12:00:00' },
+            { ...repeat, endType: 'on_date', endDateTime: '2026-12-02T12:00:00' },
+            ['end_date_time'],
+        ],
+        [
+            'repeat "after N runs": stale end date',
+            { ...repeat, endType: 'after_n_runs', maxRuns: 3, endDateTime: '2026-12-01T12:00:00' },
+            { ...repeat, endType: 'after_n_runs', maxRuns: 3 },
+            [],
+        ],
+        [
+            'repeat "after N runs": other max runs',
+            { ...repeat, endType: 'after_n_runs', maxRuns: 3 },
+            { ...repeat, endType: 'after_n_runs', maxRuns: 4 },
+            ['max_runs'],
+        ],
+        [
+            'repeat "never": stale end date and max runs',
+            { ...repeat, endDateTime: '2026-12-01T12:00:00', maxRuns: 3 },
+            repeat,
+            [],
+        ],
+        ['repeat in hours: stale weekdays', { ...repeat, weekdays: ['mon'] }, repeat, []],
+        [
+            'repeat in days: other weekdays',
+            { ...repeat, intervalUnit: 'days', weekdays: ['mon'] },
+            { ...repeat, intervalUnit: 'days', weekdays: ['tue'] },
+            ['weekdays'],
+        ],
+        [
+            'repeat in weeks: other weekdays',
+            { ...repeat, intervalUnit: 'weeks', weekdays: ['mon'] },
+            { ...repeat, intervalUnit: 'weeks', weekdays: ['mon', 'fri'] },
+            ['weekdays'],
+        ],
+    ])('%s', (_case, current, version, expected) => {
+        expect(changedFields(current, version)).toEqual(expected);
     });
 });

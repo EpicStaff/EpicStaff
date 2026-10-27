@@ -6,6 +6,8 @@ export type {
     CodeFieldName,
     DisplaySegment,
     JsonFieldName,
+    KeyedCollectionName,
+    KeyedItemChange,
     ListRowChanges,
     MapKeyChange,
 } from './field-change-display';
@@ -16,6 +18,8 @@ export {
     fieldGroupChange,
     fieldValueSegments,
     jsonChangeFor,
+    keyedItemChanges,
+    keyedItemJsonChangeFor,
     keyedListRowChanges,
     linkedEntityFormat,
     mapFieldRowChanges,

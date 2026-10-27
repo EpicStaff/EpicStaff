@@ -1,3 +1,5 @@
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
+
 :host {
     display: block;
     width: 100%;
@@ -152,3 +154,7 @@
     color: var(--color-input-text-placeholder);
     font-size: 0.875rem;
 }
+
+// Version diff: the value of a changed field. Read-only, the button has no box of its own, so it gets one; keep after
+// its read-only look, which this overrides.
+@include diff-value-mark.marked('.tz-selector__btn', $draws-box: true);

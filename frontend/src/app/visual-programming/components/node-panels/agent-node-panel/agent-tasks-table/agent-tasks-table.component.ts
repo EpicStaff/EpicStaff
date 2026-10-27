@@ -15,7 +15,9 @@ import { AppSvgIconComponent, MultiSelectComponent, SelectItem } from '@shared/c
 import { ToastService } from '../../../../../services/notifications';
 import { AgentNodeTaskUi } from '../../../../core/models/agent-node.model';
 import { isValidOutputSchema } from '../../../../utils/validation/output-schema.validator';
+import { DiffFieldMarkComponent } from '../../../diff-field-mark/diff-field-mark.component';
 import { VariableHighlightTextareaComponent } from '../../shared/variable-highlight-textarea/variable-highlight-textarea.component';
+import { AgentTaskRowChanges, AgentTaskRowMark, KEPT_AGENT_TASK_ROW, RemovedAgentTask } from './agent-task-row-changes';
 
 interface ContextRef {
     id?: number;
@@ -28,7 +30,13 @@ interface ResolvedTaskRef extends AgentNodeTaskUi {
 
 @Component({
     selector: 'app-agent-tasks-table',
-    imports: [DragDropModule, AppSvgIconComponent, MultiSelectComponent, VariableHighlightTextareaComponent],
+    imports: [
+        DragDropModule,
+        AppSvgIconComponent,
+        MultiSelectComponent,
+        VariableHighlightTextareaComponent,
+        DiffFieldMarkComponent,
+    ],
     templateUrl: './agent-tasks-table.component.html',
     styleUrls: ['./agent-tasks-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -41,6 +49,8 @@ export class AgentTasksTableComponent {
 
     public readonly showValidation = input<boolean>(false);
     public readonly readonly = input<boolean>(false);
+    /** Changes tab of a version preview: what a restore does to each row. `null` anywhere else. */
+    public readonly rowChanges = input<AgentTaskRowChanges | null>(null);
     public readonly tasksChange = output<AgentNodeTaskUi[]>();
     public readonly cellSelect = output<{ taskIndex: number; field: 'instructions' | 'schema' }>();
 
@@ -48,6 +58,13 @@ export class AgentTasksTableComponent {
     public readonly invalidSchemaIds = signal<Set<string>>(new Set());
 
     public readonly contextPopupRowIndex = signal<number | null>(null);
+
+    /** One per task row, in its order. */
+    protected readonly rowMarks = computed<AgentTaskRowMark[]>(() =>
+        this.tasks().map((_, index) => this.rowChanges()?.rows[index] ?? KEPT_AGENT_TASK_ROW)
+    );
+    /** The canvas tasks a restore removes, shown as extra rows after the version's. */
+    protected readonly removedTasks = computed<RemovedAgentTask[]>(() => this.rowChanges()?.removed ?? []);
 
     public readonly contextCandidates = computed<ResolvedTaskRef[]>(() => {
         const rowIndex = this.contextPopupRowIndex();

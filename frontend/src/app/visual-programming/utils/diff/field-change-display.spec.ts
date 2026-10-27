@@ -6,6 +6,7 @@ import {
     fieldGroupChange,
     fieldValueSegments,
     jsonChangeFor,
+    keyedItemChanges,
     keyedListRowChanges,
     linkedEntityFormat,
     mapFieldRowChanges,
@@ -496,6 +497,87 @@ describe('reordersKeyedList', () => {
     });
 });
 
+describe('keyedItemChanges', () => {
+    const diffOf = (fields: FieldChange[], status: NodeDiffStatus = 'changed') => ({
+        status,
+        fields,
+        missingReferences: [],
+    });
+    const itemChange = (path: string, field: string, current: unknown, version: unknown): FieldChange => ({
+        path,
+        field,
+        status: 'changed',
+        current,
+        version,
+    });
+    const TASK = { name: 'Review', instructions: 'Check it', output_schema: {}, context_tasks: [1] };
+
+    it('gathers the changed fields of each item, then gives the items a restore adds or removes whole', () => {
+        const changes = keyedItemChanges(
+            diffOf([
+                itemChange('tasks[1].name', 'tasks[].name', 'Old', 'Research'),
+                itemChange('tasks[1].context_tasks', 'tasks[].context_tasks', [2], []),
+                { path: 'tasks[2]', field: 'tasks[]', status: 'added', current: null, version: TASK },
+                { path: 'tasks[3]', field: 'tasks[]', status: 'deleted', current: TASK, version: null },
+                itemChange('node_name', 'node_name', 'a', 'b'),
+            ]),
+            'tasks'
+        );
+
+        expect(changes).toEqual([
+            {
+                key: '1',
+                status: 'changed',
+                fields: ['name', 'context_tasks'],
+                current: { name: 'Old', context_tasks: [2] },
+                version: { name: 'Research', context_tasks: [] },
+            },
+            { key: '2', status: 'added', fields: [], current: null, version: TASK },
+            { key: '3', status: 'deleted', fields: [], current: TASK, version: null },
+        ]);
+    });
+
+    it('reads a key written with its prefix, even one holding brackets and dots', () => {
+        const changes = keyedItemChanges(
+            diffOf([
+                itemChange('condition_groups[name=a].b].expression', 'condition_groups[].expression', 'x > 1', 'x > 2'),
+            ]),
+            'condition_groups'
+        );
+
+        expect(changes?.map(({ key, fields }) => ({ key, fields }))).toEqual([{ key: 'a].b', fields: ['expression'] }]);
+    });
+
+    it('gives nothing when no item changed, on a node not changed, or with no diff', () => {
+        const nameChange = itemChange('tasks[1].name', 'tasks[].name', 'Old', 'Research');
+
+        expect(keyedItemChanges(diffOf([itemChange('node_name', 'node_name', 'a', 'b')]), 'tasks')).toBeNull();
+        expect(keyedItemChanges(diffOf([nameChange]), 'condition_groups')).toBeNull();
+        expect(keyedItemChanges(diffOf([nameChange], 'added'), 'tasks')).toBeNull();
+        expect(keyedItemChanges(null, 'tasks')).toBeNull();
+    });
+});
+
+describe('the tooltip of a schedule date and time', () => {
+    it.each([
+        { field: 'start_date_time' as const, current: '2026-06-30T08:15:00', text: '30.06.2026 at 08:15' },
+        { field: 'end_date_time' as const, current: '2026-12-01T23:05:00+02:00', text: '01.12.2026 at 23:05' },
+    ])('shows $current as the date and time pickers do: $text', ({ field, current, text }) => {
+        expect(fieldValueSegments(field, current, '2026-07-01T12:00:00')).toEqual([struck(text)]);
+    });
+
+    it('strikes nothing when both sides show the same minute', () => {
+        expect(fieldValueSegments('start_date_time', '2026-07-01T12:00:00', '2026-07-01T12:00:30')).toEqual([
+            kept('01.07.2026 at 12:00'),
+        ]);
+    });
+
+    it('shows a value it cannot read as it is, and no value as empty', () => {
+        expect(fieldValueSegments('end_date_time', 'soon', null)).toEqual([struck('soon')]);
+        expect(fieldValueSegments('end_date_time', null, '2026-07-01T12:00:00')).toEqual([struck('empty')]);
+    });
+});
+
 describe('fieldGroupChange', () => {
     const change = (field: FieldName, current: unknown, version: unknown): FieldChange => ({
         path: field,
@@ -652,6 +734,110 @@ describe('the tooltip segments of a long replaced part', () => {
             current: ['👍🏻'.repeat(130)],
             version: [],
             segments: [struck('👍🏻'.repeat(50)), kept('…'), struck('👍🏻'.repeat(50))],
+        },
+    ])('keeps $kind', ({ current, version, segments }) => {
+        expect(segmentsOf(current, version)).toEqual(segments);
+    });
+});
+
+describe('the tooltip segments of a value with many lines', () => {
+    /** Short lines `l<from>` to `l<to>`, joined by `\n`. */
+    const lines = (from: number, to: number, prefix = 'l'): string =>
+        Array.from({ length: to - from + 1 }, (_, index) => `${prefix}${from + index}`).join('\n');
+
+    it.each<{ kind: string; current: unknown; version: unknown; segments: DisplaySegment[] }>([
+        {
+            kind: 'many short lines before the change: the first 3 lines, "…", the 2 lines up to the change',
+            current: `${lines(1, 7)} X tail`,
+            version: `${lines(1, 7)} Y tail`,
+            segments: [kept('l1\nl2\nl3…l6\nl7 '), struck('X'), kept(' tail')],
+        },
+        {
+            kind: 'a change on a line of its own after 5 lines: the start and the context meet, nothing cut',
+            current: `${lines(1, 4)}\nX`,
+            version: `${lines(1, 4)}\nY`,
+            segments: [kept('l1\nl2\nl3\nl4\n'), struck('X')],
+        },
+        {
+            kind: 'a change on a line of its own after 6 lines: the line between the start and the context dropped',
+            current: `${lines(1, 5)}\nX`,
+            version: `${lines(1, 5)}\nY`,
+            segments: [kept('l1\nl2\nl3…l5\n'), struck('X')],
+        },
+        {
+            kind: 'many lines after the change: the rest of its line and 1 more line, "…"',
+            current: `l1\nl2 X\n${lines(3, 6)}`,
+            version: `l1\nl2 Y\n${lines(3, 6)}`,
+            segments: [kept('l1\nl2 '), struck('X'), kept('\nl3…')],
+        },
+        {
+            kind: 'only an empty last line after the 2 lines of context: nothing cut',
+            current: 'X\nl2\n',
+            version: 'Y\nl2\n',
+            segments: [struck('X'), kept('\nl2\n')],
+        },
+        {
+            kind: 'a change on the first line: no start before it, the context after it cut by lines',
+            current: `X\n${lines(2, 9)}`,
+            version: `Y\n${lines(2, 9)}`,
+            segments: [struck('X'), kept('\nl2…')],
+        },
+        {
+            kind: 'Windows line breaks: each \\r\\n one break, never split',
+            current: `${lines(1, 6).replaceAll('\n', '\r\n')}\r\nX\r\n${lines(7, 9).replaceAll('\n', '\r\n')}`,
+            version: `${lines(1, 6).replaceAll('\n', '\r\n')}\r\nY\r\n${lines(7, 9).replaceAll('\n', '\r\n')}`,
+            segments: [kept('l1\r\nl2\r\nl3…l6\r\n'), struck('X'), kept('\r\nl7…')],
+        },
+        {
+            kind: 'a long first line, then short lines: the start cut by graphemes, the context by lines',
+            current: `${'s'.repeat(50)}\n${lines(2, 6)} X`,
+            version: `${'s'.repeat(50)}\n${lines(2, 6)} Y`,
+            segments: [kept(`${'s'.repeat(40)}…l5\nl6 `), struck('X')],
+        },
+        {
+            kind: 'a value under both limits: untouched',
+            current: 'first line\nsecond X line\nthird line',
+            version: 'first line\nsecond Y line\nthird line',
+            segments: [kept('first line\nsecond '), struck('X'), kept(' line\nthird line')],
+        },
+        {
+            kind: 'a kept list item of many lines: its first 3 lines, "…"',
+            current: [lines(1, 5), 'gone'],
+            version: [lines(1, 5)],
+            segments: [kept('l1\nl2\nl3…'), kept(', '), struck('gone')],
+        },
+    ])('shows $kind', ({ current, version, segments }) => {
+        expect(segmentsOf(current, version)).toEqual(segments);
+    });
+
+    it.each<{ kind: string; current: unknown; version: unknown; segments: DisplaySegment[] }>([
+        {
+            kind: 'a replaced part of 7 lines: its first 3 lines, an unstruck "…", its last 3 lines',
+            current: `keep\n${lines(1, 7, 'r')}`,
+            version: 'keep\nother',
+            segments: [kept('keep\n'), struck('r1\nr2\nr3'), kept('…'), struck('r5\nr6\nr7')],
+        },
+        {
+            kind: 'a replaced part of exactly 6 lines: not cut',
+            current: `keep\n${lines(1, 6, 'r')}`,
+            version: 'keep\nother',
+            segments: [kept('keep\n'), struck(lines(1, 6, 'r'))],
+        },
+        {
+            kind: 'a replaced part of long lines: each end cut by graphemes first',
+            current: [1, 2, 3, 4, 5, 6, 7].map((line) => `${line}`.repeat(30)).join('\n'),
+            version: 'other',
+            segments: [
+                struck(`${'1'.repeat(30)}\n${'2'.repeat(19)}`),
+                kept('…'),
+                struck(`${'6'.repeat(19)}\n${'7'.repeat(30)}`),
+            ],
+        },
+        {
+            kind: 'a removed list item of many lines: capped like a replaced part',
+            current: [lines(1, 8, 'r')],
+            version: [],
+            segments: [struck('r1\nr2\nr3'), kept('…'), struck('r6\nr7\nr8')],
         },
     ])('keeps $kind', ({ current, version, segments }) => {
         expect(segmentsOf(current, version)).toEqual(segments);

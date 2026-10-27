@@ -1,4 +1,5 @@
 @use '../../../styles/node-panel-mixins.scss' as mixins;
+@use '../../../../../styles/diff-value-mark' as diff-value-mark;
 
 .panel-container {
     display: flex;
@@ -429,3 +430,24 @@
     resize: none !important;
     outline: none !important;
 }
+
+// Version diff (Changes tab), widened panel. The mark boxes the instructions of the big pane; the pane clips what
+// sticks out, so the box sits inside it, with room for the badge on its corner.
+.instructions-mark.diff-field-mark--shown {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    margin: 0.75rem;
+}
+
+// The changed output schema, as a diff of its JSON, fills the big pane (Monaco needs a sized box).
+.output-schema-diff {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+}
+
+// Version diff (Changes tab): the agent picked, a trigger this panel lays out itself, boxed like an input. Keep after
+// the trigger's own read-only look, which it overrides.
+@include diff-value-mark.marked-inside('.dropdown-trigger', $draws-box: true);

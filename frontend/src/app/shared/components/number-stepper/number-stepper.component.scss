@@ -1,3 +1,5 @@
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
+
 .number-stepper {
     width: 100%;
 
@@ -146,3 +148,7 @@
         color: var(--crimson-500);
     }
 }
+
+// Version diff: the value of a changed field. Read-only, the control has no box of its own, so it gets one; keep after
+// its read-only look, which this overrides.
+@include diff-value-mark.marked('.number-stepper__control', $draws-box: true);

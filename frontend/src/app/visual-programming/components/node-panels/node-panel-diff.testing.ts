@@ -4,13 +4,16 @@ import { NO_ERRORS_SCHEMA, Provider, signal, Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { JsonEditorComponent, RagTabComponent } from '@shared/components';
 import { NodeType } from '@shared/models';
+import { MarkdownComponent } from 'ngx-markdown';
 
 import { GraphSessionService } from '../../../features/flows/services/flows-sessions.service';
 import { RunSessionSSEService } from '../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { provideLoadedExecutionTimeoutLimits } from '../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { CodeEditorComponent } from '../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
-import { NodeModel } from '../../core/models/node.model';
+import { AgentNodeTaskUi } from '../../core/models/agent-node.model';
+import { AgentNodeModel, NodeModel, ScheduleTriggerNodeModel } from '../../core/models/node.model';
+import { ScheduleTriggerNodeData } from '../../core/models/schedule-trigger.model';
 import { FLOW_EDITOR_PREVIEW } from '../../core/providers/flow-editor-preview.token';
 import { FlowService } from '../../services/flow.service';
 import { KeyValueEntryDraftsService } from '../../services/key-value-entry-drafts.service';
@@ -33,6 +36,8 @@ export const SHOWN_DIFF_MARKS = [
     '.entry-row-mark--added',
     '.entry-row-mark--removed',
     '.entry-order-note',
+    '.att-row--added',
+    '.att-row--removed',
     'app-code-diff-view',
 ].join(', ');
 
@@ -53,11 +58,61 @@ export function liveNodeOfType(type: NodeType): NodeModel {
     return buildFlowModelFromGraphDto(liveGraph).nodes.find((node) => node.type === type)!;
 }
 
+/** Two tasks, the second taking the first as context. */
+export const AGENT_TASKS: AgentNodeTaskUi[] = [
+    {
+        id: 1,
+        tempId: 'task-1',
+        name: 'Research',
+        instructions: 'Find three sources',
+        output_schema: {},
+        contextRefs: [],
+    },
+    {
+        id: 2,
+        tempId: 'task-2',
+        name: 'Write',
+        instructions: 'Write the summary',
+        output_schema: { type: 'object' },
+        contextRefs: [{ id: 1 }],
+    },
+];
+
+/**
+ * The live graph fixture's Agent node with an agent, two tasks and the surfaces of the fixture's Task node, so its panel
+ * shows every field (the fixture's own has none of them).
+ */
+export function agentNodeWithTasks(tasks: AgentNodeTaskUi[] = AGENT_TASKS): AgentNodeModel {
+    const node = liveNodeOfType(NodeType.AGENT) as AgentNodeModel;
+    return {
+        ...node,
+        data: {
+            ...node.data,
+            agent_definition: 41,
+            surface_list: [51],
+            tasks,
+            inline_surface: {
+                instructions: 'Be brief',
+                python_tools: [{ python_tool: 21, mode: 'allow' }],
+                mcp_tools: [{ mcp_tool: 31, mode: 'deny' }],
+                storage_items: [],
+                knowledge: [],
+            },
+        },
+    };
+}
+
+/** The live graph fixture's Schedule node (repeats hourly until a date) with `data` changed. */
+export function scheduleNodeWith(data: Partial<ScheduleTriggerNodeData>): ScheduleTriggerNodeModel {
+    const node = liveNodeOfType(NodeType.SCHEDULE_TRIGGER) as ScheduleTriggerNodeModel;
+    return { ...node, data: { ...node.data, ...data } };
+}
+
 /**
  * Renders a panel's real template as the version preview shows it, read-only, with `fields` as the open node's
  * changes. The editors that need a browser runtime (Monaco: the code and JSON editors, also in the test payload
- * section, and the code diff) and the RAG search settings are left as their bare elements, so a mark around them still
- * shows.
+ * section, and the code diff), the RAG search settings and the Markdown view of instructions (it needs the app's
+ * Markdown setup) are left as their bare elements, so a mark around them still shows.
  */
 export function openPanelOnChangesTab<TPanel>(
     component: Type<TPanel>,
@@ -85,7 +140,7 @@ export function openPanelOnChangesTab<TPanel>(
     renderCodeDiffViewWithStubEditor();
     for (const host of [component, TestPayloadSectionComponent]) {
         TestBed.overrideComponent(host, {
-            remove: { imports: [CodeEditorComponent, JsonEditorComponent, RagTabComponent] },
+            remove: { imports: [CodeEditorComponent, JsonEditorComponent, RagTabComponent, MarkdownComponent] },
             add: { schemas: [NO_ERRORS_SCHEMA] },
         });
     }

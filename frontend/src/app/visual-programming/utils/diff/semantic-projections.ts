@@ -4,6 +4,7 @@ import { DEFAULT_KEY_VALUE_MODE, MISSING_END_OUTPUT_MAP } from '../../core/const
 import { findCdtSection } from '../../core/models/cdt-section.model';
 import { ComputationConfig } from '../../core/models/classification-decision-table.model';
 import { AgentNodeModel, BaseNodeModel, NodeModel } from '../../core/models/node.model';
+import { ScheduleTriggerNodeData } from '../../core/models/schedule-trigger.model';
 import { InlineSurface } from '../../core/models/task-node.model';
 import { FieldName } from './field-display';
 import {
@@ -165,12 +166,7 @@ export const SEMANTIC_PROJECTIONS = {
             is_active: node.data.isActive,
             run_mode: node.data.runMode,
             start_date_time: emptyToNull(node.data.startDateTime),
-            interval_every: node.data.intervalEvery,
-            interval_unit: node.data.intervalUnit,
-            weekdays: sortWeekdays(node.data.weekdays),
-            end_type: node.data.endType,
-            end_date_time: node.data.endDateTime,
-            max_runs: node.data.maxRuns,
+            ...scheduleSettings(node.data),
             timezone: node.data.timezone,
         }),
         ignored: {},
@@ -377,6 +373,36 @@ function pythonCode(code: CustomPythonCode): Projection {
         libraries: toLibraryList(code.libraries),
         secret_names: sortedStrings(code.secret_names),
         execution_timeout: code.execution_timeout ?? null,
+    };
+}
+
+/**
+ * The interval and end settings as the scheduler reads them. A setting it skips is projected as `null`, so a stale
+ * value the panel hides (left by an import, the flow assistant or the API) is not a change. The save path drops the
+ * same settings (`buildScheduleBlock`). They are read here, not listed as `ignored`, because whether they count
+ * depends on the run mode, the unit and the end type.
+ */
+function scheduleSettings(data: ScheduleTriggerNodeData): Projection {
+    const { runMode, intervalEvery, intervalUnit, weekdays, endType, endDateTime, maxRuns } = data;
+    if (runMode === 'once') {
+        // A one-off run reads only its start date and time.
+        return {
+            interval_every: null,
+            interval_unit: null,
+            weekdays: null,
+            end_type: null,
+            end_date_time: null,
+            max_runs: null,
+        };
+    }
+    return {
+        interval_every: intervalEvery,
+        interval_unit: intervalUnit,
+        // Only the "days" and "weeks" units read weekdays. The panel shows them for "weeks" only.
+        weekdays: intervalUnit === 'days' || intervalUnit === 'weeks' ? sortWeekdays(weekdays) : null,
+        end_type: endType,
+        end_date_time: endType === 'on_date' ? endDateTime : null,
+        max_runs: endType === 'after_n_runs' ? maxRuns : null,
     };
 }
 

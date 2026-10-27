@@ -21,6 +21,17 @@ function clockDuration(value: unknown): string {
     return typeof value === 'number' ? formatClockDuration(value) : String(value);
 }
 
+/**
+ * A schedule's date and time as its date and time pickers show them, in the schedule's own timezone (the stored value
+ * is the wall-clock time there): `2026-07-01T12:00:00` → `01.07.2026 at 12:00`, the words of the panel's "Next run".
+ */
+function scheduleDateTime(value: unknown): string {
+    const parts = typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value) : null;
+    if (!parts) return String(value);
+    const [, year, month, day, hour, minute] = parts;
+    return `${day}.${month}.${year} at ${hour}:${minute}`;
+}
+
 export const FIELD_DISPLAY = {
     node_name: { label: 'Name' },
     input_map: { label: 'Input map' },
@@ -40,12 +51,12 @@ export const FIELD_DISPLAY = {
     fields: { label: 'Telegram fields' },
     is_active: { label: 'Active' },
     run_mode: { label: 'Run mode' },
-    start_date_time: { label: 'Start' },
+    start_date_time: { label: 'Start', format: scheduleDateTime },
     interval_every: { label: 'Repeat every' },
     interval_unit: { label: 'Repeat unit' },
     weekdays: { label: 'Weekdays' },
     end_type: { label: 'Ends' },
-    end_date_time: { label: 'End date' },
+    end_date_time: { label: 'End date', format: scheduleDateTime },
     max_runs: { label: 'Max runs' },
     timezone: { label: 'Timezone' },
     instructions: { label: 'Instructions', kind: 'text' },
