@@ -267,6 +267,11 @@ id; the expanded read variant (`_TwilioChannelReadSerializer`, used on
 as an `auth_token_secret_id`, never resolved). Detail routes are keyed by
 `channel` id, e.g. `PATCH /twilio-channels/12/`.
 
+Choosing or changing `auth_token_secret_id` needs the `Use` permission on Secrets, including
+through the upsert in `create()`; a resend of the stored value does not. A denial is a `400`
+whose `message` names `auth_token_secret_id`. The channel has no destination rule: the token
+only verifies the signature of Twilio's inbound requests and is never sent anywhere.
+
 ---
 
 ### Provider config endpoints

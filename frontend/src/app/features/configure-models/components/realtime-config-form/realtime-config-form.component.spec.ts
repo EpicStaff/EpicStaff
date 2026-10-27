@@ -139,15 +139,43 @@ describe('RealtimeConfigFormComponent', () => {
         expect(providerButton(fixture, 'Gemini').disabled).toBe(true);
     });
 
-    it('shows an error and stays open when saving fails', () => {
+    it('reports a generic error for a server failure, without emitting saved', () => {
         const { fixture, http, saved } = render({ config: OPENAI_CONFIG, provider: 'openai' });
 
         fixture.componentInstance.submit();
-        http.expectOne('/api/openai-realtime-configs/11/').flush(null, { status: 500, statusText: 'Server Error' });
-        fixture.detectChanges();
+        http.expectOne('/api/openai-realtime-configs/11/').flush(
+            { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
+            { status: 500, statusText: 'Server Error' }
+        );
 
-        expect(host(fixture).textContent).toContain('Failed to save configuration.');
+        expect(fixture.componentInstance.errorMessage()).toBe('Failed to save configuration.');
         expect(fixture.componentInstance.isSubmitting()).toBe(false);
         expect(saved).not.toHaveBeenCalled();
+    });
+
+    it("reports the server's reason when it refuses the save", () => {
+        const reason =
+            'api_key_secret_id: Changing the secrets referenced here requires the "Use" permission on Secrets.';
+        const { fixture, http, saved } = render({ config: OPENAI_CONFIG, provider: 'openai' });
+
+        fixture.componentInstance.submit();
+        http.expectOne('/api/openai-realtime-configs/11/').flush(
+            { status_code: 400, code: 'invalid', message: reason },
+            { status: 400, statusText: 'Bad Request' }
+        );
+
+        expect(fixture.componentInstance.errorMessage()).toBe(reason);
+        expect(saved).not.toHaveBeenCalled();
+    });
+
+    it('clears the reported error when a save starts again', () => {
+        const { fixture, http } = render({ config: OPENAI_CONFIG, provider: 'openai' });
+        fixture.componentInstance.submit();
+        http.expectOne('/api/openai-realtime-configs/11/').flush(null, { status: 500, statusText: 'Server Error' });
+
+        fixture.componentInstance.submit();
+
+        expect(fixture.componentInstance.errorMessage()).toBeNull();
+        http.expectOne('/api/openai-realtime-configs/11/');
     });
 });

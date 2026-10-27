@@ -14,6 +14,11 @@
         />
     </div>
 
+    <app-error-banner
+        class="error-banner"
+        [message]="saveError()"
+    />
+
     <app-realtime-config-form
         [config]="data.config"
         [provider]="data.provider"

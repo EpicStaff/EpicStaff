@@ -42,6 +42,11 @@
         </button>
     </div>
 
+    <app-error-banner
+        class="error-banner"
+        [message]="bannerMessage()"
+    />
+
     @if (activeTab() === 'llm') {
         <form
             class="form"

@@ -15,6 +15,7 @@ import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } 
 import {
     ButtonComponent,
     CustomInputComponent,
+    ErrorBannerComponent,
     HintMessageComponent,
     IconButtonComponent,
     InputNumberComponent,
@@ -31,7 +32,7 @@ import { EnterSubmitDirective } from '@shared/directives';
 import { pricePairValidator } from '@shared/form-validators';
 import { CreateEmbeddingConfigRequest, ModelTypes, ReasoningEffort } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
-import { extractFieldErrorMessages, extractHttpErrorMessage, perMillionToPerToken } from '@shared/utils';
+import { extractFieldErrorMessages, extractHttpErrorMessage, isClientError, perMillionToPerToken } from '@shared/utils';
 import { map, merge, startWith } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -52,6 +53,7 @@ const DUPLICATE_EMBEDDING_NAME_MESSAGE =
         IconButtonComponent,
         ButtonComponent,
         CustomInputComponent,
+        ErrorBannerComponent,
         SelectComponent,
         HintMessageComponent,
         ValidationErrorsComponent,
@@ -83,8 +85,14 @@ export class AddConfigurationDialogComponent implements OnInit {
 
     activeTab = signal<ConfigTab>(this.data?.initialTab ?? 'llm');
     isSubmitting = signal(false);
+    /** The server's refusal of the last LLM or embedding save; the realtime form keeps its own. */
+    errorMessage = signal<string | null>(null);
     // The realtime tab's form saves itself; its progress counts as this dialog's.
     protected readonly isSaving = computed(() => this.isSubmitting() || (this.realtimeForm()?.isSubmitting() ?? false));
+    // One banner for the dialog, showing the active tab's error.
+    protected readonly bannerMessage = computed(() =>
+        this.activeTab() === 'realtime' ? (this.realtimeForm()?.errorMessage() ?? null) : this.errorMessage()
+    );
     // Saving before the LLM model is known would send reasoning_effort as null instead of the chosen value.
     readonly isLlmModelResolving = computed(
         () => this.activeTab() === 'llm' && (this.reasoningEffortField()?.resolving() ?? false)
@@ -203,6 +211,7 @@ export class AddConfigurationDialogComponent implements OnInit {
 
     setActiveTab(tab: ConfigTab): void {
         this.activeTab.set(tab);
+        this.errorMessage.set(null);
     }
 
     onSubmit(): void {
@@ -228,6 +237,7 @@ export class AddConfigurationDialogComponent implements OnInit {
         }
         const { pricing, ...config } = this.llmForm.value;
         this.isSubmitting.set(true);
+        this.errorMessage.set(null);
         this.llmStorage
             .createConfig({
                 ...config,
@@ -251,7 +261,12 @@ export class AddConfigurationDialogComponent implements OnInit {
                     ) {
                         return;
                     }
-                    this.toast.error(extractHttpErrorMessage(error, 'Failed to create LLM configuration.'));
+                    const message = extractHttpErrorMessage(error, 'Failed to create LLM configuration.');
+                    if (isClientError(error)) {
+                        this.errorMessage.set(message);
+                        return;
+                    }
+                    this.toast.error(message);
                 },
             });
     }
@@ -262,6 +277,8 @@ export class AddConfigurationDialogComponent implements OnInit {
             this.embeddingForm.markAllAsTouched();
             return;
         }
+        // Cleared before the duplicate-name check, so an old refusal does not sit beside its toast.
+        this.errorMessage.set(null);
 
         const trimmedName = custom_name.trim();
         const normalizedName = trimmedName.toLowerCase();
@@ -291,17 +308,14 @@ export class AddConfigurationDialogComponent implements OnInit {
                 },
                 error: (error: HttpErrorResponse) => {
                     this.isSubmitting.set(false);
-                    this.toast.error(this.parseEmbeddingError(error));
+                    const fallback = 'Failed to create embedding configuration.';
+                    if (isClientError(error)) {
+                        this.errorMessage.set(extractHttpErrorMessage(error, fallback));
+                        return;
+                    }
+                    this.toast.error(fallback);
                 },
             });
-    }
-
-    private parseEmbeddingError(error: HttpErrorResponse): string {
-        const nameError = error?.error?.custom_name?.[0] as string | undefined;
-        if (nameError?.toLowerCase().includes('already exists')) {
-            return DUPLICATE_EMBEDDING_NAME_MESSAGE;
-        }
-        return 'Failed to create embedding configuration.';
     }
 
     onCancel(): void {

@@ -2,11 +2,11 @@ import os
 
 from rbac.authorship import LastEditFieldsSerializerMixin
 from rest_framework import serializers
+from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from tables.serializers.recycle_bin_serializers import RecycleBinEntrySerializer
 from tables.services.storage_service.path_utils import (
     TRASH_DIRECTORY,
     is_trash_path,
-    sanitize_storage_path,
 )
 from tables.validators.file_upload_validator import FileValidator
 

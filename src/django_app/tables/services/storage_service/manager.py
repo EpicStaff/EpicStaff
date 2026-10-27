@@ -11,6 +11,7 @@ from django.db.models.functions import Lower
 from django.utils.dateparse import parse_datetime
 from rbac.authorship import org_member_ids, represent_authorship_time
 from rbac.models import Organization
+from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend, SourceCleanupError
 from tables.services.storage_service.dataclasses import (
@@ -24,7 +25,6 @@ from tables.services.storage_service.dataclasses import (
 )
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.path_utils import (
-    sanitize_storage_path,
     storage_key,
     trash_batch_prefix,
     trash_storage_key,

@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -23,7 +24,7 @@ import {
 } from '@shared/components';
 import { ElevenLabsRealtimeConfig, GeminiRealtimeConfig, OpenAIRealtimeConfig } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { trackPickedSecrets } from '@shared/utils';
+import { extractHttpErrorMessage, isClientError, trackPickedSecrets } from '@shared/utils';
 import { Observable } from 'rxjs';
 
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
@@ -78,7 +79,8 @@ export class RealtimeConfigFormComponent implements OnInit {
     readonly saved = output<void>();
 
     readonly isSubmitting = signal(false);
-    protected readonly errorMessage = signal<string | null>(null);
+    /** Why the last save failed, for the host dialog's error banner; cleared when a save starts. */
+    readonly errorMessage = signal<string | null>(null);
     protected readonly selectedProvider = linkedSignal(() => this.provider());
     protected readonly isEditMode = computed(() => this.config() !== null);
     protected readonly activeForm = computed(() => this.forms[this.selectedProvider()]);
@@ -182,9 +184,11 @@ export class RealtimeConfigFormComponent implements OnInit {
                     this.isSubmitting.set(false);
                     this.saved.emit();
                 },
-                error: () => {
+                error: (error: HttpErrorResponse) => {
                     this.isSubmitting.set(false);
-                    this.errorMessage.set('Failed to save configuration.');
+                    // A refusal (4xx) says what to fix, e.g. a missing Secrets "Use" permission; a server error does not.
+                    const fallback = 'Failed to save configuration.';
+                    this.errorMessage.set(isClientError(error) ? extractHttpErrorMessage(error, fallback) : fallback);
                 },
             });
     }

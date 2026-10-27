@@ -17,9 +17,92 @@ from loguru import logger
 from redis.exceptions import RedisError
 
 from app.exceptions import DataLoadError
-from app.logging_utils import redacted_dump
+from app.logging_utils import redact_payload
 from shared.models.agent_service import AgentRequest
 from shared.redis_streams import StreamEnvelope
+
+_AGENT_PASSTHROUGH_KEYS = {
+    "id",
+    "name",
+    "max_iter",
+    "schema_max_retries",
+    "max_rpm",
+    "max_execution_time",
+    "cache",
+    "max_retry_limit",
+    "default_temperature",
+    "max_tool_calls",
+    "tool_timeout",
+    "max_consecutive_failures",
+    "tool_refs",
+    "collection_refs",
+    "s3_refs",
+}
+"""Every ``AgentSpec`` field safe to log as-is, minus ``instructions`` (free text) and
+``llm``/``fcm_llm`` — both nested objects that need ``_redact_llm_for_logging``'s own
+allowlist, not a blanket passthrough."""
+
+_LLM_PASSTHROUGH_KEYS = {"provider", "config"}
+
+_LLM_CONFIG_PASSTHROUGH_KEYS = {
+    "model",
+    "timeout",
+    "temperature",
+    "top_p",
+    "stop",
+    "max_tokens",
+    "presence_penalty",
+    "frequency_penalty",
+    "logit_bias",
+    "seed",
+    "input_cost_per_token",
+    "output_cost_per_token",
+    "reasoning_effort",
+}
+"""Generation params only — matches ``LLMConfigData.to_litellm_kwargs``'s own split of
+"generation params" from "auth, base_url/api_version, deployment_id, extra_headers".
+Everything in that second group is digested by default, same as any field this
+allowlist has not seen yet."""
+
+
+_REQUEST_PASSTHROUGH_KEYS = {"correlation_id", "run_type", "agents", "payload"}
+
+
+def _redact_llm_for_logging(llm: dict | None) -> dict | None:
+    """Mask one ``LLMData`` dump: ``provider``/``config`` pass through, ``config``'s own
+    fields are then allowlisted down to generation params — ``api_key``/``extra_headers``
+    included — so a field this allowlist hasn't seen is digested, not assumed safe."""
+    if llm is None:
+        return None
+
+    masked = redact_payload(llm, passthrough=_LLM_PASSTHROUGH_KEYS)
+    masked["config"] = redact_payload(llm["config"], passthrough=_LLM_CONFIG_PASSTHROUGH_KEYS)
+    return masked
+
+
+def _redact_agent_for_logging(agent: dict) -> dict:
+    """Mask one ``AgentSpec`` dump: allowlisted fields pass through, ``llm``/``fcm_llm``
+    go through their own nested allowlist instead."""
+    without_llm = {key: value for key, value in agent.items() if key not in {"llm", "fcm_llm"}}
+    masked = redact_payload(without_llm, passthrough=_AGENT_PASSTHROUGH_KEYS)
+    masked["llm"] = _redact_llm_for_logging(agent["llm"])
+    masked["fcm_llm"] = _redact_llm_for_logging(agent["fcm_llm"])
+    return masked
+
+
+def _redact_request_for_logging(request: AgentRequest) -> dict:
+    """Mask every free-text field of an ``AgentRequest`` before it reaches a log line.
+
+    Every top-level field is digested by default — including ``tools``, so a Python-code
+    tool's plaintext secrets never reach this log line — except ``agents`` and ``payload``,
+    which get their own nested treatment instead of a blanket digest, since most of their
+    fields are safe to read.
+    """
+    dumped = redact_payload(request.model_dump(), passthrough=_REQUEST_PASSTHROUGH_KEYS)
+    dumped["agents"] = [_redact_agent_for_logging(agent) for agent in dumped["agents"]]
+    dumped["payload"] = redact_payload(request.payload, passthrough=set())
+
+    return dumped
 
 
 class DataLoader:
@@ -99,7 +182,7 @@ class DataLoader:
         logger.opt(lazy=True).debug(
             "AgentRequest correlation_id={} request={}",
             lambda: _corr_id,
-            lambda: redacted_dump(request),
+            lambda: _redact_request_for_logging(request),
         )
 
         return request

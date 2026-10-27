@@ -1,7 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ButtonComponent, IconButtonComponent } from '@shared/components';
+import { ButtonComponent, ErrorBannerComponent, IconButtonComponent } from '@shared/components';
 import { EnterSubmitDirective } from '@shared/directives';
 
 import {
@@ -20,7 +20,13 @@ export interface RealtimeConfigDialogData {
     selector: 'app-realtime-config-dialog',
     templateUrl: './realtime-config-dialog.component.html',
     styleUrls: ['./realtime-config-dialog.component.scss'],
-    imports: [ButtonComponent, IconButtonComponent, EnterSubmitDirective, RealtimeConfigFormComponent],
+    imports: [
+        ButtonComponent,
+        ErrorBannerComponent,
+        IconButtonComponent,
+        EnterSubmitDirective,
+        RealtimeConfigFormComponent,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RealtimeConfigDialogComponent implements OnInit {
@@ -28,6 +34,7 @@ export class RealtimeConfigDialogComponent implements OnInit {
 
     protected readonly isSaving = computed(() => this.form()?.isSubmitting() ?? false);
     protected readonly saveLabel = computed(() => (this.isSaving() ? 'Saving…' : 'Save Changes'));
+    protected readonly saveError = computed(() => this.form()?.errorMessage() ?? null);
 
     protected readonly data = inject<RealtimeConfigDialogData>(DIALOG_DATA);
 
