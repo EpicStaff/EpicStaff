@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import {
     ColumnResizeDividerComponent,
+    ConfirmationDialogService,
     createColumnWidthState,
     CustomInputComponent,
     ExecutionTimeoutFieldComponent,
@@ -16,8 +17,9 @@ import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@sh
 import { merge, Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
-import { Venv } from '../../../../features/virtual-environments/models/venv.model';
+import { BUILDING_STATUSES, Venv } from '../../../../features/virtual-environments/models/venv.model';
 import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
+import { confirmBuildingVenv } from '../../../../features/virtual-environments/utils/confirm-building-venv';
 import { toVenvSelectItems } from '../../../../features/virtual-environments/utils/venv-select-items';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
@@ -122,6 +124,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     private initialTestInputValuesSignature: string = '';
     codeEditorHasError: boolean = false;
     private readonly venvsApiService = inject(VenvsApiService);
+    private readonly confirmationDialog = inject(ConfirmationDialogService);
     private readonly pythonCodeChange$ = new Subject<string>();
     /**
      * The signature and Input List names last seen in step: each side applies to the other only how its own
@@ -132,6 +135,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     /** Set while a code edit rewrites the rows, so their change events do not rewrite the code back. */
     private isApplyingCodeToInputList = false;
     private readonly formDirtyTick = signal(0);
+    /** The venv the user last settled on, to go back to when a warning is declined. */
+    private acceptedVenvId: number | null = null;
     public readonly testInputDirty = computed(() => {
         this.formDirtyTick();
         if (!this.form) return false;
@@ -220,10 +225,36 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         });
         this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed()).subscribe(() => this.resetDirtyAfterGraphSave());
 
+        this.loadVenvs();
+    }
+
+    /** Reloaded when the picker opens: a build that finished since the panel was opened
+     *  must not still be shown as running. */
+    public onVenvDropdownOpened(): void {
+        this.loadVenvs();
+    }
+
+    public onVenvChanged(value: unknown): void {
+        const venv = this.venvs().find((item) => item.id === value);
+        if (!venv || !BUILDING_STATUSES.has(venv.status)) {
+            this.acceptedVenvId = (value as number | null) ?? null;
+            return;
+        }
+        confirmBuildingVenv(this.confirmationDialog, venv.name)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((confirmed) => {
+                // The picker has written the value already, so declining puts the previous
+                // one back rather than preventing anything.
+                if (confirmed) this.acceptedVenvId = venv.id;
+                else this.form.get('venv')!.setValue(this.acceptedVenvId);
+            });
+    }
+
+    private loadVenvs(): void {
         this.loadingVenvs.set(true);
         this.venvsApiService
             .getVenvs()
-            .pipe(takeUntilDestroyed())
+            .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (list) => {
                     this.venvs.set(list);
@@ -341,6 +372,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
         this.pythonCode = this.node().data.code || '';
         this.initialPythonCode = this.pythonCode;
+        this.acceptedVenvId = this.node().data.venv_id ?? null;
         this.form = form;
         this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
         this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();

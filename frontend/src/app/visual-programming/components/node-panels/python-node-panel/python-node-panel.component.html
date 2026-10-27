@@ -77,6 +77,8 @@
                             [grouped]="true"
                             [loading]="loadingVenvs()"
                             [readonly]="isReadOnly()"
+                            (opened)="onVenvDropdownOpened()"
+                            (changed)="onVenvChanged($event)"
                         />
                     </div>
 

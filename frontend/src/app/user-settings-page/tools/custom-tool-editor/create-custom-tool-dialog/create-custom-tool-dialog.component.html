@@ -137,6 +137,8 @@
                         [grouped]="true"
                         [loading]="loadingVenvs()"
                         [readonly]="isBuiltIn()"
+                        (opened)="onVenvDropdownOpened()"
+                        (changed)="onVenvChanged($event)"
                     />
                 </div>
 

@@ -55,8 +55,9 @@ import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
 import { CustomToolsService } from '../../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../features/tools/services/tools-events.service';
-import { Venv } from '../../../../features/virtual-environments/models/venv.model';
+import { BUILDING_STATUSES, Venv } from '../../../../features/virtual-environments/models/venv.model';
 import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
+import { confirmBuildingVenv } from '../../../../features/virtual-environments/utils/confirm-building-venv';
 import { toVenvSelectItems } from '../../../../features/virtual-environments/utils/venv-select-items';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -231,11 +232,50 @@ export class CreateCustomToolDialogComponent {
 
     public readonly venvs = signal<Venv[]>([]);
     public readonly loadingVenvs = signal<boolean>(false);
+    /** Reloaded when the picker opens: a build that finished since the dialog was opened
+     *  must not still be shown as running. */
+    public onVenvDropdownOpened(): void {
+        this.loadVenvs();
+    }
+
+    public onVenvChanged(value: unknown): void {
+        const venv = this.venvs().find((item) => item.id === value);
+        if (!venv || !BUILDING_STATUSES.has(venv.status)) {
+            this.acceptedVenvId = (value as number | null) ?? null;
+            return;
+        }
+        confirmBuildingVenv(this.confirmDialog, venv.name)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((confirmed) => {
+                // The picker has written the value already, so declining puts the previous
+                // one back rather than preventing anything.
+                if (confirmed) this.acceptedVenvId = venv.id;
+                else this.form.controls.venvId.setValue(this.acceptedVenvId);
+            });
+    }
+
+    private loadVenvs(): void {
+        this.loadingVenvs.set(true);
+        this.venvsApiService
+            .getVenvs()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (list) => {
+                    this.venvs.set(list);
+                    this.loadingVenvs.set(false);
+                },
+                error: () => this.loadingVenvs.set(false),
+            });
+    }
+
     public readonly venvItems = computed<SelectItem[]>(() => [
         // Outside the groups, so it stays the first row rather than sinking under a heading.
         { name: 'No venv', value: null },
         ...toVenvSelectItems(this.venvs()),
     ]);
+
+    /** The venv the user last settled on, to go back to when a warning is declined. */
+    private acceptedVenvId: number | null = this.selectedTool()?.python_code?.venv_id ?? null;
 
     public readonly activeEditor = signal<ActiveEditor>(ActiveEditor.Python);
     public readonly pythonSectionExpanded = signal(false);
@@ -273,17 +313,7 @@ export class CreateCustomToolDialogComponent {
             }
         });
 
-        this.loadingVenvs.set(true);
-        this.venvsApiService
-            .getVenvs()
-            .pipe(takeUntilDestroyed())
-            .subscribe({
-                next: (list) => {
-                    this.venvs.set(list);
-                    this.loadingVenvs.set(false);
-                },
-                error: () => this.loadingVenvs.set(false),
-            });
+        this.loadVenvs();
 
         const parsedDefault = parseToolVariablesJson(this.form.controls.variablesJson.value);
         this.tableVariables.set(parsedDefault.valid ? parsedDefault.variables : []);

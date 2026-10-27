@@ -2,12 +2,14 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormArray, ReactiveFormsModule } from '@angular/forms';
 import { By } from '@angular/platform-browser';
-import { ExecutionTimeoutFormField } from '@shared/components';
+import { ConfirmationDialogService, ExecutionTimeoutFormField } from '@shared/components';
 import { NodeType } from '@shared/models';
-import { Subject } from 'rxjs';
+import { of, Subject } from 'rxjs';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
+import { Venv, VenvStatus } from '../../../../features/virtual-environments/models/venv.model';
+import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { typeIntoExecutionTimeout } from '../../../../shared/components/execution-timeout-field/execution-timeout-field.testing';
@@ -659,5 +661,77 @@ describe('PythonNodePanelComponent Input List and main() signature', () => {
 
             expect(panel.pythonCode).toBe('def main(count: int, extra, *args):\n    return count\n');
         });
+    });
+});
+
+describe('PythonNodePanelComponent venv selection', () => {
+    function venv(id: number, name: string, status: VenvStatus): Venv {
+        return { id, name, libs: [], status, error: null, owner: null, created_at: null, is_favorite: false };
+    }
+
+    const BUILDING = venv(5, 'ml base', 'processing');
+    const READY = venv(6, 'web', 'completed');
+
+    /** The panel with a stubbed sandbox and a dialog that answers `confirmed` without opening. */
+    function create(confirmed: boolean, venvs: Venv[] = [BUILDING, READY]) {
+        const confirm = vi.fn(() => of(confirmed));
+        const getVenvs = vi.fn(() => of(venvs));
+        TestBed.configureTestingModule({
+            providers: [
+                provideLoadedExecutionTimeoutLimits(),
+                { provide: FLOW_EDITOR_PREVIEW, useValue: false },
+                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
+                { provide: VenvsApiService, useValue: { getVenvs } },
+                { provide: ConfirmationDialogService, useValue: { confirm } },
+            ],
+        });
+        TestBed.overrideComponent(PythonNodePanelComponent, { set: { template: '', imports: [] } });
+        const fixture = TestBed.createComponent(PythonNodePanelComponent);
+        fixture.componentRef.setInput('node', pythonNode);
+        fixture.detectChanges();
+        return { panel: fixture.componentInstance, confirm, getVenvs };
+    }
+
+    it('keeps a venv that is still building once the warning is accepted', () => {
+        const { panel, confirm } = create(true);
+
+        // The picker writes the value and then reports it, so the test does the same.
+        panel.form.get('venv')!.setValue(BUILDING.id);
+        panel.onVenvChanged(BUILDING.id);
+
+        expect(confirm).toHaveBeenCalledOnce();
+        expect(panel.form.get('venv')!.value).toBe(BUILDING.id);
+    });
+
+    it('puts the previous venv back when the warning is declined', () => {
+        const { panel } = create(false);
+        panel.form.get('venv')!.setValue(READY.id);
+        panel.onVenvChanged(READY.id);
+
+        // The picker writes before asking, so declining has to undo the write.
+        panel.form.get('venv')!.setValue(BUILDING.id);
+        panel.onVenvChanged(BUILDING.id);
+
+        expect(panel.form.get('venv')!.value).toBe(READY.id);
+    });
+
+    it('says nothing about a venv that is built', () => {
+        const { panel, confirm } = create(true);
+
+        panel.form.get('venv')!.setValue(READY.id);
+        panel.onVenvChanged(READY.id);
+
+        expect(confirm).not.toHaveBeenCalled();
+        expect(panel.form.get('venv')!.value).toBe(READY.id);
+    });
+
+    it('reloads the venvs when the picker opens', () => {
+        const { panel, getVenvs } = create(true);
+        getVenvs.mockReturnValue(of([READY]));
+
+        panel.onVenvDropdownOpened();
+
+        // Asserted on the state, not on the call: a build finished since the panel opened.
+        expect(panel.venvs()).toEqual([READY]);
     });
 });
