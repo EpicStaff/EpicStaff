@@ -13,7 +13,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 const POLL_INTERVAL_MS = 2_000;
 
 function venv(id: number, name: string, status: VenvStatus = 'completed'): Venv {
-    return { id, name, libs: [], status, error: null, owner: null, created_at: null };
+    return { id, name, libs: [], status, error: null, owner: null, created_at: null, is_favorite: false };
 }
 
 describe('VenvsListPageComponent', () => {
@@ -29,7 +29,7 @@ describe('VenvsListPageComponent', () => {
     function answerList(venvs: Venv[]): HttpRequest<unknown> {
         const pending = http.match((request) => request.url === `${API_URL}venvs/`);
         expect(pending).toHaveLength(1);
-        pending[0].flush({ count: venvs.length, limit: 100, offset: 0, next: null, previous: null, result: venvs });
+        pending[0].flush({ count: venvs.length, limit: 1000, offset: 0, next: null, previous: null, result: venvs });
         fixture.detectChanges();
         return pending[0].request;
     }
@@ -39,6 +39,11 @@ describe('VenvsListPageComponent', () => {
         field.value = value;
         field.dispatchEvent(new Event('input'));
         fixture.detectChanges();
+    }
+
+    /** The card's favorite button, named by the label it carries while unstarred. */
+    function star(): HTMLElement {
+        return host.querySelector<HTMLElement>('.venv-card__icon-btn[aria-label="Add to favorites"]')!;
     }
 
     function renderedNames(): string[] {
@@ -108,6 +113,41 @@ describe('VenvsListPageComponent', () => {
         fixture.detectChanges();
 
         expect(answerList([venv(1, 'alpha')]).params.get('order')).toBe('name_desc');
+    });
+
+    it('asks the backend for the favorites once the filter is ticked', () => {
+        answerList([venv(1, 'alpha')]);
+
+        host.querySelector<HTMLElement>('.filter-trigger')!.click();
+        fixture.detectChanges();
+        const favoritesOnly = document.querySelector<HTMLInputElement>('.filter-menu input[type="checkbox"]')!;
+        favoritesOnly.click();
+        fixture.detectChanges();
+
+        expect(answerList([venv(2, 'starred')]).params.get('is_favorite')).toBe('true');
+    });
+
+    it('fills the star before the request is answered', () => {
+        answerList([venv(1, 'alpha')]);
+
+        star().click();
+        fixture.detectChanges();
+
+        expect(host.querySelector('.venv-card__icon-btn--accent')).not.toBeNull();
+        const request = http.expectOne(`${API_URL}venvs/1/favorite/`);
+        expect(request.request.method).toBe('POST');
+        request.flush(null);
+    });
+
+    it('empties the star again when the request fails', () => {
+        answerList([venv(1, 'alpha')]);
+
+        star().click();
+        fixture.detectChanges();
+        http.expectOne(`${API_URL}venvs/1/favorite/`).flush(null, { status: 500, statusText: 'Server Error' });
+        fixture.detectChanges();
+
+        expect(host.querySelector('.venv-card__icon-btn--accent')).toBeNull();
     });
 
     it('keeps polling a building venv through the same search', () => {

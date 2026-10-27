@@ -50,6 +50,8 @@ export interface Venv {
     error: string | null;
     owner: VenvOwner | null;
     created_at: string | null;
+    // Personal: whether the venv is a favorite of the user who asked for the list.
+    is_favorite: boolean;
 }
 
 export interface CreateVenvRequest {
@@ -66,6 +68,7 @@ export type VenvSortOrder = 'default' | 'name_asc' | 'name_desc';
 export interface VenvListQuery {
     search?: string;
     order?: VenvSortOrder;
+    isFavorite?: boolean;
 }
 
 // The venv list envelope uses `result` (singular), not the `results` of the shared

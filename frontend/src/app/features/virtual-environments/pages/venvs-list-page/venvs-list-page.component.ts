@@ -7,6 +7,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
+    CheckboxComponent,
     ConfirmationDialogService,
     SearchComponent,
     TabButtonComponent,
@@ -48,6 +49,7 @@ const BUILDING_STATUSES: ReadonlySet<VenvStatus> = new Set(['declared', 'process
         MatTooltipModule,
         AppSvgIconComponent,
         ButtonComponent,
+        CheckboxComponent,
         SearchComponent,
         TabButtonComponent,
         HasPermissionDirective,
@@ -67,6 +69,7 @@ export class VenvsListPageComponent {
     readonly deletePending = signal(false);
 
     readonly sortOrder = signal<VenvSortOrder>('default');
+    readonly favoritesOnly = signal(false);
     readonly filterMenuOpen = signal(false);
 
     // What the backend is asked for: it does the filtering and the sorting, the page only
@@ -74,8 +77,9 @@ export class VenvsListPageComponent {
     readonly queryParams = computed<VenvListQuery>(() => ({
         search: this.searchTerm().trim(),
         order: this.sortOrder(),
+        isFavorite: this.favoritesOnly(),
     }));
-    readonly hasActiveFilter = computed(() => this.sortOrder() !== 'default');
+    readonly hasActiveFilter = computed(() => this.sortOrder() !== 'default' || this.favoritesOnly());
 
     readonly canUpdate = computed(() => this.permissions.can(ResourceCode.Venvs, ActionCode.Update));
     readonly canDelete = computed(() => this.permissions.can(ResourceCode.Venvs, ActionCode.Delete));
@@ -126,9 +130,31 @@ export class VenvsListPageComponent {
         this.loadVenvs();
     }
 
+    // The menu stays open: the sort below it is part of the same choice.
+    applyFavoritesOnly(favoritesOnly: boolean): void {
+        this.favoritesOnly.set(favoritesOnly);
+        this.loadVenvs();
+    }
+
     clearAllFilters(): void {
         this.sortOrder.set('default');
+        this.favoritesOnly.set(false);
         this.loadVenvs();
+    }
+
+    onFavoriteChange(venv: Venv, favorite: boolean): void {
+        // The star answers the click, not the request: the list is not reloaded, so a venv
+        // unstarred under "Favorites only" keeps its place until the page loads again.
+        this.setFavoriteLocally(venv.id, favorite);
+        this.venvsApi
+            .setFavorite(venv.id, favorite)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                error: (error: HttpErrorResponse) => {
+                    this.setFavoriteLocally(venv.id, !favorite);
+                    this.toastService.error(extractHttpErrorMessage(error));
+                },
+            });
     }
 
     onCreate(): void {
@@ -199,6 +225,10 @@ export class VenvsListPageComponent {
                     this.toastService.error(extractHttpErrorMessage(error));
                 },
             });
+    }
+
+    private setFavoriteLocally(id: number, favorite: boolean): void {
+        this.venvs.update((venvs) => venvs.map((venv) => (venv.id === id ? { ...venv, is_favorite: favorite } : venv)));
     }
 
     private applyVenvs(venvs: Venv[]): void {

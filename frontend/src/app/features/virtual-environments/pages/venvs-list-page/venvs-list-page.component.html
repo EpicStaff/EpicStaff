@@ -83,6 +83,13 @@
                         class="filter-menu"
                         role="menu"
                     >
+                        <label class="menu-item">
+                            <app-checkbox
+                                [checked]="favoritesOnly()"
+                                (changed)="applyFavoritesOnly($event)"
+                            />
+                            <span>Favorites only</span>
+                        </label>
                         <button
                             type="button"
                             class="menu-item"
@@ -149,6 +156,7 @@
                         [canDelete]="canDelete()"
                         (editRequested)="onEdit(venv)"
                         (deleteRequested)="onDelete(venv)"
+                        (favoriteChange)="onFavoriteChange(venv, $event)"
                     />
                 }
             </div>

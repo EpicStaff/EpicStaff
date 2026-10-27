@@ -15,6 +15,20 @@
         </div>
 
         <div class="venv-card__actions">
+            <button
+                type="button"
+                class="venv-card__icon-btn"
+                [class.venv-card__icon-btn--accent]="venv().is_favorite"
+                [attr.aria-label]="favoriteLabel()"
+                [matTooltip]="favoriteLabel()"
+                matTooltipPosition="above"
+                (click)="onToggleFavorite()"
+            >
+                <app-svg-icon
+                    [icon]="venv().is_favorite ? 'star-filled' : 'star'"
+                    size="16px"
+                />
+            </button>
             @if (updates().length) {
                 <button
                     type="button"
