@@ -66,7 +66,10 @@
             </div>
         </div>
 
-        <div class="storage-details-dialog__section">
+        <div
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Read]"
+            class="storage-details-dialog__section"
+        >
             <div class="storage-details-dialog__section-title">USED IN FLOWS</div>
             @if (usedInFlows.length) {
                 <div class="storage-details-dialog__chips">
