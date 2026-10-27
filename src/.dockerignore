@@ -23,6 +23,7 @@ sandbox_new/venvs
 **/*.pyd
 **/.pytest_cache
 **/.mypy_cache
+**/.import_linter_cache
 
 # Editor state
 **/.vscode
