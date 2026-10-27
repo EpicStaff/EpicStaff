@@ -47,6 +47,10 @@ export class CollectionFilesComponent {
     private confirmationDialogService = inject(ConfirmationDialogService);
     private destroyRef = inject(DestroyRef);
 
+    onPreview({ document_id }: DisplayedListDocument): void {
+        if (document_id) this.previewRequested.emit(document_id);
+    }
+
     onDownload(id: number): void {
         this.downloadRequested.emit(id);
     }

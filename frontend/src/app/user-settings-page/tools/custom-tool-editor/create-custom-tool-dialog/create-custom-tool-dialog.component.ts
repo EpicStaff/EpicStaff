@@ -116,10 +116,27 @@ const DEFAULT_PYTHON_CODE = `# Replace this comment with your implementation.
 const BUILT_IN_SAVE_TOOLTIP =
     'Built-in tools are read-only. Create an editable copy to make changes; the original stays untouched.';
 
-const EXECUTION_TIMEOUT_HINT = 'Agents stop waiting after their own tool timeout.';
-
 const VARIABLES_SCHEMA_TOOLTIP =
     'Variables must be a JSON array. Each item defines one parameter: name, type, description, input_type, required, and default_value. input_type can be agent_input (agent supplies it), user_input (configured/default value, hidden from the agent), or mixed (agent may override configured/default value).';
+
+/** The user's last Parameters mode (table or JSON), stored as 'true' (table) or 'false' (JSON). */
+const PARAMETERS_TABLE_MODE_STORAGE_KEY = 'tools:parametersTableMode';
+
+function readParametersTableModeFromStorage(): boolean {
+    try {
+        return localStorage.getItem(PARAMETERS_TABLE_MODE_STORAGE_KEY) !== 'false';
+    } catch {
+        return true;
+    }
+}
+
+function writeParametersTableModeToStorage(enabled: boolean): void {
+    try {
+        localStorage.setItem(PARAMETERS_TABLE_MODE_STORAGE_KEY, String(enabled));
+    } catch {
+        /* ignore storage errors (e.g. private mode / quota) */
+    }
+}
 
 @Component({
     selector: 'app-create-custom-tool-dialog',
@@ -237,9 +254,11 @@ export class CreateCustomToolDialogComponent {
 
     public readonly activeEditor = signal<ActiveEditor>(ActiveEditor.Python);
     public readonly pythonSectionExpanded = signal(false);
-    public readonly jsonSectionExpanded = signal(false);
-    public readonly parametersTableMode = signal(true);
-    public readonly parametersSwitchOn = signal(true);
+    public readonly descriptionExpanded = signal(true);
+    /** A new tool always starts in table mode; an existing one opens in the mode the user last picked. */
+    public readonly parametersTableMode = signal(this.isEditMode() ? readParametersTableModeFromStorage() : true);
+    public readonly parametersSwitchOn = signal(this.parametersTableMode());
+    public readonly jsonSectionExpanded = signal(!this.parametersTableMode());
     public readonly isJsonValid = signal(true);
     public readonly jsonIssues = signal<JsonError[]>([]);
     public readonly lastValidJson = signal('');
@@ -256,7 +275,6 @@ export class CreateCustomToolDialogComponent {
      * new tool, which then gets the backend default.
      */
     protected readonly executionTimeout = signal<ExecutionTimeoutFormField | null>(null);
-    protected readonly executionTimeoutHint = EXECUTION_TIMEOUT_HINT;
     private tableImportWasInvalid = false;
 
     private initialSnapshot = '';
@@ -403,6 +421,7 @@ export class CreateCustomToolDialogComponent {
     }
 
     private applyDisableTableMode(): void {
+        writeParametersTableModeToStorage(false);
         this.parametersTableMode.set(false);
         this.parametersSwitchOn.set(false);
         if (!this.isBuiltIn()) {
@@ -421,6 +440,7 @@ export class CreateCustomToolDialogComponent {
     }
 
     private applyEnableTableMode(variables: ToolVariable[]): void {
+        writeParametersTableModeToStorage(true);
         this.tableVariables.set(variables);
         this.parametersTableMode.set(true);
         this.parametersSwitchOn.set(true);

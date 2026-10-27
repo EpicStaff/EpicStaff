@@ -169,13 +169,11 @@ describe('CreateCustomToolDialogComponent execution timeout', () => {
         return payload.python_code;
     }
 
-    it('shows the stored timeout of an existing tool, with the hint, and sends it back on save', () => {
+    it('shows the stored timeout of an existing tool, without a hint, and sends it back on save', () => {
         open(STORED_TOOL);
 
         expect(timeoutInput()?.value).toBe('00:05:00');
-        expect(
-            (fixture.nativeElement as HTMLElement).querySelector('.execution-timeout__hint')?.textContent?.trim()
-        ).toBe('Agents stop waiting after their own tool timeout.');
+        expect((fixture.nativeElement as HTMLElement).querySelector('.execution-timeout__hint')).toBeNull();
 
         fixture.componentInstance.submit();
 
