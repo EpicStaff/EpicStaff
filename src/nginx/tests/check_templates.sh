@@ -8,11 +8,12 @@
 #     and every variable src/docker-compose.yaml passes to epicstaff-nginx, which this script and
 #     each lab's nginx must set; and that the hooks refuse what they must: TLS on without a
 #     certificate, an NGINX_HSTS_ENABLED that is not a boolean, and an NGINX_TRUSTED_PROXIES that
-#     is not none or a list of IPv4 addresses and CIDRs, or that holds a /0 range or a CIDR with
-#     host bits set;
+#     is not none or a list of IPv4 addresses and CIDRs, or that holds an empty entry, a /0 range
+#     or a CIDR with host bits set;
 #   - that every X-Forwarded-Proto a template sets is $forwarded_proto, never the client's header,
-#     and never $scheme but on the plugin listeners, which no proxy is in front of; and that
-#     NGINX_TRUSTED_PROXIES renders the trusted entries, or none;
+#     and never $scheme but on the plugin listeners, which no proxy is in front of; that every
+#     location that proxies and passes the client's headers on sends one, so none passes the
+#     client's own on; and that NGINX_TRUSTED_PROXIES renders the trusted entries, or none;
 #   - every combination of CHAT_ENABLED, PLUGINS_ENABLED and NGINX_SSL_MODE, with throwaway
 #     self-signed certificates, and every pair of NGINX_SSL_MODE and NGINX_HSTS_ENABLED among
 #     them; with the plugins flag off nothing plugin-related may be rendered;
@@ -131,23 +132,25 @@ stack_environment=(
 # Fills docker_arguments with the stack's nginx environment, overridden by the NAME=value
 # arguments, and the mounts the image's entrypoint needs: the templates, every hook and the
 # throwaway certificates. An argument "unset:NAME" leaves NAME out entirely; "certificates:DIR"
-# mounts DIR as /etc/nginx/certs instead.
+# mounts DIR as /etc/nginx/certs instead, and "templates:DIR" DIR as /etc/nginx/templates.
 docker_arguments=()
 set_docker_arguments() {
   local assignment argument hook unset_names=" " certificates_dir="$work_dir/certs"
+  local templates_dir="$nginx_dir/templates"
   for argument in "$@"; do
     case "$argument" in
       unset:*) unset_names="$unset_names${argument#unset:} " ;;
       certificates:*) certificates_dir=${argument#certificates:} ;;
+      templates:*) templates_dir=${argument#templates:} ;;
     esac
   done
   docker_arguments=(--network none)
   for assignment in NGINX_ENTRYPOINT_QUIET_LOGS=1 "${stack_environment[@]}" "$@"; do
-    case "$assignment" in unset:* | certificates:*) continue ;; esac
+    case "$assignment" in unset:* | certificates:* | templates:*) continue ;; esac
     case "$unset_names" in *" ${assignment%%=*} "*) continue ;; esac
     docker_arguments+=(-e "$assignment")
   done
-  docker_arguments+=(-v "$nginx_dir/templates:/etc/nginx/templates:ro")
+  docker_arguments+=(-v "$templates_dir:/etc/nginx/templates:ro")
   for hook in "${hooks[@]}"; do
     docker_arguments+=(-v "$hooks_dir/$hook:/docker-entrypoint.d/$hook:ro")
   done
@@ -635,28 +638,23 @@ plugin_internal_header_spellings=$(
   } | paste -sd ' ' -
 )
 
-# Reads the flattened configuration and checks every location that proxies to Django
-# (backend_server) and passes the caller's headers on (no proxy_pass_request_headers off): it
-# must blank every spelling of the three listener headers (-v spellings), so no caller of a
-# public server can send Django any of them. A location's proxy_set_header lines replace its
-# server's, and the server's the http level's, only when it has any; the check applies that.
-# Prints one line per location that passes a spelling on, then "checked <n> <m>": how many such
-# locations it checked, and how many proxy to Django without the caller's headers.
-read -r -d '' django_header_strip_check_program << 'AWK' || :
-BEGIN {
-  FS = "\t"
-  wanted_count = split(spellings, wanted, " ")
-}
+# The start of a check over the flattened configuration of every server, which the check's own
+# rules and END follow: it keys each line "<server> SUBSEP <location>" (key; location "" is the
+# server level, server 0 the http level), lists the keys in the order they appear (order,
+# location_count), splits the directive into word, and records each key's proxy_pass target,
+# proxy_pass_request_headers and whether it sets any proxy_set_header. nginx's inheritance:
+# header_level is the level whose proxy_set_header lines a location sends (its own when it has
+# any, else its server's when that has any, else the http level's); passes_caller_headers applies
+# proxy_pass_request_headers, which each level inherits on its own.
+read -r -d '' proxied_location_program << 'AWK' || :
+BEGIN { FS = "\t" }
 {
   key = $1 SUBSEP $2
   if (!(key in seen)) { seen[key] = 1; order[++location_count] = key }
   split($3, word, " ")
   if (word[1] == "proxy_pass") target[key] = word[2]
   if (word[1] == "proxy_pass_request_headers") passes[key] = word[2]
-  if (word[1] == "proxy_set_header") {
-    sets_headers[key] = 1
-    if (word[3] == "\"\"" || word[3] == "''") blanked[key, tolower(word[2])] = 1
-  }
+  if (word[1] == "proxy_set_header") sets_headers[key] = 1
 }
 function header_level(server, location) {
   if ((server SUBSEP location) in sets_headers) return server SUBSEP location
@@ -670,6 +668,17 @@ function passes_caller_headers(server, location,    value) {
   if ((server SUBSEP location) in passes) value = passes[server SUBSEP location]
   return value != "off"
 }
+AWK
+
+# Reads the flattened configuration and checks every location that proxies to Django
+# (backend_server) and passes the caller's headers on (no proxy_pass_request_headers off): it
+# must blank every spelling of the three listener headers (-v spellings), so no caller of a
+# public server can send Django any of them. Inheritance as proxied_location_program models it.
+# Prints one line per location that passes a spelling on, then "checked <n> <m>": how many such
+# locations it checked, and how many proxy to Django without the caller's headers.
+read -r -d '' django_header_strip_check_program << 'AWK' || :
+BEGIN { wanted_count = split(spellings, wanted, " ") }
+word[1] == "proxy_set_header" && (word[3] == "\"\"" || word[3] == "''") { blanked[key, tolower(word[2])] = 1 }
 END {
   for (i = 1; i <= location_count; i++) {
     split(order[i], part, SUBSEP)
@@ -684,6 +693,8 @@ END {
   print "checked " checked + 0 " " closed + 0
 }
 AWK
+django_header_strip_check_program="$proxied_location_program
+$django_header_strip_check_program"
 
 # $1 = a file of `nginx -T` output; prints the Django header check's problems, sorted.
 django_header_problems() {
@@ -981,6 +992,102 @@ else
 fi
 rm -rf "$work_dir/broken-templates"
 
+# The rule above checks each value a template writes; it cannot see a location that writes none.
+# Such a location passes the client's own X-Forwarded-Proto on unchanged, so anyone could claim
+# https. Reads the flattened configuration and checks every location, in every server, that
+# proxies and passes the client's headers on (no proxy_pass_request_headers off): it must send
+# X-Forwarded-Proto exactly once, as $forwarded_proto. A plugin listener's (a server that listens
+# on 8081 or 8082, plugins-api-listener.snippet) may send $scheme instead. Inheritance as
+# proxied_location_program models it: a location that sets any header of its own gets none of its
+# server's. Run on every combination the loops below render, which between them render every
+# template that proxies. Prints one line "server <n> [<location>] -> <proxy_pass target>:
+# <problem>" per broken location, then "checked <n> <m>": how many locations pass the client's
+# headers on, and how many proxy without them.
+read -r -d '' forwarded_proto_location_check_program << 'AWK' || :
+$3 == "listen 8081" || $3 == "listen 8082" { plugin_listener[$1] = 1 }
+word[1] == "proxy_set_header" && tolower(word[2]) == "x-forwarded-proto" {
+  forwarded_proto_count[key]++
+  forwarded_proto[key] = word[3]
+}
+END {
+  for (i = 1; i <= location_count; i++) {
+    split(order[i], part, SUBSEP)
+    if (part[2] == "" || !(order[i] in target)) continue
+    if (!passes_caller_headers(part[1], part[2])) { closed++; continue }
+    checked++
+    level = header_level(part[1], part[2])
+    label = "server " part[1] " [" part[2] "] -> " target[order[i]]
+    if (!(level in forwarded_proto))
+      print label ": passes the client's X-Forwarded-Proto on"
+    else if (forwarded_proto_count[level] != 1)
+      print label ": sets X-Forwarded-Proto " forwarded_proto_count[level] " times"
+    else if (forwarded_proto[level] != "$forwarded_proto" \
+      && !(forwarded_proto[level] == "$scheme" && (part[1] in plugin_listener)))
+      print label ": sends X-Forwarded-Proto " forwarded_proto[level]
+  }
+  print "checked " checked + 0 " " closed + 0
+}
+AWK
+forwarded_proto_location_check_program="$proxied_location_program
+$forwarded_proto_location_check_program"
+
+# $1 = a file of `nginx -T` output; prints the X-Forwarded-Proto location rule's problems, sorted.
+forwarded_proto_location_problems() {
+  flatten_configuration "$1" | awk "$forwarded_proto_location_check_program" \
+    | { grep -v '^checked ' || true; } | LC_ALL=C sort
+}
+
+# $1 = description, $2 = the least number of locations that must pass the client's headers on.
+# Checks the last rendered configuration.
+expect_forwarded_proto_locations() {
+  local problems counts
+  problems=$(forwarded_proto_location_problems "$work_dir/out")
+  counts=$(flatten_configuration "$work_dir/out" | awk "$forwarded_proto_location_check_program" \
+    | sed -n 's/^checked //p')
+  if [ -n "$problems" ]; then
+    fail "$1: $(printf '%s\n' "$problems" | paste -sd ';' -)"
+  elif [ "${counts% *}" -lt "$2" ]; then
+    fail "$1: found only ${counts% *} locations that pass the client's headers on"
+  else
+    pass "$1 (${counts% *} locations pass the client's headers on and send \$forwarded_proto, ${counts#* } pass none)"
+  fi
+}
+
+# The location rule itself, on templates broken on purpose and rendered with chat, plugins and
+# development mode on: one location without its X-Forwarded-Proto, although EpicStaff's server
+# now sets one at server level (the location sets headers of its own, so it inherits none), one on
+# $scheme, one setting it twice; and proxy_pass_request_headers off removed from the plugin hosts'
+# platform config (it sends $forwarded_proto: fine), from their gateway check (it sends none:
+# named) and from the plugin listeners' /api/ (their $scheme stays allowed).
+broken_location_templates="$work_dir/broken-location-templates"
+cp -R "$nginx_dir/templates" "$broken_location_templates"
+sed -i '0,/X-Forwarded-Proto \$forwarded_proto;/{//d}' "$broken_location_templates/chat-true.snippet.template"
+sed -i '0,/include \/etc\/nginx\/conf\.d\/hsts-\${NGINX_HSTS_ENABLED}\.snippet;/s//&\n    proxy_set_header X-Forwarded-Proto $forwarded_proto;/' \
+  "$broken_location_templates/default.conf.template"
+sed -i '/location \/media\/ {/,/}/s/X-Forwarded-Proto \$forwarded_proto;/X-Forwarded-Proto $scheme;/' \
+  "$broken_location_templates/default.conf.template"
+sed -i '/location \/static\/ {/,/}/{/X-Forwarded-Proto/p}' "$broken_location_templates/default.conf.template"
+sed -i '/proxy_pass_request_headers off;/d' "$broken_location_templates/plugins-server-true.snippet.template" \
+  "$broken_location_templates/plugins-api-listener.snippet.template"
+if expect_valid "nginx -t: templates broken for the X-Forwarded-Proto location rule's self-test" \
+  "templates:$broken_location_templates" PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true CHAT_ENABLED=true \
+  PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost \
+  "$loopback_marker"; then
+  found=$(forwarded_proto_location_problems "$work_dir/out" | sed 's/^server [0-9]* //' | LC_ALL=C sort)
+  expected=$(printf '%s\n' \
+    "[= /chat] -> http://frontend_server: passes the client's X-Forwarded-Proto on" \
+    "[/media/] -> http://backend_server/media/: sends X-Forwarded-Proto \$scheme" \
+    "[/static/] -> http://backend_server/static/: sets X-Forwarded-Proto 2 times" \
+    "[= /_plugin_gateway_check] -> http://backend_server/api/plugin-gateway/check/: passes the client's X-Forwarded-Proto on" \
+    | LC_ALL=C sort)
+  if [ "$found" = "$expected" ]; then
+    pass "the X-Forwarded-Proto location rule names a location without the header (not saved by the server's), one on \$scheme, one setting it twice and a check without proxy_pass_request_headers off, and allows the plugin listeners' \$scheme"
+  else
+    fail "the X-Forwarded-Proto location rule on broken templates named [$(printf '%s\n' "$found" | paste -sd ';' -)]"
+  fi
+fi
+rm -rf "$broken_location_templates"
+
 # NGINX_TRUSTED_PROXIES (18-check-trusted-proxies.envsh): each entry of a list, spaces around the
 # commas allowed, becomes a trusted entry of the geo block; none, in any case, leaves only the
 # default, so nothing is trusted.
@@ -1008,7 +1115,7 @@ if expect_valid "NGINX_TRUSTED_PROXIES=None is accepted" "NGINX_TRUSTED_PROXIES=
   fi
 fi
 # Values that would break, inject into or widen the rendered geo block, or that are not IPv4.
-for trusted_proxies in "" " " "none, 192.0.2.10" "192.0.2.10," ",192.0.2.10" "192.0.2.10,,192.0.2.11" \
+for trusted_proxies in "" " " "none, 192.0.2.10" \
   "192.0.2.10 192.0.2.11" "192.0.2.10;" "192.0.2.10 1; 0.0.0.0/0" "192.0.2.10"$'\n'"0.0.0.0/0" \
   "192.0.2.256" "192.0.2.010" "192.0.2" "192.0.2.0/33" "192.0.2.0/08" "192.0.2.0/" "/24" \
   "2001:db8::1" "lb.example.com" all '$remote_addr' "192.0.2.10 # x"; do
@@ -1017,6 +1124,13 @@ for trusted_proxies in "" " " "none, 192.0.2.10" "192.0.2.10," ",192.0.2.10" "19
 done
 expect_refused "an unset NGINX_TRUSTED_PROXIES is refused" \
   "environment variable NGINX_TRUSTED_PROXIES is not set" unset:NGINX_TRUSTED_PROXIES
+# A stray comma, the likeliest slip in a list, is refused naming its cause rather than an entry ''.
+for trusted_proxies in "192.0.2.10," "192.0.2.10, " ",192.0.2.10" " , 192.0.2.10" "192.0.2.10,,192.0.2.11" \
+  "192.0.2.10, ,192.0.2.11" ","; do
+  expect_refused "NGINX_TRUSTED_PROXIES=$(printf '%q' "$trusted_proxies") is refused: an empty entry" \
+    "NGINX_TRUSTED_PROXIES='$trusted_proxies' has an empty entry (a trailing, leading or doubled comma)." \
+    "NGINX_TRUSTED_PROXIES=$trusted_proxies"
+done
 # A /0 range trusts every client; a CIDR with host bits set trusts its whole range, which is
 # rarely what was meant. Both are refused, each naming the entry; the host-bits refusal names the
 # range it would have trusted. A /32 and ranges written from their first address are accepted.
@@ -1060,6 +1174,7 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       "$hsts_enabled" false
     expect_only_django_cookies "PLUGINS_ENABLED=false $flags: only Django gets and sets cookies"
     expect_django_headers_blanked "PLUGINS_ENABLED=false $flags: no caller can send Django the internal listener's headers" 6
+    expect_forwarded_proto_locations "PLUGINS_ENABLED=false $flags: every location that proxies the client's headers sends X-Forwarded-Proto \$forwarded_proto" 12
     leaked=""
     for text in plugin_identifier /srv/plugin-spa /api/admin/plugins/packages/ \
       /_epicstaff/plugin-upload-permission auth_request \
@@ -1202,6 +1317,7 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       'if ($plugin_network_caller = 0) {'
     expect_internal_headers "PLUGINS_ENABLED=true $flags: only the internal listener's /api/ sets the network secret (from the environment) and the on-behalf-of header, and no development listener header" false
     expect_django_headers_blanked "PLUGINS_ENABLED=true $flags: no caller of a public server can send Django the internal listener's headers" 8
+    expect_forwarded_proto_locations "PLUGINS_ENABLED=true $flags: every location that proxies the client's headers sends X-Forwarded-Proto \$forwarded_proto" 15
     leaked=""
     for text in /_plugin_development_page_check @plugin_development plugin_spa_upstream \
       plugin_spa_host /api/plugin-gateway/development-spa/ "listen 8082" \
@@ -1276,6 +1392,7 @@ for chat_enabled in false true; do for ssl_mode in off on; do
     expect_gateway_denies_marked "PLUGINS_ENABLED=true $flags: the gateway marks its own refusals, and never the development server's page"
     expect_internal_headers "PLUGINS_ENABLED=true $flags: both listeners' /api/ set the network secret (from the environment) and the on-behalf-of header, and only the development listener says it is" true
     expect_django_headers_blanked "PLUGINS_ENABLED=true $flags: no caller of a public server can send Django the listeners' headers" 8
+    expect_forwarded_proto_locations "PLUGINS_ENABLED=true $flags: every location that proxies the client's headers sends X-Forwarded-Proto \$forwarded_proto" 16
     # Counted in the flattened configuration: one snippet, included in both SPA locations.
     page_checks=$(flatten_configuration "$work_dir/out" \
       | awk -F '\t' '$3 == "auth_request /_plugin_development_page_check" { count++ } END { print count + 0 }')

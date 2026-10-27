@@ -43,6 +43,11 @@ case "$trusted_proxies" in
     while [ -n "$trusted_proxy_rest" ]; do
       trusted_proxy_entry=$(printf '%s' "${trusted_proxy_rest%%,*}" | sed 's/^ *//;s/ *$//')
       trusted_proxy_rest=${trusted_proxy_rest#*,}
+      # A stray comma leaves an empty entry: name that cause rather than an entry ''.
+      if [ -z "$trusted_proxy_entry" ]; then
+        echo "ERROR: NGINX_TRUSTED_PROXIES='$NGINX_TRUSTED_PROXIES' has an empty entry (a trailing, leading or doubled comma). $trusted_proxy_usage" >&2
+        exit 64
+      fi
       if ! printf '%s\n' "$trusted_proxy_entry" | grep -Eq "$trusted_proxy_address_pattern"; then
         echo "ERROR: NGINX_TRUSTED_PROXIES='$NGINX_TRUSTED_PROXIES' holds '$trusted_proxy_entry', which is not an IPv4 address or CIDR. $trusted_proxy_usage" >&2
         exit 64

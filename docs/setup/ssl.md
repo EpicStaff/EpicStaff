@@ -77,10 +77,10 @@ NGINX_TRUSTED_PROXIES=192.0.2.10, 192.0.2.11    # several
 NGINX_TRUSTED_PROXIES=192.0.2.0/28              # a range of them
 ```
 
-If you leave it out, Django is told every request came over plain HTTP, and the absolute links
-it builds start with `http://`, such as avatar URLs and the flow assistant's stream URL. The
-stream URL is then an `http://` link on an HTTPS page: browsers block it as mixed content, and
-the assistant's answers never arrive.
+If you leave it at `none`, Django is told every request came over plain HTTP, and the absolute
+links it builds start with `http://`, such as avatar URLs and the flow assistant's stream URL.
+The stream URL is then an `http://` link on an HTTPS page: browsers block it as mixed content,
+and the assistant's answers never arrive.
 
 - **List the address nginx sees the load balancer connect from.** That is not always the load
   balancer's public address. To find it, open the site through the load balancer and read the
@@ -118,13 +118,16 @@ docker compose -f docker-compose.yaml --env-file ./.env up -d epicstaff-nginx
 
 ## Without a load balancer
 
-If nothing sits in front of nginx, set `NGINX_TRUSTED_PROXIES=none`. nginx then always sends
-Django its own scheme, `https` with `NGINX_SSL_MODE=on`, whatever a client claims in its own
-`X-Forwarded-Proto`. `python scripts/envtool.py --dev` renders `none`; `src/.env.example` has no
-production default, so every deployment chooses.
+If nothing sits in front of nginx, keep `NGINX_TRUSTED_PROXIES=none`, the default in both
+`src/.env.example` and `python scripts/envtool.py --dev`. nginx then always sends Django its own
+scheme, `https` with `NGINX_SSL_MODE=on`, whatever a client claims in its own
+`X-Forwarded-Proto`.
 
 ## Upgrading
 
-`NGINX_TRUSTED_PROXIES` is a new required variable. `docker compose` refuses to start until
-`src/.env` sets it. `make env-update` adds a `# NGINX_TRUSTED_PROXIES=<enter your value>`
-placeholder; replace it with `none`, or with your load balancer's addresses as described above.
+`NGINX_TRUSTED_PROXIES` is new, and `docker compose` refuses to start until `src/.env` has it.
+`make env-update` adds it with its default, `none`. That is exactly how nginx behaved before the
+variable existed: it always sent its own scheme. An existing deployment therefore keeps today's
+behaviour and needs no other change. If a load balancer that ends TLS sits in front of nginx,
+replace `none` with its addresses, as [described above](#behind-a-load-balancer), so Django is
+told the browser's `https`.
