@@ -25,6 +25,8 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
     def list(self, request: Request) -> Response:
         page, pairs = self.service_class().list_page(
             self.get_queryset().select_related("created_by"),
+            search=request.query_params.get("search"),
+            order=request.query_params.get("order"),
             limit=request.query_params.get("limit"),
             offset=request.query_params.get("offset"),
         )
