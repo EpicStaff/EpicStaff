@@ -51,6 +51,10 @@ x-nginx-environment: &nginx-environment
   PLUGINS_MAX_PACKAGE_MB: "300"
   PLUGINS_MAX_REQUEST_BODY_MB: "1"
   PLUGINS_NETWORK_SUBNET: *plugins-subnet
+  STORAGE_HOST: storage
+  STORAGE_PORT: "9000"
+  STORAGE_BUCKET: epicstaff
+  AVATAR_URL_SIGNING_SECRET: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
 
 x-nginx: &nginx
   image: ${DEVELOPMENT_LAB_NGINX_IMAGE:?}

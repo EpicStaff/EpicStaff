@@ -8,7 +8,7 @@
     },
     "image_path_url": {
       "type": "string",
-      "description": "Path to a local image file or a public image URL."
+      "description": "Public http:// or https:// URL of the image."
     }
   },
   "required": ["openai_api_key", "image_path_url"]

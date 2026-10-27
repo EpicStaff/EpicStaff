@@ -491,6 +491,7 @@ def main(**kwargs) -> dict:
                 }
 
         model = litellm_call_model(llm.provider, llm_config.model, llm_config.deployment_id)
+        logger.debug("Calling litellm model={} (row provider {})", model, llm.provider)
         params = {
             "model": model,
             **llm_config.to_litellm_kwargs(provider=litellm_routed_provider(model)),
@@ -571,10 +572,8 @@ def main(**kwargs) -> dict:
         rendered_prompt = self._render_prompt(prompt_config.prompt_text, variables_dict)
 
         logger.debug(
-            "Executing prompt '{}' with LLM {}/{}, result_variable='{}'",
+            "Executing prompt '{}', result_variable='{}'",
             prompt_id,
-            llm_data.provider,
-            llm_data.config.model,
             prompt_config.result_variable,
         )
 

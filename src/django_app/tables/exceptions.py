@@ -695,6 +695,28 @@ class LLMConfigInvalidError(CustomAPIExeption):
     default_code = "flow_assistant_llm_config_invalid"
 
 
+class ConfigProviderMissingError(CustomAPIExeption):
+    """Raised when an LLM or embedding config reaches a session without a usable provider.
+
+    The provider foreign keys are SET_NULL, so deleting a provider leaves the configs
+    that used it pointing at nothing. One class for both kinds: only the label in the
+    message differs.
+    """
+
+    status_code = 400
+    default_detail = "The config has no model or provider."
+    default_code = "config_provider_missing"
+
+    def __init__(self, config_kind: str, config_name: str):
+        self.config_kind = config_kind
+        self.config_name = config_name
+        super().__init__(
+            f"{config_kind} config '{config_name}' has no model or provider (it may have been deleted). "
+            "Choose a model with a provider and try again.",
+            code=self.default_code,
+        )
+
+
 class UnsupportedReasoningEffortError(CustomAPIExeption):
     """Raised when an LLM config's reasoning effort is one its model cannot take.
 

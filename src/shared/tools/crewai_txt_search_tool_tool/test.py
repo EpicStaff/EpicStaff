@@ -1,7 +1,7 @@
 from main import main
 
 if __name__ == "__main__":
-    txt_path = input("Enter TXT file path or URL: ")
+    txt_path = input("Enter TXT file URL: ")
     query = input("Enter search query: ")
     threshold = input("Enter similarity threshold (default 0.7): ")
     limit = input("Enter max number of results (default 5): ")

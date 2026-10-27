@@ -22,10 +22,10 @@
     </div>
 } @else if (showExisting()) {
     <div class="filled">
-        <img
+        <app-user-avatar
             class="preview"
-            [src]="initialUrl()"
-            alt="Current avatar"
+            [name]="null"
+            [avatarUrl]="initialUrl()"
         />
         <span class="name">Current avatar</span>
         <button

@@ -1,9 +1,23 @@
 @use '../../../../../styles/status-chip';
 @use '../../../../../styles/touch';
 
+// The widest row without the title (Human, Test, both rings with numbers, Resolve and ⋯) takes about 450px.
+$usage-numbers-min-width: 480px;
+
 :host {
     display: block;
     flex-shrink: 0;
+}
+
+// A container, not a media query: the thread's width depends on the resizable columns beside it.
+:host(:not(.chat-thread-header--phone)) {
+    container: chat-thread-header / inline-size;
+}
+
+@container chat-thread-header (max-width: #{$usage-numbers-min-width - 0.02px}) {
+    .thread-header__usage {
+        --usage-ring-text-display: none;
+    }
 }
 
 // A test conversation, in the thread header.
@@ -73,6 +87,11 @@
         align-items: center;
         gap: 12px;
         margin-left: auto;
+        flex-shrink: 0;
+    }
+
+    // The shared button's host has min-width: 0, so it would shrink and clip its label.
+    &__action {
         flex-shrink: 0;
     }
 

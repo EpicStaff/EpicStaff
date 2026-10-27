@@ -21,7 +21,7 @@ from tables.models import PythonCode, PythonCodeTool
 from tables.models.graph_models import Graph, PythonNode
 
 UPSTREAM_ID = "4711"
-CLIENT_PATH = "proxies.sandbox.views.SandboxVenvBindingViewSet.client_class"
+CLIENT_PATH = "proxies.sandbox.services.VenvService.client_class"
 
 
 @pytest.fixture
