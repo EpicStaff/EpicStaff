@@ -125,7 +125,6 @@ python main.py --debug
 cd src/sandbox
 uv sync --frozen --all-groups
 .venv\Scripts\activate
-mkdir savefiles
 ```
 
 Fix dependency path in `src/sandbox/dynamic_venv_executor_chain.py`:

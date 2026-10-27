@@ -1,8 +1,9 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
-import { UserSummary } from '@shared/models';
+import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { StorageItemInfo } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 import { StorageDetailsDialogComponent } from './storage-details-dialog.component';
@@ -52,9 +53,15 @@ interface RenderedDialog {
     names: string[];
 }
 
-function render(data: StorageItemInfo): RenderedDialog {
+const ALL_PERMISSIONS = (): boolean => true;
+
+function render(
+    data: StorageItemInfo,
+    can: (resource: ResourceCode, action: ActionCode) => boolean = ALL_PERMISSIONS
+): RenderedDialog {
     TestBed.configureTestingModule({
         providers: [
+            { provide: PermissionsService, useValue: { can } },
             { provide: DIALOG_DATA, useValue: { ...data, usedIn: [] } },
             { provide: DialogRef, useValue: { close: vi.fn() } },
             { provide: StorageApiService, useValue: {} },
@@ -99,5 +106,14 @@ describe('StorageDetailsDialogComponent authorship', () => {
 
     it('treats authorship fields missing from the item like null ones', () => {
         expect(render(FILE_WITHOUT_AUTHORSHIP).names).toEqual(['—', '—']);
+    });
+});
+
+describe('StorageDetailsDialogComponent used in flows', () => {
+    it('hides the flows the item is used in from a user who cannot read flows', () => {
+        const canAllButReadFlows = (resource: ResourceCode, action: ActionCode): boolean =>
+            !(resource === ResourceCode.Flows && action === ActionCode.Read);
+
+        expect(render(AUTHORED_FILE, canAllButReadFlows).sections).toEqual(['authorship', 'DATA', 'STORAGE PATH']);
     });
 });

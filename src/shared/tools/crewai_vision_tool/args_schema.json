@@ -4,7 +4,7 @@
   "properties": {
     "image_path_url": {
       "type": "string",
-      "description": "Path to a local image or URL of the image."
+      "description": "Public http:// or https:// URL of the image."
     },
     "openai_api_key": {
       "type": "string",
