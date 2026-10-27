@@ -444,15 +444,15 @@ describe('StorageTreeFacade delete confirmation', () => {
         facade.onContextAction({ action: 'delete', item, selectedItems: [item] });
     }
 
-    function confirmation(): { message: string; type: string } {
-        return confirm.mock.calls[0][0] as { message: string; type: string };
+    function confirmation(): { message: string; caution?: string; type: string } {
+        return confirm.mock.calls[0][0] as { message: string; caution?: string; type: string };
     }
 
     it('keeps the plain message when nothing uses the item', () => {
         deleteFile();
 
         expect(confirmation().message).toContain('Are you sure you want to delete <strong>report.txt</strong> file?');
-        expect(confirmation().message).not.toContain('Used in');
+        expect(confirmation().caution).toBeUndefined();
         expect(confirmation().type).toBe('danger');
     });
 
@@ -474,8 +474,10 @@ describe('StorageTreeFacade delete confirmation', () => {
         deleteFile();
 
         expect(confirmation().message).toBe(
-            `Are you sure you want to delete <strong>report.txt</strong> file? ${recycleBinNotice}` +
-                '<br><br>Used in flows: <strong>Sales</strong>, <strong>&lt;b&gt;x&lt;/b&gt;</strong>.' +
+            `Are you sure you want to delete <strong>report.txt</strong> file? ${recycleBinNotice}`
+        );
+        expect(confirmation().caution).toBe(
+            'Used in flows: <strong>Sales</strong>, <strong>&lt;b&gt;x&lt;/b&gt;</strong>.' +
                 '<br>Deleting will remove it from these, and restoring it from the recycle bin will not add it back.'
         );
         expect(confirmation().type).toBe('warning');
@@ -487,8 +489,8 @@ describe('StorageTreeFacade delete confirmation', () => {
 
         deleteFile();
 
-        expect(confirmation().message).toContain('<strong>Flow 5</strong>.');
-        expect(confirmation().message).not.toContain('more');
+        expect(confirmation().caution).toContain('<strong>Flow 5</strong>.');
+        expect(confirmation().caution).not.toContain('more');
     });
 
     it('shows the first five names and counts one more', () => {
@@ -497,8 +499,8 @@ describe('StorageTreeFacade delete confirmation', () => {
 
         deleteFile();
 
-        expect(confirmation().message).toContain('<strong>Flow 5</strong> and 1 more.');
-        expect(confirmation().message).not.toContain('Flow 6');
+        expect(confirmation().caution).toContain('<strong>Flow 5</strong> and 1 more.');
+        expect(confirmation().caution).not.toContain('Flow 6');
     });
 
     it('counts the rest when many names are used', () => {
@@ -507,7 +509,7 @@ describe('StorageTreeFacade delete confirmation', () => {
 
         deleteFile();
 
-        expect(confirmation().message).toContain('<strong>Flow 5</strong> and 2 more.');
+        expect(confirmation().caution).toContain('<strong>Flow 5</strong> and 2 more.');
     });
 
     it('gives a nameless line when the item is used but the user cannot view where', () => {
@@ -515,7 +517,7 @@ describe('StorageTreeFacade delete confirmation', () => {
 
         deleteFile();
 
-        expect(confirmation().message).toContain("Used in flows you can't view.");
+        expect(confirmation().caution).toContain("<strong>Used in flows you can't view.</strong>");
         expect(confirmation().type).toBe('warning');
     });
 
@@ -530,10 +532,10 @@ describe('StorageTreeFacade delete confirmation', () => {
 
         deleteFile();
 
-        expect(confirmation().message).toContain(
-            "Used in flows: <strong>Sales</strong>.<br>Used in agents you can't view."
+        expect(confirmation().caution).toContain(
+            "Used in flows: <strong>Sales</strong>.<br><strong>Used in agents you can't view.</strong>"
         );
-        expect(confirmation().message).not.toContain('surfaces');
+        expect(confirmation().caution).not.toContain('surfaces');
     });
 
     it('uses plural wording and checks every path for a bulk delete', () => {
@@ -543,7 +545,7 @@ describe('StorageTreeFacade delete confirmation', () => {
         facade.onContextAction({ action: 'delete-selected', item: items[0], selectedItems: items });
 
         expect(usageRequest).toHaveBeenCalledWith(['a.txt', 'b.txt']);
-        expect(confirmation().message).toContain('restoring them from the recycle bin will not add them back.');
+        expect(confirmation().caution).toContain('restoring them from the recycle bin will not add them back.');
     });
 
     it('still asks the plain question and deletes on confirm when the usage check fails', () => {
@@ -552,7 +554,7 @@ describe('StorageTreeFacade delete confirmation', () => {
         deleteFile();
 
         expect(confirmation().message).toContain('Are you sure you want to delete <strong>report.txt</strong> file?');
-        expect(confirmation().message).not.toContain('Used in');
+        expect(confirmation().caution).toBeUndefined();
         expect(deleteRequest).toHaveBeenCalledWith(['report.txt']);
     });
 

@@ -955,14 +955,13 @@ export class StorageTreeFacade {
         }
         message += ` ${recycleBinNotice(this.recycleBinSettings.retentionDays(), items.length)}`;
 
+        // The caution block scrolls, so a long list of names can't push the buttons off screen.
         const usageWarning = usage ? this.buildUsageWarning(usage, items.length) : '';
-        if (usageWarning) {
-            message += `<br><br>${usageWarning}`;
-        }
 
         return this.confirmationDialogService.confirm({
             title,
             message,
+            caution: usageWarning || undefined,
             confirmText: 'Delete',
             cancelText: 'Cancel',
             type: usageWarning ? 'warning' : 'danger',
@@ -991,7 +990,7 @@ export class StorageTreeFacade {
 
     private describeUsageGroup(label: string, group: StorageUsageGroup): string {
         if (!group.items.length) {
-            return `Used in ${label} you can't view.`;
+            return `<strong>Used in ${label} you can't view.</strong>`;
         }
         const shown = group.items
             .slice(0, MAX_USAGE_NAMES_SHOWN)
