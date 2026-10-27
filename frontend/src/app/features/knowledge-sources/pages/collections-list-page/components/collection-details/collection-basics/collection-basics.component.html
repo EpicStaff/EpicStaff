@@ -91,6 +91,7 @@
                 class="basics__input basics__textarea"
                 rows="1"
                 placeholder="Describe what's inside and which questions this collection can answer..."
+                [style.max-height.px]="guidanceMaxHeightPx"
                 [formControl]="guidanceControl"
                 (input)="resizeGuidance()"
                 (blur)="saveGuidance()"

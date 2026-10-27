@@ -109,16 +109,18 @@
         }
     }
 
-    // The component sets the height to fit the text. One row is an 18.2px line (14px × 1.3) + 2 × 9px padding
-    // + 2 × 1px border = 38.2px, which the min-height lifts to the name input's 40px (10px padding would end up
-    // 0.2px taller). No manual resize handle: fitting the text would undo it on the next keystroke. Hidden
+    // The component keeps the field at least as tall as its text through an inline min-height, and binds the
+    // max-height cap from the same constant it fits against; the handle resizes within those, vertically only.
+    // A dragged height stays while typing. One row is an 18.2px line (14px × 1.3) + 2 × 9px padding + 2 × 1px
+    // border = 38.2px, which the min-height lifts to the name input's 40px (10px padding would end up 0.2px
+    // taller); the component measures that floor, so the inline min-height never goes below it. Hidden
     // overflow until the component allows scrolling past the height cap.
     &__textarea {
         height: auto;
         min-height: 2.5rem;
         padding: 9px 12px;
         overflow-y: hidden;
-        resize: none;
+        resize: vertical;
     }
 
     &__readonly {

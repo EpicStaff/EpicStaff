@@ -32,7 +32,10 @@ import {
     SavedCollectionField,
 } from '../../../../../services/collection-field-save.service';
 
-/** The guidance field grows with its text up to this height, then scrolls — as "About this Agent" does. */
+/**
+ * The guidance field grows with its text up to this height, then scrolls — as "About this Agent" does. Dragging
+ * its resize handle cannot make it taller either.
+ */
 const GUIDANCE_MAX_HEIGHT_PX = 400;
 
 /**
@@ -89,6 +92,7 @@ export class CollectionBasicsComponent {
         { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
     ];
 
+    protected readonly guidanceMaxHeightPx = GUIDANCE_MAX_HEIGHT_PX;
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
 
@@ -111,7 +115,7 @@ export class CollectionBasicsComponent {
         });
 
         // A narrower or wider field wraps the text differently. Only width changes count: our own height writes
-        // notify too and must not refit in a loop. The
+        // and the user dragging the resize handle notify too, and neither changes how the text wraps. The
         // field exists only with Update permission, so the observer follows it; the cleanup also runs when this
         // component is destroyed.
         effect((onCleanup) => {
@@ -198,20 +202,32 @@ export class CollectionBasicsComponent {
     }
 
     /**
-     * Fits the guidance field to its text, up to {@link GUIDANCE_MAX_HEIGHT_PX}, and scrolls only beyond that.
-     * With the height reset to auto, `scrollHeight` covers the text and the padding but not the border, which
-     * the border-box height includes, so the border is added back. Measuring at auto height drops the scroll
-     * position of a capped field, so it is put back.
+     * Keeps the guidance field at least as tall as its text, up to {@link GUIDANCE_MAX_HEIGHT_PX}, and scrolls
+     * only beyond that. The fitted height goes into `min-height`, so the field follows the text while the user
+     * has not resized it, a height dragged with the resize handle is kept while typing (the field outgrows it
+     * only when the text does), and dragging below the text does nothing.
+     *
+     * The code never sets `height` itself: only the browser's resize handle writes it, inline, so an inline
+     * `height` is the user's drag. It is set aside to measure and put back.
+     *
+     * Measured at auto height without our `min-height`: `scrollHeight` covers the text and the padding but not
+     * the border, which the border-box height includes, so the border is added back; `offsetHeight` is one row
+     * lifted to the stylesheet's minimum, which our inline `min-height` would otherwise override. Measuring at
+     * auto height drops the scroll position of a capped field, so it is put back.
      */
     protected resizeGuidance(): void {
         const textarea = this.guidanceTextarea()?.nativeElement;
         if (!textarea) return;
         const scrollTop = textarea.scrollTop;
+        const draggedHeight = textarea.style.height;
+        textarea.style.minHeight = '';
         textarea.style.height = 'auto';
         const border = textarea.offsetHeight - textarea.clientHeight;
-        const fullHeight = textarea.scrollHeight + border;
-        textarea.style.height = `${Math.min(fullHeight, GUIDANCE_MAX_HEIGHT_PX)}px`;
-        textarea.style.overflowY = fullHeight > GUIDANCE_MAX_HEIGHT_PX ? 'auto' : 'hidden';
+        const textHeight = textarea.scrollHeight + border;
+        const fittedHeight = Math.max(textHeight, textarea.offsetHeight);
+        textarea.style.minHeight = `${Math.min(fittedHeight, GUIDANCE_MAX_HEIGHT_PX)}px`;
+        textarea.style.height = draggedHeight;
+        textarea.style.overflowY = textHeight > GUIDANCE_MAX_HEIGHT_PX ? 'auto' : 'hidden';
         textarea.scrollTop = scrollTop;
     }
 
@@ -226,6 +242,7 @@ export class CollectionBasicsComponent {
             this.flushSyncedCollection();
             this.saveGuidance();
             this.pendingGuidance = null;
+            this.forgetDraggedGuidanceHeight();
         }
         this.syncedCollectionId = collection.collection_id;
 
@@ -250,6 +267,15 @@ export class CollectionBasicsComponent {
     /** Waits for the render: on the first one the field does not exist yet. */
     private resizeGuidanceAfterRender(): void {
         afterNextRender({ write: () => this.resizeGuidance() }, { injector: this.injector });
+    }
+
+    /**
+     * A height dragged for one collection's guidance does not suit another's: the newly selected collection's
+     * field fits its own text again.
+     */
+    private forgetDraggedGuidanceHeight(): void {
+        const textarea = this.guidanceTextarea()?.nativeElement;
+        if (textarea) textarea.style.height = '';
     }
 
     private settlePendingGuidance(save: CollectionFieldSave): void {

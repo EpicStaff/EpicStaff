@@ -446,13 +446,19 @@ describe('CollectionBasicsComponent guidance for agents autosave', () => {
 // jsdom has no layout, so the textarea's measurements are faked: 20px per line of text plus 18px of padding as the
 // scroll and client height, plus a 2px border as the offset height. Measuring at auto height drops the scroll
 // position, as the browser does when the box is as tall as its text. That checks when the field is fitted, the
-// border, the 400px cap and the kept scroll position, not the browser's measurement itself. `TestBed.tick()`
-// stands in for the application tick that runs render hooks after an event in the app.
+// border, the 400px cap and the kept scroll position, not the browser's measurement itself. The fitted height is
+// the field's min-height; the browser's resize handle writes the dragged height inline, so a test drags the field
+// the same way. `TestBed.tick()` stands in for the application tick that runs render hooks after an event in the app.
 describe('CollectionBasicsComponent guidance field height', () => {
     const LONG_GUIDANCE = Array.from({ length: 30 }, (_, index) => `Line ${index + 1}`).join('\n');
     const FAKED = ['scrollHeight', 'clientHeight', 'offsetHeight', 'scrollTop'] as const;
     let linesPerTextLine = 1;
     let scrollTops = new WeakMap<HTMLTextAreaElement, number>();
+
+    /** What the browser's resize handle does: it writes the dragged height inline. */
+    function drag(textarea: HTMLTextAreaElement, height: string): void {
+        textarea.style.height = height;
+    }
 
     function textHeight(textarea: HTMLTextAreaElement): number {
         return textarea.value.split('\n').length * linesPerTextLine * 20 + 18;
@@ -501,12 +507,12 @@ describe('CollectionBasicsComponent guidance field height', () => {
         const { fixture, host } = render(EDITOR);
         TestBed.tick();
 
-        expect(guidance(host)!.style.height).toBe('40px');
+        expect(guidance(host)!.style.minHeight).toBe('40px');
 
         fixture.componentRef.setInput('collection', { ...COLLECTION, collection_id: 8, description: LONG_GUIDANCE });
         TestBed.tick();
 
-        expect(guidance(host)!.style.height).toBe('400px');
+        expect(guidance(host)!.style.minHeight).toBe('400px');
         expect(guidance(host)!.style.overflowY).toBe('auto');
     });
 
@@ -514,14 +520,14 @@ describe('CollectionBasicsComponent guidance field height', () => {
         const { fixture, host } = render(EDITOR, () => throwError(() => new Error('500')));
 
         type(fixture, guidance(host)!, 'One\nTwo\nThree\nFour');
-        expect(guidance(host)!.style.height).toBe('100px');
+        expect(guidance(host)!.style.minHeight).toBe('100px');
         expect(guidance(host)!.style.overflowY).toBe('hidden');
 
         blur(fixture, guidance(host)!);
         TestBed.tick();
 
         expect(guidance(host)!.value).toBe('Release notes');
-        expect(guidance(host)!.style.height).toBe('40px');
+        expect(guidance(host)!.style.minHeight).toBe('40px');
     });
 
     it('keeps the scroll position of a field past the cap while typing', () => {
@@ -531,24 +537,70 @@ describe('CollectionBasicsComponent guidance field height', () => {
 
         type(fixture, guidance(host)!, `${LONG_GUIDANCE}!`);
 
-        expect(guidance(host)!.style.height).toBe('400px');
+        expect(guidance(host)!.style.minHeight).toBe('400px');
         expect(guidance(host)!.scrollTop).toBe(120);
     });
 
     it('fits the field again when its width changes, not when only its height does', () => {
         const { host } = render(EDITOR);
         TestBed.tick();
-        expect(guidance(host)!.style.height).toBe('40px');
+        expect(guidance(host)!.style.minHeight).toBe('40px');
 
         linesPerTextLine = 2;
         FakeResizeObserver.resize(guidance(host)!, 300);
 
-        expect(guidance(host)!.style.height).toBe('60px');
+        expect(guidance(host)!.style.minHeight).toBe('60px');
 
         linesPerTextLine = 1;
         FakeResizeObserver.resize(guidance(host)!, 300);
 
-        expect(guidance(host)!.style.height).toBe('60px');
+        expect(guidance(host)!.style.minHeight).toBe('60px');
+    });
+
+    it('caps the field at 400px, for the resize handle too', () => {
+        const { host } = render(EDITOR);
+
+        expect(guidance(host)!.style.maxHeight).toBe('400px');
+    });
+
+    it('keeps a dragged height while typing, growing past it only with the text', () => {
+        const { fixture, host } = render(EDITOR);
+        TestBed.tick();
+        drag(guidance(host)!, '200px');
+
+        type(fixture, guidance(host)!, 'One\nTwo');
+        expect(guidance(host)!.style.height).toBe('200px');
+        expect(guidance(host)!.style.minHeight).toBe('60px');
+
+        type(fixture, guidance(host)!, Array.from({ length: 12 }, (_, index) => `Line ${index + 1}`).join('\n'));
+        expect(guidance(host)!.style.height).toBe('200px');
+        expect(guidance(host)!.style.minHeight).toBe('260px');
+
+        type(fixture, guidance(host)!, 'One');
+        expect(guidance(host)!.style.height).toBe('200px');
+        expect(guidance(host)!.style.minHeight).toBe('40px');
+    });
+
+    it('shrinks with the text while the field has not been dragged', () => {
+        const { fixture, host } = render(EDITOR);
+
+        type(fixture, guidance(host)!, 'One\nTwo\nThree\nFour');
+        type(fixture, guidance(host)!, 'One');
+
+        expect(guidance(host)!.style.height).toBe('');
+        expect(guidance(host)!.style.minHeight).toBe('40px');
+    });
+
+    it('drops a dragged height and fits the text again when another collection is selected', () => {
+        const { fixture, host } = render(EDITOR);
+        TestBed.tick();
+        drag(guidance(host)!, '200px');
+
+        fixture.componentRef.setInput('collection', { ...COLLECTION, collection_id: 8, description: 'One\nTwo' });
+        TestBed.tick();
+
+        expect(guidance(host)!.style.height).toBe('');
+        expect(guidance(host)!.style.minHeight).toBe('60px');
     });
 });
 
