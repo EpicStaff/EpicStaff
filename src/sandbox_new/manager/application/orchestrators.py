@@ -318,7 +318,7 @@ class JobOrchestrator:
         """
         for job in self.holding.release_overdue(self.clock()):
             logger.warning("Execution {} held past its hold deadline; not run", job.execution_id)
-            await self._fail(job, _HOLD_TIMED_OUT_MESSAGE, not_run_reason="venv_failed")
+            await self._fail(job, _HOLD_TIMED_OUT_MESSAGE, not_run_reason="hold_timeout")
 
         for venv_id in self.holding.pending_venv_ids():
             async with self.uow:

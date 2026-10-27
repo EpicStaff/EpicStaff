@@ -453,6 +453,7 @@ async def test_a_job_held_until_its_hold_deadline_is_failed_and_finished(
 
     assert published.execution_id == "exec-1"
     assert published.stderr == HOLD_TIMED_OUT_MESSAGE
+    assert published.not_run_reason == "hold_timeout"
     assert published.ran is False
     assert dispatcher.dispatched == []
     assert holding.pending_venv_ids() == []
@@ -477,7 +478,7 @@ async def test_only_the_jobs_past_their_hold_deadline_are_failed(
     clock.advance(1)
     await orchestrator.flush_pending()
 
-    assert failure_sink.failures == [("exec-1", HOLD_TIMED_OUT_MESSAGE, 7, "venv_failed", False)]
+    assert failure_sink.failures == [("exec-1", HOLD_TIMED_OUT_MESSAGE, 7, "hold_timeout", False)]
     assert registry.status("exec-2") is ExecutionStatus.HELD
     assert [job.execution_id for job in holding.release(venv.id)] == ["exec-2"]
 
