@@ -117,6 +117,7 @@ export interface InputMapKeyChanges {
                         class="readonly-table"
                         role="table"
                         aria-label="Input list"
+                        [class.readonly-table--diff]="rowChanges() !== null"
                     >
                         <!-- The version may have no rows: then the form holds one blank pair, which is not shown. -->
                         @for (pair of hasNoMeaningfulPairs() ? [] : pairs.controls; track pair) {
@@ -344,6 +345,7 @@ export interface InputMapKeyChanges {
     styles: [
         `
             @use '../../styles/node-panel-controls.scss' as controls;
+            @use '../../../../styles/diff-value-mark' as diff-value-mark;
 
             .input-map-container {
                 display: flex;
@@ -561,20 +563,34 @@ export interface InputMapKeyChanges {
                 border-right: none;
             }
 
-            // A row with a diff status is a box of its own, so it can carry a border and a tooltip.
+            // Version diff (Changes tab): the badge of a marked row sticks out of the table's edge, so the table does
+            // not clip. Its rounded corners then come from the first and last rows instead.
+            .readonly-table--diff {
+                overflow: visible;
+            }
+
+            // A row with a diff status is a box of its own, so it can carry a border and a tooltip. The border is a
+            // frame on the row's edge that takes no space, so the row is as wide as an unmarked one.
             .readonly-row--diff {
+                position: relative;
                 display: grid;
                 grid-column: 1 / -1;
                 grid-template-columns: subgrid;
             }
 
-            // Room for the badge in the corner of a marked row.
-            .readonly-row.diff-field-mark--shown .readonly-cell:last-of-type {
-                padding-right: 1.5rem;
+            // The table's inner corners, so the frame of a first or last row does not stick out of them.
+            .readonly-row--diff:first-child {
+                border-top-left-radius: 3px;
+                border-top-right-radius: 3px;
+            }
+
+            .readonly-row--diff:last-child {
+                border-bottom-left-radius: 3px;
+                border-bottom-right-radius: 3px;
             }
 
             .readonly-row--added {
-                box-shadow: inset 0 0 0 1px var(--color-diff-added);
+                @include diff-value-mark.row-frame(var(--color-diff-added));
             }
 
             .readonly-row--removed .readonly-cell {

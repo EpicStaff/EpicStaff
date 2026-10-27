@@ -1,6 +1,7 @@
 @use '../../../styles/node-panel-controls.scss' as controls;
 @use '../../../styles/node-panel-mixins.scss' as mixins;
 @use '../shared/variable-highlight-textarea/variable-highlight' as highlight;
+@use '../../../../../styles/diff-value-mark' as diff-value-mark;
 
 .panel-container {
     display: flex;
@@ -139,6 +140,33 @@ $field-height: 40px;
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
+}
+
+// Version diff (Changes tab): a row a restore changes (the field mark draws its border and badge) or adds gets a
+// frame that takes no space, so every row keeps the full width. The inputs reach the row's edge, so the frame sits a
+// little outside it, inside the gap between rows and the panel's padding; the badge sticks out of its corner.
+.entry-row-mark {
+    --diff-row-frame-offset: 4px;
+    border-radius: 4px;
+}
+
+.entry-row-mark--added {
+    position: relative;
+    @include diff-value-mark.row-frame(var(--color-diff-added));
+}
+
+// A row only on the canvas, as the removed rows of the Input List: red, struck, faded.
+.entry-input--removed {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-diff-deleted);
+    text-decoration: line-through;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: var(--diff-deleted-opacity);
 }
 
 .entry-field {
@@ -285,3 +313,7 @@ $field-height: 40px;
 .missing-reference-note {
     margin-top: 0.5rem;
 }
+
+// Version diff (Changes tab): the table picked, a trigger this panel lays out itself, boxed like an input. Keep after
+// the trigger's own read-only look, which it overrides.
+@include diff-value-mark.marked-inside('.dropdown-trigger', $draws-box: true);

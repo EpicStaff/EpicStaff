@@ -84,24 +84,31 @@
                     [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
                 >
                     <div class="field-isolated">
-                        <app-custom-input
-                            label="Node Name"
-                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [readonly]="isReadOnly()"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'node_name'">
+                            <app-custom-input
+                                label="Node Name"
+                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
 
-                    <app-webhook-trigger-select
-                        formControlName="webhook_trigger"
-                        [disallowedAuthKinds]="['telegram', 'twilio']"
-                        [readonly]="isReadOnly()"
-                        disallowedProviderMessage="This trigger is not supported for Webhook nodes. Use a trigger with webhook auth."
-                        (triggerResolved)="onTriggerResolved($event)"
-                    ></app-webhook-trigger-select>
+                    <app-diff-field-mark
+                        [diffField]="'webhook_trigger'"
+                        [diffFormat]="triggerNameFormat"
+                    >
+                        <app-webhook-trigger-select
+                            formControlName="webhook_trigger"
+                            [disallowedAuthKinds]="['telegram', 'twilio']"
+                            [readonly]="isReadOnly()"
+                            disallowedProviderMessage="This trigger is not supported for Webhook nodes. Use a trigger with webhook auth."
+                            (triggerResolved)="onTriggerResolved($event)"
+                        ></app-webhook-trigger-select>
+                    </app-diff-field-mark>
                     <app-missing-reference-note [fields]="['webhook_trigger']" />
 
                     @if (fullUrl(); as url) {
@@ -130,37 +137,49 @@
                         <div class="webhook-warning">Webhook is not registered. Check the trigger configuration.</div>
                     }
 
-                    <app-node-secrets-field
-                        [activeColor]="activeColor"
-                        [value]="selectedSecretIds()"
-                        [readonly]="!canEditSecrets()"
-                        [names]="secretNames()"
-                        [tooltipText]="secretsTooltip()"
-                        [diffField]="'python_code.secret_names'"
-                        (valueChange)="onSecretsChange($event)"
-                    />
+                    <app-diff-field-mark [diffField]="'python_code.secret_names'">
+                        <app-node-secrets-field
+                            [activeColor]="activeColor"
+                            [value]="selectedSecretIds()"
+                            [readonly]="!canEditSecrets()"
+                            [names]="secretNames()"
+                            [tooltipText]="secretsTooltip()"
+                            [diffField]="'python_code.secret_names'"
+                            (valueChange)="onSecretsChange($event)"
+                        />
+                    </app-diff-field-mark>
 
-                    <app-custom-input
-                        label="Libraries"
-                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                        formControlName="libraries"
-                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                        [activeColor]="activeColor"
-                        [readonly]="isReadOnly()"
-                    ></app-custom-input>
+                    <app-diff-field-mark [diffField]="'python_code.libraries'">
+                        <app-custom-input
+                            label="Libraries"
+                            tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
+                            formControlName="libraries"
+                            placeholder="Enter libraries (e.g., requests, pandas, numpy)"
+                            [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
+                        ></app-custom-input>
+                    </app-diff-field-mark>
 
-                    <app-execution-timeout-field
-                        [field]="executionTimeout"
-                        [readonly]="isReadOnly()"
-                    />
+                    <!-- A node without its own timeout shows the default, so the tooltip does too. -->
+                    <app-diff-field-mark
+                        [diffField]="'python_code.execution_timeout'"
+                        [diffDefaultValue]="executionTimeout.limits.defaultSeconds"
+                    >
+                        <app-execution-timeout-field
+                            [field]="executionTimeout"
+                            [readonly]="isReadOnly()"
+                        />
+                    </app-diff-field-mark>
 
-                    <app-node-storage-section
-                        [readonly]="isReadOnly()"
-                        [useStorage]="useStorage()"
-                        (onToggleChange)="onStorageToggle($event)"
-                        (onInsertCode)="insertStorageCode($event)"
-                        (onRemoveCode)="removeStorageCode($event)"
-                    ></app-node-storage-section>
+                    <app-diff-field-mark [diffField]="'use_storage'">
+                        <app-node-storage-section
+                            [readonly]="isReadOnly()"
+                            [useStorage]="useStorage()"
+                            (onToggleChange)="onStorageToggle($event)"
+                            (onInsertCode)="insertStorageCode($event)"
+                            (onRemoveCode)="removeStorageCode($event)"
+                        ></app-node-storage-section>
+                    </app-diff-field-mark>
 
                     <!-- Expanded: the editor not shown in the big pane sits at the bottom of this column. -->
                     @if (isExpanded()) {

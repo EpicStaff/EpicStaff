@@ -10,6 +10,9 @@
 // that clips what sticks out (a code editor card) calls `marked-frame(...)` instead and draws only the border; the
 // mark then draws the badge and the focus ring on itself.
 //
+// A value box the page itself lays out inside the mark (not a form component's own) calls `marked-inside(...)` from
+// the page's styles instead.
+//
 // Rule: a mark wraps exactly one form component, and that component includes `marked()` or `marked-frame()`.
 // `:host-context` matches any ancestor, so a marked component nested inside another wrapped one would be marked
 // too. The mark turns off its own outline, so a wrapped component without either would also get no focus ring.
@@ -40,7 +43,25 @@ $badge-size: 16px;
 ///   (padding, border, background, full width) to read as a value.
 /// @param $display the box's display, for an inline element that has to become a box.
 @mixin marked($box, $badge-anchor: $box, $draws-box: false, $display: null) {
-    :host-context(#{$context}) #{$box} {
+    @include -marked-rules(
+        ':host-context(#{$context})',
+        ':host-context(#{$context}:focus-visible)',
+        $box,
+        $badge-anchor,
+        $draws-box,
+        $display
+    );
+}
+
+/// `marked()` for a value box that a page lays out in its own template, inside the mark it places there (e.g. a
+/// trigger button it projects into a dropdown, or a list it draws itself), so the box is not in a component's own
+/// view. Same parameters as `marked()`.
+@mixin marked-inside($box, $badge-anchor: $box, $draws-box: false, $display: null) {
+    @include -marked-rules($context, '#{$context}:focus-visible', $box, $badge-anchor, $draws-box, $display);
+}
+
+@mixin -marked-rules($marked, $focused, $box, $badge-anchor, $draws-box, $display) {
+    #{$marked} #{$box} {
         display: $display;
 
         @if $draws-box {
@@ -55,12 +76,12 @@ $badge-size: 16px;
         }
     }
 
-    :host-context(#{$context}:focus-visible) #{$box} {
+    #{$focused} #{$box} {
         outline: 2px solid var(--accent-color);
         outline-offset: 2px;
     }
 
-    :host-context(#{$context}) #{$badge-anchor} {
+    #{$marked} #{$badge-anchor} {
         position: relative;
         @include corner-badge;
     }
@@ -80,6 +101,25 @@ $badge-size: 16px;
         // The icon font by name, as a pseudo-element cannot take the `ti` class; no `text-*` token fits a glyph.
         font-family: 'tabler-icons';
         font-style: normal;
+        pointer-events: none;
+    }
+}
+
+/// How far outside its row a row frame (`row-frame`) and the row's badge sit. A row sets it when its own content
+/// reaches its edge (a row of inputs), so the frame does not touch them; not set: on the row's edge (a table row,
+/// whose cells have padding of their own).
+$row-frame-offset: var(--diff-row-frame-offset, 0px);
+
+/// The border of a row a restore changes, adds or removes, as the `::before` of the row: a frame that takes no space,
+/// so the row keeps the width and alignment of an unmarked row. It sits `$row-frame-offset` outside the row's edge and
+/// takes the row's rounded corners. The row must be positioned.
+@mixin row-frame($color) {
+    &::before {
+        content: '';
+        position: absolute;
+        inset: calc(-1 * #{$row-frame-offset});
+        border: 1px solid $color;
+        border-radius: inherit;
         pointer-events: none;
     }
 }

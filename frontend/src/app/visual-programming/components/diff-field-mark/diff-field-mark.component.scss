@@ -23,11 +23,14 @@
     }
 }
 
-// On an element that lays out its own value (a table row): the mark draws them itself, a border inside it so
-// nothing moves.
-:host([appDiffFieldMark].diff-field-mark--shown) {
+// Around a group of inputs that together hold one value: the mark draws the box itself, like a value box drawn by
+// `marked($draws-box: true)`, with the badge on its corner. The inputs inside keep their own look.
+:host(app-diff-field-mark.diff-field-mark--group) {
     position: relative;
-    box-shadow: inset 0 0 0 1px var(--color-diff-changed);
+    padding: 8px 12px;
+    border: 1px solid var(--color-diff-changed);
+    border-radius: 4px;
+    @include diff-value-mark.corner-badge;
 
     &:focus-visible {
         outline: 2px solid var(--accent-color);
@@ -35,12 +38,28 @@
     }
 }
 
-// Inside the row's corner: the table clips what sticks out. The glyph is the `ti ti-pencil` icon inside.
+// On an element that lays out its own value (a row): the mark draws the border, badge and focus ring itself. The
+// border is a frame that takes no space, so a marked row is as wide as an unmarked one; the row sets how far outside
+// its edge the frame sits (`row-frame` in `styles/_diff-value-mark.scss`). Whatever holds the row must not clip the
+// badge, which sticks out of the frame's corner.
+:host([appDiffFieldMark].diff-field-mark--shown) {
+    position: relative;
+    @include diff-value-mark.row-frame(var(--color-diff-changed));
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        // Around the frame, not across it.
+        outline-offset: calc(#{diff-value-mark.$row-frame-offset} + 2px);
+    }
+}
+
+// On the frame's top-right corner, half outside, like the badge of the element form. A real element rather than a
+// pseudo-element, for its `title`. The glyph is the `ti ti-pencil` icon inside.
 .diff-field-mark__badge {
     @include diff-value-mark.badge-look;
     position: absolute;
-    top: 4px;
-    right: 4px;
+    top: calc(-1 * #{diff-value-mark.$row-frame-offset} - #{diff-value-mark.$badge-size} / 2);
+    right: calc(-1 * #{diff-value-mark.$row-frame-offset} - #{diff-value-mark.$badge-size} / 2);
 }
 
 // The colours of the app's other tooltips (matTooltip), in both themes.

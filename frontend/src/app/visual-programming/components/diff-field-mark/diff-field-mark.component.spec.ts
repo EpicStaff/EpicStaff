@@ -37,10 +37,27 @@ import { DiffFieldMarkChange, DiffFieldMarkComponent } from './diff-field-mark.c
         >
             <span>user_id</span>
         </div>
+        <app-diff-field-mark
+            id="subflow"
+            [diffField]="'subgraph'"
+            [diffFormat]="flowName"
+        >
+            <span>Billing</span>
+        </app-diff-field-mark>
+        <app-diff-field-mark
+            id="search-settings"
+            [diffChange]="groupChange()"
+            [diffGroup]="true"
+        >
+            <input value="3" />
+            <input value="0.7" />
+        </app-diff-field-mark>
     `,
 })
 class PanelFieldsComponent {
     readonly rowChange = input<DiffFieldMarkChange | null>(null);
+    readonly groupChange = input<DiffFieldMarkChange | null>(null);
+    readonly flowName = (id: unknown): string => (id === 41 ? 'Billing' : `flow #${String(id)}`);
 }
 
 const OUTPUT_PATH_CHANGE: FieldChange = {
@@ -57,10 +74,15 @@ function onDiff(status: NodeDiffStatus, fields: FieldChange[] = [OUTPUT_PATH_CHA
 
 let fixture: ComponentFixture<PanelFieldsComponent>;
 
-function render(providers: Provider[], rowChange: DiffFieldMarkChange | null = null): void {
+function render(
+    providers: Provider[],
+    rowChange: DiffFieldMarkChange | null = null,
+    groupChange: DiffFieldMarkChange | null = null
+): void {
     TestBed.configureTestingModule({ providers });
     fixture = TestBed.createComponent(PanelFieldsComponent);
     fixture.componentRef.setInput('rowChange', rowChange);
+    fixture.componentRef.setInput('groupChange', groupChange);
     fixture.detectChanges();
 }
 
@@ -248,6 +270,48 @@ describe('DiffFieldMarkComponent', () => {
         });
     });
 
+    it('shows a value the way the field shows it when given a display format, e.g. a linked flow by name', () => {
+        const subflowChange: FieldChange = {
+            path: 'subgraph',
+            field: 'subgraph',
+            status: 'changed',
+            current: 41,
+            version: 42,
+        };
+        render([onDiff('changed', [subflowChange])]);
+
+        dispatch('subflow', 'mouseenter');
+
+        expect(tooltipValue()).toBe('[Billing]');
+        expect(descriptionOf('subflow')).toBe('Current canvas: Billing');
+    });
+
+    describe('around a group of inputs', () => {
+        const SETTINGS_CHANGE: DiffFieldMarkChange = { current: { limit: 3 }, version: { limit: 5 } };
+
+        it('boxes the group itself, and does not ask the inputs inside to mark their values', () => {
+            render([onDiff('changed', [])], null, SETTINGS_CHANGE);
+
+            expect(isMarked('search-settings')).toBe(true);
+            expect(element('search-settings').classList).toContain('diff-field-mark--group');
+            expect(element('search-settings').classList).not.toContain('diff-value-marked');
+            expect(element('search-settings').getAttribute('role')).toBe('group');
+            dispatch('search-settings', 'mouseenter');
+            expect(tooltipValue()).toBe('{"limit":[3]}');
+        });
+
+        it.each([
+            { case: 'without a change', providers: () => [onDiff('changed', [])], change: null },
+            { case: 'on a node a restore removes', providers: () => [onDiff('deleted', [])], change: SETTINGS_CHANGE },
+            { case: 'off the Changes tab', providers: () => [], change: SETTINGS_CHANGE },
+        ])('leaves the group as it is $case', ({ providers, change }) => {
+            render(providers(), null, change);
+
+            expect(isMarked('search-settings')).toBe(false);
+            expect(element('search-settings').classList).not.toContain('diff-field-mark--group');
+        });
+    });
+
     it('marks an element with the change it is given, e.g. one row of a map', () => {
         render([onDiff('changed', [])], { current: 'variables.user', version: 'variables.account' });
 
@@ -257,10 +321,15 @@ describe('DiffFieldMarkComponent', () => {
     });
 
     it('cuts a long current value in the description too, as in the tooltip', () => {
-        render([onDiff('changed', [])], { current: `${'x'.repeat(100)}${'z'.repeat(100)}`, version: 'other' });
+        const start = `${'s'.repeat(40)}${'m'.repeat(30)}${'c'.repeat(20)}`;
+        render([onDiff('changed', [])], {
+            current: `${start}${'x'.repeat(100)}${'z'.repeat(100)}${'d'.repeat(30)}`,
+            version: `${start}Y${'d'.repeat(30)}`,
+        });
 
         expect(descriptionOf('row')).toBe(
-            `Restore changes this field. Current canvas: ${'x'.repeat(50)}…${'z'.repeat(50)}`
+            `Restore changes this field. Current canvas: ${'s'.repeat(40)}…${'c'.repeat(20)}` +
+                `${'x'.repeat(50)}…${'z'.repeat(50)}${'d'.repeat(20)}…`
         );
     });
 

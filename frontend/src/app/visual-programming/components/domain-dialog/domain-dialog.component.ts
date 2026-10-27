@@ -31,6 +31,8 @@ import {
     type PersistentVariablesValidationResult,
     validatePersistentVariables,
 } from '../../services/persistent-variables.validator';
+import { CodeChange } from '../../utils/diff';
+import { CodeDiffViewComponent } from '../code-diff-view/code-diff-view.component';
 import {
     AutocompleteItem,
     AutocompleteOverlayComponent,
@@ -42,6 +44,12 @@ export interface DomainDialogData {
     initialData: Record<string, unknown>;
     /** Who created and who last edited the Start node whose variables these are. */
     authorship: AuthorshipDetailsSource;
+    /**
+     * Changes tab of a version preview, a Start node a restore changes: its variables on the canvas and in the version,
+     * as JSON, shown as a diff instead of the editor. `null` anywhere else: the live editor, the Preview tab, or
+     * variables a restore leaves as they are.
+     */
+    variablesDiff: CodeChange | null;
 }
 
 export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
@@ -56,7 +64,13 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 
 @Component({
     selector: 'app-domain-dialog',
-    imports: [JsonEditorComponent, OverlayModule, AppSvgIconComponent, AuthorshipFooterComponent],
+    imports: [
+        JsonEditorComponent,
+        OverlayModule,
+        AppSvgIconComponent,
+        AuthorshipFooterComponent,
+        CodeDiffViewComponent,
+    ],
     encapsulation: ViewEncapsulation.None,
     template: `
         <div class="dialog-container">
@@ -99,15 +113,24 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                     </ul>
                 }
                 <div class="json-editor-section">
-                    <app-json-editor
-                        class="json-editor"
-                        [jsonData]="initialStateJson"
-                        [readonly]="isReadOnly()"
-                        (jsonChange)="onInitialStateChange($event)"
-                        (validationChange)="onJsonValidChange($event)"
-                        (editorReady)="onEditorReady($event)"
-                        [fullHeight]="true"
-                    ></app-json-editor>
+                    @if (data.variablesDiff; as variables) {
+                        <app-code-diff-view
+                            class="json-editor"
+                            language="json"
+                            [current]="variables.current"
+                            [version]="variables.version"
+                        />
+                    } @else {
+                        <app-json-editor
+                            class="json-editor"
+                            [jsonData]="initialStateJson"
+                            [readonly]="isReadOnly()"
+                            (jsonChange)="onInitialStateChange($event)"
+                            (validationChange)="onJsonValidChange($event)"
+                            (editorReady)="onEditorReady($event)"
+                            [fullHeight]="true"
+                        ></app-json-editor>
+                    }
                 </div>
             </div>
 

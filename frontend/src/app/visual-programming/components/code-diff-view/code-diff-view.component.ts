@@ -2,12 +2,14 @@ import { Component, computed, DestroyRef, ElementRef, inject, input, NgZone } fr
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { DiffEditorComponent, DiffEditorModel } from 'ngx-monaco-editor-v2';
 
-const LANGUAGE = 'python';
+/** The languages a changed field is written in: code, or JSON (a Start node's variables, an End node's output map). */
+export type CodeDiffLanguage = 'python' | 'json';
 
 /**
  * Inline (one column, removed lines above added ones): a side-by-side view has no room in a node panel. Both sides
  * read-only. Every whitespace difference is shown, as indentation is meaning in Python and the field mark counts it
- * too. Unchanged blocks are folded ("N hidden lines", opened on click). The theme is the code editor's.
+ * too (JSON is indented the same on both sides, so it shows none of its own). Unchanged blocks are folded ("N hidden
+ * lines", opened on click). The theme is the code editor's.
  */
 const DIFF_EDITOR_OPTIONS: MonacoEditor.IStandaloneDiffEditorConstructionOptions = {
     theme: 'vs-dark',
@@ -56,10 +58,18 @@ export class CodeDiffViewComponent {
     readonly current = input.required<string>();
     /** The code of the previewed version. */
     readonly version = input.required<string>();
+    /** How both codes are highlighted. */
+    readonly language = input<CodeDiffLanguage>('python');
 
-    // A new model rebuilds the editor, so each depends on its own code only.
-    protected readonly originalModel = computed<DiffEditorModel>(() => ({ code: this.current(), language: LANGUAGE }));
-    protected readonly modifiedModel = computed<DiffEditorModel>(() => ({ code: this.version(), language: LANGUAGE }));
+    // A new model rebuilds the editor, so each depends on its own code (and the language) only.
+    protected readonly originalModel = computed<DiffEditorModel>(() => ({
+        code: this.current(),
+        language: this.language(),
+    }));
+    protected readonly modifiedModel = computed<DiffEditorModel>(() => ({
+        code: this.version(),
+        language: this.language(),
+    }));
 
     protected readonly options = DIFF_EDITOR_OPTIONS;
 

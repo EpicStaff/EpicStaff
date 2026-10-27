@@ -3,26 +3,37 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import type { editor as MonacoEditor } from 'monaco-editor';
 
-import { CodeDiffViewComponent } from './code-diff-view.component';
+import { CodeDiffLanguage, CodeDiffViewComponent } from './code-diff-view.component';
 import { DiffEditorStubComponent, renderCodeDiffViewWithStubEditor } from './code-diff-view.testing';
 
 /** A panel showing one code change; it hands the view a new change object whenever it is told to. */
 @Component({
     imports: [CodeDiffViewComponent],
-    template: `<app-code-diff-view
-        [current]="change().current"
-        [version]="change().version"
-    />`,
+    template: `@if (language(); as language) {
+            <app-code-diff-view
+                [current]="change().current"
+                [version]="change().version"
+                [language]="language"
+            />
+        } @else {
+            <app-code-diff-view
+                [current]="change().current"
+                [version]="change().version"
+            />
+        }`,
 })
 class PanelComponent {
     readonly change = signal({ current: 'a = 1\n', version: 'a = 2\n' });
+    /** Not given: the view's own default. */
+    readonly language = signal<CodeDiffLanguage | null>(null);
 }
 
 let fixture: ComponentFixture<PanelComponent>;
 
-function render(): void {
+function render(language: CodeDiffLanguage | null = null): void {
     renderCodeDiffViewWithStubEditor();
     fixture = TestBed.createComponent(PanelComponent);
+    fixture.componentInstance.language.set(language);
     fixture.detectChanges();
 }
 
@@ -42,6 +53,13 @@ describe('CodeDiffViewComponent', () => {
 
         expect(diffEditor().originalModel()).toEqual({ code: 'a = 1\n', language: 'python' });
         expect(diffEditor().modifiedModel()).toEqual({ code: 'a = 2\n', language: 'python' });
+    });
+
+    it('highlights both sides as JSON when given that language', () => {
+        render('json');
+
+        expect(diffEditor().originalModel()).toEqual({ code: 'a = 1\n', language: 'json' });
+        expect(diffEditor().modifiedModel()).toEqual({ code: 'a = 2\n', language: 'json' });
     });
 
     it('shows an inline, read-only diff that keeps whitespace changes and folds unchanged blocks', () => {

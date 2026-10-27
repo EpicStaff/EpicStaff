@@ -3,9 +3,14 @@ import {
     codeChangeFor,
     DisplaySegment,
     fieldChangeFor,
+    fieldGroupChange,
     fieldValueSegments,
+    jsonChangeFor,
+    keyedListRowChanges,
+    linkedEntityFormat,
     mapFieldRowChanges,
     MapKeyChange,
+    reordersKeyedList,
     showsFieldMarks,
 } from './field-change-display';
 import { FieldName } from './field-display';
@@ -309,48 +314,291 @@ describe('fieldValueSegments', () => {
     });
 });
 
+describe('fieldValueSegments with a display format of its own', () => {
+    const flowNames = new Map<unknown, string>([
+        [41, 'Billing'],
+        [42, 'Refunds'],
+    ]);
+    const flowName = linkedEntityFormat('flow', (id) => flowNames.get(id));
+
+    it.each<{ kind: string; current: unknown; version: unknown; segments: DisplaySegment[] }>([
+        { kind: 'both sides named', current: 41, version: 42, segments: [struck('Billing')] },
+        { kind: 'the canvas side not among the names', current: 7, version: 42, segments: [struck('flow #7')] },
+        { kind: 'no value on the canvas', current: null, version: 42, segments: [struck('empty')] },
+        { kind: 'the same name on both sides', current: 41, version: 41, segments: [kept('Billing')] },
+    ])('shows a linked entity by name: $kind', ({ current, version, segments }) => {
+        expect(fieldValueSegments(null, current, version, undefined, flowName)).toEqual(segments);
+    });
+
+    it("replaces the field's own formatter", () => {
+        const asSeconds = (value: unknown): string => `${String(value)} s`;
+
+        expect(fieldValueSegments('python_code.execution_timeout', 90, 120, undefined, asSeconds)).toEqual([
+            struck('90 s'),
+        ]);
+    });
+});
+
+describe('jsonChangeFor', () => {
+    const diffOf = (status: NodeDiffStatus, fields: FieldChange[]) => ({ status, fields, missingReferences: [] });
+    const outputMapChange: FieldChange = {
+        path: 'output_map',
+        field: 'output_map',
+        status: 'changed',
+        current: { answer: 'variables.a' },
+        version: { answer: 'variables.b', extra: 1 },
+    };
+
+    it('gives both sides as the JSON editor shows them, indented by 2', () => {
+        expect(jsonChangeFor(diffOf('changed', [outputMapChange]), 'output_map')).toEqual({
+            current: '{\n  "answer": "variables.a"\n}',
+            version: '{\n  "answer": "variables.b",\n  "extra": 1\n}',
+        });
+    });
+
+    it.each(['added', 'deleted', 'unchanged'] as const)('gives nothing on a node whose status is %s', (status) => {
+        expect(jsonChangeFor(diffOf(status, [outputMapChange]), 'output_map')).toBeNull();
+    });
+
+    it('gives nothing for an unchanged field or with no diff', () => {
+        expect(jsonChangeFor(diffOf('changed', [outputMapChange]), 'variables')).toBeNull();
+        expect(jsonChangeFor(null, 'output_map')).toBeNull();
+    });
+});
+
+describe('keyedListRowChanges', () => {
+    const entriesChange = (current: unknown, version: unknown) => ({
+        status: 'changed' as const,
+        fields: [{ path: 'entries', field: 'entries', status: 'changed' as const, current, version }],
+        missingReferences: [],
+    });
+    const keyOf = (entry: unknown): string => (entry as { key: string }).key;
+    const entry = (key: string, value?: string) => (value === undefined ? { key } : { key, value });
+
+    it('pairs the rows by key, in the version order, and lists the rows only the canvas has', () => {
+        const changes = keyedListRowChanges(
+            entriesChange(
+                [entry('kept', 'variables.kept'), entry('moved', 'variables.old'), entry('gone', 'variables.gone')],
+                [entry('moved', 'variables.new'), entry('new', 'variables.new'), entry('kept', 'variables.kept')]
+            ),
+            'entries',
+            keyOf
+        );
+
+        expect(changes).toEqual({
+            rows: [
+                {
+                    key: 'moved',
+                    status: 'changed',
+                    current: entry('moved', 'variables.old'),
+                    version: entry('moved', 'variables.new'),
+                },
+                { key: 'new', status: 'added', current: null, version: entry('new', 'variables.new') },
+                null,
+            ],
+            removed: [{ key: 'gone', status: 'deleted', current: entry('gone', 'variables.gone'), version: null }],
+        });
+    });
+
+    it('pairs a repeated key by its occurrence', () => {
+        const changes = keyedListRowChanges(
+            entriesChange(
+                [entry('user', 'variables.a'), entry('user', 'variables.b')],
+                [entry('user', 'variables.a'), entry('user', 'variables.c'), entry('user', 'variables.d')]
+            ),
+            'entries',
+            keyOf
+        );
+
+        expect(changes?.rows.map((row) => row?.status ?? null)).toEqual([null, 'changed', 'added']);
+        expect(changes?.removed).toEqual([]);
+    });
+
+    it('treats a side that is not a list as no rows', () => {
+        const changes = keyedListRowChanges(entriesChange(null, [entry('user')]), 'entries', keyOf);
+
+        expect(changes).toEqual({
+            rows: [{ key: 'user', status: 'added', current: null, version: entry('user') }],
+            removed: [],
+        });
+    });
+
+    it('gives nothing for an unchanged field, a node not changed, or no diff', () => {
+        const diff = entriesChange([entry('a')], [entry('b')]);
+
+        expect(keyedListRowChanges(diff, 'input_map', keyOf)).toBeNull();
+        expect(keyedListRowChanges({ ...diff, status: 'added' }, 'entries', keyOf)).toBeNull();
+        expect(keyedListRowChanges(null, 'entries', keyOf)).toBeNull();
+    });
+});
+
+describe('reordersKeyedList', () => {
+    const entriesChange = (current: unknown, version: unknown) => ({
+        status: 'changed' as const,
+        fields: [{ path: 'entries', field: 'entries', status: 'changed' as const, current, version }],
+        missingReferences: [],
+    });
+    const keyOf = (entry: unknown): string => (entry as { key: string }).key;
+    /** Entries from `key=path` texts; a text with no `=` has no path. */
+    const entries = (...texts: string[]) =>
+        texts.map((text) => {
+            const [key, value] = text.split('=');
+            return value === undefined ? { key } : { key, value };
+        });
+
+    it.each<{ case: string; current: string[]; version: string[]; reorders: boolean }>([
+        { case: 'the same order', current: ['a', 'b', 'c'], version: ['a', 'b', 'c'], reorders: false },
+        { case: 'a reorder alone', current: ['a', 'b', 'c'], version: ['c', 'a', 'b'], reorders: true },
+        {
+            case: 'a reorder with changed rows',
+            current: ['a=variables.x', 'b=variables.y'],
+            version: ['b=variables.z', 'a=variables.x'],
+            reorders: true,
+        },
+        {
+            case: 'changed rows in the same order',
+            current: ['a=variables.x', 'b=variables.y'],
+            version: ['a=variables.z', 'b=variables.y'],
+            reorders: false,
+        },
+        {
+            case: 'added and removed keys only',
+            current: ['a', 'gone', 'b'],
+            version: ['new', 'a', 'b'],
+            reorders: false,
+        },
+        {
+            // Paired by occurrence: the first `user` with the first, so swapping two `user` rows changes rows instead.
+            case: 'repeated keys swapped among themselves',
+            current: ['user=variables.a', 'user=variables.b'],
+            version: ['user=variables.b', 'user=variables.a'],
+            reorders: false,
+        },
+        {
+            case: 'a repeated key moved past another key',
+            current: ['a', 'b', 'a'],
+            version: ['a', 'a', 'b'],
+            reorders: true,
+        },
+        { case: 'a side that is not a list', current: [], version: ['a', 'b'], reorders: false },
+    ])('$case: $reorders', ({ current, version, reorders }) => {
+        expect(reordersKeyedList(entriesChange(entries(...current), entries(...version)), 'entries', keyOf)).toBe(
+            reorders
+        );
+    });
+
+    it('is false for an unchanged field, a node not changed, or no diff', () => {
+        const diff = entriesChange(entries('a', 'b'), entries('b', 'a'));
+
+        expect(reordersKeyedList(diff, 'input_map', keyOf)).toBe(false);
+        expect(reordersKeyedList({ ...diff, status: 'added' }, 'entries', keyOf)).toBe(false);
+        expect(reordersKeyedList(null, 'entries', keyOf)).toBe(false);
+    });
+});
+
+describe('fieldGroupChange', () => {
+    const change = (field: FieldName, current: unknown, version: unknown): FieldChange => ({
+        path: field,
+        field,
+        status: 'changed',
+        current,
+        version,
+    });
+    const diffOf = (fields: FieldChange[], status: NodeDiffStatus = 'changed') => ({
+        status,
+        fields,
+        missingReferences: [],
+    });
+    const SHOWN = { rag_type: 'naive', rag_id: 8 };
+
+    it('gives each side as all the fields, the unchanged ones as the panel shows them', () => {
+        expect(fieldGroupChange(diffOf([change('rag_id', 3, 8)]), SHOWN)).toEqual({
+            current: { rag_type: 'naive', rag_id: 3 },
+            version: { rag_type: 'naive', rag_id: 8 },
+        });
+    });
+
+    it('keeps a side a restore sets to null, and gives a side with nothing picked as null', () => {
+        expect(fieldGroupChange(diffOf([change('rag_type', null, 'naive'), change('rag_id', null, 8)]), SHOWN)).toEqual(
+            { current: null, version: { rag_type: 'naive', rag_id: 8 } }
+        );
+        expect(fieldGroupChange(diffOf([change('rag_type', 'graph', null)]), { ...SHOWN, rag_type: null })).toEqual({
+            current: { rag_type: 'graph', rag_id: 8 },
+            version: { rag_type: null, rag_id: 8 },
+        });
+    });
+
+    it('gives nothing when none of the fields changed, on a node not changed, or with no diff', () => {
+        expect(fieldGroupChange(diffOf([change('node_name', 'a', 'b')]), SHOWN)).toBeNull();
+        expect(fieldGroupChange(diffOf([change('rag_id', 3, 8)], 'deleted'), SHOWN)).toBeNull();
+        expect(fieldGroupChange(null, SHOWN)).toBeNull();
+    });
+});
+
 describe('the tooltip segments of a long value', () => {
-    const a40 = 'a'.repeat(40);
-    const b40 = 'b'.repeat(40);
+    // One letter per region, so a cut in the wrong place shows: the start of the value (40), a part dropped
+    // between it and the change, the context right before the change (20), and the text after it.
+    const start = 's'.repeat(40);
+    const dropped = 'm'.repeat(30);
+    const before = 'c'.repeat(20);
+    const after = 'd'.repeat(20);
 
     it.each<{ kind: string; current: unknown; version: unknown; segments: DisplaySegment[] }>([
         {
-            kind: 'a change near the end: the start is cut',
-            current: `${'a'.repeat(60)}X`,
-            version: `${'a'.repeat(60)}Y`,
-            segments: [kept(`…${a40}`), struck('X')],
+            kind: 'a change near the end: the start, "…", the context before the change',
+            current: `${start}${dropped}${before}X`,
+            version: `${start}${dropped}${before}Y`,
+            segments: [kept(`${start}…${before}`), struck('X')],
         },
         {
-            kind: 'a change near the start: the end is cut',
-            current: `X${'b'.repeat(60)}`,
-            version: `Y${'b'.repeat(60)}`,
-            segments: [struck('X'), kept(`${b40}…`)],
+            kind: 'a change in the middle: the start, "…", the context on both sides, "…"',
+            current: `${start}${dropped}${before}X${after}${'e'.repeat(30)}`,
+            version: `${start}${dropped}${before}Y${after}${'e'.repeat(30)}`,
+            segments: [kept(`${start}…${before}`), struck('X'), kept(`${after}…`)],
         },
         {
-            kind: 'a change in the middle: both ends are cut',
-            current: `${'a'.repeat(60)}X${'b'.repeat(60)}`,
-            version: `${'a'.repeat(60)}Y${'b'.repeat(60)}`,
-            segments: [kept(`…${a40}`), struck('X'), kept(`${b40}…`)],
+            kind: 'a change at the start: the context after it, "…"',
+            current: `X${after}${'e'.repeat(40)}`,
+            version: `Y${after}${'e'.repeat(40)}`,
+            segments: [struck('X'), kept(`${after}…`)],
         },
         {
-            kind: 'exactly 40 characters on each side: nothing is cut',
-            current: `${a40}X${b40}`,
-            version: `${a40}Y${b40}`,
-            segments: [kept(a40), struck('X'), kept(b40)],
+            kind: 'a change inside the start: the start up to the change, no "…" before it',
+            current: `${'s'.repeat(10)}X${after}${'e'.repeat(40)}`,
+            version: `${'s'.repeat(10)}Y${after}${'e'.repeat(40)}`,
+            segments: [kept('s'.repeat(10)), struck('X'), kept(`${after}…`)],
         },
         {
-            kind: 'emoji context: cut between whole emoji',
-            current: `${'👍🏻'.repeat(45)}X`,
-            version: `${'👍🏻'.repeat(45)}Y`,
-            segments: [kept(`…${'👍🏻'.repeat(40)}`), struck('X')],
+            kind: 'the start and the context before the change just meet: nothing dropped',
+            current: `${start}${before}X${after}`,
+            version: `${start}${before}Y${after}`,
+            segments: [kept(`${start}${before}`), struck('X'), kept(after)],
+        },
+        {
+            kind: 'one character between the start and the context before the change: dropped',
+            current: `${start}m${before}X${after}e`,
+            version: `${start}m${before}Y${after}e`,
+            segments: [kept(`${start}…${before}`), struck('X'), kept(`${after}…`)],
+        },
+        {
+            kind: 'a short text: nothing cut',
+            current: 'the user name',
+            version: 'the account name',
+            segments: [kept('the '), struck('user'), kept(' name')],
+        },
+        {
+            kind: 'emoji: cut between whole emoji',
+            current: `${'👍🏻'.repeat(70)}X${'🎉'.repeat(25)}`,
+            version: `${'👍🏻'.repeat(70)}Y${'🎉'.repeat(25)}`,
+            segments: [kept(`${'👍🏻'.repeat(40)}…${'👍🏻'.repeat(20)}`), struck('X'), kept(`${'🎉'.repeat(20)}…`)],
         },
         {
             kind: 'a structured value, cut as its JSON text',
-            current: { note: `${'a'.repeat(60)}X` },
-            version: { note: `${'a'.repeat(60)}Y` },
-            segments: [kept(`…${'a'.repeat(40)}`), struck('X'), kept('"}')],
+            current: { note: `${'a'.repeat(70)}X` },
+            version: { note: `${'a'.repeat(70)}Y` },
+            segments: [kept(`{"note":"${'a'.repeat(31)}…${'a'.repeat(20)}`), struck('X'), kept('"}')],
         },
-    ])('keeps 40 characters around the change for $kind', ({ current, version, segments }) => {
+    ])('shows $kind', ({ current, version, segments }) => {
         expect(segmentsOf(current, version)).toEqual(segments);
     });
 });
@@ -377,14 +625,14 @@ describe('the tooltip segments of a long replaced part', () => {
         },
         {
             kind: 'a long replaced middle with long context: everything capped',
-            current: `${'a'.repeat(60)}${'x'.repeat(200)}${'b'.repeat(60)}`,
-            version: `${'a'.repeat(60)}Y${'b'.repeat(60)}`,
+            current: `${'s'.repeat(40)}${'m'.repeat(30)}${'c'.repeat(20)}${'x'.repeat(100)}${'z'.repeat(100)}${'d'.repeat(60)}`,
+            version: `${'s'.repeat(40)}${'m'.repeat(30)}${'c'.repeat(20)}Y${'d'.repeat(60)}`,
             segments: [
-                kept(`…${'a'.repeat(40)}`),
+                kept(`${'s'.repeat(40)}…${'c'.repeat(20)}`),
                 struck('x'.repeat(50)),
                 kept('…'),
-                struck('x'.repeat(50)),
-                kept(`${'b'.repeat(40)}…`),
+                struck('z'.repeat(50)),
+                kept(`${'d'.repeat(20)}…`),
             ],
         },
         {

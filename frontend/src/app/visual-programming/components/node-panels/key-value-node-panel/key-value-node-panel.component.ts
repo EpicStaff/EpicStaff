@@ -36,6 +36,7 @@ import {
     SelectItem,
     TooltipComponent,
     ValidationErrorsComponent,
+    WarningNoteComponent,
 } from '@shared/components';
 import { ActionCode, KEY_VALUE_MODE_COLORS, ResourceCode } from '@shared/models';
 import { formatNodeLabel } from '@shared/utils';
@@ -89,12 +90,15 @@ import {
     valuePathHint,
     writeSourcePath,
 } from '../../../core/helpers/key-value-node.helpers';
-import { KeyValueEntry, KeyValueMode } from '../../../core/models/key-value-node.model';
+import { KeyValueEntry, KeyValueMode, KeyValueReadWriteEntry } from '../../../core/models/key-value-node.model';
 import { KeyValueNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { FlowService } from '../../../services/flow.service';
 import { KeyValueEntryDraftsService } from '../../../services/key-value-entry-drafts.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { keyedListRowChanges, linkedEntityFormat, reordersKeyedList } from '../../../utils/diff';
+import { DiffFieldMarkChange, DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { PickerItem } from '../../input-map/var-picker-flat.component';
 import {
     buildVariablePickerItems,
@@ -158,6 +162,13 @@ interface EntryFormValue {
     value?: string;
 }
 
+/** What the version diff shows on an entry row: the mark of a changed row, or that a restore adds the row. */
+interface EntryRowMark {
+    /** The variable path on the canvas and in the version; `null` for a row a restore adds. */
+    change: DiffFieldMarkChange | null;
+    added: boolean;
+}
+
 @Component({
     selector: 'app-key-value-node-panel',
     imports: [
@@ -171,6 +182,8 @@ interface EntryFormValue {
         TooltipComponent,
         NgTemplateOutlet,
         MissingReferenceNoteComponent,
+        DiffFieldMarkComponent,
+        WarningNoteComponent,
     ],
     templateUrl: './key-value-node-panel.component.html',
     styleUrls: ['./key-value-node-panel.component.scss'],
@@ -236,6 +249,43 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
         return this.selectedTableName() ?? 'Select a table';
     });
     protected readonly keysLabel = computed(() => KEYS_LABEL[this.mode()]);
+    /**
+     * Changes tab of a version preview: what a restore does to each entry, paired with the canvas entries by key.
+     * The entries are diffed as one list, so they are paired here. `null` anywhere else.
+     */
+    private readonly entryRowChanges = computed(() => keyedListRowChanges(this.panelDiff(), 'entries', entryKey));
+    /**
+     * One per entry row, in the version's order (the rows the panel shows): a changed row is marked with its canvas
+     * variable path, a row only in the version is shown as added; `null` for a row a restore keeps.
+     */
+    protected readonly entryRowMarks = computed<(EntryRowMark | null)[]>(
+        () =>
+            this.entryRowChanges()?.rows.map((row) => {
+                if (row === null || row.status === 'deleted') return null;
+                if (row.status === 'added') return { change: null, added: true };
+                return { change: { current: entryValue(row.current), version: entryValue(row.version) }, added: false };
+            }) ?? []
+    );
+    /** The canvas entries the version does not have: a restore removes them. */
+    protected readonly removedEntries = computed(() =>
+        (this.entryRowChanges()?.removed ?? []).map((row) => ({
+            key: row.key,
+            value: entryValue(row.current) ?? '',
+        }))
+    );
+    /**
+     * Whether a restore puts the entries both sides have in another order (entries run in order). The rows are
+     * paired by key, so their marks cannot show it; a note under the list does.
+     */
+    protected readonly entriesReordered = computed(() => reordersKeyedList(this.panelDiff(), 'entries', entryKey));
+    /** The loaded tables name a changed table in the mark's tooltip; one not loaded (or gone): `table #id`. */
+    protected readonly tableNameFormat = linkedEntityFormat(
+        'table',
+        (id) => this.keyValueTablesStorage.tables().find((table) => table.id === id)?.name
+    );
+    /** The mode as the Mode select names it. */
+    protected readonly modeLabelFormat = (mode: unknown): string =>
+        KEY_VALUE_MODE_LABELS[mode as KeyValueMode] ?? String(mode);
     // Leaves out names a key-value node can't use, such as `user-name` or `_private`.
     private readonly variableItems = computed(() =>
         buildVariablePickerItems(this.flowService.startNodeInitialState()).filter((item) => isStatePath(item.fullPath))
@@ -265,6 +315,7 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
             openPlaceholderAt(value, input.selectionStart ?? value.length)?.text.trimStart() ?? '',
     });
 
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
     private readonly keyValueTablesApi = inject(KeyValueTablesApiService);
     private readonly keyValueTablesStorage = inject(KeyValueTablesStorageService);
     private readonly permissions = inject(PermissionsService);
@@ -1000,4 +1051,13 @@ function canvasSummary(form: FormGroup): string {
     // Empty rows are not saved, so they don't count toward the canvas key count.
     const keyCount = entries.filter((entry) => !isEmptyEntry(entry)).length;
     return JSON.stringify([mode, key_value_table, keyCount]);
+}
+
+/** An entry's variable path; a delete entry has none. */
+function entryKey(entry: unknown): string {
+    return (entry as KeyValueEntry).key;
+}
+
+function entryValue(entry: unknown): string | null {
+    return (entry as Partial<KeyValueReadWriteEntry>).value ?? null;
 }

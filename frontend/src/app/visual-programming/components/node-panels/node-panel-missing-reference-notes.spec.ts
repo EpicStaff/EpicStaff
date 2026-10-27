@@ -214,7 +214,13 @@ const PANEL_CASES: PanelCase[] = [
 
 function sitsAt(host: Element, placement: Placement): boolean {
     if ('inside' in placement) return host.parentElement?.closest(placement.inside) != null;
-    if ('after' in placement) return host.previousElementSibling?.matches(placement.after) ?? false;
+    if ('after' in placement) {
+        // Right after the field, or after the version diff's field mark wrapped around it.
+        const previous = host.previousElementSibling;
+        if (previous?.matches('app-diff-field-mark'))
+            return previous.firstElementChild?.matches(placement.after) ?? false;
+        return previous?.matches(placement.after) ?? false;
+    }
     return host.parentElement?.querySelector(placement.beside) != null;
 }
 

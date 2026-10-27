@@ -1,13 +1,25 @@
 export { buildFlowDiff } from './build-flow-diff';
 export type { FlowDiffCanvasState, UnionFlowModel, UnionNodeDiffState } from './build-union-flow-model';
 export { buildUnionFlowModel } from './build-union-flow-model';
-export type { CodeChange, CodeFieldName, DisplaySegment, MapKeyChange } from './field-change-display';
+export type {
+    CodeChange,
+    CodeFieldName,
+    DisplaySegment,
+    JsonFieldName,
+    ListRowChanges,
+    MapKeyChange,
+} from './field-change-display';
 export {
     changesAnyFieldIn,
     codeChangeFor,
     fieldChangeFor,
+    fieldGroupChange,
     fieldValueSegments,
+    jsonChangeFor,
+    keyedListRowChanges,
+    linkedEntityFormat,
     mapFieldRowChanges,
+    reordersKeyedList,
     showsFieldMarks,
 } from './field-change-display';
 export type { FieldName } from './field-display';

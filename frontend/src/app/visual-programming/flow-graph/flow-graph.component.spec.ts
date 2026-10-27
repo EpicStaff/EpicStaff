@@ -1021,6 +1021,54 @@ describe('FlowGraphComponent', () => {
             } as unknown as FlowGraphComponent['fFlowComponent'];
         }
 
+        describe('the Domain window of a Start node a restore changes', () => {
+            const START = { ...createStartNode(), data: { initialState: { variables: { topic: 'b' } } } };
+            const VARIABLES_CHANGE = {
+                path: 'variables',
+                field: 'variables',
+                status: 'changed' as const,
+                current: { variables: { topic: 'a' } },
+                version: { variables: { topic: 'b' } },
+            };
+            const diffWithStart = (
+                status: 'changed' | 'unchanged',
+                fields = [VARIABLES_CHANGE]
+            ): FlowDiffCanvasState => ({
+                nodes: new Map([[START.id, { status, fields, missingReferences: [] }]]),
+                connections: new Map(),
+                versionOnlyPortIds: new Set(),
+            });
+
+            /** The variables diff each opened Domain window was given (Start node, then the toolbar button). */
+            function variablesDiffsShown(diffState: FlowDiffCanvasState | null): unknown[] {
+                const component = mountDiff({ nodes: [START], connections: [] }, diffState).componentInstance;
+                const dialogOpen = (TestBed.inject(Dialog) as unknown as { open: ReturnType<typeof vi.fn> }).open;
+                dialogOpen.mockReturnValue({ closed: of(null) });
+
+                component.onOpenNodePanel(START);
+                component.onDomainClick();
+
+                return dialogOpen.mock.calls.map(([, config]) => config.data.variablesDiff);
+            }
+
+            it('gets the variables on the canvas and in the version as JSON (Start node and toolbar)', () => {
+                const expected = {
+                    current: '{\n  "variables": {\n    "topic": "a"\n  }\n}',
+                    version: '{\n  "variables": {\n    "topic": "b"\n  }\n}',
+                };
+
+                expect(variablesDiffsShown(diffWithStart('changed'))).toEqual([expected, expected]);
+            });
+
+            it.each([
+                { case: 'the variables are unchanged', diffState: () => diffWithStart('changed', []) },
+                { case: 'the Start node is unchanged', diffState: () => diffWithStart('unchanged') },
+                { case: 'on the Preview tab (no diff)', diffState: () => null },
+            ])('gets no diff when $case', ({ diffState }) => {
+                expect(variablesDiffsShown(diffState())).toEqual([null, null]);
+            });
+        });
+
         it('copies the version nodes of a selection, never a node a restore removes, and says why', () => {
             const component = mountDiff({ nodes: [KEPT_NOTE, REMOVED_NOTE], connections: [] }).componentInstance;
             const info = vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);

@@ -43,6 +43,7 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { parseCommaSeparatedList } from '../node-panel-form.utils';
 import { PythonTerminalComponent } from '../python-node-panel/python-terminal/python-terminal.component';
+import { webhookTriggerNameFormat } from '../shared/diff/webhook-trigger-name-format';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     PYTHON_CODE_RUNNING_MESSAGE,
@@ -102,6 +103,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
 
     /** Rendered by the panel shell in its header. */
     public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
+    private readonly triggerSelect = viewChild(WebhookTriggerSelectComponent);
 
     public readonly isFormCollapsed = signal<boolean>(false);
     /** Whether the code gets the flow's file storage (`epicstaff_storage`). */
@@ -115,6 +117,9 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.isExpanded() ? codeChangeFor(this.panelDiff(), 'python_code.code') : null
     );
     protected readonly codeDiffHint = CODE_DIFF_HINT_EXPAND_EDITOR;
+    /** The triggers the select listed name a changed trigger in the mark's tooltip; one not listed: `trigger #id`. */
+    // Reads `triggerSelect` while the fields are set up, so that query must stay declared above this field.
+    protected readonly triggerNameFormat = webhookTriggerNameFormat(this.triggerSelect);
     /** Set by the first run: the terminal then stays under the code (it has its own hide toggle). */
     private readonly isCodeTerminalShown = signal(false);
     /** Height in px of an editor shown as a card (small panel, or the left column of the expanded one). */

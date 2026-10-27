@@ -1,3 +1,5 @@
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
+
 :host {
     display: block;
     width: 100%;
@@ -202,3 +204,7 @@
         text-align: center;
     }
 }
+
+// Version diff (flow editor node panel, Changes tab): a changed read-only trigger, boxed like an input. Keep last: it
+// overrides the read-only trigger's plain-text look above.
+@include diff-value-mark.marked('.wts__trigger', $draws-box: true);

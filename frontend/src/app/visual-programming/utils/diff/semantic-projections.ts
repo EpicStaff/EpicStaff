@@ -136,9 +136,13 @@ export const SEMANTIC_PROJECTIONS = {
             python_code: pythonCode(node.data.python_code),
             use_storage: node.data.use_storage ?? false,
             webhook_trigger: node.data.webhook_trigger,
-            ...inputOutput(node),
         }),
-        ignored: { 'data.test_payload': TEST_AID, ...prefixKeys('data.python_code.', PYTHON_CODE_IGNORED) },
+        ignored: {
+            'data.test_payload': TEST_AID,
+            ...prefixKeys('data.python_code.', PYTHON_CODE_IGNORED),
+            input_map: 'the run ignores it: the node always gets every flow variable',
+            output_variable_path: 'the run ignores it: the node always writes its result to variables',
+        },
     },
     [NodeType.TELEGRAM_TRIGGER]: {
         project: (node) => ({
@@ -223,13 +227,15 @@ export const SEMANTIC_PROJECTIONS = {
     [NodeType.KEY_VALUE]: {
         project: (node) => ({
             node_name: nodeName(node),
-            input_map: node.input_map ?? {},
             key_value_table: node.data?.key_value_table,
             mode: node.data?.mode ?? DEFAULT_KEY_VALUE_MODE,
             // Entries run in order.
             entries: node.data?.entries ?? [],
         }),
-        ignored: { output_variable_path: 'always null: read values go to each entry’s own path' },
+        ignored: {
+            input_map: 'the run ignores it: each entry names the flow state path it reads or writes',
+            output_variable_path: 'always null: read values go to each entry’s own path',
+        },
     },
     [NodeType.TABLE]: {
         project: (node, context) => {

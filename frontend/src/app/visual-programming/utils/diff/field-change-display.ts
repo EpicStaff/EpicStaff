@@ -26,16 +26,32 @@ export interface MapKeyChange {
 /** A code field: shown in a code editor, so its change is shown as a code diff, not in a tooltip. */
 export type CodeFieldName = Extract<FieldName, 'python_code.code' | 'pre_computation.code' | 'post_computation.code'>;
 
+/** A JSON field shown in a JSON editor: its change is shown as a code diff of the JSON text, like code. */
+export type JsonFieldName = Extract<FieldName, 'variables' | 'output_map'>;
+
 /** Both sides of a changed code field as the code diff shows them. */
 export interface CodeChange {
     current: string;
     version: string;
 }
 
+/**
+ * What a restore does to the rows of a list field paired by a key of their own (Key-Value entries by key), which
+ * the diff compares as one value.
+ */
+export interface ListRowChanges {
+    /** One per version item, in its order: what a restore does to that row; `null` for a row it keeps. */
+    rows: (MapKeyChange | null)[];
+    /** The items only the canvas has (a restore removes them), in their canvas order. */
+    removed: MapKeyChange[];
+}
+
 const EMPTY_TEXT = 'empty';
 const LIST_SEPARATOR = ', ';
-/** How much unchanged text (in graphemes) a tooltip keeps on each side of the part a restore replaces. */
-const TEXT_CONTEXT_LENGTH = 40;
+/** How much of the start of a long text (in graphemes) a tooltip always shows; also the cut of a long kept list item. */
+const VALUE_START_LENGTH = 40;
+/** How much unchanged text (in graphemes) a tooltip keeps right before and right after the part a restore replaces. */
+const CHANGE_CONTEXT_LENGTH = 20;
 /** A struck part longer than this (in graphemes) keeps only its ends, so a rewritten long text stays readable. */
 const STRUCK_PART_MAX_LENGTH = 120;
 /** How much of each end of a capped struck part is kept. */
@@ -81,6 +97,105 @@ export function changesAnyFieldIn(diff: UnionNodeDiffState | null, fields: reado
     );
 }
 
+/**
+ * The change of a JSON field for the code diff, both sides as the JSON editor shows them (indented by 2); `null`
+ * when the node shows no field marks or the field is unchanged.
+ */
+export function jsonChangeFor(diff: UnionNodeDiffState | null, field: JsonFieldName): CodeChange | null {
+    if (!showsFieldMarks(diff)) return null;
+    const change = fieldChangeFor(diff, field);
+    return change ? { current: jsonText(change.current), version: jsonText(change.version) } : null;
+}
+
+/**
+ * What a restore does to each row of a list field (diffed whole), the rows paired by `keyOf`; `null` when the node
+ * shows no field marks or the field is unchanged. A key that repeats is paired by its occurrence: the second row
+ * with a key on the canvas with the second one in the version. Each change holds the whole items.
+ */
+export function keyedListRowChanges(
+    diff: UnionNodeDiffState | null,
+    field: FieldName,
+    keyOf: (item: unknown) => string
+): ListRowChanges | null {
+    if (!showsFieldMarks(diff)) return null;
+    const change = fieldChangeFor(diff, field);
+    if (!change) return null;
+    const current = keyedByOccurrence(asList(change.current), keyOf);
+    const version = keyedByOccurrence(asList(change.version), keyOf);
+    const rows = version.map(({ pairingKey, key, item }): MapKeyChange | null => {
+        const currentItem = current.find((candidate) => candidate.pairingKey === pairingKey);
+        if (!currentItem) return { key, status: 'added', current: null, version: item };
+        return isSameValue(currentItem.item, item)
+            ? null
+            : { key, status: 'changed', current: currentItem.item, version: item };
+    });
+    const removed = current
+        .filter(({ pairingKey }) => !version.some((candidate) => candidate.pairingKey === pairingKey))
+        .map(({ key, item }): MapKeyChange => ({ key, status: 'deleted', current: item, version: null }));
+    return { rows, removed };
+}
+
+/**
+ * Whether a restore puts the rows of a list field (diffed whole) that both sides share, paired by `keyOf` as
+ * `keyedListRowChanges` pairs them, in another order. Row marks cannot show this: a moved row may keep its value.
+ * `false` when the node shows no field marks or the field is unchanged. Rows only one side has do not count.
+ */
+export function reordersKeyedList(
+    diff: UnionNodeDiffState | null,
+    field: FieldName,
+    keyOf: (item: unknown) => string
+): boolean {
+    if (!showsFieldMarks(diff)) return false;
+    const change = fieldChangeFor(diff, field);
+    if (!change) return false;
+    const current = keyedByOccurrence(asList(change.current), keyOf).map(({ pairingKey }) => pairingKey);
+    const version = keyedByOccurrence(asList(change.version), keyOf).map(({ pairingKey }) => pairingKey);
+    const inVersion = new Set(version);
+    const inCurrent = new Set(current);
+    const sharedInVersionOrder = version.filter((pairingKey) => inCurrent.has(pairingKey));
+    return current
+        .filter((pairingKey) => inVersion.has(pairingKey))
+        .some((pairingKey, index) => pairingKey !== sharedInVersionOrder[index]);
+}
+
+/**
+ * One change for a field the panel shows as one value but the diff reports as several fields (e.g. the RAG picked,
+ * its type and its id): each side as an object of those fields, or `null` when all of them are `null` (nothing
+ * picked); `null` when the node shows no field marks or none of them changed. `shown` holds what the panel shows for
+ * each field, which a field without a change has on both sides.
+ */
+export function fieldGroupChange(
+    diff: UnionNodeDiffState | null,
+    shown: Readonly<Partial<Record<FieldName, unknown>>>
+): { current: Record<string, unknown> | null; version: Record<string, unknown> | null } | null {
+    if (!showsFieldMarks(diff)) return null;
+    const fields = Object.keys(shown) as FieldName[];
+    const changes = fields.map((field) => fieldChangeFor(diff, field));
+    if (changes.every((change) => change === null)) return null;
+    const sideOf = (side: 'current' | 'version'): Record<string, unknown> | null => {
+        const values = fields.map((field, index) => {
+            const change = changes[index];
+            // A side the restore sets to `null` is a value too, so only a field without a change shows `shown`.
+            return change ? (change[side] ?? null) : (shown[field] ?? null);
+        });
+        return values.every((value) => value === null)
+            ? null
+            : Object.fromEntries(fields.map((field, index) => [field, values[index]]));
+    };
+    return { current: sideOf('current'), version: sideOf('version') };
+}
+
+/**
+ * How a field holding the id of a linked entity (a flow, a trigger, a table) shows it: by the name `nameOf` finds
+ * among the options the panel already loaded, else as `<kind> #<id>`, the words of the missing-reference notes.
+ */
+export function linkedEntityFormat(
+    kind: string,
+    nameOf: (id: unknown) => string | null | undefined
+): (value: unknown) => string {
+    return (value) => nameOf(value) ?? `${kind} #${String(value)}`;
+}
+
 /** The change of `field`, or of one of its items when `path` is given; `null` when it has none. */
 export function fieldChangeFor(
     diff: Pick<UnionNodeDiffState, 'fields'> | null,
@@ -94,8 +209,8 @@ export function fieldChangeFor(
  * The current value of a field as the tooltip shows it, the parts a restore replaces struck:
  * - `defaultValue` (when given) stands in for a side that is `null` or `undefined` (no value of its own), as the
  *   field shows it in that case (e.g. the default timeout). An empty text or list is a value and is not replaced;
- * - a field with a display formatter (`FIELD_DISPLAY`) shows the formatted text, struck as a whole when the
- *   formatted sides differ;
+ * - a field with a display formatter (`displayFormat`, else the field's own in `FIELD_DISPLAY`) shows the formatted
+ *   text, struck as a whole when the formatted sides differ;
  * - any other value: `struckSegments`.
  * `field` is `null` for a change the caller worked out (e.g. one key of a map), which has no formatter.
  */
@@ -103,10 +218,11 @@ export function fieldValueSegments(
     field: FieldName | null,
     current: unknown,
     version: unknown,
-    defaultValue?: unknown
+    defaultValue?: unknown,
+    displayFormat?: (value: unknown) => string
 ): DisplaySegment[] {
     const shown = (value: unknown): unknown => (value == null && defaultValue !== undefined ? defaultValue : value);
-    const format = field ? fieldFormat(field) : undefined;
+    const format = displayFormat ?? (field ? fieldFormat(field) : undefined);
     if (!format) return struckSegments(shown(current), shown(version));
     const textOf = (value: unknown): string => {
         const shown = value == null && defaultValue !== undefined ? defaultValue : value;
@@ -119,13 +235,16 @@ export function fieldValueSegments(
 /**
  * The current value as text segments, the parts a restore replaces struck:
  * - text: the common start and end with the version value are kept, the middle is struck. Compared by
- *   grapheme (what a reader sees as one character), so an emoji or an accent is never split. The kept text is
- *   cut to `TEXT_CONTEXT_LENGTH` graphemes on each side of the struck part, with "…" where it was cut. A struck
- *   part longer than `STRUCK_PART_MAX_LENGTH` keeps only its first and last `STRUCK_PART_KEPT_END` graphemes,
- *   with an unstruck "…" between them;
+ *   grapheme (what a reader sees as one character), so an emoji or an accent is never split. A long text is cut so
+ *   the reader still sees where it is: always its start (the first `VALUE_START_LENGTH` graphemes, or up to the
+ *   struck part when that starts earlier), then "…" and the last `CHANGE_CONTEXT_LENGTH` graphemes before the
+ *   struck part when there is a gap between the two, then the struck part, then the first
+ *   `CHANGE_CONTEXT_LENGTH` graphemes after it and "…" when more text follows. A struck part longer than
+ *   `STRUCK_PART_MAX_LENGTH` keeps only its first and last `STRUCK_PART_KEPT_END` graphemes, with an unstruck "…"
+ *   between them;
  * - a list: the items the version does not have are struck; a repeated item is kept only as many times as the
- *   version has it. A long struck item is capped like a struck part of text, a long kept item cut to
- *   `TEXT_CONTEXT_LENGTH` graphemes;
+ *   version has it. A long struck item is capped like a struck part of text, a long kept item cut to its first
+ *   `VALUE_START_LENGTH` graphemes;
  * - a number, a flag, or a value of another type than the version's: struck whole;
  * - a structured value: compared as its JSON text, cut the same way;
  * - `null`, `''`, an empty list or map: one struck "empty".
@@ -182,9 +301,9 @@ function textSegments(currentText: string, versionText: string): DisplaySegment[
     const before = current.slice(0, prefix);
     const after = current.slice(current.length - suffix);
     const segments: DisplaySegment[] = [
-        { text: lastContext(before), struck: false },
+        { text: keptBefore(before), struck: false },
         ...struckPart(current.slice(prefix, current.length - suffix)),
-        { text: firstContext(after), struck: false },
+        { text: startOf(after, CHANGE_CONTEXT_LENGTH), struck: false },
     ];
     return segments.filter((segment) => segment.text !== '');
 }
@@ -199,14 +318,18 @@ function struckPart(replaced: readonly string[]): DisplaySegment[] {
     ];
 }
 
-/** The kept text before the struck part: its end, "…" in front when cut. */
-function lastContext(kept: readonly string[]): string {
-    return kept.length > TEXT_CONTEXT_LENGTH ? CUT_MARK + kept.slice(-TEXT_CONTEXT_LENGTH).join('') : kept.join('');
+/**
+ * The kept text before the struck part, which is the start of the value: whole when the start and the context
+ * before the struck part meet, else the start, "…", and that context.
+ */
+function keptBefore(kept: readonly string[]): string {
+    if (kept.length <= VALUE_START_LENGTH + CHANGE_CONTEXT_LENGTH) return kept.join('');
+    return kept.slice(0, VALUE_START_LENGTH).join('') + CUT_MARK + kept.slice(-CHANGE_CONTEXT_LENGTH).join('');
 }
 
-/** The kept text after the struck part: its start, "…" after it when cut. */
-function firstContext(kept: readonly string[]): string {
-    return kept.length > TEXT_CONTEXT_LENGTH ? kept.slice(0, TEXT_CONTEXT_LENGTH).join('') + CUT_MARK : kept.join('');
+/** The first `length` graphemes of a kept text, "…" after them when it is cut. */
+function startOf(kept: readonly string[], length: number): string {
+    return kept.length > length ? kept.slice(0, length).join('') + CUT_MARK : kept.join('');
 }
 
 /** The user-perceived characters (graphemes): an emoji with its modifiers, a letter with its accents. */
@@ -221,7 +344,7 @@ function listSegments(current: readonly unknown[], version: readonly unknown[]):
         const match = unmatched.findIndex((candidate) => isSameValue(candidate, item));
         if (match !== -1) unmatched.splice(match, 1);
         const text = graphemes(itemText(item));
-        const parts = match === -1 ? struckPart(text) : [{ text: firstContext(text), struck: false }];
+        const parts = match === -1 ? struckPart(text) : [{ text: startOf(text, VALUE_START_LENGTH), struck: false }];
         return index === 0 ? parts : [{ text: LIST_SEPARATOR, struck: false }, ...parts];
     });
 }
@@ -229,6 +352,28 @@ function listSegments(current: readonly unknown[], version: readonly unknown[]):
 function itemText(item: unknown): string {
     if (typeof item === 'string') return item;
     return item !== null && typeof item === 'object' ? stableStringify(item) : scalarText(item);
+}
+
+/** A pairing key per item: its own key and how many items before it had that key. */
+function keyedByOccurrence(
+    items: readonly unknown[],
+    keyOf: (item: unknown) => string
+): { pairingKey: string; key: string; item: unknown }[] {
+    const seen = new Map<string, number>();
+    return items.map((item) => {
+        const key = keyOf(item);
+        const occurrence = seen.get(key) ?? 0;
+        seen.set(key, occurrence + 1);
+        return { pairingKey: JSON.stringify([key, occurrence]), key, item };
+    });
+}
+
+function asList(value: unknown): readonly unknown[] {
+    return Array.isArray(value) ? value : [];
+}
+
+function jsonText(value: unknown): string {
+    return value === undefined ? '' : JSON.stringify(value, null, 2);
 }
 
 function codeText(value: unknown): string {

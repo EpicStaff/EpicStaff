@@ -844,9 +844,13 @@ describe('TelegramTriggerNodePanelComponent field models info', () => {
         return fixture.nativeElement;
     }
 
+    /** The parts of the output fields section, in the order they show. */
     function outputFieldsLayout(root: HTMLElement): string[] {
         const section = root.querySelector('.output-fields-section')!;
-        return Array.from(section.children).map((child) => child.classList[0]);
+        const parts = section.querySelectorAll(
+            '.output-fields__label, .output-fields__container, .output-fields__info'
+        );
+        return Array.from(parts, (part) => part.classList[0]);
     }
 
     it.each([

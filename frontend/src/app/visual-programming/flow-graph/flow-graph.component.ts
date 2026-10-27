@@ -104,7 +104,7 @@ import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
-import { FlowDiffCanvasState } from '../utils/diff';
+import { CodeChange, FlowDiffCanvasState, jsonChangeFor } from '../utils/diff';
 import { normalizeFlowPorts } from '../utils/load';
 import { FlowArrangeAnimatorService } from './flow-arrange-animator.service';
 import { FlowImportExportService } from './flow-import-export-handler.service';
@@ -956,6 +956,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const data: DomainDialogData = {
                 initialData: startNode.data?.initialState || {},
                 authorship: this.nodeAuthorshipStore.authorshipOf(startNode),
+                variablesDiff: this.startVariablesDiff(startNode.id),
             };
 
             const dialogRef = this.dialog.open(DomainDialogComponent, {
@@ -1219,9 +1220,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onDomainClick(): void {
+        const startNode = this.startNode();
         const data: DomainDialogData = {
             initialData: this.flowService.startNodeInitialState(),
-            authorship: this.startNodeAuthorship(),
+            authorship: this.startNodeAuthorship(startNode),
+            variablesDiff: startNode ? this.startVariablesDiff(startNode.id) : null,
         };
 
         const dialogRef = this.dialog.open(DomainDialogComponent, {
@@ -1420,11 +1423,22 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
     }
 
+    private startNode(): NodeModel | undefined {
+        return this.flowService.nodes().find((node) => node.type === NodeType.START);
+    }
+
     /** The toolbar's Domain window edits the Start node's variables, so its footer credits the Start node. */
-    private startNodeAuthorship(): AuthorshipDetailsSource {
-        const startNode = this.flowService.nodes().find((node) => node.type === NodeType.START);
+    private startNodeAuthorship(startNode: NodeModel | undefined): AuthorshipDetailsSource {
         // No Start node: nobody to credit, shown as dashes like a node that is not saved yet.
         return this.nodeAuthorshipStore.authorshipOf(startNode ?? { type: NodeType.START, backendId: null });
+    }
+
+    /**
+     * Changes tab of a version preview: the Start node's variables on the canvas and in the version, as the Domain
+     * window shows them as a diff; `null` anywhere else, or when a restore leaves them as they are.
+     */
+    private startVariablesDiff(startNodeId: string): CodeChange | null {
+        return jsonChangeFor(this.flowDiffState.nodeDiff(startNodeId), 'variables');
     }
 
     public openNodePanel(nodeId: string): void {

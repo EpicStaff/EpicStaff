@@ -18,14 +18,16 @@
                         [style.flex-basis.px]="leftColumnWidth.width()"
                     >
                         <div class="field-isolated">
-                            <app-custom-input
-                                label="Node Name"
-                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                                formControlName="node_name"
-                                placeholder="Enter node name"
-                                [activeColor]="activeColor"
-                                [readonly]="isReadOnly()"
-                            ></app-custom-input>
+                            <app-diff-field-mark [diffField]="'node_name'">
+                                <app-custom-input
+                                    label="Node Name"
+                                    tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                    formControlName="node_name"
+                                    placeholder="Enter node name"
+                                    [activeColor]="activeColor"
+                                    [readonly]="isReadOnly()"
+                                ></app-custom-input>
+                            </app-diff-field-mark>
                             <app-validation-errors [control]="form.get('node_name')!" />
                         </div>
 
@@ -33,6 +35,7 @@
                             <app-input-map
                                 [activeColor]="activeColor"
                                 [readonly]="isReadOnly()"
+                                [rowChanges]="inputMapRowChanges()"
                             ></app-input-map>
                         </div>
 
@@ -42,70 +45,89 @@
                             (insert)="insertInputToQuery($event)"
                         />
 
-                        <app-custom-input
-                            label="Output Variable Path"
-                            tooltipText="Path where the retrieval result will be stored (must start with 'variables.')."
-                            formControlName="output_variable_path"
-                            placeholder="Enter output variable path (leave empty for null)"
-                            [activeColor]="activeColor"
-                            [readonly]="isReadOnly()"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'output_variable_path'">
+                            <app-custom-input
+                                label="Output Variable Path"
+                                tooltipText="Path where the retrieval result will be stored (must start with 'variables.')."
+                                formControlName="output_variable_path"
+                                placeholder="Enter output variable path (leave empty for null)"
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
 
                         <div class="form-group">
-                            <app-select
-                                label="Knowledge Collection"
-                                tooltipText="The source collection to search. RAG must belong to this collection."
-                                placeholder="Select knowledge collection"
-                                formControlName="knowledge_collection"
-                                [items]="collectionItems()"
-                                [loading]="loadingCollections()"
-                                [readonly]="isReadOnly()"
-                            />
+                            <app-diff-field-mark
+                                [diffField]="'source_collection'"
+                                [diffFormat]="collectionNameFormat"
+                            >
+                                <app-select
+                                    label="Knowledge Collection"
+                                    tooltipText="The source collection to search. RAG must belong to this collection."
+                                    placeholder="Select knowledge collection"
+                                    formControlName="knowledge_collection"
+                                    [items]="collectionItems()"
+                                    [loading]="loadingCollections()"
+                                    [readonly]="isReadOnly()"
+                                />
+                            </app-diff-field-mark>
                         </div>
 
                         <div class="form-group">
-                            <app-select
-                                label="RAG"
-                                tooltipText="The RAG type registered for the selected collection."
-                                placeholder="Select RAG"
-                                formControlName="rag"
-                                [items]="ragItems()"
-                                [loading]="loadingRags()"
-                                [readonly]="isReadOnly()"
-                            />
+                            <!-- One field, two diffed values: the RAG's type and its id. -->
+                            <app-diff-field-mark
+                                [diffChange]="ragChange()"
+                                [diffFormat]="ragFormat"
+                            >
+                                <app-select
+                                    label="RAG"
+                                    tooltipText="The RAG type registered for the selected collection."
+                                    placeholder="Select RAG"
+                                    formControlName="rag"
+                                    [items]="ragItems()"
+                                    [loading]="loadingRags()"
+                                    [readonly]="isReadOnly()"
+                                />
+                            </app-diff-field-mark>
                         </div>
 
                         @if (selectedRagKind()) {
-                            <div class="search-config-section">
-                                <button
-                                    type="button"
-                                    class="search-config-toggle"
-                                    (click)="toggleSearchConfig()"
-                                >
-                                    <span
-                                        class="chevron"
-                                        [class.open]="searchConfigOpen()"
-                                        >▶</span
+                            <!-- Many inputs, one diffed value (with the search method): the mark boxes the whole section. -->
+                            <app-diff-field-mark
+                                [diffChange]="searchSettingsChange()"
+                                [diffGroup]="true"
+                            >
+                                <div class="search-config-section">
+                                    <button
+                                        type="button"
+                                        class="search-config-toggle"
+                                        (click)="toggleSearchConfig()"
                                     >
-                                    RAG Search Config
-                                </button>
+                                        <span
+                                            class="chevron"
+                                            [class.open]="searchConfigOpen()"
+                                            >▶</span
+                                        >
+                                        RAG Search Config
+                                    </button>
 
-                                @if (searchConfigOpen()) {
-                                    <div class="search-config-body">
-                                        @for (f of ragTabFormList(); track f) {
-                                            <app-rag-tab
-                                                [form]="f"
-                                                [hideSourceSelectors]="true"
-                                                [allKnowledgeSources]="[]"
-                                                [agentRags]="[]"
-                                                [searchConfigs]="ragTabSearchConfigs()"
-                                                [llmConfigId]="null"
-                                                [readOnly]="isReadOnly()"
-                                            />
-                                        }
-                                    </div>
-                                }
-                            </div>
+                                    @if (searchConfigOpen()) {
+                                        <div class="search-config-body">
+                                            @for (f of ragTabFormList(); track f) {
+                                                <app-rag-tab
+                                                    [form]="f"
+                                                    [hideSourceSelectors]="true"
+                                                    [allKnowledgeSources]="[]"
+                                                    [agentRags]="[]"
+                                                    [searchConfigs]="ragTabSearchConfigs()"
+                                                    [llmConfigId]="null"
+                                                    [readOnly]="isReadOnly()"
+                                                />
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </app-diff-field-mark>
                         }
                     </div>
 
@@ -139,16 +161,22 @@
                                 </div>
                             </div>
                             <div class="editor-panel-content">
-                                <app-template-textarea
-                                    #queryTextareaExpanded
-                                    class="code-editor-section"
-                                    formControlName="query"
-                                    placeholder="Enter query. Use {variable} to insert dynamic values..."
-                                    [stretch]="true"
-                                    [resizable]="false"
-                                    [showLineNumbers]="true"
-                                    [availableInputs]="availableInputs()"
-                                />
+                                <app-diff-field-mark
+                                    class="query-mark"
+                                    [diffField]="'query'"
+                                    [diffDrawsBadge]="true"
+                                >
+                                    <app-template-textarea
+                                        #queryTextareaExpanded
+                                        class="code-editor-section"
+                                        formControlName="query"
+                                        placeholder="Enter query. Use {variable} to insert dynamic values..."
+                                        [stretch]="true"
+                                        [resizable]="false"
+                                        [showLineNumbers]="true"
+                                        [availableInputs]="availableInputs()"
+                                    />
+                                </app-diff-field-mark>
                             </div>
                         </div>
                     </div>
@@ -156,14 +184,16 @@
             } @else {
                 <div class="form-layout collapsed">
                     <div class="field-isolated">
-                        <app-custom-input
-                            label="Node Name"
-                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [readonly]="isReadOnly()"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'node_name'">
+                            <app-custom-input
+                                label="Node Name"
+                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
 
@@ -171,6 +201,7 @@
                         <app-input-map
                             [activeColor]="activeColor"
                             [readonly]="isReadOnly()"
+                            [rowChanges]="inputMapRowChanges()"
                         ></app-input-map>
                     </div>
 
@@ -180,13 +211,18 @@
                             label="Query"
                             [required]="true"
                         />
-                        <app-template-textarea
-                            #queryTextareaCollapsed
-                            class="template-textarea-rounded"
-                            placeholder="Enter query. Use {variable} to insert dynamic values..."
-                            formControlName="query"
-                            [availableInputs]="availableInputs()"
-                        />
+                        <app-diff-field-mark
+                            [diffField]="'query'"
+                            [diffDrawsBadge]="true"
+                        >
+                            <app-template-textarea
+                                #queryTextareaCollapsed
+                                class="template-textarea-rounded"
+                                placeholder="Enter query. Use {variable} to insert dynamic values..."
+                                formControlName="query"
+                                [availableInputs]="availableInputs()"
+                            />
+                        </app-diff-field-mark>
                     </div>
 
                     <app-inputs-you-can-use
@@ -195,70 +231,89 @@
                         (insert)="insertInputToQuery($event)"
                     />
 
-                    <app-custom-input
-                        label="Output Variable Path"
-                        tooltipText="Path where the retrieval result will be stored (must start with 'variables.')."
-                        formControlName="output_variable_path"
-                        placeholder="Enter output variable path (leave empty for null)"
-                        [activeColor]="activeColor"
-                        [readonly]="isReadOnly()"
-                    ></app-custom-input>
+                    <app-diff-field-mark [diffField]="'output_variable_path'">
+                        <app-custom-input
+                            label="Output Variable Path"
+                            tooltipText="Path where the retrieval result will be stored (must start with 'variables.')."
+                            formControlName="output_variable_path"
+                            placeholder="Enter output variable path (leave empty for null)"
+                            [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
+                        ></app-custom-input>
+                    </app-diff-field-mark>
 
                     <div class="form-group">
-                        <app-select
-                            label="Knowledge Collection"
-                            tooltipText="The source collection to search. RAG must belong to this collection."
-                            placeholder="Select knowledge collection"
-                            formControlName="knowledge_collection"
-                            [items]="collectionItems()"
-                            [loading]="loadingCollections()"
-                            [readonly]="isReadOnly()"
-                        />
+                        <app-diff-field-mark
+                            [diffField]="'source_collection'"
+                            [diffFormat]="collectionNameFormat"
+                        >
+                            <app-select
+                                label="Knowledge Collection"
+                                tooltipText="The source collection to search. RAG must belong to this collection."
+                                placeholder="Select knowledge collection"
+                                formControlName="knowledge_collection"
+                                [items]="collectionItems()"
+                                [loading]="loadingCollections()"
+                                [readonly]="isReadOnly()"
+                            />
+                        </app-diff-field-mark>
                     </div>
 
                     <div class="form-group">
-                        <app-select
-                            label="RAG"
-                            tooltipText="The RAG type registered for the selected collection."
-                            placeholder="Select RAG"
-                            formControlName="rag"
-                            [items]="ragItems()"
-                            [loading]="loadingRags()"
-                            [readonly]="isReadOnly()"
-                        />
+                        <!-- One field, two diffed values: the RAG's type and its id. -->
+                        <app-diff-field-mark
+                            [diffChange]="ragChange()"
+                            [diffFormat]="ragFormat"
+                        >
+                            <app-select
+                                label="RAG"
+                                tooltipText="The RAG type registered for the selected collection."
+                                placeholder="Select RAG"
+                                formControlName="rag"
+                                [items]="ragItems()"
+                                [loading]="loadingRags()"
+                                [readonly]="isReadOnly()"
+                            />
+                        </app-diff-field-mark>
                     </div>
 
                     @if (selectedRagKind()) {
-                        <div class="search-config-section">
-                            <button
-                                type="button"
-                                class="search-config-toggle"
-                                (click)="toggleSearchConfig()"
-                            >
-                                <span
-                                    class="chevron"
-                                    [class.open]="searchConfigOpen()"
-                                    >▶</span
+                        <!-- Many inputs, one diffed value (with the search method): the mark boxes the whole section. -->
+                        <app-diff-field-mark
+                            [diffChange]="searchSettingsChange()"
+                            [diffGroup]="true"
+                        >
+                            <div class="search-config-section">
+                                <button
+                                    type="button"
+                                    class="search-config-toggle"
+                                    (click)="toggleSearchConfig()"
                                 >
-                                RAG Search Config
-                            </button>
+                                    <span
+                                        class="chevron"
+                                        [class.open]="searchConfigOpen()"
+                                        >▶</span
+                                    >
+                                    RAG Search Config
+                                </button>
 
-                            @if (searchConfigOpen()) {
-                                <div class="search-config-body">
-                                    @for (f of ragTabFormList(); track f) {
-                                        <app-rag-tab
-                                            [form]="f"
-                                            [hideSourceSelectors]="true"
-                                            [allKnowledgeSources]="[]"
-                                            [agentRags]="[]"
-                                            [searchConfigs]="ragTabSearchConfigs()"
-                                            [llmConfigId]="null"
-                                            [readOnly]="isReadOnly()"
-                                        />
-                                    }
-                                </div>
-                            }
-                        </div>
+                                @if (searchConfigOpen()) {
+                                    <div class="search-config-body">
+                                        @for (f of ragTabFormList(); track f) {
+                                            <app-rag-tab
+                                                [form]="f"
+                                                [hideSourceSelectors]="true"
+                                                [allKnowledgeSources]="[]"
+                                                [agentRags]="[]"
+                                                [searchConfigs]="ragTabSearchConfigs()"
+                                                [llmConfigId]="null"
+                                                [readOnly]="isReadOnly()"
+                                            />
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </app-diff-field-mark>
                     }
                 </div>
             }

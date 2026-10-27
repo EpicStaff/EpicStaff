@@ -45,6 +45,10 @@ const TOOLTIP_POSITIONS: ConnectedPosition[] = [
  * The description ("Current canvas: …") lives outside the field (CDK AriaDescriber, as matTooltip does), so
  * it adds nothing to a row; the visual tooltip repeats it and is hidden from screen readers.
  *
+ * A field whose value spans several inputs (a group of settings) is a group (`diffGroup`): the mark then draws the
+ * border and the badge around itself and does not set `diff-value-marked`, so the form components inside keep their
+ * own look. Its label, when inside, is then inside the border too.
+ *
  * A value too long for a tooltip (code) gets a fixed hint instead (`diffHint`), e.g. where to see the changes. A
  * value box that clips what sticks out (a code editor card, `marked-frame()` in `styles/_diff-value-mark.scss`)
  * draws only the border; the mark wrapping it then draws the badge and the focus ring on itself (`diffDrawsBadge`).
@@ -103,8 +107,9 @@ const TOOLTIP_POSITIONS: ConnectedPosition[] = [
     host: {
         '[class.diff-field-mark--shown]': 'change() !== null',
         // The hook the wrapped form component styles its value box by (see the class docs).
-        '[class.diff-value-marked]': 'change() !== null && !isRow',
+        '[class.diff-value-marked]': 'change() !== null && !isRow && !diffGroup()',
         '[class.diff-field-mark--draws-badge]': 'change() !== null && !isRow && diffDrawsBadge()',
+        '[class.diff-field-mark--group]': 'change() !== null && !isRow && diffGroup()',
         '[attr.tabindex]': 'change() !== null ? 0 : null',
         '[attr.role]': 'change() !== null && !isRow ? "group" : null',
         '[attr.aria-labelledby]': 'change() !== null && !isRow ? labelId : null',
@@ -137,6 +142,17 @@ export class DiffFieldMarkComponent {
      * badge on its own top-right corner, which is the box's, and the focus ring. Element form only.
      */
     readonly diffDrawsBadge = input(false);
+    /**
+     * How the field shows a stored value, e.g. the name of a linked entity for its id, so the tooltip reads like the
+     * field; such a value is shown and struck as a whole. Replaces the field's own formatter (`FIELD_DISPLAY`) and
+     * also applies to a given change (`diffChange`). Not set: the field's own formatter, or the value as it is.
+     */
+    readonly diffFormat = input<((value: unknown) => string) | null>(null);
+    /**
+     * The field's value spans several inputs: the mark draws the border and the badge around itself, and the form
+     * components inside are not marked one by one. Element form only.
+     */
+    readonly diffGroup = input(false);
 
     /** The change shown; `null` when there is none, or off the Changes tab, or on an added or removed node. */
     protected readonly change = computed<DiffFieldMarkChange | null>(() => {
@@ -150,9 +166,16 @@ export class DiffFieldMarkComponent {
     protected readonly segments = computed<DisplaySegment[]>(() => {
         const change = this.change();
         if (change === null) return [];
-        // A given change is not a stored field value, so the field's display formatter does not apply to it.
+        // A given change is not a stored field value, so the field's own formatter (`FIELD_DISPLAY`) does not apply
+        // to it; `diffFormat` does, as the caller sets it for that change.
         const field = this.diffChange() === null ? this.diffField() : null;
-        return fieldValueSegments(field, change.current, change.version, this.diffDefaultValue());
+        return fieldValueSegments(
+            field,
+            change.current,
+            change.version,
+            this.diffDefaultValue(),
+            this.diffFormat() ?? undefined
+        );
     });
     // Built from the shown segments, so it is cut like the tooltip: a screen reader is not read a whole long value.
     private readonly description = computed(() => {

@@ -46,6 +46,13 @@ export function shownCodeDiffs(root: DebugElement): { current: string | undefine
     });
 }
 
+/** The language each code diff shown under `root` highlights its codes in. */
+export function shownCodeDiffLanguages(root: DebugElement): (string | undefined)[] {
+    return root
+        .queryAll(By.directive(DiffEditorStubComponent))
+        .map((element) => (element.componentInstance as DiffEditorStubComponent).modifiedModel()?.language);
+}
+
 /**
  * The marks shown around a code (its editor or its diff view) under `root`, each by what a screen reader is told about
  * it (its description), which is also the text of its tooltip.
