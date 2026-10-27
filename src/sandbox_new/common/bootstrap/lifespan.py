@@ -34,8 +34,8 @@ from manager.infrastructure.database.unit_of_work import PiccoloUnitOfWork
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
 from manager.infrastructure.transport.redis_result_publisher import RedisResultPublisher
-from manager.infrastructure.transport.result_consumer import ResultConsumer
 from manager.presentation.held_job_releaser import HeldJobReleaser
+from manager.presentation.result_consumer import ResultConsumer
 from redis.asyncio import Redis
 from worker.bootstrap.di import build_admission_gate, build_job_consumer
 

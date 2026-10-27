@@ -22,7 +22,7 @@ from manager.domain.errors import SandboxOverloadedError, VenvNotFoundError
 from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
-from manager.infrastructure.transport.result_consumer import ResultConsumer
+from manager.presentation.result_consumer import ResultConsumer
 from tests.builders import make_venv
 from tests.fakes import FakeResultPublisher, FakeUnitOfWork, FakeVenvRepository
 

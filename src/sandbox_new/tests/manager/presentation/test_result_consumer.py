@@ -13,7 +13,7 @@ import pytest
 from common.contracts import ExecutionResultMessage
 from manager.application.registry import ExecutionRegistry
 from manager.domain.enums import ExecutionStatus
-from manager.infrastructure.transport.result_consumer import ResultConsumer
+from manager.presentation.result_consumer import ResultConsumer
 from tests.fakes import FakeResultPublisher
 
 
