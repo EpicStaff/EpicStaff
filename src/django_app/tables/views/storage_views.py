@@ -502,6 +502,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @action(detail=False, methods=["get"], url_path="graph-files")
     def graph_files(self, request):
         org_id = self.get_active_org_id()
+        # Checked before the graph lookup: otherwise a caller who cannot read flows
+        # could tell existing graph ids (200) from missing ones (404).
+        assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.READ)
         params = StorageGraphFilesQuerySerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
         graph_id = params.validated_data["graph_id"]

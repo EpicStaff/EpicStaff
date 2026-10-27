@@ -276,6 +276,32 @@ def test_graph_links_are_added_listed_and_removed(auth_client, put, default_org)
     assert not GraphStorageFile.objects.filter(graph=graph).exists()
 
 
+@pytest.mark.parametrize(
+    ("other_permissions", "existing_status", "missing_status"),
+    [
+        ({ResourceType.FLOWS: Permission.READ}, status.HTTP_200_OK, status.HTTP_404_NOT_FOUND),
+        # The same answer for both ids, so the caller cannot tell which graphs exist.
+        ({}, status.HTTP_403_FORBIDDEN, status.HTTP_403_FORBIDDEN),
+    ],
+    ids=["with-flows-read", "without-flows-read"],
+)
+def test_graph_files_needs_flows_read_before_revealing_whether_the_graph_exists(
+    auth_client, make_files_reader_client, put, default_org, other_permissions, existing_status, missing_status
+):
+    graph = Graph.objects.create(name="secret-flow", org=default_org)
+    put("f.txt")
+    linked = auth_client.post("/api/storage/add-to-graph/", {"paths": ["f.txt"], "graph_ids": [graph.id]}, format="json")
+    assert linked.status_code == status.HTTP_201_CREATED
+    client = make_files_reader_client(other_permissions)
+
+    existing = client.get("/api/storage/graph-files/", {"graph_id": graph.id})
+    missing = client.get("/api/storage/graph-files/", {"graph_id": graph.id + 1000})
+
+    assert (existing.status_code, missing.status_code) == (existing_status, missing_status)
+    if existing_status == status.HTTP_200_OK:
+        assert [item["path"] for item in existing.data] == ["f.txt"]
+
+
 class TestTree:
     def test_tree_returns_the_nested_folder(self, auth_client, put):
         put("reports/q1.pdf", b"x" * 10)

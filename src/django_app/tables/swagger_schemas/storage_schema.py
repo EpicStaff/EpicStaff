@@ -194,7 +194,10 @@ STORAGE_REMOVE_FROM_GRAPH_SWAGGER = {
 
 STORAGE_GRAPH_FILES_SWAGGER = {
     "summary": "List storage files attached to a graph",
-    "description": "Returns all storage paths that have been linked to the given graph.",
+    "description": (
+        "Returns all storage paths that have been linked to the given graph. "
+        "Requires READ on flows as well as on files."
+    ),
     "parameters": [
         OpenApiParameter(
             name="graph_id",
@@ -206,6 +209,7 @@ STORAGE_GRAPH_FILES_SWAGGER = {
     ],
     "responses": {
         200: GraphStorageFileSerializer(many=True),
+        403: OpenApiResponse(description="The caller lacks read permission on flows."),
         404: OpenApiResponse(description="Graph not found"),
     },
 }
