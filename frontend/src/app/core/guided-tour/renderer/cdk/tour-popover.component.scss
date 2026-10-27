@@ -1,17 +1,25 @@
+// Looks like the driver.js Quick Start card it replaces (styles/_quick-start-tour.scss): same surface, border, radius,
+// shadow, paddings, progress bar and close button.
 $card-padding: 24px;
 // Token gap (docs/design-tokens.md): the design fills the card with Figma "Line" #2B2D30, which has no exact variable;
 // --color-ks-line is the documented closest match (the Quick Start tour card uses it too).
 $card-surface: var(--color-ks-line);
+// Below this viewport height the decorative image is left out: shrunk to fit, it would be too small to be worth its
+// room. Above it, the image shrinks before the text has to scroll.
+$media-min-viewport-height: 480px;
 
 :host {
     display: block;
 }
 
+// Capped by the renderer (max-width and max-height bindings); a column, so the content can shrink and scroll between
+// the top of the card and the buttons.
 .tour-popover {
     position: relative;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
     width: 324px;
-    max-width: calc(100vw - 16px);
     overflow: hidden;
     background: $card-surface;
     color: var(--color-text-primary);
@@ -38,23 +46,60 @@ $card-surface: var(--color-ks-line);
     background: var(--accent-color);
 }
 
+// Muted until pointed at or focused, as on the Quick Start card (its secondary text at 70% opacity, then 100%). The
+// custom property colours the icon (see IconButtonComponent); the muting is in the colour, not in opacity, so the card
+// surface behind the button stays opaque and text scrolled up under it does not show through.
 .tour-popover__close {
+    --icon-button-icon-color: var(--color-text-tertiary);
+
     position: absolute;
     top: 16px;
     right: 16px;
+    display: flex;
+    background: $card-surface;
+    border-radius: var(--radius-sm);
+
+    &:hover,
+    &:focus-within {
+        --icon-button-icon-color: var(--color-text-secondary);
+    }
 }
 
+.tour-popover__content {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    outline: none;
+
+    // A Tab stop only while it scrolls (see TourPopoverComponent.contentScrolls). Inset: the card clips its edges.
+    &:focus-visible {
+        box-shadow: inset var(--focus-ring);
+    }
+}
+
+// Shrinks first when the card is capped (min-height: 0), keeping its proportions (object-fit).
 .tour-popover__media {
     display: block;
+    flex: 0 1 auto;
+    min-height: 0;
     max-width: 100%;
     height: auto;
     margin: $card-padding auto 0;
+    object-fit: contain;
     user-select: none;
     pointer-events: none;
+
+    @media (max-height: $media-min-viewport-height) {
+        display: none;
+    }
 }
 
 .tour-popover__title {
     display: flex;
+    flex: none;
     align-items: center;
     gap: 8px;
     margin: 0;
@@ -67,7 +112,8 @@ $card-surface: var(--color-ks-line);
 }
 
 .tour-popover__body {
-    padding: 16px $card-padding $card-padding;
+    flex: none;
+    padding: $card-padding;
     font-size: var(--text-body-size);
     font-weight: var(--text-body-weight);
     line-height: var(--text-body-line-height);
@@ -84,6 +130,7 @@ $card-surface: var(--color-ks-line);
 // Back and Skip on the left, the primary action on the right (also when there is nothing on the left).
 .tour-popover__footer {
     display: flex;
+    flex: none;
     justify-content: space-between;
     gap: 8px;
     padding: 0 $card-padding $card-padding;

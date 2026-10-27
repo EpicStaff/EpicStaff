@@ -25,5 +25,12 @@ export interface TourContent {
 /** The side of the target the popover prefers; it flips to another side when there is no room. */
 export type TourSide = 'top' | 'bottom' | 'left' | 'right';
 
-/** Where the popover goes when the step has no target, or its target is not visible. */
+/**
+ * Where the popover goes when the step has no target, or its target is not visible.
+ *
+ * - `center`: the middle of the viewport.
+ * - `bottom-start`: the bottom-left corner beside the collapsed app navigation (60px in, 24px up), where the Quick Start
+ *   welcome card sits. A fixed spot: it does not follow an expanded navigation (the card then overlaps it), nor a phone
+ *   page whose navigation is a closed drawer (the card then keeps the 60px gap).
+ */
 export type TourFloatingPosition = 'center' | 'bottom-start';

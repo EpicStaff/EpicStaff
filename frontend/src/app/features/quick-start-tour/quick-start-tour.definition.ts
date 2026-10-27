@@ -68,6 +68,8 @@ export function createQuickStartTour(): TourDefinition {
                         'Follow a few simple steps to set up your workspace and start exploring.',
                     ],
                 },
+                // Next to the collapsed app navigation, where the tour starts.
+                floating: 'bottom-start',
                 buttons: { next: 'Get started', skip: 'Skip' },
             },
             {

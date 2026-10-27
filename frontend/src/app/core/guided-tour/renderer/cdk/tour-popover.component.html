@@ -5,6 +5,8 @@
     tabindex="-1"
     [attr.aria-labelledby]="titleId"
     [attr.aria-describedby]="bodyId"
+    [style.max-width.px]="maxSize()?.width"
+    [style.max-height.px]="maxSize()?.height"
 >
     @if (progressBar(); as bar) {
         <div
@@ -32,46 +34,53 @@
         />
     }
 
-    @if (content().media; as media) {
-        <img
-            class="tour-popover__media"
-            alt=""
-            draggable="false"
-            [src]="media.src"
-            [width]="media.width"
-            [height]="media.height"
-        />
-    }
-
-    <h2
-        class="tour-popover__title"
-        [id]="titleId"
+    <!-- Everything but the buttons: it scrolls when the card is capped, so the buttons stay in view. -->
+    <div
+        #contentRegion
+        class="tour-popover__content"
+        [attr.tabindex]="contentScrolls() ? 0 : null"
     >
-        @if (content().titleIcon; as titleIcon) {
-            <app-svg-icon
-                [icon]="titleIcon"
-                size="1.25rem"
+        @if (content().media; as media) {
+            <img
+                class="tour-popover__media"
+                alt=""
+                draggable="false"
+                [src]="media.src"
+                [width]="media.width"
+                [height]="media.height"
             />
         }
-        <span>{{ content().title }}</span>
-    </h2>
 
-    <div
-        class="tour-popover__body"
-        [id]="bodyId"
-    >
-        @for (paragraph of paragraphs(); track $index) {
-            <p>
-                @for (run of paragraph; track $index) {
-                    <!-- Elements, not bare text: the template's own line breaks would add spaces between runs. -->
-                    @if (run.strong) {
-                        <strong>{{ run.text }}</strong>
-                    } @else {
-                        <span>{{ run.text }}</span>
+        <h2
+            class="tour-popover__title"
+            [id]="titleId"
+        >
+            @if (content().titleIcon; as titleIcon) {
+                <app-svg-icon
+                    [icon]="titleIcon"
+                    size="1.25rem"
+                />
+            }
+            <span>{{ content().title }}</span>
+        </h2>
+
+        <div
+            class="tour-popover__body"
+            [id]="bodyId"
+        >
+            @for (paragraph of paragraphs(); track $index) {
+                <p>
+                    @for (run of paragraph; track $index) {
+                        <!-- Elements, not bare text: the template's own line breaks would add spaces between runs. -->
+                        @if (run.strong) {
+                            <strong>{{ run.text }}</strong>
+                        } @else {
+                            <span>{{ run.text }}</span>
+                        }
                     }
-                }
-            </p>
-        }
+                </p>
+            }
+        </div>
     </div>
 
     @if (hasFooter()) {

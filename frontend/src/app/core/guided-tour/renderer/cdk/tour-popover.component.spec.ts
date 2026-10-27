@@ -127,6 +127,26 @@ describe('TourPopoverComponent', () => {
         expect(labels).toEqual(['Skip tour']);
     });
 
+    it('scrolls the image and text of a card too tall for its room, never its buttons', () => {
+        const { element } = renderPopover({
+            ...CONTENT,
+            media: { src: 'assets/welcome.webp', width: 276, height: 283 },
+        });
+
+        const card = element.querySelector<HTMLElement>('[role="dialog"]');
+        const paragraph = element.querySelector('p');
+        let scroller = paragraph?.parentElement ?? null;
+        while (scroller && scroller !== card && !['auto', 'scroll'].includes(getComputedStyle(scroller).overflowY)) {
+            scroller = scroller.parentElement;
+        }
+        expect(scroller).not.toBe(card);
+        expect(scroller?.contains(element.querySelector('img'))).toBe(true);
+        expect(scroller?.contains(element.querySelector('h2'))).toBe(true);
+        for (const label of ['Back', 'Skip', 'Next', 'Close tour']) {
+            expect(scroller?.contains(buttonLabelled(element, label))).toBe(false);
+        }
+    });
+
     it('reports progress to assistive technology, and shows none without it', () => {
         const withProgress = renderPopover(CONTENT, ALL_BUTTONS, { current: 2, total: 4 }).element;
         const withoutProgress = renderPopover(CONTENT, ALL_BUTTONS, null).element;

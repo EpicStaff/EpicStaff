@@ -10,8 +10,11 @@
     display: block;
 }
 
+// The tour's own dim: as dark as the driver.js Quick Start tour's (black at 70%). Darker than a dialog's backdrop
+// (CDK's `.cdk-overlay-dark-backdrop`, black at 32%); one token to change if the tour should dim like a dialog. Not
+// --color-backdrop: on the dark theme it is about as dark as the page, so it barely dims.
 .tour-spotlight__dim {
-    fill: var(--color-backdrop);
+    fill: var(--color-tour-backdrop);
     pointer-events: auto;
 }
 

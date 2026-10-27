@@ -1,8 +1,14 @@
-import { Component, computed, ElementRef, input, output, viewChild } from '@angular/core';
+import { Component, computed, ElementRef, input, output, signal, viewChild } from '@angular/core';
 import { AppSvgIconComponent, ButtonComponent, IconButtonComponent } from '@shared/components';
 
 import { TourContent, TourTextRun } from '../../model/tour-content';
 import { TourIntent, TourProgress, TourStepButtons } from '../tour-renderer';
+
+/** In CSS pixels. */
+export interface TourPopoverMaxSize {
+    readonly width: number;
+    readonly height: number;
+}
 
 interface ProgressBar extends TourProgress {
     readonly percent: number;
@@ -11,7 +17,10 @@ interface ProgressBar extends TourProgress {
 
 let nextPopoverId = 0;
 
-/** The step card: optional image, title, text and the tour's buttons. A non-modal dialog labelled by its title. */
+/**
+ * The step card: optional image, title, text and the tour's buttons. A non-modal dialog labelled by its title. Within
+ * its `maxSize` the image shrinks first, then the text scrolls; the buttons always show.
+ */
 @Component({
     selector: 'app-tour-popover',
     imports: [AppSvgIconComponent, ButtonComponent, IconButtonComponent],
@@ -28,10 +37,15 @@ export class TourPopoverComponent {
      * case a renderer lets one through.
      */
     readonly pending = input(false);
+    /** The most of the viewport the card may take where it is placed; null for no limit. */
+    readonly maxSize = input<TourPopoverMaxSize | null>(null);
     readonly intent = output<TourIntent>();
 
     private readonly card = viewChild.required<ElementRef<HTMLElement>>('card');
+    private readonly contentRegion = viewChild.required<ElementRef<HTMLElement>>('contentRegion');
 
+    /** The content does not fit the card and scrolls: it is then a Tab stop, so a keyboard can scroll it too. */
+    protected readonly contentScrolls = signal(false);
     protected readonly paragraphs = computed<readonly (readonly TourTextRun[])[]>(() =>
         this.content().body.map((paragraph) => (typeof paragraph === 'string' ? [{ text: paragraph }] : paragraph))
     );
@@ -57,5 +71,14 @@ export class TourPopoverComponent {
     /** Moves the focus to the card, so a screen reader reads the step as a dialog with its title and text. */
     focusCard(): void {
         this.card().nativeElement.focus({ preventScroll: true });
+    }
+
+    /**
+     * Checks whether the content scrolls. Layout decides it, not the inputs, so the renderer calls this once the card is
+     * rendered at a new size or with new content, then renders it again.
+     */
+    updateContentScrolls(): void {
+        const region = this.contentRegion().nativeElement;
+        this.contentScrolls.set(region.scrollHeight > region.clientHeight);
     }
 }

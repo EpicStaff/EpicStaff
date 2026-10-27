@@ -1,4 +1,11 @@
-import { ConnectedPosition, Overlay, OverlayRef, PositionStrategy } from '@angular/cdk/overlay';
+import {
+    ConnectedPosition,
+    FlexibleConnectedPositionStrategy,
+    FlexibleConnectedPositionStrategyOrigin,
+    Overlay,
+    OverlayRef,
+    PositionStrategy,
+} from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { DOCUMENT } from '@angular/common';
 import { ComponentRef, inject, Injector, NgZone, runInInjectionContext } from '@angular/core';
@@ -9,15 +16,22 @@ import { TourIntent, TourRenderer, TourStepView } from '../tour-renderer';
 import { isTourTargetVisible } from '../tour-target-visibility';
 import { tourAnnouncement } from './tour-announcement';
 import { TourFocusCycle } from './tour-focus-cycle';
-import { TourPopoverComponent } from './tour-popover.component';
+import { TourPopoverComponent, TourPopoverMaxSize } from './tour-popover.component';
 import { tourHolePadding, TourSpotlightComponent } from './tour-spotlight.component';
-import { revealTourTarget, TourTargetGeometry } from './tour-target-geometry';
+import { revealTourTarget, TourRect, TourTargetGeometry, TourViewportSize } from './tour-target-geometry';
 
 /** Space between the edge of the spotlight hole and the popover. */
 const POPOVER_GAP = 12;
+/** The least space between the popover and the edge of the viewport. */
 const VIEWPORT_MARGIN = 8;
-/** A `bottom-start` popover's distance from the viewport's bottom-left corner. */
-const FLOATING_INSET = '24px';
+/**
+ * A `bottom-start` popover's distance from the viewport's left edge: the width of the collapsed app navigation
+ * (main-layout's MAIN_SIDENAV_COLLAPSED_WIDTH; core cannot depend on the layout), so the card sits just right of it,
+ * where the Quick Start welcome card has always been. See TourFloatingPosition for where that falls short.
+ */
+const FLOATING_START_INSET = 60;
+/** A `bottom-start` popover's distance from the viewport's bottom edge. */
+const FLOATING_BOTTOM_INSET = 24;
 
 /** The two overlays of a running tour: the dimmed spotlight, and the popover above it. */
 interface TourLayers {
@@ -27,8 +41,14 @@ interface TourLayers {
     readonly popover: ComponentRef<TourPopoverComponent>;
 }
 
+/** Where the popover is, with the strategy that keeps it there while anchored. */
 type TourPlacement =
-    | { readonly kind: 'anchored'; readonly target: Element; readonly side: TourSide }
+    | {
+          readonly kind: 'anchored';
+          readonly target: Element;
+          readonly side: TourSide;
+          readonly strategy: FlexibleConnectedPositionStrategy;
+      }
     | { readonly kind: 'floating'; readonly position: TourFloatingPosition };
 
 /** Creates a renderer that lives until its dispose(). `injector` provides the CDK services. */
@@ -111,8 +131,6 @@ class CdkTourRenderer implements TourRenderer {
         layers.popover.setInput('buttons', view.buttons);
         layers.popover.setInput('progress', view.progress);
         layers.popover.setInput('pending', false);
-        // Rendered now, so the overlay positions the card at its new size.
-        layers.popover.changeDetectorRef.detectChanges();
         this.followTarget();
         this.raise();
         this.focusCycle.presentStep(
@@ -186,11 +204,18 @@ class CdkTourRenderer implements TourRenderer {
         }
         const rect = this.geometry.rect();
         const anchor = rect ? view.target : null;
-        this.place(
-            anchor
-                ? { kind: 'anchored', target: anchor, side: view.side }
-                : { kind: 'floating', position: view.floating }
-        );
+        const floating = anchor ? null : view.floating;
+        layers.popover.setInput('maxSize', popoverMaxSize(floating, this.geometry.viewport()));
+        // Rendered now, so the overlay positions the card at its new size; then again once the card knows whether its
+        // content scrolls at that size (a Tab stop only then).
+        layers.popover.changeDetectorRef.detectChanges();
+        layers.popover.instance.updateContentScrolls();
+        layers.popover.changeDetectorRef.detectChanges();
+        if (anchor && rect) {
+            this.anchor(anchor, view.side, rect);
+        } else {
+            this.float(view.floating);
+        }
         this.focusCycle.setTarget(anchor);
         layers.spotlight.setInput('target', anchor);
         layers.spotlight.setInput('targetRect', rect);
@@ -199,71 +224,86 @@ class CdkTourRenderer implements TourRenderer {
         layers.spotlight.changeDetectorRef.detectChanges();
     }
 
-    private place(placement: TourPlacement): void {
+    /**
+     * Places the popover next to the target's hole, measured by the geometry rather than by CDK, so the card and the
+     * hole move together. The gap is part of the origin, not a position offset: CDK pushes an overlay back on screen
+     * before it applies the offset, which would leave the card past the viewport's edge by up to the gap.
+     */
+    private anchor(target: Element, side: TourSide, rect: TourRect): void {
         const overlayRef = this.layers?.popoverOverlay;
         if (!overlayRef) {
             return;
         }
-        if (isSamePlacement(placement, this.placement)) {
+        const origin = popoverOrigin(target, rect);
+        const placement = this.placement;
+        if (placement?.kind === 'anchored' && placement.target === target && placement.side === side) {
+            placement.strategy.setOrigin(origin);
             overlayRef.updatePosition();
             return;
         }
-        this.placement = placement;
-        overlayRef.updatePositionStrategy(
-            placement.kind === 'anchored'
-                ? this.anchoredStrategy(placement.target, placement.side)
-                : this.floatingStrategy(placement.position)
-        );
-    }
-
-    private anchoredStrategy(target: Element, side: TourSide): PositionStrategy {
-        return this.overlay
+        const strategy = this.overlay
             .position()
-            .flexibleConnectedTo(target)
-            .withPositions(positionsFor(side, tourHolePadding(target) + POPOVER_GAP))
+            .flexibleConnectedTo(origin)
+            .withPositions(positionsFor(side))
             .withFlexibleDimensions(false)
             .withPush(true)
             .withViewportMargin(VIEWPORT_MARGIN);
+        this.placement = { kind: 'anchored', target, side, strategy };
+        overlayRef.updatePositionStrategy(strategy);
+    }
+
+    private float(position: TourFloatingPosition): void {
+        const overlayRef = this.layers?.popoverOverlay;
+        if (!overlayRef) {
+            return;
+        }
+        if (this.placement?.kind === 'floating' && this.placement.position === position) {
+            overlayRef.updatePosition();
+            return;
+        }
+        this.placement = { kind: 'floating', position };
+        overlayRef.updatePositionStrategy(this.floatingStrategy(position));
     }
 
     private floatingStrategy(position: TourFloatingPosition): PositionStrategy {
         const strategy = this.overlay.position().global();
         return position === 'center'
             ? strategy.centerHorizontally().centerVertically()
-            : strategy.left(FLOATING_INSET).bottom(FLOATING_INSET);
+            : strategy.left(`${FLOATING_START_INSET}px`).bottom(`${FLOATING_BOTTOM_INSET}px`);
     }
 }
 
+/** The target's hole (see tourHolePadding) grown by the gap: the box the popover is placed against. */
+function popoverOrigin(target: Element, rect: TourRect): FlexibleConnectedPositionStrategyOrigin {
+    const spacing = tourHolePadding(target) + POPOVER_GAP;
+    return {
+        x: rect.left - spacing,
+        y: rect.top - spacing,
+        width: rect.width + spacing * 2,
+        height: rect.height + spacing * 2,
+    };
+}
+
+/**
+ * The most the card may take of the viewport where it is: anchored (null) or centred, all of it but the margins; at
+ * `bottom-start`, what is left right of and above its insets. Past that its text scrolls.
+ */
+function popoverMaxSize(floating: TourFloatingPosition | null, viewport: TourViewportSize): TourPopoverMaxSize {
+    const isBottomStart = floating === 'bottom-start';
+    const horizontalSpace = isBottomStart ? FLOATING_START_INSET + VIEWPORT_MARGIN : VIEWPORT_MARGIN * 2;
+    const verticalSpace = isBottomStart ? FLOATING_BOTTOM_INSET + VIEWPORT_MARGIN : VIEWPORT_MARGIN * 2;
+    return {
+        width: Math.max(viewport.width - horizontalSpace, 0),
+        height: Math.max(viewport.height - verticalSpace, 0),
+    };
+}
+
 /** The preferred side first, then the opposite one, then the two others. */
-function positionsFor(side: TourSide, offset: number): ConnectedPosition[] {
-    const above: ConnectedPosition = {
-        originX: 'center',
-        originY: 'top',
-        overlayX: 'center',
-        overlayY: 'bottom',
-        offsetY: -offset,
-    };
-    const below: ConnectedPosition = {
-        originX: 'center',
-        originY: 'bottom',
-        overlayX: 'center',
-        overlayY: 'top',
-        offsetY: offset,
-    };
-    const before: ConnectedPosition = {
-        originX: 'start',
-        originY: 'center',
-        overlayX: 'end',
-        overlayY: 'center',
-        offsetX: -offset,
-    };
-    const after: ConnectedPosition = {
-        originX: 'end',
-        originY: 'center',
-        overlayX: 'start',
-        overlayY: 'center',
-        offsetX: offset,
-    };
+function positionsFor(side: TourSide): ConnectedPosition[] {
+    const above: ConnectedPosition = { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom' };
+    const below: ConnectedPosition = { originX: 'center', originY: 'bottom', overlayX: 'center', overlayY: 'top' };
+    const before: ConnectedPosition = { originX: 'start', originY: 'center', overlayX: 'end', overlayY: 'center' };
+    const after: ConnectedPosition = { originX: 'end', originY: 'center', overlayX: 'start', overlayY: 'center' };
     const order: Record<TourSide, ConnectedPosition[]> = {
         top: [above, below, after, before],
         bottom: [below, above, after, before],
@@ -271,21 +311,6 @@ function positionsFor(side: TourSide, offset: number): ConnectedPosition[] {
         right: [after, before, below, above],
     };
     return order[side];
-}
-
-function isSamePlacement(first: TourPlacement, second: TourPlacement | null): boolean {
-    if (!second || first.kind !== second.kind) {
-        return false;
-    }
-    if (first.kind === 'floating' && second.kind === 'floating') {
-        return first.position === second.position;
-    }
-    return (
-        first.kind === 'anchored' &&
-        second.kind === 'anchored' &&
-        first.target === second.target &&
-        first.side === second.side
-    );
 }
 
 function focusedElement(document: Document): HTMLElement | null {
