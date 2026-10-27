@@ -28,13 +28,13 @@ export interface CustomShortcutEntry {
     readonly params?: ShortcutParams;
 }
 
-export interface NodeKeyOverrides {
+export interface ActionKeyOverrides {
     readonly [action: string]: string | null;
 }
 
 export interface ShortcutSettings {
     readonly custom: readonly CustomShortcutEntry[];
-    readonly overrides: NodeKeyOverrides;
+    readonly overrides: ActionKeyOverrides;
 }
 
 export const EMPTY_SHORTCUT_SETTINGS: ShortcutSettings = { custom: [], overrides: {} };

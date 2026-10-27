@@ -23,6 +23,70 @@ describe('chordFromEvent', () => {
         expect(chordFromEvent(keydown(init), false)).toBe(expected);
     });
 
+    it.each([
+        ['Alt+C on a Cyrillic layout', { key: 'с', code: 'KeyC', altKey: true }, false, 'Alt+KeyC'],
+        ['Option+C on a mac', { key: 'ç', code: 'KeyC', altKey: true }, true, 'Alt+KeyC'],
+        ['Ctrl+Enter', { key: 'Enter', code: 'Enter', ctrlKey: true }, false, 'Mod+Enter'],
+        ['Cmd+Enter on a mac', { key: 'Enter', code: 'Enter', metaKey: true }, true, 'Mod+Enter'],
+        ['Ctrl and the numpad Enter', { key: 'Enter', code: 'NumpadEnter', ctrlKey: true }, false, 'Mod+Enter'],
+        ['Alt+,', { key: ',', code: 'Comma', altKey: true }, false, 'Alt+Comma'],
+        ['Option+, on a mac', { key: '≤', code: 'Comma', altKey: true }, true, 'Alt+Comma'],
+        [
+            'Alt+, on French AZERTY, where , sits on the US M key',
+            { key: ',', code: 'KeyM', altKey: true },
+            false,
+            'Alt+Comma',
+        ],
+        [
+            'Alt+M on French AZERTY, where M sits on the US ; key',
+            { key: 'm', code: 'Semicolon', altKey: true },
+            false,
+            'Alt+KeyM',
+        ],
+        [
+            'Ctrl+. on a Russian layout, where . sits on the US / key',
+            { key: '.', code: 'Slash', ctrlKey: true },
+            false,
+            'Mod+Slash',
+        ],
+        [
+            'Alt+, on a Cyrillic layout, where that key prints б',
+            { key: 'б', code: 'Comma', altKey: true },
+            false,
+            'Alt+Comma',
+        ],
+    ] as const)('names a flow toolbar key on every layout: %s', (_label, init, isMac, expected) => {
+        expect(chordFromEvent(keydown(init), isMac)).toBe(expected);
+    });
+
+    it.each([
+        ['Ctrl+=', { key: '=', code: 'Equal', ctrlKey: true }, false, 'Mod+Equal'],
+        [
+            'Ctrl++ with Shift on a US layout',
+            { key: '+', code: 'Equal', ctrlKey: true, shiftKey: true },
+            false,
+            'Mod+Shift+Equal',
+        ],
+        [
+            'Ctrl++ on a German layout, where + has its own key',
+            { key: '+', code: 'BracketRight', ctrlKey: true },
+            false,
+            'Mod+Equal',
+        ],
+        ['Ctrl and the numpad +', { key: '+', code: 'NumpadAdd', ctrlKey: true }, false, 'Mod+Equal'],
+        ['Cmd+= on a mac', { key: '=', code: 'Equal', metaKey: true }, true, 'Mod+Equal'],
+        ['Ctrl+-', { key: '-', code: 'Minus', ctrlKey: true }, false, 'Mod+Minus'],
+        [
+            'Ctrl+- on a German layout, where - sits on the US / key',
+            { key: '-', code: 'Slash', ctrlKey: true },
+            false,
+            'Mod+Minus',
+        ],
+        ['Ctrl and the numpad -', { key: '-', code: 'NumpadSubtract', ctrlKey: true }, false, 'Mod+Minus'],
+    ] as const)('names a zoom key by what it prints: %s', (_label, init, isMac, expected) => {
+        expect(chordFromEvent(keydown(init), isMac)).toBe(expected);
+    });
+
     it('falls back to the physical key for a mac Alt character', () => {
         expect(chordFromEvent(keydown({ key: 'π', code: 'KeyP', altKey: true }), true)).toBe('Alt+KeyP');
     });
@@ -72,6 +136,11 @@ describe('formatChord', () => {
         ['Mod+Slash', false, ['Ctrl', '/']],
         ['Escape', false, ['Esc']],
         ['Delete', false, ['Delete']],
+        ['Mod+Enter', true, ['⌘', '↩']],
+        ['Mod+Enter', false, ['Ctrl', 'Enter']],
+        ['Alt+Comma', true, ['⌥', ',']],
+        ['Alt+Comma', false, ['Alt', ',']],
+        ['Alt+KeyC', true, ['⌥', 'C']],
     ] as const)('formats %s (mac: %s)', (chord, isMac, expected) => {
         expect(formatChord(chord, isMac)).toEqual(expected);
     });
@@ -136,12 +205,18 @@ describe('checkUserChord', () => {
         expect(checkUserChord('Ctrl+KeyS')).toBe('mac-ctrl');
     });
 
-    it.each(['Shift+KeyB', 'Alt+KeyG', 'Mod+Shift+KeyB', 'Mod+Digit1', 'Shift+F2', 'Alt+Comma', 'Mod+Alt+Shift+KeyQ'])(
-        'accepts %s',
-        (chord) => {
-            expect(checkUserChord(chord)).toBeNull();
-        }
-    );
+    it.each([
+        'Shift+KeyB',
+        'Alt+KeyG',
+        'Mod+Shift+KeyB',
+        'Mod+Digit1',
+        'Shift+F2',
+        'Alt+Comma',
+        'Mod+Enter',
+        'Mod+Alt+Shift+KeyQ',
+    ])('accepts %s', (chord) => {
+        expect(checkUserChord(chord)).toBeNull();
+    });
 });
 
 describe('isInsideSidePanel', () => {

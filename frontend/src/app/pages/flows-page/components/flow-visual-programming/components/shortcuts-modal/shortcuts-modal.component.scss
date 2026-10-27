@@ -379,8 +379,11 @@
     gap: 2px;
 }
 
+// A one-character key (a letter, "/", an arrow, a Mac symbol) is a square keycap; words like Ctrl stay wider.
+.shortcuts__key--square,
 .shortcuts__key--arrow {
-    min-width: 18px;
+    width: 24px;
+    min-width: 0;
     padding: 0;
 }
 

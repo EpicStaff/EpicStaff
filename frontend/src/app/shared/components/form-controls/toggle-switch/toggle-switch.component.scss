@@ -29,6 +29,11 @@
     input:checked + .slider {
         background-color: var(--accent-color);
     }
+    // The checkbox itself is invisible, so its keyboard focus shows on the track.
+    input:focus-visible + .slider {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
     .slider:before {
         position: absolute;
         content: '';

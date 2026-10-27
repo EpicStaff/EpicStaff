@@ -46,7 +46,7 @@ function user(overrides: Partial<GetMeResponse>): GetMeResponse {
         active_organization_id: null,
         active_permissions: null,
         avatar_url: null,
-        quickstart_tour_completed: true,
+        completed_tours: [],
         custom_shortcuts: {} as GetMeResponse['custom_shortcuts'],
         ...overrides,
     };
