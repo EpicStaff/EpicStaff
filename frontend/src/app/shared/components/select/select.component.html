@@ -127,6 +127,8 @@
                         class="selector__option selector__option--exists"
                         [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
                         [class.selector__option--selected]="item.value === selectedValue()"
+                        [class.selector__option--disabled]="item.disabled"
+                        [attr.aria-disabled]="item.disabled ? true : null"
                         (click)="select(item)"
                     >
                         @if (item.icon) {

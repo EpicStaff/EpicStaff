@@ -52,6 +52,17 @@ describe('SelectComponent', () => {
         expect(trigger.type).toBe('button');
     });
 
+    it('ignores a click on an option that cannot be picked', () => {
+        const fixture = openPanel([{ name: 'broken', value: 1, disabled: true }], false);
+
+        document.querySelector<HTMLElement>('.selector__option--disabled')!.click();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.selectedValue()).toBeNull();
+        // The panel stays open: nothing was chosen, so there is nothing to close it for.
+        expect(fixture.componentInstance.open()).toBe(true);
+    });
+
     describe('grouping', () => {
         const ITEMS: SelectItem[] = [
             { name: 'None', value: null },

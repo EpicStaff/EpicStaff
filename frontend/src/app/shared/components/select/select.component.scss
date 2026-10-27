@@ -309,6 +309,17 @@
             }
         }
 
+        // After --exists and --selected on purpose: equal specificity, so source order is what
+        // takes the hover highlight and the accent color back off an option nobody may pick.
+        &--disabled {
+            color: var(--color-input-text-placeholder);
+            cursor: default;
+
+            &:hover {
+                background: transparent;
+            }
+        }
+
         &--empty {
             padding: 0.5rem 0.75rem;
             color: var(--color-input-text-placeholder);

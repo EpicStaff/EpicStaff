@@ -30,6 +30,8 @@ export interface SelectItem<T = unknown> {
     value: T;
     group?: string;
     icon?: string;
+    /** Shown, but not selectable: an option the user may not pick, such as a venv whose build failed. */
+    disabled?: boolean;
     /** CSS color (e.g. `var(--success-color)`) of a dot shown before the name, in the trigger, options and readonly value. */
     dotColor?: string;
     /** app-svg-icon id for an optional trailing action button rendered at the end of the item row (e.g. edit-pencil). */
@@ -247,6 +249,9 @@ export class SelectComponent implements ControlValueAccessor {
     }
 
     select(item: SelectItem) {
+        // Guarded here rather than only in the template: every other path into a selection,
+        // `commitCustomValue` among them, goes through this method.
+        if (item.disabled) return;
         if (this.isDisabled() || this.readonly()) return;
         this.onChange(item.value);
         this.onTouched();
