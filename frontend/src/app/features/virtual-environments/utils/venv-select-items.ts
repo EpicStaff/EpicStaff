@@ -1,6 +1,6 @@
 import { SelectItem } from '@shared/components';
 
-import { Venv } from '../models/venv.model';
+import { Venv, VENV_STATUS_VIEWS } from '../models/venv.model';
 
 /** The headings the venv pickers split their options under. One definition, so the two
  *  pickers cannot drift apart in wording. */
@@ -19,6 +19,11 @@ export function toVenvSelectItems(venvs: Venv[]): SelectItem[] {
         name: venv.name,
         value: venv.id,
         group: venv.is_favorite ? FAVORITES_GROUP : OTHER_GROUP,
+        // The status the venv list page shows on its badge, in the same words.
+        tip: VENV_STATUS_VIEWS[venv.status]?.label,
+        // A build that failed produces no environment to run in, so there is nothing to pick;
+        // a build still running is a choice the user may make, after a warning.
+        disabled: venv.status === 'failed',
     });
     return [...venvs.filter((venv) => venv.is_favorite), ...venvs.filter((venv) => !venv.is_favorite)].map(toItem);
 }

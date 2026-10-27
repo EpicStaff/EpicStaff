@@ -1,12 +1,12 @@
-import { Venv } from '../models/venv.model';
+import { Venv, VenvStatus } from '../models/venv.model';
 import { FAVORITES_GROUP, OTHER_GROUP, toVenvSelectItems } from './venv-select-items';
 
-function venv(id: number, name: string, isFavorite: boolean): Venv {
+function venv(id: number, name: string, isFavorite: boolean, status: VenvStatus = 'completed'): Venv {
     return {
         id,
         name,
         libs: [],
-        status: 'completed',
+        status,
         error: null,
         owner: null,
         created_at: null,
@@ -28,5 +28,17 @@ describe('toVenvSelectItems', () => {
         expect(items.map((item) => item.name)).toEqual(['z', 'y', 'b', 'a']);
         expect(items.map((item) => item.group)).toEqual([FAVORITES_GROUP, FAVORITES_GROUP, OTHER_GROUP, OTHER_GROUP]);
         expect(items.map((item) => item.value)).toEqual([2, 4, 1, 3]);
+    });
+
+    it.each([
+        { status: 'completed' as VenvStatus, tip: undefined, disabled: false },
+        { status: 'processing' as VenvStatus, tip: 'Building', disabled: false },
+        { status: 'declared' as VenvStatus, tip: 'Queued', disabled: false },
+        { status: 'failed' as VenvStatus, tip: 'Failed', disabled: true },
+    ])('labels a $status venv and lets it be picked: $disabled', ({ status, tip, disabled }) => {
+        const [item] = toVenvSelectItems([venv(1, 'ml base', false, status)]);
+
+        expect(item.tip).toBe(tip);
+        expect(item.disabled).toBe(disabled);
     });
 });
