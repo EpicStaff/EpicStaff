@@ -1,4 +1,4 @@
-"""Tests for app.logging_utils — redact(), redact_value(), redact_messages()."""
+"""Tests for app.logging_utils — redact(), redact_value(), redact_messages(), redact_payload()."""
 
 from __future__ import annotations
 
@@ -7,10 +7,7 @@ import re
 
 import pytest
 from app import logging_utils
-from app.logging_utils import redact, redact_messages, redacted_dump, redact_value
-from shared.models.agent_service import AgentRequest
-
-from tests.test_contract import EXAMPLE_BLOB
+from app.logging_utils import redact, redact_messages, redact_payload, redact_value
 
 _DIGEST_PATTERN = re.compile(r"^<redacted len=(\d+) digest=[0-9a-f]{12}>$")
 _TEST_DIGEST_KEY = b"deterministic-test-key"
@@ -65,31 +62,6 @@ def test_redact_masks_storage_credentials():
     assert result["storage_credentials"]["secret_key"] == "***"
     assert result["storage_credentials"]["endpoint"] == "http://minio:9000"
     assert result["storage_scope"] == "org-1"
-
-
-def test_redacted_dump_masks_storage_credentials_on_agent_request():
-    blob = copy.deepcopy(EXAMPLE_BLOB)
-    blob["storage_credentials"] = {
-        "access_key": "AKIAEXAMPLE",
-        "secret_key": "super-secret-value",
-    }
-
-    request = AgentRequest(correlation_id="x", **blob)
-    dumped = redacted_dump(request)
-
-    assert dumped["storage_credentials"]["secret_key"] == "***"
-    assert dumped["storage_credentials"]["access_key"] == "***"
-
-
-def test_redacted_dump_masks_agent_request():
-    blob = copy.deepcopy(EXAMPLE_BLOB)
-    blob["agents"][0]["llm"]["config"]["api_key"] = "sk-real-secret"
-
-    request = AgentRequest(correlation_id="x", **blob)
-    dumped = redacted_dump(request)
-
-    assert dumped["agents"][0]["llm"]["config"]["api_key"] == "***"
-    assert dumped["agents"][0]["llm"]["config"]["model"] == "gpt-4o"
 
 
 def test_redact_value_reports_length_and_digest_format():
@@ -363,3 +335,88 @@ def test_redact_messages_tool_call_function_not_a_dict_is_digested():
         {"id": "call_1", "type": "function", "function": '{"query": "secret"}'}
     )
     assert "secret" not in str(result)
+
+
+@pytest.mark.parametrize(
+    ("payload", "passthrough", "expected_kept", "expected_masked"),
+    [
+        (
+            {"request_key": "sensitive data", "other": "data"},
+            {"request_key"},
+            ["request_key"],
+            ["other"],
+        ),
+        (
+            {"key1": "value1", "key2": "value2", "secret": "hidden"},
+            {"key1", "key2"},
+            ["key1", "key2"],
+            ["secret"],
+        ),
+        (
+            {"data": "sensitive", "info": "confidential"},
+            set(),
+            [],
+            ["data", "info"],
+        ),
+        (
+            {"key": None, "other": "data"},
+            {"key"},
+            ["key"],
+            ["other"],
+        ),
+        (
+            {"id": "req_123", "missing": None, "config": {"api_key": "sk-secret"}},
+            {"id"},
+            ["id"],
+            ["missing", "config"],
+        ),
+        (
+            {
+                "id": "req_123",
+                "config": {"api_key": "sk-secret", "debug": False},
+                "data": [1, 2, 3],
+            },
+            {"id"},
+            ["id"],
+            ["config", "data"],
+        ),
+    ],
+    ids=[
+        "one_passthrough_key",
+        "multiple_passthrough_keys",
+        "empty_passthrough_masks_everything",
+        "none_under_a_passthrough_key_stays_none",
+        "none_under_a_masked_key_becomes_none_marker",
+        "complex_values_are_digested",
+    ],
+)
+def test_redact_payload_keeps_passthrough_keys_and_masks_the_rest(
+    payload, passthrough, expected_kept, expected_masked
+):
+    result = redact_payload(payload, passthrough=passthrough)
+
+    assert set(result) == set(payload)
+    for key in expected_kept:
+        assert result[key] == payload[key]
+    for key in expected_masked:
+        assert result[key] == redact_value(payload[key])
+        if payload[key] is not None:
+            assert str(payload[key]) not in result[key]
+
+
+def test_redact_payload_does_not_mutate_input():
+    payload = {"key": "value", "secret": "hidden"}
+    snapshot = copy.deepcopy(payload)
+
+    redact_payload(payload, passthrough={"key"})
+
+    assert payload == snapshot
+
+
+def test_redact_payload_non_dict_input_is_digested():
+    sensitive_value = "not a dictionary"
+
+    result = redact_payload(sensitive_value, passthrough={"key"})
+
+    assert result == redact_value(sensitive_value)
+    assert sensitive_value not in result

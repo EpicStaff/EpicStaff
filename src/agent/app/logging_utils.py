@@ -132,6 +132,19 @@ def _redact_tool_call(tool_call: Any) -> dict | str:
     return result
 
 
-def redacted_dump(model) -> dict:
-    """model_dump() a pydantic model then redact (AgentRequest, LLMData, etc.)."""
-    return redact(model.model_dump())
+def redact_payload(payload: Any, *, passthrough: set[str]) -> dict | str:
+    """Redact a dict for logging: digest every field by default.
+
+    Only keys in the `passthrough` set pass through unchanged; all other keys have
+    their values replaced by a `redact_value` digest. Fails closed: unrecognized keys
+    are masked, not trusted.
+
+    Returns a new dict; the caller's payload is not mutated.
+    """
+    if not isinstance(payload, dict):
+        return redact_value(payload)
+
+    return {
+        key: value if key in passthrough else redact_value(value)
+        for key, value in payload.items()
+    }

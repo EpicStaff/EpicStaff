@@ -11,9 +11,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-import sys
 from collections.abc import AsyncIterator, Callable
-from contextlib import contextmanager
 
 import pytest
 from app.emitters.base import Emitter
@@ -23,10 +21,10 @@ from app.loop.agent_loop import _UNTRUSTED_CONTENT_NOTE, DefaultAgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.tools.registry import ToolRegistry, ToolSpec
-from loguru import logger
 from shared.models.agent_service import AgentSpec, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
+from tests.log_capture import log_line_starting_with, capture_logs_at
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -1249,30 +1247,6 @@ async def test_finalization_token_usage_accumulated():
 # ---------------------------------------------------------------------------
 
 
-@contextmanager
-def capture_logs_at(level: str):
-    """Capture log messages with `level` as the only active sink's floor.
-
-    Every other sink is removed for the duration, so loguru's lazy formatting is
-    skipped for anything below `level` — which is what makes a "nothing is logged"
-    assertion meaningful.
-    """
-    messages: list[str] = []
-    logger.remove()
-    sink_id = logger.add(messages.append, level=level, format="{message}")
-    try:
-        yield messages
-    finally:
-        logger.remove(sink_id)
-        logger.add(sys.stderr)
-
-
-def _log_line_starting_with(messages: list[str], prefix: str) -> str:
-    matches = [message for message in messages if message.startswith(prefix)]
-    assert len(matches) == 1, f"expected exactly one {prefix!r} line, got {matches}"
-    return matches[0].rstrip("\n")
-
-
 # Sentinel carried through the whole turn: it is the tool-call argument, the tool
 # output, and — once both are appended to the conversation — part of the message list
 # the next iteration dumps. One marker therefore reaches all three debug log sites.
@@ -1302,17 +1276,17 @@ async def test_no_debug_log_site_carries_the_payload_verbatim():
     assert result.final_text == "done"
     assert _SENTINEL not in "\n".join(messages)
 
-    second_iteration = _log_line_starting_with(messages, "loop iter=1 ")
+    second_iteration = log_line_starting_with(messages, "loop iter=1 ")
     assert redact_value(_SENTINEL_ARGUMENTS) in second_iteration
     assert "'content': '<redacted len=" in second_iteration
     assert user_prompt not in second_iteration
 
-    tool_call_line = _log_line_starting_with(messages, "tool call ")
+    tool_call_line = log_line_starting_with(messages, "tool call ")
     assert tool_call_line == (
         f"tool call id=c1 name=lookup args={redact_value(_SENTINEL_ARGUMENTS)}"
     )
 
-    tool_result_line = _log_line_starting_with(messages, "tool result ")
+    tool_result_line = log_line_starting_with(messages, "tool result ")
     assert tool_result_line == (
         f"tool result id=c1 is_error=False content={redact_value(_SENTINEL_OUTPUT)}"
     )
