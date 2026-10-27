@@ -1,0 +1,35 @@
+{
+    "name": "@epicstaff/plugin-sdk",
+    "version": "0.1.0",
+    "description": "Browser SDK for EpicStaff plugin pages: platform config, frame protocol 1, navigation sync, theme tokens, sign-in through EpicStaff and popup hand-off.",
+    "private": true,
+    "license": "SEE LICENSE IN ../LICENSE.md",
+    "type": "module",
+    "engines": {
+        "node": ">=24.15.0"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./contracts/frame-protocol.json": "./contracts/frame-protocol.json",
+        "./contracts/login-protocol.json": "./contracts/login-protocol.json",
+        "./package.json": "./package.json"
+    },
+    "types": "./dist/index.d.ts",
+    "sideEffects": false,
+    "files": [
+        "dist",
+        "contracts"
+    ],
+    "scripts": {
+        "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
+        "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+        "test": "npm run build && npm run typecheck && node --test \"test/**/*.test.ts\""
+    },
+    "devDependencies": {
+        "@types/node": "24.19.1",
+        "typescript": "6.0.3"
+    }
+}

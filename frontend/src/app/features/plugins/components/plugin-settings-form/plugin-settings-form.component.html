@@ -1,0 +1,231 @@
+@if (response(); as current) {
+    <div class="settings">
+        @if (missingRequiredLabels().length > 0) {
+            <div
+                class="settings__missing text-body"
+                role="alert"
+            >
+                The plugin stays stopped until these required settings are set:
+                {{ missingRequiredLabels().join(', ') }}.
+            </div>
+        }
+
+        @if (saveError(); as failure) {
+            <div
+                class="settings__error text-body"
+                role="alert"
+            >
+                <span>{{ failure.message }}</span>
+                @if (otherErrorItems().length > 0) {
+                    <ul class="settings__error-items">
+                        @for (item of otherErrorItems(); track $index) {
+                            <li>
+                                <code>{{ item.loc }}</code
+                                >: {{ item.message }}
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        }
+
+        @for (setting of current.settings; track setting.key) {
+            <div
+                class="settings__field"
+                [attr.data-setting-key]="setting.key"
+            >
+                <!-- Each control shows its own label (and required marker); a text input is tied to it by id. -->
+                @switch (setting.type) {
+                    @case ('boolean') {
+                        <app-toggle-switch
+                            [label]="setting.label"
+                            [required]="setting.required"
+                            [ariaLabel]="setting.label"
+                            [formControl]="control(setting.key)"
+                        />
+                    }
+                    @case ('enum') {
+                        <app-select
+                            placeholder="Not set"
+                            [label]="setting.label"
+                            [required]="setting.required"
+                            [invalid]="!!fieldError(setting)"
+                            [formControl]="control(setting.key)"
+                            [items]="enumItems(setting)"
+                        />
+                    }
+                    @case ('text') {
+                        <app-textarea
+                            [label]="setting.label"
+                            [required]="setting.required"
+                            [invalid]="!!fieldError(setting)"
+                            [formControl]="control(setting.key)"
+                            [rows]="4"
+                        />
+                    }
+                    @case ('secret') {
+                        <span class="settings__secret-label">
+                            {{ setting.label }}
+                            @if (setting.required) {
+                                <span class="settings__required">*</span>
+                            }
+                        </span>
+                        <div class="settings__secret">
+                            @switch (secretEdit(setting.key)) {
+                                @case ('replace') {
+                                    <app-custom-input
+                                        type="password"
+                                        autocomplete="new-password"
+                                        placeholder="Enter the new value"
+                                        [id]="fieldId(setting)"
+                                        [formControl]="secretControl(setting.key)"
+                                        [ariaLabel]="setting.label"
+                                    />
+                                    <app-button
+                                        type="outline-secondary"
+                                        mod="small"
+                                        (click)="keepSecret(setting.key)"
+                                    >
+                                        Cancel
+                                    </app-button>
+                                }
+                                @case ('clear') {
+                                    <span class="settings__secret-value text-body">Cleared when you save.</span>
+                                    <app-button
+                                        type="outline-secondary"
+                                        mod="small"
+                                        (click)="keepSecret(setting.key)"
+                                    >
+                                        Undo
+                                    </app-button>
+                                }
+                                @default {
+                                    @if (setting.is_set) {
+                                        <code class="settings__secret-value text-body"
+                                            >{{ secretMask }} {{ setting.tail }}</code
+                                        >
+                                        <app-button
+                                            type="outline-primary"
+                                            mod="small"
+                                            [ariaLabel]="'Replace ' + setting.label"
+                                            (click)="replaceSecret(setting.key)"
+                                        >
+                                            Replace
+                                        </app-button>
+                                        <app-button
+                                            type="outline-secondary"
+                                            mod="small"
+                                            [ariaLabel]="'Clear ' + setting.label"
+                                            (click)="clearSecret(setting.key)"
+                                        >
+                                            Clear
+                                        </app-button>
+                                    } @else {
+                                        <span class="settings__secret-value settings__muted text-body">Not set</span>
+                                        <app-button
+                                            type="outline-primary"
+                                            mod="small"
+                                            [ariaLabel]="'Set ' + setting.label"
+                                            (click)="replaceSecret(setting.key)"
+                                        >
+                                            Set
+                                        </app-button>
+                                    }
+                                }
+                            }
+                        </div>
+                    }
+                    @default {
+                        <app-custom-input
+                            [label]="setting.label"
+                            [required]="setting.required"
+                            [id]="fieldId(setting)"
+                            [placeholder]="setting.type === 'url' ? 'https://' : ''"
+                            [errorMessage]="fieldError(setting)"
+                            [formControl]="control(setting.key)"
+                        />
+                    }
+                }
+
+                <p class="settings__muted text-body-small">
+                    <code class="settings__key">{{ setting.key }}</code>
+                    @if (setting.description) {
+                        · {{ setting.description }}
+                    }
+                </p>
+
+                <!-- A text input shows its error itself; the other controls get it here, announced. -->
+                @if (setting.type !== 'string' && setting.type !== 'url' && setting.type !== 'integer') {
+                    @if (fieldError(setting); as message) {
+                        <p
+                            class="settings__field-error text-body-small"
+                            role="alert"
+                        >
+                            {{ message }}
+                        </p>
+                    }
+                }
+
+                @if (isReset(setting.key)) {
+                    <p class="settings__reset text-body-small">
+                        Goes back to the default when you save.
+                        <app-button
+                            type="outline-secondary"
+                            mod="small"
+                            [ariaLabel]="'Undo using the default for ' + setting.label"
+                            (click)="undoReset(setting)"
+                        >
+                            Undo
+                        </app-button>
+                    </p>
+                } @else if (!setting.is_set && defaultLabel(setting); as fallback) {
+                    <p class="settings__muted text-body-small">Not set: the default {{ fallback }} applies.</p>
+                } @else if (setting.is_set) {
+                    <p class="settings__reset text-body-small">
+                        @if (setting.updated_at) {
+                            <span class="settings__muted">
+                                Changed {{ setting.updated_at | date: 'medium' }}
+                                @if (setting.updated_by) {
+                                    by {{ setting.updated_by.email }}
+                                }
+                            </span>
+                        }
+                        @if (canReset(setting)) {
+                            <app-button
+                                type="outline-secondary"
+                                mod="small"
+                                [ariaLabel]="'Use the default for ' + setting.label"
+                                (click)="resetToDefault(setting)"
+                            >
+                                Use default
+                            </app-button>
+                        }
+                    </p>
+                }
+            </div>
+        } @empty {
+            <p class="settings__muted text-body">This plugin declares no settings.</p>
+        }
+
+        @if (current.settings.length > 0) {
+            <div class="settings__footer">
+                <p class="settings__muted text-body-small">Saving restarts the plugin so it uses the new values.</p>
+                <app-button
+                    type="primary"
+                    [disabled]="!canSave()"
+                    (click)="save()"
+                >
+                    Save settings
+                </app-button>
+            </div>
+        }
+    </div>
+} @else if (loadError(); as failure) {
+    <app-fetch-error-state
+        title="Couldn't load the settings"
+        [message]="failure.message"
+        (retry)="reload()"
+    />
+} @else if (isLoading()) {
+    <app-loading-spinner />
+}

@@ -2,7 +2,7 @@ from collections import defaultdict
 
 from django.db import transaction
 from loguru import logger
-from proxies.sandbox.clients import SandboxVenvClient
+from proxies.sandbox.services import VenvService
 from rbac.authorship import record_last_edits
 from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
@@ -93,32 +93,10 @@ class ImportService:
                     )
                 record_last_edits(created_resources, user)
         except Exception:
-            self._remove_created_venvs(created_venv_ids)
+            VenvService().remove_upstream(created_venv_ids)
             raise
 
         return id_mapper, self.registry
-
-    @staticmethod
-    def _remove_created_venvs(venv_ids: list[int]) -> None:
-        """Delete environments this import created upstream, after it rolled back.
-
-        The rollback already took their bindings with it. Left alone, the sandbox
-        would keep an environment no organization can see, use, or delete through
-        the API -- only directly in its database.
-
-        Best effort by design: the import has already failed and the caller must be
-        told about that failure, not about a failed cleanup.
-        """
-        if not venv_ids:
-            return
-        with SandboxVenvClient() as client:
-            for venv_id in venv_ids:
-                try:
-                    client.remove(str(venv_id))
-                except Exception:
-                    logger.exception(
-                        "Could not remove venv {} created by an import that rolled back", venv_id
-                    )
 
     def _resolve_import_order(self, export_data: dict) -> list[str]:
         """

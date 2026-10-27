@@ -75,6 +75,41 @@ async def test_the_result_payload_uses_the_keys_consumers_already_read(redis, pu
     }
 
 
+@pytest.mark.parametrize(
+    ("returncode", "not_run_reason", "outcome"),
+    [
+        (0, None, "ok"),
+        (3, None, "failed"),
+        (1, "venv_failed", "venv_failed"),
+        (1, "dispatch_failed", "dispatch_failed"),
+    ],
+)
+async def test_exec_published_reports_the_outcome_and_keeps_it_off_the_payload(
+    redis, publisher, checkpoints, returncode, not_run_reason, outcome
+):
+    pubsub = await subscribe(redis, RESULT_CHANNEL)
+
+    await publisher.publish(
+        ExecutionResultMessage(
+            execution_id="exec-1",
+            returncode=returncode,
+            session_id=7,
+            not_run_reason=not_run_reason,
+        )
+    )
+
+    payload = await next_payload(pubsub)
+    assert set(payload) == {"execution_id", "result_data", "stdout", "stderr", "returncode"}
+    assert checkpoints == [
+        {
+            "checkpoint": "exec_published",
+            "session_id": 7,
+            "execution_id": "exec-1",
+            "outcome": outcome,
+        }
+    ]
+
+
 async def test_mutations_are_published_on_their_own_channel(redis, publisher):
     results = await subscribe(redis, RESULT_CHANNEL)
     mutations = await subscribe(redis, MUTATION_CHANNEL)

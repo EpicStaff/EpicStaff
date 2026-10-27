@@ -34,4 +34,5 @@ export const environment = {
     isChatEnabled: true,
     chatApiUrl: '/chat/',
     isAuditTrailEnabled: true,
+    isPluginsEnabled: false,
 };

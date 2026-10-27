@@ -1,4 +1,5 @@
 import itertools
+import urllib.error
 from unittest import mock
 
 import pytest
@@ -857,8 +858,6 @@ class TestTwilioConfigureWebhookInputValidation:
     ):
         """A raw upstream Twilio error body (which can contain account
         details) must never be reflected verbatim to the caller."""
-        import urllib.error
-
         rc = _make_realtime_channel(db, default_org)
         trigger = _make_webhook_trigger_with_ngrok(
             default_org,
@@ -899,6 +898,37 @@ class TestTwilioConfigureWebhookInputValidation:
         body_text = response.content.decode()
         assert "20404" not in body_text
         assert "ACxxxx" not in body_text
+
+    def test_unexpected_twilio_failure_returns_generic_502(self, auth_client, db, default_org):
+        """An error that is not a Twilio HTTP answer (unreachable host, bad
+        JSON, a bug) is a 502 whose body never carries the error's text."""
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(
+            default_org,
+            path="cfg-twilio-unexpected-error",
+            domain="cfg-unexpected.example.ngrok.io",
+        )
+        _make_twilio_channel(
+            rc,
+            default_org,
+            webhook_trigger=trigger,
+            account_sid="AC" + "0" * 32,
+        )
+        internal_detail = "egress-proxy.internal.svc:3128 refused the connection"
+
+        with mock.patch(
+            "tables.services.twilio_service._twilio_request",
+            side_effect=urllib.error.URLError(internal_detail),
+        ):
+            response = auth_client.post(
+                reverse("twilio-configure-webhook"),
+                {"phone_sid": "PN" + "0" * 32, "channel_token": str(rc.token)},
+                format="json",
+            )
+
+        assert response.status_code == 502, response.json()
+        assert response.json() == {"error": "Failed to communicate with Twilio"}
+        assert "egress-proxy" not in response.content.decode()
 
 
 @pytest.mark.django_db

@@ -34,6 +34,12 @@ export class ButtonComponent {
     /** The id of what describes the button (read when it gets the focus); null for none. */
     readonly ariaDescribedby = input<string | null>(null);
     disabled = input<boolean>(false);
+    /**
+     * Disabled like `disabled` (it looks it, and a click never reaches the host's `(click)` or the page), but it keeps
+     * the focus, which `disabled` would drop: for a control that is inactive for a moment, e.g. while the focused button
+     * waits for something.
+     */
+    readonly ariaDisabled = input<boolean>(false);
 
     private readonly button = viewChild.required<ElementRef<HTMLButtonElement>>('button');
 
@@ -63,5 +69,13 @@ export class ButtonComponent {
 
     public focus(): void {
         this.button().nativeElement.focus();
+    }
+
+    /** Ends a click (mouse, Enter or Space) on the inner button here while aria-disabled, as a disabled button would. */
+    protected stopClickWhileAriaDisabled(event: Event): void {
+        if (this.ariaDisabled()) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
     }
 }

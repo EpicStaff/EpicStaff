@@ -60,6 +60,23 @@ class TwilioValidationError(TwilioServiceError):
         super().__init__(message, status_code=400)
 
 
+def _log_and_wrap_unexpected_twilio_error(operation: str, error: Exception) -> TwilioServiceError:
+    """Log an unexpected failure of a Twilio call and return the generic 502 to raise.
+
+    The error's text never reaches the client: it can name internal hosts or
+    describe our own code failing. It is logged without a traceback, because
+    loguru's `diagnose` would print the auth token and the Basic credentials
+    held in `_twilio_request`'s local variables.
+    """
+    logger.error(
+        "{operation}: unexpected error calling Twilio: {error_type}: {error}",
+        operation=operation,
+        error_type=type(error).__name__,
+        error=str(error),
+    )
+    return TwilioServiceError("Failed to communicate with Twilio", status_code=502)
+
+
 def _twilio_request(
     account_sid: str, auth_token: str, url: str, method: str = "GET", data: dict | None = None
 ):
@@ -123,7 +140,7 @@ class TwilioService(metaclass=SingletonMeta):
             logger.error(f"twilio phone-numbers: Twilio HTTP error {e.code}: {body}")
             raise TwilioValidationError("Failed to retrieve phone numbers from Twilio") from e
         except Exception as e:
-            raise TwilioServiceError(str(e), status_code=502) from e
+            raise _log_and_wrap_unexpected_twilio_error("twilio phone-numbers", e) from e
 
     def configure_webhook(self, phone_sid: str, channel_token: str, org_id: int) -> str:
         """Set the VoiceUrl on a Twilio phone number to this channel's voice
@@ -238,5 +255,4 @@ class TwilioService(metaclass=SingletonMeta):
                 "Failed to configure Twilio webhook", status_code=e.code
             ) from e
         except Exception as e:
-            logger.exception("configure-webhook: unexpected error")
-            raise TwilioServiceError(str(e), status_code=502) from e
+            raise _log_and_wrap_unexpected_twilio_error("configure-webhook", e) from e

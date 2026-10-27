@@ -7,7 +7,10 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 
 env = Env()
 
-if not env.bool("RUN_IN_DOCKER", False):
+# docker-compose.yaml sets it for every service; a process on the host reads src/.env instead.
+RUN_IN_DOCKER = env.bool("RUN_IN_DOCKER", False)
+
+if not RUN_IN_DOCKER:
     env.read_env(env_file=BASE_DIR / "../.env")
 
 
@@ -21,6 +24,7 @@ from .email import *
 from .execution_timeout import *
 from .jwt import *
 from .logging import *
+from .plugins import *
 from .redis import *
 from .rest_framework import *
 from .sandbox import *

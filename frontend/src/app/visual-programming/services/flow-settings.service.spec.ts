@@ -41,3 +41,27 @@ describe('FlowSettingsService always show node numbers', () => {
         expect(createService().alwaysShowNodeNumbers()).toBe(false);
     });
 });
+
+describe('FlowSettingsService highlight unused nodes', () => {
+    beforeEach(() => localStorage.clear());
+
+    it('is off by default', () => {
+        expect(createService().highlightUnusedNodes()).toBe(false);
+    });
+
+    it('persists and loads the setting', () => {
+        createService().highlightUnusedNodes.set(true);
+        TestBed.tick();
+
+        expect(storedSettings()).toMatchObject({ highlightUnusedNodes: true });
+
+        TestBed.resetTestingModule();
+        expect(createService().highlightUnusedNodes()).toBe(true);
+    });
+
+    it('ignores a stored value that is not a boolean', () => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ highlightUnusedNodes: 'true' }));
+
+        expect(createService().highlightUnusedNodes()).toBe(false);
+    });
+});

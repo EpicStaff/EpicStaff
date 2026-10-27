@@ -73,12 +73,8 @@ class RunSessionSerializer(serializers.Serializer):
     # agent session that triggered it. Not exposed by any UI form — purely a
     # programmatic/tool-runtime input.
     parent_session_id = serializers.IntegerField(required=False, allow_null=True)
-    # optional run-level token budget hard stop. Not exposed
-    # by any UI form. Threaded to crew via SessionData.initial_state's
-    # reserved "__token_budget__" key (see
-    # SessionManagerService.create_session_data) rather than a new typed
-    # SessionData field. Omitted/None (default) means "no limit" -- inert
-    # for every existing caller.
+    # Optional run-level token hard stop, not exposed by any UI form; the only per-run
+    # override. Omitted/None falls back to crew's CREW_TOKEN_BUDGET (0 means no limit).
     token_budget = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     # Delivered by the session callback sender once the run reaches a terminal
     # status. Only the system API key may set these (the view enforces it); the

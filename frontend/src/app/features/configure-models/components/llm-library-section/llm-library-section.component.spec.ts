@@ -16,8 +16,13 @@ import {
     ResourceCode,
     UserSummary,
 } from '@shared/models';
-import { EmbeddingConfigStorageService, LlmConfigStorageService, LLMLibraryService } from '@shared/services';
-import { of } from 'rxjs';
+import {
+    BulkDeleteService,
+    EmbeddingConfigStorageService,
+    LlmConfigStorageService,
+    LLMLibraryService,
+} from '@shared/services';
+import { EMPTY, of } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -27,7 +32,8 @@ import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-r
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
 import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-card-more-menu.component';
 import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
-import { RealtimeProvider } from '../realtime-config-dialog/realtime-config-dialog.component';
+import { RealtimeConfigDialogComponent } from '../realtime-config-dialog/realtime-config-dialog.component';
+import { RealtimeProvider } from '../realtime-config-form/realtime-config-form.component';
 import { LlmLibrarySectionComponent } from './llm-library-section.component';
 
 // An LLM config and an embedding config may share an id; the card's config type decides which one is meant.
@@ -161,8 +167,12 @@ function render(
 ): {
     fixture: ComponentFixture<LlmLibrarySectionComponent>;
     open: ReturnType<typeof vi.fn>;
+    openDialog: ReturnType<typeof vi.fn>;
+    runBulkDelete: ReturnType<typeof vi.fn>;
 } {
     const open = vi.fn();
+    const openDialog = vi.fn();
+    const runBulkDelete = vi.fn(() => EMPTY);
     const libraryService = {
         providerGroups: signal(
             [ModelTypes.LLM, ModelTypes.EMBEDDING].map((type) =>
@@ -195,9 +205,10 @@ function render(
                 useValue: realtimeStorageStub(voiceConfigs.filter((config) => config === GEMINI_VOICE_CONFIG)),
             },
             { provide: AuthorshipDetailsDialogService, useValue: { open } },
+            { provide: BulkDeleteService, useValue: { run: runBulkDelete } },
             { provide: DefaultModelsStorageService, useValue: {} },
-            { provide: ToastService, useValue: {} },
-            { provide: Dialog, useValue: {} },
+            { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
+            { provide: Dialog, useValue: { open: openDialog } },
             {
                 provide: PermissionsService,
                 useValue: { can: (_resource: ResourceCode, action: ActionCode) => grantedActions.includes(action) },
@@ -206,7 +217,7 @@ function render(
     });
     const fixture = TestBed.createComponent(LlmLibrarySectionComponent);
     fixture.detectChanges();
-    return { fixture, open };
+    return { fixture, open, openDialog, runBulkDelete };
 }
 
 /** Fires the card's "View Details" output, as choosing the menu item does; returns the card's ⋮ trigger. */
@@ -291,9 +302,7 @@ describe('LlmLibrarySectionComponent select mode', () => {
         enterSelectMode(fixture);
 
         const checkboxes = Array.from(
-            (fixture.nativeElement as HTMLElement).querySelectorAll(
-                '.llm-card__checkbox app-checkbox input, .voice-card .checkbox app-checkbox input'
-            )
+            (fixture.nativeElement as HTMLElement).querySelectorAll('.llm-card__checkbox app-checkbox input')
         );
         expect(checkboxes).toHaveLength(3);
         checkboxes.forEach((checkbox) => expect(checkbox.classList).toContain('secondary'));
@@ -342,25 +351,45 @@ describe('LlmLibrarySectionComponent select mode', () => {
 });
 
 /** The voice card showing `config`, found by its custom name. */
-function voiceCard(fixture: ComponentFixture<LlmLibrarySectionComponent>, config: VoiceConfig): DebugElement {
+function voiceCard(
+    fixture: ComponentFixture<LlmLibrarySectionComponent>,
+    config: VoiceConfig
+): DebugElement | undefined {
     return fixture.debugElement
-        .queryAll(By.css('.voice-card'))
-        .find((card) => card.query(By.css('.name')).nativeElement.textContent.trim() === config.custom_name)!;
+        .queryAll(By.directive(LlmLibraryCardComponent))
+        .find((card) => (card.componentInstance as LlmLibraryCardComponent).model().customName === config.custom_name);
+}
+
+function voiceCardButton(card: DebugElement, label: string): HTMLButtonElement {
+    return (card.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
 }
 
 describe('LlmLibrarySectionComponent voice config cards', () => {
+    it.each(Object.entries(VOICE_CONFIGS))(
+        'shows a %s card like an LLM card: custom name on top, model name below, no temperature',
+        (_, config) => {
+            const { fixture } = render([], { voiceConfigs: [config] });
+
+            const card = voiceCard(fixture, config)!.nativeElement as HTMLElement;
+
+            expect(card.querySelector('.llm-card__model')!.textContent!.trim()).toBe(config.custom_name);
+            expect(card.querySelector('.llm-card__name')!.textContent!.trim()).toBe(config.model_name);
+            expect(card.textContent).not.toContain('°');
+        }
+    );
+
     it.each(Object.entries(VOICE_CONFIGS))('places the ⋮ button before edit and delete on a %s card', (_, config) => {
         const { fixture } = render([], {
             voiceConfigs: [config],
             grantedActions: [ActionCode.Update, ActionCode.Delete],
         });
 
-        const buttons = (voiceCard(fixture, config).nativeElement as HTMLElement).querySelectorAll('button');
+        const buttons = (voiceCard(fixture, config)!.nativeElement as HTMLElement).querySelectorAll('button');
 
-        expect(Array.from(buttons, (button) => button.getAttribute('aria-label') ?? button.title)).toEqual([
+        expect(Array.from(buttons, (button) => button.getAttribute('aria-label'))).toEqual([
             'More actions',
-            'Edit',
-            'Delete',
+            `Edit ${config.custom_name}`,
+            `Delete ${config.custom_name}`,
         ]);
     });
 
@@ -368,10 +397,8 @@ describe('LlmLibrarySectionComponent voice config cards', () => {
         'opens "Configuration Details" with the config of a %s card when "View Details" is chosen',
         (_, config) => {
             const { fixture, open } = render([], { voiceConfigs: Object.values(VOICE_CONFIGS) });
-            const card = voiceCard(fixture, config);
-            const trigger = (card.nativeElement as HTMLElement).querySelector<HTMLElement>(
-                '[aria-label="More actions"]'
-            )!;
+            const card = voiceCard(fixture, config)!;
+            const trigger = voiceCardButton(card, 'More actions');
 
             (
                 card.query(By.directive(ConfigCardMoreMenuComponent)).componentInstance as ConfigCardMoreMenuComponent
@@ -381,10 +408,46 @@ describe('LlmLibrarySectionComponent voice config cards', () => {
         }
     );
 
+    it.each(Object.entries(VOICE_CONFIGS) as [RealtimeProvider, VoiceConfig][])(
+        'opens the voice config dialog for the %s config when its Edit button is clicked',
+        (provider, config) => {
+            const { fixture, openDialog } = render([], {
+                voiceConfigs: Object.values(VOICE_CONFIGS),
+                grantedActions: [ActionCode.Update],
+            });
+
+            voiceCardButton(voiceCard(fixture, config)!, `Edit ${config.custom_name}`).click();
+
+            expect(openDialog).toHaveBeenCalledExactlyOnceWith(
+                RealtimeConfigDialogComponent,
+                expect.objectContaining({ data: { config, provider } })
+            );
+        }
+    );
+
+    it('sends only the clicked voice config to the bulk delete flow', () => {
+        const { fixture, runBulkDelete } = render([], {
+            voiceConfigs: Object.values(VOICE_CONFIGS),
+            grantedActions: [ActionCode.Delete],
+        });
+
+        voiceCardButton(
+            voiceCard(fixture, ELEVENLABS_VOICE_CONFIG)!,
+            `Delete ${ELEVENLABS_VOICE_CONFIG.custom_name}`
+        ).click();
+
+        expect(runBulkDelete).toHaveBeenCalledExactlyOnceWith([
+            expect.objectContaining({
+                target: TestBed.inject(ElevenLabsRealtimeConfigStorageService),
+                items: [{ id: ELEVENLABS_VOICE_CONFIG.id, name: ELEVENLABS_VOICE_CONFIG.custom_name }],
+            }),
+        ]);
+    });
+
     it('offers only the ⋮ button to a user who can only read configurations', () => {
         const { fixture } = render([], { voiceConfigs: [OPENAI_VOICE_CONFIG] });
 
-        const buttons = (voiceCard(fixture, OPENAI_VOICE_CONFIG).nativeElement as HTMLElement).querySelectorAll(
+        const buttons = (voiceCard(fixture, OPENAI_VOICE_CONFIG)!.nativeElement as HTMLElement).querySelectorAll(
             'button'
         );
 

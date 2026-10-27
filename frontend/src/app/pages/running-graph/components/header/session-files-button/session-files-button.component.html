@@ -1,17 +1,19 @@
 @if (isLoaded() && outputFiles().length > 0) {
-    <button
-        class="session-files-btn"
-        [appCollapseOnOverflow]="true"
-        collapseOnOverflowTarget=".session-files-btn__label"
-        collapseOnOverflowClass="session-files-btn--icon-only"
-        matTooltip="Download files"
-        (click)="openDialog()"
-    >
-        <app-svg-icon
-            icon="download"
-            size="12px"
-            class="session-files-btn__icon"
-        ></app-svg-icon>
-        <span class="session-files-btn__label">Files</span>
-    </button>
+    <ng-container *appHasPermission="[ResourceCode.Files, ActionCode.Export]">
+        <button
+            class="session-files-btn"
+            [appCollapseOnOverflow]="true"
+            collapseOnOverflowTarget=".session-files-btn__label"
+            collapseOnOverflowClass="session-files-btn--icon-only"
+            matTooltip="Download files"
+            (click)="openDialog()"
+        >
+            <app-svg-icon
+                icon="download"
+                size="12px"
+                class="session-files-btn__icon"
+            ></app-svg-icon>
+            <span class="session-files-btn__label">Files</span>
+        </button>
+    </ng-container>
 }

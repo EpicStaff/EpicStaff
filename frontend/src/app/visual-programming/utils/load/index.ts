@@ -1,4 +1,4 @@
-export { buildFlowModelFromGraphDto } from './build-flow-model-from-graph-dto';
+export { buildFlowModelFromGraphDto, buildImportedFlowModel } from './build-flow-model-from-graph-dto';
 export { createStartNode } from './create-start-node';
 export { hasStartNode } from './has-start-node';
 export { mapGraphDtoToFlowModel } from './map-graph-dto-to-flow-model';

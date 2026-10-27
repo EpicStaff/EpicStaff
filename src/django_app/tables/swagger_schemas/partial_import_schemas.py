@@ -13,7 +13,13 @@ PARTIAL_IMPORT_SWAGGER = {
         }
     },
     "responses": {
-        200: OpenApiResponse(description="Import summary keyed by entity type."),
+        200: OpenApiResponse(
+            description=(
+                "`content`: the file's nodes and edges in the `GET /graphs/{id}/` shape, NOT written "
+                "to the flow (the client adds them and the flow save persists them). "
+                "`summary`: dependencies keyed by entity type."
+            )
+        ),
         403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
     },
 }

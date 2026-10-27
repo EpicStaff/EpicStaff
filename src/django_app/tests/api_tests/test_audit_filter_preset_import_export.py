@@ -150,7 +150,7 @@ class TestAuditFilterPresetImport:
 
     def _entity_summary(self, data: dict) -> dict:
         """The response is the raw `IDMapper.get_detailed_summary()` dict,
-        keyed by entity type - same shape GraphViewSet.partial_import
+        keyed by entity type - same shape as the `summary` GraphViewSet.partial_import
         returns."""
         return data[EntityType.AUDIT_FILTER_PRESET]
 

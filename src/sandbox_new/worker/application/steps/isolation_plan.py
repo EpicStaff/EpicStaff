@@ -112,7 +112,6 @@ class BuildIsolationPlan:
             jail = build_jail(
                 exec_dir=context.exec_dir,
                 venv_path=context.python_executable.parent.parent,
-                savefiles_root=context.savefiles_root,
             )
 
         context.isolation = IsolationPlan(

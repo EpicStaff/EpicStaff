@@ -1,0 +1,186 @@
+# Sourced by the nginx image's /docker-entrypoint.sh before 20-envsubst-on-templates.sh, so the
+# templates see PLUGINS_ENABLED as exactly `true` or `false`: it names the included
+# plugins-main-, plugins-server- and plugins-internal-api-${PLUGINS_ENABLED} snippets. Read by the same
+# rule as frontend/entrypoint.sh. With the flag on it also derives the values the plugin snippets
+# need and stops the container (exit 64) on any value that could break or inject into the rendered
+# configuration, and does the same for PLUGINS_DEV_MODE, which names the plugins-development-*
+# snippets. With the flag off the plugin values are not read, so they cannot stop nginx.
+# >>> env_bool
+# Strict boolean environment flag, accepting exactly the values Env.bool accepts
+# (src/shared/envtools.py). Copied verbatim into every script that needs it;
+# .github/scripts/check_env_conventions.py fails CI if the copies or the values drift.
+# Usage: if env_bool NAME [DEFAULT]; then ...; fi
+# Returns 0 for true and 1 for false. DEFAULT applies only when NAME is unset.
+# An unset NAME without DEFAULT, or any other value, exits the script with 64.
+env_bool() {
+  eval "env_bool_is_set=\${$1+set}"
+  if [ -n "$env_bool_is_set" ]; then
+    eval "env_bool_value=\${$1}"
+  elif [ $# -ge 2 ]; then
+    env_bool_value=$2
+  else
+    echo "ERROR: environment variable $1 is not set." >&2
+    exit 64
+  fi
+  case "$(printf '%s' "$env_bool_value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')" in
+    1|on|t|true|y|yes) return 0 ;;
+    0|f|false|n|no|off) return 1 ;;
+  esac
+  echo "ERROR: environment variable $1='$env_bool_value' is not a boolean. Use one of 1, on, t, true, y, yes for true or 0, f, false, n, no, off for false (case-insensitive)." >&2
+  exit 64
+}
+# <<< env_bool
+
+if env_bool PLUGINS_ENABLED; then
+  export PLUGINS_ENABLED=true
+
+  # Goes into the plugin server_name regex and the frame-src header. grep matches line by line,
+  # so the character check comes first and also refuses a newline. Django checks the name more
+  # strictly at start-up.
+  plugins_base_domain=${PLUGINS_BASE_DOMAIN-}
+  case "$plugins_base_domain" in
+    *[!a-z0-9.-]*) plugins_base_domain= ;;
+  esac
+  if ! printf '%s\n' "$plugins_base_domain" \
+    | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'; then
+    echo "ERROR: PLUGINS_BASE_DOMAIN='${PLUGINS_BASE_DOMAIN-}' is not a lower-case DNS name of two or more labels, such as plugins.example.com." >&2
+    exit 64
+  fi
+  PLUGINS_BASE_DOMAIN_REGEX=$(printf '%s' "$plugins_base_domain" | sed 's/\./\\./g')
+  export PLUGINS_BASE_DOMAIN_REGEX
+
+  # EpicStaff's origin, from DJANGO_FRONTEND_BASE_URL: the only page allowed to frame a plugin
+  # (frame-ancestors), and the scheme and port of the plugin hosts EpicStaff frames (frame-src).
+  # Accepted exactly as Django's start-up check accepts it: the scheme in any case, a host, an
+  # optional port and at most a trailing "/". A default port is dropped, as in a browser's origin.
+  plugins_frontend_url=${DJANGO_FRONTEND_BASE_URL-}
+  case "$plugins_frontend_url" in
+    [Hh][Tt][Tt][Pp]://*) plugins_scheme=http ;;
+    [Hh][Tt][Tt][Pp][Ss]://*) plugins_scheme=https ;;
+    *) plugins_scheme= ;;
+  esac
+  plugins_authority=${plugins_frontend_url#*://}
+  plugins_authority=${plugins_authority%/}
+  if [ -n "$plugins_scheme" ]; then
+    case "$plugins_authority" in
+      */* | *\?* | *#*)
+        echo "ERROR: DJANGO_FRONTEND_BASE_URL='${DJANGO_FRONTEND_BASE_URL-}' has a path, query or fragment. With plugins on it must be EpicStaff's origin only, such as https://epicstaff.example.com." >&2
+        exit 64
+        ;;
+    esac
+  fi
+  case "$plugins_authority" in
+    *[!A-Za-z0-9.:-]*) plugins_scheme= ;;
+  esac
+  if [ -z "$plugins_scheme" ] || ! printf '%s\n' "$plugins_authority" \
+    | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$'; then
+    echo "ERROR: DJANGO_FRONTEND_BASE_URL='${DJANGO_FRONTEND_BASE_URL-}' is not an http:// or https:// origin with a host name and an optional port, such as https://epicstaff.example.com." >&2
+    exit 64
+  fi
+  case "$plugins_scheme:$plugins_authority" in
+    http:*:80) plugins_authority=${plugins_authority%:80} ;;
+    https:*:443) plugins_authority=${plugins_authority%:443} ;;
+  esac
+  case "$plugins_authority" in
+    *:*) plugins_port_suffix=:${plugins_authority#*:} ;;
+    *) plugins_port_suffix= ;;
+  esac
+  export PLUGINS_EPICSTAFF_ORIGIN="$plugins_scheme://$plugins_authority"
+  export PLUGINS_FRAME_SRC="$plugins_scheme://*.$plugins_base_domain$plugins_port_suffix"
+
+  # The package upload route's body cap, client_max_body_size <n + 1>m: one MiB of room for the
+  # multipart framing, so a package of exactly PLUGINS_MAX_PACKAGE_MB reaches Django.
+  plugins_max_package_mb=${PLUGINS_MAX_PACKAGE_MB-}
+  case "$plugins_max_package_mb" in
+    '' | *[!0-9]* | 0*)
+      echo "ERROR: PLUGINS_MAX_PACKAGE_MB='$plugins_max_package_mb' is not a whole number of MiB greater than 0." >&2
+      exit 64
+      ;;
+  esac
+  export PLUGINS_UPLOAD_BODY_MB=$((plugins_max_package_mb + 1))
+
+  # The plugin hosts' body cap, client_max_body_size <n>m.
+  plugins_max_request_body_mb=${PLUGINS_MAX_REQUEST_BODY_MB-}
+  case "$plugins_max_request_body_mb" in
+    '' | *[!0-9]* | 0*)
+      echo "ERROR: PLUGINS_MAX_REQUEST_BODY_MB='$plugins_max_request_body_mb' is not a whole number of MiB greater than 0." >&2
+      exit 64
+      ;;
+  esac
+
+  # Sent to django_app with every gateway check, as a quoted header value in the rendered
+  # configuration. Refused while it is the `none` placeholder or short, and unless it is made
+  # only of characters that cannot end the value or name an nginx variable. Never echoed.
+  plugins_gateway_secret=${PLUGINS_GATEWAY_SECRET-}
+  case "$plugins_gateway_secret" in
+    [Nn][Oo][Nn][Ee] | '')
+      echo "ERROR: PLUGINS_GATEWAY_SECRET is not set. With plugins on it must be a random value of at least 32 characters, such as the output of: openssl rand -hex 32" >&2
+      exit 64
+      ;;
+    *[!A-Za-z0-9._~+/=-]*)
+      echo "ERROR: PLUGINS_GATEWAY_SECRET holds a character other than letters, digits and . _ ~ + / = -; use the output of: openssl rand -hex 32" >&2
+      exit 64
+      ;;
+  esac
+  if [ "${#plugins_gateway_secret}" -lt 32 ]; then
+    echo "ERROR: PLUGINS_GATEWAY_SECRET is shorter than 32 characters; use the output of: openssl rand -hex 32" >&2
+    exit 64
+  fi
+
+  # The plugins network's subnet, used in access rules: the main server and the plugin hosts
+  # refuse it (a plugin must not reach 80/443), the internal API listener allows only it. An
+  # IPv4 CIDR, checked strictly so nothing of it can inject an nginx directive: grep matches
+  # line by line, so the character check comes first and also refuses a newline.
+  plugins_network_subnet=${PLUGINS_NETWORK_SUBNET-}
+  case "$plugins_network_subnet" in
+    *[!0-9./]*) plugins_network_subnet= ;;
+  esac
+  plugins_octet='(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
+  if ! printf '%s\n' "$plugins_network_subnet" \
+    | grep -Eq "^($plugins_octet\\.){3}$plugins_octet/(3[0-2]|[12]?[0-9])\$"; then
+    echo "ERROR: PLUGINS_NETWORK_SUBNET='${PLUGINS_NETWORK_SUBNET-}' is not an IPv4 CIDR, such as 10.235.0.0/24." >&2
+    exit 64
+  fi
+
+  # Plugin development mode serves plugin pages and API requests from ports on this machine
+  # (plugins-development-*-true.snippet). Only for a deployment on the developer's own machine:
+  # EpicStaff and the plugin domain must use .localhost names, and the stack must run with
+  # docker-compose.plugins-dev.yaml. That file is what keeps other machines out: it publishes
+  # ports 80 and 443 on 127.0.0.1 only, and it alone sets PLUGINS_DEV_LOOPBACK_ONLY (never .env,
+  # and absent means false). The .localhost names are no control, since a client that reaches a
+  # port can send any Host. django_app refuses the same deployments at start-up, and requires
+  # DJANGO_DEBUG as well; either refusal alone keeps the mode off a shared server.
+  # The base domain is already lower case; the EpicStaff host is compared in any case, as Django
+  # compares host names. Neither holds a ":", so the pair splits unambiguously.
+  if env_bool PLUGINS_DEV_MODE; then
+    plugins_epicstaff_host=${plugins_authority%%:*}
+    case "$plugins_base_domain:$plugins_epicstaff_host" in
+      *.localhost:[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt]) ;;
+      *.localhost:*.[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt]) ;;
+      *)
+        echo "ERROR: PLUGINS_DEV_MODE is true, but plugin development mode is only for a deployment on your own machine: PLUGINS_BASE_DOMAIN ('$plugins_base_domain') must end in .localhost, and the host of DJANGO_FRONTEND_BASE_URL ('$plugins_epicstaff_host') must be localhost or end in .localhost. Set PLUGINS_DEV_MODE=false." >&2
+        exit 64
+        ;;
+    esac
+    if ! env_bool PLUGINS_DEV_LOOPBACK_ONLY false; then
+      echo "ERROR: PLUGINS_DEV_MODE is true, but EpicStaff was not started with the development compose file, which publishes its ports on 127.0.0.1 only. Without it, ports 80 and 443 are open on every network interface, and other machines could reach the development servers on yours. Start EpicStaff with -f src/docker-compose.plugins-dev.yaml after -f src/docker-compose.yaml, or set PLUGINS_DEV_MODE=false." >&2
+      exit 64
+    fi
+    export PLUGINS_DEV_MODE=true
+  else
+    export PLUGINS_DEV_MODE=false
+  fi
+else
+  export PLUGINS_ENABLED=false
+  # An empty frame-src source leaves EpicStaff framing only itself. The other two appear only in
+  # the plugin snippets, which are not included; empty keeps those unused files deterministic.
+  # PLUGINS_DEV_MODE is not read: development mode needs plugins on. It names snippets that only
+  # the unused plugin snippets include.
+  export PLUGINS_BASE_DOMAIN_REGEX= PLUGINS_EPICSTAFF_ORIGIN= PLUGINS_FRAME_SRC= PLUGINS_UPLOAD_BODY_MB=
+  export PLUGINS_DEV_MODE=false
+fi
+
+# This file is sourced into the entrypoint's shell: leave nothing behind but the exports.
+unset plugins_base_domain plugins_frontend_url plugins_scheme plugins_authority plugins_port_suffix \
+  plugins_max_package_mb plugins_max_request_body_mb plugins_gateway_secret plugins_network_subnet \
+  plugins_octet plugins_epicstaff_host

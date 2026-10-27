@@ -1,0 +1,7 @@
+# The image takes only these; the tests, labs, smoke check and venv stay out of the context.
+*
+!entrypoint.sh
+!errors/
+!plugin_host_acl.py
+!private_ranges.txt
+!squid.conf

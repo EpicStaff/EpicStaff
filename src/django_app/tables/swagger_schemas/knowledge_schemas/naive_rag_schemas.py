@@ -7,7 +7,10 @@ from tables.serializers.naive_rag_serializers import (
     DocumentConfigBulkUpdateSerializer,
 )
 from tables.serializers.serializers import ProcessRagIndexingSerializer
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import (
+    INTERNAL_SERVER_ERROR_500_RESPONSE,
+    UNAUTHORIZED_401_RESPONSE,
+)
 
 NAIVE_RAG_DOCUMENT_CONFIGS_GET = {
     "summary": "List all document configs for a NaiveRag.",
@@ -71,18 +74,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_GET = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -168,18 +160,7 @@ NAIVE_RAG_DOCUMENT_CONFIG_GET = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -240,18 +221,7 @@ NAIVE_RAG_DOCUMENT_CONFIG_PUT = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -288,18 +258,7 @@ NAIVE_RAG_DOCUMENT_CONFIG_DELETE = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -442,18 +401,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -502,18 +450,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_BULK_DELETE_POST = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -593,18 +530,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_INITIALIZE_POST = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Internal server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "Failed to initialize configs: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -684,18 +610,7 @@ NAIVE_RAG_GET = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -733,18 +648,7 @@ NAIVE_RAG_DELETE = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -816,26 +720,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Chunking failed due to an internal error.",
-            examples=[
-                OpenApiExample(
-                    name="Chunking failed",
-                    value={
-                        "chunking_job_id": "550e8400-e29b-41d4-a716-446655440000",
-                        "naive_rag_id": 1,
-                        "document_config_id": 5,
-                        "status": "failed",
-                        "chunk_count": None,
-                        "message": "<error detail>",
-                        "elapsed_time": None,
-                    },
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -934,18 +819,7 @@ NAIVE_RAG_COLLECTIONS_POST = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -992,18 +866,7 @@ NAIVE_RAG_COLLECTIONS_GET = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 

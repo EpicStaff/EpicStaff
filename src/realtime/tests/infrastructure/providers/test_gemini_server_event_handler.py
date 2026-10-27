@@ -45,7 +45,6 @@ def client():
         send_client=send_client,
         call_tool=AsyncMock(),
         _resample_state_out=None,
-        _conversation_history=[],
     )
 
 
@@ -122,8 +121,6 @@ async def test_a_spoken_turn_opens_streams_and_completes_a_response(handler, cli
     response_ids = {event.get("response_id") or event.get("response", {}).get("id") for event in client.sent[1:]}
     assert len(response_ids - {None}) == 1
     assert client.sent[7]["transcript"] == "Hello world"
-    # Kept for context injection when the session reconnects.
-    assert client._conversation_history == [{"role": "model", "text": "Hello world"}]
 
 
 async def _response_id_of_next_audio(handler, client) -> str:
@@ -174,12 +171,11 @@ async def test_after_a_client_cancel_audio_is_dropped_until_gemini_confirms(hand
     assert "response.audio.delta" in _types(client)
 
 
-async def test_user_speech_transcript_is_shown_and_kept_for_reconnect(handler, client):
+async def test_user_speech_transcript_is_shown(handler, client):
     await handler.handle_event(_content(input_transcription=types.Transcription(text="user said this")))
 
     assert _types(client) == ["conversation.item.created", "conversation.item.input_audio_transcription.completed"]
     assert client.sent[1]["transcript"] == "user said this"
-    assert client._conversation_history == [{"role": "user", "text": "user said this"}]
 
 
 async def test_tool_call_is_announced_and_runs_without_blocking_the_handler(handler, client):

@@ -112,6 +112,7 @@ def test_user_payloads_render_avatar_url_like_build_avatar_url(author, request_w
     assert build_avatar_url(author, request_with_host) == expected
     assert UserResponseSerializer(author, context=context).data["avatar_url"] == expected
     author._profile_memberships = []
+    author._completed_tours = []
     assert ProfileResponseSerializer(author, context=context).data["avatar_url"] == expected
     author._visible_memberships = []
     assert AssignableUserSerializer(author, context=context).data["avatar_url"] == expected

@@ -1,0 +1,16 @@
+@if (src(); as source) {
+    <img
+        class="plugin-icon"
+        [src]="source"
+        [alt]="alt()"
+        decoding="async"
+        referrerpolicy="no-referrer"
+    />
+} @else {
+    <i
+        class="plugin-icon plugin-icon--placeholder ti ti-puzzle"
+        [attr.aria-label]="alt() || null"
+        [attr.aria-hidden]="alt() ? null : 'true'"
+        [attr.role]="alt() ? 'img' : null"
+    ></i>
+}

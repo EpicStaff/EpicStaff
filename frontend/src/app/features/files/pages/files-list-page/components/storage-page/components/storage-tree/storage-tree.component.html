@@ -290,13 +290,21 @@
         }
         <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Read]">
             <button
-                *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
+                *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                 class="storage-tree__context-menu-item"
                 (click)="onContextMenuAction('add-to-flow')"
             >
                 Add to flow
             </button>
         </ng-container>
+        @if (canAddToCollection()) {
+            <button
+                class="storage-tree__context-menu-item"
+                (click)="onContextMenuAction('add-to-collection')"
+            >
+                Add to collection…
+            </button>
+        }
         <button
             *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
             class="storage-tree__context-menu-item"

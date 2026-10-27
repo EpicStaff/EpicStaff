@@ -61,17 +61,6 @@
         color: var(--fog-alpha-50);
     }
 
-    .section-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 0.5rem;
-
-        .section-title {
-            margin: 0;
-        }
-    }
-
     .provider-group {
         display: flex;
         flex-direction: column;
@@ -101,100 +90,6 @@
         font-size: 0.8125rem;
         color: var(--fog-alpha-40);
         margin: 0;
-    }
-}
-
-.voice-card {
-    overflow: hidden;
-    border: 1px solid var(--white-alpha-8);
-    border-radius: 8px;
-    padding: 14px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    background: transparent;
-    transition: border-color 0.2s ease;
-
-    &:hover {
-        border-color: var(--white-alpha-16);
-    }
-
-    &--select-mode {
-        cursor: pointer;
-    }
-
-    &--selected {
-        border-color: var(--accent-color);
-    }
-
-    .top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.25rem;
-    }
-
-    .checkbox {
-        display: flex;
-        align-items: center;
-        flex-shrink: 0;
-    }
-
-    .model {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: 0.6875rem;
-        font-weight: 500;
-        color: var(--fog-alpha-50);
-        font-family: monospace;
-    }
-
-    .actions {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        flex-shrink: 0;
-    }
-
-    .action {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        border: 1px solid var(--purple-alpha-40);
-        background: transparent;
-        color: var(--accent-color);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        padding: 0;
-        transition:
-            background 0.2s ease,
-            border-color 0.2s ease;
-
-        i {
-            font-size: 0.875rem;
-            line-height: 1;
-        }
-
-        &:hover {
-            background: var(--purple-alpha-12);
-            border-color: var(--purple-alpha-70);
-        }
-
-        &.delete:hover {
-            background: var(--red-440-alpha-12);
-            border-color: var(--red-440-alpha-50);
-            color: var(--red-440);
-        }
-    }
-
-    .name {
-        font-size: 0.9375rem;
-        font-weight: 500;
-        color: var(--fog-200);
-        word-break: break-word;
     }
 }
 

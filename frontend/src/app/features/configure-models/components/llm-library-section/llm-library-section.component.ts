@@ -18,7 +18,6 @@ import {
     AuthorshipDetailsSource,
     BulkSelectDropdownComponent,
     ButtonComponent,
-    CheckboxComponent,
     EmbeddingModelConfigDialogComponent,
     FetchErrorStateComponent,
     LlmModelConfigDialogComponent,
@@ -60,20 +59,28 @@ import {
     LlmLibrarySelectionKind,
 } from '../../utils/llm-library-bulk-delete.util';
 import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
-import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-card-more-menu.component';
 import {
     LlmLibraryCardComponent,
     LlmLibraryCardViewDetailsEvent,
 } from '../llm-library-card/llm-library-card.component';
 import {
     RealtimeConfigDialogComponent,
-    RealtimeProvider,
+    RealtimeConfigDialogData,
 } from '../realtime-config-dialog/realtime-config-dialog.component';
+import { RealtimeConfig, RealtimeProvider } from '../realtime-config-form/realtime-config-form.component';
 
-interface VoiceProviderConfig extends AuthorshipDetailsSource {
-    id: number;
-    custom_name: string;
-    model_name: string;
+/** Voice configs have no tags, temperature or deprecation, so the shared card shows only their names. */
+function toVoiceCardModel(config: RealtimeConfig): LlmLibraryModel {
+    return {
+        id: config.id,
+        customName: config.custom_name,
+        modelName: config.model_name,
+        tags: [],
+        temperature: null,
+        usedByCount: null,
+        configType: ModelTypes.REALTIME,
+        isDeprecated: false,
+    };
 }
 
 interface VoiceProvider {
@@ -81,7 +88,7 @@ interface VoiceProvider {
     label: string;
     deleteLabel: BulkDeleteLabel;
     storage: {
-        configs: Signal<VoiceProviderConfig[]>;
+        configs: Signal<RealtimeConfig[]>;
         getAllConfigs(force?: boolean): Observable<unknown[]>;
     } & BulkDeleteTarget;
 }
@@ -96,7 +103,6 @@ const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding conf
     imports: [
         FormsModule,
         LlmLibraryCardComponent,
-        ConfigCardMoreMenuComponent,
         AppSvgIconComponent,
         LoadingSpinnerComponent,
         SelectComponent,
@@ -105,7 +111,6 @@ const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding conf
         BulkSelectDropdownComponent,
         SearchComponent,
         FetchErrorStateComponent,
-        CheckboxComponent,
     ],
     templateUrl: './llm-library-section.component.html',
     styleUrls: ['./llm-library-section.component.scss'],
@@ -206,16 +211,19 @@ export class LlmLibrarySectionComponent implements OnInit {
             .map((provider) => ({
                 ...provider,
                 hasError: errors[provider.key],
-                configs: provider.storage.configs().filter((c) => {
-                    if (!query) return true;
-                    return (
-                        c.custom_name.toLowerCase().includes(query) ||
-                        c.model_name.toLowerCase().includes(query) ||
-                        provider.label.toLowerCase().includes(query)
-                    );
-                }),
+                cards: provider.storage
+                    .configs()
+                    .filter((c) => {
+                        if (!query) return true;
+                        return (
+                            c.custom_name.toLowerCase().includes(query) ||
+                            c.model_name.toLowerCase().includes(query) ||
+                            provider.label.toLowerCase().includes(query)
+                        );
+                    })
+                    .map((config) => ({ config, model: toVoiceCardModel(config) })),
             }))
-            .filter((provider) => provider.hasError || provider.configs.length > 0);
+            .filter((provider) => provider.hasError || provider.cards.length > 0);
     });
 
     groupedByType = computed(() => {
@@ -252,8 +260,8 @@ export class LlmLibrarySectionComponent implements OnInit {
         }
         for (const provider of this.filteredVoiceProviders()) {
             if (provider.hasError) continue;
-            for (const config of provider.configs) {
-                keys.add(llmLibrarySelectionKey(provider.key, config.id));
+            for (const card of provider.cards) {
+                keys.add(llmLibrarySelectionKey(provider.key, card.config.id));
             }
         }
         return keys;
@@ -350,26 +358,22 @@ export class LlmLibrarySectionComponent implements OnInit {
             });
     }
 
-    onAddConfig(provider: VoiceProvider): void {
+    onEditConfig(provider: VoiceProvider, config: RealtimeConfig): void {
+        const data: RealtimeConfigDialogData = { config: config, provider: provider.key };
         this.dialog.open(RealtimeConfigDialogComponent, {
+            height: '90vh',
+            width: '600px',
             disableClose: true,
-            data: { config: null, action: 'create', provider: provider.key },
-        });
-    }
-
-    onEditConfig(provider: VoiceProvider, config: VoiceProviderConfig): void {
-        this.dialog.open(RealtimeConfigDialogComponent, {
-            disableClose: true,
-            data: { config, action: 'update', provider: provider.key },
+            data,
         });
     }
 
     /** Opens the same details the LLM and embedding cards show; the dialog closes back to `trigger`. */
-    onViewConfigDetails(config: VoiceProviderConfig, trigger: HTMLElement): void {
+    onViewConfigDetails(config: RealtimeConfig, trigger: HTMLElement): void {
         this.authorshipDetailsDialog.open('Configuration Details', config, trigger);
     }
 
-    onDeleteConfig(provider: VoiceProvider, config: VoiceProviderConfig): void {
+    onDeleteConfig(provider: VoiceProvider, config: RealtimeConfig): void {
         const group: BulkDeleteGroup = {
             target: provider.storage,
             label: provider.deleteLabel,
@@ -385,13 +389,13 @@ export class LlmLibrarySectionComponent implements OnInit {
             .subscribe();
     }
 
-    public isVoiceSelected(provider: VoiceProvider, config: VoiceProviderConfig): boolean {
+    public isVoiceSelected(provider: VoiceProvider, config: RealtimeConfig): boolean {
         return this.selectedKeys().has(llmLibrarySelectionKey(provider.key, config.id));
     }
 
-    public onVoiceSelectedChange(provider: VoiceProvider, config: VoiceProviderConfig): void {
-        if (!this.selectMode() || this.isDeleting()) return;
-        this.setSelected(provider.key, config.id, !this.isVoiceSelected(provider, config));
+    public onVoiceSelectedChange(provider: VoiceProvider, config: RealtimeConfig, selected: boolean): void {
+        if (this.isDeleting()) return;
+        this.setSelected(provider.key, config.id, selected);
     }
 
     public onSearchChange(value: string): void {

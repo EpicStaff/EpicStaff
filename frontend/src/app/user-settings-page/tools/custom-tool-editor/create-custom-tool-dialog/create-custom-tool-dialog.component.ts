@@ -25,6 +25,7 @@ import {
     ButtonComponent,
     ConfirmationDialogService,
     CustomInputComponent,
+    ErrorBannerComponent,
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
     HelpTooltipComponent,
@@ -47,6 +48,7 @@ import {
     toSecretNames,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
+import { extractHttpErrorMessage, isClientError } from '@shared/utils';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY, Observable, of, timer } from 'rxjs';
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
@@ -114,10 +116,27 @@ const DEFAULT_PYTHON_CODE = `# Replace this comment with your implementation.
 const BUILT_IN_SAVE_TOOLTIP =
     'Built-in tools are read-only. Create an editable copy to make changes; the original stays untouched.';
 
-const EXECUTION_TIMEOUT_HINT = 'Agents stop waiting after their own tool timeout.';
-
 const VARIABLES_SCHEMA_TOOLTIP =
     'Variables must be a JSON array. Each item defines one parameter: name, type, description, input_type, required, and default_value. input_type can be agent_input (agent supplies it), user_input (configured/default value, hidden from the agent), or mixed (agent may override configured/default value).';
+
+/** The user's last Parameters mode (table or JSON), stored as 'true' (table) or 'false' (JSON). */
+const PARAMETERS_TABLE_MODE_STORAGE_KEY = 'tools:parametersTableMode';
+
+function readParametersTableModeFromStorage(): boolean {
+    try {
+        return localStorage.getItem(PARAMETERS_TABLE_MODE_STORAGE_KEY) !== 'false';
+    } catch {
+        return true;
+    }
+}
+
+function writeParametersTableModeToStorage(enabled: boolean): void {
+    try {
+        localStorage.setItem(PARAMETERS_TABLE_MODE_STORAGE_KEY, String(enabled));
+    } catch {
+        /* ignore storage errors (e.g. private mode / quota) */
+    }
+}
 
 @Component({
     selector: 'app-create-custom-tool-dialog',
@@ -127,6 +146,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
         AppSvgIconComponent,
         ButtonComponent,
         CustomInputComponent,
+        ErrorBannerComponent,
         ExecutionTimeoutFieldComponent,
         HelpTooltipComponent,
         CodeEditorComponent,
@@ -234,9 +254,11 @@ export class CreateCustomToolDialogComponent {
 
     public readonly activeEditor = signal<ActiveEditor>(ActiveEditor.Python);
     public readonly pythonSectionExpanded = signal(false);
-    public readonly jsonSectionExpanded = signal(false);
-    public readonly parametersTableMode = signal(true);
-    public readonly parametersSwitchOn = signal(true);
+    public readonly descriptionExpanded = signal(true);
+    /** A new tool always starts in table mode; an existing one opens in the mode the user last picked. */
+    public readonly parametersTableMode = signal(this.isEditMode() ? readParametersTableModeFromStorage() : true);
+    public readonly parametersSwitchOn = signal(this.parametersTableMode());
+    public readonly jsonSectionExpanded = signal(!this.parametersTableMode());
     public readonly isJsonValid = signal(true);
     public readonly jsonIssues = signal<JsonError[]>([]);
     public readonly lastValidJson = signal('');
@@ -245,13 +267,14 @@ export class CreateCustomToolDialogComponent {
     public readonly pythonHasError = signal(false);
     public readonly isSaving = signal(false);
     public readonly isCopying = signal(false);
+    /** What the server said when it refused a save or a copy; shown in the banner under the header. */
+    public readonly errorMessage = signal<string | null>(null);
     /**
      * The code's execution timeout, once the limits it is shown and checked against are loaded. Null until then (or
      * when they cannot be loaded): the field is not shown, and a save sends the stored timeout back, or none for a
      * new tool, which then gets the backend default.
      */
     protected readonly executionTimeout = signal<ExecutionTimeoutFormField | null>(null);
-    protected readonly executionTimeoutHint = EXECUTION_TIMEOUT_HINT;
     private tableImportWasInvalid = false;
 
     private initialSnapshot = '';
@@ -398,6 +421,7 @@ export class CreateCustomToolDialogComponent {
     }
 
     private applyDisableTableMode(): void {
+        writeParametersTableModeToStorage(false);
         this.parametersTableMode.set(false);
         this.parametersSwitchOn.set(false);
         if (!this.isBuiltIn()) {
@@ -416,6 +440,7 @@ export class CreateCustomToolDialogComponent {
     }
 
     private applyEnableTableMode(variables: ToolVariable[]): void {
+        writeParametersTableModeToStorage(true);
         this.tableVariables.set(variables);
         this.parametersTableMode.set(true);
         this.parametersSwitchOn.set(true);
@@ -529,6 +554,7 @@ export class CreateCustomToolDialogComponent {
         }
 
         this.isCopying.set(true);
+        this.errorMessage.set(null);
         this.customToolsService
             .copyPythonCodeTool(original.id)
             .pipe(
@@ -538,7 +564,7 @@ export class CreateCustomToolDialogComponent {
                 }),
                 catchError((err: HttpErrorResponse) => {
                     console.error('Error copying tool:', err);
-                    this.toast.error(this.nameConflictMessage(err) ?? 'Failed to copy custom tool. Please try again.');
+                    this.showSaveError(err, 'Failed to copy custom tool. Please try again.');
                     return EMPTY;
                 }),
                 finalize(() => this.isCopying.set(false)),
@@ -589,6 +615,7 @@ export class CreateCustomToolDialogComponent {
         const action: SaveAction = editingTool === null ? 'create' : editingTool.built_in ? 'fork' : 'update';
 
         this.isSaving.set(true);
+        this.errorMessage.set(null);
 
         const request$ =
             action === 'fork' && editingTool
@@ -609,7 +636,7 @@ export class CreateCustomToolDialogComponent {
                 }),
                 catchError((err: HttpErrorResponse) => {
                     console.error(`Error on tool ${action}:`, err);
-                    this.toast.error(this.nameConflictMessage(err) ?? SAVE_FAILURE_MESSAGES[action]);
+                    this.showSaveError(err, SAVE_FAILURE_MESSAGES[action]);
                     return EMPTY;
                 }),
                 finalize(() => this.isSaving.set(false)),
@@ -660,13 +687,16 @@ export class CreateCustomToolDialogComponent {
         };
     }
 
-    private nameConflictMessage(err: HttpErrorResponse): string | null {
-        if (err.status !== 400) {
-            return null;
+    /**
+     * A refusal of what was sent (4xx, e.g. a duplicate name or a secret the user may not use) goes to the banner with
+     * the server's words; anything else keeps the generic toast.
+     */
+    private showSaveError(err: HttpErrorResponse, fallback: string): void {
+        if (isClientError(err)) {
+            this.errorMessage.set(extractHttpErrorMessage(err, fallback));
+            return;
         }
-        const body = err.error as { name?: string[] } | null;
-        const message = body?.name?.[0];
-        return typeof message === 'string' ? message : null;
+        this.toast.error(fallback);
     }
 
     private adoptForkedCopy(created: GetPythonCodeToolRequest): void {

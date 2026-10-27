@@ -11,24 +11,30 @@ from tables.models.knowledge_models import (
     NaiveRag,
     SourceCollection,
 )
+from tables.models.knowledge_models.collection_models import clean_collection_description
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
+)
+from tables.services.knowledge_services.storage_document_import_service import (
+    SkipReason,
+    max_storage_selection,
 )
 
 COLLECTION_DESCRIPTION_MAX_LENGTH = 2000
 
 
 def validate_collection_description(value):
-    """Shared length validation for SourceCollection.description.
+    """Clean SourceCollection.description and check its length.
 
-    The value is injected verbatim into every knowledge tool description sent
-    to the LLM, so an unbounded length would bloat every prompt.
+    Appended to every knowledge tool description sent to the LLM, so the length
+    is capped. Measured on the value as SourceCollection.save() cleans it.
     """
-    if value and len(value) > COLLECTION_DESCRIPTION_MAX_LENGTH:
+    cleaned = clean_collection_description(value)
+    if len(cleaned) > COLLECTION_DESCRIPTION_MAX_LENGTH:
         raise serializers.ValidationError(
             f"Description must be {COLLECTION_DESCRIPTION_MAX_LENGTH} characters or less."
         )
-    return value
+    return cleaned
 
 
 class RagConfigurationSummarySerializer(serializers.Serializer):
@@ -220,6 +226,40 @@ class CopyDocumentsSerializer(serializers.Serializer):
 
     def validate_document_ids(self, value):
         return list(dict.fromkeys(value))
+
+
+class ImportFromStorageSerializer(serializers.Serializer):
+    """Input for importing storage files into a collection."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Built per instance: the cap derives from settings, which a class
+        # attribute would freeze at import time.
+        self.fields["storage_file_ids"] = serializers.ListField(
+            child=serializers.IntegerField(min_value=1),
+            allow_empty=False,
+            max_length=max_storage_selection(),
+            help_text="Ids of storage files and/or folders; folders import every file beneath them",
+        )
+
+    def validate_storage_file_ids(self, value):
+        return list(dict.fromkeys(value))
+
+
+class ImportFromStorageSkippedSerializer(serializers.Serializer):
+    """Response shape of one storage file left out of an import (schema only)."""
+
+    storage_file_id = serializers.IntegerField()
+    path = serializers.CharField()
+    reason = serializers.ChoiceField(choices=[reason.value for reason in SkipReason])
+
+
+class ImportFromStorageResponseSerializer(serializers.Serializer):
+    """Response shape of a storage import (schema only)."""
+
+    message = serializers.CharField()
+    documents = DocumentMetadataSerializer(many=True)
+    skipped = ImportFromStorageSkippedSerializer(many=True)
 
 
 class DocumentDetailSerializer(serializers.ModelSerializer):

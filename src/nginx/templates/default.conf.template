@@ -23,13 +23,20 @@ upstream webhook_server {
     server ${WEBHOOK_HOST}:${WEBHOOK_PORT} resolve;
 }
 
+upstream storage_server {
+    zone storage_server 64k;
+    server ${STORAGE_HOST}:${STORAGE_PORT} resolve;
+}
+
 # Docker's embedded DNS. The upstreams above re-resolve through it (`resolve`), so a
 # recreated container's new IP is picked up without restarting nginx; the
 # /auditor/ location also resolves the auditor through it at request time.
 resolver 127.0.0.11 valid=10s ipv6=off;
 
 # Every location that proxies must include strip-underscore-forwarding-headers.snippet:
-# with this on, clients could otherwise forge the address Django throttles on.
+# with this on, clients could otherwise forge the address Django throttles on. Every one that
+# passes the caller's headers on to Django also includes strip-plugin-internal-headers.snippet
+# (tests/check_templates.sh checks it).
 underscores_in_headers on;
 
 server {
@@ -61,11 +68,21 @@ server {
     # has not been verified against it. Violations surface in the browser
     # console; there is no report collector in this stack. Promote to
     # Content-Security-Policy once the console is clean.
-    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'" always;
+    # PLUGINS_FRAME_SRC (16-normalize-plugins-enabled.envsh) is the plugin
+    # hosts' wildcard when plugins are on and empty when they are off.
+    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; frame-src 'self' ${PLUGINS_FRAME_SRC}; frame-ancestors 'self'; base-uri 'self'" always;
+
+    # ---- Cookies ----------------------------------------------------------
+    # Only Django reads and sets cookies. Every location that proxies anywhere but backend_server
+    # includes cookie-free-upstream.snippet (no Cookie to the upstream, no Set-Cookie from it),
+    # and a new one must too: tests/check_templates.sh fails otherwise. It has to be included in
+    # each location: a location that sets any proxy_set_header or proxy_hide_header of its own
+    # inherits none of the server's.
 
     location / {
         proxy_pass http://frontend_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -77,6 +94,7 @@ server {
     location ^~ /api/run-session/subscribe/ {
         proxy_pass http://backend_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         
         proxy_buffering off;
         proxy_cache off;
@@ -97,6 +115,7 @@ server {
     location ~ ^/ws/ {
         proxy_pass http://backend_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -110,6 +129,7 @@ server {
     location = /api/storage/upload/stream {
         proxy_pass http://backend_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_http_version 1.1;
         proxy_request_buffering off;
         proxy_buffering off;
@@ -132,6 +152,7 @@ server {
     location ~ ^/(api|admin|ht|swagger)(/|$) {
         proxy_pass http://backend_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header X-API-Key $http_x_api_key;
         proxy_set_header Host $host;
@@ -143,6 +164,7 @@ server {
     location ^~ /webhooks/ {
         proxy_pass http://webhook_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -154,6 +176,7 @@ server {
     location ^~ /voice/ {
         proxy_pass http://realtime_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -169,6 +192,7 @@ server {
     location /voice/stream {
         proxy_pass http://realtime_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -184,6 +208,7 @@ server {
     location /realtime/ {
         proxy_pass http://realtime_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -194,6 +219,8 @@ server {
     }
 
     include /etc/nginx/conf.d/chat-${CHAT_ENABLED}.snippet;
+
+    include /etc/nginx/conf.d/plugins-main-${PLUGINS_ENABLED}.snippet;
 
     location ~ ^/auditor/api/audit/[^/]+/events/?$ {
         return 404;
@@ -209,6 +236,7 @@ server {
         rewrite ^/auditor/(.*)$ /$1 break;
         proxy_pass $auditor_upstream;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header Host $host;
@@ -220,21 +248,53 @@ server {
     location /static/ {
         proxy_pass http://backend_server/static/;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Only a URL signed by django_app (AvatarStorage.url) gets through: no or a wrong
+    # signature is 403, an expired one 410. The bucket policy storage-init sets lets nginx
+    # read <bucket>/system/avatars/ without credentials inside the docker network.
+    # Query arguments are dropped after the check: S3 reads them as subresources and
+    # header overrides.
+    location /media/avatars/ {
+        secure_link $arg_s,$arg_e;
+        secure_link_md5 "$secure_link_expires$uri ${AVATAR_URL_SIGNING_SECRET}";
+        if ($secure_link = "") {
+            return 403;
+        }
+        if ($secure_link = "0") {
+            return 410;
+        }
+        set $args "";
+        proxy_pass http://storage_server/${STORAGE_BUCKET}/system/avatars/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
+        proxy_set_header Authorization "";
     }
 
     location /media/ {
         proxy_pass http://backend_server/media/;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 
+# The plugin hosts' server. It must stay after the server above: the first server on a port is
+# the default one, so a host name that is not a valid plugin host still reaches EpicStaff.
+include /etc/nginx/conf.d/plugins-server-${PLUGINS_ENABLED}.snippet;
+
+# EpicStaff's API for the plugin node and plugin backends, on port 8081 of plugins-network.
+include /etc/nginx/conf.d/plugins-internal-api-${PLUGINS_ENABLED}.snippet;
+
 # Liveness for the compose healthcheck only: bound to the container's loopback and
 # never published, it answers without proxying, so it reports nginx itself and not
-# the backends, and it is outside the TLS server's http->https redirect.
+# the backends, and it is outside the TLS server's http->https redirect. Port 8081 on the
+# container's other addresses is the plugin internal API listener (plugins-internal-api-*.snippet):
+# nginx picks the server by the address a connection arrived on.
 server {
     listen 127.0.0.1:8081;
 

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from foundation.utils.env import Env
+from src.shared.envtools import Env as SharedEnv
 from src.shared.redis_keys import crew_code_result_channel
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -12,15 +13,21 @@ if not env.bool("RUN_IN_DOCKER", False):
 DEBUG = env.bool("SANDBOX_DEBUG", False)
 
 # Independent of DEBUG: that one only switches Litestar's debug responses.
-LOG_LEVEL = env.str("SANDBOX_LOG_LEVEL", "INFO")
+LOG_LEVEL = env.get_value("SANDBOX_LOG_LEVEL", "INFO", lambda value: value.strip().upper())
+# Checked here so a typo (or "none") fails at startup, not inside loguru on the first sink.
+# foundation's Env has no log_level(); the accepted names come from the shared one.
+if LOG_LEVEL not in SharedEnv.LOG_LEVELS_WITH_BENCH:
+    raise ValueError(
+        f"SANDBOX_LOG_LEVEL={LOG_LEVEL!r} is not a log level; "
+        f"use one of {', '.join(SharedEnv.LOG_LEVELS_WITH_BENCH)}."
+    )
 
 # Read from env so the code and the mounted volume agree on one path.
 VENVS_DIR = env.path("SANDBOX_VENVS_DIR", BASE_DIR / "venvs")
 VENV_STAGING_DIR = VENVS_DIR / "builds"
 
-# Per-execution workspaces are created under here; savefiles is the shared volume.
+# Per-execution workspaces are created under here.
 EXECUTIONS_DIR = BASE_DIR / "executions"
-SAVEFILES_DIR = BASE_DIR / "savefiles"
 
 # Local shared packages the execution wrapper imports unconditionally (dotdict,
 # epicstaff_secrets) plus the shared tool helpers (epicstaff_common). They are NOT
@@ -75,6 +82,11 @@ if DEFAULT_EXECUTION_TIMEOUT < MIN_EXECUTION_TIMEOUT or (
         f"SANDBOX_DEFAULT_EXECUTION_TIMEOUT must be at least {MIN_EXECUTION_TIMEOUT}s "
         "and not above SANDBOX_MAX_EXECUTION_TIMEOUT."
     )
+
+# Bytes. Caps the result and storage mutations files the worker reads back from a run.
+MAX_RESULT_SIZE = env.byte_size("SANDBOX_MAX_RESULT_SIZE")
+if MAX_RESULT_SIZE is None or MAX_RESULT_SIZE <= 0:
+    raise ValueError("SANDBOX_MAX_RESULT_SIZE must be a positive size, not none.")
 
 # Defaults are the confining value: a missing setting must not unconfine the sandbox.
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET", True)

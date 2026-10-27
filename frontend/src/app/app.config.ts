@@ -7,7 +7,9 @@ import { provideMonacoEditor } from 'ngx-monaco-editor-v2';
 import { firstValueFrom } from 'rxjs';
 
 import { routes } from './app.routes';
+import { APP_TOURS } from './app.tours';
 import { SAFE_MARKED_OPTIONS_PROVIDER } from './core/config/safe-markdown-options.factory';
+import { ProfileTourProgressStore, provideGuidedTours, TOUR_PROGRESS_STORE } from './core/guided-tour';
 import { activeOrgInterceptor } from './core/interceptors/active-org.interceptor';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { forbiddenInterceptor } from './core/interceptors/forbidden.interceptor';
@@ -20,6 +22,7 @@ import { provideConfigureModelsStorages } from './features/configure-models/conf
 import { provideFlowsStorages } from './features/flows/flows.providers';
 import { provideKeyValueTablesStorages } from './features/key-value-tables/key-value-tables.providers';
 import { provideKnowledgeSourcesStorages } from './features/knowledge-sources/knowledge-sources.providers';
+import { providePluginsExtensions, providePluginsStorages } from './features/plugins/plugins.providers';
 import { provideRoleBaseAccessStorages } from './features/role-base-access/role-base-access.providers';
 import { provideToolsStorages } from './features/tools/tools.providers';
 import { ActiveOrgService } from './services/auth/active-org.service';
@@ -47,6 +50,8 @@ export const appConfig: ApplicationConfig = {
         ),
         provideMarkdown({ markedOptions: SAFE_MARKED_OPTIONS_PROVIDER }),
         provideMonacoEditor(),
+        provideGuidedTours(...APP_TOURS),
+        { provide: TOUR_PROGRESS_STORE, useExisting: ProfileTourProgressStore },
 
         provideAppInitializer(async () => {
             const configService = inject(ConfigService);
@@ -71,6 +76,8 @@ export const appConfig: ApplicationConfig = {
         ...provideKnowledgeSourcesStorages(),
         ...provideKeyValueTablesStorages(),
         ...provideChatStorages(),
+        ...providePluginsStorages(),
+        ...providePluginsExtensions(),
         ...provideSharedStorages(),
         ...provideVisualProgrammingStorages(),
     ],

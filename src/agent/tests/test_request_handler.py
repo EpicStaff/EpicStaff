@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from app.request_handler import RequestHandler
 from shared.redis_streams import StreamEnvelope
+from tests.log_capture import capture_logs_at
 
 
 def _make_recording_client() -> tuple[MagicMock, list[dict]]:
@@ -62,4 +63,33 @@ async def test_load_failure_publishes_agent_error_to_per_run_stream_and_acks():
     assert publish_calls[0]["fields"]["type"] == "agent.error"
     assert json.loads(publish_calls[0]["fields"]["payload"])["error"] == "request blob missing"
     client.ack.assert_awaited_once_with("agent.requests", "agent-executors", "1-0")
+
+
+async def test_request_handler_redacts_payload_except_request_key():
+    client, _ = _make_recording_client()
+    loader = MagicMock()
+    loader.load = AsyncMock(side_effect=RuntimeError("test error"))
+    handler = _make_handler(client, loader)
+
+    sensitive_marker = "SENSITIVE_VALUE_12345"
+    request_key_value = "agent:request:run-b"
+
+    envelope = StreamEnvelope(
+        type="agent.run",
+        correlation_id="run-b",
+        payload={
+            "request_key": request_key_value,
+            "sensitive_field": sensitive_marker,
+            "another_secret": "ANOTHER_SECRET_789",
+        },
+    )
+
+    with capture_logs_at("DEBUG") as logs:
+        await handler.handle(envelope, message_id="1-0", stream="agent.requests")
+
+    debug_logs = "".join(logs)
+
+    assert sensitive_marker not in debug_logs
+    assert "ANOTHER_SECRET_789" not in debug_logs
+    assert request_key_value in debug_logs
 

@@ -32,7 +32,11 @@ import {
     SearchComponent,
     TabButtonComponent,
 } from '@shared/components';
-import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import {
+    CollapseOnOverflowDirective,
+    HasPermissionDirective,
+    HideInlineSubtitleOnOverflowDirective,
+} from '@shared/directives';
 import { ActionCode, LabelTreeNode, ResourceCode } from '@shared/models';
 import {
     AppStorageService,
@@ -111,6 +115,7 @@ import { flowsBulkDeleteGroup } from '../../utils/flows-bulk-delete.util';
         AppSvgIconComponent,
         LabelSidebarComponent,
         HideInlineSubtitleOnOverflowDirective,
+        CollapseOnOverflowDirective,
         ImportFlowOptionsPopoverComponent,
         OverlayModule,
         FlowsFilterMenuComponent,

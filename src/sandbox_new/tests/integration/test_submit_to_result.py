@@ -32,7 +32,7 @@ from worker.infrastructure.execution.steps import (
 )
 from worker.infrastructure.transport.queue_job_source import QueueJobSource
 from worker.infrastructure.transport.queue_result_sink import QueueResultSink
-from tests.builders import make_venv
+from tests.builders import make_venv, make_worker_job
 from tests.fakes import FakeIsolationProbe
 
 VENV_HASH = "1integration"
@@ -60,30 +60,32 @@ SECRETS_STUB = """def get_secret(name, default=None):
 """
 
 
+def write_child_stubs(executions_dir: Path, execution_id: str) -> None:
+    # Production installs these into every venv as predefined packages. The child's
+    # sys.path[0] is the directory holding code.py, so stubs go there.
+    exec_dir = executions_dir / execution_id
+    exec_dir.mkdir(parents=True)
+    (exec_dir / "dotdict.py").write_text(DOTDICT_STUB, encoding="utf-8")
+    (exec_dir / "epicstaff_secrets.py").write_text(SECRETS_STUB, encoding="utf-8")
+
+
 @pytest.fixture
 def runtime(tmp_path):
     """Everything the seam needs: the two queues, a venv on disk, and the child stubs."""
     venvs_dir = tmp_path / "venvs"
     executions_dir = tmp_path / "executions"
-    savefiles_dir = tmp_path / "savefiles"
 
     venv_bin = venvs_dir / f"venv-{VENV_HASH}" / "bin"
     venv_bin.mkdir(parents=True)
     (venv_bin / "python").symlink_to(Path(sys.executable))
 
-    # Production installs these into every venv as predefined packages. The child's
-    # sys.path[0] is the directory holding code.py, so stubs go there.
-    exec_dir = executions_dir / EXECUTION_ID
-    exec_dir.mkdir(parents=True)
-    (exec_dir / "dotdict.py").write_text(DOTDICT_STUB, encoding="utf-8")
-    (exec_dir / "epicstaff_secrets.py").write_text(SECRETS_STUB, encoding="utf-8")
+    write_child_stubs(executions_dir, EXECUTION_ID)
 
     return {
         "job_queue": asyncio.Queue(),
         "result_queue": asyncio.Queue(),
         "venvs_dir": venvs_dir,
         "executions_dir": executions_dir,
-        "savefiles_dir": savefiles_dir,
     }
 
 
@@ -92,12 +94,7 @@ def build_worker(runtime) -> ExecutionOrchestrator:
     pipeline = (
         Pipeline()
         .register(ResolveVenvStep(venvs_dir=runtime["venvs_dir"]))
-        .register(
-            PrepareWorkspaceStep(
-                executions_dir=runtime["executions_dir"],
-                savefiles_root=runtime["savefiles_dir"],
-            )
-        )
+        .register(PrepareWorkspaceStep(executions_dir=runtime["executions_dir"]))
         .register(
             ConfigureStorageStep(
                 storage_endpoint="http://localhost:9000",
@@ -115,8 +112,8 @@ def build_worker(runtime) -> ExecutionOrchestrator:
             )
         )
         .register(LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None))
-        .register(CaptureMutationsStep())
-        .register(CaptureResultStep())
+        .register(CaptureMutationsStep(max_bytes=16 * 1024 * 1024))
+        .register(CaptureResultStep(max_bytes=16 * 1024 * 1024))
     )
     return ExecutionOrchestrator(
         pipeline,
@@ -163,6 +160,7 @@ async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
     message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
     assert message.execution_id == EXECUTION_ID
     assert message.returncode == 0
+    assert message.session_id == 7
     assert json.loads(message.result) == {"echo": "x", "limit": 3}
     assert "token=[REDACTED]" in message.stdout
     assert "s3cret" not in message.stdout
@@ -199,6 +197,7 @@ async def test_a_job_whose_venv_failed_to_build_reaches_the_same_result_queue(uo
     assert message.execution_id == EXECUTION_ID
     assert message.returncode == 1
     assert "failed to build" in message.stderr
+    assert (message.session_id, message.not_run_reason) == (7, "venv_failed")
 
 
 async def test_storage_credentials_reach_the_worker_unchanged(uow, runtime):
@@ -301,3 +300,34 @@ async def test_a_crew_submission_whose_venv_failed_is_still_flagged(uow, runtime
     message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
     assert message.returncode == 1
     assert message.reply_to_crew_channel is True
+
+
+async def test_a_file_one_run_writes_is_not_visible_to_the_next_run(runtime):
+    write_child_stubs(runtime["executions_dir"], "exec-writer")
+    write_child_stubs(runtime["executions_dir"], "exec-reader")
+    worker = build_worker(runtime)
+
+    await worker.execute(
+        make_worker_job(
+            execution_id="exec-writer",
+            venv_hash=VENV_HASH,
+            code=(
+                "def main():\n"
+                "    with open('note.txt', 'w') as note:\n"
+                "        note.write('left by the writer')\n"
+            ),
+        )
+    )
+    await worker.execute(
+        make_worker_job(
+            execution_id="exec-reader",
+            venv_hash=VENV_HASH,
+            code="def main():\n    import os\n    return os.path.exists('note.txt')\n",
+        )
+    )
+
+    writer_result = runtime["result_queue"].get_nowait()
+    reader_result = runtime["result_queue"].get_nowait()
+    assert writer_result.returncode == 0, writer_result.stderr
+    assert reader_result.returncode == 0, reader_result.stderr
+    assert json.loads(reader_result.result) is False

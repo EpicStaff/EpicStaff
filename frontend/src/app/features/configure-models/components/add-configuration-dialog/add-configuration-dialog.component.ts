@@ -15,7 +15,7 @@ import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } 
 import {
     ButtonComponent,
     CustomInputComponent,
-    HelpTooltipComponent,
+    ErrorBannerComponent,
     HintMessageComponent,
     IconButtonComponent,
     InputNumberComponent,
@@ -32,15 +32,12 @@ import { EnterSubmitDirective } from '@shared/directives';
 import { pricePairValidator } from '@shared/form-validators';
 import { CreateEmbeddingConfigRequest, ModelTypes, ReasoningEffort } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
-import { extractFieldErrorMessages, extractHttpErrorMessage, perMillionToPerToken } from '@shared/utils';
-import { catchError, EMPTY, map, merge, Observable, startWith, tap } from 'rxjs';
+import { extractFieldErrorMessages, extractHttpErrorMessage, isClientError, perMillionToPerToken } from '@shared/utils';
+import { map, merge, startWith } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-dialogs/llm-model-selector/llm-model-selector.component';
-import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
-import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
-import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
-import { RealtimeProvider } from '../realtime-config-dialog/realtime-config-dialog.component';
+import { RealtimeConfigFormComponent } from '../realtime-config-form/realtime-config-form.component';
 
 export type ConfigTab = 'llm' | 'realtime' | 'embedding';
 
@@ -54,9 +51,9 @@ const DUPLICATE_EMBEDDING_NAME_MESSAGE =
     imports: [
         ReactiveFormsModule,
         IconButtonComponent,
-        HelpTooltipComponent,
         ButtonComponent,
         CustomInputComponent,
+        ErrorBannerComponent,
         SelectComponent,
         HintMessageComponent,
         ValidationErrorsComponent,
@@ -67,18 +64,17 @@ const DUPLICATE_EMBEDDING_NAME_MESSAGE =
         LlmModelSelectorComponent,
         LlmReasoningEffortFieldComponent,
         EnterSubmitDirective,
+        RealtimeConfigFormComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AddConfigurationDialogComponent implements OnInit {
     private readonly reasoningEffortField = viewChild(LlmReasoningEffortFieldComponent);
+    private readonly realtimeForm = viewChild(RealtimeConfigFormComponent);
 
     private readonly fb = inject(FormBuilder);
     private readonly destroyRef = inject(DestroyRef);
     private readonly llmStorage = inject(LlmConfigStorageService);
-    private readonly openaiStorage = inject(OpenAIRealtimeConfigStorageService);
-    private readonly elevenLabsStorage = inject(ElevenLabsRealtimeConfigStorageService);
-    private readonly geminiStorage = inject(GeminiRealtimeConfigStorageService);
     private readonly embeddingConfigStorage = inject(EmbeddingConfigStorageService);
     private readonly toast = inject(ToastService);
     private readonly secretsStorageService = inject(SecretsStorageService);
@@ -88,9 +84,15 @@ export class AddConfigurationDialogComponent implements OnInit {
     protected readonly TOKEN_PRICE_HINT = TOKEN_PRICE_HINT;
 
     activeTab = signal<ConfigTab>(this.data?.initialTab ?? 'llm');
-    selectedProvider = signal<RealtimeProvider>('openai');
     isSubmitting = signal(false);
+    /** The server's refusal of the last LLM or embedding save; the realtime form keeps its own. */
     errorMessage = signal<string | null>(null);
+    // The realtime tab's form saves itself; its progress counts as this dialog's.
+    protected readonly isSaving = computed(() => this.isSubmitting() || (this.realtimeForm()?.isSubmitting() ?? false));
+    // One banner for the dialog, showing the active tab's error.
+    protected readonly bannerMessage = computed(() =>
+        this.activeTab() === 'realtime' ? (this.realtimeForm()?.errorMessage() ?? null) : this.errorMessage()
+    );
     // Saving before the LLM model is known would send reasoning_effort as null instead of the chosen value.
     readonly isLlmModelResolving = computed(
         () => this.activeTab() === 'llm' && (this.reasoningEffortField()?.resolving() ?? false)
@@ -100,17 +102,11 @@ export class AddConfigurationDialogComponent implements OnInit {
             case 'llm':
                 return 'Add LLM';
             case 'realtime':
-                return 'Create Realtime';
+                return 'Add Voice';
             case 'embedding':
                 return 'Add Embedding';
         }
     });
-
-    readonly realtimeProviders: { key: RealtimeProvider; label: string }[] = [
-        { key: 'openai', label: 'OpenAI' },
-        { key: 'elevenlabs', label: 'ElevenLabs' },
-        { key: 'gemini', label: 'Gemini' },
-    ];
 
     protected readonly llmModelControl = new FormControl<number | null>(null, [Validators.required]);
     protected readonly selectedLlmModelId = toSignal(this.llmModelControl.valueChanges, {
@@ -149,29 +145,6 @@ export class AddConfigurationDialogComponent implements OnInit {
     });
 
     readonly hasIncompletePricePair = computed(() => this.activeTab() === 'llm' && this.isPricePairIncomplete());
-
-    openaiForm = this.fb.nonNullable.group({
-        custom_name: ['', Validators.required],
-        api_key_secret_id: [null as number | null],
-        model_name: ['gpt-realtime-1.5', Validators.required],
-        transcription_model_name: ['whisper-1'],
-        transcription_api_key_secret_id: [null as number | null],
-        voice_recognition_prompt: [''],
-    });
-
-    elevenLabsForm = this.fb.nonNullable.group({
-        custom_name: ['', Validators.required],
-        api_key_secret_id: [null as number | null],
-        model_name: ['eleven_turbo_v2_5', Validators.required],
-        language: [''],
-    });
-
-    geminiForm = this.fb.nonNullable.group({
-        custom_name: ['', Validators.required],
-        api_key_secret_id: [null as number | null],
-        model_name: ['gemini-3.1-flash-live-preview', Validators.required],
-        voice_recognition_prompt: [''],
-    });
 
     embeddingForm = this.fb.nonNullable.group({
         model: [null as number | null, Validators.required],
@@ -236,23 +209,20 @@ export class AddConfigurationDialogComponent implements OnInit {
         });
     }
 
-    selectProvider(provider: RealtimeProvider): void {
-        this.selectedProvider.set(provider);
-        this.errorMessage.set(null);
-    }
-
     setActiveTab(tab: ConfigTab): void {
         this.activeTab.set(tab);
         this.errorMessage.set(null);
     }
 
     onSubmit(): void {
+        // One save at a time, even when the tab was switched while another tab's save is in flight.
+        if (this.isSaving()) return;
         switch (this.activeTab()) {
             case 'llm':
                 this.submitLlm();
                 break;
             case 'realtime':
-                this.submitRealtime();
+                this.realtimeForm()?.submit();
                 break;
             case 'embedding':
                 this.submitEmbedding();
@@ -267,6 +237,7 @@ export class AddConfigurationDialogComponent implements OnInit {
         }
         const { pricing, ...config } = this.llmForm.value;
         this.isSubmitting.set(true);
+        this.errorMessage.set(null);
         this.llmStorage
             .createConfig({
                 ...config,
@@ -290,42 +261,14 @@ export class AddConfigurationDialogComponent implements OnInit {
                     ) {
                         return;
                     }
-                    this.toast.error(extractHttpErrorMessage(error, 'Failed to create LLM configuration.'));
+                    const message = extractHttpErrorMessage(error, 'Failed to create LLM configuration.');
+                    if (isClientError(error)) {
+                        this.errorMessage.set(message);
+                        return;
+                    }
+                    this.toast.error(message);
                 },
             });
-    }
-
-    private submitRealtime(): void {
-        const provider = this.selectedProvider();
-        const activeForm =
-            provider === 'openai' ? this.openaiForm : provider === 'elevenlabs' ? this.elevenLabsForm : this.geminiForm;
-
-        if (activeForm.invalid) {
-            activeForm.markAllAsTouched();
-            return;
-        }
-
-        this.isSubmitting.set(true);
-        const v = activeForm.getRawValue();
-
-        let obs: Observable<unknown>;
-        if (provider === 'openai') {
-            obs = this.openaiStorage.createConfig(v);
-        } else if (provider === 'elevenlabs') {
-            obs = this.elevenLabsStorage.createConfig(v);
-        } else {
-            obs = this.geminiStorage.createConfig(v);
-        }
-
-        obs.pipe(
-            tap(() => this.dialogRef.close(true)),
-            catchError(() => {
-                this.errorMessage.set('Failed to save configuration.');
-                this.isSubmitting.set(false);
-                return EMPTY;
-            }),
-            takeUntilDestroyed(this.destroyRef)
-        ).subscribe();
     }
 
     private submitEmbedding(): void {
@@ -334,6 +277,8 @@ export class AddConfigurationDialogComponent implements OnInit {
             this.embeddingForm.markAllAsTouched();
             return;
         }
+        // Cleared before the duplicate-name check, so an old refusal does not sit beside its toast.
+        this.errorMessage.set(null);
 
         const trimmedName = custom_name.trim();
         const normalizedName = trimmedName.toLowerCase();
@@ -363,17 +308,14 @@ export class AddConfigurationDialogComponent implements OnInit {
                 },
                 error: (error: HttpErrorResponse) => {
                     this.isSubmitting.set(false);
-                    this.toast.error(this.parseEmbeddingError(error));
+                    const fallback = 'Failed to create embedding configuration.';
+                    if (isClientError(error)) {
+                        this.errorMessage.set(extractHttpErrorMessage(error, fallback));
+                        return;
+                    }
+                    this.toast.error(fallback);
                 },
             });
-    }
-
-    private parseEmbeddingError(error: HttpErrorResponse): string {
-        const nameError = error?.error?.custom_name?.[0] as string | undefined;
-        if (nameError?.toLowerCase().includes('already exists')) {
-            return DUPLICATE_EMBEDDING_NAME_MESSAGE;
-        }
-        return 'Failed to create embedding configuration.';
     }
 
     onCancel(): void {

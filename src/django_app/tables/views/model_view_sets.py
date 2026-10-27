@@ -6,7 +6,7 @@ from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.node_surface_service import NodeSurfaceService
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import NOT_PROVIDED, Count, Exists, F, OuterRef, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Count, Exists, F, OuterRef, Prefetch, Q, Value
 from django.db.models.functions import Lower
 from django.http import HttpResponse
 from django.utils import timezone
@@ -27,7 +27,8 @@ from drf_spectacular.utils import (
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
-    DenyApiKeyAuth,
+    DenyPersonalAndSystemApiKeys,
+    DenyPluginCredential,
     HasOrgPermission,
     IsSystemApiKeyAuthenticated,
 )
@@ -287,7 +288,30 @@ from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
 from tables.services.secrets import secret_resolver, secret_usage_service
+from tables.services.secrets.pinned_principal_rules import (
+    EMBEDDING_MODEL_ENDPOINT_FIELDS,
+    LLM_MODEL_ENDPOINT_FIELDS,
+)
+from tables.services.secrets.secret_use_checks import (
+    check_elevenlabs_realtime_config_write,
+    check_embedding_config_write,
+    check_embedding_model_write,
+    check_gemini_realtime_config_write,
+    check_llm_config_write,
+    check_llm_model_write,
+    check_mcp_tool_write,
+    check_openai_realtime_config_write,
+    check_python_code_tool_write,
+    check_python_node_write,
+    check_realtime_config_write,
+    check_realtime_transcription_config_write,
+    check_telegram_trigger_node_write,
+    check_twilio_channel_write,
+    check_webhook_trigger_node_write,
+    check_webhook_trigger_write,
+)
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.tools_usage_service import (
     get_mcp_tool_usage_detail,
@@ -373,6 +397,10 @@ from tables.views.mixins import (
     TriggerNodeUsePermissionMixin,
 )
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
+from tables.views.secret_use import (
+    ModelEndpointsGuardedViewSetMixin,
+    SecretUseCheckedViewSetMixin,
+)
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -436,11 +464,16 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
 
 
 @extend_schema_view(bulk_delete=extend_schema(**LLM_CONFIG_BULK_DELETE_POST))
-class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet):
+class LLMConfigReadWriteViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     delete_service_class = LLMConfigDeleteService
+    secret_use_check = check_llm_config_write
+    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
 
     class LLMConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -477,13 +510,25 @@ class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
 
 
 class LLMModelReadWriteViewSet(
-    OrgScopedHybridViewSetMixin,
+    # A plugin's endpoint change is refused first (400), as validation would.
+    # Built-in protection runs before the secret check: a built-in model is
+    # immutable (403) whatever the caller holds, and the secret check counts the
+    # configs of every org that uses it. All three mixins hand every perform_* they
+    # override on to super(), so the hybrid org mixin after them still runs: it
+    # scopes get_queryset and stamps the org on create.
+    ModelEndpointsGuardedViewSetMixin,
     BuiltInWriteProtectedMixin,
+    SecretUseCheckedViewSetMixin,
+    OrgScopedHybridViewSetMixin,
     BasePredefinedRestrictedViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    model_endpoint_fields = LLM_MODEL_ENDPOINT_FIELDS
+    secret_use_check = check_llm_model_write
+    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -497,13 +542,25 @@ class LLMModelReadWriteViewSet(
 
 
 class EmbeddingModelReadWriteViewSet(
-    OrgScopedHybridViewSetMixin,
+    # A plugin's endpoint change is refused first (400), as validation would.
+    # Built-in protection runs before the secret check: a built-in model is
+    # immutable (403) whatever the caller holds, and the secret check counts the
+    # configs of every org that uses it. All three mixins hand every perform_* they
+    # override on to super(), so the hybrid org mixin after them still runs: it
+    # scopes get_queryset and stamps the org on create.
+    ModelEndpointsGuardedViewSetMixin,
     BuiltInWriteProtectedMixin,
+    SecretUseCheckedViewSetMixin,
+    OrgScopedHybridViewSetMixin,
     BasePredefinedRestrictedViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    model_endpoint_fields = EMBEDDING_MODEL_ENDPOINT_FIELDS
+    secret_use_check = check_embedding_model_write
+    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -517,11 +574,16 @@ class EmbeddingModelReadWriteViewSet(
 
 
 @extend_schema_view(bulk_delete=extend_schema(**EMBEDDING_CONFIG_BULK_DELETE_POST))
-class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet):
+class EmbeddingConfigReadWriteViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     delete_service_class = EmbeddingConfigDeleteService
+    secret_use_check = check_embedding_config_write
+    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
 
     class EmbeddingConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -564,6 +626,7 @@ class ContentHashPreconditionMixin:
     list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
 )
 class PythonCodeToolViewSet(
+    SecretUseCheckedViewSetMixin,
     OrgScopedHybridViewSetMixin,
     CopyActionMixin,
     InspectActionMixin,
@@ -605,6 +668,7 @@ class PythonCodeToolViewSet(
         .prefetch_related(linked_secrets_prefetch("python_code"), *authorship_prefetches())
     )
     serializer_class = PythonCodeToolSerializer
+    secret_use_check = check_python_code_tool_write
     filter_backends = [DjangoFilterBackend]
     filterset_class = PythonCodeToolFilter
 
@@ -617,21 +681,26 @@ class PythonCodeToolViewSet(
         )
 
     def get_queryset(self):
-        queryset = (
-            super()
-            .get_queryset()
-            .annotate(
-                is_favorite=Exists(
-                    PythonCodeToolFavorite.objects.filter(
-                        user=self.request.user, tool=OuterRef("pk")
-                    )
-                )
-            )
+        # Only a user has favorites; any other caller (a plugin service account,
+        # the system API key) sees none rather than a filter on a non-user.
+        author = resolve_author(self.request.user)
+        is_favorite = (
+            Exists(PythonCodeToolFavorite.objects.filter(user=author, tool=OuterRef("pk")))
+            if author is not None
+            else Value(False)
         )
+        queryset = super().get_queryset().annotate(is_favorite=is_favorite)
         ordering = ["-id"]
         if self.request.query_params.get("ordering") == "favorite":
             ordering = ["-is_favorite", "-id"]
         return queryset.order_by(*ordering)
+
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        # A favorite belongs to a person.
+        if self.action == "favorite":
+            return [*permissions, DenyPluginCredential()]
+        return permissions
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -1007,15 +1076,21 @@ class GraphViewSet(
         org_id = self.get_active_org_id()
         effective_permissions = PermissionResolver().resolve(user=request.user, org_id=org_id)
         partial_import_service = PartialImportService(entity_registry)
-        id_mapper = partial_import_service.import_data(
+        result = partial_import_service.import_data(
             export_data=data,
             graph=graph,
             org_id=org_id,
             user=request.user,
             effective_permissions=effective_permissions,
+            serializer_context=self.get_serializer_context(),
         )
-        summary = id_mapper.get_detailed_summary(entity_registry)
-        return Response(summary, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "content": result.content,
+                "summary": result.id_mapper.get_detailed_summary(entity_registry),
+            },
+            status=status.HTTP_200_OK,
+        )
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
@@ -1350,6 +1425,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
 
 
 class PythonNodeViewSet(
+    SecretUseCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
     ContentHashPreconditionMixin,
@@ -1360,6 +1436,7 @@ class PythonNodeViewSet(
     org_filter_path = "graph__org_id"
     queryset = PythonNode.objects.prefetch_related(*authorship_prefetches())
     serializer_class = PythonNodeSerializer
+    secret_use_check = check_python_node_write
 
 
 class FileExtractorNodeViewSet(
@@ -1594,10 +1671,13 @@ class RealtimeModelViewSet(
     serializer_class = RealtimeModelSerializer
 
 
-class RealtimeConfigModelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class RealtimeConfigModelViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_realtime_config_write
 
     class RealtimeConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -1634,10 +1714,13 @@ class RealtimeTranscriptionModelViewSet(
     serializer_class = RealtimeTranscriptionModelSerializer
 
 
-class RealtimeTranscriptionConfigModelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class RealtimeTranscriptionConfigModelViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_realtime_transcription_config_write
 
     class RealtimeTranscriptionConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -1741,36 +1824,48 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
 
 @extend_schema_view(bulk_delete=extend_schema(**OPENAI_REALTIME_CONFIG_BULK_DELETE_POST))
 class OpenAIRealtimeConfigViewSet(
-    OrgScopedViewSetMixin, BulkDeleteActionMixin, viewsets.ModelViewSet
+    SecretUseCheckedViewSetMixin,
+    OrgScopedViewSetMixin,
+    BulkDeleteActionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     delete_service_class = OpenAIRealtimeConfigDeleteService
+    secret_use_check = check_openai_realtime_config_write
     queryset = OpenAIRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = OpenAIRealtimeConfigSerializer
 
 
 @extend_schema_view(bulk_delete=extend_schema(**ELEVENLABS_REALTIME_CONFIG_BULK_DELETE_POST))
 class ElevenLabsRealtimeConfigViewSet(
-    OrgScopedViewSetMixin, BulkDeleteActionMixin, viewsets.ModelViewSet
+    SecretUseCheckedViewSetMixin,
+    OrgScopedViewSetMixin,
+    BulkDeleteActionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     delete_service_class = ElevenLabsRealtimeConfigDeleteService
+    secret_use_check = check_elevenlabs_realtime_config_write
     queryset = ElevenLabsRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = ElevenLabsRealtimeConfigSerializer
 
 
 @extend_schema_view(bulk_delete=extend_schema(**GEMINI_REALTIME_CONFIG_BULK_DELETE_POST))
 class GeminiRealtimeConfigViewSet(
-    OrgScopedViewSetMixin, BulkDeleteActionMixin, viewsets.ModelViewSet
+    SecretUseCheckedViewSetMixin,
+    OrgScopedViewSetMixin,
+    BulkDeleteActionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     delete_service_class = GeminiRealtimeConfigDeleteService
+    secret_use_check = check_gemini_realtime_config_write
     queryset = GeminiRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = GeminiRealtimeConfigSerializer
 
@@ -1820,6 +1915,10 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
         itself (an unguessable UUID) is the lookup/authorization key, so the
         normal `HasOrgPermission` + `OrgScopedViewSetMixin.get_queryset` org
         filter is deliberately bypassed here.
+
+        A found channel still passes run admission in its own organization: a
+        refused call answers 409, which the realtime service treats as no
+        channel and drops.
         """
         raw_token = request.query_params.get("token")
         if not raw_token:
@@ -1839,12 +1938,16 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
         )
         if channel is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
+        assert_run_admitted(RunSubject(RunKind.VOICE_CHANNEL, channel.pk, channel.org_id))
         return Response(RealtimeChannelInternalSerializer(channel).data)
 
 
-class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+class TwilioChannelViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedChildViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     org_filter_path = "channel__org_id"
+    secret_use_check = check_twilio_channel_write
     queryset = TwilioChannel.objects.select_related(
         "webhook_trigger__ngrok", "webhook_trigger__localhost"
     )
@@ -1858,7 +1961,10 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         if instance:
             serializer = self.get_serializer(instance, data=request.data)
             serializer.is_valid(raise_exception=True)
+            # The row was found without org scoping: another org's channel must be a
+            # 404 before the secret check can answer with anything else.
             self._assert_parent_in_active_org(serializer)
+            self.run_secret_use_check(instance, serializer.validated_data)
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return super().create(request, *args, **kwargs)
@@ -2303,6 +2409,7 @@ class ClassificationDecisionTableNodeModelViewSet(
     list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
 )
 class McpToolViewSet(
+    SecretUseCheckedViewSetMixin,
     OrgScopedViewSetMixin,
     CopyActionMixin,
     InspectActionMixin,
@@ -2326,8 +2433,11 @@ class McpToolViewSet(
         "import_entity": Permission.CREATE,
         "inspect_import": Permission.CREATE,
     }
+    # Copy stays ungated on purpose: the copy keeps the source's auth secret and
+    # transport, and any later edit of the copy goes through the secret Use check.
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
+    secret_use_check = check_mcp_tool_write
 
     queryset = McpTool.objects.select_related("auth_secret").prefetch_related(
         *authorship_prefetches()
@@ -2345,19 +2455,26 @@ class McpToolViewSet(
         )
 
     def get_queryset(self):
-        queryset = (
-            super()
-            .get_queryset()
-            .annotate(
-                is_favorite=Exists(
-                    McpToolFavorite.objects.filter(user=self.request.user, tool=OuterRef("pk"))
-                )
-            )
+        # Only a user has favorites; any other caller (a plugin service account,
+        # the system API key) sees none rather than a filter on a non-user.
+        author = resolve_author(self.request.user)
+        is_favorite = (
+            Exists(McpToolFavorite.objects.filter(user=author, tool=OuterRef("pk")))
+            if author is not None
+            else Value(False)
         )
+        queryset = super().get_queryset().annotate(is_favorite=is_favorite)
         ordering = ["-id"]
         if self.request.query_params.get("ordering") == "favorite":
             ordering = ["-is_favorite", "-id"]
         return queryset.order_by(*ordering)
+
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        # A favorite belongs to a person.
+        if self.action == "favorite":
+            return [*permissions, DenyPluginCredential()]
+        return permissions
 
     @extend_schema(methods=["POST"], **MCP_TOOL_FAVORITE_POST)
     @extend_schema(methods=["DELETE"], **MCP_TOOL_FAVORITE_DELETE)
@@ -2490,6 +2607,7 @@ class GraphOrganizationUserViewSet(OrgScopedChildViewSetMixin, viewsets.ReadOnly
     partial_update=extend_schema(**WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE),
 )
 class WebhookTriggerNodeViewSet(
+    SecretUseCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
@@ -2507,6 +2625,7 @@ class WebhookTriggerNodeViewSet(
         *authorship_prefetches("webhook_trigger"),
     )
     serializer_class = WebhookTriggerNodeSerializer
+    secret_use_check = check_webhook_trigger_node_write
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph", "node_name", "webhook_trigger__path"]
 
@@ -2521,7 +2640,12 @@ class WebhookTriggerNodeViewSet(
     update=extend_schema(**WEBHOOK_TRIGGER_UPDATE),
     partial_update=extend_schema(**WEBHOOK_TRIGGER_PARTIAL_UPDATE),
 )
-class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
+class WebhookTriggerViewSet(
+    SecretUseCheckedViewSetMixin,
+    OrgScopedViewSetMixin,
+    RecycleBinActionsMixin,
+    viewsets.ModelViewSet,
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
     rbac_action_map = {
@@ -2534,6 +2658,7 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, views
         "ngrok", "localhost", "auth", "auth__secret"
     ).prefetch_related(*authorship_prefetches())
     serializer_class = WebhookTriggerNestedSerializer
+    secret_use_check = check_webhook_trigger_write
     filter_backends = [DjangoFilterBackend]
     filterset_class = WebhookTriggerFilter
     # The flows action names at most this many flows; `flow_count` is always the total.
@@ -2546,7 +2671,11 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, views
         elif trigger.provider_type == ProviderType.LOCALHOST:
             service.wait_for_localhost_tunnel_url(trigger)
 
+    # Both overrides save without calling super(): the serializer stamps the org and
+    # author itself, so the secret Use check is run here rather than by the mixin's
+    # perform_create / perform_update.
     def perform_create(self, serializer):
+        self.run_secret_use_check(None, serializer.validated_data)
         trigger = serializer.save()
         self._wait_for_tunnel_url(trigger)
 
@@ -2574,6 +2703,7 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, views
         return super().update(request, *args, **kwargs)
 
     def perform_update(self, serializer):
+        self.run_secret_use_check(serializer.instance, serializer.validated_data)
         trigger = serializer.save()
         self._wait_for_tunnel_url(trigger)
 
@@ -2603,6 +2733,7 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, views
     partial_update=extend_schema(**TELEGRAM_TRIGGER_NODE_WRITE),
 )
 class TelegramTriggerNodeViewSet(
+    SecretUseCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
@@ -2626,6 +2757,7 @@ class TelegramTriggerNodeViewSet(
         *authorship_prefetches("webhook_trigger"),
     )
     serializer_class = TelegramTriggerNodeSerializer
+    secret_use_check = check_telegram_trigger_node_write
 
     def get_serializer_class(self):
         if self.action in ["list", "retrieve"]:
@@ -2770,9 +2902,13 @@ class SecretViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Create / read / delete only — a Secret's name and value are immutable."""
+    """Create / read / delete only — a Secret's name and value are immutable.
 
-    permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
+    Closed to USER and SYSTEM API keys; a plugin service account passes when its
+    declared access grants the action. No caller ever reads a value back.
+    """
+
+    permission_classes = [IsAuthenticated, DenyPersonalAndSystemApiKeys, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
     rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "usage": Permission.READ}
     recycle_bin_resource_key = RecycleBinSource.SECRET
@@ -2811,7 +2947,8 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     rbac/access/builtin_roles.json: Org Admin only has READ+EXPORT).
     """
 
-    permission_classes = [IsAuthenticated, HasOrgPermission]
+    # Presets belong to a person, so a plugin service account never reaches them.
+    permission_classes = [IsAuthenticated, DenyPluginCredential, HasOrgPermission]
     rbac_resource_type = ResourceType.AUDIT
     rbac_action_map = {
         "list": Permission.READ,

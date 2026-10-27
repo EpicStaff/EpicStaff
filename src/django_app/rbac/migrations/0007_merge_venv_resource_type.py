@@ -1,4 +1,4 @@
-# Generated manually to resolve leaf conflict on feat/EST-3640-venv-manager
+# Generated manually to merge the two leaf migrations of the venv manager work and the venv resource type
 
 from django.db import migrations
 
