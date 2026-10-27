@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-import check_env_conventions as check  # noqa: E402
+import check_env_conventions as check
 
 TRUE_VALUES = frozenset({"1", "on", "t", "true", "y", "yes"})
 FALSE_VALUES = frozenset({"0", "f", "false", "n", "no", "off"})
