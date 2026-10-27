@@ -156,7 +156,7 @@ async def start_runtime(app: Litestar) -> None:
             ),
             interval=_RELEASE_INTERVAL_SECONDS,
         ),
-        "gate sampler": GateSampler(registry, intake_gate, admission_gate),
+        "gate sampler": GateSampler(registry, admission_gate),
     }
     app.state.runtime_tasks = []
     for name, runner in runners.items():

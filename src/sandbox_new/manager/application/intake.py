@@ -16,14 +16,15 @@ Four checks, all answered with `SandboxOverloadedError` (a 503 with `Retry-After
 - A re-POST of an execution id whose first request is still being admitted: its outcome
   is not known yet, so the re-POST is told to come back rather than answered.
 
-Every refusal is counted by its reason, for the `sandbox_gate` BENCH checkpoint.
+Every refusal is logged where it is made, as an `intake_refused` BENCH checkpoint with
+its reason and Retry-After.
 """
 
 import math
-from collections import Counter
 from typing import Literal
 
 from loguru import logger
+from src.shared.bench_log import BENCH_LEVEL
 
 from manager.application.ports import FreeSlotProbe
 from manager.application.registry import ExecutionRegistry
@@ -52,7 +53,6 @@ MAX_RETRY_AFTER_SECONDS = 30
 SUBMISSION_IN_PROGRESS_RETRY_AFTER_SECONDS = 1
 
 type RefusalReason = Literal["cap", "prediction", "held_cap", "in_progress"]
-_REFUSAL_REASONS: tuple[RefusalReason, ...] = ("cap", "prediction", "held_cap", "in_progress")
 
 
 class IntakeGate:
@@ -70,13 +70,6 @@ class IntakeGate:
         self._max_accepted = max_accepted
         self._max_held = max_held
         self._queue_timeout = queue_timeout
-        self._refusals: Counter[RefusalReason] = Counter()
-
-    def take_refusals(self) -> dict[RefusalReason, int]:
-        """Return the refusals since the previous call, by reason, and start counting afresh."""
-        refusals = {reason: self._refusals[reason] for reason in _REFUSAL_REASONS}
-        self._refusals.clear()
-        return refusals
 
     def check_not_in_progress(self, execution_id: str) -> None:
         """Refuse a re-POST while the first request for its id is still being admitted.
@@ -135,5 +128,11 @@ class IntakeGate:
         )
 
     def _refuse(self, reason: RefusalReason, retry_after: int) -> SandboxOverloadedError:
-        self._refusals[reason] += 1
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="intake_refused",
+            reason=reason,
+            retry_after=retry_after,
+        )
         return SandboxOverloadedError(retry_after=retry_after)
