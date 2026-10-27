@@ -46,7 +46,7 @@ Jobs that will wait for a venv build are not judged by this rule; see [0006](000
 
 ### Consequences
 
-- Good, because the producer gets an honest `Retry-After` and retries ([0007](0007-producer-client-in-foundation.md)).
+- Good, because the producer gets an honest `Retry-After` and retries ([0007](0007-producer-clients-per-service.md)).
 - Good, because the effective queue length follows the workload: long with short jobs, short with long ones.
 - Good, because a full sandbox rejects without decoding the request body.
 - Bad, because `queued` includes running jobs (there is no `running` state), so the prediction is high by about one average run time. Accepted: about 2 s of 120 s for short jobs.

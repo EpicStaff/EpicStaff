@@ -21,7 +21,7 @@ This folder records how that works and why it was built this way. The decisions 
 | [0004](adr/0004-run-gate-on-measured-cpu-and-memory.md) | Start executions by measured CPU and memory, not a fixed count |
 | [0005](adr/0005-queue-deadlines-owned-by-the-sandbox.md) | The sandbox owns queue deadlines; stale jobs are not run |
 | [0006](adr/0006-held-jobs-cap-and-hold-deadline.md) | Jobs waiting for a venv build have their own cap and deadline |
-| [0007](adr/0007-producer-client-in-foundation.md) | One producer client in foundation |
+| [0007](adr/0007-producer-clients-per-service.md) | Each producer owns its sandbox client |
 | [0008](adr/0008-every-path-ends-in-a-result.md) | Every path ends in a result; a dead runner restarts the process |
 | [0009](adr/0009-benchmark-checkpoints.md) | BENCH checkpoints and a gate-state sample |
 
