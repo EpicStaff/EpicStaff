@@ -243,6 +243,14 @@
         font-size: 0.8125rem;
     }
 
+    &__group-label {
+        padding: 0.5rem 0.75rem 0.25rem;
+        color: var(--color-ks-transparent-text-60);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
     &__option {
         display: flex;
         align-items: center;

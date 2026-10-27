@@ -36,6 +36,11 @@ export interface SelectItem<T = unknown> {
     trailingActionIcon?: string;
 }
 
+interface SelectItemGroup {
+    group: string | null;
+    items: SelectItem[];
+}
+
 export type SelectVariant = 'default' | 'boxed';
 
 @Component({
@@ -67,6 +72,11 @@ export class SelectComponent implements ControlValueAccessor {
     panelClass = input<string | string[]>('');
     variant = input<SelectVariant>('default');
     showSearch = input<boolean>(false);
+    /**
+     * Render each item under a heading taken from its `group`. Off by default: panels that
+     * already set `group` on their items were written before any heading was rendered.
+     */
+    grouped = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
     transparent = input<boolean>(false);
     /** When true, the user can commit the search text as a custom value (Enter or clicking the "Use ..." row). */
@@ -98,6 +108,32 @@ export class SelectComponent implements ControlValueAccessor {
         if (!term) return this.items();
         return this.items().filter((i) => i.name.toLowerCase().includes(term));
     });
+    /**
+     * The options as the panel lays them out: one headingless group when grouping is off, so
+     * the template has a single shape to render.
+     *
+     * Items without a `group` come first and keep no heading -- a picker's leading row, such
+     * as a "none" option, has to stay at the top rather than sink under the first heading.
+     * Groups follow in the order they first appear, and the order inside each one is the
+     * order of `items`, so a sort the caller applied survives the split. Headings come from
+     * `filteredItems`, so a search narrows within the groups instead of collapsing them.
+     */
+    protected readonly groupedItems = computed<SelectItemGroup[]>(() => {
+        const items = this.filteredItems();
+        if (!this.grouped()) return [{ group: null, items }];
+
+        const buckets = new Map<string | null, SelectItem[]>([[null, []]]);
+        for (const item of items) {
+            const group = item.group ?? null;
+            const bucket = buckets.get(group);
+            if (bucket) bucket.push(item);
+            else buckets.set(group, [item]);
+        }
+        return [...buckets]
+            .filter(([, bucketItems]) => bucketItems.length > 0)
+            .map(([group, bucketItems]) => ({ group, items: bucketItems }));
+    });
+
     private controlDisabled = signal(false);
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
 
