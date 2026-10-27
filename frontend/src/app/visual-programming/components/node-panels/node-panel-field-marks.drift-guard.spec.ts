@@ -2,7 +2,13 @@ import { TestBed } from '@angular/core/testing';
 import { NodeType } from '@shared/models';
 
 import { PANEL_COMPONENT_MAP } from '../../core/enums/node-panel.map';
-import { KeyValueNodeModel, NodeModel } from '../../core/models/node.model';
+import { ConditionGroup } from '../../core/models/decision-table.model';
+import {
+    ClassificationDecisionTableNodeModel,
+    DecisionTableNodeModel,
+    KeyValueNodeModel,
+    NodeModel,
+} from '../../core/models/node.model';
 import { FieldChange, FieldName } from '../../utils/diff';
 import { isNestedField, keyPrefixOf, SEMANTIC_PROJECTIONS } from '../../utils/diff/semantic-projections';
 import {
@@ -21,7 +27,10 @@ import {
 // field changed, narrow and widened (some panels lay out other content when widened); it must then show a mark of
 // some kind (a field mark, an Input List, Key-Value or task row, a note under a list, a code diff). The items of a
 // keyed collection (Agent tasks, decision table groups) are changed one field at a time, as the diff reports them,
-// and also added and removed whole.
+// and also added and removed whole. An item's place in the list (`position`) only changes with another item's, so the
+// guard swaps the first two items for it.
+// The decision table grids (ag-grid) mark rows ag-grid draws itself, after the first change detection: the guard
+// counts a grid that got row changes from its panel (`decision-grid--diff-rows`), and the grid specs check the rows.
 // A panel shows some fields only for some values of another (a one-time schedule hides its repeat settings). The
 // guard opens such a field with a version that shows it. The Schedule projection drops what the scheduler ignores (the
 // repeat and end settings of a one-time run, the end value of another end type, weekdays outside "days" and "weeks"),
@@ -43,10 +52,22 @@ const WITHOUT_PANEL: Partial<Record<NodeType, string>> = {
 };
 
 /**
- * Panels whose field marks come in a later step of this feature (the decision tables with their grids). This list must
- * be empty once that step is done.
+ * Panels whose field marks come in a later step of this feature (the other tabs of the Classification Decision Table).
+ * This list must be empty once that step is done.
  */
-const MARKS_PENDING: readonly NodeType[] = [NodeType.TABLE, NodeType.CLASSIFICATION_TABLE];
+const MARKS_PENDING: readonly NodeType[] = [NodeType.CLASSIFICATION_TABLE];
+
+/**
+ * The fields of a pending panel that are marked already, by their top-level name: they are guarded now, the rest of the
+ * panel waits in `MARKS_PENDING`. The Classification Decision Table's header and its Decision Table tab are marked; its
+ * Pre / Post-computation and Prompt library tabs come later.
+ */
+const MARKED_WHILE_PENDING: Partial<Record<NodeType, readonly FieldName[]>> = {
+    [NodeType.CLASSIFICATION_TABLE]: ['node_name', 'default_next_node', 'next_error_node', 'condition_groups'],
+};
+
+/** Item fields that change only together with another item's: the place in the list. */
+const ORDER_FIELDS: ReadonlySet<string> = new Set(['position']);
 
 /**
  * The version node a panel is opened with, where the live graph fixture's node hides fields: it must show every field
@@ -55,6 +76,8 @@ const MARKS_PENDING: readonly NodeType[] = [NodeType.TABLE, NodeType.CLASSIFICAT
 const VERSION_NODES: Partial<Record<NodeType, () => NodeModel>> = {
     [NodeType.AGENT]: () => agentNodeWithTasks(),
     [NodeType.SCHEDULE_TRIGGER]: () => scheduleNodeWith({ intervalUnit: 'weeks', weekdays: ['mon', 'wed'] }),
+    [NodeType.TABLE]: () => withSecondConditionGroup(NodeType.TABLE),
+    [NodeType.CLASSIFICATION_TABLE]: () => withSecondConditionGroup(NodeType.CLASSIFICATION_TABLE),
 };
 
 /** Fields a panel shows only for some values of another field, each with a version node that shows it. */
@@ -97,12 +120,24 @@ const LAYOUTS = [
 const GUARDED_TYPES = Object.values(NodeType).filter(
     (type) => Object.hasOwn(PANEL_COMPONENT_MAP, type) && !MARKS_PENDING.includes(type)
 );
+const PARTLY_GUARDED_TYPES = MARKS_PENDING.filter((type) => Object.hasOwn(MARKED_WHILE_PENDING, type));
 
 // jsdom has no ResizeObserver; the decision table panels' directives only need it to exist.
 class ResizeObserverStub {
     observe(): void {}
     unobserve(): void {}
     disconnect(): void {}
+}
+
+/** The fixture's decision table with a second group after its own, so the groups can swap places. */
+function withSecondConditionGroup(type: NodeType.TABLE | NodeType.CLASSIFICATION_TABLE): NodeModel {
+    const node = liveNodeOfType(type) as DecisionTableNodeModel | ClassificationDecisionTableNodeModel;
+    const [first] = node.data.table.condition_groups;
+    const second: ConditionGroup = { ...first, group_name: 'second', route_code: 'B', order: 2 };
+    return {
+        ...node,
+        data: { ...node.data, table: { ...node.data.table, condition_groups: [first, second] } },
+    } as NodeModel;
 }
 
 function withKeyValueEntries(entries: KeyValueNodeModel['data']['entries']): NodeModel {
@@ -140,7 +175,8 @@ interface GuardCase {
     name: string;
     /** The version node the panel shows. */
     node: NodeModel;
-    change: FieldChange;
+    /** What a restore changes: one field, or the two places of a swap. */
+    changes: FieldChange[];
 }
 
 /**
@@ -164,7 +200,7 @@ function guardCasesOf(type: NodeType): GuardCase[] {
 function wholeFieldCase(type: NodeType, field: FieldName, defaultNode: NodeModel): GuardCase {
     const node = FIELD_VERSION_NODES[type]?.[field]?.() ?? defaultNode;
     const version = versionValueOf(type, field, node);
-    return { field, name: field, node, change: fieldChange(field, otherValueThan(version), version) };
+    return { field, name: field, node, changes: [fieldChange(field, otherValueThan(version), version)] };
 }
 
 /**
@@ -188,34 +224,47 @@ function itemCases(
         field: itemField,
         name: `${itemField} removed by a restore`,
         node,
-        change: {
-            path: itemPath(canvasOnlyKey),
-            field: itemField,
-            status: 'deleted',
-            current: firstItem,
-            version: null,
-        },
+        changes: [
+            { path: itemPath(canvasOnlyKey), field: itemField, status: 'deleted', current: firstItem, version: null },
+        ],
     };
     if (firstKey === undefined) return [removed];
     const added: GuardCase = {
         field: itemField,
         name: `${itemField} added by a restore`,
         node,
-        change: { path: itemPath(firstKey), field: itemField, status: 'added', current: null, version: firstItem },
+        changes: [{ path: itemPath(firstKey), field: itemField, status: 'added', current: null, version: firstItem }],
     };
+    const itemFieldChange = (key: string, part: string, current: unknown, version: unknown): FieldChange => ({
+        path: `${itemPath(key)}.${part}`,
+        field: `${itemField}.${part}`,
+        status: 'changed',
+        current,
+        version,
+    });
     const itemFields = Object.entries(firstItem as Record<string, unknown>).map(([part, version]): GuardCase => {
         const field = `${itemField}.${part}` as FieldName;
+        if (!ORDER_FIELDS.has(part)) {
+            return {
+                field,
+                name: field,
+                node,
+                changes: [itemFieldChange(firstKey, part, otherValueThan(version), version)],
+            };
+        }
+        const secondKey = keys[1];
+        if (secondKey === undefined) {
+            throw new Error(`${collection}: give VERSION_NODES a version node with two items, so they can swap places`);
+        }
+        const secondVersion = (items[secondKey] as Record<string, unknown>)[part];
         return {
             field,
-            name: field,
+            name: `${field} (two items swap places)`,
             node,
-            change: {
-                path: `${itemPath(firstKey)}.${part}`,
-                field,
-                status: 'changed',
-                current: otherValueThan(version),
-                version,
-            },
+            changes: [
+                itemFieldChange(firstKey, part, secondVersion, version),
+                itemFieldChange(secondKey, part, version, secondVersion),
+            ],
         };
     });
     return [...itemFields, added, removed];
@@ -226,9 +275,15 @@ function casesToMarkOf(type: NodeType): GuardCase[] {
     return guardCasesOf(type).filter(({ field }) => !Object.hasOwn(NO_MARK_ON_PURPOSE[type] ?? {}, field));
 }
 
-/** How many marks the panel of `node` shows on the Changes tab when a restore makes `change` alone. */
-function shownMarkCount(type: NodeType, node: NodeModel, change: FieldChange, expanded: boolean): number {
-    const fixture = openPanelOnChangesTab(PANEL_COMPONENT_MAP[type], node, [change], { expanded });
+/** The cases of a pending type whose field is marked already (`MARKED_WHILE_PENDING`). */
+function markedCasesOfPending(type: NodeType): GuardCase[] {
+    const marked = MARKED_WHILE_PENDING[type] ?? [];
+    return casesToMarkOf(type).filter(({ field }) => marked.includes(field.split(/[.[]/)[0] as FieldName));
+}
+
+/** How many marks the panel of `node` shows on the Changes tab when a restore makes `changes` alone. */
+function shownMarkCount(type: NodeType, node: NodeModel, changes: FieldChange[], expanded: boolean): number {
+    const fixture = openPanelOnChangesTab(PANEL_COMPONENT_MAP[type], node, changes, { expanded });
     LOAD_OPTIONS[type]?.();
     fixture.detectChanges();
     const count = (fixture.nativeElement as HTMLElement).querySelectorAll(SHOWN_DIFF_MARKS).length;
@@ -267,24 +322,29 @@ describe('Node panel field marks: drift guard', () => {
         }
     });
 
-    it.each(GUARDED_TYPES)(
+    it.each([...GUARDED_TYPES, ...PARTLY_GUARDED_TYPES])(
         'opens %s with an item of each keyed collection, so their item fields are checked',
         (type) => {
-            const collections = guardCasesOf(type)
-                .filter(({ change }) => change.status === 'deleted')
+            const statusesOf = (changes: FieldChange[]) => changes.map(({ status }) => status);
+            const cases = MARKS_PENDING.includes(type) ? markedCasesOfPending(type) : guardCasesOf(type);
+            const collections = cases
+                .filter(({ changes }) => statusesOf(changes).includes('deleted'))
                 .map(({ field }) => field);
 
             for (const collection of collections) {
                 expect(
-                    guardCasesOf(type).some(({ field, change }) => field === collection && change.status === 'added'),
+                    cases.some(({ field, changes }) => field === collection && statusesOf(changes).includes('added')),
                     `${type}: give VERSION_NODES a version node with an item of ${collection}`
                 ).toBe(true);
             }
         }
     );
 
-    const CASES = GUARDED_TYPES.flatMap((type) =>
-        casesToMarkOf(type).flatMap((guardCase) =>
+    const CASES = [
+        ...GUARDED_TYPES.map((type) => ({ type, cases: casesToMarkOf(type) })),
+        ...PARTLY_GUARDED_TYPES.map((type) => ({ type, cases: markedCasesOfPending(type) })),
+    ].flatMap(({ type, cases }) =>
+        cases.flatMap((guardCase) =>
             LAYOUTS.map(({ layout, expanded }) => ({
                 type,
                 ...guardCase,
@@ -297,9 +357,9 @@ describe('Node panel field marks: drift guard', () => {
 
     it.each(CASES)(
         '$type panel, $layout, marks a change of $name',
-        ({ type, name, node, change, layout, expanded, panel }) => {
+        ({ type, name, node, changes, layout, expanded, panel }) => {
             expect(
-                shownMarkCount(type, node, change, expanded),
+                shownMarkCount(type, node, changes, expanded),
                 `${panel} (${layout}) shows nothing when a restore changes ${name}: wrap the field in ` +
                     '<app-diff-field-mark> (or give its rows a status), or add it to NO_MARK_ON_PURPOSE with the reason'
             ).toBeGreaterThan(0);
@@ -315,16 +375,28 @@ describe('Node panel field marks: drift guard', () => {
             expect(version.length, `the ${field} of the ${type} case need two rows to reorder`).toBeGreaterThan(1);
 
             expect(
-                shownMarkCount(type, node, fieldChange(field, [...version].reverse(), version), expanded),
+                shownMarkCount(type, node, [fieldChange(field, [...version].reverse(), version)], expanded),
                 `${PANEL_COMPONENT_MAP[type].name.replace(/^_/, '')} (${layout}) shows nothing when a restore ` +
                     `only reorders ${field}: its rows are paired by key, so show the order change (a note)`
             ).toBeGreaterThan(0);
         }
     );
 
+    it('guards only fields a pending panel shows, and every one it names', () => {
+        for (const [type, fields] of Object.entries(MARKED_WHILE_PENDING)) {
+            const diffed = guardCasesOf(type as NodeType).map(({ field }) => field.split(/[.[]/)[0]);
+            for (const field of fields ?? []) {
+                expect(
+                    diffed,
+                    `${field} is not a diffed field of ${type}: remove it from MARKED_WHILE_PENDING`
+                ).toContain(field);
+            }
+        }
+    });
+
     it.each(MARKS_PENDING)('%s is still pending: some diffed field of its panel has no mark yet', (type) => {
-        const allMarked = casesToMarkOf(type).every(({ node, change }) =>
-            LAYOUTS.every(({ expanded }) => shownMarkCount(type, node, change, expanded) > 0)
+        const allMarked = casesToMarkOf(type).every(({ node, changes }) =>
+            LAYOUTS.every(({ expanded }) => shownMarkCount(type, node, changes, expanded) > 0)
         );
 
         expect(allMarked, `Every diffed field of the ${type} panel is marked: remove ${type} from MARKS_PENDING`).toBe(

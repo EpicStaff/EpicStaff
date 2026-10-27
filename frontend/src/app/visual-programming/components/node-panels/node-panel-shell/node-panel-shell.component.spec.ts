@@ -511,6 +511,7 @@ describe('NodePanelShellComponent', () => {
                     ),
                     connections: new Map(),
                     versionOnlyPortIds: new Set(),
+                    nodeIdByKey: new Map(),
                 }
             );
             TestBed.inject(FlowService).setFlow({

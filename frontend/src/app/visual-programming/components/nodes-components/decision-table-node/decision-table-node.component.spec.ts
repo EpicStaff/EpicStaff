@@ -40,6 +40,7 @@ describe('DecisionTableNodeComponent', () => {
                 nodes: new Map([[UNION_TABLE.id, { status: 'changed', fields: [], missingReferences: [] }]]),
                 connections: new Map(),
                 versionOnlyPortIds: new Set(diffCanvas.versionOnlyPortIds),
+                nodeIdByKey: new Map(),
             }
         );
         fixture = TestBed.createComponent(DecisionTableNodeComponent);

@@ -3,6 +3,7 @@ import { CustomPythonCode, NodeType } from '@shared/models';
 import { DEFAULT_KEY_VALUE_MODE, MISSING_END_OUTPUT_MAP } from '../../core/constants/default-node-data';
 import { findCdtSection } from '../../core/models/cdt-section.model';
 import { ComputationConfig } from '../../core/models/classification-decision-table.model';
+import { ConditionGroup } from '../../core/models/decision-table.model';
 import { AgentNodeModel, BaseNodeModel, NodeModel } from '../../core/models/node.model';
 import { ScheduleTriggerNodeData } from '../../core/models/schedule-trigger.model';
 import { InlineSurface } from '../../core/models/task-node.model';
@@ -236,14 +237,12 @@ export const SEMANTIC_PROJECTIONS = {
     [NodeType.TABLE]: {
         project: (node, context) => {
             const table = node.data.table;
-            // Invalid groups are never saved.
-            const groups = sortedByOrder((table.condition_groups ?? []).filter((group) => group.valid !== false));
             return {
                 node_name: nodeName(node),
                 condition_groups: keyedBy(
-                    groups,
-                    (group) => group.group_name,
-                    (group, index) => ({
+                    comparedConditionGroups(NodeType.TABLE, table.condition_groups ?? []),
+                    ({ key }) => key,
+                    ({ group }, index) => ({
                         position: index + 1,
                         group_type: group.group_type,
                         expression: emptyToNull(group.expression),
@@ -281,9 +280,9 @@ export const SEMANTIC_PROJECTIONS = {
                 }),
                 post_use_storage: table.post_use_storage ?? false,
                 condition_groups: keyedBy(
-                    sortedByOrder(table.condition_groups ?? []),
-                    (group) => group.group_name,
-                    (group, index) => ({
+                    comparedConditionGroups(NodeType.CLASSIFICATION_TABLE, table.condition_groups ?? []),
+                    ({ key }) => key,
+                    ({ group }, index) => ({
                         position: index + 1,
                         expression: emptyToNull(group.expression),
                         prompt_id: emptyToNull(group.prompt_id),
@@ -357,12 +356,16 @@ function keyedBy<TItem>(
 ): Record<string, Projection> {
     const collection: Record<string, Projection> = Object.create(null);
     items.forEach((item, index) => {
-        const baseKey = keyOf(item);
-        let key = baseKey;
-        for (let repeat = 2; key in collection; repeat++) key = `${baseKey}#${repeat}`;
-        collection[key] = project(item, index);
+        collection[uniqueKey(keyOf(item), (key) => key in collection)] = project(item, index);
     });
     return collection;
+}
+
+/** `baseKey`, or with a `#2`, `#3`… suffix when it is taken already. */
+function uniqueKey(baseKey: string, isTaken: (key: string) => boolean): string {
+    let key = baseKey;
+    for (let repeat = 2; isTaken(key); repeat++) key = `${baseKey}#${repeat}`;
+    return key;
 }
 
 /** Secrets are compared by their resolved names; on the version side, the names a restore re-links. */
@@ -435,6 +438,47 @@ function agentTasks(tasks: AgentNodeModel['data']['tasks']): Record<string, Proj
                 (task.contextRefs ?? []).map(positionOf).filter((position): position is number => position !== null)
             ),
         })
+    );
+}
+
+/** A condition group of a decision table, with its key in the diff. */
+export interface KeyedConditionGroup<TGroup extends ConditionGroup> {
+    group: TGroup;
+    /**
+     * Its item key in the diff (`condition_groups[name=<key>]`): its name as stored, with `#2`, `#3`… on a repeated
+     * name, counted in evaluation order; `null` for a group the diff leaves out (an invalid Decision Table group: it is
+     * never saved). A grid finds a group's row changes by this key, never by its name.
+     */
+    key: string | null;
+}
+
+/**
+ * Every condition group of a decision table in evaluation order (`order`, then list position), each with its key in
+ * the diff. A group's place in this list (from 1) is the row number the Decision Table grid shows.
+ */
+export function conditionGroupDiffKeys<TGroup extends ConditionGroup>(
+    type: NodeType.TABLE | NodeType.CLASSIFICATION_TABLE,
+    groups: readonly TGroup[]
+): KeyedConditionGroup<TGroup>[] {
+    const taken = new Set<string>();
+    return sortedByOrder(groups).map((group) => {
+        if (type === NodeType.TABLE && group.valid === false) return { group, key: null };
+        const key = uniqueKey(group.group_name, (candidate) => taken.has(candidate));
+        taken.add(key);
+        return { group, key };
+    });
+}
+
+/**
+ * The condition groups the diff compares, in evaluation order, each with its key: their `position` in the diff is
+ * their place in this list (from 1).
+ */
+function comparedConditionGroups<TGroup extends ConditionGroup>(
+    type: NodeType.TABLE | NodeType.CLASSIFICATION_TABLE,
+    groups: readonly TGroup[]
+): { group: TGroup; key: string }[] {
+    return conditionGroupDiffKeys(type, groups).filter(
+        (keyed): keyed is { group: TGroup; key: string } => keyed.key !== null
     );
 }
 

@@ -175,6 +175,7 @@
             class="decision-grid ag-theme-quartz-dark"
             [class.empty-state]="isEmpty()"
             style="width: 100%"
+            [appConditionGroupRowTooltips]="rowChanges()"
             [rowData]="displayedRowData()"
             [columnDefs]="columnDefs"
             [defaultColDef]="defaultColDef"

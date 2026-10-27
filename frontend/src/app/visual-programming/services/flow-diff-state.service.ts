@@ -56,6 +56,14 @@ export class FlowDiffStateService {
         return this.state()?.connections.get(connectionId) ?? null;
     }
 
+    /**
+     * The canvas id of the node a node reference in a field change names (its match key, `nodeRef`); `null` off a diff
+     * canvas or for a key no node has.
+     */
+    public nodeIdOfKey(key: string): string | null {
+        return this.state()?.nodeIdByKey.get(key) ?? null;
+    }
+
     /** Whether only the version has this port of a node on both sides: a route a restore adds. */
     public isVersionOnlyPort(portId: string): boolean {
         return this.state()?.versionOnlyPortIds.has(portId) ?? false;

@@ -66,7 +66,8 @@ export function routeCodeCellStatus(
  * ag-grid and open the text editor.
  *
  * The tooltip opens to the left, away from the Continue column that sits
- * immediately to the right of this cell.
+ * immediately to the right of this cell. The icon carries `data-own-tooltip`
+ * (`OWN_TOOLTIP_ATTRIBUTE`): a version diff's cell tooltip stays closed over it.
  */
 @Component({
     selector: 'app-route-code-cell-renderer',
@@ -84,6 +85,7 @@ export function routeCodeCellStatus(
                     [class.cdt-route-code-cell__status--conflict]="isConflict()"
                     role="img"
                     [attr.aria-label]="current.message"
+                    data-own-tooltip
                 >
                     <app-help-tooltip
                         [text]="current.message"

@@ -38,34 +38,46 @@
                         class="panel-node-header"
                         [class.panel-node-header--collapsed]="headerCollapsed()"
                     >
-                        <app-custom-input
-                            label="Name"
-                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                            formControlName="node_name"
-                            placeholder="Node name"
-                            [readonly]="isReadOnly()"
-                            [transparent]="true"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'node_name'">
+                            <app-custom-input
+                                label="Name"
+                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                formControlName="node_name"
+                                placeholder="Node name"
+                                [readonly]="isReadOnly()"
+                                [transparent]="true"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
 
-                        <app-select
-                            label="Default Next Node"
-                            tooltipText="Fallback route when no condition matches"
-                            placeholder="Select Node"
-                            formControlName="default_next_node"
-                            [items]="availableNodeItems()"
-                            [readonly]="isReadOnly()"
-                            [transparent]="true"
-                        />
+                        <app-diff-field-mark
+                            [diffField]="'default_next_node'"
+                            [diffFormat]="routeTargetFormat"
+                        >
+                            <app-select
+                                label="Default Next Node"
+                                tooltipText="Fallback route when no condition matches"
+                                placeholder="Select Node"
+                                formControlName="default_next_node"
+                                [items]="availableNodeItems()"
+                                [readonly]="isReadOnly()"
+                                [transparent]="true"
+                            />
+                        </app-diff-field-mark>
 
-                        <app-select
-                            label="Error Next Node"
-                            tooltipText="Route taken if evaluation fails"
-                            placeholder="Select Node"
-                            formControlName="next_error_node"
-                            [items]="availableNodeItems()"
-                            [readonly]="isReadOnly()"
-                            [transparent]="true"
-                        />
+                        <app-diff-field-mark
+                            [diffField]="'next_error_node'"
+                            [diffFormat]="routeTargetFormat"
+                        >
+                            <app-select
+                                label="Error Next Node"
+                                tooltipText="Route taken if evaluation fails"
+                                placeholder="Select Node"
+                                formControlName="next_error_node"
+                                [items]="availableNodeItems()"
+                                [readonly]="isReadOnly()"
+                                [transparent]="true"
+                            />
+                        </app-diff-field-mark>
                     </div>
 
                     <!-- Tabs row -->
@@ -144,6 +156,7 @@
                             [domainKeys]="domainKeys()"
                             [routePortIdsWithTarget]="routePortIdsWithTarget()"
                             [readonly]="isReadOnly()"
+                            [rowChanges]="rowChanges()"
                             (conditionGroupsChange)="onConditionGroupsChange($event)"
                             (sectionsChange)="onSectionsChange($event)"
                             (enableContinueRequest)="onEnableContinueRequest($event)"

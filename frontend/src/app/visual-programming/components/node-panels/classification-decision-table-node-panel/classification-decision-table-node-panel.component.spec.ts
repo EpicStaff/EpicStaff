@@ -83,6 +83,7 @@ class GridStubComponent {
     readonly domainKeys = input<unknown>();
     readonly routePortIdsWithTarget = input<ReadonlySet<string>>(new Set());
     readonly readonly = input(false);
+    readonly rowChanges = input<unknown>(null);
     readonly conditionGroupsChange = output<ConditionGroup[]>();
     readonly sectionsChange = output<unknown>();
     readonly enableContinueRequest = output<CdtEnableContinueRequest>();

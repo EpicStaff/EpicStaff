@@ -1,5 +1,5 @@
 import { _IdGenerator, AriaDescriber } from '@angular/cdk/a11y';
-import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
+import { OverlayModule } from '@angular/cdk/overlay';
 import { Component, computed, effect, ElementRef, inject, input, signal } from '@angular/core';
 
 import { NODE_PANEL_DIFF } from '../../core/providers/node-panel-diff.token';
@@ -11,19 +11,16 @@ import {
     fieldValueSegments,
     showsFieldMarks,
 } from '../../utils/diff';
+import {
+    currentValueDescription,
+    DIFF_MARK_TOOLTIP_POSITIONS,
+    DiffMarkTooltipComponent,
+} from './diff-mark-tooltip.component';
 
 /** The two sides of a changed value. */
 export type DiffFieldMarkChange = Pick<FieldChange, 'current' | 'version'>;
 
 const BADGE_LABEL = 'Restore changes this field';
-// Trial: the label above the value in the tooltip. Drop it here, in the template and in the styles to remove it.
-const CURRENT_VALUE_LABEL = 'Current canvas';
-
-/** Above the field, centred; below it when there is no room above. */
-const TOOLTIP_POSITIONS: ConnectedPosition[] = [
-    { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom', offsetY: -8 },
-    { originX: 'center', originY: 'bottom', overlayX: 'center', overlayY: 'top', offsetY: 8 },
-];
 
 /**
  * Marks a field of a node panel that a restore of the previewed version changes: a yellow border with a pen
@@ -55,7 +52,7 @@ const TOOLTIP_POSITIONS: ConnectedPosition[] = [
  */
 @Component({
     selector: 'app-diff-field-mark, [appDiffFieldMark]',
-    imports: [OverlayModule],
+    imports: [OverlayModule, DiffMarkTooltipComponent],
     template: `
         <ng-content />
         @if (change() !== null) {
@@ -86,21 +83,10 @@ const TOOLTIP_POSITIONS: ConnectedPosition[] = [
             (overlayKeydown)="onOverlayKeydown($event)"
             (detach)="close()"
         >
-            <div
-                class="diff-field-mark__tooltip"
-                aria-hidden="true"
-            >
-                @if (diffHint(); as hint) {
-                    <span class="diff-field-mark__tooltip-hint">{{ hint }}</span>
-                } @else {
-                    <span class="diff-field-mark__tooltip-label">{{ currentValueLabel }}</span>
-                    <span class="diff-field-mark__tooltip-value">
-                        @for (segment of segments(); track $index) {
-                            <span [class.diff-field-mark__struck]="segment.struck">{{ segment.text }}</span>
-                        }
-                    </span>
-                }
-            </div>
+            <app-diff-mark-tooltip
+                [hint]="diffHint()"
+                [segments]="segments()"
+            />
         </ng-template>
     `,
     styleUrls: ['./diff-field-mark.component.scss'],
@@ -177,21 +163,17 @@ export class DiffFieldMarkComponent {
             this.diffFormat() ?? undefined
         );
     });
-    // Built from the shown segments, so it is cut like the tooltip: a screen reader is not read a whole long value.
     private readonly description = computed(() => {
         if (this.change() === null) return null;
         const hint = this.diffHint();
         if (hint !== null) return this.isRow ? `${BADGE_LABEL}. ${hint}` : hint;
-        const currentValue = `${CURRENT_VALUE_LABEL}: ${this.segments()
-            .map((segment) => segment.text)
-            .join('')}`;
+        const currentValue = currentValueDescription(this.segments());
         return this.isRow ? `${BADGE_LABEL}. ${currentValue}` : currentValue;
     });
     protected readonly isOpen = signal(false);
 
     protected readonly badgeLabel = BADGE_LABEL;
-    protected readonly currentValueLabel = CURRENT_VALUE_LABEL;
-    protected readonly tooltipPositions = TOOLTIP_POSITIONS;
+    protected readonly tooltipPositions = DIFF_MARK_TOOLTIP_POSITIONS;
     protected readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
     protected readonly labelId = inject(_IdGenerator).getId('diff-field-mark-label-');
     /** The attribute form, e.g. on a table row (the element form is `<app-diff-field-mark>`). */

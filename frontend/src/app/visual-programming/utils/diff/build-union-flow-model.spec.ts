@@ -414,11 +414,20 @@ describe('buildUnionFlowModel', () => {
             expect(stateOf('Task v2').missingReferences).toEqual([]);
         });
 
+        it('keeps the canvas side of a node for its panel, none for a node only the version has', () => {
+            const model = unionOf(version, live);
+            const stateOf = (name: string) =>
+                model.diffState.nodes.get(model.flow.nodes.find((node) => node.node_name === name)!.id)!;
+
+            expect(stateOf('Task v2').currentNode?.node_name).toBe('Task');
+            expect(stateOf('Agent').currentNode).toBeUndefined();
+        });
+
         it('gives a node only on the canvas neither field changes nor missing references', () => {
             const model = unionOf(version, live, new Map([[versionPythonId, [missingAgent]]]));
 
             const end = model.diffState.nodes.get(model.flow.nodes.find((node) => node.type === NodeType.END)!.id);
-            expect(end).toEqual({ status: 'deleted', fields: [], missingReferences: [] });
+            expect(end).toMatchObject({ status: 'deleted', fields: [], missingReferences: [] });
         });
 
         it('draws every edge of both sides once, between the union nodes, with its status', () => {
@@ -446,6 +455,29 @@ describe('buildUnionFlowModel', () => {
                 const unionId = model.unionIdByVersionId.get(versionNode.id);
                 expect(model.flow.nodes.find((node) => node.id === unionId)?.nodeUuid).toBe(versionNode.nodeUuid);
             }
+        });
+
+        it('finds the union node a route of a field change names, on both sides and on the canvas only', () => {
+            const model = unionOf(
+                load({
+                    decision_table_node_list: [liveDecisionTable],
+                    task_node_list: [liveTask],
+                    end_node_list: [liveEnd],
+                }),
+                load({
+                    decision_table_node_list: [{ ...liveDecisionTable, default_next_node_id: ID.python }],
+                    python_node_list: [{ ...livePython, uuid: 'canvas-only-python' }],
+                    task_node_list: [liveTask],
+                    end_node_list: [liveEnd],
+                })
+            );
+            const table = nodeOf(model, UUID.decisionTable);
+            const route = model.diffState.nodes
+                .get(table.id)!
+                .fields.find((change) => change.field === 'default_next_node')!;
+
+            expect(nameOf(model, model.diffState.nodeIdByKey.get(route.current as string)!)).toBe('Python');
+            expect(nameOf(model, model.diffState.nodeIdByKey.get(route.version as string)!)).toBe('Task');
         });
 
         it('points the routes of a table at the union nodes', () => {

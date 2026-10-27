@@ -1009,6 +1009,7 @@ describe('FlowGraphComponent', () => {
             ]),
             connections: new Map(),
             versionOnlyPortIds: new Set(),
+            nodeIdByKey: new Map(),
         };
 
         function mountDiff(flowState: FlowModel, diffState: FlowDiffCanvasState | null = DIFF_STATE) {
@@ -1037,6 +1038,7 @@ describe('FlowGraphComponent', () => {
                 nodes: new Map([[START.id, { status, fields, missingReferences: [] }]]),
                 connections: new Map(),
                 versionOnlyPortIds: new Set(),
+                nodeIdByKey: new Map(),
             });
 
             /** The variables diff each opened Domain window was given (Start node, then the toolbar button). */
@@ -1110,6 +1112,7 @@ describe('FlowGraphComponent', () => {
                         [removedEdge.id, 'deleted'],
                     ]),
                     versionOnlyPortIds: new Set(),
+                    nodeIdByKey: new Map(),
                 }
             ).componentInstance;
             select(component, [KEPT_NOTE.id, otherNote.id, grownTable.id]);
@@ -1765,6 +1768,7 @@ describe('FlowGraphComponent', () => {
                 ),
                 connections: new Map(Object.entries(edgeStatuses)),
                 versionOnlyPortIds: new Set(),
+                nodeIdByKey: new Map(),
             };
             fixture = mount(
                 edgeStatuses !== null,

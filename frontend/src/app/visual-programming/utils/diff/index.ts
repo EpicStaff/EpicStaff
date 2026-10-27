@@ -2,6 +2,15 @@ export { buildFlowDiff } from './build-flow-diff';
 export type { FlowDiffCanvasState, UnionFlowModel, UnionNodeDiffState } from './build-union-flow-model';
 export { buildUnionFlowModel } from './build-union-flow-model';
 export type {
+    ConditionGroupRowChanges,
+    ConditionGroupRowMark,
+    GroupFieldColumn,
+    GroupFieldColumns,
+    GroupFieldKeyColumns,
+    RemovedConditionGroup,
+} from './condition-group-row-changes';
+export { conditionGroupRowChanges } from './condition-group-row-changes';
+export type {
     CodeChange,
     CodeFieldName,
     DisplaySegment,
@@ -29,6 +38,7 @@ export {
 export type { FieldName } from './field-display';
 export { FIELD_DISPLAY, fieldKind } from './field-display';
 export { buildFrontendFoundReferences, buildVersionMissingReferences } from './missing-references';
+export { conditionGroupDiffKeys } from './semantic-projections';
 export type {
     EdgeDiffEntry,
     EdgeDiffStatus,

@@ -25,6 +25,7 @@ const DIFF_CANVAS: FlowDiffCanvasState = {
     ]),
     connections: new Map([['connection-deleted', 'deleted']]),
     versionOnlyPortIds: new Set(['table_decision-out-yes']),
+    nodeIdByKey: new Map([['uuid:end', 'node-unchanged']]),
 };
 
 describe('FlowDiffStateService', () => {
@@ -66,6 +67,14 @@ describe('FlowDiffStateService', () => {
 
         service.setState(null);
         expect(service.nodeDiff('node-changed')).toBeNull();
+    });
+
+    it('finds the canvas node a node reference of a field change names, only while a diff canvas is shown', () => {
+        expect(service.nodeIdOfKey('uuid:end')).toBeNull();
+
+        service.setState(DIFF_CANVAS);
+        expect(service.nodeIdOfKey('uuid:end')).toBe('node-unchanged');
+        expect(service.nodeIdOfKey('uuid:other')).toBeNull();
     });
 
     it('has no status for an id that is not on the diff canvas', () => {

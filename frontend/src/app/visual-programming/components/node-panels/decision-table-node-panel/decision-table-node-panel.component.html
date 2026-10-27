@@ -6,34 +6,46 @@
                 class="form-container"
             >
                 <div class="form-header">
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                        icon="help-circle"
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                        [readonly]="isReadOnly()"
-                    ></app-custom-input>
+                    <app-diff-field-mark [diffField]="'node_name'">
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                            icon="help-circle"
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                            [errorMessage]="getNodeNameErrorMessage()"
+                            [readonly]="isReadOnly()"
+                        ></app-custom-input>
+                    </app-diff-field-mark>
 
-                    <app-select
-                        label="Default Next Node"
-                        tooltipText="Optional fallback branch when no condition matches"
-                        placeholder="-- Select Node --"
-                        formControlName="default_next_node"
-                        [items]="availableNodeItems()"
-                        [readonly]="isReadOnly()"
-                    />
+                    <app-diff-field-mark
+                        [diffField]="'default_next_node'"
+                        [diffFormat]="routeTargetFormat"
+                    >
+                        <app-select
+                            label="Default Next Node"
+                            tooltipText="Optional fallback branch when no condition matches"
+                            placeholder="-- Select Node --"
+                            formControlName="default_next_node"
+                            [items]="availableNodeItems()"
+                            [readonly]="isReadOnly()"
+                        />
+                    </app-diff-field-mark>
 
-                    <app-select
-                        label="Error Next Node"
-                        tooltipText="Optional error branch if decision evaluation fails"
-                        placeholder="-- Select Node --"
-                        formControlName="next_error_node"
-                        [items]="availableNodeItems()"
-                        [readonly]="isReadOnly()"
-                    />
+                    <app-diff-field-mark
+                        [diffField]="'next_error_node'"
+                        [diffFormat]="routeTargetFormat"
+                    >
+                        <app-select
+                            label="Error Next Node"
+                            tooltipText="Optional error branch if decision evaluation fails"
+                            placeholder="-- Select Node --"
+                            formControlName="next_error_node"
+                            [items]="availableNodeItems()"
+                            [readonly]="isReadOnly()"
+                        />
+                    </app-diff-field-mark>
                     <div class="convert-cdt-field">
                         <app-button
                             type="outline-primary"
@@ -52,6 +64,7 @@
                         [activeColor]="activeColor"
                         [currentNodeId]="node().id"
                         [readonly]="isReadOnly()"
+                        [rowChanges]="rowChanges()"
                         title="Condition groups define branching paths evaluated in order"
                         (conditionGroupsChange)="onConditionGroupsChange($event)"
                     />

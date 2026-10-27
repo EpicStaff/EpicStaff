@@ -91,18 +91,23 @@ $badge-size: 16px;
 /// element must be positioned. Also used by the mark itself around a value box that clips (`marked-frame`).
 @mixin corner-badge {
     &::after {
-        // The pen of tabler's `.ti-pencil`, with empty alternative text: the mark names the field for screen
-        // readers (role="group", aria-labelledby).
-        @include badge-look;
-        content: '\eb04' / '';
+        @include pen-badge;
         position: absolute;
         top: calc($badge-size / -2);
         right: calc($badge-size / -2);
-        // The icon font by name, as a pseudo-element cannot take the `ti` class; no `text-*` token fits a glyph.
-        font-family: 'tabler-icons';
-        font-style: normal;
-        pointer-events: none;
     }
+}
+
+/// The pen badge as the content of a pseudo-element, without its position.
+@mixin pen-badge {
+    // The pen of tabler's `.ti-pencil`, with empty alternative text: the mark names the field for screen readers
+    // (role="group", aria-labelledby; a grid row's name cell).
+    @include badge-look;
+    content: '\eb04' / '';
+    // The icon font by name, as a pseudo-element cannot take the `ti` class; no `text-*` token fits a glyph.
+    font-family: 'tabler-icons';
+    font-style: normal;
+    pointer-events: none;
 }
 
 /// How far outside its row a row frame (`row-frame`) and the row's badge sit. A row sets it when its own content
@@ -148,5 +153,48 @@ $row-frame-offset: var(--diff-row-frame-offset, 0px);
     // Its own stacking context, so nothing inside it (an editor's own layers) is drawn above the frame.
     :host-context(#{$context}) #{$content} {
         z-index: 0;
+    }
+}
+
+/// The row marks of an ag-grid table (the decision table grids), included under `::ng-deep` in the grid's styles; the
+/// rows get their classes from `condition-group-row-marks.ts`. A row a restore changes or adds gets a frame on its edge,
+/// over its cells, pinned ones too, so it keeps its width. The grid's viewport clips whatever sticks out of a row, so
+/// the pen badge of a changed row cannot sit on the frame's corner as in other tables: it sits inside the row's first
+/// cell, at its left. A row a restore removes: red, struck and faded, as the removed rows of the other tables.
+/// @param $first-cell the selector of the cell that holds the badge.
+@mixin grid-row-marks($first-cell) {
+    .ag-row.condition-group-row--changed {
+        @include row-frame(var(--color-diff-changed));
+    }
+
+    .ag-row.condition-group-row--added {
+        @include row-frame(var(--color-diff-added));
+    }
+
+    .ag-row.condition-group-row--changed,
+    .ag-row.condition-group-row--added {
+        // Above the pinned cells, which ag-grid lifts to z-index 2 and 3.
+        &::before {
+            z-index: 4;
+        }
+    }
+
+    .ag-row.condition-group-row--changed #{$first-cell}::after {
+        @include pen-badge;
+        position: absolute;
+        top: 50%;
+        left: 4px;
+        transform: translateY(-50%);
+    }
+
+    // `!important`: the grids colour cell text inline (`cellStyle`) and inside their cell renderers.
+    .ag-row.condition-group-row--removed .ag-cell {
+        opacity: var(--diff-deleted-opacity);
+
+        &,
+        * {
+            color: var(--color-diff-deleted) !important;
+            text-decoration: line-through;
+        }
     }
 }

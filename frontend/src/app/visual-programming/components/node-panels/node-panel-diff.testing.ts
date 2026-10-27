@@ -27,7 +27,8 @@ import { TestPayloadSectionComponent } from './shared/test-payload-section/test-
 
 /**
  * Everything a version diff shows on a field of a node panel: a field mark (element or row form), an Input List or
- * Key-Value row a restore adds or removes, the note that a restore reorders the Key-Value entries, and a code diff.
+ * Key-Value row a restore adds or removes, the note that a restore reorders the Key-Value entries, the row marks of a
+ * decision table grid, and a code diff.
  */
 export const SHOWN_DIFF_MARKS = [
     '.diff-field-mark--shown',
@@ -38,6 +39,8 @@ export const SHOWN_DIFF_MARKS = [
     '.entry-order-note',
     '.att-row--added',
     '.att-row--removed',
+    // A decision table grid given row changes; ag-grid draws the rows themselves later (the grid specs check them).
+    '.decision-grid--diff-rows',
     'app-code-diff-view',
 ].join(', ');
 

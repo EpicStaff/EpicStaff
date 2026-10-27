@@ -16,14 +16,19 @@ import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers
 import { Condition, ConditionGroup, DecisionTableNode } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { FlowService } from '../../../services/flow.service';
+import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import {
     MissingReferenceNoteComponent,
     ROUTE_DIFF_FIELDS,
 } from '../../missing-reference-note/missing-reference-note.component';
+import { routeTargetFormat } from '../shared/diff/route-target-format';
 import { DecisionTableGridComponent } from './decision-table-grid/decision-table-grid.component';
+import { decisionTableRowChanges } from './decision-table-grid/decision-table-row-changes';
 
 @Component({
     selector: 'app-decision-table-node-panel',
@@ -35,6 +40,7 @@ import { DecisionTableGridComponent } from './decision-table-grid/decision-table
         MissingReferenceNoteComponent,
         SelectComponent,
         ButtonComponent,
+        DiffFieldMarkComponent,
     ],
     templateUrl: './decision-table-node-panel.component.html',
     styleUrls: ['./decision-table-node-panel.component.scss'],
@@ -49,9 +55,25 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
     private confirmationDialogService = inject(ConfirmationDialogService);
     private undoRedoService = inject(UndoRedoService);
     private cdr = inject(ChangeDetectorRef);
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
+    private readonly diffState = inject(FlowDiffStateService);
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     protected readonly routeDiffFields = ROUTE_DIFF_FIELDS;
+    /** Changes tab of a version preview: what a restore does to the grid's rows; `null` anywhere else. */
+    protected readonly rowChanges = computed(() =>
+        decisionTableRowChanges(
+            this.panelDiff(),
+            this.conditionGroups(),
+            (key) => this.diffState.nodeIdOfKey(key),
+            this.routeTargetFormat
+        )
+    );
+    /** A route's tooltip names the node it leads to on the canvas. */
+    protected readonly routeTargetFormat = routeTargetFormat(
+        (key) => this.diffState.nodeIdOfKey(key),
+        () => this.flowService.nodes()
+    );
 
     public availableNodeItems = computed<SelectItem[]>(() => {
         const nodes = this.flowService.nodes();

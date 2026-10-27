@@ -62,6 +62,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { CdtExplanationStoreService } from '../../../services/cdt-explanation-store.service';
 import { FlowService } from '../../../services/flow.service';
+import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import { changesAnyFieldIn, codeChangeFor, FieldName } from '../../../utils/diff';
@@ -79,6 +80,7 @@ import {
 } from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
+import { routeTargetFormat } from '../shared/diff/route-target-format';
 import {
     CDT_HEADER_COLLAPSE_AT,
     CDT_HEADER_COLLAPSE_MIN_SCROLLABLE,
@@ -90,6 +92,7 @@ import { CdtDecisionTreeInput, CdtTreeLlmOption } from './cdt-decision-tree-dial
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
 import { explainKeyMovesForRuleEdit } from './cdt-decision-tree-dialog/cdt-explain.identity';
 import { CdtExportImportService } from './cdt-export-import.service';
+import { cdtRowChanges } from './classification-decision-table-grid/cdt-row-changes';
 import {
     CdtEnableContinueRequest,
     CdtRuleIdentityEdit,
@@ -161,6 +164,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     );
 
     private readonly panelDiff = inject(NODE_PANEL_DIFF);
+    private readonly diffState = inject(FlowDiffStateService);
     private flowService = inject(FlowService);
     private undoRedoService = inject(UndoRedoService);
 
@@ -189,6 +193,17 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public sections = signal<CdtSection[]>([]);
+    /** Changes tab of a version preview: what a restore does to the grid's rows; `null` anywhere else. */
+    protected readonly rowChanges = computed(() =>
+        cdtRowChanges(this.panelDiff(), this.conditionGroups(), this.sections(), (key) =>
+            this.diffState.nodeIdOfKey(key)
+        )
+    );
+    /** A route's tooltip names the node it leads to on the canvas. */
+    protected readonly routeTargetFormat = routeTargetFormat(
+        (key) => this.diffState.nodeIdOfKey(key),
+        () => this.flowService.nodes()
+    );
     public prompts = signal<Record<string, PromptConfig>>({});
     /**
      * Route-code output ports wired to a canvas node, resolved like the decision

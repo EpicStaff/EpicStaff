@@ -37,6 +37,11 @@ export interface UnionNodeDiffState {
     fields: readonly FieldChange[];
     /** Empty for deleted (canvas-only) nodes. */
     missingReferences: readonly MissingReference[];
+    /**
+     * The node as the current canvas has it, for what only that side tells (the real names of the decision table
+     * groups a restore removes); absent for added (version-only) nodes.
+     */
+    currentNode?: NodeModel;
 }
 
 /** The diff status of every node and connection of a union canvas, by its canvas id. */
@@ -48,6 +53,11 @@ export interface FlowDiffCanvasState {
      * decision table. A node only in the version has none here; its own status says it is added.
      */
     versionOnlyPortIds: ReadonlySet<string>;
+    /**
+     * The canvas id of every node by its match key (`NodeDiffEntry.key`), the value a node reference has in a field
+     * change (`nodeRef`), so a panel can name the node a route leads to.
+     */
+    nodeIdByKey: ReadonlyMap<string, string>;
 }
 
 export interface UnionFlowModel {
@@ -119,7 +129,12 @@ export function buildUnionFlowModel(diff: FlowDiff, createId: () => string = gen
     const nodeStates = new Map<string, UnionNodeDiffState>(
         diff.nodes.map((entry) => [
             unionIdByKey.get(entry.key)!,
-            { status: entry.status, fields: entry.fields, missingReferences: entry.missingReferences },
+            {
+                status: entry.status,
+                fields: entry.fields,
+                missingReferences: entry.missingReferences,
+                currentNode: entry.currentNode,
+            },
         ])
     );
 
@@ -156,7 +171,7 @@ export function buildUnionFlowModel(diff: FlowDiff, createId: () => string = gen
             nodes: placedNodes,
             connections: [...sidesByConnectionId.values()].map(({ connection }) => connection),
         },
-        diffState: { nodes: nodeStates, connections: connectionStates, versionOnlyPortIds },
+        diffState: { nodes: nodeStates, connections: connectionStates, versionOnlyPortIds, nodeIdByKey: unionIdByKey },
         unionIdByVersionId,
     };
 }

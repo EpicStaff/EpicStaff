@@ -1,0 +1,29 @@
+// The colours of the app's other tooltips (matTooltip), in both themes.
+.diff-field-mark__tooltip {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    max-width: 320px;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    background-color: var(--mat-tooltip-container-color);
+    color: var(--mat-tooltip-supporting-text-color);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    pointer-events: none;
+}
+
+// Muted from the tooltip's own text colour: the tooltip is dark in both themes.
+.diff-field-mark__tooltip-label {
+    color: color-mix(in srgb, var(--mat-tooltip-supporting-text-color) 60%, transparent);
+    font-size: var(--text-caption-size);
+    font-weight: var(--text-caption-weight);
+    line-height: var(--text-caption-line-height);
+}
+
+.diff-field-mark__struck {
+    text-decoration: line-through;
+}
