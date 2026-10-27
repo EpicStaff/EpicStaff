@@ -8,11 +8,8 @@ import { NEVER, Observable, of, Subject, throwError } from 'rxjs';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
-import {
-    RealtimeConfigDialogComponent,
-    RealtimeConfigDialogData,
-    RealtimeProvider,
-} from './realtime-config-dialog.component';
+import { RealtimeProvider } from '../realtime-config-form/realtime-config-form.component';
+import { RealtimeConfigDialogComponent, RealtimeConfigDialogData } from './realtime-config-dialog.component';
 
 const NO_AUTHORSHIP = { created_by: null, created_at: null, last_edited_by: null, last_edited_at: null };
 
@@ -75,35 +72,21 @@ class ResizeObserverStub {
 type Save = () => Observable<unknown>;
 
 interface StorageFake {
-    createConfig: Save;
     updateConfig: Save;
 }
 
-/** A storage whose saves stay in flight. */
-function pendingStorage(): StorageFake {
-    return { createConfig: () => NEVER, updateConfig: () => NEVER };
-}
-
 /**
- * Renders the dialog for `provider`; only that provider's `action` save answers through `save`, the others stay in
- * flight, so the banner shows only when the dialog sent the save to the right storage.
+ * Renders the edit dialog for `provider`'s stored config; only that provider's storage answers through `save`, the
+ * others stay in flight, so the banner shows only when the save went to the right storage.
  */
-function render(
-    provider: RealtimeProvider,
-    action: RealtimeConfigDialogData['action'],
-    save: Save
-): ComponentFixture<RealtimeConfigDialogComponent> {
+function render(provider: RealtimeProvider, save: Save): ComponentFixture<RealtimeConfigDialogComponent> {
     const storages: Record<RealtimeProvider, StorageFake> = {
-        openai: pendingStorage(),
-        elevenlabs: pendingStorage(),
-        gemini: pendingStorage(),
+        openai: { updateConfig: () => NEVER },
+        elevenlabs: { updateConfig: () => NEVER },
+        gemini: { updateConfig: () => NEVER },
     };
-    storages[provider][action === 'create' ? 'createConfig' : 'updateConfig'] = save;
-    const data: RealtimeConfigDialogData = {
-        action,
-        provider,
-        config: action === 'update' ? STORED_CONFIGS[provider] : null,
-    };
+    storages[provider].updateConfig = save;
+    const data: RealtimeConfigDialogData = { provider, config: STORED_CONFIGS[provider] };
 
     TestBed.configureTestingModule({
         providers: [
@@ -123,23 +106,15 @@ function render(
     });
     const fixture = TestBed.createComponent(RealtimeConfigDialogComponent);
     fixture.detectChanges();
-    if (action === 'create') {
-        nameControl(fixture, provider).setValue('new realtime config');
-    }
     return fixture;
 }
 
-function nameControl(
-    fixture: ComponentFixture<RealtimeConfigDialogComponent>,
-    provider: RealtimeProvider
-): { setValue(value: string): void } {
-    const component = fixture.componentInstance;
-    const forms = { openai: component.openaiForm, elevenlabs: component.elevenLabsForm, gemini: component.geminiForm };
-    return forms[provider].controls.custom_name;
-}
-
+/** Clicks the footer's save button, as a user would. */
 function submit(fixture: ComponentFixture<RealtimeConfigDialogComponent>): void {
-    fixture.componentInstance.onSubmit();
+    const saveButton = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.footer app-button')
+    ).find((button) => button.textContent!.includes('Save Changes'))!;
+    saveButton.querySelector('button')!.click();
     fixture.detectChanges();
 }
 
@@ -152,28 +127,24 @@ describe('RealtimeConfigDialogComponent save errors', () => {
     beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
     afterEach(() => vi.unstubAllGlobals());
 
-    it.each<[RealtimeProvider, RealtimeConfigDialogData['action']]>([
-        ['openai', 'create'],
-        ['openai', 'update'],
-        ['elevenlabs', 'create'],
-        ['elevenlabs', 'update'],
-        ['gemini', 'create'],
-        ['gemini', 'update'],
-    ])('shows the server message in the banner when a %s %s fails with 400', (provider, action) => {
-        const fixture = render(provider, action, () => throwError(() => SECRET_USE_REFUSAL));
+    it.each<RealtimeProvider>(['openai', 'elevenlabs', 'gemini'])(
+        'shows the server message in the banner when saving a %s config fails with 400',
+        (provider) => {
+            const fixture = render(provider, () => throwError(() => SECRET_USE_REFUSAL));
 
-        submit(fixture);
+            submit(fixture);
 
-        expect(bannerText(fixture)).toBe(SHOWN_REFUSAL);
-        expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
-    });
+            expect(bannerText(fixture)).toBe(SHOWN_REFUSAL);
+            expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
+        }
+    );
 
     it('clears the banner when the form is submitted again', () => {
         const save = vi
             .fn<Save>()
             .mockReturnValueOnce(throwError(() => SECRET_USE_REFUSAL))
             .mockReturnValueOnce(NEVER);
-        const fixture = render('openai', 'update', save);
+        const fixture = render('openai', save);
         submit(fixture);
         expect(bannerText(fixture)).not.toBe('');
 
@@ -187,10 +158,19 @@ describe('RealtimeConfigDialogComponent save errors', () => {
             status: 500,
             error: { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
         });
-        const fixture = render('openai', 'update', () => throwError(() => serverError));
+        const fixture = render('openai', () => throwError(() => serverError));
 
         submit(fixture);
 
         expect(bannerText(fixture)).toBe('Failed to save configuration.');
+    });
+
+    it('closes with true once the save succeeds', () => {
+        const fixture = render('gemini', () => of(GEMINI_CONFIG));
+
+        submit(fixture);
+
+        expect(TestBed.inject(DialogRef).close).toHaveBeenCalledWith(true);
+        expect(bannerText(fixture)).toBe('');
     });
 });
