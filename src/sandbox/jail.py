@@ -17,12 +17,11 @@ class Jail:
     read_exec: tuple[str, ...]
 
 
-def build_jail(*, exec_dir: Path, venv_path: Path, savefiles_root: Path) -> Jail:
+def build_jail(*, exec_dir: Path, venv_path: Path) -> Jail:
     read_write = (
         str(exec_dir.absolute()),
         str((exec_dir / "home").absolute()),
         str((exec_dir / "tmp").absolute()),
-        str(savefiles_root.absolute()),
     )
     read_exec = (
         str(venv_path.absolute()),

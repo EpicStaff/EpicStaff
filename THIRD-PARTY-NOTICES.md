@@ -3766,9 +3766,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-25T12:30:44Z UTC -->
-<!-- commit: a7c7cd0cbc9935318932329d5572ef8cf0a4e91a -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:4479f1e45def5816, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:d1d991c84d05eedb, manager:b4bef382144a5a4a, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, sandbox_new:4438d1e7c09f00dc, webhook:6e6a68286cd96f18 -->
+<!-- generated: 2026-10-26T13:22:53Z UTC -->
+<!-- commit: 255eb09d88e7d4ef0832371f02eee4925572383d -->
+<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:b1ab4ff5012d5ac4, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:d1d991c84d05eedb, manager:b4bef382144a5a4a, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, sandbox_new:4438d1e7c09f00dc, webhook:6e6a68286cd96f18 -->
 
 ## Backend (Python)
 
@@ -3783,7 +3783,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | BSD-3-Clause | 29 |
 | Apache Software License | 28 |
 | Apache-2.0 | 25 |
-| BSD License | 24 |
+| BSD License | 25 |
 | BSD-2-Clause | 6 |
 | Apache Software License; MIT License | 4 |
 | Apache License 2.0 | 3 |
@@ -3813,7 +3813,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | MPL-2.0 AND MIT | 1 |
 | PSF-2.0 | 1 |
 | The Unlicense (Unlicense) | 1 |
-| **Total** | **309** |
+| **Total** | **310** |
 
 ### Python package index
 
@@ -3885,6 +3885,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `django-filter` | 24.3 | BSD License | Copyright (c) Alex Gaynor and individual contributors. |
 | `django-health-check` | 3.18.3 | MIT License | Copyright (C) 2011-2019 Kristian Øllegaard and contributors |
 | `django-redis` | 5.4.0 | BSD License | Copyright (c) 2011-2016 Andrey Antukh <niwi@niwi.nz> |
+| `django-storages` | 1.14.6 | BSD License | Copyright (c) 2008 - 2023, Josh Schneier, David Larlet, et al. |
 | `djangorestframework` | 3.17.2 | BSD-3-Clause | Copyright © 2011-present, [Encode OSS Ltd](https://www.encode.io/). |
 | `djangorestframework_simplejwt` | 5.4.0 | MIT License | Copyright 2017 David Sanders |
 | `dnspython` | 2.8.0 | ISC License (ISCL) | Copyright (C) Dnspython Contributors |
@@ -9672,6 +9673,49 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+</pre>
+
+</details>
+
+> No NOTICE file shipped by upstream.
+
+#### django-storages@1.14.6
+
+- **License:** BSD License
+- **Author:** Josh Schneier <josh.schneier@gmail.com>
+
+<details><summary>License text</summary>
+
+<pre>
+BSD 3-Clause License
+
+Copyright (c) 2008 - 2023, Josh Schneier, David Larlet, et al.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 </pre>
 
 </details>

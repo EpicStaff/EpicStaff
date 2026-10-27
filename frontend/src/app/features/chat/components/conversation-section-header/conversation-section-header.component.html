@@ -2,8 +2,13 @@
     #button
     type="button"
     class="conversation-section-header"
+    matTooltipPosition="right"
+    [class.conversation-section-header--compact]="isCompact()"
     [attr.aria-expanded]="isExpanded()"
     [attr.aria-controls]="controlsId()"
+    [attr.aria-label]="isCompact() ? compactLabel() : null"
+    [matTooltip]="compactLabel()"
+    [matTooltipDisabled]="!isCompact()"
     (click)="toggled.emit()"
 >
     <app-svg-icon
@@ -12,13 +17,23 @@
         size="8px"
         [class.conversation-section-header__chevron--collapsed]="!isExpanded()"
     />
-    <app-svg-icon
-        class="conversation-section-header__icon"
-        size="0.95rem"
-        [icon]="icon()"
-    />
-    <span class="conversation-section-header__label">{{ label() }}</span>
-    @if (count() !== null) {
-        <span class="conversation-section-header__count">{{ count() }}</span>
+    <span class="conversation-section-header__icon">
+        <app-svg-icon
+            size="0.95rem"
+            [icon]="icon()"
+        />
+        @if (isCompact() && badge(); as text) {
+            <span
+                class="conversation-section-header__badge"
+                aria-hidden="true"
+                >{{ text }}</span
+            >
+        }
+    </span>
+    @if (!isCompact()) {
+        <span class="conversation-section-header__label">{{ label() }}</span>
+        @if (count() !== null) {
+            <span class="conversation-section-header__count">{{ count() }}</span>
+        }
     }
 </button>

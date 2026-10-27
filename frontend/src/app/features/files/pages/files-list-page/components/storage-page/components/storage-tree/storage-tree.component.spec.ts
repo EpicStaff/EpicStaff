@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../../../../services/auth/permissions.service';
 import { StorageItem } from '../../../../../../models/storage.models';
@@ -334,5 +335,61 @@ describe('StorageTreeComponent drag and drop', () => {
         expect(emitted).toHaveLength(1);
         expect(emitted[0].action).toBe('add-to-collection');
         expect(emitted[0].selectedItems).toEqual(expect.arrayContaining([nodes['notes'], nodes['q1']]));
+    });
+});
+
+describe('StorageTreeComponent "Add to flow" permission', () => {
+    beforeEach(() => {
+        // jsdom has no ResizeObserver; TooltipOnOverflowDirective needs one once rows render.
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        );
+    });
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    // Linking a file to a flow edits the flow, so the server asks for UPDATE on flows, not CREATE on files;
+    // the dialog also lists the flows, which needs READ on them.
+    it.each([
+        {
+            granted: 'read and update flows',
+            grants: [`${ResourceCode.Flows}:${ActionCode.Read}`, `${ResourceCode.Flows}:${ActionCode.Update}`],
+            offered: true,
+        },
+        {
+            granted: 'read flows and create files',
+            grants: [`${ResourceCode.Flows}:${ActionCode.Read}`, `${ResourceCode.Files}:${ActionCode.Create}`],
+            offered: false,
+        },
+        {
+            granted: 'update flows without reading them',
+            grants: [`${ResourceCode.Flows}:${ActionCode.Update}`],
+            offered: false,
+        },
+    ])('offers "Add to flow" only to a user who can read and update flows ($granted)', ({ grants, offered }) => {
+        const can = (resource: ResourceCode, action: ActionCode): boolean => grants.includes(`${resource}:${action}`);
+        TestBed.configureTestingModule({
+            imports: [StorageTreeComponent],
+            providers: [{ provide: PermissionsService, useValue: { can, canAny: () => false } }],
+        });
+        const fixture = TestBed.createComponent(StorageTreeComponent);
+        const { tree, nodes } = buildTree();
+        fixture.componentRef.setInput('items', tree);
+
+        fixture.componentInstance.onContextMenu(
+            { preventDefault: vi.fn(), stopPropagation: vi.fn(), clientX: 0, clientY: 0 } as unknown as MouseEvent,
+            nodes['notes']
+        );
+        fixture.detectChanges();
+        const labels = Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll('.storage-tree__context-menu-item')
+        ).map((button) => button.textContent?.trim() ?? '');
+
+        expect(labels.includes('Add to flow')).toBe(offered);
     });
 });

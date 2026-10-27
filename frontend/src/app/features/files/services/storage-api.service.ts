@@ -16,6 +16,7 @@ import {
     StorageStreamUploadResponse,
     StorageTreeResponse,
     StorageUploadLimits,
+    StorageUsage,
 } from '../models/storage.models';
 import { normalizeStoragePath } from '../utils/storage-path.utils';
 import { UPLOAD_MAX_ATTEMPTS, uploadRetryDelayMs } from '../utils/upload-retry.utils';
@@ -128,6 +129,10 @@ export class StorageApiService {
         return this.http.delete<void>(`${this.apiUrl}delete/`, {
             body: { paths },
         });
+    }
+
+    usage(paths: string[]): Observable<StorageUsage> {
+        return this.http.post<StorageUsage>(`${this.apiUrl}usage/`, { paths });
     }
 
     rename(from: string, to: string): Observable<void> {

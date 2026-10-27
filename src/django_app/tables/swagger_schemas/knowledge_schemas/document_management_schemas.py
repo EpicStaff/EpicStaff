@@ -11,7 +11,10 @@ from tables.serializers.knowledge_serializers import (
     ImportFromStorageResponseSerializer,
     ImportFromStorageSerializer,
 )
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import (
+    INTERNAL_SERVER_ERROR_500_RESPONSE,
+    UNAUTHORIZED_401_RESPONSE,
+)
 
 DOCUMENTS_LIST_GET = {
     "summary": "List all documents or filter by collection ID",
@@ -100,18 +103,7 @@ DOCUMENTS_DESTROY_DELETE = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -174,18 +166,7 @@ DOCUMENTS_UPLOAD_POST = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -236,18 +217,7 @@ DOCUMENTS_BULK_DELETE_POST = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -403,18 +373,7 @@ DOCUMENTS_COPY_POST = {
                 ),
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Unexpected server error.",
-            examples=[
-                OpenApiExample(
-                    name="Server error",
-                    value={"error": "An unexpected error occurred: <detail>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 

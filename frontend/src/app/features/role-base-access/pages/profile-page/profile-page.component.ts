@@ -3,13 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
-import {
-    AppSvgIconComponent,
-    ButtonComponent,
-    RouteTab,
-    RouteTabsComponent,
-    UserAvatarComponent,
-} from '@shared/components';
+import { ButtonComponent, RouteTab, RouteTabsComponent, UserAvatarComponent } from '@shared/components';
 import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { EMPTY } from 'rxjs';
 import { catchError, filter, switchMap } from 'rxjs/operators';
@@ -27,7 +21,6 @@ import { ProfileApiKeysStorageService } from '../../services/profile-api-keys-st
     styleUrls: ['./profile-page.component.scss'],
     imports: [
         RouterOutlet,
-        AppSvgIconComponent,
         ButtonComponent,
         UserAvatarComponent,
         RouteTabsComponent,

@@ -150,11 +150,6 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except DocumentUploadException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     # NOTE: this ViewSet is not router-registered; the only URL is the explicit
     # path() in tables/urls.py. url_path mirrors that route for readability.
@@ -247,11 +242,6 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except DocumentUploadException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
 
 class DocumentViewSet(
@@ -343,11 +333,6 @@ class DocumentViewSet(
 
         except DocumentNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**DOCUMENTS_DOWNLOAD_GET)
     @action(detail=False, methods=["get"], url_path="download")
@@ -407,11 +392,6 @@ class DocumentViewSet(
 
         except (CollectionNotFoundException, DocumentsNotFoundException) as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @staticmethod
     def _parse_document_ids(raw_value: str) -> list:

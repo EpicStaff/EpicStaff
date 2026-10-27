@@ -2,6 +2,7 @@
 import xml.etree.ElementTree as ET
 import requests
 from typing import Optional
+from urllib.parse import urlparse
 
 def main(
     search_query: str,
@@ -14,7 +15,7 @@ def main(
 
     Args:
         search_query (str): The query to search.
-        xml (str): Path or URL of the XML file.
+        xml (str): http(s) URL of the XML file.
         similarity_threshold (float, optional): Threshold for similarity matching (unused in this basic version).
         limit (int, optional): Maximum number of matches to return.
 
@@ -22,14 +23,12 @@ def main(
         str: Matching XML snippets or elements.
     """
     try:
-        # Load XML from URL or file
-        if xml.startswith("http://") or xml.startswith("https://"):
-            response = requests.get(xml, timeout=10)
-            response.raise_for_status()
-            content = response.text
-        else:
-            with open(xml, "r", encoding="utf-8") as f:
-                content = f.read()
+        url = urlparse(xml)
+        if url.scheme not in ("http", "https") or not url.netloc:
+            return f"Error: '{xml}' is not an http(s) URL"
+        response = requests.get(xml, timeout=10)
+        response.raise_for_status()
+        content = response.text
 
         tree = ET.ElementTree(ET.fromstring(content))
         root = tree.getroot()

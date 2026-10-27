@@ -79,23 +79,27 @@
 }
 
 .inbox {
-    display: grid;
-    // Narrower on tablets (the rail is compact there already), so the thread keeps room.
-    grid-template-columns: clamp(280px, 32vw, 340px) 1fr;
-    grid-template-rows: minmax(0, 1fr);
+    display: flex;
     flex: 1;
     min-height: 0;
     color: var(--color-text-primary);
 
     &__sidebar {
+        position: relative;
         display: flex;
         flex-direction: column;
+        flex-shrink: 0;
         min-height: 0;
         border-right: 1px solid var(--color-divider-regular);
     }
 
+    &:not(.inbox--stack) &__sidebar {
+        max-width: calc(100% - 320px);
+    }
+
     &__thread {
         display: flex;
+        flex: 1;
         flex-direction: column;
         min-height: 0;
         min-width: 0;

@@ -87,7 +87,7 @@ chmod 700 "$work"
 compose_files=(-f "$repository/src/docker-compose.yaml" -f "$scripts_dir/plugin_platform_e2e.compose.yaml")
 compose() { docker compose -p "$project" "${compose_files[@]}" --env-file "$work/e2e.env" "$@"; }
 # The services this run builds, with the run's own image tag; the teardown removes those images.
-built_services=(crewdb django_app frontend es_plugins plugins_egress)
+built_services=(crewdb django_app frontend es_plugins plugins_egress sandbox_new)
 
 all_stages=(environment names stack package browsers smokes development final-smokes)
 stage_lines=()
@@ -458,6 +458,7 @@ stack_services=(
   redis          # django_app's cache, throttles and message streams
   storage        # object storage: uploaded packages and EpicStaff's files
   storage-init   # creates EpicStaff's bucket
+  sandbox_new    # django_app depends on it: one of its migrations writes venvs through it
   django_app     # the API, the plugin registry, the gateway and page decisions
   frontend       # EpicStaff's pages, where the browser suite opens the plugin
   plugins_db     # Weather's database

@@ -36,16 +36,17 @@ _BLOCK_ALL = NetworkDecision(policy=NetworkPolicy.BLOCK_ALL)
 _REFUSE = NetworkDecision(policy=NetworkPolicy.REFUSE)
 
 
-def build_jail(*, exec_dir: Path, venv_path: Path, savefiles_root: Path) -> Jail:
+def build_jail(*, exec_dir: Path, venv_path: Path) -> Jail:
     """The filesystem allowlist one confined execution is restricted to.
 
-    Widening any of these lists is a security-relevant change and requires review.
+    The only writable paths are the run's own workspace, so no two executions share
+    writable state. Widening any of these lists is a security-relevant change and
+    requires review.
     """
     read_write = (
         str(exec_dir.absolute()),
         str((exec_dir / "home").absolute()),
         str((exec_dir / "tmp").absolute()),
-        str(savefiles_root.absolute()),
     )
     read_exec = (
         str(venv_path.absolute()),

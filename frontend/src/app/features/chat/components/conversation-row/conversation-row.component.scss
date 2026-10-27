@@ -34,6 +34,20 @@
         background-color: var(--color-ghost-btn-active);
     }
 
+    &--compact {
+        justify-content: center;
+        padding: 8px 0;
+    }
+
+    &--compact.conversation-row--selected {
+        background-color: transparent;
+
+        .conversation-row__avatar {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+    }
+
     &__body {
         display: flex;
         flex-direction: column;
