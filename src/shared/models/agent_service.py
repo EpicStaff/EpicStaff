@@ -134,6 +134,8 @@ class AgentSpec(BaseModel):
     instructions: str
     llm: LLMData
     fcm_llm: LLMData | None = None
+    fallback_llm: LLMData | None = None
+    """Used when the primary ``llm`` fails with a fallback-eligible error; ``None`` means no fallback."""
     max_iter: int | None = None
     schema_max_retries: int | None = None
     """Structured-output enforcer retry attempts (``range(n + 1)`` tries); ``None`` uses the env default."""
