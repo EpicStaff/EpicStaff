@@ -131,5 +131,23 @@ All are set in `src/env.yaml`, which generates `src/.env.example`.
 
 ## Invariants
 
-- **Exactly one sandbox process.** The run queue, the registry and the queue deadlines live in one process's memory and use its monotonic clock. `entrypoint.sh` runs uvicorn with `--workers 1`; never add workers or replicas without first replacing this state (see [0001](adr/0001-http-intake-and-pubsub-results.md)).
+- **Exactly one sandbox process.** The run queue and the execution registry live in one process's memory. `entrypoint.sh` runs uvicorn with `--workers 1`; never add workers or replicas without first replacing this state (see [0001](adr/0001-http-intake-and-pubsub-results.md)).
+- **No process-local value crosses the seam.** Messages in `common/contracts.py` must keep their meaning if the manager and the worker are split into separate processes. The queue time travels as `queued_at`, a wall-clock timestamp, never as a monotonic reading ([0005](adr/0005-queue-deadlines-owned-by-the-sandbox.md)).
 - **Secrets stay in RAM.** Job payloads carry plaintext secrets and storage credentials. They are never written to Redis or disk, and logs carry ids and exception types only.
+
+## Layers
+
+sandbox_new follows a hexagonal layout: decisions live in `application`, the outside world in `infrastructure`, and the composition root in `common/bootstrap` wires them. These rules are enforced by import-linter contracts in `src/sandbox_new/pyproject.toml`, checked in CI:
+
+- `manager.infrastructure` imports from `manager.application` only its `ports`.
+- `worker.infrastructure` imports from `worker.application` only its `ports` and `context`.
+- `common` imports no `infrastructure` module, except `common.bootstrap`, the composition root.
+- `manager` and `worker` never import each other; only `common.bootstrap` connects them.
+
+| Concern | Where it lives |
+| --- | --- |
+| Admission policy (intake gate, run gate) | `manager/application/intake.py`, `worker/application/resource_gate.py` |
+| Reading CPU and memory | `worker/infrastructure/admission/host_metrics.py`, behind the `AbstractHostMetrics` port |
+| Loops that push the application (result consumer, held-job releaser) | `manager/presentation/` |
+| Gate-state sampling for the benchmark | `common/observability/gate_sampler.py`, typed on protocols, not on either side's classes |
+| Wiring and runner supervision | `common/bootstrap/lifespan.py` |

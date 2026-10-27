@@ -17,12 +17,13 @@ Who sets that limit, and what happens to a job that exceeds it?
 
 - Never spend CPU on work nobody waits for.
 - One source of truth for timing, so it cannot drift between services.
-- No clock comparisons across containers.
+- No clock comparisons between producers and the sandbox.
+- The manager/worker message contract (`common/contracts.py`) must keep its meaning if the two are split into separate processes.
 - Time spent waiting for a venv build is not queue time.
 
 ## Considered Options
 
-1. The manager stamps a queue deadline when a job enters the run queue; the worker skips expired jobs.
+1. The manager stamps when a job enters the run queue; the worker computes its deadline and skips expired jobs.
 2. Producers stamp a deadline and compute their own wait: queue + execution timeout + grace (`SANDBOX_RESULT_GRACE`).
 3. No deadline; stale jobs run anyway.
 
@@ -30,15 +31,16 @@ Who sets that limit, and what happens to a job that exceeds it?
 
 Chosen option: **1, sandbox-owned queue deadlines**, because the sandbox is the information expert on its own queue: it knows when a job was queued, and it enforces both the queue timeout and the execution timeout itself.
 
-- `JobOrchestrator._dispatch` sets `queue_deadline = monotonic now + SANDBOX_QUEUE_TIMEOUT` when the job enters the run queue: at submission for a built venv, or at release for a held job. Never while held ([0006](0006-held-jobs-cap-and-hold-deadline.md)).
-- `JobConsumer` takes a job and, if the deadline has passed, sends "Sandbox overloaded: the job waited N s in the queue and was not run." without taking a run slot. Otherwise it waits for the run gate, but no longer than the deadline, and checks again after admission.
+- `JobOrchestrator._dispatch` sets `queued_at` = the wall-clock time (`time.time()`) when the job enters the run queue: at submission for a built venv, or at release for a held job. Never while held ([0006](0006-held-jobs-cap-and-hold-deadline.md)).
+- `JobConsumer` computes the deadline as `queued_at + SANDBOX_QUEUE_TIMEOUT`. If it has passed, it sends "Sandbox overloaded: the job waited N s in the queue and was not run." without taking a run slot. Otherwise it waits for the run gate, but no longer than the deadline, and checks again after admission.
 - Producers do no deadline arithmetic. They wait for the result, check status every 30 s ([0002](0002-execution-registry-and-status-endpoint.md)), and keep a 35-minute backstop. The previously planned `SANDBOX_RESULT_GRACE` setting was dropped.
 
 ### Consequences
 
 - Good, because expired jobs cost no CPU, and because the queue is in deadline order, they are answered as soon as they reach the head.
 - Good, because the wait at the gate is bounded by the deadline, so one long-running job cannot delay every expired job behind it.
-- Good, because the monotonic clock of one process avoids clock skew. This is valid only while there is one sandbox process.
+- Good, because `queued_at` is a wall-clock timestamp, so the message keeps its meaning if the manager and the worker are later split into separate processes. A monotonic reading is meaningless outside the process that took it, and would make deadlines fire instantly or never after such a split.
+- Bad, because once the manager and the worker run on different hosts, the deadline depends on their clocks agreeing. With NTP and a queue timeout of tens of seconds, the error is milliseconds. Measuring from when the worker takes the job instead would be worse: it would not count the time spent in transport, which is exactly what the limit must bound.
 - Bad, because a job released from a venv hold near the end of its hold window can still queue and run past the producer's 35-minute backstop. The producer then reports a timeout. Rare; accepted.
 
 ### Validation

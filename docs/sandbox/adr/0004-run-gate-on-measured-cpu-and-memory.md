@@ -32,7 +32,7 @@ When may a queued job start?
 
 Chosen option: **1, a run gate on measured CPU and memory**, because it starts work as long as the resources that actually limit us are free.
 
-`ResourceAdmissionGate` (`worker/infrastructure/admission/resource_gate.py`), behind the `AbstractAdmissionGate` port, starts a job when:
+`ResourceAdmissionGate` (`worker/application/resource_gate.py`), behind the `AbstractAdmissionGate` port, starts a job when:
 
 | Limit | Rule |
 | --- | --- |
@@ -43,6 +43,8 @@ Chosen option: **1, a run gate on measured CPU and memory**, because it starts w
 | Burst | At most *floor* new starts above the floor per 0.5 s tick, because both measurements lag process start-up. |
 
 A metric that cannot be read does not block; the gate then falls back to floor plus cap, and logs that once at startup together with the resolved values.
+
+**Policy and mechanics are separate layers.** The rule above is a decision, so the gate lives in the worker's application layer. Reading `/proc/stat` and the cgroup files is mechanics: `HostMetrics` in `worker/infrastructure/admission/` implements the `AbstractHostMetrics` port (`floor()`, `sample()`) that the gate depends on. The policy can thus change, and be tested, without touching the files it reads; and anything that observes it (the gate sampler, [0009](0009-benchmark-checkpoints.md)) reads `snapshot()`, declared on the port, without importing infrastructure.
 
 ### Consequences
 

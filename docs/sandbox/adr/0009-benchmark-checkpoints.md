@@ -36,11 +36,14 @@ Chosen option: **1, the reader's checkpoints plus a gate sample**.
 | `exec_published` outcome `overloaded` | sandbox_new, for that skipped job | as before |
 | `sandbox_rejected` | crew and agent, on each 503 that will be retried | `session_id`, `execution_id`, `attempt`, `retry_after_s` |
 | `sandbox_lost` | crew and agent, when the status check answers 404 | `session_id`, `execution_id` |
-| `sandbox_gate` | sandbox_new, every 5 s | `running`, `floor`, `max_concurrent`, `cpu_busy_percent`, `memory_used_percent`, `queued`, `held`, `drain_rate`, `refused_cap`, `refused_prediction`, `refused_held_cap`, `refused_in_progress` |
+| `intake_refused` | sandbox_new, once per 503 the intake gives | `reason` (`cap`, `prediction`, `held_cap`, `in_progress`), `retry_after`; no session |
+| `exec_published` outcome `hold_timeout` | sandbox_new, for a job held past its hold deadline ([0006](0006-held-jobs-cap-and-hold-deadline.md)) | as before |
+| `sandbox_gate` | sandbox_new, every 5 s | `running`, `floor`, `max_concurrent`, `cpu_busy_percent`, `memory_used_percent`, `queued`, `held`, `drain_rate` |
 
 - Worker failure results now carry `session_id` and, for expired jobs, the reason `overloaded`, so every `exec_published` names its session.
-- `sandbox_rejected` is logged through the client's `on_rejected` callback ([0007](0007-producer-client-in-foundation.md)): the retries happen inside foundation, which must not import the BENCH logger. Producers log it, not the sandbox, because the cap guard rejects before the request body, and with it the `session_id`, is read.
-- All 503s are raised in one place, `IntakeGate`, which counts them by reason. The gate sample reads and resets those counters, reads the registry counts, and takes the run gate's `snapshot()`. It lives in the composition root (`common/bootstrap/gate_sampler.py`), so manager code imports nothing from the worker.
+- `sandbox_rejected` is logged through the client's `on_rejected` callback ([0007](0007-producer-client-in-foundation.md)): the retries happen inside foundation, which must not import the BENCH logger. Producers log it with the session, because the cap guard rejects before the request body, and with it the `session_id`, is read.
+- **Instrumentation reads what already exists; it does not shape production APIs.** Every 503 is created in one place, `IntakeGate._refuse()`, and logged right there as `intake_refused`: one line per refusal with its exact time, instead of counters the gate would have to keep for an observer and a destructive "read and reset" method. The benchmark counts refusals per level by time.
+- The gate sample is a neutral observer in `common/observability/gate_sampler.py`. It sees each side only through two protocols declared in that module, `IntakeMetrics` (`queued_count`, `held_count`, `drain_rate()`) and `RunGateMetrics` (`snapshot()`, declared on the run gate's port), so it imports no concrete class from either side and nothing from infrastructure. The composition root (`common/bootstrap/lifespan.py`) only wires it.
 - In `sandbox_gate`, `queued` is the registry's count, which includes running jobs; that is the number admission control uses.
 
 ### Consequences
@@ -48,11 +51,11 @@ Chosen option: **1, the reader's checkpoints plus a gate sample**.
 - Good, because a benchmark shows rejections by reason, expirations, losses, and the run gate's view of CPU and memory over time.
 - Good, because the lines are only written when BENCH is enabled; at the default INFO level nothing changes.
 - Bad, because the reader does not use `sandbox_gate` yet; until it learns it, the lines serve manual analysis.
-- Neutral: hold timeouts publish outcome `venv_failed`, a value the reader already ranks, rather than a new value it would not know.
+- Neutral: `hold_timeout` and `intake_refused` needed a matching update of the benchmark reader, made together with this contract; `intake_refused` has no session, so the reader attributes it to a level by time.
 
 ### Validation
 
-A benchmark run on this branch produces `sandbox_gate` lines every 5 s from sandbox_new, and at overloaded levels `sandbox_rejected` and `exec_expired` lines with session ids.
+A benchmark run on this branch produces `sandbox_gate` lines every 5 s from sandbox_new, and at overloaded levels `intake_refused` lines with their reasons, plus `sandbox_rejected` and `exec_expired` lines with session ids.
 
 ## Pros and Cons of the Options
 

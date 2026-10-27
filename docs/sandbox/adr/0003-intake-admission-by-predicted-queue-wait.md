@@ -33,14 +33,14 @@ Chosen option: **1, predicted queue wait plus a run cap**, because it asks the q
 
 `IntakeGate.admit` (`manager/application/intake.py`) decides, in this order:
 
-1. **Run cap:** queued and running executions (`registry.active_count`) at `SANDBOX_MAX_ACCEPTED_EXECUTIONS` → refuse.
+1. **Run cap:** queued and running executions, not counting the caller's own reservation (`admit` receives its `execution_id` and asks the registry for `active_count_excluding`), at `SANDBOX_MAX_ACCEPTED_EXECUTIONS` → refuse.
 2. **Free slot:** if the run gate could start a job right now → accept.
 3. **Cold start:** fewer than 5 real executions recorded (`MIN_DRAIN_SAMPLES`) → accept; the cap alone applies.
 4. **Prediction:** `drain_rate` = completions / (now − oldest of the last 20 real completions) (`DRAIN_SAMPLE_SIZE`). Predicted wait = (queued + 1) / drain_rate. Accept if it is at most `SANDBOX_QUEUE_TIMEOUT`, else refuse.
 
 Only real executions count towards the drain rate. Skipped, expired and pre-run failures finish instantly; counting them would make the queue look fastest exactly during an overload. Measuring up to *now* makes the rate decay when nothing finishes, so a stall leads to refusal instead of switching the prediction off.
 
-A refusal raises `SandboxOverloadedError`. The REST layer answers **503** with `Retry-After` = predicted wait − queue timeout, clamped to 1–30 s (5 s when there is no prediction). A guard (`manager/presentation/rest/guards.py`) checks the run cap **before** the request body is decoded; Litestar runs guards before reading the body. The guard cannot see `execution_id`, so it checks only the cap; the prediction runs after decoding.
+A refusal raises `SandboxOverloadedError` and, at that same point, logs one `intake_refused` BENCH checkpoint with its reason ([0009](0009-benchmark-checkpoints.md)). The REST layer answers **503** with `Retry-After` = predicted wait − queue timeout, clamped to 1–30 s (5 s when there is no prediction). A guard (`manager/presentation/rest/guards.py`) checks the run cap **before** the request body is decoded; Litestar runs guards before reading the body. The guard cannot see `execution_id`, so it checks only the cap; the prediction runs after decoding.
 
 Jobs that will wait for a venv build are not judged by this rule; see [0006](0006-held-jobs-cap-and-hold-deadline.md).
 
@@ -55,7 +55,7 @@ Jobs that will wait for a venv build are not judged by this rule; see [0006](000
 
 ### Validation
 
-At levels above capacity, the benchmark's `sandbox_gate` samples show refusals by reason (`refused_cap`, `refused_prediction`), sessions fail on latency or an "overloaded" answer rather than on timeouts, and memory stays under the container limit.
+At levels above capacity, the benchmark counts `intake_refused` lines by reason (`cap`, `prediction`), sessions fail on latency or an "overloaded" answer rather than on timeouts, and memory stays under the container limit.
 
 ## Pros and Cons of the Options
 

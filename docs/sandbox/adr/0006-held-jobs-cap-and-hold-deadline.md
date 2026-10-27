@@ -32,7 +32,7 @@ How are held jobs bounded so that they cannot block other work?
 Chosen option: **1, a separate held cap and a hold deadline**.
 
 - Held jobs no longer count towards `SANDBOX_MAX_ACCEPTED_EXECUTIONS`. They have their own limit, `SANDBOX_MAX_HELD_EXECUTIONS` (100). A submission that would be held beyond it gets 503 with `Retry-After: 30`, because held jobs drain at venv-build speed.
-- Every held job gets a deadline: `SANDBOX_HOLD_TIMEOUT` (30 minutes, kept below the producers' 35-minute backstop). The held-job releaser runs every 2 s and fails overdue jobs first, whatever their venv's status, with "The execution environment did not finish building in time; the job was not run." Their published outcome is `venv_failed`.
+- Every held job gets a deadline: `SANDBOX_HOLD_TIMEOUT` (30 minutes, kept below the producers' 35-minute backstop). The held-job releaser runs every 2 s and fails overdue jobs first, whatever their venv's status, with "The execution environment did not finish building in time; the job was not run." Their published outcome is `hold_timeout`, not `venv_failed`: a build that is merely slower than the timeout, and may still succeed, must not be counted as a build failure, and hold overload must stay distinguishable from a real build failure in the benchmark.
 - A released job is dispatched even when the run cap is full: it was already admitted and has waited. The run gate still bounds what runs at once, and its queue deadline still bounds its wait. The worst case is run cap + held cap accepted jobs.
 
 ### Consequences

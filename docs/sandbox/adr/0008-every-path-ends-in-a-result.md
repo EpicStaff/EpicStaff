@@ -35,7 +35,7 @@ Chosen option: **1, fail jobs where they break, and let a dead runner crash the 
 
 - **Gap 1:** `JobConsumer._run` catches the exception, logs only the execution id and exception type, and sends "Sandbox failed to run the job." through `ExecutionOrchestrator.fail`. That result is built from constants, so it cannot hit the same error. The run slot is released in `finally`.
 - **Gap 2:** each turn of the consumer loop has its own `try/except`. A message that cannot be decoded is failed by its `execution_id` (and `session_id` when readable), and the loop continues.
-- **Gap 3:** each runtime task gets a done-callback. If a runner ever ends, by exception or by returning, it logs CRITICAL and stops the process gracefully. `restart: unless-stopped` in `docker-compose.yaml` brings it back with an empty registry, and producers get 404 within about 30 s ([0002](0002-execution-registry-and-status-endpoint.md)).
+- **Gap 3:** every background runner implements the `Runner` protocol (`common/runner.py`, a single `async def run()`), which types the runner set in `lifespan.py`. Each runtime task gets a done-callback. If a runner ever ends, by exception or by returning, it logs CRITICAL and stops the process gracefully. `restart: unless-stopped` in `docker-compose.yaml` brings it back with an empty registry, and producers get 404 within about 30 s ([0002](0002-execution-registry-and-status-endpoint.md)).
 - Errors are logged by type only everywhere on these paths; loguru's `diagnose` is off in every service.
 
 ### Consequences
