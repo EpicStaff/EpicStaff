@@ -66,12 +66,18 @@ export type ConversationLookup = ChatConversation | 'loading' | 'hidden' | 'miss
     providers: [ConversationListStore],
     templateUrl: './conversation-list.component.html',
     styleUrl: './conversation-list.component.scss',
+    host: {
+        '[id]': 'bodyIdPrefix',
+    },
 })
 export class ConversationListComponent {
     /** The desk listed; null lists every desk. */
     readonly bindingId = input<string | null>(null);
     readonly selectedId = input<string | null>(null);
+    readonly canCollapse = input(false);
+    readonly isCompact = input(false);
     readonly selectedChange = output<ChatConversation>();
+    readonly compactToggle = output<void>();
 
     private readonly toolbar = viewChild.required(ConversationListToolbarComponent);
     private readonly scroller = viewChild.required<ElementRef<HTMLElement>>('scroller');
@@ -211,7 +217,7 @@ export class ConversationListComponent {
     reveal(section: ChatInboxSection): void {
         if (this.store.isSearching()) this.toolbar().clearSearch();
         if (!listsSection(this.store.query(), section)) this.isMineOnly.set(false);
-        this.store.setCollapsed(section, false);
+        this.store.openForColumn(section);
         afterNextRender(() => this.sectionElement(section)?.scrollIntoView({ block: 'start' }), {
             injector: this.injector,
         });
@@ -252,15 +258,22 @@ export class ConversationListComponent {
 
     /**
      * Collapsing a section whose header is stuck (the user is deep inside it) would leave that header far above the
-     * view, with the focus on it: the column scrolls back so the collapsed header stays where it was pressed.
+     * view, with the focus on it, and opening one folds the open one above it, which would pull the header out of view:
+     * the column scrolls so the header stays where it was pressed.
      */
     protected toggle(section: ChatInboxSection): void {
-        const isCollapsing = this.store.view().some((item) => item.section.id === section && item.isExpanded);
         const scroller = this.scroller().nativeElement;
         const sectionTop = this.sectionTopInScroller(section);
         this.store.toggle(section);
-        if (!isCollapsing || sectionTop === null || sectionTop >= scroller.scrollTop) return;
-        afterNextRender(() => (scroller.scrollTop = sectionTop), { injector: this.injector });
+        if (sectionTop === null) return;
+        const offsetInView = Math.max(0, sectionTop - scroller.scrollTop);
+        afterNextRender(
+            () => {
+                const top = this.sectionTopInScroller(section);
+                if (top !== null && top - scroller.scrollTop !== offsetInView) scroller.scrollTop = top - offsetInView;
+            },
+            { injector: this.injector }
+        );
     }
 
     protected setOrder(order: ChatInboxOrder): void {

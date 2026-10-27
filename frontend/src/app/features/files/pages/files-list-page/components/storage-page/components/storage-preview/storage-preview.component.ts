@@ -116,7 +116,7 @@ export class StoragePreviewComponent {
         if (!currentItem || !this.isLoadingPreview()) return EMPTY;
 
         return this.storageApiService
-            .downloadBlob(currentItem.path, mode === 'partial' ? PARTIAL_PREVIEW_BYTES : undefined)
+            .previewBlob(currentItem.path, mode === 'partial' ? PARTIAL_PREVIEW_BYTES : undefined)
             .pipe(
                 tap((blob) => {
                     this.previewBlob.set(blob);

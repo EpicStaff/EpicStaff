@@ -13,8 +13,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
-import { CollapseOnOverflowDirective } from '@shared/directives';
-import { GraphSessionStatus } from '@shared/models';
+import { CollapseOnOverflowDirective, HasPermissionDirective } from '@shared/directives';
+import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
 
 import {
     ExportSessionFilesDialogComponent,
@@ -36,7 +36,7 @@ const POST_TERMINAL_RETRY_DELAYS_MS = [1000, 2000, 4000];
 
 @Component({
     selector: 'app-session-files-button',
-    imports: [AppSvgIconComponent, CollapseOnOverflowDirective, MatTooltip],
+    imports: [AppSvgIconComponent, CollapseOnOverflowDirective, HasPermissionDirective, MatTooltip],
     templateUrl: './session-files-button.component.html',
     styleUrls: ['./session-files-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -53,6 +53,9 @@ export class SessionFilesButtonComponent implements OnInit, OnDestroy {
 
     readonly isLoaded = signal(false);
     readonly outputFiles = signal<SessionOutputFile[]>([]);
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 
     constructor() {
         effect(() => {

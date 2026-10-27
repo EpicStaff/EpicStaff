@@ -45,8 +45,8 @@ from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
+from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
-from tables.services.secrets.reference_guard import pinned_principal_of_user
 
 
 class GraphVersioningManager:

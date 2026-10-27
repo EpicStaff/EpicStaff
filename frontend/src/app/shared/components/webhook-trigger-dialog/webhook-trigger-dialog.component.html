@@ -20,11 +20,7 @@
             </p>
         }
 
-        @if (errorMessage()) {
-            <div class="dialog__error-message">
-                <p>{{ errorMessage() }}</p>
-            </div>
-        }
+        <app-error-banner [message]="errorMessage()" />
 
         <app-webhook-trigger-field
             formControlName="webhook_trigger"

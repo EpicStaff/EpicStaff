@@ -5,6 +5,7 @@
                 <h3 class="quickstart-section__title">Quickstart</h3>
                 <p class="quickstart-section__subtitle">Quickly configure your environment with your AI provider</p>
             </header>
+            <app-error-banner [message]="errorMessage()" />
             <form
                 class="quickstart-section__form"
                 [formGroup]="quickStartForm"

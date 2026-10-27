@@ -1,0 +1,235 @@
+// Two sizes, as app-button: `default` (40px) sits level with default app-buttons; `small` (28px) is the
+// designer's Figma component. The chevron and × sprites draw their glyph inside a transparent inset of
+// 5/24 of the icon box (3.33px at 16px, 4.17px at 20px), so paddings and gaps are set for where the
+// visible glyphs land.
+// Two appearances: `filled` (the rules below) and `outline` (the --outline blocks at the end of each
+// part), the look of the flows page's Import button, for the default size.
+:host {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.bulk-select {
+    display: inline-flex;
+    align-items: stretch;
+    height: 40px;
+    box-sizing: border-box;
+    overflow: hidden;
+    // Figma "Line" (#2b2d30) has no exact token; --color-line (#2c2c2e) is the closest semantic one.
+    border: 1px solid var(--color-line);
+    // app-button's radius; no radius token equals 7px.
+    border-radius: 7px;
+    background: var(--color-background-body);
+    color: var(--color-text-primary);
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    // As app-button's label (.btn-content).
+    line-height: 1.25;
+    transition: border-color 0.15s ease;
+
+    &--small {
+        height: 28px;
+        border-radius: var(--radius-sm);
+        font-size: var(--text-caption-size);
+        font-weight: var(--text-caption-weight);
+        line-height: var(--text-caption-line-height);
+    }
+
+    &--selected {
+        border-color: var(--accent-color);
+    }
+
+    &--disabled {
+        opacity: 0.6;
+    }
+
+    &__main,
+    &__clear {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+        transition: background-color 0.15s ease;
+
+        &:hover:not(:disabled) {
+            background: var(--color-secondary-btn-background-hover);
+        }
+
+        // Inset, so the container's overflow clipping cannot cut the ring off, and 1px clear of the
+        // container border, so it stays distinct from the accent border of the Selected states.
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: -2px;
+        }
+
+        &:disabled {
+            cursor: default;
+        }
+    }
+
+    // The end padding leaves the same space after the chevron glyph either way: to the outer edge (padding
+    // + inset + the 1px border), or to the divider in the Selected states (1px more padding, no border there).
+    // Default: label 16px in, ~8px to the 20px chevron's glyph, ~12px after it.
+    &__main {
+        gap: 4px;
+        padding: 0 7px 0 16px;
+        white-space: nowrap;
+    }
+
+    &--selected &__main {
+        padding-right: 8px;
+    }
+
+    // Small (Figma): label 8px from the outer edge, ~12px to the 16px chevron's glyph, 9.33px after it.
+    &--small &__main {
+        gap: 9px;
+        padding: 0 5px 0 7px;
+    }
+
+    &--small.bulk-select--selected &__main {
+        padding-right: 6px;
+    }
+
+    &__count {
+        color: var(--accent-color);
+    }
+
+    &__chevron {
+        transition: transform 0.15s ease;
+
+        &--open {
+            transform: rotate(180deg);
+        }
+    }
+
+    &__divider {
+        flex-shrink: 0;
+        width: 1px;
+        background: var(--color-line);
+    }
+
+    // With the divider before it and the container's right border, a square as tall as the control
+    // (40px; 28px for small), the × centred in it.
+    &__clear {
+        width: 38px;
+        color: var(--accent-color);
+    }
+
+    &--small &__clear {
+        width: 26px;
+    }
+
+    // Outline (flows header, default size): the Import button's look (flows-list-page .import-group).
+    // Height, radius and type already match it; colours, spacing and the × segment change.
+    &--outline {
+        border-color: var(--color-divider-subtle);
+        background: transparent;
+        color: var(--accent-color);
+
+        // No accent border in the Selected states: Import has none.
+        &.bulk-select--selected {
+            border-color: var(--color-divider-subtle);
+        }
+
+        .bulk-select__main,
+        .bulk-select__clear {
+            &:hover:not(:disabled) {
+                background: var(--color-ghost-btn-hover);
+            }
+
+            &:active:not(:disabled) {
+                background: var(--color-ghost-btn-active);
+            }
+        }
+
+        // As Import's 0 1rem padding and 0.5rem gap: the label starts 16px in, ~8px to the 20px chevron's
+        // glyph, and ~16px after it (to the outer border, or to the divider in the Selected states).
+        .bulk-select__main,
+        &.bulk-select--selected .bulk-select__main {
+            padding: 0 12px 0 16px;
+        }
+
+        // While the menu is open, as Import's cog when its options are open (.is-open).
+        .bulk-select__main--open,
+        .bulk-select__main--open:hover:not(:disabled) {
+            background: var(--color-ghost-btn-active);
+        }
+
+        // Inset like the cog's divider: top and bottom 20% off.
+        .bulk-select__divider {
+            align-self: center;
+            height: 60%;
+            background: var(--color-divider-subtle);
+        }
+
+        // With the 1px divider, 34px: the width of Import's cog.
+        .bulk-select__clear {
+            width: 33px;
+        }
+    }
+}
+
+// CDK menu panel, rendered in an overlay; the trigger handles placement (8px below, left edges aligned).
+.bulk-select-menu {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    // Grows with a longer label.
+    min-width: 160px;
+    overflow: hidden;
+    background: var(--color-background-body);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-panel-elevated);
+
+    // Figma: a fixed 126px.
+    &--small {
+        width: 126px;
+        min-width: 0;
+    }
+
+    // Matches the outline control's border.
+    &--outline {
+        border-color: var(--color-divider-subtle);
+    }
+
+    &__item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        height: 40px;
+        padding: 0 16px;
+        border: none;
+        background: transparent;
+        color: var(--color-text-primary);
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        text-align: left;
+        white-space: nowrap;
+        cursor: pointer;
+
+        &:hover,
+        &:focus-visible {
+            background: var(--color-ghost-btn-hover);
+        }
+
+        // Inset, so the menu's overflow clipping cannot cut the ring off.
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: -1px;
+        }
+    }
+
+    &--small &__item {
+        height: 28px;
+        font-size: var(--text-caption-size);
+        font-weight: var(--text-caption-weight);
+        line-height: var(--text-caption-line-height);
+    }
+}

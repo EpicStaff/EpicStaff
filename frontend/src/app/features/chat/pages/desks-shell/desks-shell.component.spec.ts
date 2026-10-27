@@ -84,6 +84,7 @@ describe('DesksShellComponent', () => {
     const waitingByBinding = signal<Record<string, number>>({});
     // Wider than a phone unless a spec says otherwise.
     const isPhone = new BehaviorSubject(false);
+    const isNarrowScreen = new BehaviorSubject(false);
     const chatApi = { getBindings: vi.fn(() => of(DESKS)), getMyAliases: vi.fn(() => of([])) };
     let harness: RouterTestingHarness;
     let router: Router;
@@ -109,9 +110,10 @@ describe('DesksShellComponent', () => {
         readyEpoch.set(0);
         waitingByBinding.set({});
         isPhone.next(false);
+        isNarrowScreen.next(false);
         TestBed.configureTestingModule({
             providers: [
-                provideRouter([desksRoute()]),
+                provideRouter([desksRoute(), { path: 'elsewhere', component: StubPageComponent }]),
                 { provide: ChatApiService, useValue: chatApi },
                 { provide: ChatInboxStreamService, useValue: { readyEpoch, waitingByBinding } },
                 { provide: PermissionsService, useValue: { can: () => true } },
@@ -121,9 +123,12 @@ describe('DesksShellComponent', () => {
                     provide: BreakpointObserver,
                     useValue: {
                         observe: (query: string): Observable<BreakpointState> =>
-                            (query === BREAKPOINTS.phone ? isPhone : of(false)).pipe(
-                                map((matches) => ({ matches, breakpoints: {} }))
-                            ),
+                            (query === BREAKPOINTS.phone
+                                ? isPhone
+                                : query === BREAKPOINTS.deskRailCompact
+                                  ? isNarrowScreen
+                                  : of(false)
+                            ).pipe(map((matches) => ({ matches, breakpoints: {} }))),
                     },
                 },
                 // jsdom lays nothing out, so the focus trap would find nothing visible to focus.
@@ -225,6 +230,81 @@ describe('DesksShellComponent', () => {
         expect(link('/chat-bindings/all').querySelector('.desk-rail__badge')?.textContent).toBe('3');
     });
 
+    describe('the rail width', () => {
+        const column = (): HTMLElement => host().querySelector('.desks-shell__rail') as HTMLElement;
+        const handle = (): HTMLElement | null => host().querySelector('[role="separator"]');
+        const isCompact = (): boolean =>
+            host().querySelector('app-desk-rail')!.classList.contains('desk-rail--compact');
+
+        function press(key: string, times = 1): void {
+            for (let time = 0; time < times; time++) {
+                handle()!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+                harness.detectChanges();
+            }
+        }
+
+        function pressToggle(): void {
+            (host().querySelector('.desk-rail__toggle') as HTMLButtonElement).click();
+            harness.detectChanges();
+        }
+
+        function narrowScreen(isNarrow: boolean): void {
+            isNarrowScreen.next(isNarrow);
+            harness.detectChanges();
+        }
+
+        it('starts listed at 240px on a wide screen, beside a handle that resizes it', () => {
+            expect(column().style.width).toBe('240px');
+            expect(isCompact()).toBe(false);
+            expect(handle()?.getAttribute('aria-label')).toBe('Resize desks column');
+        });
+
+        it('resizes between 180px and 360px with the handle, and goes compact past the narrowest', () => {
+            press('ArrowRight', 20);
+            expect(column().style.width).toBe('360px');
+
+            press('ArrowLeft', 12);
+            expect(column().style.width).toBe('180px');
+            expect(isCompact()).toBe(false);
+
+            press('ArrowLeft');
+            expect(column().style.width).toBe('64px');
+            expect(isCompact()).toBe(true);
+        });
+
+        it('switches between compact and listed with the Desks toggle', () => {
+            pressToggle();
+            expect(column().style.width).toBe('64px');
+            expect(isCompact()).toBe(true);
+
+            pressToggle();
+            expect(column().style.width).toBe('180px');
+            expect(isCompact()).toBe(false);
+        });
+
+        it('starts compact on a narrow screen, and each screen width keeps its own width', () => {
+            press('ArrowRight');
+            narrowScreen(true);
+            expect(column().style.width).toBe('64px');
+            expect(isCompact()).toBe(true);
+
+            pressToggle();
+            narrowScreen(false);
+            expect(column().style.width).toBe('256px');
+
+            narrowScreen(true);
+            expect(column().style.width).toBe('180px');
+        });
+
+        it('keeps its width when the chat area opens again', async () => {
+            press('ArrowRight');
+            await harness.navigateByUrl('/elsewhere');
+            expect(host().querySelector('.desks-shell__rail')).toBeNull();
+            await harness.navigateByUrl('/chat-bindings/all');
+            expect(column().style.width).toBe('256px');
+        });
+    });
+
     describe('on a phone', () => {
         const drawerService = (): DeskDrawerService =>
             harness.fixture.debugElement.query(By.directive(DesksShellComponent)).injector.get(DeskDrawerService);
@@ -269,6 +349,7 @@ describe('DesksShellComponent', () => {
             expect(headings[0].classList).toContain('visually-hidden');
             expect(headings[0].textContent?.trim()).toBe('Conversations');
             expect(host().querySelector('app-desk-rail')).toBeNull();
+            expect(host().querySelector('[role="separator"]')).toBeNull();
             expect(host().querySelector('.stub-page')).not.toBeNull();
         });
 

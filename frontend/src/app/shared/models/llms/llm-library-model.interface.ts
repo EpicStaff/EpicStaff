@@ -6,7 +6,7 @@ export interface LlmLibraryModel {
     customName: string;
     modelName: string;
     tags: Tag[];
-    temperature: number;
+    temperature: number | null; // null = the config has no temperature (voice), so the card shows none
     usedByCount: number | null; // null = "Ready to be used"
     configType: ModelTypes;
     isDeprecated: boolean;

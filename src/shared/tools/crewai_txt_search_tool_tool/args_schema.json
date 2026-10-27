@@ -4,7 +4,7 @@
   "properties": {
     "txt": {
       "type": "string",
-      "description": "File path or URL of a TXT file to be searched"
+      "description": "http:// or https:// URL of a TXT file to be searched"
     },
     "search_query": {
       "type": "string",
