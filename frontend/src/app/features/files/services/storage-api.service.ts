@@ -72,11 +72,12 @@ export class StorageApiService {
 
     /** `maxBytes` asks for only the first bytes of the file (HTTP Range). */
     downloadBlob(path: string, maxBytes?: number): Observable<Blob> {
-        return this.http.get(`${this.apiUrl}download/`, {
-            params: { path },
-            responseType: 'blob',
-            headers: maxBytes !== undefined ? new HttpHeaders({ Range: `bytes=0-${maxBytes - 1}` }) : undefined,
-        });
+        return this.fetchBlob('download/', path, maxBytes);
+    }
+
+    /** Inline read of a file (needs Files/Read); `maxBytes` asks for only the first bytes (HTTP Range). */
+    previewBlob(path: string, maxBytes?: number): Observable<Blob> {
+        return this.fetchBlob('preview/', path, maxBytes);
     }
 
     /** Fetches the upload size caps and free space; emits null without Files/Read. */
@@ -174,6 +175,14 @@ export class StorageApiService {
 
     getSessionOutputFiles(sessionId: string): Observable<SessionOutputFile[]> {
         return this.http.get<SessionOutputFile[]>(`${this.configService.apiUrl}sessions/${sessionId}/output-files/`);
+    }
+
+    private fetchBlob(endpoint: string, path: string, maxBytes?: number): Observable<Blob> {
+        return this.http.get(`${this.apiUrl}${endpoint}`, {
+            params: { path },
+            responseType: 'blob',
+            headers: maxBytes !== undefined ? new HttpHeaders({ Range: `bytes=0-${maxBytes - 1}` }) : undefined,
+        });
     }
 
     private normalizeCopyTargetPath(path: string): string {

@@ -27,6 +27,7 @@ from tables.models import AgentNode, Graph, GraphStorageFile, StorageFile, TaskN
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.usage import find_storage_usage
+from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 from tests.storage_tests.storage_writes import store_object
 
@@ -142,6 +143,47 @@ def test_download(auth_client, put, path, range_header, expected_status, expecte
         assert resp["Accept-Ranges"] == "bytes"
     if content_range is not None:
         assert resp["Content-Range"] == content_range
+
+
+@pytest.mark.parametrize(
+    ("range_header", "expected_status", "expected_body", "content_range"),
+    [(None, 200, b"file content", None), ("bytes=0-3", 206, b"file", "bytes 0-3/12")],
+    ids=["whole", "range"],
+)
+def test_a_reader_without_export_previews_but_cannot_download(
+    client_with_files_bits, put, acme, range_header, expected_status, expected_body, content_range
+):
+    put("f.txt", b"file content", org=acme)
+    reader = client_with_files_bits(Permission.READ)
+    headers = {"HTTP_RANGE": range_header} if range_header else {}
+
+    download = reader.get("/api/storage/download/", {"path": "f.txt"}, **headers)
+    preview = reader.get("/api/storage/preview/", {"path": "f.txt"}, **headers)
+
+    assert download.status_code == status.HTTP_403_FORBIDDEN
+    assert preview.status_code == expected_status
+    assert _body(preview) == expected_body
+    assert preview["Content-Disposition"] == 'inline; filename="f.txt"'
+    assert preview["Accept-Ranges"] == "bytes"
+    if content_range is not None:
+        assert preview["Content-Range"] == content_range
+
+
+def test_a_reader_with_export_downloads_as_an_attachment(client_with_files_bits, put, acme):
+    put("f.txt", b"file content", org=acme)
+    exporter = client_with_files_bits(Permission.READ | Permission.EXPORT)
+
+    resp = exporter.get("/api/storage/download/", {"path": "f.txt"})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert _body(resp) == b"file content"
+    assert resp["Content-Disposition"] == 'attachment; filename="f.txt"'
+
+
+def test_preview_of_a_missing_file_is_a_404(auth_client):
+    resp = auth_client.get("/api/storage/preview/", {"path": "ghost.txt"})
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
 
 
 def test_download_zip_packs_the_folder(auth_client, put):

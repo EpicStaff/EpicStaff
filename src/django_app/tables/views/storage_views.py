@@ -65,6 +65,7 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_LIST_SWAGGER,
     STORAGE_MKDIR_SWAGGER,
     STORAGE_MOVE_SWAGGER,
+    STORAGE_PREVIEW_SWAGGER,
     STORAGE_REMOVE_FROM_GRAPH_SWAGGER,
     STORAGE_RENAME_SWAGGER,
     STORAGE_SEARCH_SWAGGER,
@@ -124,7 +125,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     rbac_action_map = {
         "list_files": Permission.READ,
         "info": Permission.READ,
-        "download": Permission.READ,
+        "download": Permission.EXPORT,
+        "preview": Permission.READ,
         "tree": Permission.READ,
         "graph_files": Permission.READ,
         "files_by_ids": Permission.READ,
@@ -212,9 +214,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             response["graphs"] = []
         return Response(response)
 
-    @extend_schema(**STORAGE_DOWNLOAD_SWAGGER)
-    @action(detail=False, methods=["get"], url_path="download")
-    def download(self, request):
+    def _file_content_response(self, request, disposition: str) -> HttpResponse:
         org_id = self.get_active_org_id()
         params = StoragePathQuerySerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
@@ -233,11 +233,21 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             if download.content_range
             else status.HTTP_200_OK,
         )
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
         response["Accept-Ranges"] = "bytes"
         if download.content_range:
             response["Content-Range"] = download.content_range
         return response
+
+    @extend_schema(**STORAGE_DOWNLOAD_SWAGGER)
+    @action(detail=False, methods=["get"], url_path="download")
+    def download(self, request):
+        return self._file_content_response(request, "attachment")
+
+    @extend_schema(**STORAGE_PREVIEW_SWAGGER)
+    @action(detail=False, methods=["get"], url_path="preview")
+    def preview(self, request):
+        return self._file_content_response(request, "inline")
 
     @extend_schema(**STORAGE_DOWNLOAD_ZIP_SWAGGER)
     @action(detail=False, methods=["post"], url_path="download-zip")
