@@ -41,6 +41,7 @@ from worker.bootstrap.di import build_admission_gate, build_job_consumer
 
 from common.bootstrap.gate_sampler import GateSampler
 from common.contracts import ExecutionJobMessage, ExecutionResultMessage
+from common.runner import Runner
 
 __all__ = ["JobIntake", "supervise"]
 
@@ -127,7 +128,7 @@ async def start_runtime(app: Litestar) -> None:
     )
     app.state.runtime_redis = redis
 
-    runners = {
+    runners: dict[str, Runner] = {
         "admission gate": admission_gate,
         "job consumer": build_job_consumer(
             job_queue=job_queue, result_queue=result_queue, gate=admission_gate

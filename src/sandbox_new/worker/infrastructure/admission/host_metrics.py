@@ -6,25 +6,18 @@ is reported as None rather than guessed, and the gate treats None as "does not b
 """
 
 import os
-from dataclasses import dataclass
 from pathlib import Path
 
-__all__ = ["HostMetrics", "HostSample"]
+from worker.application.ports.host_metrics import AbstractHostMetrics, HostSample
+
+__all__ = ["HostMetrics"]
 
 # cgroup v1 has no keyword for "no memory limit": it reports a page-aligned value near
 # 2**63. Anything this large is no real limit, so there is no percentage to compute.
 _UNLIMITED_MEMORY_BYTES = 2**60
 
 
-@dataclass(frozen=True)
-class HostSample:
-    """One reading of host load; None for a signal that could not be read."""
-
-    cpu_busy_percent: float | None
-    memory_used_percent: float | None
-
-
-class HostMetrics:
+class HostMetrics(AbstractHostMetrics):
     """Read the container's CPU allowance and the current CPU and memory load.
 
     Args:

@@ -14,7 +14,7 @@ from common.bootstrap.gate_sampler import GateSampler
 from manager.application.intake import IntakeGate
 from manager.application.registry import ExecutionRegistry
 from manager.domain.errors import SandboxOverloadedError
-from worker.infrastructure.admission import ResourceAdmissionGate
+from worker.application.resource_gate import ResourceAdmissionGate
 from tests.fakes import FakeHostMetrics
 
 INTERVAL = 0.01

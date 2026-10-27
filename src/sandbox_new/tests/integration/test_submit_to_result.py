@@ -25,6 +25,7 @@ from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFail
 from manager.infrastructure.transport.redis_result_publisher import RedisResultPublisher
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
+from worker.application.resource_gate import ResourceAdmissionGate
 from worker.application.steps import BuildIsolationPlan, ConfigureStorageStep
 from worker.infrastructure.execution.steps import (
     CaptureMutationsStep,
@@ -35,7 +36,6 @@ from worker.infrastructure.execution.steps import (
     WrapCodeStep,
 )
 from worker.infrastructure.transport.queue_job_source import QueueJobSource
-from worker.infrastructure.admission import ResourceAdmissionGate
 from worker.infrastructure.transport.queue_result_sink import QueueResultSink
 from worker.presentation.job_consumer import JobConsumer
 from tests.builders import make_venv, make_worker_job

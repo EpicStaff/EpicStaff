@@ -13,8 +13,9 @@ from common.contracts import ExecutionJobMessage, ExecutionResultMessage
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
 from worker.application.ports import AbstractAdmissionGate
+from worker.application.resource_gate import ResourceAdmissionGate
 from worker.application.steps import BuildIsolationPlan, ConfigureStorageStep
-from worker.infrastructure.admission import HostMetrics, ResourceAdmissionGate
+from worker.infrastructure.admission import HostMetrics
 from worker.infrastructure.execution.steps import (
     CaptureMutationsStep,
     CaptureResultStep,

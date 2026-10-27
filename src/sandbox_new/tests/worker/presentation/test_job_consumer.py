@@ -17,7 +17,7 @@ import pytest
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
 from worker.application.ports import UndecodableJobError
-from worker.infrastructure.admission import ResourceAdmissionGate
+from worker.application.resource_gate import ResourceAdmissionGate
 from worker.presentation.job_consumer import JobConsumer
 from tests.builders import make_worker_job
 from tests.fakes import FakeHostMetrics, FakeJobSource

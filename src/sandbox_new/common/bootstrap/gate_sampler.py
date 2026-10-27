@@ -13,7 +13,7 @@ from loguru import logger
 from manager.application.intake import IntakeGate
 from manager.application.registry import ExecutionRegistry
 from src.shared.bench_log import BENCH_LEVEL
-from worker.infrastructure.admission import ResourceAdmissionGate
+from worker.application.resource_gate import ResourceAdmissionGate
 
 __all__ = ["SAMPLE_INTERVAL_SECONDS", "GateSampler"]
 

@@ -8,27 +8,16 @@ burst limit keeps one quiet reading from admitting a flood.
 """
 
 import asyncio
-from dataclasses import dataclass
 
 from loguru import logger
 
-from worker.application.ports.admission_gate import AbstractAdmissionGate
-from worker.infrastructure.admission.host_metrics import HostMetrics, HostSample
+from worker.application.ports.admission_gate import AbstractAdmissionGate, RunGateSnapshot
+from worker.application.ports.host_metrics import AbstractHostMetrics, HostSample
 
-__all__ = ["TICK_SECONDS", "ResourceAdmissionGate", "RunGateSnapshot"]
+__all__ = ["TICK_SECONDS", "ResourceAdmissionGate"]
 
 # How often load is sampled and the above-floor burst budget refilled.
 TICK_SECONDS = 0.5
-
-
-@dataclass(frozen=True)
-class RunGateSnapshot:
-    """What the gate is deciding on right now: slots in use, its limits, the last load sample."""
-
-    running: int
-    floor: int
-    max_concurrent: int
-    sample: HostSample
 
 
 class ResourceAdmissionGate(AbstractAdmissionGate):
@@ -43,7 +32,7 @@ class ResourceAdmissionGate(AbstractAdmissionGate):
 
     def __init__(
         self,
-        metrics: HostMetrics,
+        metrics: AbstractHostMetrics,
         *,
         min_concurrent: int,
         max_concurrent: int,

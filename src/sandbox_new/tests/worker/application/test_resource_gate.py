@@ -10,7 +10,8 @@ import asyncio
 
 import pytest
 
-from worker.infrastructure.admission import HostSample, ResourceAdmissionGate
+from worker.application.ports import HostSample
+from worker.application.resource_gate import ResourceAdmissionGate
 from tests.fakes import FakeHostMetrics
 
 
