@@ -134,6 +134,7 @@
                         placeholder="Select venv"
                         formControlName="venvId"
                         [items]="venvItems()"
+                        [grouped]="true"
                         [loading]="loadingVenvs()"
                         [readonly]="isBuiltIn()"
                     />

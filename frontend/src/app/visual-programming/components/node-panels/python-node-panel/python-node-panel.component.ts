@@ -18,6 +18,7 @@ import { debounceTime } from 'rxjs/operators';
 
 import { Venv } from '../../../../features/virtual-environments/models/venv.model';
 import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
+import { toVenvSelectItems } from '../../../../features/virtual-environments/utils/venv-select-items';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
@@ -97,8 +98,9 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly venvs = signal<Venv[]>([]);
     public readonly loadingVenvs = signal<boolean>(false);
     public readonly venvItems = computed<SelectItem[]>(() => [
+        // Outside the groups, so it stays the first row rather than sinking under a heading.
         { name: 'No venv', value: null },
-        ...this.venvs().map((venv) => ({ name: venv.name, value: venv.id })),
+        ...toVenvSelectItems(this.venvs()),
     ]);
 
     public readonly inputMapKeys = computed(() => {

@@ -74,6 +74,7 @@
                             placeholder="Select venv"
                             formControlName="venv"
                             [items]="venvItems()"
+                            [grouped]="true"
                             [loading]="loadingVenvs()"
                             [readonly]="isReadOnly()"
                         />

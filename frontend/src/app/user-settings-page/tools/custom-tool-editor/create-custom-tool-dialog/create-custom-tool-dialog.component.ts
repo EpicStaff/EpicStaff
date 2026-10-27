@@ -57,6 +57,7 @@ import { CustomToolsService } from '../../../../features/tools/services/custom-t
 import { ToolsEventsService } from '../../../../features/tools/services/tools-events.service';
 import { Venv } from '../../../../features/virtual-environments/models/venv.model';
 import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
+import { toVenvSelectItems } from '../../../../features/virtual-environments/utils/venv-select-items';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { NodeSecretsFieldComponent } from '../../../../visual-programming/components/node-secrets-field/node-secrets-field.component';
@@ -231,8 +232,9 @@ export class CreateCustomToolDialogComponent {
     public readonly venvs = signal<Venv[]>([]);
     public readonly loadingVenvs = signal<boolean>(false);
     public readonly venvItems = computed<SelectItem[]>(() => [
+        // Outside the groups, so it stays the first row rather than sinking under a heading.
         { name: 'No venv', value: null },
-        ...this.venvs().map((venv) => ({ name: venv.name, value: venv.id })),
+        ...toVenvSelectItems(this.venvs()),
     ]);
 
     public readonly activeEditor = signal<ActiveEditor>(ActiveEditor.Python);
