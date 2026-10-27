@@ -3,7 +3,11 @@
     [class.selected]="isSelected"
     [class.has-subflows]="hasSubflows"
     [class.is-expanded]="isExpanded()"
+    [class.drag-over]="isDragOver()"
     (click)="selectMode ? onSelectionToggle($event) : onCardClick()"
+    (dragover)="onDragOver($event)"
+    (dragleave)="onDragLeave($event)"
+    (drop)="onDrop($event)"
 >
     <div class="card-main">
         <div class="card-info">

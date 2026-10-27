@@ -101,8 +101,12 @@
         <div
             class="tree-item label-item"
             [class.active]="activeLabelFilter() === item.node.id"
+            [class.dragging]="draggingLabelId() === item.node.id"
             [style.paddingLeft]="getIndentPadding(item.depth)"
             [style.--label-color]="getLabelIconColor(item.node)"
+            [attr.draggable]="isDragEnabled()"
+            (dragstart)="onLabelDragStart($event, item.node)"
+            (dragend)="onLabelDragEnd()"
             (click)="selectLabel(item.node.id)"
         >
             <button

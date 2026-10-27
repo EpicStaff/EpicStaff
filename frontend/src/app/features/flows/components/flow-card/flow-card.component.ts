@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent } from '@shared/components';
 import { getLabelColorOption } from '@shared/models';
@@ -16,6 +16,11 @@ export interface FlowCardAction {
     flow: GetGraphLightRequest;
     /** The ⋮ button of the menu the action was chosen from; absent when the card itself was clicked. */
     trigger?: HTMLElement;
+}
+
+export interface FlowLabelDropEvent {
+    flow: GetGraphLightRequest;
+    labelIds: number[];
 }
 
 @Component({
@@ -39,6 +44,9 @@ export class FlowCardComponent {
     @Output() selectionToggle = new EventEmitter<void>();
     @Output() cardClick = new EventEmitter<GetGraphLightRequest>();
     @Output() action = new EventEmitter<FlowCardAction>();
+    readonly labelDrop = output<FlowLabelDropEvent>();
+
+    readonly isDragOver = signal<boolean>(false);
 
     private readonly labelsStorage = inject(LabelsStorageService);
 
@@ -130,6 +138,31 @@ export class FlowCardComponent {
         this.selectionToggle.emit();
     }
 
+    onDragOver(event: DragEvent): void {
+        if (!this.hasLabelData(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.isDragOver.set(true);
+    }
+
+    onDragLeave(event: DragEvent): void {
+        const related = event.relatedTarget as Node | null;
+        const card = event.currentTarget as HTMLElement;
+        if (related && card.contains(related)) return;
+        this.isDragOver.set(false);
+    }
+
+    onDrop(event: DragEvent): void {
+        event.preventDefault();
+        event.stopPropagation();
+        this.isDragOver.set(false);
+        const labelId = this.extractLabelId(event);
+        if (labelId === null) return;
+        const currentIds = this.flow.label_ids ?? [];
+        if (currentIds.includes(labelId)) return;
+        this.labelDrop.emit({ flow: this.flow, labelIds: [...currentIds, labelId] });
+    }
+
     private emitAction(action: FlowAction, trigger: HTMLElement): void {
         this.action.emit({
             action,
@@ -172,5 +205,16 @@ export class FlowCardComponent {
             updated_at: subflow.updated_at,
         };
         this.cardClick.emit(flowLike);
+    }
+
+    private hasLabelData(event: DragEvent): boolean {
+        return event.dataTransfer?.types.includes('application/x-label-id') ?? false;
+    }
+
+    private extractLabelId(event: DragEvent): number | null {
+        const raw = event.dataTransfer?.getData('application/x-label-id');
+        if (!raw) return null;
+        const id = Number(raw);
+        return Number.isFinite(id) ? id : null;
     }
 }

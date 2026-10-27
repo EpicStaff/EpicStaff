@@ -18,6 +18,7 @@ import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/direc
 import { ActionCode, getLabelColorOption, LabelColor, LabelDto, LabelTreeNode, ResourceCode } from '@shared/models';
 import { LABELS_STORE, SidebarWidthService } from '@shared/services';
 
+import { PermissionsService } from '../../../services/auth/permissions.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ConfirmationDialogComponent, DialogResult } from '../cofirm-dialog';
 import { LabelColorPickerComponent } from '../label-color-picker/label-color-picker.component';
@@ -69,6 +70,7 @@ export class LabelSidebarComponent implements OnInit {
     private readonly dialog = inject(Dialog);
     private readonly el = inject(ElementRef);
     private readonly sidebarWidthService = inject(SidebarWidthService);
+    private readonly permissions = inject(PermissionsService);
 
     readonly storageKey = input.required<string>();
 
@@ -113,6 +115,8 @@ export class LabelSidebarComponent implements OnInit {
         flatten(this.labelTree(), 0);
         return result;
     });
+
+    readonly draggingLabelId = signal<number | null>(null);
 
     ngOnInit(): void {
         this.labelsStorage.loadLabels().subscribe();
@@ -276,6 +280,23 @@ export class LabelSidebarComponent implements OnInit {
 
     getIndentPadding(depth: number): string {
         return `${depth * 1.2 + 1}rem`;
+    }
+
+    isDragEnabled(): boolean {
+        const resource = this.resourceCode();
+        return this.permissions.can(resource, ActionCode.Update);
+    }
+
+    onLabelDragStart(event: DragEvent, node: LabelTreeNode): void {
+        if (!event.dataTransfer) return;
+        event.dataTransfer.effectAllowed = 'copy';
+        event.dataTransfer.setData('application/x-label-id', String(node.id));
+        event.dataTransfer.setData('text/plain', node.name);
+        this.draggingLabelId.set(node.id);
+    }
+
+    onLabelDragEnd(): void {
+        this.draggingLabelId.set(null);
     }
 
     private scrollChildAddRowIntoView(): void {

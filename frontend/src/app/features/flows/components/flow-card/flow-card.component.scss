@@ -22,6 +22,11 @@
         outline: 1px solid var(--accent-color);
     }
 
+    &.drag-over {
+        outline: 2px dashed var(--accent-color);
+        background: var(--purple-alpha-8);
+    }
+
     .selection-checkbox {
         position: absolute;
         top: 10px;

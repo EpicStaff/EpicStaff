@@ -1,7 +1,11 @@
 <div
     class="tool-card"
     [class.selected]="selected()"
+    [class.drag-over]="isDragOver()"
     (click)="onCardClick()"
+    (dragover)="onDragOver($event)"
+    (dragleave)="onDragLeave($event)"
+    (drop)="onDrop($event)"
 >
     <div class="card-body">
         <div class="card-top-row">

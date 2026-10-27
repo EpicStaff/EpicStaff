@@ -52,6 +52,7 @@ export class ToolCardComponent implements OnDestroy {
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
 
     public readonly menuOpen = signal<boolean>(false);
+    public readonly isDragOver = signal<boolean>(false);
     private readonly isMouseOnButton = signal<boolean>(false);
     private readonly isMouseOnMenu = signal<boolean>(false);
     private readonly isLabelsOpen = signal<boolean>(false);
@@ -167,6 +168,31 @@ export class ToolCardComponent implements OnDestroy {
     public onMenuLabelsChanged(labelIds: number[]): void {
         this.closeMenu();
         this.labelsChange.emit({ tool: this.tool(), labelIds });
+    }
+
+    public onDragOver(event: DragEvent): void {
+        if (!event.dataTransfer?.types.includes('application/x-label-id')) return;
+        event.preventDefault();
+        this.isDragOver.set(true);
+    }
+
+    public onDragLeave(event: DragEvent): void {
+        const related = event.relatedTarget as Node | null;
+        const card = event.currentTarget as HTMLElement;
+        if (related && card.contains(related)) return;
+        this.isDragOver.set(false);
+    }
+
+    public onDrop(event: DragEvent): void {
+        event.preventDefault();
+        this.isDragOver.set(false);
+        const raw = event.dataTransfer?.getData('application/x-label-id');
+        if (!raw) return;
+        const labelId = Number(raw);
+        if (!Number.isFinite(labelId)) return;
+        const currentIds = this.tool().labelIds;
+        if (currentIds.includes(labelId)) return;
+        this.labelsChange.emit({ tool: this.tool(), labelIds: [...currentIds, labelId] });
     }
 
     public onLabelsWheel(event: WheelEvent): void {
