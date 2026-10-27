@@ -234,9 +234,18 @@ class BulkDeleteQuerySerializer(serializers.Serializer):
             "Preview only: report what would be deleted and the usage that blocks "
             "the rest, without deleting anything. A preview always responds 200. "
             "This is a query parameter: a `dry_run` field in the request body is "
-            "ignored and the call runs as a real delete."
+            "rejected with 400, as is any body key other than `ids`. A blank or "
+            "repeated `dry_run` is rejected with 400 too."
         ),
     )
+
+    def to_internal_value(self, data):
+        # A QueryDict reads a blank `?dry_run` as absent and a repeated one as its
+        # last value; either would turn the caller's preview into a real delete.
+        values = data.getlist("dry_run")
+        if len(values) > 1 or values == [""]:
+            raise serializers.ValidationError({"dry_run": ["Pass dry_run once, as true or false."]})
+        return super().to_internal_value(data)
 
 
 class BulkDeleteRequestSerializer(serializers.Serializer):
@@ -254,6 +263,15 @@ class BulkDeleteRequestSerializer(serializers.Serializer):
         max_length=500,
         help_text="List of entity IDs to delete",
     )
+
+    def validate(self, attrs):
+        # DRF drops unknown body keys silently: a `dry_run` sent here instead of
+        # the query string would turn the caller's preview into a real delete.
+        if self.initial_data.keys() - self.fields.keys():
+            raise serializers.ValidationError(
+                "The body takes only ids; dry_run is a query parameter."
+            )
+        return attrs
 
 
 class UsageRefSerializer(serializers.Serializer):

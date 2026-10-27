@@ -59,13 +59,14 @@ POST /api/graphs/bulk-delete/?dry_run=true
 Runs every check and reports what would happen, without deleting anything. It
 does **not** relax the in-use guard: an id that would be blocked is still
 reported as blocked. A dry run always responds `200`. The value is parsed as a
-standard DRF boolean; a value that is not a boolean (`?dry_run=maybe`) is
-rejected with `400`.
+standard DRF boolean; a value that is not a boolean (`?dry_run=maybe`), a blank
+one (`?dry_run`, `?dry_run=`) and a repeated one (`?dry_run=true&dry_run=false`)
+are rejected with `400`.
 
 > ⚠️ **`dry_run` must be in the query string.** A `dry_run` field sent in the
-> request *body* is ignored, and the call runs as a **real delete**. There is
-> no error to warn you. If you are adapting an older client that put
-> `{"dry_run": true}` in the body, move it to `?dry_run=true`.
+> request *body* is rejected with `400`, as is any body key other than `ids`,
+> so a misplaced flag can never run as a real delete. If you are adapting an
+> older client that put `{"dry_run": true}` in the body, move it to `?dry_run=true`.
 
 ---
 
@@ -347,7 +348,7 @@ the row nor the other organization.
 | Behavior | Note |
 |---|---|
 | Before a destructive bulk action | Call with `?dry_run=true` first to see `deletable_ids`, `skipped` and `usage`, then show the user what will happen. The server will not ask for confirmation on its own. |
-| `dry_run` placement | Query string only. In the body it is ignored and the call deletes for real. |
+| `dry_run` placement | Query string only. In the body it is rejected with `400`, and nothing is deleted. |
 | `skipped` / `not_found_ids` | Partial success, not a request error — a real delete responds `207`, not `4xx`/`5xx`; a dry run responds `200`. Surface per-id outcomes rather than treating the whole call as failed. |
 | `usage` on a real delete | Always `{}`. Read usage from the dry run. |
 | `usage.visible_sample` | Advisory and intentionally incomplete — it only lists references the caller can see, capped at 5. Don't render it as an exhaustive list of what's blocking a delete. |

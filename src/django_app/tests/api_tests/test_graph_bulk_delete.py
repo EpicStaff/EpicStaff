@@ -177,6 +177,19 @@ def test_bulk_delete_dry_run_does_not_delete(django_user_model, org_a):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("extra", [{"dry_run": True}, {"unexpected": 1}])
+def test_bulk_delete_body_key_other_than_ids_is_rejected(django_user_model, org_a, extra):
+    """A `dry_run` misplaced into the body must never run as a real delete."""
+    client = org_admin_client(django_user_model, org_a, "admin@example.com")
+    graph = _graph(org_a, "graph")
+
+    resp = client.post("/api/graphs/bulk-delete/", {"ids": [graph.id], **extra}, format="json")
+
+    assert resp.status_code == 400, resp.data
+    assert Graph.objects.filter(id=graph.id).exists()
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("value", ["notabool", "maybe"])
 def test_bulk_delete_dry_run_that_is_not_a_boolean_is_rejected(
     django_user_model, org_a, value
@@ -191,6 +204,19 @@ def test_bulk_delete_dry_run_that_is_not_a_boolean_is_rejected(
     resp = client.post(
         f"/api/graphs/bulk-delete/?dry_run={value}", {"ids": [graph.id]}, format="json"
     )
+
+    assert resp.status_code == 400, resp.data
+    assert Graph.objects.filter(id=graph.id).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("query", ["dry_run", "dry_run=", "dry_run=true&dry_run=false"])
+def test_bulk_delete_blank_or_repeated_dry_run_is_rejected(django_user_model, org_a, query):
+    """A blank or repeated flag must never be read as False and executed."""
+    client = org_admin_client(django_user_model, org_a, "admin@example.com")
+    graph = _graph(org_a, "graph")
+
+    resp = client.post(f"/api/graphs/bulk-delete/?{query}", {"ids": [graph.id]}, format="json")
 
     assert resp.status_code == 400, resp.data
     assert Graph.objects.filter(id=graph.id).exists()

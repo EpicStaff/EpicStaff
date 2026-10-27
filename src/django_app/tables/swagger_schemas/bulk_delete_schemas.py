@@ -153,7 +153,9 @@ def _bulk_delete_post_schema(
                 response=OpenApiTypes.STR,
                 description=(
                     "`ids` is missing, empty, over 500 long, or not a list of "
-                    "positive integers — or `?dry_run` is not a boolean."
+                    "positive integers; the body holds a key other than `ids` "
+                    "(`dry_run` included); or `?dry_run` is not a boolean, is "
+                    "blank, or is repeated."
                 ),
             ),
             401: UNAUTHORIZED_401_RESPONSE,
