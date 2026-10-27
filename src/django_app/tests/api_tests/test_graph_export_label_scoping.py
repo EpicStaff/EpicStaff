@@ -46,7 +46,7 @@ def client_a(db, django_user_model, org_a):
 @pytest.fixture
 def flow_using_shared_built_in_tool(org_a, org_b):
     """Org A flow using a built-in tool that carries labels from both orgs."""
-    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main", libraries="")
+    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     tool = PythonCodeTool.objects.create(
         name="SharedBuiltIn", description="desc", python_code=code, org=None, built_in=True
     )

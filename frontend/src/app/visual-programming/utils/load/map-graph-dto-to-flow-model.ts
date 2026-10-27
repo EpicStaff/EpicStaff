@@ -1,4 +1,4 @@
-import { GraphDto } from '../../../features/flows/models/graph.model';
+import { GraphContentDto, GraphDto } from '../../../features/flows/models/graph.model';
 import { isNumberedNodeType } from '../../core/helpers/node-number.util';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
@@ -53,7 +53,7 @@ function deduplicateNodeNumbers(nodes: NodeModel[], graphId: number): NodeModel[
     return result;
 }
 
-export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
+export function mapGraphDtoToFlowModel(graph: GraphContentDto & Pick<GraphDto, 'id'>): FlowModel {
     // ── 1. Map each backend node list to UI node models ──────────────────
     const startNodes = (graph.start_node_list ?? []).map((n) => mapStartNodeToModel(n));
     const pythonNodes = (graph.python_node_list ?? []).map((n) => mapPythonNodeToModel(n));

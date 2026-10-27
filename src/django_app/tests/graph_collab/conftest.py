@@ -9,10 +9,12 @@ from django.urls import re_path
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 
+from rbac.models import OrganizationUser
 from tables.models import Graph
 from tables.graph_collab.consumers import GraphEditConsumer
 from tables.graph_collab.presence_service import presence_service, GraphPresenceService
 from tables.graph_collab.protocol import EditorInfo
+from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
 application = URLRouter(
@@ -44,23 +46,28 @@ def test_graph(db, default_org):
 
 
 @pytest.fixture
-def test_user(db):
+def test_user(db, default_org, role_viewer):
+    """A Viewer of the graph's org: FLOWS READ is all co-editing requires to connect."""
     User = get_user_model()
-    return User.objects.create_user(
+    user = User.objects.create_user(
         email="collab@example.com",
         password="TestPass123!",
         display_name="Collab User",
     )
+    OrganizationUser.objects.create(user=user, org=default_org, role=role_viewer)
+    return user
 
 
 @pytest.fixture
-def second_user(db):
+def second_user(db, default_org, role_viewer):
     User = get_user_model()
-    return User.objects.create_user(
+    user = User.objects.create_user(
         email="collab2@example.com",
         password="TestPass123!",
         display_name="Second User",
     )
+    OrganizationUser.objects.create(user=user, org=default_org, role=role_viewer)
+    return user
 
 
 @pytest.fixture

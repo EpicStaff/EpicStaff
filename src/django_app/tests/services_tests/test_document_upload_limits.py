@@ -17,7 +17,11 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 
 from tables.constants.upload_limits import default_upload_limits
-from tables.exceptions import DocumentUploadException
+from tables.exceptions import (
+    DocumentUploadException,
+    FileSizeExceededException,
+    InvalidFileTypeException,
+)
 from tables.services.knowledge_services.document_management_service import (
     DocumentManagementService,
 )
@@ -140,3 +144,33 @@ def test_caps_match_the_knowledge_service():
 
     assert limits.max_file_bytes == 50 * 1024 * 1024
     assert limits.max_archive_uncompressed_bytes == 50 * 1024 * 1024
+
+
+# --- metadata-only validation, used to pre-screen storage files before download ---
+
+
+def test_validate_file_metadata_returns_the_file_type():
+    assert DocumentManagementService.validate_file_metadata("Report.PDF", 10) == {
+        "file_name": "Report.PDF",
+        "file_size": 10,
+        "file_type": "pdf",
+    }
+
+
+@override_settings(MAX_UPLOAD_FILE_SIZE=10)
+def test_validate_file_metadata_rejects_an_oversized_file():
+    with pytest.raises(FileSizeExceededException):
+        DocumentManagementService.validate_file_metadata("notes.txt", 11)
+
+
+def test_validate_file_metadata_rejects_an_unsupported_type():
+    with pytest.raises(InvalidFileTypeException):
+        DocumentManagementService.validate_file_metadata("sheet.xlsx", 10)
+
+
+def test_validate_file_matches_metadata_validation():
+    uploaded = _file("notes.txt", 5)
+
+    assert DocumentManagementService.validate_file(
+        uploaded
+    ) == DocumentManagementService.validate_file_metadata("notes.txt", 5)

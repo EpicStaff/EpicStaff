@@ -41,27 +41,35 @@ import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elev
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
 import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
-import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-card-more-menu.component';
 import {
     LlmLibraryCardComponent,
     LlmLibraryCardViewDetailsEvent,
 } from '../llm-library-card/llm-library-card.component';
 import {
     RealtimeConfigDialogComponent,
-    RealtimeProvider,
+    RealtimeConfigDialogData,
 } from '../realtime-config-dialog/realtime-config-dialog.component';
+import { RealtimeConfig, RealtimeProvider } from '../realtime-config-form/realtime-config-form.component';
 
-interface VoiceProviderConfig extends AuthorshipDetailsSource {
-    id: number;
-    custom_name: string;
-    model_name: string;
+/** Voice configs have no tags, temperature or deprecation, so the shared card shows only their names. */
+function toVoiceCardModel(config: RealtimeConfig): LlmLibraryModel {
+    return {
+        id: config.id,
+        customName: config.custom_name,
+        modelName: config.model_name,
+        tags: [],
+        temperature: null,
+        usedByCount: null,
+        configType: ModelTypes.REALTIME,
+        isDeprecated: false,
+    };
 }
 
 interface VoiceProvider {
     key: RealtimeProvider;
     label: string;
     storage: {
-        configs: Signal<VoiceProviderConfig[]>;
+        configs: Signal<RealtimeConfig[]>;
         getAllConfigs(force?: boolean): Observable<unknown[]>;
         deleteConfig(id: number): Observable<void>;
     };
@@ -74,7 +82,6 @@ type SectionKey = 'llm' | 'embedding' | 'realtime' | 'transcription' | RealtimeP
     imports: [
         FormsModule,
         LlmLibraryCardComponent,
-        ConfigCardMoreMenuComponent,
         AppSvgIconComponent,
         LoadingSpinnerComponent,
         SelectComponent,
@@ -157,16 +164,19 @@ export class LlmLibrarySectionComponent implements OnInit {
             .map((provider) => ({
                 ...provider,
                 hasError: errors[provider.key],
-                configs: provider.storage.configs().filter((c) => {
-                    if (!query) return true;
-                    return (
-                        c.custom_name.toLowerCase().includes(query) ||
-                        c.model_name.toLowerCase().includes(query) ||
-                        provider.label.toLowerCase().includes(query)
-                    );
-                }),
+                cards: provider.storage
+                    .configs()
+                    .filter((c) => {
+                        if (!query) return true;
+                        return (
+                            c.custom_name.toLowerCase().includes(query) ||
+                            c.model_name.toLowerCase().includes(query) ||
+                            provider.label.toLowerCase().includes(query)
+                        );
+                    })
+                    .map((config) => ({ config, model: toVoiceCardModel(config) })),
             }))
-            .filter((provider) => provider.hasError || provider.configs.length > 0);
+            .filter((provider) => provider.hasError || provider.cards.length > 0);
     });
 
     groupedByType = computed(() => {
@@ -255,26 +265,22 @@ export class LlmLibrarySectionComponent implements OnInit {
             });
     }
 
-    onAddConfig(provider: VoiceProvider): void {
+    onEditConfig(provider: VoiceProvider, config: RealtimeConfig): void {
+        const data: RealtimeConfigDialogData = { config: config, provider: provider.key };
         this.dialog.open(RealtimeConfigDialogComponent, {
+            height: '90vh',
+            width: '600px',
             disableClose: true,
-            data: { config: null, action: 'create', provider: provider.key },
-        });
-    }
-
-    onEditConfig(provider: VoiceProvider, config: VoiceProviderConfig): void {
-        this.dialog.open(RealtimeConfigDialogComponent, {
-            disableClose: true,
-            data: { config, action: 'update', provider: provider.key },
+            data,
         });
     }
 
     /** Opens the same details the LLM and embedding cards show; the dialog closes back to `trigger`. */
-    onViewConfigDetails(config: VoiceProviderConfig, trigger: HTMLElement): void {
+    onViewConfigDetails(config: RealtimeConfig, trigger: HTMLElement): void {
         this.authorshipDetailsDialog.open('Configuration Details', config, trigger);
     }
 
-    onDeleteConfig(provider: VoiceProvider, config: VoiceProviderConfig): void {
+    onDeleteConfig(provider: VoiceProvider, config: RealtimeConfig): void {
         this.confirmationDialogService
             .confirmDelete(config.custom_name)
             .pipe(takeUntilDestroyed(this.destroyRef))

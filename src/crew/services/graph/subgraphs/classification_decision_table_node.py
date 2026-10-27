@@ -369,10 +369,8 @@ class ClassificationDecisionTableNodeSubgraph:
         """
         result = await RunPythonCodeService(redis_service=self.redis_service).run_code(
             python_code_data=PythonCodeData(
-                venv_name="default",
                 code=_EVALUATE_UNTIL_MATCH_CODE,
                 entrypoint="main",
-                libraries=[],
             ),
             inputs={
                 "expressions": expressions,
@@ -428,10 +426,8 @@ def main(**kwargs) -> dict:
     return _from_ns(variables)
 """
         python_code_data = PythonCodeData(
-            venv_name="default",
             code=code,
             entrypoint="main",
-            libraries=[],
         )
 
         variables_dict = state["variables"].model_dump()
@@ -495,6 +491,7 @@ def main(**kwargs) -> dict:
                 }
 
         model = litellm_call_model(llm.provider, llm_config.model, llm_config.deployment_id)
+        logger.debug("Calling litellm model={} (row provider {})", model, llm.provider)
         params = {
             "model": model,
             **llm_config.to_litellm_kwargs(provider=litellm_routed_provider(model)),
@@ -575,10 +572,8 @@ def main(**kwargs) -> dict:
         rendered_prompt = self._render_prompt(prompt_config.prompt_text, variables_dict)
 
         logger.debug(
-            "Executing prompt '{}' with LLM {}/{}, result_variable='{}'",
+            "Executing prompt '{}', result_variable='{}'",
             prompt_id,
-            llm_data.provider,
-            llm_data.config.model,
             prompt_config.result_variable,
         )
 
@@ -589,8 +584,11 @@ def main(**kwargs) -> dict:
                 output_schema=prompt_config.output_schema,
             )
         except Exception as e:
+            logger.opt(exception=e).error(
+                "LLM call failed for prompt '{}' in node '{}'", prompt_id, self.node_name
+            )
             raise ClassificationDecisionTableNodeError(
-                f"LLM call failed for prompt '{prompt_id}': {type(e).__name__}: {e}"
+                f"LLM call failed for prompt '{prompt_id}'"
             ) from e
 
         # Capture raw response text before JSON parsing
@@ -692,30 +690,32 @@ def main(**kwargs) -> dict:
                 msg = self.custom_session_message_writer.add_error_message(
                     session_id=self.session_id,
                     node_name=self.node_name,
-                    error=str(e),
                     writer=writer,
                     execution_order=self.execution_order(state),
                     node_type=self.TYPE,
+                    public_details=str(e),
                 )
                 await self._publish_message(msg)
                 return state
 
             return state
 
-        async def route_to_error_node(state: State, writer: StreamWriter, error: str):
+        async def route_to_error_node(state: State, writer: StreamWriter, public_details: str):
             """Route to the error node and publish error, then finish.
 
             The finish closes the CDT message group in the UI, as on the
-            pre-computation error path."""
+            pre-computation error path. The caller has already logged the raw
+            error itself; `public_details` is the only text that reaches the
+            client."""
             decision_vars = state["system_variables"]["nodes"][self.node_name]
             decision_vars["result_node"] = self.node_data.next_error_node or END
             msg = self.custom_session_message_writer.add_error_message(
                 session_id=self.session_id,
                 node_name=self.node_name,
-                error=error,
                 writer=writer,
                 execution_order=self.execution_order(state),
                 node_type=self.TYPE,
+                public_details=public_details,
             )
             await self._publish_message(msg)
             msg = self.custom_session_message_writer.add_finish_message(
@@ -863,22 +863,22 @@ def main(**kwargs) -> dict:
 
                 except ClassificationDecisionTableNodeError as e:
                     scope = batch_failure_scope or f"in condition '{group.group_name}'"
-                    error = f"Error {scope}: {e}"
+                    public_details = f"Error {scope}: {e}"
                     logger.warning(
                         "Classification decision table '{}' routed to its error node: {}",
                         self.node_name,
-                        error,
+                        public_details,
                     )
-                    return await route_to_error_node(state, writer, error)
+                    return await route_to_error_node(state, writer, public_details=public_details)
                 except Exception as e:
                     scope = batch_failure_scope or f"in condition '{group.group_name}'"
-                    error = f"Unexpected error {scope}: {type(e).__name__}: {e}"
+                    public_details = f"Unexpected error {scope}: {type(e).__name__}: {e}"
                     logger.opt(exception=e).error(
                         "Classification decision table '{}' routed to its error node: {}",
                         self.node_name,
-                        error,
+                        public_details,
                     )
-                    return await route_to_error_node(state, writer, error)
+                    return await route_to_error_node(state, writer, public_details=public_details)
 
             decision_vars["result_node"] = (
                 matched_next_node or self.node_data.default_next_node or END
@@ -889,7 +889,7 @@ def main(**kwargs) -> dict:
                 await self._execute_post_computation(state)
             except ClassificationDecisionTableNodeError as e:
                 logger.error(f"Post-computation error: {e}")
-                return await route_to_error_node(state, writer, str(e))
+                return await route_to_error_node(state, writer, public_details=str(e))
 
             logger.debug(
                 "Classification table '{}' result: result_node={}",

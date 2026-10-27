@@ -1,0 +1,177 @@
+@if (development(); as current) {
+    <div class="development">
+        @if (loadError(); as failure) {
+            <div
+                class="development__callout text-body-small"
+                role="status"
+            >
+                Couldn't refresh: {{ failure.message }} Showing the last known state.
+            </div>
+        }
+
+        <section class="development__section">
+            <h3 class="development__title text-h4">Status</h3>
+            @if (current.development_mode) {
+                <p class="development__mode text-body-medium">Development mode is on</p>
+                <dl class="development__facts text-body">
+                    <dt>Host</dt>
+                    <dd data-fact="host">
+                        @if (current.host_address; as address) {
+                            <code>{{ current.host }}</code> resolves to <code>{{ address }}</code>
+                        } @else {
+                            <span class="development__warning">{{ hostUnresolved }}</span>
+                        }
+                    </dd>
+                    <dt>API address</dt>
+                    <dd data-fact="api">
+                        <code>{{ current.api_url }}</code>
+                        <span class="development__muted text-body-small">
+                            where a development backend calls EpicStaff, on your machine
+                        </span>
+                    </dd>
+                    @if (current.can_use_backend) {
+                        <dt>Runtime file</dt>
+                        <dd data-fact="runtime-file">
+                            @if (current.runtime_file_issued_at; as issuedAt) {
+                                Downloaded {{ issuedAt | date: 'medium' }}
+                            } @else {
+                                Not downloaded
+                            }
+                        </dd>
+                    }
+                </dl>
+            } @else {
+                <p class="development__muted text-body">
+                    Plugin development mode is off on this deployment. A stored target routes nothing, and development
+                    keys are refused.
+                </p>
+            }
+        </section>
+
+        @if (current.development_mode) {
+            <section class="development__section">
+                <h3 class="development__title text-h4">Ports on your machine</h3>
+                @if (nothingToRoute()) {
+                    <p class="development__muted text-body">
+                        Nothing to route yet: the plugin has no approved version with a backend or a page.
+                    </p>
+                } @else {
+                    @if (saveError(); as failure) {
+                        <div
+                            class="development__error text-body"
+                            role="alert"
+                        >
+                            <span>{{ failure.message }}</span>
+                            @if (otherErrorItems().length > 0) {
+                                <ul class="development__error-items">
+                                    @for (item of otherErrorItems(); track $index) {
+                                        <li>{{ item.message }}</li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    }
+                    <div class="development__ports">
+                        @for (field of fields(); track field.key) {
+                            <div
+                                class="development__port"
+                                [attr.data-port]="field.key"
+                            >
+                                <app-input-number
+                                    [label]="field.label"
+                                    mod="small"
+                                    placeholder="None"
+                                    [value]="field.value"
+                                    [min]="portMin"
+                                    [max]="portMax"
+                                    [invalid]="field.invalid"
+                                    [errorMessage]="field.message"
+                                    [ariaLabel]="field.label + ', ' + portMin + ' to ' + portMax"
+                                    (changed)="setDraft(field.key, $event)"
+                                />
+                            </div>
+                        }
+                    </div>
+                    @if (needsRuntimeFile()) {
+                        <p
+                            class="development__callout text-body-small"
+                            role="status"
+                        >
+                            Download the development runtime file: without it the development backend can't verify
+                            requests or call EpicStaff.
+                        </p>
+                    }
+                    <p class="development__muted text-body-small">
+                        @if (bothEmpty() && current.target) {
+                            Set at least one port, or stop development.
+                        } @else {
+                            EpicStaff sends the plugin's requests to host.docker.internal on these ports within about 10
+                            seconds of saving.
+                        }
+                    </p>
+                }
+                <div class="development__actions">
+                    @if (!nothingToRoute()) {
+                        <app-button
+                            type="primary"
+                            [disabled]="!canSave()"
+                            (click)="save()"
+                        >
+                            Save
+                        </app-button>
+                    }
+                    @if (canStop()) {
+                        <app-button
+                            type="outline-danger"
+                            [disabled]="isBusy()"
+                            (click)="stop()"
+                        >
+                            Stop development
+                        </app-button>
+                    }
+                </div>
+            </section>
+
+            @if (current.can_use_backend) {
+                <section class="development__section">
+                    <h3 class="development__title text-h4">Development backend</h3>
+                    <p class="development__muted text-body">
+                        Run your backend with this plugin's development runtime file, then set Backend port above.
+                    </p>
+                    <div class="development__actions development__actions--start">
+                        <app-button
+                            type="outline-primary"
+                            [disabled]="isBusy()"
+                            (click)="download()"
+                        >
+                            Download development runtime file
+                        </app-button>
+                    </div>
+                    <app-copy-field
+                        class="development__command"
+                        label="Command"
+                        [value]="command()"
+                    />
+                </section>
+            }
+        } @else if (canStop()) {
+            <div class="development__actions development__actions--start">
+                <app-button
+                    type="outline-danger"
+                    [disabled]="isBusy()"
+                    (click)="stop()"
+                >
+                    Stop development
+                </app-button>
+            </div>
+        }
+    </div>
+} @else if (loadError(); as failure) {
+    <app-fetch-error-state
+        title="Couldn't load the development state"
+        [message]="failure.message"
+        (retry)="reload()"
+    />
+} @else if (isLoading()) {
+    <app-loading-spinner />
+}

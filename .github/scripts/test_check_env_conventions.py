@@ -55,12 +55,28 @@ class ComposeTest(unittest.TestCase):
         violations = check.check_compose({"docker-compose.yaml": lines})
         self.assertEqual(len(violations), len(lines))
 
+    def test_every_stack_compose_file_is_checked_and_lab_files_are_not(self):
+        checked = [
+            "src/docker-compose.yaml",
+            "src/docker-compose.plugins-dev.yaml",
+            "docker-compose.override.yml",
+        ]
+        not_checked = [
+            "src/nginx/tests/development/compose.yaml",
+            "src/es_plugins/lab/compose.yaml",
+            "src/docker-compose.yaml.orig",
+        ]
+        for path in checked:
+            self.assertRegex(path, check.COMPOSE_FILE_RE)
+        for path in not_checked:
+            self.assertNotRegex(path, check.COMPOSE_FILE_RE)
+
 
 class PythonTest(unittest.TestCase):
     def test_reads_that_are_not_boolean_parsing_pass(self):
         for line in [
             'DEBUG = env.bool("DJANGO_DEBUG")',
-            'path = os.getenv("CONTAINER_SAVEFILES_PATH", ".")',
+            'path = os.getenv("SANDBOX_OUTPUT_PATH", ".")',
             'IS_PROD = os.getenv("ENVIRONMENT") == "production"',
             'LEVEL = os.getenv("LOG_LEVEL", "info").lower()',
             'if env.str("MODE").lower() in ("dev", "prod"):',

@@ -185,6 +185,7 @@ class SessionPrincipal(models.Model):
         API_KEY_USER = "api_key_user"
         API_KEY_SYSTEM = "api_key_system"
         TRIGGER = "trigger"
+        PLUGIN = "plugin"
         UNKNOWN = "unknown"
 
     session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name="principal")
@@ -206,3 +207,6 @@ class SessionPrincipal(models.Model):
         related_name="+",
     )
     email = models.CharField(max_length=256, default=None, blank=True, null=True)
+    # Set for PLUGIN runs only; `user` and `email` then name the person the plugin
+    # ran the flow on behalf of, or stay empty when it ran on its own.
+    plugin_identifier = models.CharField(max_length=32, default=None, blank=True, null=True)

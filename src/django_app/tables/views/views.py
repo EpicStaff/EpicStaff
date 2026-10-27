@@ -17,6 +17,7 @@ from drf_spectacular.utils import (
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
+    DenyPluginCredential,
     HasOrgPermission,
 )
 from rbac.access.org_context import OrgContextService
@@ -31,6 +32,7 @@ from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.settings import api_settings
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
@@ -92,8 +94,21 @@ from tables.services.notification_email_sender import NotificationEmailSender
 from tables.services.quickstart_service import QuickstartService
 from tables.services.realtime_service import RealtimeService
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import (
+    RunAdmissionRefusedError,
+    RunKind,
+    RunSubject,
+    assert_run_admitted,
+)
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.secrets import SecretResolver
+from tables.services.secrets.pinned_principal_rules import (
+    assert_may_resolve_markers,
+    pinned_principal_of_user,
+)
+from tables.services.secrets.request_actor import actor_from_request
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
+from tables.services.secrets.secret_use_checks import check_quickstart
 from tables.services.session_access import (
     assert_parent_session_in_org,
     get_accessible_session,
@@ -513,6 +528,9 @@ class RunSession(APIView):
                 session_id=session_id,
                 arrival_ts=request_received_ts,
             )
+        except RunAdmissionRefusedError:
+            # A refusal is the caller's answer (409), not a failure to start.
+            raise
         except Exception as e:
             logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
@@ -604,9 +622,15 @@ class NotifyEmailView(APIView):
     does not prevent abuse: this is driven by notification_tool (LLM output),
     so a prompt-injected agent or a leaked API key could otherwise send
     unlimited mail to arbitrary external addresses from our domain.
-    NotifyEmailThrottle caps that per authenticated user."""
+    NotifyEmailThrottle caps that per authenticated user.
 
-    throttle_classes = [NotifyEmailThrottle]
+    Plugin service accounts are refused: no resource type governs mail, so a
+    plugin's declared access could not cap it."""
+
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
+    # Extends the defaults rather than replacing them, so a default throttle
+    # (such as the per-plugin request rate) still applies here.
+    throttle_classes = [*api_settings.DEFAULT_THROTTLE_CLASSES, NotifyEmailThrottle]
 
     @extend_schema(
         summary="Send a notification email",
@@ -711,6 +735,8 @@ class RunPythonCodeAPIView(APIView):
 
 
 class InitRealtimeAPIView(APIView):
+    # A realtime session is a person's voice conversation; plugins have no part in it.
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
     _org_context = OrgContextService()
 
     @extend_schema(**INIT_REALTIME_POST)
@@ -795,6 +821,8 @@ class InitRealtimeAPIView(APIView):
                     "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
                 }
             )
+        # Outside the try below, whose generic handler would turn the 409 into a 400.
+        assert_run_admitted(RunSubject(RunKind.REALTIME, agent_definition_id, org_id))
 
         try:
             connection_key = realtime_service.init_realtime_agent_definition(
@@ -877,6 +905,9 @@ class QuickstartView(APIView):
             resource_type=self.rbac_resource_type,
             action=Permission.CREATE,
         )
+        # After the CREATE gate, so a caller who may not create configs at all gets
+        # its 403 rather than a secret Use 400.
+        check_quickstart(actor_from_request(request), serializer.validated_data)
 
         result = quickstart_service.quickstart(
             provider=provider,
@@ -887,9 +918,15 @@ class QuickstartView(APIView):
         )
 
         if not result.get("success", False):
+            # A curated refusal is the caller's to fix (400); anything else is a
+            # server failure, and its message is already the generic one.
             return Response(
                 data={"detail": "Error quickstart", "error": result.get("error")},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR
+                    if result.get("unexpected", False)
+                    else status.HTTP_400_BAD_REQUEST
+                ),
             )
 
         config_name = result["config_name"]
@@ -988,6 +1025,14 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
         )
 
         indexing_data = IndexingService.validate_and_prepare_indexing(rag_id, rag_type)
+        principal = pinned_principal_of_user(request.user)
+        if principal is not None:
+            # The headers' markers resolve below by name, as a run's do when it starts.
+            assert_may_resolve_markers(
+                principal=principal,
+                names=extract_secret_marker_names(indexing_data["embedder_extra_headers"])
+                | extract_secret_marker_names(indexing_data["llm_extra_headers"]),
+            )
         secret_resolver = SecretResolver()
 
         embedding_api_key_secret_id = indexing_data["embedder_api_key_secret_id"]

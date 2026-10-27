@@ -32,10 +32,13 @@ describe('FlowSettingsPanelComponent', () => {
     });
 });
 
-describe('FlowSettingsPanelComponent node numbers toggle', () => {
+describe('FlowSettingsPanelComponent toggles', () => {
     beforeEach(() => localStorage.clear());
 
-    it('flips whether node numbers are always shown', () => {
+    it.each([
+        ['Always show node numbers', 'alwaysShowNodeNumbers'],
+        ['Highlight unused nodes', 'highlightUnusedNodes'],
+    ] as const)('"%s" flips the %s setting', (label, setting) => {
         TestBed.configureTestingModule({
             providers: [
                 { provide: DialogRef, useValue: { close: vi.fn() } },
@@ -48,13 +51,13 @@ describe('FlowSettingsPanelComponent node numbers toggle', () => {
         const settings = TestBed.inject(FlowSettingsService);
         const row = fixture.debugElement
             .queryAll(By.css('.form-section--toggle'))
-            .find((section) => section.nativeElement.textContent.includes('Always show node numbers'))!;
+            .find((section) => section.nativeElement.textContent.includes(label))!;
 
         row.nativeElement.querySelector('input[type="checkbox"]').click();
         fixture.detectChanges();
-        expect(settings.alwaysShowNodeNumbers()).toBe(true);
+        expect(settings[setting]()).toBe(true);
 
         row.nativeElement.querySelector('input[type="checkbox"]').click();
-        expect(settings.alwaysShowNodeNumbers()).toBe(false);
+        expect(settings[setting]()).toBe(false);
     });
 });

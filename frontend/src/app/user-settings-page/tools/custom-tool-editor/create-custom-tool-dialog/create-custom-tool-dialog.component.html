@@ -65,6 +65,11 @@
             </div>
         </header>
 
+        <app-error-banner
+            class="save-error"
+            [message]="errorMessage()"
+        />
+
         <div
             class="dialog-content"
             [class.right-collapsed]="activeEditor() === ActiveEditor.None"
@@ -121,6 +126,18 @@
                         />
                     </div>
                 }
+
+                <div class="form-section">
+                    <app-select
+                        label="Venv"
+                        tooltipText="The virtual environment this tool's code runs in. Leave empty to use the default environment."
+                        placeholder="Select venv"
+                        formControlName="venvId"
+                        [items]="venvItems()"
+                        [loading]="loadingVenvs()"
+                        [readonly]="isBuiltIn()"
+                    />
+                </div>
 
                 @if (activeEditor() !== ActiveEditor.Python) {
                     <div
@@ -320,16 +337,6 @@
                             }
                         </div>
                     }
-                </div>
-
-                <div class="form-section">
-                    <app-chips-input
-                        label="Library"
-                        [readOnly]="isBuiltIn()"
-                        tooltipText="Add Python libraries needed by your tool. They must be available in the Python environment that runs the tool."
-                        inputPlaceholder="Enter library name..."
-                        formControlName="libraries"
-                    ></app-chips-input>
                 </div>
 
                 @if (executionTimeout(); as executionTimeoutField) {

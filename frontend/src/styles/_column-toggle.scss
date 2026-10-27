@@ -1,0 +1,25 @@
+// Same look as the tools list sidebar toggle.
+@mixin button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--color-text-secondary);
+    border-radius: 4px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+
+    &:hover {
+        border-color: var(--accent-color);
+        color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}

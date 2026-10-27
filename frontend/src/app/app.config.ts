@@ -22,6 +22,7 @@ import { provideConfigureModelsStorages } from './features/configure-models/conf
 import { provideFlowsStorages } from './features/flows/flows.providers';
 import { provideKeyValueTablesStorages } from './features/key-value-tables/key-value-tables.providers';
 import { provideKnowledgeSourcesStorages } from './features/knowledge-sources/knowledge-sources.providers';
+import { providePluginsExtensions, providePluginsStorages } from './features/plugins/plugins.providers';
 import { provideRoleBaseAccessStorages } from './features/role-base-access/role-base-access.providers';
 import { provideToolsStorages } from './features/tools/tools.providers';
 import { ActiveOrgService } from './services/auth/active-org.service';
@@ -75,6 +76,8 @@ export const appConfig: ApplicationConfig = {
         ...provideKnowledgeSourcesStorages(),
         ...provideKeyValueTablesStorages(),
         ...provideChatStorages(),
+        ...providePluginsStorages(),
+        ...providePluginsExtensions(),
         ...provideSharedStorages(),
         ...provideVisualProgrammingStorages(),
     ],

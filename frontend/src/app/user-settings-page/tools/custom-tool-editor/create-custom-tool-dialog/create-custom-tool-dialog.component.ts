@@ -23,14 +23,16 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
-    ChipsInputComponent,
     ConfirmationDialogService,
     CustomInputComponent,
+    ErrorBannerComponent,
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
     HelpTooltipComponent,
     JsonEditorComponent,
     JsonError,
+    SelectComponent,
+    SelectItem,
     TextareaComponent,
     ToggleSwitchComponent,
     ValidationErrorsComponent,
@@ -46,12 +48,15 @@ import {
     toSecretNames,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
+import { extractHttpErrorMessage, isClientError } from '@shared/utils';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY, Observable, of, timer } from 'rxjs';
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
 import { CustomToolsService } from '../../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../features/tools/services/tools-events.service';
+import { Venv } from '../../../../features/virtual-environments/models/venv.model';
+import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { NodeSecretsFieldComponent } from '../../../../visual-programming/components/node-secrets-field/node-secrets-field.component';
@@ -123,14 +128,15 @@ const VARIABLES_SCHEMA_TOOLTIP =
         MatTooltipModule,
         AppSvgIconComponent,
         ButtonComponent,
-        ChipsInputComponent,
         CustomInputComponent,
+        ErrorBannerComponent,
         ExecutionTimeoutFieldComponent,
         HelpTooltipComponent,
         CodeEditorComponent,
         JsonEditorComponent,
         TextareaComponent,
         ToggleSwitchComponent,
+        SelectComponent,
         ParametersTableViewComponent,
         EnterSubmitDirective,
         HasPermissionDirective,
@@ -151,6 +157,7 @@ export class CreateCustomToolDialogComponent {
     private readonly toolsEvents = inject(ToolsEventsService);
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly permissionsService = inject(PermissionsService);
+    private readonly venvsApiService = inject(VenvsApiService);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     private readonly dialogData = inject<CreateCustomToolDialogData | null>(DIALOG_DATA, { optional: true });
 
@@ -195,7 +202,7 @@ export class CreateCustomToolDialogComponent {
             Validators.required,
         ]),
         variablesJson: this.fb.control(this.initialVariablesJson(), [Validators.required]),
-        libraries: this.fb.control<string[]>(this.selectedTool()?.python_code?.libraries ?? []),
+        venvId: this.fb.control<number | null>(this.selectedTool()?.python_code?.venv_id ?? null),
         useStorage: this.fb.control(this.selectedTool()?.use_storage ?? false),
     });
 
@@ -221,6 +228,13 @@ export class CreateCustomToolDialogComponent {
             : this.selectedSecretNames()
     );
 
+    public readonly venvs = signal<Venv[]>([]);
+    public readonly loadingVenvs = signal<boolean>(false);
+    public readonly venvItems = computed<SelectItem[]>(() => [
+        { name: 'No venv', value: null },
+        ...this.venvs().map((venv) => ({ name: venv.name, value: venv.id })),
+    ]);
+
     public readonly activeEditor = signal<ActiveEditor>(ActiveEditor.Python);
     public readonly pythonSectionExpanded = signal(false);
     public readonly jsonSectionExpanded = signal(false);
@@ -234,6 +248,8 @@ export class CreateCustomToolDialogComponent {
     public readonly pythonHasError = signal(false);
     public readonly isSaving = signal(false);
     public readonly isCopying = signal(false);
+    /** What the server said when it refused a save or a copy; shown in the banner under the header. */
+    public readonly errorMessage = signal<string | null>(null);
     /**
      * The code's execution timeout, once the limits it is shown and checked against are loaded. Null until then (or
      * when they cannot be loaded): the field is not shown, and a save sends the stored timeout back, or none for a
@@ -254,6 +270,18 @@ export class CreateCustomToolDialogComponent {
                 queueMicrotask(() => this.monacoJsonEditor?.layout());
             }
         });
+
+        this.loadingVenvs.set(true);
+        this.venvsApiService
+            .getVenvs()
+            .pipe(takeUntilDestroyed())
+            .subscribe({
+                next: (list) => {
+                    this.venvs.set(list);
+                    this.loadingVenvs.set(false);
+                },
+                error: () => this.loadingVenvs.set(false),
+            });
 
         const parsedDefault = parseToolVariablesJson(this.form.controls.variablesJson.value);
         this.tableVariables.set(parsedDefault.valid ? parsedDefault.variables : []);
@@ -506,6 +534,7 @@ export class CreateCustomToolDialogComponent {
         }
 
         this.isCopying.set(true);
+        this.errorMessage.set(null);
         this.customToolsService
             .copyPythonCodeTool(original.id)
             .pipe(
@@ -515,7 +544,7 @@ export class CreateCustomToolDialogComponent {
                 }),
                 catchError((err: HttpErrorResponse) => {
                     console.error('Error copying tool:', err);
-                    this.toast.error(this.nameConflictMessage(err) ?? 'Failed to copy custom tool. Please try again.');
+                    this.showSaveError(err, 'Failed to copy custom tool. Please try again.');
                     return EMPTY;
                 }),
                 finalize(() => this.isCopying.set(false)),
@@ -566,6 +595,7 @@ export class CreateCustomToolDialogComponent {
         const action: SaveAction = editingTool === null ? 'create' : editingTool.built_in ? 'fork' : 'update';
 
         this.isSaving.set(true);
+        this.errorMessage.set(null);
 
         const request$ =
             action === 'fork' && editingTool
@@ -586,7 +616,7 @@ export class CreateCustomToolDialogComponent {
                 }),
                 catchError((err: HttpErrorResponse) => {
                     console.error(`Error on tool ${action}:`, err);
-                    this.toast.error(this.nameConflictMessage(err) ?? SAVE_FAILURE_MESSAGES[action]);
+                    this.showSaveError(err, SAVE_FAILURE_MESSAGES[action]);
                     return EMPTY;
                 }),
                 finalize(() => this.isSaving.set(false)),
@@ -637,13 +667,16 @@ export class CreateCustomToolDialogComponent {
         };
     }
 
-    private nameConflictMessage(err: HttpErrorResponse): string | null {
-        if (err.status !== 400) {
-            return null;
+    /**
+     * A refusal of what was sent (4xx, e.g. a duplicate name or a secret the user may not use) goes to the banner with
+     * the server's words; anything else keeps the generic toast.
+     */
+    private showSaveError(err: HttpErrorResponse, fallback: string): void {
+        if (isClientError(err)) {
+            this.errorMessage.set(extractHttpErrorMessage(err, fallback));
+            return;
         }
-        const body = err.error as { name?: string[] } | null;
-        const message = body?.name?.[0];
-        return typeof message === 'string' ? message : null;
+        this.toast.error(fallback);
     }
 
     private adoptForkedCopy(created: GetPythonCodeToolRequest): void {
@@ -656,12 +689,12 @@ export class CreateCustomToolDialogComponent {
     }
 
     private computeSnapshot(): string {
-        const { name, description, pythonCode, libraries, useStorage } = this.form.getRawValue();
+        const { name, description, pythonCode, venvId, useStorage } = this.form.getRawValue();
         return JSON.stringify({
             name,
             description,
             pythonCode,
-            libraries: [...libraries].sort(),
+            venvId,
             useStorage,
             variables: this.snapshotVariables(),
             secretIds: [...this.selectedSecretIds()].sort(),

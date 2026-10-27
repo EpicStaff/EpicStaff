@@ -46,6 +46,7 @@ Duration values: seconds, or `<n>s|m|h|d`. Rate values: `<count>/<s|m|h|d>`.
 | `DJANGO_API_KEY` | shared | EpicStaff's system API key, the same variable Django seeds it from; empty or `none` is refused. |
 | `CHAT_DJANGO_TIMEOUT` | `10s` | Overall limit for one Django call (fractional allowed). |
 | `CHAT_PUBLIC_BASE_URL` | `http://localhost` (dev only) | Public origin printed in the widget embed snippet, no trailing slash. |
+| `CHAT_WIDGET_URL` | `https://epicstaffchat.pages.dev/embed.js` | Script the embed snippet loads: the EpicChat widget on its CDN (the latest release). Pin a version, e.g. `https://v3-0-0.epicstaffchat.pages.dev/embed.js`, to upgrade the widget only on purpose. An absolute https URL (http only for an internal host), no quotes, angle brackets or whitespace. |
 | `CHAT_CALLBACK_URL` | `http://chat:8200/chat/internal/v1/session-callbacks` | Where Django posts run results (`/<run id>` appended); its host must be in `DJANGO_SESSION_CALLBACK_ALLOWED_HOSTS`. |
 | `CHAT_TRUSTED_PROXIES` | RFC 1918 ranges | CIDRs whose `X-Forwarded-For` is trusted (last entry is used). |
 
@@ -94,6 +95,17 @@ they act up to `CHAT_RECONCILE_INTERVAL` late.
 | `CHAT_CLOSE_AFTER_MAX` | `30d` | Longest close-after time a desk may set (≤ 2147483647 s). |
 
 Whole seconds. Lowering a max does not change desks already above it.
+
+## Widget messages
+
+What a visitor message may carry beyond its desk's own limits; the same on every desk. The
+widget reads them from the conversation state (`action_max_bytes`, `extra_data_max_bytes`).
+Plain byte counts, no units.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CHAT_ACTION_MAX_BYTES` | `262144` | Largest `action` (e.g. an edited table sent back), as compact UTF-8 JSON; larger is 400 `validation_error`. A message is a JSON body held to 1 MiB, text included: keep this well below that. |
+| `CHAT_EXTRA_DATA_MAX_BYTES` | `8192` | Largest `chat_extra_data`, as compact UTF-8 JSON; larger is 400 `validation_error`. |
 
 ## Set by compose, not by `.env`
 

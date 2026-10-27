@@ -18,8 +18,8 @@ from django.db.migrations.executor import MigrationExecutor
 
 quickstart_column_migration = import_module("tables.migrations.0259_user_quickstart_tour_completed_at")
 
-BEFORE = [("tables", "0279_merge_20261021_1621")]
-AFTER = [("tables", "0280_user_tour_progress")]
+BEFORE = [("tables", "0283_clear_local_avatars")]
+AFTER = [("tables", "0284_user_tour_progress")]
 
 FIRST_COMPLETION = datetime(2026, 3, 4, 5, 6, 7, tzinfo=UTC)
 LATER_COMPLETION = datetime(2026, 11, 12, 13, 14, 15, tzinfo=UTC)

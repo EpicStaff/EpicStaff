@@ -46,6 +46,7 @@ from storage_credentials.exceptions import (
 )
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
+from tables.exceptions import ConfigProviderMissingError
 from tables.models import PythonCode, PythonCodeTool, Secret
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
@@ -233,7 +234,7 @@ class ConverterService(metaclass=SingletonMeta):
         Allowed paths are the graph's attached files followed by `extra_paths`, the
         folders the run itself may write to (`sessions/<id>/` in a real run). Both
         are None when the slot does not use storage or there is no graph to scope
-        it by, which tells the sandbox to mint no credentials.
+        it by, which means no storage credentials are minted for this run.
         """
         if not use_storage or graph_id is None:
             return None, None
@@ -434,15 +435,10 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
         org_id: int | None = None,
     ):
-        libraries = python_code.get_libraries_list()
-        venv_name = str(python_code.pk)
-        if not libraries:
-            venv_name = "default"
         return PythonCodeData(
-            venv_name=venv_name,
+            venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
             code=python_code.code,
             entrypoint=python_code.entrypoint,
-            libraries=libraries,
             global_kwargs=python_code.global_kwargs,
             execution_timeout=python_code.execution_timeout,
             use_storage=use_storage,
@@ -609,8 +605,20 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def convert_llm_config_to_pydantic(self, config: LLMConfig) -> LLMData | None:
+        """Convert an LLM config into the payload sent to crew.
+
+        Returns:
+            None when the config is missing or has no model; nothing is configured.
+
+        Raises:
+            ConfigProviderMissingError: The config's model has no provider, because
+                the provider was deleted.
+        """
         if not config or not config.model:
             return None
+
+        if config.model.llm_provider is None:
+            raise ConfigProviderMissingError("LLM", config.custom_name)
 
         return LLMData(
             provider=config.model.llm_provider.name,
@@ -648,15 +656,23 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_embedding_config_to_pydantic(
         self, embedding_config: EmbeddingConfig
     ) -> EmbedderData | None:
+        """Convert an embedding config into the payload sent to crew.
+
+        Returns:
+            None when the config is missing; nothing is configured.
+
+        Raises:
+            ConfigProviderMissingError: The config has no model, or its model has no
+                provider, because the model or provider was deleted.
+        """
         if not embedding_config:
             return None
 
+        if embedding_config.model is None or embedding_config.model.embedding_provider is None:
+            raise ConfigProviderMissingError("Embedding", embedding_config.custom_name)
+
         return EmbedderData(
-            provider=(
-                embedding_config.model.embedding_provider.name
-                if embedding_config.model.embedding_provider
-                else None
-            ),
+            provider=embedding_config.model.embedding_provider.name,
             config=EmbedderConfigData(
                 model=embedding_config.model.name,
                 base_url=embedding_config.model.base_url,

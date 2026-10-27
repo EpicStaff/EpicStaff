@@ -429,7 +429,7 @@ async def fake_run_code_raises(
 
 
 _FAILING_CODE = PythonCodeData(
-    venv_name="default", code="def main(): pass", entrypoint="main", libraries=[]
+    code="def main(): pass", entrypoint="main"
 )
 
 
@@ -876,4 +876,57 @@ async def test_batch_run_failure_names_the_row_range(monkeypatch):
     assert error_message["details"] == (
         "Error evaluating conditions from 'first' to 'last': "
         "Expression execution failed: boom"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Exception text sanitization
+# ---------------------------------------------------------------------------
+
+
+_SENSITIVE_EXCEPTION_TEXT = "sk-live-abcdef at https://internal-llm.epicstaff.local:8443"
+
+
+def first_error_message(redis_service: MagicMock) -> dict:
+    return next(
+        message
+        for message in published_messages(redis_service)
+        if message["message_type"] == "error"
+    )
+
+
+@pytest.mark.asyncio
+async def test_llm_failure_reports_the_prompt_without_provider_exception_text(monkeypatch):
+    """A provider failure names the prompt; the provider's own message, which can
+    quote the API key and endpoint, stays in the logs."""
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+    prompt_config = PromptConfigData(
+        prompt_text="Classify {text}",
+        llm_data=make_llm_data(),
+        result_variable="classification_result",
+    )
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="prompt_row",
+            expression="True",
+            prompt_id="classify",
+            next_node="after_prompt",
+            order=0,
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(
+            condition_groups=groups,
+            prompts={"classify": prompt_config},
+            next_error_node="error_node",
+        )
+    )
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+        mock_completion.side_effect = RuntimeError(_SENSITIVE_EXCEPTION_TEXT)
+        result = await subgraph.ainvoke(make_state({"text": "hello"}))
+
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    assert first_error_message(redis_service)["details"] == (
+        "Error in condition 'prompt_row': LLM call failed for prompt 'classify'"
     )

@@ -8,12 +8,9 @@ from tables.serializers.model_serializers.embedding_serializers import (
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
 )
-from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
-class QuickstartSerializer(SecretReferenceGuardMixin, serializers.Serializer):
-    secret_reference_fields = ("api_key_secret_id",)
-
+class QuickstartSerializer(serializers.Serializer):
     provider = serializers.CharField()
     # Exactly one credential form. `api_key` is the cold start (no secrets exist
     # yet); `api_key_secret_id` reuses one the caller already owns.

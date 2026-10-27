@@ -1083,6 +1083,7 @@ dependencies = [
     { name = "miniopy-async" },
     { name = "pandas" },
     { name = "pdfplumber" },
+    { name = "pebble" },
     { name = "pgvector" },
     { name = "psycopg" },
     { name = "pydantic" },
@@ -1174,6 +1175,7 @@ requires-dist = [
     { name = "miniopy-async", specifier = ">=1.23.5" },
     { name = "pandas", specifier = "==3.0.5" },
     { name = "pdfplumber", specifier = "==0.11.10" },
+    { name = "pebble", specifier = "==5.2.3" },
     { name = "pgvector", specifier = "==0.4.2" },
     { name = "psycopg", specifier = "==3.3.4" },
     { name = "pydantic", specifier = "==2.13.4" },
@@ -1853,6 +1855,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/05/56/6f450312ba05a27d7713b73857c1a25100dbda04fbc1331b13fb227a607d/pdfplumber-0.11.10.tar.gz", hash = "sha256:b95b2d28c66efb0a794a83b88c6c6aea5987532a445d20a1cbcfa657022e6e57", size = 102892, upload-time = "2026-06-15T03:31:31.035Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/9a/07d658e1e7fad860f1c541ab941348125dbdab773be3a0afaf32361866c7/pdfplumber-0.11.10-py3-none-any.whl", hash = "sha256:7741ea81bf165b474b153e6789d10d18e06b6ddcf3ec84289c3ef2fed6802580", size = 60047, upload-time = "2026-06-15T03:31:29.702Z" },
+]
+
+[[package]]
+name = "pebble"
+version = "5.2.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a1/05/8b55d257b54bc0841db1dac5e28e495adc19b4227d73089ce95fc24bf37b/pebble-5.2.3.tar.gz", hash = "sha256:6fce8cc8cbf367588406f66e4b62ec36e22594a6c720bff1d08cc2e565a66af3", size = 42668, upload-time = "2026-10-04T22:29:04.063Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4c/a2/ab7713b3b90f240500259fd2b90a284259ed332a03de4813cb5e1efe1758/pebble-5.2.3-py3-none-any.whl", hash = "sha256:9f25c2b8bf4716b51f78b74fea4d58b26c4dfd03160e8223b99f1e3424b3914a", size = 36956, upload-time = "2026-10-04T22:29:02.663Z" },
 ]
 
 [[package]]

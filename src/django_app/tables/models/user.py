@@ -16,6 +16,7 @@ import uuid
 
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
+from django.core.files.storage import storages
 from django.db import models
 
 DISPLAY_NAME_MAX_LENGTH = 255
@@ -110,6 +111,11 @@ def _avatar_upload_path(instance, filename):
     return f"avatars/{instance.id}/{uuid.uuid4().hex}{ext}"
 
 
+def avatar_storage():
+    """Return the `avatars` storage; a callable keeps its settings out of migrations."""
+    return storages["avatars"]
+
+
 def default_custom_shortcuts() -> dict:
     return {"custom": [], "overrides": {}}
 
@@ -117,7 +123,9 @@ def default_custom_shortcuts() -> dict:
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     display_name = models.CharField(max_length=DISPLAY_NAME_MAX_LENGTH, blank=True, null=True)
-    avatar = models.ImageField(upload_to=_avatar_upload_path, blank=True, null=True)
+    avatar = models.ImageField(
+        upload_to=_avatar_upload_path, storage=avatar_storage, blank=True, null=True
+    )
     is_superadmin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     custom_shortcuts = models.JSONField(default=default_custom_shortcuts, blank=True)

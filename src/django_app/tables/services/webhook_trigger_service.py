@@ -18,6 +18,7 @@ from tables.models.webhook_models import (
 )
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import RunAdmissionRefusedError, log_trigger_refusal_once
 from tables.services.secrets import SecretResolutionError, secret_resolver
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
@@ -203,6 +204,13 @@ class WebhookTriggerService(metaclass=SingletonMeta):
                     variables={"trigger_payload": payload},
                     trigger=TriggerSpec.webhook(webhook_trigger_node, path, config_id),
                     allow_persistent_override=True,
+                )
+            except RunAdmissionRefusedError as error:
+                log_trigger_refusal_once(
+                    trigger="webhook",
+                    node_id=webhook_trigger_node.pk,
+                    graph_id=webhook_trigger_node.graph_id,
+                    error=error,
                 )
             except Exception:
                 logger.exception(

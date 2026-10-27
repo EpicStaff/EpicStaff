@@ -35,9 +35,15 @@ def default_execution_timeout() -> int:
 
 
 class PythonCode(ContentHashMixin, models.Model):
+    venv = models.ForeignKey(
+        "proxies.SandboxVenvBinding",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="python_codes",
+    )
     code = models.TextField()
     entrypoint = models.TextField(default="main")
-    libraries = models.TextField(default="")  # sep: space
     global_kwargs = models.JSONField(default=dict)
     secrets = models.ManyToManyField("Secret", blank=True, related_name="python_codes")
     execution_timeout = models.PositiveIntegerField(
@@ -60,9 +66,6 @@ class PythonCode(ContentHashMixin, models.Model):
     def forget_linked_secrets(self) -> None:
         """Drop the prefetched list after the links change: a plain attribute, so nothing else does."""
         self.__dict__.pop(LINKED_SECRETS_ATTR, None)
-
-    def get_libraries_list(self):
-        return list(filter(None, self.libraries.split(" ")))
 
 
 class PythonCodeTool(

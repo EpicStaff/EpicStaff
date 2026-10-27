@@ -1,0 +1,165 @@
+.venv-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background-color: var(--color-flow-card-bg);
+    box-shadow: var(--shadow-raised);
+
+    &__row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        height: 28px;
+        min-width: 0;
+    }
+
+    &__title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    &__name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-text-primary);
+    }
+
+    &__actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+    }
+
+    &__icon-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--color-ks-transparent-text-60);
+        cursor: pointer;
+
+        &:hover {
+            color: var(--color-text-primary);
+            background-color: var(--color-ghost-btn-hover);
+        }
+
+        &--accent,
+        &--accent:hover {
+            color: var(--accent-color);
+        }
+    }
+
+    &__libs {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        overflow: hidden;
+    }
+
+    &__chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+        height: 28px;
+        box-sizing: border-box;
+        padding: 0 8px;
+        border-radius: 4px;
+        background-color: var(--transparent-white-8);
+        color: var(--color-ks-transparent-text-80);
+        white-space: nowrap;
+
+        // Hidden until appOverflowItems measures, so "+0" never flashes.
+        &--overflow {
+            display: none;
+            cursor: default;
+            color: var(--color-ks-transparent-text-60);
+        }
+    }
+
+    &__muted {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__meta {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__meta-date {
+        color: var(--color-text-primary);
+    }
+
+    &__tooltip {
+        display: grid;
+        grid-template-columns: auto auto;
+        column-gap: 16px;
+        row-gap: 4px;
+        max-width: 360px;
+        padding: 8px 12px;
+        border-radius: 4px;
+        background-color: var(--mat-tooltip-container-color);
+        color: var(--mat-tooltip-supporting-text-color);
+        overflow-wrap: anywhere;
+        // Never under the pointer, so it cannot steal the chip's hover.
+        pointer-events: none;
+    }
+
+    &__tooltip-header {
+        grid-column: 1 / -1;
+    }
+
+    &__tooltip-name {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    &__tooltip-accent {
+        color: var(--accent-color);
+        white-space: nowrap;
+    }
+
+    &__tooltip-versions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+    }
+
+    // The installed version reads as the fact; the specifier set behind it as the constraint.
+    &__chip-version,
+    &__tooltip-version {
+        color: var(--accent-color);
+    }
+
+    &__dot {
+        flex-shrink: 0;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: var(--accent-color);
+    }
+}

@@ -38,6 +38,7 @@ from tables.models import (
 from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.models.label_models import Label
 from tables.services.node_number_service import NodeNumberService, source_order_key
+from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
 
 # Every reverse relation on Graph that holds its content (nodes, notes, edges).
 GRAPH_CHILD_RELATIONS = (*NODE_RELATIONS.values(), "edge_list")
@@ -114,6 +115,24 @@ class GraphStrategy(EntityImportExportStrategy):
                 ).values_list("mcp_tool_id", flat=True)
             )
         )
+
+        # Every environment the flow's own code runs in. Collected here rather than
+        # from the node strategies: a full export walks this method, not theirs.
+        deps[EntityType.VENV] = (
+            set(instance.python_node_list.values_list("python_code__venv_id", flat=True))
+            | set(instance.webhook_trigger_node_list.values_list("python_code__venv_id", flat=True))
+            | set(
+                instance.classification_decision_table_node_list.values_list(
+                    "pre_python_code__venv_id", flat=True
+                )
+            )
+            | set(
+                instance.classification_decision_table_node_list.values_list(
+                    "post_python_code__venv_id", flat=True
+                )
+            )
+        )
+        deps[EntityType.VENV].discard(None)
 
         return deps
 
@@ -210,7 +229,7 @@ class GraphStrategy(EntityImportExportStrategy):
             user=kwargs.get("user"),
         )
         if replaced_telegram_keys:
-            self._restore_telegram_bot_keys(graph, replaced_telegram_keys)
+            self._restore_telegram_bot_keys(graph, replaced_telegram_keys, kwargs.get("user"))
 
         if import_labels:
             self._set_labels(graph, id_mapper, labels_data)
@@ -277,7 +296,7 @@ class GraphStrategy(EntityImportExportStrategy):
         return replaced_telegram_keys
 
     def _restore_telegram_bot_keys(
-        self, graph: Graph, replaced_keys: list[tuple[int | None, int | None]]
+        self, graph: Graph, replaced_keys: list[tuple[int | None, int | None]], user
     ) -> None:
         """Give each recreated Telegram trigger node the bot key of the node it replaced.
 
@@ -288,7 +307,12 @@ class GraphStrategy(EntityImportExportStrategy):
         or a shared one) the key is dropped with a warning; it is still in the
         "Before import" backup version, whose secret declarations re-link it when
         that version is restored.
+
+        The key is linked with a plain save, past the secret Use checks, so a
+        pinned-org principal (a plugin) gets it only when it may reference that secret:
+        never the organization's own bot key.
         """
+        principal = pinned_principal_of_user(user)
         old_keys_by_trigger: dict[int | None, list[int | None]] = defaultdict(list)
         for trigger_id, secret_id in replaced_keys:
             old_keys_by_trigger[trigger_id].append(secret_id)
@@ -305,6 +329,17 @@ class GraphStrategy(EntityImportExportStrategy):
                     "Graph {}: cannot tell which Telegram trigger node on webhook trigger {} "
                     "a bot key belongs to, so it was not carried over the import; set it "
                     "again or restore the 'Before import' version",
+                    graph.id,
+                    trigger_id,
+                )
+                continue
+            if principal is not None and not principal.may_reference_secrets(
+                frozenset({secret_ids[0]})
+            ):
+                logger.warning(
+                    "Graph {}: the bot key of the Telegram trigger node on webhook trigger "
+                    "{} was not carried over the import, as the importing credential may "
+                    "not use it; set it again or restore the 'Before import' version",
                     graph.id,
                     trigger_id,
                 )

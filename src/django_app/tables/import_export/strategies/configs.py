@@ -2,6 +2,7 @@ from copy import deepcopy
 
 from django.db.models import Q
 from rbac.authorship import resolve_author
+from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -27,8 +28,9 @@ from tables.models.realtime_models import (
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
 )
-from tables.services.secrets.reference_guard import secret_reference_guard
-from tables.services.secrets.secret_resolver import extract_secret_marker_names
+from tables.services.secrets import SecretUseDeniedError
+from tables.services.secrets.secret_use_checks import check_config_import
+from tables.services.secrets.secret_use_service import SecretActor
 
 
 class BaseConfigStrategy(EntityImportExportStrategy):
@@ -38,6 +40,8 @@ class BaseConfigStrategy(EntityImportExportStrategy):
 
     config_model = None
     serializer_class = None
+    # Header dict fields whose `epicstaff_secret(<name>)` markers reference secrets by name.
+    marker_fields: tuple[str, ...] = ()
 
     @property
     def model_class(self):
@@ -102,20 +106,20 @@ class BaseConfigStrategy(EntityImportExportStrategy):
             data={**data, **resolved_fks, **tag_overrides, "org": org_id}
         )
         serializer.is_valid(raise_exception=True)
-        self._assert_markers_permitted(serializer, user=kwargs.get("user"), org_id=org_id)
+        self._check_secret_use(serializer.validated_data, user=kwargs.get("user"), org_id=org_id)
         return serializer.save(created_by=resolve_author(kwargs.get("user")))
 
-    def _assert_markers_permitted(self, serializer, *, user, org_id) -> None:
-        """Require secrets:USE to create a config whose headers carry secret markers.
-
-        Import always creates the config, so every marker in it is new to the org's
-        rows; a reused existing config (find_existing) never reaches here.
-        """
-        for field_name in self.serializer_class.secret_marker_fields:
-            if extract_secret_marker_names(serializer.validated_data.get(field_name)):
-                secret_reference_guard.assert_may_use(
-                    user=user, org_id=org_id, field_name=field_name
-                )
+    def _check_secret_use(self, data: dict, *, user, org_id: int | None) -> None:
+        # Import has no request to read the actor from. Without a user there is no
+        # one to hold secrets:USE, so a config with markers is denied.
+        actor = SecretActor(user=user, org_id=org_id) if user is not None else None
+        try:
+            check_config_import(actor, data, marker_fields=self.marker_fields)
+        except SecretUseDeniedError as denial:
+            # Raised as a validation error, like every other rejection in this
+            # strategy, so a caller handling the strategy's errors sees one kind.
+            # It leaves the import's transaction, rolling it back.
+            raise ValidationError(denial.field_errors()) from denial
 
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data
@@ -200,6 +204,7 @@ class LLMConfigStrategy(BaseConfigStrategy):
     tag_entity = EntityType.LLM_CONFIG_TAG
     config_model = LLMConfig
     serializer_class = LLMConfigImportSerializer
+    marker_fields = ("extra_headers",)
 
 
 class EmbeddingConfigStrategy(BaseConfigStrategy):
@@ -207,6 +212,7 @@ class EmbeddingConfigStrategy(BaseConfigStrategy):
     model_entity_type = EntityType.EMBEDDING_MODEL
     config_model = EmbeddingConfig
     serializer_class = EmbeddingConfigImportSerializer
+    marker_fields = ("extra_headers",)
 
 
 class RealtimeConfigStrategy(BaseConfigStrategy):

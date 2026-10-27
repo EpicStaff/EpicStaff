@@ -1,3 +1,5 @@
+@use '../../../../../styles/a11y-mixins' as a11y;
+
 :host {
     display: inline-flex;
     min-width: 0;
@@ -210,8 +212,9 @@ button:is(:disabled, [aria-disabled='true']) {
     padding-left: 0.6rem !important;
     padding-right: 0.6rem !important;
 
+    // Hidden from view only: the label stays the button's accessible name once just the icon shows.
     .btn-content {
-        display: none;
+        @include a11y.visually-hidden;
     }
 
     .btn-icon.left,

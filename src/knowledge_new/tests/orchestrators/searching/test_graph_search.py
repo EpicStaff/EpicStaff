@@ -103,7 +103,7 @@ def orchestrator(repo):
 
 @pytest.fixture(autouse=True)
 def bypass_grounding_guard(monkeypatch):
-    async def pass_through_guard(query, response, context, config, method):
+    async def pass_through_guard(query, response, context, config, method, rag_id):
         return response
 
     monkeypatch.setattr(graph_search, "apply_grounding_guard", pass_through_guard)
@@ -392,7 +392,7 @@ async def test_search_reports_metered_embedding_and_llm_usage_with_custom_llm_pr
 async def test_search_counts_the_grounding_judge_call_in_the_usage(monkeypatch, index_tables):
     _install_metered_searcher(monkeypatch, input_tokens=100, output_tokens=20)
 
-    async def metered_guard(query, response, context, config, method):
+    async def metered_guard(query, response, context, config, method, rag_id):
         tally = usage_metrics._current_tally.get()
         tally.llm_input_tokens += 7
         tally.llm_output_tokens += 1

@@ -80,4 +80,20 @@ describe('ButtonComponent', () => {
     it('renders the outline-danger type as its own class', () => {
         expect(render({ type: 'outline-danger' }).classList).toContain('btn-outline-danger');
     });
+
+    // display: none would drop the label from the accessibility tree and leave the icon-only button nameless.
+    it('keeps its label for screen readers once it collapses to the icon', () => {
+        const fixture = TestBed.createComponent(ButtonComponent);
+        fixture.componentRef.setInput('leftIcon', 'plus');
+        fixture.detectChanges();
+
+        fixture.componentInstance.onCollapseChange(true);
+        fixture.detectChanges();
+
+        const button = (fixture.nativeElement as HTMLElement).querySelector('button') as HTMLButtonElement;
+        const label = button.querySelector('.btn-content') as HTMLElement;
+        expect(button.classList).toContain('btn--only-icon');
+        expect(getComputedStyle(label).display).not.toBe('none');
+        expect(getComputedStyle(label).position).toBe('absolute');
+    });
 });

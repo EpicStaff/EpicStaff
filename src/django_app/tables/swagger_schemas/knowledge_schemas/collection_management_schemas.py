@@ -4,7 +4,10 @@ from tables.serializers.knowledge_serializers import (
     SourceCollectionDetailSerializer,
     SourceCollectionListSerializer,
 )
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import (
+    INTERNAL_SERVER_ERROR_500_RESPONSE,
+    UNAUTHORIZED_401_RESPONSE,
+)
 
 SOURCE_COLLECTIONS_GET = {
     "summary": "List all source collections.",
@@ -12,18 +15,7 @@ SOURCE_COLLECTIONS_GET = {
     "responses": {
         200: SourceCollectionListSerializer(many=True),
         401: UNAUTHORIZED_401_RESPONSE,
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Internal server error.",
-            examples=[
-                OpenApiExample(
-                    name="Internal Server Error",
-                    value={"error": "Failed to retrieve collections: <error details>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -45,18 +37,7 @@ SOURCE_COLLECTION_GET = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Internal server error.",
-            examples=[
-                OpenApiExample(
-                    name="Internal Server Error",
-                    value={"error": "Failed to retrieve collection: <error details>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -66,18 +47,7 @@ SOURCE_COLLECTION_POST = {
     "responses": {
         201: SourceCollectionDetailSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Internal server error.",
-            examples=[
-                OpenApiExample(
-                    name="Internal Server Error",
-                    value={"error": "Failed to create collection: <error details>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -99,18 +69,7 @@ SOURCE_COLLECTION_PATCH = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Internal server error.",
-            examples=[
-                OpenApiExample(
-                    name="Internal Server Error",
-                    value={"error": "Failed to update collection: <error details>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -132,18 +91,7 @@ SOURCE_COLLECTION_PUT = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Internal server error.",
-            examples=[
-                OpenApiExample(
-                    name="Internal Server Error",
-                    value={"error": "Failed to update collection: <error details>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -179,18 +127,7 @@ SOURCE_COLLECTION_DELETE = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Internal server error.",
-            examples=[
-                OpenApiExample(
-                    name="Internal Server Error",
-                    value={"error": "Failed to delete collection: <error details>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -232,18 +169,7 @@ SOURCE_COLLECTION_BULK_DELETE_POST = {
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Internal server error.",
-            examples=[
-                OpenApiExample(
-                    name="Internal Server Error",
-                    value={"error": "Failed to delete collections: <error details>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -287,18 +213,7 @@ SOURCE_COLLECTION_COPY_POST = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Internal server error.",
-            examples=[
-                OpenApiExample(
-                    name="Internal Server Error",
-                    value={"error": "Failed to copy collection: <error details>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }
 
@@ -348,17 +263,6 @@ SOURCE_COLLECTION_AVAILABLE_RAGS_GET = {
                 )
             ],
         ),
-        500: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Internal server error.",
-            examples=[
-                OpenApiExample(
-                    name="Internal Server Error",
-                    value={"error": "Failed to fetch available RAGs: <error details>"},
-                    response_only=True,
-                    status_codes=["500"],
-                )
-            ],
-        ),
+        500: INTERNAL_SERVER_ERROR_500_RESPONSE,
     },
 }

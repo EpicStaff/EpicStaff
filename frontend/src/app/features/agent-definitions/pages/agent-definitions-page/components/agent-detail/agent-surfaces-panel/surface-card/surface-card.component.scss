@@ -10,9 +10,7 @@
     border-radius: 10px;
     background-color: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
     min-width: 150px;
-    box-shadow:
-        0 2px 3px 0 var(--black-alpha-30),
-        0 6px 10px 4px var(--black-alpha-15);
+    box-shadow: var(--shadow-raised);
 
     &--expanded {
         background-color: transparent;

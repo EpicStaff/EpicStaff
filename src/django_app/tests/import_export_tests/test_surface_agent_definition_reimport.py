@@ -58,7 +58,7 @@ def agent_flow(default_org):
         name="py",
         description="description",
         python_code=PythonCode.objects.create(
-            code="def main(): return 1", entrypoint="main", libraries=""
+            code="def main(): return 1", entrypoint="main"
         ),
         org=default_org,
     )
@@ -453,7 +453,7 @@ class TestBuiltInTool:
             name="built_in_py",
             description="built-in",
             python_code=PythonCode.objects.create(
-                code="def main(): return 'old'", entrypoint="main", libraries=""
+                code="def main(): return 'old'", entrypoint="main"
             ),
             built_in=True,
         )
@@ -490,7 +490,7 @@ class TestPythonToolDescriptionCleanedOnImport:
             name="built_in_py",
             description=description,
             python_code=PythonCode.objects.create(
-                code="def main(): return 'built-in'", entrypoint="main", libraries=""
+                code="def main(): return 'built-in'", entrypoint="main"
             ),
             built_in=True,
         )
@@ -546,7 +546,7 @@ class TestPythonToolDescriptionCleanedOnImport:
             name="built_in_py",
             description="first line" + "y" * 1014,
             python_code=PythonCode.objects.create(
-                code="def main(): return 'built-in'", entrypoint="main", libraries=""
+                code="def main(): return 'built-in'", entrypoint="main"
             ),
             org=default_org,
         )
@@ -566,7 +566,7 @@ class TestPythonToolDescriptionCleanedOnImport:
                 name=name,
                 description=description,
                 python_code=PythonCode.objects.create(
-                    code="def main(): return 1", entrypoint="main", libraries=""
+                    code="def main(): return 1", entrypoint="main"
                 ),
                 org=default_org,
             )
@@ -951,7 +951,8 @@ class TestPartialImport:
                 json.loads(partial_file), target_graph, org_id=default_org.id
             )
 
-        id_mapper = _partial_import()
+        result = _partial_import()
+        id_mapper = result.id_mapper
 
         new_agent_id = id_mapper.get(EntityType.AGENT_DEFINITION, agent.id)
         recreated_owned = Surface.objects.get(
@@ -960,12 +961,13 @@ class TestPartialImport:
         assert new_agent_id != agent.id
         assert recreated_owned.owner_agent_id == new_agent_id
         assert _surface_state(agent) == agent_state_before
-        assert set(target_graph.agent_node_list.values_list("agent_definition_id", flat=True)) == {
+        assert [node["agent_definition"] for node in result.content["agent_node_list"]] == [
             new_agent_id
-        }
+        ]
+        assert not target_graph.agent_node_list.exists()
 
         counts_after_first_import = _org_counts(default_org)
-        second_id_mapper = _partial_import()
+        second_id_mapper = _partial_import().id_mapper
         assert _org_counts(default_org) == counts_after_first_import
         assert second_id_mapper.get(EntityType.AGENT_DEFINITION, agent.id) == new_agent_id
 

@@ -32,6 +32,7 @@ from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
 )
 from infrastructure.providers.factory import RealtimeAgentClientFactory
+from infrastructure.sandbox.sandbox_client import SandboxExecutionClient
 from infrastructure.summarization.openai_summarization_client import (
     OpenaiSummarizationClient,
 )
@@ -54,7 +55,12 @@ app = FastAPI()
 redis_service = RedisService(
     host=config.REDIS_HOST, port=config.REDIS_PORT, password=config.REDIS_PASSWORD
 )
-python_code_executor_service = PythonCodeExecutorService(redis_service=redis_service)
+sandbox_client = SandboxExecutionClient(
+    base_url=config.SANDBOX_BASE_URL, timeout=config.SANDBOX_TIMEOUT
+)
+python_code_executor_service = PythonCodeExecutorService(
+    redis_service=redis_service, sandbox_client=sandbox_client
+)
 knowledge_client = KnowledgeClient(base_url=config.KNOWLEDGE_BASE_URL)
 tool_manager_service = ToolManagerService(
     python_code_executor_service=python_code_executor_service,
@@ -232,11 +238,12 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Stop the Redis listener supervisor and close the knowledge_new HTTP client."""
+    """Stop the Redis listener supervisor and close the outbound HTTP clients."""
     redis_listener_task = app.state.redis_listener_task
     redis_listener_task.cancel()
     await asyncio.gather(redis_listener_task, return_exceptions=True)
     await knowledge_client.stop()
+    await sandbox_client.close()
 
 
 # Store active connections and their handlers
