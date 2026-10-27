@@ -144,6 +144,61 @@ class TestFallbackLlmConfigApi:
         assert [item["id"] for item in results] == [agent.id]
 
 
+@pytest.fixture
+def agent_without_primary(agent, primary, other):
+    # Deleting the primary config nulls llm_config and leaves the fallback behind.
+    agent.fallback_llm_config = other
+    agent.save()
+    primary.delete()
+    agent.refresh_from_db()
+    assert agent.llm_config_id is None and agent.fallback_llm_config_id == other.id
+    return agent
+
+
+@pytest.mark.django_db
+class TestAgentWhosePrimaryWasDeleted:
+    def test_unrelated_patch_is_allowed(self, client, agent_without_primary):
+        response = client.patch(
+            _detail(agent_without_primary), {"instruction_list": []}, format="json"
+        )
+
+        assert response.status_code == 200, response.json()
+
+    def test_form_style_patch_resending_the_stored_pair_is_allowed(
+        self, client, agent_without_primary, other
+    ):
+        response = client.patch(
+            _detail(agent_without_primary),
+            {"name": "renamed", "llm_config": None, "fallback_llm_config": other.id},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+        agent_without_primary.refresh_from_db()
+        assert agent_without_primary.name == "renamed"
+        assert agent_without_primary.fallback_llm_config_id == other.id
+
+    def test_clearing_the_fallback_is_allowed(self, client, agent_without_primary):
+        response = client.patch(
+            _detail(agent_without_primary), {"fallback_llm_config": None}, format="json"
+        )
+
+        assert response.status_code == 200, response.json()
+        agent_without_primary.refresh_from_db()
+        assert agent_without_primary.fallback_llm_config_id is None
+
+    def test_choosing_another_fallback_without_a_primary_is_rejected(
+        self, client, agent_without_primary, acme
+    ):
+        another = LLMConfig.objects.create(org=acme, custom_name="another")
+
+        response = client.patch(
+            _detail(agent_without_primary), {"fallback_llm_config": another.id}, format="json"
+        )
+
+        _assert_invalid(response, "fallback_llm_config")
+
+
 @pytest.mark.django_db
 class TestFallbackLlmConfigModel:
     def test_fill_with_defaults_leaves_fallback_empty(self, agent):

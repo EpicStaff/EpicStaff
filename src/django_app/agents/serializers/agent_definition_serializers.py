@@ -206,6 +206,13 @@ class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.
         )
         if fallback is None:
             return
+        # Deleting the primary config leaves (None, fallback) behind. Resending that stored
+        # pair must not lock the agent out of every edit.
+        if self.instance and (primary, fallback) == (
+            self.instance.llm_config,
+            self.instance.fallback_llm_config,
+        ):
+            return
         if primary is None:
             raise serializers.ValidationError(
                 {"fallback_llm_config": "Set a primary LLM config before a fallback."}

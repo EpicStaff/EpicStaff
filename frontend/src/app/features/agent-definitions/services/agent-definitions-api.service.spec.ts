@@ -46,4 +46,17 @@ describe('AgentDefinitionsApiService.copy', () => {
         expect(request.request.body).toMatchObject({ llm_config: 1, fallback_llm_config: 2 });
         http.verify();
     });
+
+    it('drops the fallback when the source has no primary LLM config', () => {
+        TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+        const http = TestBed.inject(HttpTestingController);
+
+        TestBed.inject(AgentDefinitionsApiService)
+            .copy({ ...SOURCE, llm_config: null }, 'CV Processor (copy)')
+            .subscribe();
+
+        const request = http.expectOne((req) => req.method === 'POST');
+        expect(request.request.body).toMatchObject({ llm_config: null, fallback_llm_config: null });
+        http.verify();
+    });
 });
