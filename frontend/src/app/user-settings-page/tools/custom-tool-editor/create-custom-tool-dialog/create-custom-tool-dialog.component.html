@@ -309,7 +309,7 @@
                                         [attr.aria-label]="
                                             jsonSectionExpanded() ? 'Collapse JSON section' : 'Expand JSON section'
                                         "
-                                        matTooltip="Collapse"
+                                        [matTooltip]="jsonSectionExpanded() ? 'Collapse' : 'Expand'"
                                         matTooltipPosition="above"
                                         (click)="toggleJsonSection()"
                                     >
@@ -357,7 +357,6 @@
                         <app-execution-timeout-field
                             [field]="executionTimeoutField"
                             [readonly]="isBuiltIn()"
-                            [hint]="executionTimeoutHint"
                         />
                     </div>
                 }

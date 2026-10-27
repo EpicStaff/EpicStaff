@@ -105,6 +105,8 @@
         gap: 24px;
         padding: 24px 40px;
         overflow-y: auto;
+        // Reserve the scrollbar's width up front, so expanding a section does not shift the content sideways.
+        scrollbar-gutter: stable;
     }
 
     .readonly-field {
