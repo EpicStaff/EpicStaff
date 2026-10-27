@@ -78,7 +78,12 @@ async def test_a_result_without_mutations_encodes_onto_the_wire():
 
     await QueueResultSink(queue).send(
         ExecutionResult(
-            execution_id="exec-1", result="42", stdout="out", stderr="err", returncode=0
+            execution_id="exec-1",
+            result="42",
+            stdout="out",
+            stderr="err",
+            returncode=0,
+            session_id=7,
         )
     )
 
@@ -88,7 +93,9 @@ async def test_a_result_without_mutations_encodes_onto_the_wire():
     assert message.stdout == "out"
     assert message.stderr == "err"
     assert message.returncode == 0
+    assert message.session_id == 7
     assert message.mutations is None
+    assert message.not_run_reason is None
 
 
 async def test_mutations_are_carried_onto_the_wire():

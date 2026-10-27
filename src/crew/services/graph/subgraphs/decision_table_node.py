@@ -328,10 +328,10 @@ def main(variables: dict) -> bool:
                     msg = self.custom_session_message_writer.add_error_message(
                         session_id=self.session_id,
                         node_name=self.node_name,
-                        error=error,
                         writer=writer,
                         execution_order=self.execution_order(state),
                         node_type=self.TYPE,
+                        public_details=error,
                     )
                     await self._publish_message(msg)
 

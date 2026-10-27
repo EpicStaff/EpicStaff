@@ -6,6 +6,7 @@ from rbac.access.cross_org_resolver import (
     CrossOrgPermissionResolver,
 )
 from rbac.access.org_context import OrgContextService
+from rbac.access.principals import is_plugin_credential
 from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 
@@ -146,17 +147,48 @@ class IsSystemApiKeyAuthenticated(BasePermission):
         return isinstance(request.auth, ApiKey) and request.auth.key_type == ApiKey.KeyType.SYSTEM
 
 
-class DenyApiKeyAuth(BasePermission):
-    """Blocks API-key-authenticated callers.
+class DenyPluginCredential(BasePermission):
+    """Blocks plugin credentials on person-only surfaces.
 
-    For JWT-only endpoints: key management (a possibly leaked credential
-    must not mint or destroy credentials) and destructive account
-    operations (reset-user, admin password reset). Pair AFTER IsAuthenticated.
+    For endpoints that act for a person and that no resource type governs,
+    so a plugin's declared access could not cap them (personal presets,
+    favorites, the flow assistant, realtime sessions, outgoing mail). People
+    and API keys pass untouched. Pair AFTER IsAuthenticated.
+    """
+
+    message = "Plugin service accounts cannot use this endpoint."
+
+    def has_permission(self, request, view):
+        return not is_plugin_credential(request)
+
+
+class DenyPersonalAndSystemApiKeys(BasePermission):
+    """Blocks USER and SYSTEM API keys; people and plugin credentials pass.
+
+    For an endpoint a plugin's declared access may open while personal and
+    system keys stay out (Secrets). Pair AFTER IsAuthenticated.
     """
 
     message = "API keys cannot be used on this endpoint. Authenticate with a user session (JWT)."
 
     def has_permission(self, request, view):
+        return not isinstance(request.auth, ApiKey)
+
+
+class DenyApiKeyAuth(BasePermission):
+    """Blocks every credential but a user session: API keys and plugin credentials.
+
+    For JWT-only endpoints: key management (a possibly leaked credential
+    must not mint or destroy credentials) and destructive account
+    operations (reset-user, admin password reset, purges). Pair AFTER IsAuthenticated.
+    """
+
+    message = DenyPersonalAndSystemApiKeys.message
+
+    def has_permission(self, request, view):
+        if is_plugin_credential(request):
+            self.message = DenyPluginCredential.message
+            return False
         return not isinstance(request.auth, ApiKey)
 
 
@@ -170,8 +202,9 @@ class RestrictApiKeyToUserKeyReads(BasePermission):
     rejected on reads too — its principal is superadmin-equivalent, so
     letting it in would hand every cross-org row to whoever holds
     `DJANGO_API_KEY`. Any key type other than USER is rejected, so a new
-    type is denied until someone decides otherwise. Safe in any position:
-    a non-key (or anonymous) request always passes.
+    type is denied until someone decides otherwise. A plugin credential is
+    rejected outright. Safe in any position: a user session (or an
+    anonymous request) always passes.
     """
 
     write_message = (
@@ -182,8 +215,12 @@ class RestrictApiKeyToUserKeyReads(BasePermission):
         "The system API key cannot be used on the admin surface. "
         "Authenticate with a user session (JWT)."
     )
+    plugin_credential_message = "Plugin service accounts cannot use the admin surface."
 
     def has_permission(self, request, view):
+        if is_plugin_credential(request):
+            self.message = self.plugin_credential_message
+            return False
         key = request.auth
         if not isinstance(key, ApiKey):
             return True

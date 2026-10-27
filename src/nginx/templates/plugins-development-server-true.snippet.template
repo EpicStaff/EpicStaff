@@ -1,0 +1,89 @@
+# PLUGINS_DEV_MODE=true: the plugin server's parts for a frontend development server on the
+# developer's machine, included at server level. The SPA locations use them through
+# plugins-development-page-true.snippet. The plugin's address does not change: the browser still
+# loads the page from the plugin's own host, so sign-in, the frame and its checks work as with the
+# published page. The development server itself is asked for localhost (see below).
+
+# The page decision, django_app's answer for one SPA request. `internal`, so only auth_request
+# reaches it. Built like /_plugin_gateway_check: Django gets only what is set here, never the
+# client's headers or body, and no body limit applies (the subrequest carries the request's
+# Content-Length; the SPA location applied its own limit before the access phase).
+location = /_plugin_development_page_check {
+    internal;
+    client_max_body_size 0;
+    proxy_pass http://backend_server/api/plugin-gateway/development-spa/;
+    include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+    proxy_method GET;
+    proxy_pass_request_body off;
+    proxy_pass_request_headers off;
+    proxy_set_header Content-Length "";
+    # A name DJANGO_ALLOWED_HOSTS accepts, as for the gateway check.
+    proxy_set_header Host localhost;
+    proxy_set_header X-Plugin-Gateway-Secret "${PLUGINS_GATEWAY_SECRET}";
+    proxy_set_header X-Plugin-Identifier $plugin_identifier;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 15s;
+}
+
+# The frontend development server's answer instead of the published files. Its address is the
+# decision's X-Plugin-Spa-Upstream: an address and a port, which django_app resolved from
+# host.docker.internal (the only name it resolves), so nginx's resolver is never involved. The
+# URI goes on as the browser sent it, path and query.
+location @plugin_development_page {
+    include /etc/nginx/conf.d/plugins-security-headers.snippet;
+    error_page 502 504 = @plugin_development_unreachable;
+    # A development server is set, but host.docker.internal does not resolve in django_app.
+    if ($plugin_spa_upstream = "") {
+        return 502;
+    }
+
+    proxy_pass http://$plugin_spa_upstream;
+    include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+    # A port may serve the page and the plugin's backend both, and the backend must never see a
+    # context a client wrote: every spelling is blanked, as on /api/, where only the gateway
+    # sets one.
+    include /etc/nginx/conf.d/strip-underscore-plugin-context.snippet;
+    # No Cookie to the development server and no Set-Cookie or Clear-Site-Data from it (a cookie
+    # set from a plugin host could reach EpicStaff or the other plugins), and no X-Frame-Options:
+    # frame-ancestors in the security headers decides who frames the page.
+    include /etc/nginx/conf.d/cookie-free-upstream.snippet;
+    proxy_http_version 1.1;
+    # localhost:<its port>, the one name every development server accepts without configuration
+    # (plugins-development-page-host-true.snippet); the plugin's host is X-Forwarded-Host.
+    proxy_set_header Host $plugin_spa_host;
+    # Live reload: a WebSocket ("upgrade") or a long-lived event stream, never keep-alive.
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    # A person's login and EpicStaff's API keys are for EpicStaff, never a development server
+    # (every spelling, since underscores_in_headers is on at http level).
+    proxy_set_header Authorization "";
+    proxy_set_header X-API-Key "";
+    proxy_set_header X-API_Key "";
+    proxy_set_header X_API-Key "";
+    proxy_set_header X_API_Key "";
+    proxy_set_header X-EpicStaff-Plugin-Context "";
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    # The platform's security headers are the page's only policy and the gateway's marker is the
+    # gateway's alone. The development server's caching headers pass through unchanged.
+    proxy_ignore_headers X-Accel-Redirect;
+    proxy_hide_header Content-Security-Policy;
+    proxy_hide_header X-EpicStaff-Gateway-Deny;
+    proxy_connect_timeout 5s;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 1h;
+    proxy_send_timeout 1h;
+}
+
+# The development server is set but cannot be reached: not resolved, not listening, not
+# answering, or the decision failed.
+location @plugin_development_unreachable {
+    include /etc/nginx/conf.d/plugins-security-headers.snippet;
+    add_header Cache-Control no-store always;
+    add_header X-EpicStaff-Gateway-Deny unavailable always;
+    default_type text/html;
+    return 503 "The development server for this plugin cannot be reached.\n";
+}

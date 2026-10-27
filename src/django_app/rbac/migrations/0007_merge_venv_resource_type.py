@@ -1,4 +1,4 @@
-# Generated manually to resolve the leaf conflict between the venv manager migrations and developer
+# Generated manually to merge two migration leaves created in parallel.
 
 from django.db import migrations
 

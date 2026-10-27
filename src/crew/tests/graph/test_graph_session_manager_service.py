@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import re
 from datetime import datetime
 from functools import partial
 from types import SimpleNamespace
@@ -28,7 +29,12 @@ from services.graph.graph_session_manager_service import GraphSessionManagerServ
 from services.redis_service import RedisService
 from src.shared.models import SessionData
 from src.shared.models.graph_nodes import GraphData
+from src.shared.public_error import PublicErrorMessage
 from tests.graph.rebuild_counting_dict import RebuildCountingDict
+
+_PUBLIC_ERROR_PATTERN = re.compile(
+    rf"{re.escape(PublicErrorMessage.SESSION_EXECUTION_FAILED)} \(reference: [0-9a-f]{{12}}\)"
+)
 
 
 def make_finish_chunk(
@@ -349,7 +355,10 @@ async def test_unserialisable_final_variables_end_the_session_as_error(
 
     status_calls = service.redis_service.aupdate_session_status.call_args_list
     assert [call.kwargs["status"] for call in status_calls] == ["run", "error"]
-    assert "not JSON serializable" in status_calls[-1].kwargs["error"]
+    # The TypeError's text names the unserialisable value; only the public
+    # message reaches Redis.
+    assert _PUBLIC_ERROR_PATTERN.fullmatch(status_calls[-1].kwargs["error"])
+    assert "not JSON serializable" not in status_calls[-1].kwargs["error"]
 
 
 @pytest.mark.asyncio
@@ -371,6 +380,54 @@ async def test_failed_session_does_not_write_final_variables(service, monkeypatc
         for call in service.redis_service.aupdate_session_status.call_args_list
     ]
     assert statuses == ["run", "error"]
+
+
+@pytest.mark.asyncio
+async def test_failed_session_reports_public_error_to_redis_and_audit(
+    service, monkeypatch
+):
+    """A crashing session must not put raw exception text into either sink.
+
+    The Redis session status is what the frontend polls, and the audit
+    session-end row is what the organization's trail keeps forever; both get
+    the generic message plus the correlation id that the log line carries.
+    """
+    audit_calls: list[tuple[str, dict]] = []
+
+    class RecordingAuditWriter:
+        async def add_session_start(self, **kwargs):
+            audit_calls.append(("start", kwargs))
+
+        async def add_session_end(self, **kwargs):
+            audit_calls.append(("end", kwargs))
+
+    secret = "postgresql://flow:s3cret@db-internal:5432"
+
+    class FailingGraph:
+        async def astream(self, input, config, stream_mode):
+            raise RuntimeError(f"could not connect to {secret}")
+            yield
+
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.get_session_audit_writer",
+        RecordingAuditWriter,
+    )
+    _patch_builder(monkeypatch, FailingGraph())
+
+    await service.run_session(_session_data(47), StopEvent())
+    async with asyncio.timeout(1):
+        while len(audit_calls) < 2:
+            await asyncio.sleep(0)
+
+    status_call = service.redis_service.aupdate_session_status.call_args_list[-1]
+    assert status_call.kwargs["status"] == "error"
+    public_error = status_call.kwargs["error"]
+    assert _PUBLIC_ERROR_PATTERN.fullmatch(public_error)
+    assert secret not in public_error
+
+    end_call = audit_calls[-1][1]
+    assert end_call["name"] == "Session Failed"
+    assert end_call["details"] == {"error": public_error}
 
 
 class _ReprCountingStr(str):

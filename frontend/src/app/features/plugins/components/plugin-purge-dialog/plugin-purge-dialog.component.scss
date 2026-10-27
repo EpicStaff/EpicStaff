@@ -1,0 +1,27 @@
+@use '../plugin-dialog' as plugin-dialog;
+
+@include plugin-dialog.plugin-dialog(600px);
+@include plugin-dialog.plugin-phrase-confirmation(purge);
+
+.purge__summary {
+    margin: 0;
+    color: var(--color-text-secondary);
+
+    strong {
+        color: var(--color-status-error);
+    }
+}
+
+.purge__note {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-divider-subtle);
+    color: var(--color-text-secondary);
+
+    p {
+        margin: 0;
+    }
+}

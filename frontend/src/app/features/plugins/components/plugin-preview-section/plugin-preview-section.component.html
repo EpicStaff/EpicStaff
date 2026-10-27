@@ -1,0 +1,30 @@
+<section
+    class="section"
+    [class.section--emphasised]="emphasised()"
+>
+    <h3 class="section__heading text-body-bold">{{ heading() }}</h3>
+
+    @if (isEmpty()) {
+        @if (emptyText(); as text) {
+            <p class="section__empty text-body">{{ text }}</p>
+        }
+    } @else {
+        <ul class="section__list text-body">
+            @for (item of list().items; track item.key) {
+                <li class="section__item">
+                    <span class="section__name">{{ item.name }}</span>
+                    @if (item.detail) {
+                        <span class="section__detail text-body-small">{{ item.detail }}</span>
+                    }
+                </li>
+            }
+        </ul>
+        @if (list().moreCount > 0) {
+            <p class="section__more text-body-small">and {{ list().moreCount }} more</p>
+        }
+    }
+
+    @if (hint(); as text) {
+        <p class="section__hint text-body-small">{{ text }}</p>
+    }
+</section>

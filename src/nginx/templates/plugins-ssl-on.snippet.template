@@ -1,0 +1,12 @@
+# NGINX_SSL_MODE=on for the plugin hosts: the wildcard certificate for *.<PLUGINS_BASE_DOMAIN>,
+# with the TLS settings and the http-to-https redirect of EpicStaff's own server (ssl-on.snippet).
+listen 80;
+listen 443 ssl;
+ssl_certificate /etc/nginx/certs/plugins-fullchain.pem;
+ssl_certificate_key /etc/nginx/certs/plugins-privkey.pem;
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers HIGH:!aNULL:!MD5;
+
+if ($scheme = http) {
+    return 301 https://$host$request_uri;
+}

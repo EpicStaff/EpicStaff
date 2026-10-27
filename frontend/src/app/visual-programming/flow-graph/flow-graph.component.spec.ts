@@ -40,6 +40,7 @@ import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directiv
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
 import { generatePortsForClassificationDecisionTableNode, generatePortsForNode } from '../core/helpers/helpers';
 import { subgraphNodeRequest } from '../core/helpers/subgraph-flows.util';
+import { AgentNodeTaskWrite } from '../core/models/agent-node.model';
 import { ConditionGroup } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
 import {
@@ -59,8 +60,15 @@ import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-n
 import { createFlowConnection } from '../utils/connection.factory';
 import { createStartNode } from '../utils/load';
 import { mapGraphDtoToFlowModel } from '../utils/load/map-graph-dto-to-flow-model';
-import { cloneFlowState, getNodeDiff, hasTriggerNodeWrites } from '../utils/save';
-import { liveGraph, liveNote, liveStart } from '../utils/testing/live-graph.fixture';
+import {
+    buildBulkSavePayload,
+    buildUuidToBackendIdMap,
+    cloneFlowState,
+    getConnectionDiff,
+    getNodeDiff,
+    hasTriggerNodeWrites,
+} from '../utils/save';
+import { liveAgent, liveGraph, liveNote, livePython, liveStart } from '../utils/testing/live-graph.fixture';
 import {
     FLOW_ACTIONS_WITH_USE,
     FLOW_ACTIONS_WITHOUT_USE,
@@ -1381,14 +1389,65 @@ describe('FlowGraphComponent', () => {
                 return TestBed.inject(HttpTestingController);
             }
 
+            let success: ReturnType<typeof vi.spyOn>;
+            const agentTask = { instructions: '', output_schema: {} };
+
+            // What the backend returns: rows it rolled back, so every id below is new to the flow.
+            const importedContent = {
+                python_node_list: [
+                    { ...livePython, id: 1982, node_number: 1, node_name: 'A', metadata: { position: { x: 0, y: 0 } } },
+                    {
+                        ...livePython,
+                        id: 1983,
+                        node_number: 2,
+                        node_name: 'B',
+                        metadata: { position: { x: 300, y: 50 } },
+                    },
+                ],
+                agent_node_list: [
+                    {
+                        ...liveAgent,
+                        id: 1984,
+                        node_number: 3,
+                        metadata: { position: { x: 600, y: 0 } },
+                        tasks: [
+                            { ...agentTask, id: 900, name: 'Draft', order: 0, context_tasks: [] },
+                            { ...agentTask, id: 901, name: 'Review', order: 1, context_tasks: [900] },
+                        ],
+                    },
+                ],
+                edge_list: [{ id: 2, graph: 3, start_node_id: 1982, end_node_id: 1983, metadata: {} }],
+            };
+
+            /**
+             * Imports `importedContent` into a flow whose note is unsaved; returns the flow from before.
+             * `beforeResponse` runs while the request is in flight.
+             */
+            async function importNodes(beforeResponse: () => void = () => undefined): Promise<FlowModel> {
+                mountCanvas(FLOW_ACTIONS_WITH_USE);
+                success = vi.spyOn(TestBed.inject(ToastService), 'success').mockImplementation(() => undefined);
+                flowService.setNodeNumberFloor(20);
+                const before = flowService.getFlowState();
+
+                const http = importFile();
+                beforeResponse();
+                http.expectOne((request) => request.url.endsWith('graphs/3/partial-import/')).flush({
+                    content: importedContent,
+                    summary: {},
+                });
+                // The import selects the new nodes and fits the canvas once they are on it.
+                await new Promise((resolve) => setTimeout(resolve, 0));
+                http.verify();
+                return before;
+            }
+
             it('explains the refusal of a file with trigger nodes to a user without Flows:Use, importing nothing', () => {
-                const component = mountCanvas(FLOW_ACTIONS_WITHOUT_USE);
+                mountCanvas(FLOW_ACTIONS_WITHOUT_USE);
+                const nodesBefore = flowService.nodes();
                 const confirm = vi
                     .spyOn(TestBed.inject(ConfirmationDialogService), 'confirm')
                     .mockReturnValue(of('close'));
                 const error = vi.spyOn(TestBed.inject(ToastService), 'error').mockImplementation(() => undefined);
-                const importComplete = vi.fn();
-                component.importComplete.subscribe(importComplete);
 
                 importFile()
                     .expectOne(
@@ -1404,20 +1463,69 @@ describe('FlowGraphComponent', () => {
 
                 expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ title: USE_PERMISSION_REQUIRED_TITLE }));
                 expect(error).not.toHaveBeenCalled();
-                expect(importComplete).not.toHaveBeenCalled();
+                expect(flowService.nodes()).toBe(nodesBefore);
             });
 
-            it('imports a file the backend accepts', () => {
-                const component = mountCanvas(FLOW_ACTIONS_WITH_USE);
-                vi.spyOn(TestBed.inject(ToastService), 'success').mockImplementation(() => undefined);
-                const importComplete = vi.fn();
-                component.importComplete.subscribe(importComplete);
+            it('adds the nodes unsaved, like a paste, right of the flow, without reloading it or needing it saved', async () => {
+                const before = await importNodes();
 
-                importFile()
-                    .expectOne((request) => request.url.endsWith('graphs/3/partial-import/'))
-                    .flush({});
+                const existingIds = new Set(before.nodes.map((node) => node.id));
+                const imported = flowService.nodes().filter((node) => !existingIds.has(node.id));
+                const maxRightEdge = Math.max(...before.nodes.map((node) => node.position.x + node.size.width));
+                expect(imported.map((node) => [node.node_name, node.backendId, node.nodeNumber])).toEqual([
+                    ['A', null, 21],
+                    ['B', null, 22],
+                    [liveAgent.node_name, null, 23],
+                ]);
+                for (const node of imported) {
+                    expect(node.position.x).toBeGreaterThan(maxRightEdge);
+                }
+                const [nodeA, nodeB] = imported;
+                expect(flowService.connections()).toEqual([
+                    expect.objectContaining({ sourceNodeId: nodeA.id, targetNodeId: nodeB.id }),
+                ]);
+                expect(success).toHaveBeenCalledWith('Import successful', 3000, 'bottom-right');
+            });
 
-                expect(importComplete).toHaveBeenCalledTimes(1);
+            it('discards a response that arrives once the editor is locked, saying so', async () => {
+                const before = await importNodes(() => fixture.componentRef.setInput('isSaving', true));
+
+                expect(flowService.nodes()).toEqual(before.nodes);
+                expect(warning).toHaveBeenCalledWith(
+                    'Import discarded: the editor was busy. Try again.',
+                    4000,
+                    'bottom-right'
+                );
+                expect(success).not.toHaveBeenCalled();
+            });
+
+            it('sends the imported nodes, their edge and agent tasks as new rows on the next flow save', async () => {
+                const before = await importNodes();
+
+                const current = flowService.getFlowState();
+                const idMap = buildUuidToBackendIdMap(current.nodes);
+                const payload = buildBulkSavePayload(
+                    3,
+                    getNodeDiff(before, current),
+                    getConnectionDiff(before, current, idMap),
+                    current,
+                    idMap,
+                    1
+                );
+
+                const [nodeA, nodeB] = flowService.nodes().filter((node) => node.type === NodeType.PYTHON);
+                expect(payload['python_node_list']).toEqual([
+                    expect.objectContaining({ id: null, temp_id: nodeA.id }),
+                    expect.objectContaining({ id: null, temp_id: nodeB.id }),
+                ]);
+                expect(payload['edge_list']).toEqual([{ graph: 3, start_temp_id: nodeA.id, end_temp_id: nodeB.id }]);
+                // The task ids were rows the backend rolled back: the context goes by temp id instead.
+                const [agent] = payload['agent_node_list'] as { tasks: AgentNodeTaskWrite[] }[];
+                const [draft, review] = agent.tasks;
+                expect(agent.tasks.map((task) => task.id)).toEqual([undefined, undefined]);
+                expect(review).toEqual(
+                    expect.objectContaining({ context_task_ids: [], context_task_temp_ids: [draft.temp_id] })
+                );
             });
         });
     });
