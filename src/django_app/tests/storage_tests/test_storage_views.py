@@ -9,11 +9,24 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from agents.models import (
+    AgentDefinition,
+    AgentInlineSurface,
+    AgentInlineSurfaceStorageItem,
+    InlineSurface,
+    InlineSurfaceStorageItem,
+    Surface,
+    SurfaceStorageItem,
+)
 from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
-from tables.models import Graph, GraphStorageFile, StorageFile
+from django.db import connection
+from django.utils import timezone
+from django.test.utils import CaptureQueriesContext
+from tables.models import AgentNode, Graph, GraphStorageFile, StorageFile, TaskNode
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.manager import StorageManager
+from tables.services.storage_service.usage import find_storage_usage
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 from tests.storage_tests.storage_writes import store_object
 
@@ -339,3 +352,422 @@ def test_a_file_recorded_by_a_sandbox_mutation_is_listed(auth_client, default_or
 
     assert resp.status_code == status.HTTP_200_OK
     assert [item["name"] for item in resp.data["items"]] == ["out.txt"]
+
+
+class TestUsage:
+    """POST /api/storage/usage/: what deleting the paths would unlink."""
+
+    URL = "/api/storage/usage/"
+    NOTHING = {"used": False, "items": []}
+
+    @staticmethod
+    def _file(org, path):
+        return StorageFile.objects.get(org=org, path=path)
+
+    @staticmethod
+    def _link_graph(graph, storage_file):
+        GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
+
+    def _usage(self, client, *paths):
+        resp = client.post(self.URL, {"paths": list(paths)}, format="json")
+        assert resp.status_code == status.HTTP_200_OK
+        return resp.data
+
+    def test_a_file_linked_to_a_flow(self, auth_client, put, default_org):
+        put("f.txt")
+        graph = Graph.objects.create(name="my-flow", org=default_org)
+        self._link_graph(graph, self._file(default_org, "f.txt"))
+
+        assert self._usage(auth_client, "f.txt") == {
+            "flows": {"used": True, "items": [{"id": graph.id, "name": "my-flow"}]},
+            "surfaces": self.NOTHING,
+            "agents": self.NOTHING,
+        }
+
+    def test_a_file_without_links(self, auth_client, put):
+        put("f.txt")
+
+        assert self._usage(auth_client, "f.txt") == {
+            "flows": self.NOTHING,
+            "surfaces": self.NOTHING,
+            "agents": self.NOTHING,
+        }
+
+    def test_a_folder_reports_the_links_of_nested_files(self, auth_client, put, default_org):
+        put("docs/deep/a.txt")
+        graph = Graph.objects.create(name="my-flow", org=default_org)
+        self._link_graph(graph, self._file(default_org, "docs/deep/a.txt"))
+
+        data = self._usage(auth_client, "docs")
+
+        assert data["flows"] == {"used": True, "items": [{"id": graph.id, "name": "my-flow"}]}
+
+    def test_a_folder_reports_a_link_on_its_own_row(self, auth_client, default_org):
+        assert auth_client.post("/api/storage/mkdir/", {"path": "docs"}, format="json").status_code == 201
+        graph = Graph.objects.create(name="my-flow", org=default_org)
+        self._link_graph(graph, self._file(default_org, "docs/"))
+
+        assert self._usage(auth_client, "docs/")["flows"]["used"] is True
+
+    def test_a_sibling_sharing_the_name_prefix_is_not_in_the_folder(self, auth_client, put, default_org):
+        put("docs2/a.txt")
+        graph = Graph.objects.create(name="my-flow", org=default_org)
+        self._link_graph(graph, self._file(default_org, "docs2/a.txt"))
+
+        assert self._usage(auth_client, "docs")["flows"] == self.NOTHING
+
+    def test_several_paths_list_a_flow_once_and_sort_by_name(self, auth_client, put, default_org):
+        put("a.txt")
+        put("b.txt")
+        zulu = Graph.objects.create(name="zulu", org=default_org)
+        alpha = Graph.objects.create(name="alpha", org=default_org)
+        for graph in (zulu, alpha):
+            self._link_graph(graph, self._file(default_org, "a.txt"))
+            self._link_graph(graph, self._file(default_org, "b.txt"))
+
+        items = self._usage(auth_client, "a.txt", "b.txt")["flows"]["items"]
+
+        assert items == [
+            {"id": alpha.id, "name": "alpha"},
+            {"id": zulu.id, "name": "zulu"},
+        ]
+
+    def test_a_missing_path_reports_nothing_as_a_delete_of_it_is_a_no_op(self, auth_client):
+        assert self._usage(auth_client, "ghost.txt") == {
+            "flows": self.NOTHING,
+            "surfaces": self.NOTHING,
+            "agents": self.NOTHING,
+        }
+
+    def test_a_binned_flow_is_not_counted(self, auth_client, put, default_org):
+        put("f.txt")
+        graph = Graph.objects.create(name="my-flow", org=default_org)
+        self._link_graph(graph, self._file(default_org, "f.txt"))
+        graph.delete()
+
+        assert self._usage(auth_client, "f.txt")["flows"] == self.NOTHING
+
+    def test_a_binned_file_is_not_counted(self, auth_client, put, default_org):
+        put("f.txt")
+        graph = Graph.objects.create(name="my-flow", org=default_org)
+        self._link_graph(graph, self._file(default_org, "f.txt"))
+        StorageFile.objects.filter(org=default_org, path="f.txt").update(
+            active=False, soft_deleted_at=timezone.now()
+        )
+
+        assert self._usage(auth_client, "f.txt")["flows"] == self.NOTHING
+
+    def test_a_flow_of_another_org_is_not_reported(self, auth_client, put, default_org, second_org):
+        put("f.txt")
+        foreign_graph = Graph.objects.create(name="foreign-flow", org=second_org)
+        self._link_graph(foreign_graph, self._file(default_org, "f.txt"))
+
+        assert self._usage(auth_client, "f.txt")["flows"] == {"used": False, "items": []}
+
+    def test_the_caller_cannot_probe_another_orgs_files(self, auth_client, put, second_org):
+        put("secret.txt", org=second_org)
+        foreign_graph = Graph.objects.create(name="foreign-flow", org=second_org)
+        self._link_graph(foreign_graph, self._file(second_org, "secret.txt"))
+
+        assert self._usage(auth_client, "secret.txt")["flows"] == self.NOTHING
+
+    @pytest.mark.parametrize(
+        ("other_permissions", "visible"),
+        [({ResourceType.FLOWS: Permission.READ}, True), ({}, False)],
+        ids=["with-flows-read", "without-flows-read"],
+    )
+    def test_flow_names_need_flows_read_but_used_does_not(
+        self, make_files_reader_client, put, default_org, other_permissions, visible
+    ):
+        put("f.txt")
+        graph = Graph.objects.create(name="secret-flow", org=default_org)
+        self._link_graph(graph, self._file(default_org, "f.txt"))
+
+        data = self._usage(make_files_reader_client(other_permissions), "f.txt")
+
+        assert data["flows"] == {
+            "used": True,
+            "items": [{"id": graph.id, "name": "secret-flow"}] if visible else [],
+        }
+
+    @pytest.mark.parametrize(
+        ("other_permissions", "visible"),
+        [({ResourceType.SURFACES: Permission.READ}, True), ({}, False)],
+        ids=["with-surfaces-read", "without-surfaces-read"],
+    )
+    def test_surface_names_need_surfaces_read_but_used_does_not(
+        self, make_files_reader_client, put, default_org, other_permissions, visible
+    ):
+        put("f.txt")
+        surface = Surface.objects.create(name="my-surface", org=default_org)
+        SurfaceStorageItem.objects.create(surface=surface, storage_file=self._file(default_org, "f.txt"))
+
+        data = self._usage(make_files_reader_client(other_permissions), "f.txt")
+
+        assert data["surfaces"] == {
+            "used": True,
+            "items": [{"id": surface.id, "name": "my-surface"}] if visible else [],
+        }
+        assert data["flows"] == self.NOTHING
+        assert data["agents"] == self.NOTHING
+
+    def test_a_binned_surface_is_not_counted(self, auth_client, put, default_org):
+        put("f.txt")
+        surface = Surface.objects.create(name="my-surface", org=default_org)
+        SurfaceStorageItem.objects.create(surface=surface, storage_file=self._file(default_org, "f.txt"))
+        surface.delete()
+
+        assert self._usage(auth_client, "f.txt")["surfaces"] == self.NOTHING
+
+    @pytest.fixture
+    def agent_nodes(self, default_org):
+        """A task node and an agent node of one flow, each running its own agent."""
+        graph = Graph.objects.create(name="inline-flow", org=default_org)
+        task_agent = AgentDefinition.objects.create(org=default_org, name="task-agent")
+        node_agent = AgentDefinition.objects.create(org=default_org, name="node-agent")
+        task_node = TaskNode.objects.create(graph=graph, node_name="task", agent_definition=task_agent)
+        agent_node = AgentNode.objects.create(graph=graph, node_name="agent", agent_definition=node_agent)
+        return task_node, agent_node
+
+    @pytest.mark.parametrize("node_kind", ["task", "agent"])
+    @pytest.mark.parametrize(
+        ("other_permissions", "visible"),
+        [({ResourceType.AGENTS: Permission.READ}, True), ({}, False)],
+        ids=["with-agents-read", "without-agents-read"],
+    )
+    def test_agent_names_need_agents_read_but_used_does_not(
+        self, make_files_reader_client, put, default_org, agent_nodes, node_kind, other_permissions, visible
+    ):
+        put("f.txt")
+        storage_file = self._file(default_org, "f.txt")
+        task_node, agent_node = agent_nodes
+        if node_kind == "task":
+            surface = InlineSurface.objects.create(task_node=task_node)
+            InlineSurfaceStorageItem.objects.create(inline_surface=surface, storage_file=storage_file)
+            agent = task_node.agent_definition
+        else:
+            surface = AgentInlineSurface.objects.create(agent_node=agent_node)
+            AgentInlineSurfaceStorageItem.objects.create(agent_inline_surface=surface, storage_file=storage_file)
+            agent = agent_node.agent_definition
+
+        data = self._usage(make_files_reader_client(other_permissions), "f.txt")
+
+        assert data["agents"] == {
+            "used": True,
+            "items": [{"id": agent.id, "name": agent.name}] if visible else [],
+        }
+        assert data["surfaces"] == self.NOTHING
+
+    def test_an_agent_running_two_linked_nodes_is_listed_once(self, auth_client, put, default_org, agent_nodes):
+        put("f.txt")
+        storage_file = self._file(default_org, "f.txt")
+        task_node, agent_node = agent_nodes
+        shared_agent = task_node.agent_definition
+        AgentNode.objects.filter(pk=agent_node.pk).update(agent_definition=shared_agent)
+        InlineSurfaceStorageItem.objects.create(
+            inline_surface=InlineSurface.objects.create(task_node=task_node), storage_file=storage_file
+        )
+        AgentInlineSurfaceStorageItem.objects.create(
+            agent_inline_surface=AgentInlineSurface.objects.create(agent_node=agent_node), storage_file=storage_file
+        )
+
+        assert self._usage(auth_client, "f.txt")["agents"] == {
+            "used": True,
+            "items": [{"id": shared_agent.id, "name": "task-agent"}],
+        }
+
+    @pytest.mark.parametrize("node_kind", ["task", "agent"])
+    @pytest.mark.parametrize(
+        ("other_permissions", "visible"),
+        [({ResourceType.FLOWS: Permission.READ}, True), ({}, False)],
+        ids=["with-flows-read", "without-flows-read"],
+    )
+    def test_a_link_on_a_node_without_an_agent_still_warns_through_its_flow(
+        self, make_files_reader_client, put, default_org, agent_nodes, node_kind, other_permissions, visible
+    ):
+        put("f.txt")
+        storage_file = self._file(default_org, "f.txt")
+        task_node, agent_node = agent_nodes
+        if node_kind == "task":
+            TaskNode.objects.filter(pk=task_node.pk).update(agent_definition=None)
+            InlineSurfaceStorageItem.objects.create(
+                inline_surface=InlineSurface.objects.create(task_node=task_node), storage_file=storage_file
+            )
+        else:
+            AgentNode.objects.filter(pk=agent_node.pk).update(agent_definition=None)
+            AgentInlineSurfaceStorageItem.objects.create(
+                agent_inline_surface=AgentInlineSurface.objects.create(agent_node=agent_node),
+                storage_file=storage_file,
+            )
+        graph = task_node.graph
+
+        data = self._usage(make_files_reader_client(other_permissions), "f.txt")
+
+        assert data["flows"] == {
+            "used": True,
+            "items": [{"id": graph.id, "name": "inline-flow"}] if visible else [],
+        }
+        assert data["agents"] == self.NOTHING
+
+    def test_a_flow_linked_directly_and_through_nodes_is_listed_once(self, auth_client, put, default_org, agent_nodes):
+        put("f.txt")
+        storage_file = self._file(default_org, "f.txt")
+        task_node, agent_node = agent_nodes
+        graph = task_node.graph
+        self._link_graph(graph, storage_file)
+        InlineSurfaceStorageItem.objects.create(
+            inline_surface=InlineSurface.objects.create(task_node=task_node), storage_file=storage_file
+        )
+        AgentInlineSurfaceStorageItem.objects.create(
+            agent_inline_surface=AgentInlineSurface.objects.create(agent_node=agent_node), storage_file=storage_file
+        )
+
+        assert self._usage(auth_client, "f.txt")["flows"] == {
+            "used": True,
+            "items": [{"id": graph.id, "name": "inline-flow"}],
+        }
+
+    @pytest.mark.parametrize("node_kind", ["task", "agent"])
+    def test_a_binned_node_is_not_counted_through_its_inline_link(
+        self, auth_client, put, default_org, agent_nodes, node_kind
+    ):
+        put("f.txt")
+        storage_file = self._file(default_org, "f.txt")
+        task_node, agent_node = agent_nodes
+        if node_kind == "task":
+            InlineSurfaceStorageItem.objects.create(
+                inline_surface=InlineSurface.objects.create(task_node=task_node), storage_file=storage_file
+            )
+            node = task_node
+        else:
+            AgentInlineSurfaceStorageItem.objects.create(
+                agent_inline_surface=AgentInlineSurface.objects.create(agent_node=agent_node),
+                storage_file=storage_file,
+            )
+            node = agent_node
+        type(node).objects.filter(pk=node.pk).update(active=False, soft_deleted_at=timezone.now())
+
+        data = self._usage(auth_client, "f.txt")
+
+        assert data["flows"] == self.NOTHING
+        assert data["agents"] == self.NOTHING
+
+    def test_a_binned_flow_is_not_counted_through_inline_links(self, auth_client, put, default_org, agent_nodes):
+        put("f.txt")
+        task_node, _ = agent_nodes
+        InlineSurfaceStorageItem.objects.create(
+            inline_surface=InlineSurface.objects.create(task_node=task_node),
+            storage_file=self._file(default_org, "f.txt"),
+        )
+        task_node.graph.delete()
+
+        assert self._usage(auth_client, "f.txt")["flows"] == self.NOTHING
+
+    def test_a_node_without_an_agent_or_with_a_binned_agent_reports_no_agent_but_its_flow(
+        self, auth_client, put, default_org, agent_nodes
+    ):
+        put("f.txt")
+        storage_file = self._file(default_org, "f.txt")
+        task_node, agent_node = agent_nodes
+        InlineSurfaceStorageItem.objects.create(
+            inline_surface=InlineSurface.objects.create(task_node=task_node), storage_file=storage_file
+        )
+        AgentInlineSurfaceStorageItem.objects.create(
+            agent_inline_surface=AgentInlineSurface.objects.create(agent_node=agent_node), storage_file=storage_file
+        )
+        TaskNode.objects.filter(pk=task_node.pk).update(agent_definition=None)
+        agent_node.agent_definition.delete()
+
+        data = self._usage(auth_client, "f.txt")
+
+        assert data["agents"] == self.NOTHING
+        assert data["flows"]["used"] is True
+
+    def test_the_query_count_does_not_grow_with_the_paths(self, auth_client, put, default_org):
+        for index in range(4):
+            put(f"f{index}.txt")
+            graph = Graph.objects.create(name=f"flow-{index}", org=default_org)
+            self._link_graph(graph, self._file(default_org, f"f{index}.txt"))
+        auth_client.post(self.URL, {"paths": ["f0.txt"]}, format="json")  # warm caches
+
+        with CaptureQueriesContext(connection) as one_path:
+            auth_client.post(self.URL, {"paths": ["f0.txt"]}, format="json")
+        with CaptureQueriesContext(connection) as four_paths:
+            auth_client.post(self.URL, {"paths": [f"f{index}.txt" for index in range(4)]}, format="json")
+
+        assert len(four_paths) == len(one_path)
+
+    def test_a_file_path_reports_only_that_file_not_a_folder_of_the_same_name(self, auth_client, default_org):
+        file_row = StorageFile.objects.create(org=default_org, path="a", name="a", item_type="file", parent_path="")
+        nested_row = StorageFile.objects.create(
+            org=default_org, path="a/x", name="x", item_type="file", parent_path="a/"
+        )
+        file_flow = Graph.objects.create(name="file-flow", org=default_org)
+        nested_flow = Graph.objects.create(name="nested-flow", org=default_org)
+        self._link_graph(file_flow, file_row)
+        self._link_graph(nested_flow, nested_row)
+
+        assert self._usage(auth_client, "a")["flows"]["items"] == [{"id": file_flow.id, "name": "file-flow"}]
+
+    def test_the_endpoint_treats_a_trailing_slash_as_the_file_as_delete_does(self, auth_client, put, default_org):
+        put("f.txt")
+        graph = Graph.objects.create(name="my-flow", org=default_org)
+        self._link_graph(graph, self._file(default_org, "f.txt"))
+
+        assert self._usage(auth_client, "f.txt/")["flows"]["used"] is True
+
+    def test_a_path_ending_in_a_slash_is_looked_up_as_a_folder_even_when_a_file_has_that_name(
+        self, put, default_org
+    ):
+        put("f.txt")
+        graph = Graph.objects.create(name="my-flow", org=default_org)
+        self._link_graph(graph, self._file(default_org, "f.txt"))
+
+        assert find_storage_usage(default_org.id, ["f.txt/"]).flows == []
+        assert find_storage_usage(default_org.id, ["f.txt"]).flows == [{"id": graph.id, "name": "my-flow"}]
+
+    @pytest.mark.parametrize("node_kind", ["task", "agent"])
+    def test_a_binned_inline_surface_on_a_live_node_is_not_counted(
+        self, auth_client, put, default_org, agent_nodes, node_kind
+    ):
+        put("f.txt")
+        storage_file = self._file(default_org, "f.txt")
+        task_node, agent_node = agent_nodes
+        if node_kind == "task":
+            surface = InlineSurface.objects.create(task_node=task_node)
+            InlineSurfaceStorageItem.objects.create(inline_surface=surface, storage_file=storage_file)
+        else:
+            surface = AgentInlineSurface.objects.create(agent_node=agent_node)
+            AgentInlineSurfaceStorageItem.objects.create(agent_inline_surface=surface, storage_file=storage_file)
+        type(surface).objects.filter(pk=surface.pk).update(active=False, soft_deleted_at=timezone.now())
+
+        data = self._usage(auth_client, "f.txt")
+
+        assert data["flows"] == self.NOTHING
+        assert data["agents"] == self.NOTHING
+
+    def test_a_caller_without_files_read_is_forbidden(self, default_org, django_user_model):
+        role = Role.objects.create(name="Flows only", org=default_org, is_built_in=False)
+        RolePermission.objects.create(role=role, resource_type=ResourceType.FLOWS.value, permissions=int(Permission.READ))
+        user = django_user_model.objects.create_user(email="flows-only@example.com", password="StrongPass123!")
+        OrganizationUser.objects.create(user=user, org=default_org, role=role)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+
+        assert client.post(self.URL, {"paths": ["f.txt"]}, format="json").status_code == status.HTTP_403_FORBIDDEN
+
+    def test_an_unauthenticated_caller_is_rejected(self):
+        assert APIClient().post(self.URL, {"paths": ["f.txt"]}, format="json").status_code == status.HTTP_401_UNAUTHORIZED
+
+    @pytest.mark.parametrize(("count", "expected_status"), [(500, 200), (501, 400)])
+    def test_the_number_of_paths_is_capped(self, auth_client, count, expected_status):
+        paths = [f"f{index}.txt" for index in range(count)]
+
+        resp = auth_client.post(self.URL, {"paths": paths}, format="json")
+
+        assert resp.status_code == expected_status
+
+    @pytest.mark.parametrize("body", [{}, {"paths": []}, {"paths": ["/"]}], ids=["no-paths", "empty", "root"])
+    def test_rejects_what_delete_rejects(self, auth_client, body):
+        assert auth_client.post(self.URL, body, format="json").status_code == status.HTTP_400_BAD_REQUEST
