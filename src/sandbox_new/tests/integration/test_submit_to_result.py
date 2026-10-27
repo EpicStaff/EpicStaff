@@ -43,6 +43,8 @@ from tests.fakes import FakeClock, FakeHostMetrics, FakeIsolationProbe, FakeJobS
 
 VENV_HASH = "1integration"
 EXECUTION_ID = "exec-integration"
+# A wall-clock reading, far from any monotonic one, so a mix-up of the two shows.
+QUEUED_AT = 1_800_000_000.0
 
 CODE = """def main(value):
     print("token=s3cret")
@@ -102,8 +104,8 @@ def build_manager(uow, runtime) -> JobOrchestrator:
         QueueJobFailureSink(runtime["result_queue"]),
         registry,
         IntakeGate(registry, lambda: True, max_accepted=10, max_held=10, queue_timeout=120),
-        queue_timeout=120,
         hold_timeout=1800,
+        wall_clock=FakeClock(QUEUED_AT),
     )
 
 
@@ -172,7 +174,7 @@ async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
     assert job.venv_hash == VENV_HASH
     assert job.func_kwargs == {"value": "x"}
     assert job.secrets == {"TOKEN": "s3cret"}
-    assert job.queue_deadline is not None
+    assert job.queued_at == QUEUED_AT
 
     await build_worker(runtime).execute(job)
 
@@ -306,7 +308,7 @@ async def test_a_crew_submission_whose_venv_failed_is_still_flagged(uow, runtime
 async def test_a_job_that_expired_in_the_queue_is_published_as_overloaded(runtime, checkpoints):
     """The worker's reason has to survive its result sink for the manager to report it."""
     clock = FakeClock()
-    job = make_worker_job(execution_id=EXECUTION_ID, session_id=7, queue_deadline=clock.now - 1)
+    job = make_worker_job(execution_id=EXECUTION_ID, session_id=7, queued_at=clock.now - 121)
     run_gate = ResourceAdmissionGate(
         FakeHostMetrics(),
         min_concurrent=1,

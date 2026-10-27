@@ -69,7 +69,6 @@ def runtime_state(
         failure_sink=failure_sink,
         registry=registry,
         intake_gate=intake_gate,
-        queue_timeout=QUEUE_TIMEOUT,
         hold_timeout=HOLD_TIMEOUT,
     )
     return State(

@@ -64,8 +64,9 @@ class Job(ValueObject):
     # Carried for the manager's benefit only: the worker echoes it onto the result so the
     # manager can publish to the channel the submitter listens on. Nothing here reads it.
     reply_to_crew_channel: bool = False
-    # `time.monotonic()` seconds after which the job is failed instead of run.
-    queue_deadline: float | None = None
+    # Wall-clock seconds when the manager queued the job; it is failed instead of run
+    # once it has waited longer than the queue timeout.
+    queued_at: float | None = None
 
 
 class Jail(ValueObject):

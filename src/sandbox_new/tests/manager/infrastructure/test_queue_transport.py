@@ -35,7 +35,7 @@ async def test_dispatch_maps_every_field_onto_the_wire_message():
         storage_credentials=StorageCredentials(access_key="AK123", secret_key="SK456"),
         session_id=11,
         timeout=12.5,
-        queue_deadline=1120.0,
+        queued_at=1_800_000_000.0,
     )
 
     await QueueJobDispatcher(queue).dispatch(job)
@@ -57,7 +57,7 @@ async def test_dispatch_maps_every_field_onto_the_wire_message():
         ),
         session_id=11,
         timeout=12.5,
-        queue_deadline=1120.0,
+        queued_at=1_800_000_000.0,
     )
 
 

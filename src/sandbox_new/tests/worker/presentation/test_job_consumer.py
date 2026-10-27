@@ -84,10 +84,9 @@ async def wait_until(check, *, timeout: float = 1.0) -> None:
     raise AssertionError("the consumer never reached the expected state")
 
 
-def queued_job(clock, execution_id: str, *, seconds_left: float = QUEUE_TIMEOUT, **fields):
-    return make_worker_job(
-        execution_id=execution_id, queue_deadline=clock.now + seconds_left, **fields
-    )
+def queued_job(clock, execution_id: str, *, waited: float = 0, **fields):
+    """A job the manager queued ``waited`` seconds ago."""
+    return make_worker_job(execution_id=execution_id, queued_at=clock.now - waited, **fields)
 
 
 def exec_starts(checkpoints: list[dict]) -> list[dict]:
@@ -126,7 +125,7 @@ async def test_an_expired_job_is_failed_without_waiting_for_a_slot(result_sink, 
     gate = build_gate(1)
     await gate.acquire()
     source = FakeJobSource(
-        queued_job(clock, "exec-1", seconds_left=-1, reply_to_crew_channel=True)
+        queued_job(clock, "exec-1", waited=QUEUE_TIMEOUT + 1, reply_to_crew_channel=True)
     )
     runtime = Runtime(source, result_sink, gate, clock)
 
@@ -148,7 +147,7 @@ async def test_a_job_that_expires_while_waiting_for_a_slot_is_failed_not_run(
 ):
     gate = build_gate(1)
     await gate.acquire()
-    source = FakeJobSource(queued_job(clock, "exec-1", seconds_left=10))
+    source = FakeJobSource(queued_job(clock, "exec-1", waited=QUEUE_TIMEOUT - 10))
     runtime = Runtime(source, result_sink, gate, clock)
 
     async def expire_then_free_the_slot():
@@ -168,12 +167,12 @@ async def test_a_job_that_expires_while_waiting_for_a_slot_is_failed_not_run(
     assert gate.has_free_slot() is True
 
 
-async def test_the_wait_for_a_slot_ends_at_the_queue_deadline(result_sink, clock):
+async def test_the_wait_for_a_slot_ends_when_the_queue_timeout_runs_out(result_sink, clock):
     """Waiting past the head job's deadline would also delay failing every expired job
     queued behind it."""
     gate = build_gate(1)
     await gate.acquire()
-    source = FakeJobSource(queued_job(clock, "exec-1", seconds_left=0.05))
+    source = FakeJobSource(queued_job(clock, "exec-1", waited=QUEUE_TIMEOUT - 0.05))
     runtime = Runtime(source, result_sink, gate, clock)
 
     await runtime.run_until(lambda: result_sink.sent)

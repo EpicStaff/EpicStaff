@@ -39,7 +39,7 @@ async def test_a_wire_job_decodes_into_a_domain_job():
             ),
             session_id=11,
             timeout=12.5,
-            queue_deadline=1120.0,
+            queued_at=1_800_000_000.0,
         )
     )
 
@@ -59,7 +59,7 @@ async def test_a_wire_job_decodes_into_a_domain_job():
     assert job.storage_credentials.secret_key == "SK456"
     assert job.session_id == 11
     assert job.timeout == 12.5
-    assert job.queue_deadline == 1120.0
+    assert job.queued_at == 1_800_000_000.0
 
 
 async def test_a_minimal_wire_job_decodes_with_its_defaults():

@@ -3,8 +3,8 @@
 A COMPLETED venv dispatches now, a venv still building holds, a FAILED venv reports a
 failed result. ``flush_pending`` re-runs that decision for whatever is waiting, and
 first fails every job held past its hold deadline. Every submission is recorded in the
-execution registry; one refused before it was enqueued is forgotten again, and the
-queue deadline starts only when a job reaches the queue. Held jobs have their own cap
+execution registry; one refused before it was enqueued is forgotten again, and a job
+is stamped with the wall-clock time it reached the queue, never while it is held. Held jobs have their own cap
 and never count toward the in-flight one; a released job is dispatched even when the
 in-flight cap is full.
 """
@@ -24,7 +24,7 @@ from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispat
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
 from manager.presentation.result_consumer import ResultConsumer
 from tests.builders import make_venv
-from tests.fakes import FakeResultPublisher, FakeUnitOfWork, FakeVenvRepository
+from tests.fakes import FakeClock, FakeResultPublisher, FakeUnitOfWork, FakeVenvRepository
 
 QUEUE_TIMEOUT = 120.0
 HOLD_TIMEOUT = 1800.0
@@ -76,11 +76,23 @@ class PausingVenvRepository(FakeVenvRepository):
 
 
 @pytest.fixture
-def orchestrator(uow, dispatcher, holding, failure_sink, registry, clock) -> JobOrchestrator:
-    return build_orchestrator(uow, dispatcher, holding, failure_sink, registry, clock)
+def wall_clock() -> FakeClock:
+    # Far from the monotonic `clock` fixture's reading, so stamping with the wrong one shows.
+    return FakeClock(now=1_800_000_000.0)
 
 
-def build_orchestrator(uow, dispatcher, holding, failure_sink, registry, clock) -> JobOrchestrator:
+@pytest.fixture
+def orchestrator(
+    uow, dispatcher, holding, failure_sink, registry, clock, wall_clock
+) -> JobOrchestrator:
+    return build_orchestrator(
+        uow, dispatcher, holding, failure_sink, registry, clock, wall_clock=wall_clock
+    )
+
+
+def build_orchestrator(
+    uow, dispatcher, holding, failure_sink, registry, clock, *, wall_clock=None
+) -> JobOrchestrator:
     intake_gate = IntakeGate(
         registry,
         lambda: True,
@@ -95,9 +107,9 @@ def build_orchestrator(uow, dispatcher, holding, failure_sink, registry, clock) 
         failure_sink,
         registry,
         intake_gate,
-        queue_timeout=QUEUE_TIMEOUT,
         hold_timeout=HOLD_TIMEOUT,
         clock=clock,
+        wall_clock=wall_clock or FakeClock(),
     )
 
 
@@ -511,25 +523,27 @@ async def test_a_failed_venv_is_reported_even_at_the_cap(
     assert [failure.execution_id for failure in failure_sink.failures] == ["exec-1"]
 
 
-async def test_the_queue_deadline_starts_at_dispatch(uow, orchestrator, dispatcher, clock):
+async def test_a_job_is_stamped_with_the_wall_clock_time_it_was_queued(
+    uow, orchestrator, dispatcher, wall_clock
+):
     venv = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
 
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
 
-    assert dispatcher.dispatched[0].queue_deadline == clock.now + QUEUE_TIMEOUT
+    assert dispatcher.dispatched[0].queued_at == 1_800_000_000.0
 
 
-async def test_a_held_job_has_no_queue_deadline(uow, orchestrator, holding):
+async def test_a_held_job_is_not_stamped_as_queued(uow, orchestrator, holding):
     venv = uow.venv_repo.seed(make_venv(status=VenvStatus.PROCESSING))[0]
 
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
 
     [held] = holding.release(venv.id)
-    assert held.queue_deadline is None
+    assert held.queued_at is None
 
 
-async def test_a_released_job_gets_its_queue_deadline_at_release(
-    uow, orchestrator, dispatcher, registry, clock
+async def test_a_released_job_is_stamped_as_queued_at_release(
+    uow, orchestrator, dispatcher, registry, wall_clock
 ):
     venv = uow.venv_repo.seed(make_venv(status=VenvStatus.PROCESSING))[0]
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
@@ -537,11 +551,11 @@ async def test_a_released_job_gets_its_queue_deadline_at_release(
         update={"status": VenvStatus.COMPLETED, "hash": "1built"}
     )
     await uow.venv_repo.update(built)
-    clock.advance(50)
+    wall_clock.advance(50)
 
     await orchestrator.flush_pending()
 
-    assert dispatcher.dispatched[0].queue_deadline == clock.now + QUEUE_TIMEOUT
+    assert dispatcher.dispatched[0].queued_at == 1_800_000_050.0
     assert registry.status("exec-1") is ExecutionStatus.QUEUED
 
 

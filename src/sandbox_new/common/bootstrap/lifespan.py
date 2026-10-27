@@ -5,8 +5,7 @@ module is the single place that owns that bridge: it creates the queues, builds 
 transports over them, and starts the background runners (worker job consumer, result
 consumer, held-job releaser, admission gate, gate sampler). Splitting the two services
 later -- replacing the queues with a network transport -- is a change confined to this
-file; no application or domain code moves. The one exception is the queue deadline, a
-monotonic-clock reading that only means something inside this one process.
+file; no application or domain code moves.
 
 What the request path needs is published on ``app.state``: a ``JobOrchestrator``
 factory closed over the runtime's singletons and settings, the intake gate (for the
@@ -103,7 +102,6 @@ async def start_runtime(app: Litestar) -> None:
         failure_sink=failure_sink,
         registry=registry,
         intake_gate=intake_gate,
-        queue_timeout=settings.QUEUE_TIMEOUT,
         hold_timeout=settings.HOLD_TIMEOUT,
     )
     app.state.build_job_orchestrator = build_job_orchestrator

@@ -32,9 +32,9 @@ class JobConsumer:
     """Pull jobs, admit them through the gate, run each as its own task.
 
     Args:
-        queue_timeout: The queue timeout the manager stamped deadlines with; only used
-            to tell the user how long an expired job waited.
-        clock: The clock the manager stamped `queue_deadline` with.
+        queue_timeout: Seconds a job may wait in the queue, counted from its
+            `queued_at`, before it is failed instead of run.
+        clock: Wall clock, the one the manager stamps `queued_at` with.
     """
 
     def __init__(
@@ -44,7 +44,7 @@ class JobConsumer:
         gate: AbstractAdmissionGate,
         *,
         queue_timeout: float,
-        clock: Callable[[], float] = time.monotonic,
+        clock: Callable[[], float] = time.time,
     ):
         self._job_source = job_source
         self._orchestrator = orchestrator
@@ -79,9 +79,9 @@ class JobConsumer:
             return
 
         try:
-            # Bounded by the deadline: jobs queue in deadline order, so the job at the
-            # head expires first, and waiting past its deadline would only delay failing
-            # it and every expired job queued behind it.
+            # Bounded by the deadline: jobs queue in the order they were queued and share
+            # one timeout, so the job at the head expires first, and waiting past its
+            # deadline would only delay failing it and every expired job queued behind it.
             await asyncio.wait_for(self._gate.acquire(), timeout=self._time_left(job))
         except TimeoutError:
             await self._fail_expired(job)
@@ -128,15 +128,19 @@ class JobConsumer:
             self._executing -= 1
             self._gate.release()
 
+    def _deadline(self, job: Job) -> float | None:
+        return None if job.queued_at is None else job.queued_at + self._queue_timeout
+
     def _has_expired(self, job: Job) -> bool:
-        return job.queue_deadline is not None and self._clock() > job.queue_deadline
+        deadline = self._deadline(job)
+        return deadline is not None and self._clock() > deadline
 
     def _time_left(self, job: Job) -> float | None:
-        return None if job.queue_deadline is None else job.queue_deadline - self._clock()
+        deadline = self._deadline(job)
+        return None if deadline is None else deadline - self._clock()
 
     async def _fail_expired(self, job: Job) -> None:
-        queued_at = job.queue_deadline - self._queue_timeout
-        waited = int(self._clock() - queued_at)
+        waited = int(self._clock() - job.queued_at)
         logger.warning("Job {} expired after {} s in the queue; not run", job.execution_id, waited)
         logger.log(
             BENCH_LEVEL,

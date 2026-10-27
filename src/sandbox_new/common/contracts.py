@@ -51,10 +51,10 @@ class ExecutionJobMessage(Schema):
     # Routing hint only, echoed back on the result so the manager can publish it to the
     # channel crew alone reads. The worker never acts on it.
     reply_to_crew_channel: bool = False
-    # `time.monotonic()` seconds after which the worker fails the job instead of running
-    # it. A monotonic reading means nothing in another process: this is valid only
-    # because the manager and the worker are one process.
-    queue_deadline: float | None = None
+    # Wall-clock (`time.time()`) seconds when the job entered the run queue. The worker
+    # fails the job instead of running it once it has waited longer than its queue
+    # timeout. Wall clock, not monotonic, so it keeps its meaning across processes.
+    queued_at: float | None = None
 
 
 class StorageMutationsMessage(Schema):

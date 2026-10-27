@@ -50,7 +50,7 @@ class QueueJobDispatcher(AbstractJobDispatcher):
             session_id=job.session_id,
             timeout=job.timeout,
             reply_to_crew_channel=job.reply_to_crew_channel,
-            queue_deadline=job.queue_deadline,
+            queued_at=job.queued_at,
         )
         await self._queue.put(message)
         logger.log(

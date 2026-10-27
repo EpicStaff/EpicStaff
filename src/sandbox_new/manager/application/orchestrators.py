@@ -186,8 +186,13 @@ class JobOrchestrator:
     Every submission is recorded in the execution registry, and a job that would run
     (held or queued) passes the intake gate first. A held job gets a hold deadline; it
     is failed without running if its venv is not built by then. A job handed to the
-    worker queue gets a queue deadline; the worker fails it instead of running it once
-    that has passed.
+    worker queue is stamped with the moment it was queued; the worker fails it instead
+    of running it once it has waited longer than the queue timeout.
+
+    Args:
+        clock: Monotonic clock for hold deadlines, which never leave this process.
+        wall_clock: Clock for `Job.queued_at`, which crosses to the worker and so must
+            mean the same thing in another process.
     """
 
     def __init__(
@@ -199,9 +204,9 @@ class JobOrchestrator:
         registry: ExecutionRegistry,
         intake_gate: IntakeGate,
         *,
-        queue_timeout: float,
         hold_timeout: float,
         clock: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], float] = time.time,
     ):
         self.uow = uow
         self.dispatcher = dispatcher
@@ -209,9 +214,9 @@ class JobOrchestrator:
         self.failure_sink = failure_sink
         self.registry = registry
         self.intake_gate = intake_gate
-        self.queue_timeout = queue_timeout
         self.hold_timeout = hold_timeout
         self.clock = clock
+        self.wall_clock = wall_clock
 
     async def submit(
         self,
@@ -340,14 +345,14 @@ class JobOrchestrator:
     async def _dispatch(self, job: Job) -> None:
         """Hand a job to the worker, reporting a failed dispatch as a failed run.
 
-        The queue deadline starts here, not at submission: time spent held while the
-        venv builds is not queue time.
+        Queue time starts here, not at submission: time spent held while the venv
+        builds is not queue time.
 
         The caller was already answered 202, so the only way it learns about a job
         that never reached the worker is a result. Staying silent would leave it
         waiting for one for good, and the credentials it issued unrevoked.
         """
-        job.queue_deadline = self.clock() + self.queue_timeout
+        job.queued_at = self.wall_clock()
         self.registry.mark_queued(job.execution_id)
         try:
             await self.dispatcher.dispatch(job)
