@@ -11,7 +11,7 @@ import {
     PatchGraphDtoRequest,
     UpdateGraphDtoRequest,
 } from '../models/graph.model';
-import { compareFlowsByName, evaluateCustomFilter } from '../utils/flow-filter.utils';
+import { compareFlows, evaluateCustomFilter, evaluateFlowConditionGroups } from '../utils/flow-filter.utils';
 import { FlowsApiService } from './flows-api.service';
 import { LabelsStorageService } from './labels-storage.service';
 
@@ -75,7 +75,11 @@ export class FlowsStorageService implements StorageService {
             filtered = filtered.filter((f) => evaluateCustomFilter(condition, f, labels));
         }
 
-        return filtered.slice().sort(compareFlowsByName(filter.sortOrder));
+        if (filter.customConditions && filter.customConditions.length > 0) {
+            filtered = filtered.filter((f) => evaluateFlowConditionGroups(filter.customConditions, f, labels));
+        }
+
+        return filtered.slice().sort(compareFlows(filter.sortOrder));
     });
 
     public readonly filteredTemplates = computed(() => {
@@ -98,16 +102,6 @@ export class FlowsStorageService implements StorageService {
     }
 
     public setFilter(filter: FlowsFilterState): void {
-        const current = this.filterSignal();
-        if (
-            current.searchTerm === filter.searchTerm &&
-            current.sortOrder === filter.sortOrder &&
-            current.includedFlowIds === filter.includedFlowIds &&
-            current.includedLabelIds === filter.includedLabelIds &&
-            current.customFilter === filter.customFilter
-        ) {
-            return;
-        }
         this.filterSignal.set(filter);
     }
 

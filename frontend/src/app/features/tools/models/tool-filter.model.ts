@@ -1,16 +1,12 @@
-import { CustomFilterCondition as SharedCustomFilterCondition } from '@shared/models';
+import { AuditConditionGroup, createAuditConditionGroup } from '../../audit/models/audit-filter.models';
 
 export type ToolSortOrder = 'default' | 'last_modified' | 'name_asc' | 'name_desc' | 'most_used' | 'unused_first';
 
 export type UsageBucket = 'agent_surface' | 'shared_surface' | 'inline_surface';
 
-export type CustomFilterScope = 'tool_name' | 'label_name';
-
-/** Tools-scoped alias of the shared generic condition. */
-export type CustomFilterCondition = SharedCustomFilterCondition<CustomFilterScope>;
-
 export interface ToolsFilterState {
-    showFavoriteOnly: boolean;
+    showFavorite: boolean;
+    showNotFavorite: boolean;
     sourceBuiltIn: boolean;
     sourceCustom: boolean;
     usageBuckets: readonly UsageBucket[];
@@ -18,11 +14,12 @@ export interface ToolsFilterState {
     sortOrder: ToolSortOrder;
     includedToolIds: number[] | null; // null = all
     includedLabelIds: number[] | null; // null = all
-    customFilter: CustomFilterCondition | null;
+    customConditions: AuditConditionGroup[];
 }
 
 export const EMPTY_TOOLS_FILTER: ToolsFilterState = {
-    showFavoriteOnly: false,
+    showFavorite: false,
+    showNotFavorite: false,
     sourceBuiltIn: false,
     sourceCustom: false,
     usageBuckets: [],
@@ -30,7 +27,7 @@ export const EMPTY_TOOLS_FILTER: ToolsFilterState = {
     sortOrder: 'default',
     includedToolIds: null,
     includedLabelIds: null,
-    customFilter: null,
+    customConditions: [createAuditConditionGroup()],
 };
 
 /** Sort orders that require per-tool usage counts to compute. */

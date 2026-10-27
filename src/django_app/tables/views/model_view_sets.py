@@ -140,6 +140,8 @@ from tables.models import (
 )
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
+from tables.models.flow_filter_preset_models import FlowFilterPreset
+from tables.models.tool_filter_preset_models import ToolFilterPreset
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     Condition,
@@ -234,6 +236,8 @@ from tables.serializers.model_serializers import (
     TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
     TelegramWebhookInfoSerializer,
+    FlowFilterPresetSerializer,
+    ToolFilterPresetSerializer,
     TwilioChannelSerializer,
     WebhookTriggerFlowsSerializer,
     WebhookTriggerNodeReadSerializer,
@@ -2887,6 +2891,54 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             org_id=self.get_active_org_id(),
         )
         return Response(summary, status=status.HTTP_200_OK)
+
+
+class ToolFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    """Saved tool-list filter presets, private to the author.
+
+    Gated on TOOLS:read — presets are a convenience over tool browsing,
+    so every action maps to READ.
+    """
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.TOOLS
+    rbac_action_map = {
+        "list": Permission.READ,
+        "retrieve": Permission.READ,
+        "create": Permission.READ,
+        "update": Permission.READ,
+        "partial_update": Permission.READ,
+        "destroy": Permission.READ,
+    }
+    queryset = ToolFilterPreset.objects.all()
+    serializer_class = ToolFilterPresetSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().filter(created_by=self.request.user)
+
+
+class FlowFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    """Saved flow-list filter presets, private to the author.
+
+    Gated on FLOWS:read — presets are a convenience over flow browsing,
+    so every action maps to READ.
+    """
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {
+        "list": Permission.READ,
+        "retrieve": Permission.READ,
+        "create": Permission.READ,
+        "update": Permission.READ,
+        "partial_update": Permission.READ,
+        "destroy": Permission.READ,
+    }
+    queryset = FlowFilterPreset.objects.all()
+    serializer_class = FlowFilterPresetSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().filter(created_by=self.request.user)
 
 
 class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
