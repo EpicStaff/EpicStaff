@@ -58,6 +58,7 @@ export function createQuickStartTour(): TourDefinition {
                 id: 'welcome',
                 content: {
                     title: 'Welcome to Quick Start!',
+                    titleEmoji: '🚀',
                     media: {
                         src: 'assets/quick-start-guide/quick-start-guide-welcome.webp',
                         width: 276,

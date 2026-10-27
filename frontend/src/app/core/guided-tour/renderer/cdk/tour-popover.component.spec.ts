@@ -37,6 +37,29 @@ function renderPopover(
     return { element: fixture.nativeElement as HTMLElement, intents, component: fixture.componentInstance };
 }
 
+/** Text a screen reader gets from `node`: its text, without the parts hidden with aria-hidden. */
+function textForAssistiveTechnology(node: Node): string {
+    if (node instanceof Element && node.getAttribute('aria-hidden') === 'true') {
+        return '';
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+        return node.textContent ?? '';
+    }
+    return Array.from(node.childNodes).map(textForAssistiveTechnology).join('');
+}
+
+/** The name a browser gives `element` from the elements its aria-labelledby points to (jsdom computes none). */
+function accessibleName(element: Element, root: HTMLElement): string {
+    return (element.getAttribute('aria-labelledby') ?? '')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((id) => root.querySelector(`[id="${id}"]`))
+        .map((label) => (label ? textForAssistiveTechnology(label) : ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function buttonLabelled(element: HTMLElement, label: string): HTMLButtonElement {
     const button = Array.from(element.querySelectorAll('button')).find(
         (candidate) => candidate.textContent?.trim() === label || candidate.getAttribute('aria-label') === label
@@ -80,6 +103,17 @@ describe('TourPopoverComponent', () => {
         component.focusCard();
 
         expect(document.activeElement).toBe(dialog);
+    });
+
+    it('shows a title emoji before the title as decoration: hidden from screen readers, not in the dialog name', () => {
+        const { element } = renderPopover({ ...CONTENT, titleEmoji: '🚀' });
+
+        const dialog = element.querySelector('[role="dialog"]');
+        const heading = element.querySelector('h2');
+        const emoji = Array.from(heading?.children ?? []).find((child) => child.textContent?.trim() === '🚀');
+        expect(heading?.textContent?.trim()).toMatch(/^🚀\s*Open Settings$/);
+        expect(emoji?.getAttribute('aria-hidden')).toBe('true');
+        expect(dialog && accessibleName(dialog, element)).toBe('Open Settings');
     });
 
     it.each<[string, TourIntent]>([

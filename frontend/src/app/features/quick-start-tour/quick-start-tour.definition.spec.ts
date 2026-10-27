@@ -155,10 +155,11 @@ describe('Quick Start tour definition', () => {
         expect(testbed.service.replayableTours().some((tour) => tour.key === 'quick-start')).toBe(isAvailable);
     });
 
-    it('welcomes with the image, Get started and Skip; Skip saves it as completed', async () => {
+    it('welcomes with the rocket, the image, Get started and Skip; Skip saves it as completed', async () => {
         await testbed.service.start(QUICK_START_TOUR_KEY);
 
         expect(view().content.title).toBe('Welcome to Quick Start!');
+        expect(view().content.titleEmoji).toBe('🚀');
         expect(view().content.media?.src).toBe('assets/quick-start-guide/quick-start-guide-welcome.webp');
         expect(view().buttons).toEqual({ next: 'Get started', back: false, skip: 'Skip', close: true });
         expect(view().progress).toBeNull();

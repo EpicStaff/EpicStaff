@@ -61,6 +61,10 @@
                     size="1.25rem"
                 />
             }
+            <!-- Decorative: the heading names the dialog, and its name is the title alone. -->
+            @if (content().titleEmoji; as titleEmoji) {
+                <span aria-hidden="true">{{ titleEmoji }}</span>
+            }
             <span>{{ content().title }}</span>
         </h2>
 

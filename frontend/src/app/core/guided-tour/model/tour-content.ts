@@ -18,6 +18,11 @@ export interface TourContent {
     readonly title: string;
     /** An `app-svg-icon` sprite id shown before the title; decorative. */
     readonly titleIcon?: string;
+    /**
+     * An emoji shown just before the title text, e.g. '🚀'. Decorative: hidden from screen readers and not part of the
+     * title, which names the step's dialog.
+     */
+    readonly titleEmoji?: string;
     readonly body: readonly TourParagraph[];
     readonly media?: TourMedia;
 }
