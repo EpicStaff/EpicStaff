@@ -290,7 +290,7 @@
         }
         <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Read]">
             <button
-                *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
+                *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                 class="storage-tree__context-menu-item"
                 (click)="onContextMenuAction('add-to-flow')"
             >

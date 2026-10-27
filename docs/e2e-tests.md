@@ -28,7 +28,6 @@ host; nothing from the suite is shipped in a service image.
 - **Isolated data.** The override turns the four volumes the main file declares as external
   (`crew_pgdata`, `sandbox_venvs`, `media_data`, `opensearch_data`) into project-local
   `e2e_*` volumes. `down -v` removes them, and an e2e run never touches the dev database.
-  `tests/e2e/e2e.env` also points the sandbox's saved-files folder at `tests/e2e/savefiles`.
 - **Mock LLM.** The override adds `mock-llm` (`tests/e2e/mock_llm/server.py`, stdlib only, run
   from the pinned `python:3.12.10-slim` image). It answers OpenAI-compatible chat completions
   and embeddings deterministically: an agent with a `search_*` tool calls it once, then answers
@@ -77,8 +76,7 @@ $DC down -v --remove-orphans           # fresh database for the next run
   - no compose profiles (no mailpit);
   - a 2 h access-token lifetime: the suite logs in once per user because login is throttled;
   - first-setup over HTTP;
-  - plain HTTP;
-  - the e2e saved-files folder.
+  - plain HTTP.
 - `up -d` returns once Django is healthy; `wait_for_stack.py` then also checks
   first-setup and mock-llm. With `E2E_COMPOSE_CMD="$DC"` it also waits for every container
   to be running and healthy, and stops at once when one crashes (CI sets it).
@@ -160,8 +158,6 @@ Each pytest invocation runs the bootstrap again, so reset the stack between invo
   data).
 - **Container name already in use.** All containers have fixed names: stop the dev stack
   before `up`.
-- **Cannot delete `tests/e2e/savefiles` on Linux.** Docker creates it as root and the sandbox
-  hands it to uid 1000; remove it with `sudo`.
 - **Port 18080 in use.** mock-llm publishes `127.0.0.1:18080:8080`; free the port, or
   change the mapping in the override and set `E2E_MOCK_LLM_URL`.
 

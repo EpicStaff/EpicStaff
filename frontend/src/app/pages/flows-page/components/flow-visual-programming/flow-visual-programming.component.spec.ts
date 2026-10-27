@@ -13,7 +13,7 @@ import {
     SpinnerComponent,
     UnsavedChangesDialogService,
 } from '@shared/components';
-import { ActionCode, GraphSessionStatus, NodeType, ResourceCode } from '@shared/models';
+import { ActionCode, BulkDeleteResponse, GraphSessionStatus, NodeType, ResourceCode } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs';
 
@@ -251,7 +251,7 @@ describe('FlowVisualProgrammingComponent', () => {
     // A signal, so FlowReadOnlyService's computed permissions follow a change made inside a test.
     let canRunFlows: WritableSignal<boolean>;
     let explanationsApi: { saveExplanations: ReturnType<typeof vi.fn> };
-    let flowsStorage: { deleteFlow: ReturnType<typeof vi.fn> };
+    let flowsStorage: { bulkDelete: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
         explanationsApi = { saveExplanations: vi.fn() };
@@ -266,7 +266,19 @@ describe('FlowVisualProgrammingComponent', () => {
             patchGraph: vi.fn(),
             getSubflowUsage: vi.fn(),
         };
-        flowsStorage = { deleteFlow: vi.fn().mockReturnValue(of(undefined)) };
+        flowsStorage = {
+            bulkDelete: vi.fn((ids: number[]) =>
+                of<BulkDeleteResponse>({
+                    dry_run: false,
+                    deleted_count: ids.length,
+                    deleted_ids: ids,
+                    deletable_ids: [],
+                    not_found_ids: [],
+                    skipped: [],
+                    usage: {},
+                })
+            ),
+        };
         unsavedChangesDialog = { confirm: vi.fn(), confirmUnsavedChanges: vi.fn() };
         toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() };
         runGraph = { runGraph: vi.fn(), runTestSession: vi.fn() };
@@ -2250,7 +2262,7 @@ describe('FlowVisualProgrammingComponent', () => {
                     },
                 ],
             });
-            let deleteFlow: ReturnType<typeof vi.fn>;
+            let bulkDelete: ReturnType<typeof vi.fn>;
             let confirm: ReturnType<typeof vi.spyOn>;
             let confirmWithOptions: ReturnType<typeof vi.spyOn>;
 
@@ -2258,7 +2270,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 openFlow(parentGraph);
                 // Used by this flow only, so an allowed unpack asks nothing and deletes the subflow.
                 flowsApi['getSubflowUsage'] = vi.fn().mockReturnValue(of({ parent_flow_ids: [1] }));
-                deleteFlow = flowsStorage.deleteFlow;
+                bulkDelete = flowsStorage.bulkDelete;
                 const dialogs = TestBed.inject(ConfirmationDialogService);
                 confirm = vi.spyOn(dialogs, 'confirm').mockReturnValue(of<ConfirmationResult>('close'));
                 confirmWithOptions = vi
@@ -2279,7 +2291,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
                 expect(savedPayload()['webhook_trigger_node_list']).toHaveLength(1);
                 expect(savedPayload()['edge_list']).toHaveLength(1);
-                expect(deleteFlow).toHaveBeenCalledWith(SUBFLOW_ID);
+                expect(bulkDelete).toHaveBeenCalledWith([SUBFLOW_ID]);
                 expect(confirm).not.toHaveBeenCalled();
                 expect(toast['success']).toHaveBeenCalledWith(
                     'Unpacked "Sub" into the current graph and deleted the subflow'
@@ -2305,7 +2317,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 expect(flowsApi['getSubflowUsage']).not.toHaveBeenCalled();
                 expect(confirmWithOptions).not.toHaveBeenCalled();
                 expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
-                expect(deleteFlow).not.toHaveBeenCalled();
+                expect(bulkDelete).not.toHaveBeenCalled();
                 expect(flowService.getFlowState()).toEqual(flowBefore);
                 expect(toast['success']).not.toHaveBeenCalled();
                 expect(toast['error']).not.toHaveBeenCalled();
@@ -2321,7 +2333,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 expect(savedPayload()['python_node_list']).toEqual([
                     expect.objectContaining({ node_name: 'Sub python' }),
                 ]);
-                expect(deleteFlow).toHaveBeenCalledWith(SUBFLOW_ID);
+                expect(bulkDelete).toHaveBeenCalledWith([SUBFLOW_ID]);
                 expect(toast['success']).toHaveBeenCalledWith(
                     'Unpacked "Sub" into the current graph and deleted the subflow'
                 );
@@ -2334,7 +2346,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
                 expect(confirmWithOptions).toHaveBeenCalledOnce();
                 expect(savedPayload()['webhook_trigger_node_list']).toHaveLength(1);
-                expect(deleteFlow).not.toHaveBeenCalled();
+                expect(bulkDelete).not.toHaveBeenCalled();
                 expect(toast['success']).toHaveBeenCalledWith('Unpacked "Sub" into the current graph');
             });
         });
@@ -3295,7 +3307,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 expect(flowsApi['bulkSaveGraph'].mock.calls[0][1]).toEqual(
                     expect.objectContaining({ save_version: 2 })
                 );
-                expect(flowsStorage.deleteFlow).toHaveBeenCalledWith(9);
+                expect(flowsStorage.bulkDelete).toHaveBeenCalledWith([9]);
                 expect(component.isSaving()).toBe(false);
             });
 

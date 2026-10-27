@@ -11,11 +11,7 @@
         class="dialog__form"
         [formGroup]="form"
     >
-        @if (errorMessage()) {
-            <div class="dialog__error-message">
-                <p>{{ errorMessage() }}</p>
-            </div>
-        }
+        <app-error-banner [message]="errorMessage()" />
 
         <div>
             <app-custom-input

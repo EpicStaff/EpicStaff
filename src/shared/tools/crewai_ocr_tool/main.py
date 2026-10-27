@@ -1,11 +1,7 @@
 # OCR Tool (OpenAI Vision)
-import base64
+from urllib.parse import urlparse
+
 from openai import OpenAI
-
-
-def _encode_image(image_path: str) -> str:
-    with open(image_path, "rb") as f:
-        return base64.b64encode(f.read()).decode("utf-8")
 
 
 def main(openai_api_key: str, image_path_url: str) -> str:
@@ -14,7 +10,7 @@ def main(openai_api_key: str, image_path_url: str) -> str:
 
     Args:
         openai_api_key (str): OpenAI API key.
-        image_path_url (str): Local image path or public image URL.
+        image_path_url (str): Public http(s) URL of the image.
 
     Returns:
         str: Extracted raw text from the image.
@@ -22,13 +18,11 @@ def main(openai_api_key: str, image_path_url: str) -> str:
     if not openai_api_key:
         return "ERROR: openai_api_key is required."
 
-    client = OpenAI(api_key=openai_api_key)
+    url = urlparse(image_path_url)
+    if url.scheme not in ("http", "https") or not url.netloc:
+        return f"ERROR: '{image_path_url}' is not an http(s) URL"
 
-    if image_path_url.startswith("http://") or image_path_url.startswith("https://"):
-        image_data = image_path_url
-    else:
-        base64_image = _encode_image(image_path_url)
-        image_data = f"data:image/jpeg;base64,{base64_image}"
+    client = OpenAI(api_key=openai_api_key)
 
     response = client.chat.completions.create(
         model="gpt-4o",
@@ -42,7 +36,7 @@ def main(openai_api_key: str, image_path_url: str) -> str:
                 "content": [
                     {
                         "type": "image_url",
-                        "image_url": {"url": image_data}
+                        "image_url": {"url": image_path_url}
                     }
                 ]
             }

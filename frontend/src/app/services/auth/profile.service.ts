@@ -117,11 +117,19 @@ export class ProfileService {
         return this.http.delete<void>(`${this.baseUrl}avatar/`).pipe(tap(() => this.updateUser({ avatar_url: null })));
     }
 
-    /** Idempotent: the backend returns the full profile, which replaces the cached user. */
-    markQuickStartTourCompleted(): Observable<GetMeResponse> {
+    /**
+     * Saves the tour `tourKey` as finished or skipped by the signed-in user; saving it again is harmless. Emits the
+     * tours that user has completed, `tourKey` included. The cached user takes them only while that user is still
+     * signed in: the response may land after sign-out or after another user signed in, and must not bring back or
+     * change a profile.
+     */
+    markTourCompleted(tourKey: string): Observable<readonly string[]> {
         return this.http
-            .post<GetMeResponse>(`${this.baseUrl}quickstart-tour/complete/`, null)
-            .pipe(tap((user) => this.setUser(user)));
+            .post<GetMeResponse>(`${this.baseUrl}tours/${encodeURIComponent(tourKey)}/complete/`, null)
+            .pipe(
+                tap((user) => this.updateUserIfStillSignedIn(user.id, { completed_tours: user.completed_tours })),
+                map((user) => user.completed_tours)
+            );
     }
 
     requestPasswordChange(dto: PasswordChangeVerifyRequest): Observable<PasswordChangeVerifyResponse> {
@@ -173,5 +181,11 @@ export class ProfileService {
         const current = this.currentUser();
         if (!current) return;
         this.currentUser.set({ ...current, ...partial });
+    }
+
+    private updateUserIfStillSignedIn(userId: number, partial: Partial<GetMeResponse>): void {
+        if (this.currentUser()?.id === userId) {
+            this.updateUser(partial);
+        }
     }
 }

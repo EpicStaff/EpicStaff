@@ -1,8 +1,8 @@
 """Coverage test for USAGE_SOURCES: every model field pointing at Secret must be registered or exempt."""
 
 # USAGE_SOURCES (tables/services/secrets/usage_sources.py) answers "what uses this
-# secret?" for the secrets list and detail endpoints. Unlike the sibling
-# secret_reference_fields registry (see test_secret_reference_coverage.py), it had no
+# secret?" for the secrets list and detail endpoints. Unlike the secret Use checks'
+# serializer mapping (see test_secret_reference_coverage.py), it had no
 # coverage test of its own -- which is exactly how the four provider-specific realtime
 # FKs (OpenAIRealtimeConfig.api_key_secret and .transcription_api_key_secret,
 # ElevenLabsRealtimeConfig.api_key_secret, GeminiRealtimeConfig.api_key_secret) went

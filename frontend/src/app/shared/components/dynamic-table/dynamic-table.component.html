@@ -167,17 +167,40 @@
                                         @switch (col.type) {
                                             @case ('input') {
                                                 @if (navigateCellKey() === col.key && rowNavigable()?.(row)) {
-                                                    <button
-                                                        type="button"
-                                                        class="dt__navigate-btn dt__navigate-btn--cell"
-                                                        (click)="navigateRow.emit({ row, rowIndex })"
-                                                        title="Open nested properties"
-                                                    >
-                                                        <app-svg-icon
-                                                            icon="go-to-arrow"
-                                                            size="14px"
-                                                        />
-                                                    </button>
+                                                    @if (navigateCellLabel()?.(row); as label) {
+                                                        <button
+                                                            type="button"
+                                                            class="dt__navigate-cell"
+                                                            [class.dt__navigate-cell--empty]="label.isEmpty"
+                                                            (click)="navigateRow.emit({ row, rowIndex })"
+                                                        >
+                                                            @if (label.isEmpty) {
+                                                                <app-svg-icon
+                                                                    icon="plus"
+                                                                    size="14px"
+                                                                />
+                                                            }
+                                                            <span class="dt__navigate-cell-text">{{ label.text }}</span>
+                                                            @if (!label.isEmpty) {
+                                                                <app-svg-icon
+                                                                    icon="go-to-arrow"
+                                                                    size="14px"
+                                                                />
+                                                            }
+                                                        </button>
+                                                    } @else {
+                                                        <button
+                                                            type="button"
+                                                            class="dt__navigate-btn dt__navigate-btn--cell"
+                                                            (click)="navigateRow.emit({ row, rowIndex })"
+                                                            title="Open nested properties"
+                                                        >
+                                                            <app-svg-icon
+                                                                icon="go-to-arrow"
+                                                                size="14px"
+                                                            />
+                                                        </button>
+                                                    }
                                                 } @else {
                                                     <input
                                                         class="dt__cell-input"

@@ -1,16 +1,26 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { afterNextRender, Component, computed, effect, inject, Injector, untracked, viewChild } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
-import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { HideInlineSubtitleOnOverflowDirective, ResizableSidebarDirective } from '@shared/directives';
+import { SidebarWidthService } from '@shared/services';
 import { urlPath } from '@shared/utils';
-import { filter } from 'rxjs';
+import { filter, map } from 'rxjs';
 
+import { BREAKPOINTS } from '../../../../core/constants/breakpoints';
 import { AppNavigationDrawerService } from '../../../../core/services/app-navigation-drawer.service';
 import { PhoneLayoutService } from '../../../../core/services/phone-layout.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { DeskRailComponent } from '../../components/desk-rail/desk-rail.component';
+import {
+    DESK_RAIL_NARROW_WIDTH_KEY,
+    DESK_RAIL_NARROW_WIDTH_OPTIONS,
+    DESK_RAIL_WIDTH_KEY,
+    DESK_RAIL_WIDTH_OPTIONS,
+    isCompactColumn,
+} from '../../constants/column-widths.constants';
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
@@ -30,6 +40,7 @@ import { DeskDrawerService } from '../../services/desk-drawer.service';
         CdkTrapFocus,
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
+        ResizableSidebarDirective,
         DeskRailComponent,
     ],
     providers: [DeskDrawerService],
@@ -41,6 +52,27 @@ export class DesksShellComponent {
 
     protected readonly isPhone = inject(PhoneLayoutService).isPhone;
     protected readonly isDrawerShown = computed(() => this.isPhone() && this.deskDrawer.isOpen());
+    private readonly isNarrowScreen = toSignal(
+        inject(BreakpointObserver)
+            .observe(BREAKPOINTS.deskRailCompact)
+            .pipe(map(({ matches }) => matches)),
+        { initialValue: false }
+    );
+    private readonly wideRailWidth = inject(SidebarWidthService).getWidth(DESK_RAIL_WIDTH_KEY, DESK_RAIL_WIDTH_OPTIONS);
+    private readonly narrowRailWidth = inject(SidebarWidthService).getWidth(
+        DESK_RAIL_NARROW_WIDTH_KEY,
+        DESK_RAIL_NARROW_WIDTH_OPTIONS
+    );
+    protected readonly railWidthKey = computed(() =>
+        this.isNarrowScreen() ? DESK_RAIL_NARROW_WIDTH_KEY : DESK_RAIL_WIDTH_KEY
+    );
+    protected readonly railWidthOptions = computed(() =>
+        this.isNarrowScreen() ? DESK_RAIL_NARROW_WIDTH_OPTIONS : DESK_RAIL_WIDTH_OPTIONS
+    );
+    protected readonly railWidth = computed(() =>
+        this.isNarrowScreen() ? this.narrowRailWidth() : this.wideRailWidth()
+    );
+    protected readonly isRailCompact = computed(() => isCompactColumn(this.railWidth()));
 
     /**
      * The desks, and the names the user goes by on them, load when the chat area opens, again on every stream `ready`
@@ -80,6 +112,7 @@ export class DesksShellComponent {
     private readonly chatInboxStream = inject(ChatInboxStreamService);
     private readonly activeOrgService = inject(ActiveOrgService);
     private readonly appNavigation = inject(AppNavigationDrawerService);
+    private readonly sidebarWidthService = inject(SidebarWidthService);
     private readonly injector = inject(Injector);
 
     constructor() {
@@ -98,6 +131,10 @@ export class DesksShellComponent {
                 if (path !== shownPath) this.deskDrawer.close();
                 shownPath = path;
             });
+    }
+
+    protected toggleRail(): void {
+        this.sidebarWidthService.toggleCollapsed(this.railWidthKey(), this.railWidthOptions());
     }
 
     /** From the drawer to the app navigation, which hands the focus back to the desk switcher when it closes. */

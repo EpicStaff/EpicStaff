@@ -20,6 +20,15 @@ const TRIGGER: WebhookTriggerModel = {
     auth: { kind: 'telegram', secret_tail: 'eqwe', secret_id: 7 },
 };
 
+/** The 400 the backend sends when a write would change a secret reference and the caller lacks Secrets "Use". */
+const SECRET_USE_REFUSAL = {
+    status_code: 400,
+    code: 'invalid',
+    message:
+        'ngrok_config: auth_token_secret_id: Changing the secrets referenced here requires the "Use" permission on ' +
+        'Secrets. The existing selection was left unchanged. Ask an organization admin to grant it.',
+};
+
 // jsdom has no ResizeObserver; the overflow directive behind <app-button> only needs it to exist.
 class ResizeObserverStub {
     observe(): void {}
@@ -141,6 +150,57 @@ describe('WebhookTriggerDialogComponent', () => {
             pressEnter(keydown, host);
 
             expect(httpMock.expectOne(TRIGGER_URL).request.method).toBe('PATCH');
+        });
+    });
+
+    describe('save errors', () => {
+        function save(setup: Setup): void {
+            clickButton(setup.host, 'Save');
+            setup.fixture.detectChanges();
+        }
+
+        function answer(setup: Setup, body: object, status: number, statusText: string): void {
+            setup.httpMock.expectOne(TRIGGER_URL).flush(body, { status, statusText });
+            setup.fixture.detectChanges();
+        }
+
+        function bannerText(host: HTMLElement): string {
+            const banner = host.querySelector<HTMLElement>('app-error-banner');
+            return banner && !banner.hidden ? (banner.textContent ?? '').trim() : '';
+        }
+
+        it('shows the server message in the banner, field labels in words, when the save fails with 400', () => {
+            const setup = render({ trigger: TRIGGER });
+
+            save(setup);
+            answer(setup, SECRET_USE_REFUSAL, 400, 'Bad Request');
+
+            expect(bannerText(setup.host)).toBe(
+                'Ngrok config: Auth token secret: Changing the secrets referenced here requires the "Use" permission ' +
+                    'on Secrets. The existing selection was left unchanged. Ask an organization admin to grant it.'
+            );
+            expect(setup.close).not.toHaveBeenCalled();
+        });
+
+        it('clears the banner when the trigger is saved again', () => {
+            const setup = render({ trigger: TRIGGER });
+            save(setup);
+            answer(setup, SECRET_USE_REFUSAL, 400, 'Bad Request');
+            expect(bannerText(setup.host)).not.toBe('');
+
+            save(setup);
+
+            expect(bannerText(setup.host)).toBe('');
+            answer(setup, TRIGGER, 200, 'OK');
+        });
+
+        it('keeps the generic message for a server error', () => {
+            const setup = render({ trigger: TRIGGER });
+
+            save(setup);
+            answer(setup, { status_code: 500, code: 'Exception', message: 'Unpredictable error' }, 500, 'Server Error');
+
+            expect(bannerText(setup.host)).toBe('Failed to save webhook trigger.');
         });
     });
 });

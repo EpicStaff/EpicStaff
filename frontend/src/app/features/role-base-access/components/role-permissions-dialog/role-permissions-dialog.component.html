@@ -1,0 +1,141 @@
+<div class="dialog">
+    <div class="header">
+        <h2
+            class="title"
+            [id]="titleId"
+        >
+            Role Information
+        </h2>
+        <button
+            class="close"
+            type="button"
+            aria-label="Close"
+            (click)="onClose()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="18px"
+            />
+        </button>
+    </div>
+
+    <div class="body">
+        <div class="role-identity">
+            <app-user-avatar
+                class="role-avatar"
+                [name]="data.roleName"
+            />
+            <div class="role-info">
+                <span class="role-name">{{ data.roleName }}</span>
+                <span class="org-name">{{ data.organization.name }}</span>
+            </div>
+        </div>
+
+        @switch (status()) {
+            @case ('loading') {
+                <app-loading-spinner size="sm" />
+            }
+            @case ('failed') {
+                <div class="empty-state">
+                    <h4 class="empty-title">Permissions unavailable</h4>
+                    <p class="empty-subtitle">We couldn't load the permissions of this role.</p>
+                </div>
+            }
+            @case ('not-found') {
+                <div class="empty-state">
+                    <h4 class="empty-title">Role not found</h4>
+                    <p class="empty-subtitle">This role is no longer assigned to you.</p>
+                </div>
+            }
+            @case ('ready') {
+                @for (group of groups(); track group.key) {
+                    <section class="group">
+                        <button
+                            class="group-header"
+                            type="button"
+                            [attr.aria-expanded]="!isGroupCollapsed(group.key)"
+                            (click)="toggleGroup(group.key)"
+                        >
+                            <app-svg-icon
+                                class="chevron"
+                                [icon]="isGroupCollapsed(group.key) ? 'chevron-right' : 'chevron-down'"
+                                size="16px"
+                            />
+                            <span class="group-label">{{ group.label }}</span>
+                            <span class="group-count">{{ permissionCountLabel(group.permissionCount) }}</span>
+                        </button>
+
+                        @if (!isGroupCollapsed(group.key)) {
+                            <div
+                                class="matrix"
+                                role="table"
+                                [attr.aria-label]="group.label"
+                            >
+                                <div
+                                    class="matrix-row matrix-head"
+                                    role="row"
+                                >
+                                    <span
+                                        class="resource-head"
+                                        role="columnheader"
+                                        >Resource</span
+                                    >
+                                    @for (action of group.actions; track action.code) {
+                                        <span
+                                            class="action-head"
+                                            role="columnheader"
+                                            [attr.aria-label]="actionLabel(action)"
+                                            [title]="actionLabel(action)"
+                                        >
+                                            <app-svg-icon
+                                                [icon]="actionIcon(action)"
+                                                size="16px"
+                                            />
+                                            <span class="action-label">{{ actionLabel(action) }}</span>
+                                        </span>
+                                    }
+                                </div>
+
+                                @for (entry of group.resources; track entry.resource.code) {
+                                    <div
+                                        class="matrix-row resource-row"
+                                        role="row"
+                                    >
+                                        <div
+                                            class="resource-info"
+                                            role="rowheader"
+                                        >
+                                            <span class="resource-label">{{ entry.resource.label }}</span>
+                                            <span class="resource-description">{{ entry.resource.description }}</span>
+                                        </div>
+                                        @for (action of group.actions; track action.code) {
+                                            <span
+                                                class="action-cell"
+                                                role="cell"
+                                            >
+                                                @if (entry.grantedActions.has(action.code)) {
+                                                    <app-svg-icon
+                                                        class="granted"
+                                                        icon="check"
+                                                        size="16px"
+                                                        role="img"
+                                                        [attr.aria-label]="actionLabel(action) + ': allowed'"
+                                                    />
+                                                }
+                                            </span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </section>
+                } @empty {
+                    <div class="empty-state">
+                        <h4 class="empty-title">No permissions yet</h4>
+                        <p class="empty-subtitle">This role doesn't grant any permissions.</p>
+                    </div>
+                }
+            }
+        }
+    </div>
+</div>

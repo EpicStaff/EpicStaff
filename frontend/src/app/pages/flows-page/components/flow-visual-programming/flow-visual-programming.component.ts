@@ -673,8 +673,19 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 // Step 8: Optionally delete the subflow.
                 switchMap((deleteSubflow) => {
                     if (deleteSubflow) {
-                        return this.flowStorageService.deleteFlow(subgraphId).pipe(
-                            map(() => true),
+                        return this.flowStorageService.bulkDelete([subgraphId]).pipe(
+                            map((response) => {
+                                const gone = [...response.deleted_ids, ...response.not_found_ids].includes(subgraphId);
+                                if (!gone) {
+                                    const reason = response.skipped.find((entry) => entry.id === subgraphId)?.reason;
+                                    this.toastService.warning(
+                                        reason === 'in_use_restricted'
+                                            ? "Unpacked successfully, but the subflow is used somewhere you don't have access to, so it was kept"
+                                            : 'Unpacked successfully, but the subflow could not be deleted, so it was kept'
+                                    );
+                                }
+                                return gone;
+                            }),
                             catchError(() => {
                                 this.toastService.error('Unpacked successfully, but failed to delete the subflow');
                                 return of(false);
