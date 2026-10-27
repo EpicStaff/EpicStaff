@@ -20,7 +20,16 @@ import { escapeHtml } from '@shared/utils';
 import { ToolFilterPreset } from '../../../../models/tool-filter-preset.model';
 import { ToolFilterPresetsStorageService } from '../../../../services/tool-filter-presets-storage.service';
 import { ToolsViewStorageService } from '../../../../services/tools-view-storage.service';
+import { describeToolFilter, FilterChip } from '../../../../utils/describe-tool-filter.util';
 import { buildPresetBody, restorePresetState } from '../../../../utils/tool-filter-preset-body.util';
+
+const MAX_CARD_CHIPS = 3;
+
+interface ToolPresetCard {
+    preset: ToolFilterPreset;
+    chips: FilterChip[];
+    hiddenChipCount: number;
+}
 
 @Component({
     selector: 'app-tools-filter-presets',
@@ -51,6 +60,9 @@ export class ToolsFilterPresetsComponent implements OnInit {
         if (!term) return this.presets();
         return this.presets().filter((preset) => preset.name.toLowerCase().includes(term));
     });
+    protected readonly filteredCards = computed<ToolPresetCard[]>(() =>
+        this.filteredPresets().map((preset) => this.toCard(preset))
+    );
     protected readonly canSave = computed(() => this.presetName().trim() !== '' && !this.isSaving());
 
     private readonly presetsStorage = inject(ToolFilterPresetsStorageService);
@@ -144,5 +156,15 @@ export class ToolsFilterPresetsComponent implements OnInit {
 
     protected setNewPresetName(event: Event): void {
         this.presetName.set((event.target as HTMLInputElement).value);
+    }
+
+    private toCard(preset: ToolFilterPreset): ToolPresetCard {
+        const state = restorePresetState(preset.filter_body);
+        const chips = describeToolFilter(state);
+        return {
+            preset,
+            chips: chips.slice(0, MAX_CARD_CHIPS),
+            hiddenChipCount: Math.max(chips.length - MAX_CARD_CHIPS, 0),
+        };
     }
 }

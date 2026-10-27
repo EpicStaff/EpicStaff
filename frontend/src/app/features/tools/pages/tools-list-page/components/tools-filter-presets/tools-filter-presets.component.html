@@ -52,13 +52,13 @@
         <p class="presets__state presets__state--error">Could not load presets.</p>
     } @else if (presets().length === 0) {
         <p class="presets__state">No presets yet.</p>
-    } @else if (filteredPresets().length === 0) {
+    } @else if (filteredCards().length === 0) {
         <p class="presets__state">No matching presets.</p>
     } @else {
         <div class="presets__list">
-            @for (preset of filteredPresets(); track preset.id) {
+            @for (card of filteredCards(); track card.preset.id) {
                 <div class="preset-card">
-                    @if (editingPresetId() === preset.id) {
+                    @if (editingPresetId() === card.preset.id) {
                         <input
                             #renameInput
                             class="preset-card__rename"
@@ -66,53 +66,71 @@
                             maxlength="150"
                             [value]="editingPresetName()"
                             (input)="setRenameName($event)"
-                            (keydown.enter)="confirmRename(preset.id)"
+                            (keydown.enter)="confirmRename(card.preset.id)"
                             (keydown.escape)="cancelRename()"
-                            (blur)="confirmRename(preset.id)"
+                            (blur)="confirmRename(card.preset.id)"
                         />
                     } @else {
                         <button
                             class="preset-card__main"
                             type="button"
-                            (click)="applyPreset(preset)"
+                            (click)="applyPreset(card.preset)"
                         >
-                            <span class="preset-card__name">{{ preset.name }}</span>
+                            <div class="preset-card__header">
+                                <span class="preset-card__name">{{ card.preset.name }}</span>
+                                <div class="preset-card__actions">
+                                    <button
+                                        class="preset-card__action"
+                                        type="button"
+                                        title="Overwrite with current filters"
+                                        (click)="overwritePreset(card.preset)"
+                                    >
+                                        <app-svg-icon
+                                            icon="floppy"
+                                            size="14px"
+                                        />
+                                    </button>
+                                    <button
+                                        class="preset-card__action"
+                                        type="button"
+                                        title="Rename preset"
+                                        (click)="startRename(card.preset)"
+                                    >
+                                        <app-svg-icon
+                                            icon="edit"
+                                            size="14px"
+                                        />
+                                    </button>
+                                    <button
+                                        class="preset-card__action"
+                                        type="button"
+                                        title="Delete preset"
+                                        (click)="confirmDelete(card.preset)"
+                                    >
+                                        <app-svg-icon
+                                            icon="trash"
+                                            size="12px"
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+                            @if (card.chips.length > 0) {
+                                <span class="preset-card__chips">
+                                    @for (chip of card.chips; track chip.label) {
+                                        <span
+                                            class="preset-chip"
+                                            [title]="chip.label + ' ' + chip.value"
+                                        >
+                                            <span class="preset-chip__label">{{ chip.label }}</span>
+                                            <span class="preset-chip__value">{{ chip.value }}</span>
+                                        </span>
+                                    }
+                                    @if (card.hiddenChipCount > 0) {
+                                        <span class="preset-chip preset-chip--more">+{{ card.hiddenChipCount }}</span>
+                                    }
+                                </span>
+                            }
                         </button>
-                        <div class="preset-card__actions">
-                            <button
-                                class="preset-card__action"
-                                type="button"
-                                title="Overwrite with current filters"
-                                (click)="overwritePreset(preset)"
-                            >
-                                <app-svg-icon
-                                    icon="save"
-                                    size="12px"
-                                />
-                            </button>
-                            <button
-                                class="preset-card__action"
-                                type="button"
-                                title="Rename preset"
-                                (click)="startRename(preset)"
-                            >
-                                <app-svg-icon
-                                    icon="edit"
-                                    size="12px"
-                                />
-                            </button>
-                            <button
-                                class="preset-card__action"
-                                type="button"
-                                title="Delete preset"
-                                (click)="confirmDelete(preset)"
-                            >
-                                <app-svg-icon
-                                    icon="trash"
-                                    size="12px"
-                                />
-                            </button>
-                        </div>
                     }
                 </div>
             }

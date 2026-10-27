@@ -20,7 +20,16 @@ import { escapeHtml } from '@shared/utils';
 import { FlowFilterPreset } from '../../../../models/flow-filter-preset.model';
 import { FlowFilterPresetsStorageService } from '../../../../services/flow-filter-presets-storage.service';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
+import { describeFlowFilter, FilterChip } from '../../../../utils/describe-flow-filter.util';
 import { buildFlowPresetBody, restoreFlowPresetState } from '../../../../utils/flow-filter-preset-body.util';
+
+const MAX_CARD_CHIPS = 3;
+
+interface FlowPresetCard {
+    preset: FlowFilterPreset;
+    chips: FilterChip[];
+    hiddenChipCount: number;
+}
 
 @Component({
     selector: 'app-flows-filter-presets',
@@ -51,6 +60,9 @@ export class FlowsFilterPresetsComponent implements OnInit {
         if (!term) return this.presets();
         return this.presets().filter((preset) => preset.name.toLowerCase().includes(term));
     });
+    protected readonly filteredCards = computed<FlowPresetCard[]>(() =>
+        this.filteredPresets().map((preset) => this.toCard(preset))
+    );
     protected readonly canSave = computed(() => this.presetName().trim() !== '' && !this.isSaving());
 
     private readonly presetsStorage = inject(FlowFilterPresetsStorageService);
@@ -144,5 +156,15 @@ export class FlowsFilterPresetsComponent implements OnInit {
 
     protected setNewPresetName(event: Event): void {
         this.presetName.set((event.target as HTMLInputElement).value);
+    }
+
+    private toCard(preset: FlowFilterPreset): FlowPresetCard {
+        const state = restoreFlowPresetState(preset.filter_body);
+        const chips = describeFlowFilter(state);
+        return {
+            preset,
+            chips: chips.slice(0, MAX_CARD_CHIPS),
+            hiddenChipCount: Math.max(chips.length - MAX_CARD_CHIPS, 0),
+        };
     }
 }

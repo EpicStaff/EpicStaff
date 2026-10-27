@@ -113,7 +113,7 @@
 
 .preset-card {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     border: 1px solid var(--color-divider-subtle);
     border-radius: 6px;
     background-color: var(--color-input-background);
@@ -126,7 +126,8 @@
 .preset-card__main {
     display: flex;
     flex: 1;
-    align-items: center;
+    flex-direction: column;
+    gap: 6px;
     min-width: 0;
     padding: 8px 10px;
     border: none;
@@ -147,6 +148,12 @@
     }
 }
 
+.preset-card__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+
 .preset-card__name {
     overflow: hidden;
     font-weight: 500;
@@ -159,7 +166,6 @@
     flex-shrink: 0;
     align-items: center;
     gap: 2px;
-    padding-right: 4px;
     opacity: 0;
     transition: opacity 120ms ease;
 
@@ -192,6 +198,13 @@
     }
 }
 
+.preset-card__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+}
+
 .preset-card__rename {
     flex: 1;
     min-width: 0;
@@ -207,4 +220,34 @@
     &:focus-visible {
         outline: none;
     }
+}
+
+.preset-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    height: 24px;
+    padding: 0 6px;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 4px;
+    background-color: var(--color-secondary-btn-background);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.preset-chip__label {
+    flex-shrink: 0;
+    color: var(--accent-color);
+}
+
+.preset-chip__value {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    text-overflow: ellipsis;
+}
+
+.preset-chip--more {
+    color: var(--color-ks-transparent-text-60);
 }
