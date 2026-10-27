@@ -40,7 +40,8 @@ ORGANIZATION_RETENTION_PATCH = {
         "Send any subset of `sessions_days`, `conversations_days`, `audit_days`; at least "
         "one is required. Each must be one of `retention_policy.<type>.allowed`, `null` "
         "to fall back to the instance default, or the value already stored (so a form "
-        "stays savable after a cap is lowered). Unsent types are left unchanged."
+        "stays savable after a cap is lowered or a floor raised). `allowed` leaves out "
+        "values above `max_days` and below `min_days`. Unsent types are left unchanged."
     ),
     "request": OrganizationRetentionUpdateRequestSerializer,
     "responses": {

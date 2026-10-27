@@ -4,8 +4,17 @@ from django.conf import settings
 from src.shared.retention import DataType, allowed_org_values
 
 from rbac.exceptions import FormValidationError
-from rbac.models import OrganizationRetention
+from rbac.models import OrganizationConfig
 from rbac.validation.base import BaseRBACValidator, FieldError
+
+# The PATCH body's field names; the model stores them as `retention_<name>`. Keep in step
+# with OrganizationConfig.RETENTION_FIELD_BY_DATA_TYPE and the `source=` arguments in
+# rbac/serializers/organization_retention.py.
+REQUEST_FIELD_BY_DATA_TYPE: dict[DataType, str] = {
+    DataType.SESSIONS: "sessions_days",
+    DataType.CONVERSATIONS: "conversations_days",
+    DataType.AUDIT: "audit_days",
+}
 
 
 class OrganizationRetentionValidationService(BaseRBACValidator):
@@ -15,20 +24,18 @@ class OrganizationRetentionValidationService(BaseRBACValidator):
     names the rejected fields as well.
     """
 
-    def validate_update(
-        self, data: Any, current: OrganizationRetention
-    ) -> dict[DataType, int | None]:
+    def validate_update(self, data: Any, current: OrganizationConfig) -> dict[DataType, int | None]:
         """Return the sent values keyed by data type.
 
         A value is accepted when it is null (the instance default), one of the values the
         policy allows, or the value the organization already stores. The last case keeps a
-        form re-savable after an operator lowers a cap below an earlier choice; the cap
-        still applies through `effective_days`.
+        form re-savable after an operator lowers a cap or raises a floor past an earlier
+        choice; the cap and floor still apply through `effective_retention_days`.
 
         Args:
-            current: The organization's stored retention, or an unsaved empty one.
+            current: The organization's stored config, locked by the caller.
         """
-        fields = OrganizationRetention.FIELD_BY_DATA_TYPE
+        fields = REQUEST_FIELD_BY_DATA_TYPE
         if not isinstance(data, dict) or not any(name in data for name in fields.values()):
             self._raise(
                 [FieldError("body", None, f"Send at least one of: {', '.join(fields.values())}.")]
@@ -49,7 +56,7 @@ class OrganizationRetentionValidationService(BaseRBACValidator):
 
     @staticmethod
     def _retention_days_error(
-        field_name: str, value: Any, data_type: DataType, current: OrganizationRetention
+        field_name: str, value: Any, data_type: DataType, current: OrganizationConfig
     ) -> FieldError | None:
         if value is None:
             return None
@@ -62,7 +69,7 @@ class OrganizationRetentionValidationService(BaseRBACValidator):
         # would otherwise accept `true` or a float.
         if not isinstance(value, int) or isinstance(value, bool):
             return error
-        if value == current.chosen_days(data_type) or value in allowed:
+        if value == current.chosen_retention_days(data_type) or value in allowed:
             return None
         return error
 

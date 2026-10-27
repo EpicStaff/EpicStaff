@@ -126,6 +126,73 @@ def test_load_rejects_zero_cap(env_factory):
         load_retention_policy(environment)
 
 
+def test_load_without_audit_floor_sets_no_floor_anywhere(env_factory):
+    policy = load_retention_policy(env_factory())
+
+    assert [rule.min_days for rule in policy.rules.values()] == [None, None, None]
+
+
+@pytest.mark.parametrize("floor_value", [MISSING, "none", "None"], ids=["absent", "none", "None"])
+def test_load_treats_absent_or_none_audit_floor_as_no_floor(env_factory, floor_value):
+    policy = load_retention_policy(env_factory(RETENTION_AUDIT_MIN_DAYS=floor_value))
+
+    assert policy.rules[DataType.AUDIT].min_days is None
+
+
+def test_load_reads_the_audit_floor(env_factory):
+    policy = load_retention_policy(env_factory(RETENTION_AUDIT_MIN_DAYS="90"))
+
+    assert policy.rules[DataType.AUDIT] == RetentionRule(365, 365, min_days=90)
+    assert policy.rules[DataType.SESSIONS].min_days is None
+    assert policy.rules[DataType.CONVERSATIONS].min_days is None
+
+
+@pytest.mark.parametrize("value", ["0", "45", "400", "-90"])
+def test_load_rejects_audit_floor_outside_list(env_factory, value):
+    with pytest.raises(ValueError, match=r"^RETENTION_AUDIT_MIN_DAYS=-?\d+ must be one of"):
+        load_retention_policy(env_factory(RETENTION_AUDIT_MIN_DAYS=value))
+
+
+def test_load_rejects_non_integer_audit_floor(env_factory):
+    with pytest.raises(
+        ValueError, match=re.escape("RETENTION_AUDIT_MIN_DAYS='ninety' must be a whole number")
+    ):
+        load_retention_policy(env_factory(RETENTION_AUDIT_MIN_DAYS="ninety"))
+
+
+def test_load_rejects_audit_floor_above_cap(env_factory):
+    environment = env_factory(
+        RETENTION_AUDIT_DAYS="180", RETENTION_AUDIT_MAX_DAYS="180", RETENTION_AUDIT_MIN_DAYS="365"
+    )
+
+    with pytest.raises(ValueError, match="^RETENTION_AUDIT_MIN_DAYS=365 is above the cap"):
+        load_retention_policy(environment)
+
+
+def test_load_rejects_audit_default_below_floor(env_factory):
+    environment = env_factory(
+        RETENTION_AUDIT_DAYS="30", RETENTION_AUDIT_MAX_DAYS="none", RETENTION_AUDIT_MIN_DAYS="90"
+    )
+
+    with pytest.raises(ValueError, match="^RETENTION_AUDIT_DAYS=30 is below its floor"):
+        load_retention_policy(environment)
+
+
+@pytest.mark.parametrize(
+    ("default_days", "max_days", "min_days"),
+    [("0", "none", "90"), ("90", "none", "90"), ("90", "90", "90"), ("180", "365", "90")],
+    ids=["forever-default-above-any-floor", "default-at-floor", "floor-equals-cap", "between"],
+)
+def test_load_accepts_consistent_audit_floor(env_factory, default_days, max_days, min_days):
+    environment = env_factory(
+        RETENTION_AUDIT_DAYS=default_days,
+        RETENTION_AUDIT_MAX_DAYS=max_days,
+        RETENTION_AUDIT_MIN_DAYS=min_days,
+    )
+
+    assert load_retention_policy(environment).rules[DataType.AUDIT].min_days == int(min_days)
+
+
 def test_effective_inherits_default_when_org_value_empty():
     assert effective_retention_days(None, RetentionRule(30, None)) == 30
 
@@ -141,6 +208,13 @@ def test_effective_inherits_default_when_org_value_empty():
         (0, RetentionRule(30, 90), 90),
         (None, RetentionRule(0, None), 0),
         (None, RetentionRule(90, 90), 90),
+        (30, RetentionRule(365, None, min_days=90), 90),
+        (90, RetentionRule(365, None, min_days=90), 90),
+        (180, RetentionRule(365, None, min_days=90), 180),
+        (0, RetentionRule(365, None, min_days=90), 0),
+        (30, RetentionRule(90, 180, min_days=90), 90),
+        (365, RetentionRule(90, 180, min_days=90), 180),
+        (0, RetentionRule(90, 180, min_days=90), 180),
     ],
     ids=[
         "forever-uncapped",
@@ -151,6 +225,13 @@ def test_effective_inherits_default_when_org_value_empty():
         "forever-clamped-to-cap",
         "inherits-forever-default",
         "inherits-capped-default",
+        "below-floor-raised",
+        "equal-to-floor",
+        "above-floor",
+        "forever-above-floor",
+        "below-floor-raised-under-cap",
+        "above-cap-clamped-with-floor",
+        "forever-clamped-to-cap-with-floor",
     ],
 )
 def test_effective_retention_days(org_days, rule, expected):
@@ -162,6 +243,12 @@ def test_allowed_org_values_respects_cap():
     assert allowed_org_values(RetentionRule(30, None)) == (0, 30, 90, 180, 365)
     assert allowed_org_values(RetentionRule(0, None)) == (0, 30, 90, 180, 365)
     assert allowed_org_values(RetentionRule(365, 365)) == (30, 90, 180, 365)
+
+
+def test_allowed_org_values_respects_floor():
+    assert allowed_org_values(RetentionRule(365, None, min_days=90)) == (0, 90, 180, 365)
+    assert allowed_org_values(RetentionRule(90, 180, min_days=90)) == (90, 180)
+    assert allowed_org_values(RetentionRule(365, 365, min_days=365)) == (365,)
 
 
 def test_audit_tier_names():

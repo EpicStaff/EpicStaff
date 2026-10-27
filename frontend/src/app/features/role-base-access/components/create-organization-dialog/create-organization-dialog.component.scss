@@ -71,6 +71,11 @@
             gap: 8px;
         }
 
+        .retention__hint {
+            grid-column: 2;
+            margin-top: 8px;
+        }
+
         // top-aligned with the column labels, so the audit hint below its select leaves the row label in place
         .data-retention__label,
         .data-retention,
@@ -106,7 +111,8 @@
         }
 
         .data-retention__column-label,
-        .data-retention__hint {
+        .data-retention__hint,
+        .retention__hint {
             color: var(--color-ks-transparent-text-60);
         }
 

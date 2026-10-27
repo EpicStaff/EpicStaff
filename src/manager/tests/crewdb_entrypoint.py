@@ -28,7 +28,9 @@ def _function_body(name: str) -> str:
 def grant_manager_sql(role: str) -> str:
     """Return the SQL grant_manager_permissions runs, for ``role``, as psql would receive it."""
     body = _function_body("grant_manager_permissions")
-    heredoc = body[body.index("<<EOF\n") + len("<<EOF\n") : body.rindex("\nEOF")]
+    # The heredoc starts on the line after `<<EOF`, which may carry more shell (`|| return 1`).
+    heredoc_start = body.index("\n", body.index("<<EOF")) + 1
+    heredoc = body[heredoc_start : body.rindex("\nEOF")]
     return heredoc.replace("\\$", "$").replace("${manager_user}", role)
 
 

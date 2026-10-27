@@ -236,13 +236,13 @@ BEGIN
 
     IF EXISTS (
         SELECT FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = 'rbac_organization_retention'
+        WHERE table_schema = 'public' AND table_name = 'rbac_organization_config'
     ) THEN
-        REVOKE ALL ON TABLE rbac_organization_retention FROM "${manager_user}";
-        GRANT SELECT ON TABLE rbac_organization_retention TO "${manager_user}";
-        RAISE NOTICE '[manager] Granted SELECT on rbac_organization_retention';
+        REVOKE ALL ON TABLE rbac_organization_config FROM "${manager_user}";
+        GRANT SELECT ON TABLE rbac_organization_config TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT on rbac_organization_config';
     ELSE
-        RAISE NOTICE '[manager] rbac_organization_retention not found, skipping';
+        RAISE NOTICE '[manager] rbac_organization_config not found, skipping';
     END IF;
 
     IF EXISTS (
@@ -500,7 +500,7 @@ REQUIRED_TABLES=(
     # manager
     "tables_session"
     "rbac_organization"
-    "rbac_organization_retention"
+    "rbac_organization_config"
     "tables_graph"
     "tables_graphsessionmessage"
     "tables_usersessionmessage"
@@ -603,7 +603,7 @@ BEGIN
         END IF;
 
         -- manager: SELECT for the retention job
-        IF tbl_name = 'rbac_organization_retention' THEN
+        IF tbl_name = 'rbac_organization_config' THEN
             EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
             RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
         END IF;

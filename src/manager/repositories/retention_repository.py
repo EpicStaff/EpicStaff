@@ -15,9 +15,11 @@ from src.shared.retention import (
 
 _LIST_ORG_RETENTION = text(
     """
-    SELECT organization.id AS org_id, retention.sessions_days, retention.conversations_days
+    SELECT organization.id AS org_id,
+        config.retention_sessions_days AS sessions_days,
+        config.retention_conversations_days AS conversations_days
     FROM rbac_organization organization
-    LEFT JOIN rbac_organization_retention retention ON retention.org_id = organization.id
+    LEFT JOIN rbac_organization_config config ON config.org_id = organization.id
     ORDER BY organization.id
     """
 )

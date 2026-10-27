@@ -15,7 +15,7 @@ from tests.crewdb_entrypoint import (
 )
 
 RETENTION_TABLES = (
-    {"tables_session", "tables_graph", "rbac_organization", "rbac_organization_retention"}
+    {"tables_session", "tables_graph", "rbac_organization", "rbac_organization_config"}
     | {link.table for link in SESSION_CHILD_TABLES}
     | {link.table for link in SESSION_SET_NULL_COLUMNS}
 )

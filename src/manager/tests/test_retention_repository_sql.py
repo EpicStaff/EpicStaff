@@ -7,7 +7,8 @@ only compare the migration files with ``django_migrations``. The manager role's 
 then applied from src/crewdb/custom-docker-entrypoint.sh, as the container does.
 
 Rows are committed, so a second connection can hold locks, and each test starts by deleting
-what these tests create. Skipped when crewdb is unreachable.
+what these tests create. Skipped when crewdb is unreachable, and the grants test when the
+manager role does not exist, unless REQUIRE_CREWDB is true: then both fail.
 """
 
 import asyncio
@@ -42,6 +43,9 @@ SUPERUSER = settings.env.str("DB_USER")
 SUPERUSER_PASSWORD = settings.env.str("DB_PASSWORD")
 MANAGER_ROLE = settings.DB_USER
 TEST_ORG_PREFIX = "retention-test-"
+# CI sets this: there a missing crewdb or manager role means the job is broken, and a skip
+# would report the purge as tested when nothing ran.
+REQUIRE_CREWDB = settings.env.bool("REQUIRE_CREWDB", False)
 
 CUTOFF = datetime(2026, 9, 20, 3, 30, tzinfo=UTC)
 EXPIRED = CUTOFF - timedelta(days=10)
@@ -53,10 +57,18 @@ _CLEANUP = [
     "DELETE FROM tables_keyvaluetable",
     "DELETE FROM tables_session",
     "DELETE FROM tables_storagefile",
-    "DELETE FROM rbac_organization_retention",
+    # Only the test organizations' rows: every organization owns a config row.
+    "DELETE FROM rbac_organization_config WHERE org_id IN "
+    f"(SELECT id FROM rbac_organization WHERE name LIKE '{TEST_ORG_PREFIX}%')",
     "DELETE FROM tables_graph",
     f"DELETE FROM rbac_organization WHERE name LIKE '{TEST_ORG_PREFIX}%'",
 ]
+
+
+def _skip_unless_required(reason: str) -> None:
+    if REQUIRE_CREWDB:
+        pytest.fail(f"{reason}, and REQUIRE_CREWDB is set")
+    pytest.skip(reason)
 
 
 def _refuse_non_test_database(name: str) -> None:
@@ -77,7 +89,9 @@ def _pending_django_migrations(applied: set[tuple[str, str]]) -> list[str]:
 def _migrate_test_database() -> None:
     environment = {**os.environ, "DB_NAME": TEST_DATABASE}
     completed = subprocess.run(
-        ["make", "django-migrate"],
+        # ARGS= : a `make manager-tests ARGS=...` run passes its pytest ARGS down through
+        # MAKEFLAGS, and migrate rejects them.
+        ["make", "django-migrate", "ARGS="],
         cwd=REPOSITORY_ROOT,
         env=environment,
         capture_output=True,
@@ -131,7 +145,7 @@ async def _prepare_test_database() -> bool:
     try:
         admin = await connect("postgres")
     except (OSError, asyncpg.PostgresError) as error:
-        pytest.skip(f"crewdb is unreachable: {error}")
+        _skip_unless_required(f"crewdb is unreachable: {error}")
     try:
         if not await admin.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", TEST_DATABASE):
             await admin.execute(f'CREATE DATABASE "{TEST_DATABASE}"')
@@ -205,17 +219,18 @@ class Database:
     async def value(self, sql: str, **params):
         return (await self.execute(sql, **params)).scalar()
 
-    async def org(self, sessions_days=None, with_retention_row=False) -> int:
+    async def org(self, sessions_days=None, with_config_row=False) -> int:
         org_id = await self.value(
             "INSERT INTO rbac_organization (name, is_active, is_default, created_at, updated_at) "
             "VALUES (:name, true, false, now(), now()) RETURNING id",
             name=f"{TEST_ORG_PREFIX}{uuid.uuid4()}",
         )
-        if with_retention_row:
+        if with_config_row:
             await self.execute(
-                "INSERT INTO rbac_organization_retention "
-                "(org_id, sessions_days, conversations_days, audit_days, updated_at) "
-                "VALUES (:org_id, :sessions_days, 90, NULL, now())",
+                "INSERT INTO rbac_organization_config "
+                "(org_id, audit_retention_days, retention_sessions_days, "
+                "retention_conversations_days, retention_audit_days, retention_updated_at) "
+                "VALUES (:org_id, 0, :sessions_days, 90, NULL, now())",
                 org_id=org_id,
                 sessions_days=sessions_days,
             )
@@ -225,9 +240,9 @@ class Database:
         return await self.value(
             "INSERT INTO tables_graph (name, metadata, description, time_to_live, "
             "enable_persistent_variables, created_at, updated_at, epicchat_enabled, uuid, org_id, "
-            "save_version, active, soft_deleted_at) VALUES (:name, '{}', '', 3600, "
-            "false, now(), now(), false, :uuid, :org_id, 1, :active, "
-            "CASE WHEN :active THEN NULL ELSE now() END) RETURNING id",
+            "save_version, active, soft_deleted_at, node_number_seq) VALUES (:name, '{}', '', "
+            "3600, false, now(), now(), false, :uuid, :org_id, 1, :active, "
+            "CASE WHEN :active THEN NULL ELSE now() END, 0) RETURNING id",
             # Unique: an organization's active flows may not share a name.
             name=f"retention test {uuid.uuid4()}",
             uuid=uuid.uuid4(),
@@ -871,8 +886,8 @@ async def test_a_purge_cancelled_after_a_batch_leaves_that_batch_logged(
 
 async def test_list_org_retention_reads_overrides_and_defaults(repository, database):
     without_row = await database.org()
-    with_row = await database.org(sessions_days=90, with_retention_row=True)
-    inherits_sessions = await database.org(sessions_days=None, with_retention_row=True)
+    with_row = await database.org(sessions_days=90, with_config_row=True)
+    inherits_sessions = await database.org(sessions_days=None, with_config_row=True)
 
     rows = {row.org_id: row for row in await repository.list_org_retention()}
 
@@ -883,8 +898,8 @@ async def test_list_org_retention_reads_overrides_and_defaults(repository, datab
 
 async def test_manager_role_has_the_grants_the_job_needs(manager_role_exists, database):
     if not manager_role_exists:
-        pytest.skip(f"role {MANAGER_ROLE} does not exist on this server")
-    org_id = await database.org(sessions_days=30, with_retention_row=True)
+        _skip_unless_required(f"role {MANAGER_ROLE} does not exist on this server")
+    org_id = await database.org(sessions_days=30, with_config_row=True)
     graph_id = await database.graph(org_id)
     root = await database.session(graph_id)
     subflow = await database.session(graph_id, parent_session_id=root)

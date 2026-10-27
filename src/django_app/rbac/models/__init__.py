@@ -4,7 +4,6 @@ from rbac.models.last_edit import LastEditTrackedModel, ResourceLastEdit
 from rbac.models.org_scoped import OrgScopedModel
 from rbac.models.organization import Organization
 from rbac.models.organization_config import OrganizationConfig
-from rbac.models.organization_retention import OrganizationRetention
 from rbac.models.organization_user import OrganizationUser
 from rbac.models.password_reset_token import PasswordResetToken
 from rbac.models.role import Role, RolePermission
@@ -16,7 +15,6 @@ __all__ = [
     "OrgScopedModel",
     "Organization",
     "OrganizationConfig",
-    "OrganizationRetention",
     "OrganizationUser",
     "PasswordResetToken",
     "ResourceLastEdit",

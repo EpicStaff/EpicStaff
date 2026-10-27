@@ -81,18 +81,24 @@
         }
 
         <div class="control">
-            <label class="label retention__label">Session Audit Retention</label>
+            <label
+                class="label retention__label"
+                [id]="auditVisibilityLabelId"
+            >
+                Audit visibility for members
+            </label>
 
             <div class="retention">
                 <app-select
                     class="retention__unit"
                     [items]="retentionUnitItems"
+                    [ariaLabelledby]="auditVisibilityLabelId"
                     [(selectedValue)]="retentionUnit"
                 />
                 @if (retentionUnit() !== 'unlimited') {
                     <app-number-stepper
                         class="retention__amount"
-                        ariaLabel="Retention amount"
+                        ariaLabel="Audit visibility amount"
                         [alwaysShowButtons]="true"
                         [integer]="true"
                         [min]="1"
@@ -102,6 +108,9 @@
                     />
                 }
             </div>
+            <span class="retention__hint text-body-small">
+                How far back members can see audit events. Doesn't change how long they are stored.
+            </span>
         </div>
     </div>
 

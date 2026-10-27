@@ -3,7 +3,7 @@
 import pytest
 from src.shared.retention import DataType, RetentionPolicy, RetentionRule
 
-from rbac.models import Organization, OrganizationRetention
+from rbac.models import Organization, OrganizationConfig
 from tables.models import Graph, PythonCode
 from tables.models.graph_models import Edge, PythonNode, StartNode
 from tables.services.session_manager_service import SessionManagerService
@@ -12,12 +12,16 @@ from tables.services.trigger_spec import TriggerSpec
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
-def _audit_policy(default_days: int, max_days: int | None) -> RetentionPolicy:
+def _audit_policy(
+    default_days: int, max_days: int | None, min_days: int | None = None
+) -> RetentionPolicy:
     return RetentionPolicy(
         rules={
             DataType.SESSIONS: RetentionRule(default_days=30, max_days=None),
             DataType.CONVERSATIONS: RetentionRule(default_days=30, max_days=None),
-            DataType.AUDIT: RetentionRule(default_days=default_days, max_days=max_days),
+            DataType.AUDIT: RetentionRule(
+                default_days=default_days, max_days=max_days, min_days=min_days
+            ),
         }
     )
 
@@ -48,26 +52,34 @@ def _session_data_for(org: Organization):
 
 @pytest.mark.django_db
 def test_session_data_carries_effective_audit_retention(acme):
-    OrganizationRetention.objects.create(org=acme, audit_days=90)
+    OrganizationConfig.objects.create(org=acme, retention_audit_days=90)
 
     assert _session_data_for(acme).audit_retention_days == 90
 
 
 @pytest.mark.django_db
-def test_org_without_retention_row_gets_the_instance_default(acme):
+def test_org_without_a_choice_gets_the_instance_default(acme):
     assert _session_data_for(acme).audit_retention_days == 365
 
 
 @pytest.mark.django_db
 def test_org_choice_above_a_lowered_cap_is_clamped(acme, settings):
-    OrganizationRetention.objects.create(org=acme, audit_days=365)
+    OrganizationConfig.objects.create(org=acme, retention_audit_days=365)
     settings.RETENTION_POLICY = _audit_policy(default_days=30, max_days=180)
 
     assert _session_data_for(acme).audit_retention_days == 180
 
 
 @pytest.mark.django_db
+def test_org_choice_below_a_raised_floor_is_raised_to_the_floor(acme, settings):
+    OrganizationConfig.objects.create(org=acme, retention_audit_days=30)
+    settings.RETENTION_POLICY = _audit_policy(default_days=365, max_days=None, min_days=180)
+
+    assert _session_data_for(acme).audit_retention_days == 180
+
+
+@pytest.mark.django_db
 def test_another_orgs_retention_does_not_apply(acme, beta):
-    OrganizationRetention.objects.create(org=beta, audit_days=30)
+    OrganizationConfig.objects.create(org=beta, retention_audit_days=30)
 
     assert _session_data_for(acme).audit_retention_days == 365

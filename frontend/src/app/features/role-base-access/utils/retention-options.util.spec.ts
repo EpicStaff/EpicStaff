@@ -1,4 +1,4 @@
-import { OrganizationRetention, OrganizationRetentionUpdate, RetentionPolicy } from '@shared/models';
+import { OrganizationRetention, OrganizationRetentionUpdate, RetentionPolicy, RetentionRule } from '@shared/models';
 
 import {
     buildRetentionItems,
@@ -11,9 +11,9 @@ import {
 } from './retention-options.util';
 
 const POLICY: RetentionPolicy = {
-    sessions: { default_days: 30, max_days: null, allowed: [30, 90, 180, 365, 0] },
-    conversations: { default_days: 90, max_days: 180, allowed: [30, 90, 180] },
-    audit: { default_days: 0, max_days: null, allowed: [30, 90, 180, 365, 0] },
+    sessions: { default_days: 30, max_days: null, min_days: null, allowed: [30, 90, 180, 365, 0] },
+    conversations: { default_days: 90, max_days: 180, min_days: null, allowed: [30, 90, 180] },
+    audit: { default_days: 0, max_days: null, min_days: null, allowed: [30, 90, 180, 365, 0] },
 };
 
 function retention(overrides: Partial<OrganizationRetention> = {}): OrganizationRetention {
@@ -161,7 +161,7 @@ describe('buildRetentionItems', () => {
     it('puts a default that is not an allowed value first', () => {
         const policy: RetentionPolicy = {
             ...POLICY,
-            sessions: { default_days: 60, max_days: null, allowed: [30, 90] },
+            sessions: { default_days: 60, max_days: null, min_days: null, allowed: [30, 90] },
         };
 
         expect(buildRetentionItems(retention({ retention_policy: policy }), 'sessions')).toEqual([
@@ -171,13 +171,35 @@ describe('buildRetentionItems', () => {
         ]);
     });
 
-    it('keeps a stored value above the cap as the last option, with the days applied', () => {
+    it.each<[string, RetentionRule, Partial<OrganizationRetention>, string, number]>([
+        [
+            'a stored value above the cap',
+            { default_days: 90, max_days: 180, min_days: null, allowed: [30, 90, 180] },
+            { conversations_days: 365, conversations_effective_days: 180 },
+            '1 year (above limit, 180 days applied)',
+            365,
+        ],
+        [
+            'a stored unlimited value under a cap',
+            { default_days: 90, max_days: 180, min_days: null, allowed: [30, 90, 180] },
+            { conversations_days: 0, conversations_effective_days: 180 },
+            'Unlimited (above limit, 180 days applied)',
+            0,
+        ],
+        [
+            'a stored value below the floor',
+            { default_days: 180, max_days: null, min_days: 90, allowed: [90, 180, 365, 0] },
+            { conversations_days: 30, conversations_effective_days: 90 },
+            '30 days (below minimum, 90 days applied)',
+            30,
+        ],
+    ])('keeps %s as the last option, with the days applied', (_case, rule, stored, name, value) => {
         const items = buildRetentionItems(
-            retention({ conversations_days: 365, conversations_effective_days: 180 }),
+            retention({ ...stored, retention_policy: { ...POLICY, conversations: rule } }),
             'conversations'
         );
 
-        expect(items.at(-1)).toEqual({ name: '1 year (above limit, 180 days applied)', value: 365 });
+        expect(items.at(-1)).toEqual({ name, value });
     });
 });
 

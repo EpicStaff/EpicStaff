@@ -46,8 +46,8 @@ export function fromRetentionChoice(choice: RetentionChoice): number | null {
 /**
  * The allowed values in policy order, the one equal to the default tagged "Default" and standing for "use the
  * instance default" (null), so the default value is never listed twice. A default outside the allowed values
- * leads the list. A stored value the policy no longer allows (its cap was lowered) is kept as an extra option,
- * so the select never shows blank.
+ * leads the list. A stored value the policy no longer allows (the cap was lowered or the floor raised after it
+ * was chosen) is kept as an extra option, so the select never shows blank.
  */
 export function buildRetentionItems(
     retention: OrganizationRetention,
@@ -69,8 +69,11 @@ export function buildRetentionItems(
     const stored = retention[`${type}_days` as const];
     if (stored !== null && stored !== rule.default_days && !rule.allowed.includes(stored)) {
         const applied = retention[`${type}_effective_days` as const];
+        // the backend raises a positive value below the floor to it; anything else outside `allowed` is over the cap
+        const isBelowMinimum = rule.min_days !== null && stored > 0 && stored < rule.min_days;
+        const bound = isBelowMinimum ? 'below minimum' : 'above limit';
         items.push({
-            name: `${formatRetentionDays(stored)} (above limit, ${applied} days applied)`,
+            name: `${formatRetentionDays(stored)} (${bound}, ${applied} days applied)`,
             value: stored,
         });
     }

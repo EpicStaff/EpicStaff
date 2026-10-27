@@ -118,6 +118,7 @@ export class CreateOrganizationDialogComponent implements OnInit {
     private readonly savedRetentionDays = this.dialogData?.config?.audit_retention_days ?? 0;
     readonly retentionUnit = signal<RetentionUnit>(splitRetentionDays(this.savedRetentionDays).unit);
     readonly retentionAmount = signal(splitRetentionDays(this.savedRetentionDays).amount);
+    readonly auditVisibilityLabelId = `${this.retentionLabelIdPrefix}-audit-visibility`;
     readonly retentionUnitItems: SelectItem<RetentionUnit>[] = [
         { name: 'Unlimited', value: 'unlimited' },
         { name: 'Years', value: 'years' },

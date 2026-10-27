@@ -42,7 +42,7 @@ package = false
 [tool.pytest.ini_options]
 pythonpath = [".", "../.."]
 markers = [
-    "integration: runs against a live crewdb (inside a rolled-back transaction) - skips itself if unreachable",
+    "integration: runs against a live crewdb - skips itself if unreachable, fails instead when REQUIRE_CREWDB is true",
 ]
 
 [tool.ruff]

@@ -7,6 +7,8 @@ export interface RetentionRule {
     default_days: number;
     /** Null when the instance sets no cap. */
     max_days: number | null;
+    /** Lowest positive value an organization may choose; null when the instance sets no floor. */
+    min_days: number | null;
     /** The values an organization may choose, in display order. */
     allowed: number[];
 }

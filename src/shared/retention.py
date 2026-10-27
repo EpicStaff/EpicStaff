@@ -1,7 +1,8 @@
 """Instance-wide data retention policy, shared by django_app and manager.
 
-The policy comes from the environment: for each data type a default number of days and an
-optional cap an organization admin may not exceed. 0 days means "keep forever".
+The policy comes from the environment: for each data type a default number of days, an
+optional cap an organization admin may not exceed and, for audit only, an optional floor an
+organization admin may not go below. 0 days means "keep forever".
 """
 
 from collections.abc import Mapping
@@ -29,10 +30,14 @@ class RetentionRule:
     Attributes:
         default_days: Days kept when the organization has not chosen a value; 0 keeps forever.
         max_days: Highest value an organization may choose, or None for no cap. Never 0.
+        min_days: Lowest positive value an organization may choose, or None for no floor.
+            Never 0. Set by the operator so an organization admin cannot shorten a trail
+            the deployment must keep, such as its own audit events.
     """
 
     default_days: int
     max_days: int | None
+    min_days: int | None = None
 
 
 @dataclass(frozen=True)
@@ -43,54 +48,87 @@ class RetentionPolicy:
         object.__setattr__(self, "rules", MappingProxyType(dict(self.rules)))
 
 
-_RULE_VARIABLES: dict[DataType, tuple[str, str]] = {
-    DataType.SESSIONS: ("RETENTION_SESSIONS_DAYS", "RETENTION_SESSION_MAX_DAYS"),
-    DataType.CONVERSATIONS: ("RETENTION_CONVERSATIONS_DAYS", "RETENTION_CONVERSATION_MAX_DAYS"),
-    DataType.AUDIT: ("RETENTION_AUDIT_DAYS", "RETENTION_AUDIT_MAX_DAYS"),
+@dataclass(frozen=True)
+class _RuleVariables:
+    default_variable: str
+    max_variable: str
+    min_variable: str | None = None
+
+
+_RULE_VARIABLES: dict[DataType, _RuleVariables] = {
+    DataType.SESSIONS: _RuleVariables("RETENTION_SESSIONS_DAYS", "RETENTION_SESSION_MAX_DAYS"),
+    DataType.CONVERSATIONS: _RuleVariables(
+        "RETENTION_CONVERSATIONS_DAYS", "RETENTION_CONVERSATION_MAX_DAYS"
+    ),
+    # Only audit has a floor: it is the trail an organization admin could otherwise shorten
+    # to erase their own actions.
+    DataType.AUDIT: _RuleVariables(
+        "RETENTION_AUDIT_DAYS", "RETENTION_AUDIT_MAX_DAYS", "RETENTION_AUDIT_MIN_DAYS"
+    ),
 }
 
 
 def load_retention_policy(env: Env) -> RetentionPolicy:
     """Read and validate the retention policy from the environment.
 
-    The default variables are required; a cap that is absent or ``none`` means no cap.
+    The default variables are required; a cap or floor that is absent or ``none`` means
+    no cap or no floor.
 
     Raises:
         ValueError: A variable is missing, not a whole number, not one of
-            RETENTION_CHOICES, or inconsistent with its pair. The message names the
-            offending variable.
+            RETENTION_CHOICES, or inconsistent with the other variables of its data type.
+            The message names the offending variable.
     """
     return RetentionPolicy(
         rules={
-            data_type: _load_rule(env, default_variable, max_variable)
-            for data_type, (default_variable, max_variable) in _RULE_VARIABLES.items()
+            data_type: _load_rule(env, variables)
+            for data_type, variables in _RULE_VARIABLES.items()
         }
     )
 
 
-def _load_rule(env: Env, default_variable: str, max_variable: str) -> RetentionRule:
+def _load_rule(env: Env, variables: _RuleVariables) -> RetentionRule:
+    default_variable = variables.default_variable
+    max_variable = variables.max_variable
+    min_variable = variables.min_variable
     default_days = _read_days(env, default_variable, required=True)
     max_days = _read_days(env, max_variable, required=False)
+    min_days = None if min_variable is None else _read_days(env, min_variable, required=False)
 
     if default_days not in RETENTION_CHOICES:
         raise ValueError(f"{default_variable}={default_days} must be one of {RETENTION_CHOICES}.")
-    if max_days is None:
-        return RetentionRule(default_days=default_days, max_days=None)
 
-    if max_days not in _CAP_CHOICES:
-        raise ValueError(
-            f"{max_variable}={max_days} must be one of {_CAP_CHOICES}, or none for no cap."
-        )
-    if default_days == 0:
-        raise ValueError(
-            f"{default_variable}=0 keeps data forever, which {max_variable}={max_days} forbids. "
-            f"Choose a default of at most {max_days} days or set {max_variable}=none."
-        )
-    if default_days > max_days:
-        raise ValueError(
-            f"{default_variable}={default_days} is above its cap {max_variable}={max_days}."
-        )
-    return RetentionRule(default_days=default_days, max_days=max_days)
+    if max_days is not None:
+        if max_days not in _CAP_CHOICES:
+            raise ValueError(
+                f"{max_variable}={max_days} must be one of {_CAP_CHOICES}, or none for no cap."
+            )
+        if default_days == 0:
+            raise ValueError(
+                f"{default_variable}=0 keeps data forever, which {max_variable}={max_days} "
+                f"forbids. Choose a default of at most {max_days} days or set {max_variable}=none."
+            )
+        if default_days > max_days:
+            raise ValueError(
+                f"{default_variable}={default_days} is above its cap {max_variable}={max_days}."
+            )
+
+    if min_days is not None:
+        if min_days not in _CAP_CHOICES:
+            raise ValueError(
+                f"{min_variable}={min_days} must be one of {_CAP_CHOICES}, or none for no floor."
+            )
+        if max_days is not None and min_days > max_days:
+            raise ValueError(
+                f"{min_variable}={min_days} is above the cap {max_variable}={max_days}."
+            )
+        # 0 keeps data forever, which is above any floor.
+        if default_days != 0 and default_days < min_days:
+            raise ValueError(
+                f"{default_variable}={default_days} is below its floor {min_variable}={min_days}."
+            )
+
+    return RetentionRule(default_days=default_days, max_days=max_days, min_days=min_days)
 
 
 def _read_days(env: Env, variable: str, *, required: bool) -> int | None:
@@ -113,11 +151,14 @@ def effective_retention_days(org_days: int | None, rule: RetentionRule) -> int:
 
     Returns:
         The default when the organization chose nothing. Otherwise its value, clamped to
-        the cap when one is set: "forever" and anything above the cap both become the cap,
-        because a cap lowered after the organization chose must still be enforced.
+        the cap and floor when set: "forever" and anything above the cap both become the
+        cap, and a positive value below the floor becomes the floor, because a cap lowered
+        or a floor raised after the organization chose must still be enforced.
     """
     if org_days is None:
         return rule.default_days
+    if rule.min_days is not None and 0 < org_days < rule.min_days:
+        org_days = rule.min_days
     if rule.max_days is None:
         return org_days
     if org_days == 0 or org_days > rule.max_days:
@@ -126,10 +167,20 @@ def effective_retention_days(org_days: int | None, rule: RetentionRule) -> int:
 
 
 def allowed_org_values(rule: RetentionRule) -> tuple[int, ...]:
-    """Return the retention values an organization admin may choose under ``rule``."""
-    if rule.max_days is None:
-        return RETENTION_CHOICES
-    return tuple(days for days in _CAP_CHOICES if days <= rule.max_days)
+    """Return the retention values an organization admin may choose under ``rule``.
+
+    0 (forever) is allowed when there is no cap, whatever the floor.
+    """
+    return tuple(
+        days
+        for days in RETENTION_CHOICES
+        if (days == 0 and rule.max_days is None)
+        or (
+            days > 0
+            and (rule.max_days is None or days <= rule.max_days)
+            and (rule.min_days is None or days >= rule.min_days)
+        )
+    )
 
 
 @dataclass(frozen=True)

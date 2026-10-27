@@ -13,18 +13,29 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.CreateModel(
-            name='OrganizationRetention',
-            fields=[
-                ('org', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, primary_key=True, related_name='retention', serialize=False, to='rbac.organization')),
-                ('sessions_days', models.PositiveSmallIntegerField(blank=True, null=True)),
-                ('conversations_days', models.PositiveSmallIntegerField(blank=True, null=True)),
-                ('audit_days', models.PositiveSmallIntegerField(blank=True, null=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('updated_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
-            ],
-            options={
-                'db_table': 'rbac_organization_retention',
-            },
+        migrations.AddField(
+            model_name='organizationconfig',
+            name='retention_sessions_days',
+            field=models.PositiveSmallIntegerField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='organizationconfig',
+            name='retention_conversations_days',
+            field=models.PositiveSmallIntegerField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='organizationconfig',
+            name='retention_audit_days',
+            field=models.PositiveSmallIntegerField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='organizationconfig',
+            name='retention_updated_at',
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='organizationconfig',
+            name='retention_updated_by',
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL),
         ),
     ]
