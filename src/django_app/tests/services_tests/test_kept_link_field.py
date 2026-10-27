@@ -1,5 +1,5 @@
-"""What a row links to now, binned rows included: the secret reference guard's lookup,
-shared by the guard and KeptLinkPrimaryKeyRelatedField."""
+"""What a row links to now, binned rows included: the lookup KeptLinkPrimaryKeyRelatedField
+uses to keep links to binned rows."""
 
 from types import SimpleNamespace
 
@@ -9,22 +9,22 @@ from tables.models.graph_models import WebhookTriggerNode
 from tables.serializers.model_serializers.node_serializers.trigger_serializers import (
     WebhookTriggerNodeSerializer,
 )
+from tables.serializers.utils.persisted_links import current_linked_ids
 from tables.services.secrets.declaration_validator import describe_unreadable_secrets
-from tables.services.secrets.reference_guard import secret_reference_guard
 from tables.services.secrets.secret_service import secret_service
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 pytestmark = pytest.mark.django_db
 
 
-def test_current_ids_include_a_binned_secret_in_a_many_to_many(acme):
+def test_current_linked_ids_include_a_binned_secret_in_a_many_to_many(acme):
     live = secret_service.create(text="live-value", org=acme, name="live")
     binned = secret_service.create(text="binned-value", org=acme, name="binned")
     python_code = PythonCode.objects.create(code="def main(**kwargs): ...")
     python_code.secrets.set([live, binned])
     binned.delete()
 
-    current = secret_reference_guard.current_ids(
+    current = current_linked_ids(
         serializer=SimpleNamespace(instance=python_code), source="secrets"
     )
 
@@ -32,7 +32,7 @@ def test_current_ids_include_a_binned_secret_in_a_many_to_many(acme):
     assert not Secret.all_objects.get(pk=binned.pk).active
 
 
-def test_current_ids_of_a_single_link_include_a_binned_row(acme):
+def test_current_linked_ids_of_a_single_link_include_a_binned_row(acme):
     trigger = WebhookTrigger.objects.create(org=acme, path="orders", provider_type="ngrok")
     node = WebhookTriggerNode.objects.create(
         graph=Graph.objects.create(name="Flow", org=acme),
@@ -42,7 +42,7 @@ def test_current_ids_of_a_single_link_include_a_binned_row(acme):
     )
     trigger.delete()
 
-    current = secret_reference_guard.current_ids(
+    current = current_linked_ids(
         serializer=WebhookTriggerNodeSerializer(instance=node), source="webhook_trigger"
     )
 

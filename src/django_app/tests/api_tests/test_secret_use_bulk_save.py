@@ -4,7 +4,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.models import PythonCode
-from tables.models.graph_models import Graph, PythonNode
+from tables.models.graph_models import Graph, PythonNode, TelegramTriggerNode
 from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.services.secrets import secret_service
@@ -205,15 +205,11 @@ class TestBulkSaveUnderTheGuard:
         )
         assert response.status_code == 200, response.json()
 
-    # Intentional precedence: `PythonCodeSerializer.validate()` calls
-    # `super().validate()` as its first line, which is where the guard runs, and
-    # only afterwards runs its own allow-list check later in the same method body.
-    # So when both would independently reject a payload, the guard raises first and
-    # the allow-list code never executes. This is deliberate — authorization is
-    # decided before content validation is even attempted — and does not depend on
-    # `SecretReferenceGuardMixin`'s position in the base list, since
-    # `PythonCodeSerializer` defines its own `validate()` as the actual entry point.
-    def test_permission_error_wins_when_both_checks_would_fail(
+    # Precedence: the serializer validates the payload's shape, including that the
+    # code reads only declared secrets, before the secret Use check runs at the
+    # write point. So when both would reject a payload, the caller sees the
+    # undeclared-secret error.
+    def test_undeclared_secret_error_wins_when_both_checks_would_fail(
         self, no_use_client, graph, python_node, other_secret
     ):
         payload = _payload(graph, python_node, secret_ids=[other_secret.id])
@@ -229,5 +225,75 @@ class TestBulkSaveUnderTheGuard:
         message = response.json()["errors"]["python_node_list"][0]["errors"][
             "python_code"
         ]["secret_ids"][0]
-        assert "Use" in message and "permission" in message
-        assert "get_secret" not in message
+        assert 'get_secret("SOMETHING_UNDECLARED")' in message
+        assert "permission" not in message
+
+
+@pytest.fixture
+def no_secret_use_trigger_client(db, django_user_model, org):
+    """Holds flows:USE, which saving a trigger node needs, but only READ on secrets."""
+    role = Role.objects.create(name="role-bulkuse-trigger", org=org, is_built_in=False)
+    RolePermission.objects.create(
+        role=role, resource_type=ResourceType.SECRETS.value, permissions=int(Permission.READ)
+    )
+    RolePermission.objects.create(
+        role=role,
+        resource_type=ResourceType.FLOWS.value,
+        permissions=int(Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.USE),
+    )
+    user = django_user_model.objects.create_user(
+        email="bulkuse_trigger_nouse@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
+    return client
+
+
+@pytest.fixture
+def telegram_node(graph, secret, mock_telegram_service):
+    # mock_telegram_service: the node's post_save signal would call the Telegram API.
+    return TelegramTriggerNode.objects.create(
+        graph=graph, node_name="bot", telegram_bot_api_key_secret=secret
+    )
+
+
+@pytest.mark.django_db
+def test_bulk_save_telegram_bot_key_change_without_use_denied(
+    no_secret_use_trigger_client, graph, telegram_node, secret, other_secret
+):
+    before = graph.save_version
+
+    response = no_secret_use_trigger_client.post(
+        f"/api/graphs/{graph.id}/save/",
+        {
+            "save_version": graph.save_version,
+            "telegram_trigger_node_list": [
+                {
+                    "id": telegram_node.id,
+                    "graph": graph.id,
+                    "node_name": "renamed bot",
+                    "metadata": {},
+                    "fields": [],
+                    "telegram_bot_api_key_secret_id": other_secret.id,
+                }
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.json()
+    errors = response.json()["errors"]
+    assert list(errors) == ["telegram_trigger_node_list"]
+    [item] = errors["telegram_trigger_node_list"]
+    assert item["index"] == 0
+    [message] = item["errors"]["telegram_bot_api_key_secret_id"]
+    assert '"Use" permission on Secrets' in message
+    graph.refresh_from_db()
+    telegram_node.refresh_from_db()
+    assert graph.save_version == before
+    assert (telegram_node.node_name, telegram_node.telegram_bot_api_key_secret_id) == (
+        "bot",
+        secret.id,
+    )

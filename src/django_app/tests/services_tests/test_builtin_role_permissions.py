@@ -80,7 +80,7 @@ def test_secrets_use_is_held_by_org_admin_only():
 @pytest.mark.django_db
 @pytest.mark.parametrize("role_name", DELEGATED)
 def test_no_built_in_holds_use_outside_secrets_flows_and_chats(role_name):
-    """`use` belongs to secrets, flows and chats: SecretReferenceGuard enforces it
+    """`use` belongs to secrets, flows and chats: SecretUseService enforces it
     on secrets, the flow run and trigger-node checks on flows, and the chat service
     on chats, so it means nothing on any other resource."""
     role = _builtin(role_name)

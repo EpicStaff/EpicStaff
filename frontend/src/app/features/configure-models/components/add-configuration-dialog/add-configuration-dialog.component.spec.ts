@@ -244,9 +244,16 @@ function getCachedModelById(id: number): Observable<LLMModel> {
     return model ? of(model) : throwError(() => new Error('not found'));
 }
 
+/** Storages the embedding and realtime tabs save through; empty unless a test needs one. */
+interface TabStorages {
+    embeddingConfigStorage?: object;
+    openaiRealtimeStorage?: object;
+}
+
 async function render(
     getModelById: (id: number) => Observable<LLMModel> = getCachedModelById,
-    createConfig: ReturnType<typeof vi.fn> = vi.fn(() => EMPTY)
+    createConfig: ReturnType<typeof vi.fn> = vi.fn(() => EMPTY),
+    tabStorages: TabStorages = {}
 ): Promise<{
     fixture: ComponentFixture<AddConfigurationDialogComponent>;
     createConfig: ReturnType<typeof vi.fn>;
@@ -278,8 +285,8 @@ async function render(
                     maskTail: () => '',
                 } as unknown as SecretsStorageService,
             },
-            { provide: EmbeddingConfigStorageService, useValue: {} },
-            { provide: OpenAIRealtimeConfigStorageService, useValue: {} },
+            { provide: EmbeddingConfigStorageService, useValue: tabStorages.embeddingConfigStorage ?? {} },
+            { provide: OpenAIRealtimeConfigStorageService, useValue: tabStorages.openaiRealtimeStorage ?? {} },
             { provide: ElevenLabsRealtimeConfigStorageService, useValue: {} },
             { provide: GeminiRealtimeConfigStorageService, useValue: {} },
             { provide: ToastService, useValue: { success: vi.fn(), error: toastError } as unknown as ToastService },
@@ -332,8 +339,30 @@ function validationErrorResponse(field: string, value: string, reason: string): 
     ) as Observable<never>;
 }
 
+/** The 400 the backend sends when a write would change where a secret goes and the caller lacks Secrets "Use". */
+const SECRET_USE_REFUSAL = new HttpErrorResponse({
+    status: 400,
+    error: {
+        status_code: 400,
+        code: 'invalid',
+        message:
+            'api_key_secret_id: Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
+            'The existing selection was left unchanged. Ask an organization admin to grant it.',
+    },
+});
+
+/** The refusal as the banner shows it: the field label in words, the backend's sentence unchanged. */
+const SHOWN_REFUSAL =
+    'API key secret: Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
+    'The existing selection was left unchanged. Ask an organization admin to grant it.';
+
 function unsupportedEffortResponse(): Observable<never> {
     return validationErrorResponse('reasoning_effort', 'xhigh', UNSUPPORTED_EFFORT_ERROR);
+}
+
+function bannerText(fixture: ComponentFixture<AddConfigurationDialogComponent>): string {
+    const banner = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('app-error-banner');
+    return banner && !banner.hidden ? (banner.textContent ?? '').trim() : '';
 }
 
 function setReasoningEffort(fixture: ComponentFixture<AddConfigurationDialogComponent>, value: ReasoningEffort): void {
@@ -455,7 +484,7 @@ describe('AddConfigurationDialogComponent LLM reasoning effort', () => {
         );
     });
 
-    it("shows the backend's reason in a toast when a field other than the effort is rejected", async () => {
+    it("shows the backend's reason in the banner when a field other than the effort is rejected", async () => {
         const reason = 'An LLM configuration with this name already exists.';
         const createConfig = vi.fn(() => validationErrorResponse('custom_name', 'model-3', reason));
         const { fixture, toastError } = await render(getCachedModelById, createConfig);
@@ -464,18 +493,112 @@ describe('AddConfigurationDialogComponent LLM reasoning effort', () => {
         fixture.componentInstance.onSubmit();
         fixture.detectChanges();
 
-        expect(toastError).toHaveBeenCalledWith(reason);
+        expect(bannerText(fixture)).toBe(reason);
+        expect(toastError).not.toHaveBeenCalled();
         expect(reasoningErrorText(fixture)).toBe('');
     });
 
-    it('shows a rejected effort in a toast when the select is hidden', async () => {
+    it('shows a rejected effort in the banner when the select is hidden', async () => {
         const reason = "Model 'model-2' does not support reasoning.";
         const createConfig = vi.fn(() => validationErrorResponse('reasoning_effort', 'high', reason));
-        const { fixture, toastError } = await render(getCachedModelById, createConfig);
+        const { fixture } = await render(getCachedModelById, createConfig);
         await pickModel(fixture, PLAIN_MODEL_ID);
 
         fixture.componentInstance.onSubmit();
+        fixture.detectChanges();
 
-        expect(toastError).toHaveBeenCalledWith(reason);
+        expect(bannerText(fixture)).toBe(reason);
+    });
+
+    it('shows a secret Use refusal in the banner and keeps the dialog open', async () => {
+        const createConfig = vi.fn(() => throwError(() => SECRET_USE_REFUSAL));
+        const { fixture } = await render(getCachedModelById, createConfig);
+        await pickModel(fixture, PLAIN_MODEL_ID);
+
+        fixture.componentInstance.onSubmit();
+        fixture.detectChanges();
+
+        expect(bannerText(fixture)).toBe(SHOWN_REFUSAL);
+        expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
+    });
+
+    it('clears the banner when the form is submitted again', async () => {
+        const createConfig = vi
+            .fn()
+            .mockReturnValueOnce(throwError(() => SECRET_USE_REFUSAL))
+            .mockReturnValueOnce(new Subject<never>());
+        const { fixture } = await render(getCachedModelById, createConfig);
+        await pickModel(fixture, PLAIN_MODEL_ID);
+        fixture.componentInstance.onSubmit();
+        fixture.detectChanges();
+        expect(bannerText(fixture)).not.toBe('');
+
+        fixture.componentInstance.onSubmit();
+        fixture.detectChanges();
+
+        expect(bannerText(fixture)).toBe('');
+    });
+});
+
+const SERVER_ERROR = new HttpErrorResponse({
+    status: 500,
+    error: { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
+});
+
+describe('AddConfigurationDialogComponent embedding and realtime save errors', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    function embeddingStorage(error: HttpErrorResponse): object {
+        return { configs: signal<EmbeddingConfig[]>([]), createConfig: () => throwError(() => error) };
+    }
+
+    async function submitEmbedding(
+        error: HttpErrorResponse
+    ): Promise<ComponentFixture<AddConfigurationDialogComponent>> {
+        const { fixture } = await render(undefined, undefined, { embeddingConfigStorage: embeddingStorage(error) });
+        fixture.componentInstance.setActiveTab('embedding');
+        fixture.componentInstance.embeddingForm.patchValue({ model: 20, api_key_secret_id: 4, custom_name: 'search' });
+        fixture.componentInstance.onSubmit();
+        fixture.detectChanges();
+        return fixture;
+    }
+
+    async function submitRealtime(
+        error: HttpErrorResponse
+    ): Promise<ComponentFixture<AddConfigurationDialogComponent>> {
+        const { fixture } = await render(undefined, undefined, {
+            openaiRealtimeStorage: { createConfig: () => throwError(() => error) },
+        });
+        fixture.componentInstance.setActiveTab('realtime');
+        fixture.componentInstance.openaiForm.patchValue({ custom_name: 'support-voice' });
+        fixture.componentInstance.onSubmit();
+        fixture.detectChanges();
+        return fixture;
+    }
+
+    it('shows a refused embedding configuration in the banner', async () => {
+        const fixture = await submitEmbedding(SECRET_USE_REFUSAL);
+
+        expect(bannerText(fixture)).toBe(SHOWN_REFUSAL);
+    });
+
+    it('reports a server error on the embedding tab in a toast', async () => {
+        const fixture = await submitEmbedding(SERVER_ERROR);
+
+        expect(TestBed.inject(ToastService).error).toHaveBeenCalledWith('Failed to create embedding configuration.');
+        expect(bannerText(fixture)).toBe('');
+    });
+
+    it('shows a refused realtime configuration in the banner', async () => {
+        const fixture = await submitRealtime(SECRET_USE_REFUSAL);
+
+        expect(bannerText(fixture)).toBe(SHOWN_REFUSAL);
+    });
+
+    it('keeps the generic banner text for a server error on the realtime tab', async () => {
+        const fixture = await submitRealtime(SERVER_ERROR);
+
+        expect(bannerText(fixture)).toBe('Failed to save configuration.');
     });
 });

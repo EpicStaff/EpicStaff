@@ -32,16 +32,16 @@
         </div>
     </div>
 
+    <app-error-banner
+        class="dialog__error-banner"
+        [message]="errorMessage()"
+    />
+
     @if (selectedProvider() === 'openai') {
         <form
             class="dialog__form"
             [formGroup]="openaiForm"
         >
-            @if (errorMessage()) {
-                <div class="dialog__error">
-                    <p>{{ errorMessage() }}</p>
-                </div>
-            }
             <div>
                 <app-custom-input
                     label="Name"
@@ -128,11 +128,6 @@
             class="dialog__form"
             [formGroup]="elevenLabsForm"
         >
-            @if (errorMessage()) {
-                <div class="dialog__error">
-                    <p>{{ errorMessage() }}</p>
-                </div>
-            }
             <div>
                 <app-custom-input
                     label="Name"
@@ -185,11 +180,6 @@
             class="dialog__form"
             [formGroup]="geminiForm"
         >
-            @if (errorMessage()) {
-                <div class="dialog__error">
-                    <p>{{ errorMessage() }}</p>
-                </div>
-            }
             <div>
                 <app-custom-input
                     label="Name"

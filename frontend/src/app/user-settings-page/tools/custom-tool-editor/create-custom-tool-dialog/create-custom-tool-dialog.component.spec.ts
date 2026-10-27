@@ -1,4 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import { CUSTOM_ELEMENTS_SCHEMA, EnvironmentProviders, Provider } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService, JsonEditorComponent } from '@shared/components';
@@ -49,6 +50,15 @@ const STORED_TOOL: GetPythonCodeToolRequest = {
     last_edited_at: null,
 };
 
+const SECRET_USE_REFUSAL =
+    'python_code: secret_ids: Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
+    'The existing selection was left unchanged. Ask an organization admin to grant it.';
+
+/** A 400 in the backend's envelope: the message starts with the field path it is about. */
+function badRequest(message: string): HttpErrorResponse {
+    return new HttpErrorResponse({ status: 400, error: { status_code: 400, code: 'invalid', message } });
+}
+
 // jsdom has no ResizeObserver; the variables breadcrumb only needs it to exist.
 class ResizeObserverStub {
     observe(): void {}
@@ -56,73 +66,91 @@ class ResizeObserverStub {
     disconnect(): void {}
 }
 
+interface CustomToolsFake {
+    getPythonCodeTools: ReturnType<typeof vi.fn>;
+    createPythonCodeToolV2: ReturnType<typeof vi.fn>;
+    updatePythonCodeToolV2: ReturnType<typeof vi.fn>;
+    copyPythonCodeTool: ReturnType<typeof vi.fn>;
+}
+
+interface ToastFake {
+    success: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+    warning: ReturnType<typeof vi.fn>;
+}
+
+interface OpenedDialog {
+    fixture: ComponentFixture<CreateCustomToolDialogComponent>;
+    customTools: CustomToolsFake;
+    toast: ToastFake;
+}
+
+function openDialog(
+    selectedTool: GetPythonCodeToolRequest | null,
+    limitsProviders: (Provider | EnvironmentProviders)[] = [provideLoadedExecutionTimeoutLimits()]
+): OpenedDialog {
+    const customTools: CustomToolsFake = {
+        getPythonCodeTools: vi.fn().mockReturnValue(of([])),
+        createPythonCodeToolV2: vi.fn().mockReturnValue(of(STORED_TOOL)),
+        updatePythonCodeToolV2: vi.fn().mockReturnValue(of(STORED_TOOL)),
+        copyPythonCodeTool: vi.fn().mockReturnValue(of({ ...STORED_TOOL, id: 8, name: 'Fetch orders (copy)' })),
+    };
+    const toast: ToastFake = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
+    TestBed.configureTestingModule({
+        imports: [CreateCustomToolDialogComponent],
+        providers: [
+            ...limitsProviders,
+            {
+                provide: DialogRef,
+                useValue: {
+                    disableClose: false,
+                    backdropClick: new Subject(),
+                    keydownEvents: new Subject(),
+                    close: vi.fn(),
+                },
+            },
+            { provide: DIALOG_DATA, useValue: selectedTool ? { selectedTool } : null },
+            { provide: CustomToolsService, useValue: customTools },
+            { provide: ToastService, useValue: toast },
+            { provide: ConfirmationDialogService, useValue: { confirm: vi.fn() } },
+            { provide: ToolsEventsService, useValue: { emitCustomToolCreated: vi.fn() } },
+            { provide: SecretsStorageService, useValue: { namesForIds: () => [] } },
+            {
+                provide: PermissionsService,
+                useValue: { canEditSecrets: () => true, can: () => true, canAny: () => true },
+            },
+        ],
+    });
+    // The editors run Monaco, which does not run in jsdom; none of them plays a part here.
+    TestBed.overrideComponent(CreateCustomToolDialogComponent, {
+        remove: {
+            imports: [
+                CodeEditorComponent,
+                JsonEditorComponent,
+                ParametersTableViewComponent,
+                NodeSecretsFieldComponent,
+            ],
+        },
+        add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+    });
+    const fixture = TestBed.createComponent(CreateCustomToolDialogComponent);
+    fixture.detectChanges();
+    return { fixture, customTools, toast };
+}
+
 describe('CreateCustomToolDialogComponent execution timeout', () => {
     let fixture: ComponentFixture<CreateCustomToolDialogComponent>;
 
     beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
     afterEach(() => vi.unstubAllGlobals());
-    let customTools: {
-        getPythonCodeTools: ReturnType<typeof vi.fn>;
-        createPythonCodeToolV2: ReturnType<typeof vi.fn>;
-        updatePythonCodeToolV2: ReturnType<typeof vi.fn>;
-        copyPythonCodeTool: ReturnType<typeof vi.fn>;
-    };
-    let toast: {
-        success: ReturnType<typeof vi.fn>;
-        error: ReturnType<typeof vi.fn>;
-        warning: ReturnType<typeof vi.fn>;
-    };
+    let customTools: CustomToolsFake;
+    let toast: ToastFake;
 
     function open(
         selectedTool: GetPythonCodeToolRequest | null,
         limitsProviders: (Provider | EnvironmentProviders)[] = [provideLoadedExecutionTimeoutLimits()]
     ): void {
-        customTools = {
-            getPythonCodeTools: vi.fn().mockReturnValue(of([])),
-            createPythonCodeToolV2: vi.fn().mockReturnValue(of(STORED_TOOL)),
-            updatePythonCodeToolV2: vi.fn().mockReturnValue(of(STORED_TOOL)),
-            copyPythonCodeTool: vi.fn().mockReturnValue(of({ ...STORED_TOOL, id: 8, name: 'Fetch orders (copy)' })),
-        };
-        toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
-        TestBed.configureTestingModule({
-            imports: [CreateCustomToolDialogComponent],
-            providers: [
-                ...limitsProviders,
-                {
-                    provide: DialogRef,
-                    useValue: {
-                        disableClose: false,
-                        backdropClick: new Subject(),
-                        keydownEvents: new Subject(),
-                        close: vi.fn(),
-                    },
-                },
-                { provide: DIALOG_DATA, useValue: selectedTool ? { selectedTool } : null },
-                { provide: CustomToolsService, useValue: customTools },
-                { provide: ToastService, useValue: toast },
-                { provide: ConfirmationDialogService, useValue: { confirm: vi.fn() } },
-                { provide: ToolsEventsService, useValue: { emitCustomToolCreated: vi.fn() } },
-                { provide: SecretsStorageService, useValue: { namesForIds: () => [] } },
-                {
-                    provide: PermissionsService,
-                    useValue: { canEditSecrets: () => true, can: () => true, canAny: () => true },
-                },
-            ],
-        });
-        // The editors run Monaco, which does not run in jsdom; none of them plays a part here.
-        TestBed.overrideComponent(CreateCustomToolDialogComponent, {
-            remove: {
-                imports: [
-                    CodeEditorComponent,
-                    JsonEditorComponent,
-                    ParametersTableViewComponent,
-                    NodeSecretsFieldComponent,
-                ],
-            },
-            add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
-        });
-        fixture = TestBed.createComponent(CreateCustomToolDialogComponent);
-        fixture.detectChanges();
+        ({ fixture, customTools, toast } = openDialog(selectedTool, limitsProviders));
     }
 
     function timeoutInput(): HTMLInputElement | null {
@@ -296,5 +324,70 @@ describe('CreateCustomToolDialogComponent execution timeout', () => {
             expect(timeoutInput()?.value).toBe('00:02:00');
             closesWithoutConfirm();
         });
+    });
+});
+
+describe('CreateCustomToolDialogComponent save errors', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    function bannerText(fixture: ComponentFixture<CreateCustomToolDialogComponent>): string {
+        const banner = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('app-error-banner');
+        return banner && !banner.hidden ? (banner.textContent ?? '').trim() : '';
+    }
+
+    function save(fixture: ComponentFixture<CreateCustomToolDialogComponent>): void {
+        fixture.componentInstance.submit();
+        fixture.detectChanges();
+    }
+
+    it('shows a secret Use refusal in the banner, with its field labels in words', () => {
+        const { fixture, customTools, toast } = openDialog(STORED_TOOL);
+        customTools.updatePythonCodeToolV2.mockReturnValueOnce(throwError(() => badRequest(SECRET_USE_REFUSAL)));
+
+        save(fixture);
+
+        expect(bannerText(fixture)).toBe(
+            'Python code: Secret ids: Changing the secrets referenced here requires the "Use" permission on ' +
+                'Secrets. The existing selection was left unchanged. Ask an organization admin to grant it.'
+        );
+        expect(toast.error).not.toHaveBeenCalled();
+        expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
+    });
+
+    it('shows a duplicate name in the banner', () => {
+        const { fixture, customTools } = openDialog(STORED_TOOL);
+        customTools.updatePythonCodeToolV2.mockReturnValueOnce(
+            throwError(() => badRequest('name: A tool with this name already exists.'))
+        );
+
+        save(fixture);
+
+        expect(bannerText(fixture)).toBe('Name: A tool with this name already exists.');
+    });
+
+    it('clears the banner when the tool is saved again', () => {
+        const { fixture, customTools } = openDialog(STORED_TOOL);
+        customTools.updatePythonCodeToolV2.mockReturnValueOnce(
+            throwError(() => badRequest('name: A tool with this name already exists.'))
+        );
+        save(fixture);
+        expect(bannerText(fixture)).not.toBe('');
+
+        save(fixture);
+
+        expect(bannerText(fixture)).toBe('');
+    });
+
+    it('reports a server error in a toast, not in the banner', () => {
+        const { fixture, customTools, toast } = openDialog(STORED_TOOL);
+        customTools.updatePythonCodeToolV2.mockReturnValueOnce(
+            throwError(() => new HttpErrorResponse({ status: 500, error: { message: 'Unpredictable error' } }))
+        );
+
+        save(fixture);
+
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith('Failed to update custom tool. Please try again.');
+        expect(bannerText(fixture)).toBe('');
     });
 });
