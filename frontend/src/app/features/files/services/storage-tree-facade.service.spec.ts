@@ -5,6 +5,7 @@ import { ConfirmationDialogService } from '@shared/components';
 import { EMPTY, Observable, of, Subject, throwError } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
+import { RecycleBinSettingsService } from '../../../services/recycle-bin';
 import { StorageItem } from '../models/storage.models';
 import { StorageApiService } from './storage-api.service';
 import { StorageTreeFacade } from './storage-tree-facade.service';
@@ -401,5 +402,188 @@ describe('StorageTreeFacade refreshTick', () => {
 
         expect(rootListCalls()).toBe(2);
         expect(facade.treeData().length).toBe(1);
+    });
+});
+
+describe('StorageTreeFacade delete confirmation', () => {
+    const recycleBinNotice = 'It moves to the recycle bin, where you can restore it for 7 days.';
+    const unused = { used: false, items: [] };
+    let facade: StorageTreeFacade;
+    let storageApi: { refreshTick: ReturnType<typeof signal<number>>; [key: string]: unknown };
+    let confirm: ReturnType<typeof vi.fn>;
+    let deleteRequest: ReturnType<typeof vi.fn>;
+    let usageRequest: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        confirm = vi.fn(() => of(true));
+        deleteRequest = vi.fn(() => of(undefined));
+        usageRequest = vi.fn(() => of({ flows: unused, surfaces: unused, agents: unused }));
+        storageApi = {
+            refreshTick: signal(0),
+            triggerRefresh: vi.fn(),
+            list: vi.fn(() => of([])),
+            delete: deleteRequest,
+            usage: usageRequest,
+        };
+
+        TestBed.configureTestingModule({
+            providers: [
+                StorageTreeFacade,
+                { provide: StorageApiService, useValue: storageApi },
+                { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn() } },
+                { provide: ConfirmationDialogService, useValue: { confirm } },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
+                { provide: Dialog, useValue: {} },
+            ],
+        });
+        facade = TestBed.inject(StorageTreeFacade);
+    });
+
+    function deleteFile(): void {
+        const item = file('report.txt');
+        facade.onContextAction({ action: 'delete', item, selectedItems: [item] });
+    }
+
+    function confirmation(): { message: string; caution?: string; type: string } {
+        return confirm.mock.calls[0][0] as { message: string; caution?: string; type: string };
+    }
+
+    it('keeps the plain message when nothing uses the item', () => {
+        deleteFile();
+
+        expect(confirmation().message).toContain('Are you sure you want to delete <strong>report.txt</strong> file?');
+        expect(confirmation().caution).toBeUndefined();
+        expect(confirmation().type).toBe('danger');
+    });
+
+    it('names the flows that use the item, escaped, and warns that restoring does not relink', () => {
+        usageRequest.mockReturnValue(
+            of({
+                flows: {
+                    used: true,
+                    items: [
+                        { id: 1, name: 'Sales' },
+                        { id: 2, name: '<b>x</b>' },
+                    ],
+                },
+                surfaces: unused,
+                agents: unused,
+            })
+        );
+
+        deleteFile();
+
+        expect(confirmation().message).toBe(
+            `Are you sure you want to delete <strong>report.txt</strong> file? ${recycleBinNotice}`
+        );
+        expect(confirmation().caution).toBe(
+            'Used in flows: <strong>Sales</strong>, <strong>&lt;b&gt;x&lt;/b&gt;</strong>.' +
+                '<br>Deleting will remove it from these, and restoring it from the recycle bin will not add it back.'
+        );
+        expect(confirmation().type).toBe('warning');
+    });
+
+    it('lists every name when there are exactly five', () => {
+        const items = [1, 2, 3, 4, 5].map((id) => ({ id, name: `Flow ${id}` }));
+        usageRequest.mockReturnValue(of({ flows: { used: true, items }, surfaces: unused, agents: unused }));
+
+        deleteFile();
+
+        expect(confirmation().caution).toContain('<strong>Flow 5</strong>.');
+        expect(confirmation().caution).not.toContain('more');
+    });
+
+    it('shows the first five names and counts one more', () => {
+        const items = [1, 2, 3, 4, 5, 6].map((id) => ({ id, name: `Flow ${id}` }));
+        usageRequest.mockReturnValue(of({ flows: { used: true, items }, surfaces: unused, agents: unused }));
+
+        deleteFile();
+
+        expect(confirmation().caution).toContain('<strong>Flow 5</strong> and 1 more.');
+        expect(confirmation().caution).not.toContain('Flow 6');
+    });
+
+    it('counts the rest when many names are used', () => {
+        const items = [1, 2, 3, 4, 5, 6, 7].map((id) => ({ id, name: `Flow ${id}` }));
+        usageRequest.mockReturnValue(of({ flows: { used: true, items }, surfaces: unused, agents: unused }));
+
+        deleteFile();
+
+        expect(confirmation().caution).toContain('<strong>Flow 5</strong> and 2 more.');
+    });
+
+    it('gives a nameless line when the item is used but the user cannot view where', () => {
+        usageRequest.mockReturnValue(of({ flows: { used: true, items: [] }, surfaces: unused, agents: unused }));
+
+        deleteFile();
+
+        expect(confirmation().caution).toContain("<strong>Used in flows you can't view.</strong>");
+        expect(confirmation().type).toBe('warning');
+    });
+
+    it('lists every used kind together and skips unused ones', () => {
+        usageRequest.mockReturnValue(
+            of({
+                flows: { used: true, items: [{ id: 1, name: 'Sales' }] },
+                surfaces: unused,
+                agents: { used: true, items: [] },
+            })
+        );
+
+        deleteFile();
+
+        expect(confirmation().caution).toContain(
+            "Used in flows: <strong>Sales</strong>.<br><strong>Used in agents you can't view.</strong>"
+        );
+        expect(confirmation().caution).not.toContain('surfaces');
+    });
+
+    it('uses plural wording and checks every path for a bulk delete', () => {
+        usageRequest.mockReturnValue(of({ flows: { used: true, items: [] }, surfaces: unused, agents: unused }));
+        const items = [file('a.txt'), file('b.txt')];
+
+        facade.onContextAction({ action: 'delete-selected', item: items[0], selectedItems: items });
+
+        expect(usageRequest).toHaveBeenCalledWith(['a.txt', 'b.txt']);
+        expect(confirmation().caution).toContain('restoring them from the recycle bin will not add them back.');
+    });
+
+    it('still asks the plain question and deletes on confirm when the usage check fails', () => {
+        usageRequest.mockReturnValue(throwError(() => new Error('usage failed')));
+
+        deleteFile();
+
+        expect(confirmation().message).toContain('Are you sure you want to delete <strong>report.txt</strong> file?');
+        expect(confirmation().caution).toBeUndefined();
+        expect(deleteRequest).toHaveBeenCalledWith(['report.txt']);
+    });
+
+    it('does not delete when the warning is declined', () => {
+        usageRequest.mockReturnValue(of({ flows: { used: true, items: [] }, surfaces: unused, agents: unused }));
+        confirm.mockReturnValue(of(false));
+
+        deleteFile();
+
+        expect(deleteRequest).not.toHaveBeenCalled();
+    });
+
+    it('opens one dialog when delete is triggered again while the usage check is pending', () => {
+        const pendingUsage = new Subject<unknown>();
+        usageRequest.mockReturnValue(pendingUsage);
+
+        deleteFile();
+        deleteFile();
+        pendingUsage.next({ flows: unused, surfaces: unused, agents: unused });
+        pendingUsage.complete();
+
+        expect(confirm).toHaveBeenCalledTimes(1);
+        expect(deleteRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows deleting again once the previous confirmation has closed', () => {
+        deleteFile();
+        deleteFile();
+
+        expect(confirm).toHaveBeenCalledTimes(2);
     });
 });

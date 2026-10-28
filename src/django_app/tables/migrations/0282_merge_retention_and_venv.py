@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('tables', '0275_session_session_root_graph_finished'),
-        ('tables', '0283_clear_local_avatars'),
+        ('tables', '0284_user_tour_progress'),
     ]
 
     operations = [

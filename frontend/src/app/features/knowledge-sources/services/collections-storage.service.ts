@@ -13,6 +13,12 @@ import { CollectionDetailsGraphRag } from '../models/graph-rag.model';
 import { CollectionDetailsNaiveRag } from '../models/naive-rag.model';
 import { CollectionsApiService } from './collections-api.service';
 
+/** The custom names of a RAG's embedding and LLM configs; null when unknown or not used by the RAG. */
+export interface RagModelNames {
+    embedderName: string | null;
+    llmName: string | null;
+}
+
 @Injectable({
     providedIn: 'root',
 })
@@ -60,6 +66,21 @@ export class CollectionsStorageService implements StorageService {
             if (found) return found.status;
         }
         return null;
+    }
+
+    /**
+     * The embedder and LLM names of a cached RAG, matched on id and type (naive and graph ids can collide, see
+     * `getRagStatus`). Both null when the collection or the RAG isn't cached.
+     */
+    getRagModelNames(collectionId: number, ragId: number, ragType: RagType): RagModelNames {
+        const collection = this.fullCollectionsSignal().find((candidate) => candidate.collection_id === collectionId);
+        const rag = collection?.rag_configurations.find(
+            (configuration) => configuration.rag_id === ragId && configuration.rag_type === ragType
+        );
+        return {
+            embedderName: rag?.embedder_name || null,
+            llmName: (rag && 'llm_name' in rag && rag.llm_name) || null,
+        };
     }
 
     // Optimistically sets the given rag's status to 'processing' in the fullCollections cache.

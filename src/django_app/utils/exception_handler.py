@@ -124,6 +124,13 @@ def _log_unhandled_exception(exc: Exception, request, response) -> None:
 def custom_exception_handler(exc, context):
     """Render every exception as the project's `{status_code, code, message}` envelope."""
 
+    # Imported here, not at module level: the secrets package imports the models,
+    # and this util must stay importable without the app registry or a cycle via tables.
+    from tables.services.secrets.exceptions import (
+        ModelEndpointNotSettableError,
+        SecretUseDeniedError,
+    )
+
     # DRF's own `exception_handler()` converts Django's `Http404`/
     # `PermissionDenied` into `NotFound`/`PermissionDenied` APIExceptions,
     # but only on its own local `exc` binding -- the caller's `exc` here is
@@ -135,6 +142,10 @@ def custom_exception_handler(exc, context):
         exc = NotFound(*exc.args)
     elif isinstance(exc, PermissionDenied):
         exc = DRFPermissionDenied(*exc.args)
+    elif isinstance(exc, (SecretUseDeniedError, ModelEndpointNotSettableError)):
+        # A domain error raised by a secret check. Rendered as the field error a
+        # serializer would report, so the 400 message names the field.
+        exc = ValidationError(exc.field_errors())
     elif isinstance(exc, ClientError):
         exc = _client_error_as_api_exception(exc)
     elif isinstance(exc, OutboundClientError):

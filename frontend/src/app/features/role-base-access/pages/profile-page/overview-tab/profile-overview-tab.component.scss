@@ -122,8 +122,27 @@
         gap: 8px;
 
         .org-role {
-            font-size: 0.875rem;
-            color: var(--purple-primary);
+            // Vertical padding cancelled by the margin: a 24px click target without moving the text.
+            margin: -4px 0;
+            padding: 4px 0;
+            border: none;
+            border-radius: 2px;
+            background: none;
+            font-family: inherit;
+            font-size: var(--text-body-size);
+            font-weight: var(--text-body-weight);
+            line-height: var(--text-body-line-height);
+            color: var(--accent-color);
+            cursor: pointer;
+
+            &:hover {
+                text-decoration: underline;
+            }
+
+            &:focus-visible {
+                outline: 1px solid var(--accent-color);
+                outline-offset: 2px;
+            }
         }
     }
 }

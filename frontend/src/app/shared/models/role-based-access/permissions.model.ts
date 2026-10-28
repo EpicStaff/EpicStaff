@@ -66,7 +66,8 @@ export interface CatalogResponse {
 
 export interface OrgCapability {
     org: { id: number; name: string };
-    role: { id: number; name: string };
+    /** `null` when the membership has no role assigned. */
+    role: { id: number; name: string } | null;
     permissions: Record<ResourceCode, ActionCode[]>;
 }
 

@@ -15,11 +15,13 @@ import {
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
-import { formatNodeLabel } from '@shared/utils';
+import { formatNodeLabel, nextListIndex } from '@shared/utils';
 
 import { NodeModel } from '../../core/models/node.model';
 import { KeymapService } from '../../services/keymap.service';
 import { SearchNodeItemComponent } from './search-node-item/search-node-item.component';
+
+let nextSearchId = 0;
 
 @Component({
     selector: 'app-nodes-search',
@@ -40,7 +42,12 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 <button
                     class="search-button"
                     (click)="toggleSearchInput()"
-                    [matTooltip]="isSearchVisible() ? 'Close search' : 'Search nodes'"
+                    [matTooltip]="
+                        keymap.withShortcut(
+                            isSearchVisible() ? 'Close search' : 'Search nodes',
+                            'navigating.node-search'
+                        )
+                    "
                     matTooltipPosition="right"
                     [class.active]="isSearchVisible()"
                 >
@@ -57,8 +64,14 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                             type="text"
                             class="search-input"
                             placeholder="Search nodes..."
+                            role="combobox"
+                            aria-autocomplete="list"
+                            [attr.aria-expanded]="filteredNodes.length > 0"
+                            [attr.aria-controls]="resultsId"
+                            [attr.aria-activedescendant]="activeIndex() < 0 ? null : resultId(activeIndex())"
                             [(ngModel)]="searchQuery"
                             (ngModelChange)="updateSearch($event)"
+                            (keydown)="onSearchKeydown($event)"
                             #searchInputRef
                         />
                         @if (searchQuery) {
@@ -82,14 +95,25 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                     <div class="panel-title">
                         <h3>Search nodes ({{ filteredNodes.length }} found)</h3>
                     </div>
-                    <ul class="node-list">
+                    <ul
+                        class="node-list"
+                        role="listbox"
+                        aria-label="Nodes"
+                        [id]="resultsId"
+                    >
                         @if (filteredNodes.length === 0 && searchQuery) {
                             <li class="no-results">No nodes match your search</li>
                         }
-                        @for (node of filteredNodes; track node; let last = $last) {
-                            <li [class.last-node]="last">
+                        @for (node of filteredNodes; track node; let last = $last; let index = $index) {
+                            <li
+                                role="option"
+                                [id]="resultId(index)"
+                                [attr.aria-selected]="index === activeIndex()"
+                                [class.last-node]="last"
+                            >
                                 <app-search-node-item
                                     [node]="node"
+                                    [active]="index === activeIndex()"
                                     (nodeSelected)="onNodeSelected($event)"
                                     (nodeDoubleClicked)="onNodeDoubleClicked($event)"
                                 ></app-search-node-item>
@@ -291,9 +315,12 @@ export class NodesSearchComponent implements OnChanges {
     public searchQuery = '';
     public filteredNodes: NodeModel[] = [];
     public isSearchVisible = signal<boolean>(false);
+    /** The result the arrow keys point at, or -1; Enter opens it. */
+    protected readonly activeIndex = signal(-1);
+    protected readonly resultsId = `nodes-search-results-${nextSearchId++}`;
 
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
-    private readonly keymap = inject(KeymapService);
+    protected readonly keymap = inject(KeymapService);
     private readonly destroyRef = inject(DestroyRef);
 
     constructor() {
@@ -367,6 +394,7 @@ export class NodesSearchComponent implements OnChanges {
 
     public updateSearch(query: string): void {
         this.searchQuery = query;
+        this.activeIndex.set(-1);
 
         // Filter nodes based on search query
         if (!query.trim()) {
@@ -379,6 +407,7 @@ export class NodesSearchComponent implements OnChanges {
 
     public clearSearch(): void {
         this.searchQuery = '';
+        this.activeIndex.set(-1);
         this.filteredNodes = [];
     }
 
@@ -389,7 +418,34 @@ export class NodesSearchComponent implements OnChanges {
     }
 
     public onNodeSelected(node: NodeModel): void {
+        // A clicked result becomes the highlighted one, so the arrows go on from there.
+        this.activeIndex.set(this.filteredNodes.indexOf(node));
         this.nodeSelected.emit(node);
+    }
+
+    protected resultId(index: number): string {
+        return `${this.resultsId}-${index}`;
+    }
+
+    // Focus stays in the field so typing goes on; the arrows move the highlight and Enter opens it.
+    protected onSearchKeydown(event: KeyboardEvent): void {
+        if (event.key === 'Enter') {
+            const node = this.filteredNodes[this.activeIndex()];
+            if (node) {
+                event.preventDefault();
+                this.onNodeSelected(node);
+            }
+            return;
+        }
+        // Home and End stay with the text field, for its caret.
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        const next = nextListIndex(event.key, this.activeIndex(), this.filteredNodes.length);
+        if (next === null) return;
+        event.preventDefault();
+        this.activeIndex.set(next);
+        this.hostElement.nativeElement
+            .querySelector(`#${CSS.escape(this.resultId(next))}`)
+            ?.scrollIntoView?.({ block: 'nearest' });
     }
 
     public onNodeDoubleClicked(data: { node: NodeModel; event: MouseEvent }): void {

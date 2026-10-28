@@ -2,6 +2,7 @@ from copy import deepcopy
 
 from django.db.models import Q
 from rbac.authorship import resolve_author
+from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -24,13 +25,12 @@ from tables.models import (
     RealtimeModel,
     RealtimeTranscriptionModel,
 )
-from tables.serializers.utils.secret_destination_guard_mixin import (
+from tables.services.secrets.exceptions import ModelEndpointNotSettableError
+from tables.services.secrets.pinned_principal_rules import (
     EMBEDDING_MODEL_ENDPOINT_FIELDS,
     LLM_MODEL_ENDPOINT_FIELDS,
-)
-from tables.services.secrets.reference_guard import (
+    assert_endpoints_untouched,
     pinned_principal_of_user,
-    secret_destination_guard,
 )
 
 
@@ -64,12 +64,17 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
 
     def create_entity(self, data, id_mapper: IDMapper, **kwargs):
         # The organization's configs may come to use an imported model with their own keys.
-        secret_destination_guard.assert_endpoints_untouched(
-            principal=pinned_principal_of_user(kwargs.get("user")),
-            instance=None,
-            values=data,
-            fields=self.endpoint_fields,
-        )
+        try:
+            assert_endpoints_untouched(
+                principal=pinned_principal_of_user(kwargs.get("user")),
+                instance=None,
+                values=data,
+                fields=self.endpoint_fields,
+            )
+        except ModelEndpointNotSettableError as denial:
+            # Raised as a validation error, like every other rejection of an import
+            # strategy, so a caller handling the strategy's errors sees one kind.
+            raise ValidationError(denial.field_errors()) from denial
         organization = resolve_import_organization(kwargs.get("org_id"))
         if "name" in data:
             existing_names = self.model_class.objects.filter(org=organization).values_list(

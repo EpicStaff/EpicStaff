@@ -585,6 +585,8 @@ services:
       NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?}
       NGINX_SSL_MODE: ${NGINX_SSL_MODE:?}
       NGINX_HSTS_ENABLED: ${NGINX_HSTS_ENABLED:?}
+      # The load balancer whose X-Forwarded-Proto nginx passes on, or none.
+      NGINX_TRUSTED_PROXIES: ${NGINX_TRUSTED_PROXIES:?}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       FRONTEND_HOST: ${FRONTEND_HOST:?}
@@ -644,6 +646,12 @@ services:
       - type: bind
         source: ./nginx/docker-entrypoint.d/17-normalize-hsts-enabled.envsh
         target: /docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/18-check-trusted-proxies.envsh
+        target: /docker-entrypoint.d/18-check-trusted-proxies.envsh
         read_only: true
         bind:
           create_host_path: false
