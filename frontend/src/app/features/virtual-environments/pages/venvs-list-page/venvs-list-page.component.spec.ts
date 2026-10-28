@@ -46,6 +46,32 @@ describe('VenvsListPageComponent', () => {
         return host.querySelector<HTMLElement>('.venv-card__icon-btn[aria-label="Add to favorites"]')!;
     }
 
+    function openFilterMenu(): void {
+        host.querySelector<HTMLElement>('.filter-trigger')!.click();
+        fixture.detectChanges();
+    }
+
+    function openSortMenu(): void {
+        Array.from(host.querySelectorAll<HTMLElement>('.menu-trigger'))
+            .find((trigger) => !trigger.classList.contains('filter-trigger'))!
+            .click();
+        fixture.detectChanges();
+    }
+
+    /** A row of the sort menu, named by part of its label. */
+    function menuItem(label: string): HTMLElement {
+        return Array.from(document.querySelectorAll<HTMLElement>('.sort-menu .menu-item')).find((item) =>
+            item.textContent!.includes(label)
+        )!;
+    }
+
+    /** A button of the filter panel's footer, named by its caption. */
+    function footerButton(caption: string): HTMLElement {
+        return Array.from(document.querySelectorAll<HTMLElement>('.filter-menu__footer button')).find((button) =>
+            button.textContent!.includes(caption)
+        )!;
+    }
+
     function renderedNames(): string[] {
         return Array.from(host.querySelectorAll('.venv-card__name')).map((node) => node.textContent!.trim());
     }
@@ -104,27 +130,39 @@ describe('VenvsListPageComponent', () => {
     it('sends the chosen sort order right away', () => {
         answerList([venv(1, 'alpha')]);
 
-        host.querySelector<HTMLElement>('.filter-trigger')!.click();
-        fixture.detectChanges();
-        const descending = Array.from(document.querySelectorAll<HTMLElement>('.filter-menu .menu-item')).find((item) =>
-            item.textContent!.includes('Z to A')
-        )!;
-        descending.click();
+        openSortMenu();
+        menuItem('Z to A').click();
         fixture.detectChanges();
 
         expect(answerList([venv(1, 'alpha')]).params.get('order')).toBe('name_desc');
     });
 
-    it('asks the backend for the favorites once the filter is ticked', () => {
+    it('asks the backend for the favorites only once the filter is saved', () => {
         answerList([venv(1, 'alpha')]);
 
-        host.querySelector<HTMLElement>('.filter-trigger')!.click();
+        openFilterMenu();
+        document.querySelector<HTMLElement>('.filter-menu__item')!.click();
         fixture.detectChanges();
-        const favoritesOnly = document.querySelector<HTMLInputElement>('.filter-menu input[type="checkbox"]')!;
-        favoritesOnly.click();
+        // Ticking alone changes a draft: nothing is requested until Save Changes.
+        expect(http.match(() => true)).toHaveLength(0);
+
+        footerButton('Save Changes').click();
         fixture.detectChanges();
 
         expect(answerList([venv(2, 'starred')]).params.get('is_favorite')).toBe('true');
+    });
+
+    it('applies nothing when the filter panel is cancelled', () => {
+        answerList([venv(1, 'alpha')]);
+
+        openFilterMenu();
+        document.querySelector<HTMLElement>('.filter-menu__item')!.click();
+        fixture.detectChanges();
+        footerButton('Cancel').click();
+        fixture.detectChanges();
+
+        expect(http.match(() => true)).toHaveLength(0);
+        expect(host.querySelector('.filter-count')).toBeNull();
     });
 
     it('fills the star before the request is answered', () => {

@@ -36,6 +36,8 @@ import { VenvCardComponent } from '../../components/venv-card/venv-card.componen
 import { VenvDialogComponent, VenvDialogData } from '../../components/venv-dialog/venv-dialog.component';
 import { BUILDING_STATUSES, Venv, VenvListQuery, VenvSortOrder } from '../../models/venv.model';
 import { VenvsApiService } from '../../services/venvs-api.service';
+import { VenvsFilterMenuComponent, VenvsFilterState } from './components/venvs-filter-menu/venvs-filter-menu.component';
+import { VENVS_SORT_MENU_ITEMS, VenvsSortMenuComponent } from './components/venvs-sort-menu/venvs-sort-menu.component';
 
 const POLL_INTERVAL_MS = 2_000;
 // Long enough that typing a word is one request, short enough to feel immediate.
@@ -54,6 +56,8 @@ const SEARCH_DEBOUNCE_MS = 300;
         HasPermissionDirective,
         HideInlineSubtitleOnOverflowDirective,
         VenvCardComponent,
+        VenvsFilterMenuComponent,
+        VenvsSortMenuComponent,
     ],
     templateUrl: './venvs-list-page.component.html',
     styleUrls: ['./venvs-list-page.component.scss'],
@@ -70,6 +74,7 @@ export class VenvsListPageComponent {
     readonly sortOrder = signal<VenvSortOrder>('default');
     readonly favoritesOnly = signal(false);
     readonly filterMenuOpen = signal(false);
+    readonly sortMenuOpen = signal(false);
 
     // What the backend is asked for: it does the filtering and the sorting, the page only
     // renders what comes back.
@@ -78,14 +83,20 @@ export class VenvsListPageComponent {
         order: this.sortOrder(),
         isFavorite: this.favoritesOnly(),
     }));
-    readonly hasActiveFilter = computed(() => this.sortOrder() !== 'default' || this.favoritesOnly());
+    readonly filterState = computed<VenvsFilterState>(() => ({ favoritesOnly: this.favoritesOnly() }));
+    readonly activeFilterCount = computed(() => (this.favoritesOnly() ? 1 : 0));
+    readonly sortTriggerLabel = computed(() => {
+        const order = this.sortOrder();
+        if (order === 'default') return 'Sort';
+        return VENVS_SORT_MENU_ITEMS.find((item) => item.value === order)?.label ?? 'Sort';
+    });
 
     readonly canUpdate = computed(() => this.permissions.can(ResourceCode.Venvs, ActionCode.Update));
     readonly canDelete = computed(() => this.permissions.can(ResourceCode.Venvs, ActionCode.Delete));
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
-    protected readonly filterMenuPositions: ConnectedPosition[] = [
+    protected readonly menuPositions: ConnectedPosition[] = [
         { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
     ];
 
@@ -123,20 +134,35 @@ export class VenvsListPageComponent {
         this.filterMenuOpen.set(false);
     }
 
-    applySort(sortOrder: VenvSortOrder): void {
+    toggleSortMenu(): void {
+        this.sortMenuOpen.update((open) => !open);
+    }
+
+    closeSortMenu(): void {
+        this.sortMenuOpen.set(false);
+    }
+
+    onSortSelected(sortOrder: VenvSortOrder): void {
         this.sortOrder.set(sortOrder);
+        this.closeSortMenu();
+        this.loadVenvs();
+    }
+
+    /** The filter panel edits a draft, so nothing is narrowed until it is saved. */
+    onFilterSave(filter: VenvsFilterState): void {
         this.closeFilterMenu();
+        this.favoritesOnly.set(filter.favoritesOnly);
         this.loadVenvs();
     }
 
-    // The menu stays open: the sort below it is part of the same choice.
-    applyFavoritesOnly(favoritesOnly: boolean): void {
-        this.favoritesOnly.set(favoritesOnly);
-        this.loadVenvs();
+    onFilterClear(): void {
+        this.closeFilterMenu();
+        this.clearAllFilters();
     }
 
-    clearAllFilters(): void {
-        this.sortOrder.set('default');
+    // Also reachable from the trigger itself, where the click must not open the panel.
+    clearAllFilters(event?: MouseEvent): void {
+        event?.stopPropagation();
         this.favoritesOnly.set(false);
         this.loadVenvs();
     }
