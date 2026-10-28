@@ -135,6 +135,8 @@
                         formControlName="venvId"
                         [items]="venvItems()"
                         [grouped]="true"
+                        [showSearch]="true"
+                        searchPlaceholder="Search venv..."
                         [loading]="loadingVenvs()"
                         [readonly]="isBuiltIn()"
                         (opened)="onVenvDropdownOpened()"

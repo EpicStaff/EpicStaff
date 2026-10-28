@@ -75,6 +75,8 @@
                             formControlName="venv"
                             [items]="venvItems()"
                             [grouped]="true"
+                            [showSearch]="true"
+                            searchPlaceholder="Search venv..."
                             [loading]="loadingVenvs()"
                             [readonly]="isReadOnly()"
                             (opened)="onVenvDropdownOpened()"
