@@ -20,11 +20,14 @@ Access is gated by the caller's **FILES** permission in the active org:
 
 | Permission | Endpoints |
 |---|---|
-| `READ` | list, tree, search, info, download, graph-files, upload-limits |
+| `READ` | list, tree, search, info, download, usage, graph-files, upload-limits, add-to-graph, remove-from-graph |
 | `EXPORT` | download-zip |
-| `CREATE` | upload (replacing an existing file also needs `UPDATE`), mkdir, add-to-graph |
+| `CREATE` | upload (replacing an existing file also needs `UPDATE`), mkdir |
 | `UPDATE` | rename, move, copy |
-| `DELETE` | delete, remove-from-graph |
+| `DELETE` | delete |
+
+Linking files to a flow edits the flow, so `add-to-graph` and `remove-from-graph` also need
+**FLOWS** `UPDATE`, and `graph-files` also needs **FLOWS** `READ`.
 
 A caller lacking the required permission gets `403`. Built-in role grants:
 Org Admin = C R U D E; Member = C R U E; Viewer = R.
@@ -48,22 +51,24 @@ existence leak.
 3. [Search Files](#search-files)
 4. [File Info](#file-info)
 5. [Download File](#download-file)
-6. [Upload Limits](#upload-limits)
-7. [Upload Files](#upload-files)
-8. [Download ZIP](#download-zip)
-9. [Create Folder](#create-folder)
-10. [Bulk Delete](#bulk-delete)
-11. [Rename](#rename)
-12. [Move](#move)
-13. [Copy](#copy)
-14. [Add to Graph](#add-to-graph)
-15. [Remove from Graph](#remove-from-graph)
-16. [Graph Files](#graph-files)
-17. [Session Output Files](#session-output-files)
-18. [Blocked Extensions Reference](#blocked-extensions-reference)
-19. [Archive Format Reference](#archive-format-reference)
-20. [Path Normalization](#path-normalization)
-21. [HTTP Status Codes](#http-status-codes)
+6. [Preview File](#preview-file)
+7. [Upload Limits](#upload-limits)
+8. [Upload Files](#upload-files)
+9. [Download ZIP](#download-zip)
+10. [Create Folder](#create-folder)
+11. [Bulk Delete](#bulk-delete)
+12. [Usage](#usage)
+13. [Rename](#rename)
+14. [Move](#move)
+15. [Copy](#copy)
+16. [Add to Graph](#add-to-graph)
+17. [Remove from Graph](#remove-from-graph)
+18. [Graph Files](#graph-files)
+19. [Session Output Files](#session-output-files)
+20. [Blocked Extensions Reference](#blocked-extensions-reference)
+21. [Archive Format Reference](#archive-format-reference)
+22. [Path Normalization](#path-normalization)
+23. [HTTP Status Codes](#http-status-codes)
 
 ---
 
@@ -234,7 +239,8 @@ Response is intentionally lean — no `size`/`modified`. Call `/api/storage/info
 
 **GET** `/api/storage/info/`
 
-Returns metadata for a file or folder, including linked graphs.
+Returns metadata for a file or folder, including linked graphs. `graphs` is empty when the
+caller lacks **FLOWS** `READ`.
 
 **Query Parameters:**
 
@@ -275,7 +281,7 @@ Returns metadata for a file or folder, including linked graphs.
 
 **GET** `/api/storage/download/`
 
-Downloads a single file as a binary stream.
+Downloads a single file as a binary stream. Requires `files:export`; to view a file's content with `files:read` only, use [Preview File](#preview-file).
 
 **Query Parameters:**
 
@@ -289,6 +295,33 @@ Downloads a single file as a binary stream.
 - Body: Binary file stream
 
 **Error:** `400 Bad Request`
+```json
+{"path": "File does not exist: some/path"}
+```
+
+---
+
+## Preview File
+
+**GET** `/api/storage/preview/`
+
+Returns a single file's content for in-app viewing. Requires `files:read`. Same content as [Download File](#download-file), served inline.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | Yes | Path to the file |
+
+**Request Headers (optional):** `Range: bytes=<first>-[<last>]` returns only that part.
+
+**Response:** `200 OK` (whole file) or `206 Partial Content` (with `Range`)
+- Content-Type: `application/octet-stream`
+- Header: `Content-Disposition: inline; filename="<name>"`
+- Header: `Content-Range` (206 only)
+- Body: Binary file stream
+
+**Error:** `404 Not Found`
 ```json
 {"path": "File does not exist: some/path"}
 ```
@@ -497,6 +530,44 @@ Deletes one or more files or folders. Folders are deleted recursively.
 
 **Response:** `204 No Content`
 
+Deleting permanently removes the links pointing at the deleted files (flow attachments,
+session outputs, surface grants); restoring from the recycle bin does not bring them back.
+Call [Usage](#usage) first to warn about them.
+
+---
+
+## Usage
+
+**POST** `/api/storage/usage/`
+
+Read-only check to call before a delete: reports the flows, surfaces and agents that would lose
+their link to the given paths. Same lookup as the delete — a path naming a live file means that
+file, any other path means the folder and everything under it. A path with nothing at it
+contributes nothing.
+
+**Request:**
+```json
+{"paths": ["reports/data.csv", "reports/archive"]}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `paths` | string[] | Yes | 1 to 500 paths |
+
+**Response:** `200 OK`
+```json
+{
+    "flows": {"used": true, "items": [{"id": 1, "name": "Monthly Report Flow"}]},
+    "surfaces": {"used": true, "items": []},
+    "agents": {"used": false, "items": []}
+}
+```
+
+Flows are those the files are attached to, plus those with a node whose inline surface is
+linked to them; agents are those running such a node. `used` is true whenever a link exists,
+whatever the caller may read. `items` lists the entries (by name, then id) only when the caller
+holds `READ` on that resource type (flows, surfaces, agents); otherwise it is empty.
+
 ---
 
 ## Rename
@@ -701,6 +772,9 @@ Lists all storage paths linked to a specific graph.
     {"id": 11, "graph_id": 1, "path": "reports/charts/", "added_at": "2026-04-15T10:31:00Z"}
 ]
 ```
+
+**Error:** `403 Forbidden` — the caller lacks **FLOWS** `READ` (checked before the graph is
+looked up, for any `graph_id`).
 
 **Error:** `404 Not Found`
 ```json

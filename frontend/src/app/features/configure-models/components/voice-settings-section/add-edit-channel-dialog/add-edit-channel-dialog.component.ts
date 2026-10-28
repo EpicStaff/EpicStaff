@@ -7,6 +7,7 @@ import {
     BinnedSecretNoteComponent,
     ButtonComponent,
     CustomInputComponent,
+    ErrorBannerComponent,
     SelectComponent,
     SelectItem,
     ToggleSwitchComponent,
@@ -20,7 +21,7 @@ import {
     TwilioPhoneNumber,
     WebhookTriggerService,
 } from '@shared/services';
-import { extractHttpErrorMessage, trackPickedSecrets } from '@shared/utils';
+import { extractHttpErrorMessage, isClientError, trackPickedSecrets } from '@shared/utils';
 import { Observable, of, switchMap } from 'rxjs';
 
 import { AgentDefinition } from '../../../../agent-definitions/models/agent-definition.model';
@@ -39,6 +40,7 @@ export interface AddEditChannelDialogData {
         BinnedSecretNoteComponent,
         ReactiveFormsModule,
         CustomInputComponent,
+        ErrorBannerComponent,
         SelectComponent,
         ButtonComponent,
         WebhookTriggerFieldComponent,
@@ -181,7 +183,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                         );
                     },
                     error: (err: HttpErrorResponse) => {
-                        this.errorMessage.set(this.formatBackendError(err) ?? 'Failed to create channel.');
+                        this.errorMessage.set(this.saveErrorMessage(err, 'Failed to create channel.'));
                         this.isSubmitting.set(false);
                     },
                 });
@@ -213,7 +215,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                         );
                     },
                     error: (err: HttpErrorResponse) => {
-                        this.errorMessage.set(this.formatBackendError(err) ?? 'Failed to update channel.');
+                        this.errorMessage.set(this.saveErrorMessage(err, 'Failed to update channel.'));
                         this.isSubmitting.set(false);
                     },
                 });
@@ -274,7 +276,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                 },
                 error: (err: HttpErrorResponse) => {
                     this.errorMessage.set(
-                        this.formatBackendError(err) ?? 'Channel saved but Twilio settings failed to save.'
+                        this.saveErrorMessage(err, 'Channel saved but Twilio settings failed to save.')
                     );
                     this.isSubmitting.set(false);
                 },
@@ -323,28 +325,19 @@ export class AddEditChannelDialogComponent implements OnInit {
                 next: () => this.dialogRef.close(true),
                 error: (err: HttpErrorResponse) => {
                     this.errorMessage.set(
-                        this.formatBackendError(err) ??
+                        this.saveErrorMessage(
+                            err,
                             'Channel saved but webhook configuration on Twilio failed. Check your tunnel.'
+                        )
                     );
                     this.isSubmitting.set(false);
                 },
             });
     }
 
-    private formatBackendError(err: HttpErrorResponse): string | null {
-        const body = err?.error;
-        if (!body) return null;
-        if (typeof body === 'string') return body;
-        if (typeof body.detail === 'string') return body.detail;
-        if (typeof body === 'object') {
-            const parts: string[] = [];
-            for (const [field, value] of Object.entries(body)) {
-                const text = Array.isArray(value) ? value.join(' ') : typeof value === 'string' ? value : null;
-                if (text) parts.push(field === 'non_field_errors' ? text : `${field}: ${text}`);
-            }
-            if (parts.length) return parts.join(' • ');
-        }
-        return null;
+    /** The server's words for a refusal of what was sent (4xx); the step's own message for anything else. */
+    private saveErrorMessage(err: HttpErrorResponse, fallback: string): string {
+        return isClientError(err) ? extractHttpErrorMessage(err, fallback) : fallback;
     }
 
     onPhoneSelectOpened(): void {

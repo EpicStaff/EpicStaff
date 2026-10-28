@@ -23,7 +23,26 @@
     [attr.inert]="isDrawerShown() ? '' : null"
 >
     @if (!isPhone()) {
-        <app-desk-rail [waitingByDesk]="waitingByDesk()" />
+        <div
+            #railColumn
+            class="desks-shell__rail"
+            [style.width.px]="railWidth()"
+        >
+            <app-desk-rail
+                [waitingByDesk]="waitingByDesk()"
+                [isCompact]="isRailCompact()"
+                (compactToggle)="toggleRail()"
+            />
+            <div
+                class="resizable-sidebar-handle"
+                sidebarAriaLabel="Resize desks column"
+                [appResizableSidebar]="railWidthKey()"
+                [sidebarTarget]="railColumn"
+                [sidebarMinWidth]="railWidthOptions().minWidth"
+                [sidebarMaxWidth]="railWidthOptions().maxWidth"
+                [sidebarCollapse]="railWidthOptions().collapse"
+            ></div>
+        </div>
     }
     <div class="desks-shell__page">
         <router-outlet />

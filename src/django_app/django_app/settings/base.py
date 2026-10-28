@@ -1,6 +1,7 @@
 from django.core.exceptions import ImproperlyConfigured
 from rbac.identity.first_setup_mode import FirstSetupMode
 from src.shared import humanize
+from src.shared.retention import load_retention_policy
 
 from django_app.settings import BASE_DIR, env
 
@@ -22,6 +23,8 @@ INSTALLED_APPS = [
     "rbac",
     "tables",
     "agents",
+    "plugins",
+    "proxies",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -36,6 +39,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "plugins.gateway.origin_policy_middleware.PluginOriginPolicyMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -43,6 +47,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "plugins.ownership.request_scope.PluginRequestScopeMiddleware",
 ]
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -130,6 +135,11 @@ RECYCLE_BIN_RETENTION_DAYS = env.int("DJANGO_RECYCLE_BIN_RETENTION_DAYS")
 if RECYCLE_BIN_RETENTION_DAYS < 1:
     # 0 would make the nightly purge empty every recycle bin on its next run.
     raise ImproperlyConfigured("DJANGO_RECYCLE_BIN_RETENTION_DAYS must be at least 1.")
+
+try:
+    RETENTION_POLICY = load_retention_policy(env)
+except ValueError as error:
+    raise ImproperlyConfigured(str(error)) from error
 
 REFRESH_COOKIE_SECURE = env.bool("DJANGO_REFRESH_COOKIE_SECURE")
 

@@ -4,7 +4,6 @@ import asyncio
 import copy
 import hashlib
 import json
-import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -16,11 +15,16 @@ from loguru import logger
 from mcp import McpError
 
 from app.exceptions import McpToolError
+from app.logging_utils import format_exception_for_log
 from app.tools.mcp.client_factory import FastMCPClientFactory
+from app.tools.mcp.schema_sanitizer import (
+    MAX_TEXT_CHARS,
+    UnsafeSchemaError,
+    sanitize_input_schema,
+    strip_control_chars,
+)
 from shared.models.tools import McpToolData
 
-_MAX_MCP_DESCRIPTION_CHARS = 1024
-_C0_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _CANCEL_SEND_TIMEOUT_SECONDS = 5
 _MAX_CACHED_DESCRIPTIONS = 256
 
@@ -60,7 +64,8 @@ class McpToolGateway:
         several tools of one server, or back-to-back runs, do not reconnect each time.
         Failures are not cached.
 
-        Raises McpToolError if the server is unreachable or the tool is absent.
+        Raises McpToolError if the server is unreachable, the tool is absent, or its
+        input schema is unsafe (see sanitize_input_schema).
         """
         cache_key = self._describe_cache_key(data)
         now = self._clock()
@@ -112,18 +117,22 @@ class McpToolGateway:
                 f"Tool '{data.tool_name}' not found on MCP server at {data.transport!r}"
             )
 
-        has_description = bool(tool.description and tool.description.strip())
-        description = tool.description if has_description else data.tool_name
+        # The input schema reaches the model next to the description, so it gets the
+        # same cleaning; the marker goes on the description even when the server
+        # sent none, since the schema is external text all the same.
+        cleaned = strip_control_chars(tool.description or "").strip()[:MAX_TEXT_CHARS]
+        description = f"[external MCP tool description] {cleaned or data.tool_name}"
 
-        if has_description:
-            cleaned = _C0_CONTROL_CHARS_RE.sub("", tool.description)
-            truncated = cleaned[:_MAX_MCP_DESCRIPTION_CHARS]
-            description = f"[external MCP tool description] {truncated}"
+        try:
+            input_schema = sanitize_input_schema(dict(tool.inputSchema)) if tool.inputSchema else {}
+        except UnsafeSchemaError as error:
+            # No transport here: the URL can carry credentials, and this message
+            # reaches the client through the run's error event.
+            raise McpToolError(
+                f"MCP tool '{data.tool_name}' has an unsafe input schema: {error}"
+            ) from error
 
-        return McpToolDescription(
-            description=description,
-            input_schema=dict(tool.inputSchema) if tool.inputSchema else {},
-        )
+        return McpToolDescription(description=description, input_schema=input_schema)
 
     @staticmethod
     def _render_content_block(block) -> str:
@@ -214,7 +223,7 @@ class McpToolGateway:
                     "Failed to cancel MCP tool_name={} request_id={}: {}",
                     tool_name,
                     request_id,
-                    error,
+                    format_exception_for_log(error),
                 )
 
         if scope.cancelled_caught:

@@ -126,6 +126,7 @@ class GraphVersioningService:
                 graph=new_graph,
                 declarations=prepared.converted_snapshot.get("secret_declarations"),
                 node_mapper=node_mapper,
+                user=user,
             )
         )
 
@@ -284,6 +285,7 @@ class GraphVersioningService:
                 graph=graph,
                 declarations=prepared.converted_snapshot.get("secret_declarations"),
                 node_mapper=node_mapper,
+                user=user,
             )
         )
 

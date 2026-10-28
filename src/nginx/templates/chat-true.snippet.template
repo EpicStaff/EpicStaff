@@ -2,20 +2,25 @@
 # run elsewhere, so it is proxied through a variable (resolved per request, like /auditor/)
 # rather than a static upstream that would stop nginx when absent.
 # The EpicStaff UI's chat page lives at exactly /chat; everything under /chat/ is the service.
+#
+# Neither location passes EpicStaff's cookies on or lets the upstream set one: only Django reads
+# and sets them, and the chat service may run outside this stack (cookie-free-upstream.snippet).
 location = /chat {
     proxy_pass http://frontend_server;
     include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+    include /etc/nginx/conf.d/cookie-free-upstream.snippet;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $forwarded_proto;
 }
 
 location ^~ /chat/internal/ {
-    # Django's signed callbacks come over the compose network, never through nginx.
+    # Django's signed callbacks and the manager's retention purge come over the compose network,
+    # never through nginx.
     return 404;
 }
 
@@ -30,8 +35,10 @@ location /chat/ {
     proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
     proxy_ssl_verify_depth 3;
     include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
-    # The service's largest legitimate bodies (a 100,000-character message or operator reply,
-    # fully escaped) are about 600 KB; the public API refuses over 1 MiB itself too.
+    include /etc/nginx/conf.d/cookie-free-upstream.snippet;
+    # The largest legitimate body (a 100,000-character message, fully escaped, about 600 KB, with
+    # its action and chat_extra_data at their limits) stays under 1 MiB; the public API refuses
+    # over 1 MiB itself too.
     client_max_body_size 1m;
     proxy_http_version 1.1;
     # SSE: no buffering, long reads (same settings as /api/run-session/subscribe/).
@@ -43,5 +50,5 @@ location /chat/ {
     proxy_set_header Authorization $http_authorization;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $forwarded_proto;
 }

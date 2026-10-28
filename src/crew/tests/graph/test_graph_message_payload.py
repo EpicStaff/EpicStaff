@@ -63,11 +63,14 @@ def audit_writer(monkeypatch):
     writer = RecordingAuditWriter()
     monkeypatch.setattr(session_audit_provider, "AUDIT_TRAIL_ENABLED", True)
     monkeypatch.setattr(session_audit_provider, "get_session_audit_writer", lambda: writer)
-    session_audit_provider.register_session_org(SESSION_ID, org_id=7)
-    session_audit_provider.register_session_flow_name(SESSION_ID, "flow")
+    session_audit_provider.register_session_audit_context(
+        SESSION_ID,
+        session_audit_provider.SessionAuditContext(
+            org_id=7, flow_name="flow", audit_retention_days=0
+        ),
+    )
     yield writer
-    session_audit_provider.clear_session_org(SESSION_ID)
-    session_audit_provider.clear_session_flow_name(SESSION_ID)
+    session_audit_provider.clear_session_audit_context(SESSION_ID)
 
 
 @pytest.fixture

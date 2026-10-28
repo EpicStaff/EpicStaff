@@ -13,6 +13,7 @@ _STARTED_BY_TYPES = {
     "api_key_user": "api_key",
     "api_key_system": "system_api_key",
     "trigger": "trigger",
+    "plugin": "plugin",
 }
 
 
@@ -164,6 +165,9 @@ def _started_by(session: dict) -> tuple[str, str | None]:
         return started_by_type, email
     if started_by_type == "trigger":
         return started_by_type, session.get("trigger_node_name")
+    if started_by_type == "plugin":
+        plugin = f"{principal.get('plugin_identifier')} (plugin)"
+        return started_by_type, f"{plugin} on behalf of {email}" if email else plugin
     if started_by_type in ("api_key", "system_api_key"):
         # api_key_name is None once the key is deleted (the FK is SET_NULL).
         key_name = principal.get("api_key_name")
@@ -282,26 +286,25 @@ class SessionTabularProjection(TabularProjection):
             "started_by": started_by,
         }
         messages = item.get("messages", [])
-        # Rows from non-BaseNode emitters store no node_type; the same node's start row does.
+        # A node's tool, knowledge search and end-output rows store no node_type; the
+        # same node's start row does.
         stored_types = {
             _node_key(message): message["node_type"]
             for message in messages
             if message.get("node_type")
         }
-        # NOTE: node_type is empty when the emitter is not a BaseNode (SubGraphNode, user
-        # messages, graph_end, knowledge search) and on rows saved before it was stored.
-        # graph_schema covers top-level nodes only, so old subflow inner rows stay empty.
-        schema_types = session.get("node_types") or {}
+        # NOTE: node_type can still be empty after this: on non-node rows (graph_end), on
+        # user messages that have no typed row with the same key (inside a subflow they
+        # carry no subflow path), and on rows saved before crew sent it that the migration
+        # backfill could not type (subflow-inner rows, subflow-session rows, and names
+        # missing from the session's old graph snapshot).
         durations = _durations_ms(messages)
         return [
             {
                 **message,
                 **context,
                 "node_type": (
-                    message.get("node_type")
-                    or stored_types.get(_node_key(message))
-                    or schema_types.get(message["name"])
-                    or ""
+                    message.get("node_type") or stored_types.get(_node_key(message)) or ""
                 ).lower(),
                 "duration_ms": durations.get(message["id"]),
             }

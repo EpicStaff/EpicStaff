@@ -15,7 +15,7 @@ from tables.import_export.services.partial_export_service import (
 from tables.import_export.services.partial_import_service import PartialImportService
 from tables.models import AgentNode, Crew, CrewNode, Graph, PythonCode, PythonNode, StartNode
 from tables.services.node_number_service import NodeNumberService
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
@@ -26,7 +26,7 @@ def _flow(org, name="Numbered Flow"):
 
 
 def _python_node(graph, node_name, node_number):
-    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main", libraries="")
+    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main")
     return PythonNode.objects.create(
         graph=graph, node_name=node_name, python_code=code, node_number=node_number
     )
@@ -45,7 +45,11 @@ def _numbers_by_name(graph):
 
 
 def _export(graph):
-    return ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def _import(client, org, export_data, **settings):
@@ -81,15 +85,24 @@ def _partial_export(nodes):
         )
         for node in nodes
     ]
-    result = GraphPartialExportService(entity_registry).export(refs, org_id=nodes[0].graph.org_id)
+    result = GraphPartialExportService(entity_registry).export(
+        refs, org_id=nodes[0].graph.org_id, policy=UNRESTRICTED_EXPORT_POLICY
+    )
     assert not result.has_errors, result.errors
     return result.data
 
 
 def _partial_import(export_data, graph):
-    PartialImportService(entity_registry).import_data(
-        export_data=export_data, graph=graph, org_id=graph.org_id
+    """Return the pasted nodes as {node_name: node} from the unsaved content."""
+    content = (
+        PartialImportService(entity_registry)
+        .import_data(export_data=export_data, graph=graph, org_id=graph.org_id)
+        .content
     )
+    return {
+        node["node_name"]: node
+        for node in [*content["agent_node_list"], *content["python_node_list"]]
+    }
 
 
 @pytest.fixture
@@ -206,17 +219,21 @@ class TestFullImportRenumbersInSourceOrder:
 
 @pytest.mark.django_db
 class TestPartialImportNumbersAboveTheTargetsCounter:
-    def test_pasted_nodes_count_up_from_the_counter_in_source_order(self, acme):
+    def test_pasted_nodes_count_up_from_the_counter_without_advancing_it(self, acme):
         source = _flow(acme, "Source")
         python_node = _python_node(source, "Python", 5)
         agent_node = _agent_node(source, "Agent", 2)
         target = _flow(acme, "Target")
         NodeNumberService().raise_to(target.id, 10)
 
-        _partial_import(_partial_export([python_node, agent_node]), target)
+        pasted = _partial_import(_partial_export([python_node, agent_node]), target)
 
-        assert _numbers_by_name(target) == {"Agent": 11, "Python": 12}
-        assert target.node_number_seq == 12
+        assert {name: node["node_number"] for name, node in pasted.items()} == {
+            "Agent": 11,
+            "Python": 12,
+        }
+        assert _numbers_by_name(target) == {}
+        assert target.node_number_seq == 10
 
     def test_legacy_file_without_node_number_has_its_badge_names_cleaned(self, acme):
         source = _flow(acme, "Source")
@@ -230,11 +247,14 @@ class TestPartialImportNumbersAboveTheTargetsCounter:
                 node["metadata"] = {**(node.get("metadata") or {}), "nodeNumber": number}
         target = _flow(acme, "Target")
 
-        _partial_import(legacy, target)
+        pasted = _partial_import(legacy, target)
 
-        assert _numbers_by_name(target) == {"Agent": 1, "Python": 2}
-        python_metadata = target.python_node_list.values_list("metadata", flat=True).get()
-        assert "nodeNumber" not in (python_metadata or {})
+        assert {name: node["node_number"] for name, node in pasted.items()} == {
+            "Agent": 1,
+            "Python": 2,
+        }
+        assert "nodeNumber" not in (pasted["Python"]["metadata"] or {})
+        assert _numbers_by_name(target) == {}
 
 
 @pytest.mark.django_db

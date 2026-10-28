@@ -317,6 +317,22 @@ describe('buildFlowDiff', () => {
         ]);
     });
 
+    // The fixture's Python node is a version saved before venvs: it has libraries and no venv, which reads as no venv.
+    it.each([
+        {
+            canvasVenv: 5,
+            fields: [expect.objectContaining({ path: 'python_code.venv_id', current: 5, version: null })],
+        },
+        { canvasVenv: null, fields: [] },
+    ])('compares the venv of a Python node: canvas venv $canvasVenv', ({ canvasVenv, fields }) => {
+        const liveFlow = updateNode(loadLive(), NodeType.PYTHON, (node) => ({
+            ...node,
+            data: { ...node.data, venv_id: canvasVenv },
+        }));
+
+        expect(entryOf(diffVersion(snapshot, { liveFlow }), UUID.python).fields).toEqual(fields);
+    });
+
     it('shows what a restore does: version-only nodes and edges are added, canvas-only ones deleted', () => {
         // The version has a node and an edge the canvas lacks; the canvas has the note and an edge the version lacks.
         const withoutNote = withoutNode(loadLive(), UUID.note);

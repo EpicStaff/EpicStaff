@@ -30,7 +30,7 @@ import { EMPTY, of } from 'rxjs';
 
 import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
 import { USE_PERMISSION_REQUIRED_TITLE } from '../../features/flows/services/flow-use-permission-refusal.service';
-import { PermissionsService } from '../../services/auth/permissions.service';
+import { PermissionRequirement, PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';
 import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classification-decision-table-node-panel/cdt.constants';
@@ -44,6 +44,7 @@ import {
     generatePortsForNode,
 } from '../core/helpers/helpers';
 import { subgraphNodeRequest } from '../core/helpers/subgraph-flows.util';
+import { AgentNodeTaskWrite } from '../core/models/agent-node.model';
 import { ConnectionModel } from '../core/models/connection.model';
 import { ConditionGroup } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
@@ -66,8 +67,22 @@ import { EdgeDiffStatus, FlowDiffCanvasState } from '../utils/diff';
 import { createStartNode } from '../utils/load';
 import { mapGraphDtoToFlowModel } from '../utils/load/map-graph-dto-to-flow-model';
 import { mapDecisionTableNodeToModel } from '../utils/load/nodes/decision-table-node.mapper';
-import { cloneFlowState, getNodeDiff, hasTriggerNodeWrites } from '../utils/save';
-import { liveDecisionTable, liveGraph, liveNote, liveStart } from '../utils/testing/live-graph.fixture';
+import {
+    buildBulkSavePayload,
+    buildUuidToBackendIdMap,
+    cloneFlowState,
+    getConnectionDiff,
+    getNodeDiff,
+    hasTriggerNodeWrites,
+} from '../utils/save';
+import {
+    liveAgent,
+    liveDecisionTable,
+    liveGraph,
+    liveNote,
+    livePython,
+    liveStart,
+} from '../utils/testing/live-graph.fixture';
 import {
     FLOW_ACTIONS_WITH_USE,
     FLOW_ACTIONS_WITHOUT_USE,
@@ -154,6 +169,8 @@ function mount(
                 useValue: {
                     can: (_resource: unknown, action: ActionCode) =>
                         action === ActionCode.Use ? canRunFlows : canUpdateFlows,
+                    meets: (requirement: PermissionRequirement) =>
+                        requirement.anyOf.some((action) => (action === ActionCode.Use ? canRunFlows : canUpdateFlows)),
                 },
             },
             { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
@@ -950,6 +967,253 @@ describe('FlowGraphComponent', () => {
         });
     });
 
+    describe('moving the selected nodes with the arrow keys', () => {
+        let fixture: ComponentFixture<FlowGraphComponent>;
+        let canvas: { transform: { position: { x: number; y: number } } };
+
+        function setUp(options: { canUpdateFlows?: boolean; canRunFlows?: boolean; withTrigger?: boolean } = {}): void {
+            fixture = mount(
+                false,
+                {
+                    nodes: [createStartNode(), noteNode(), ...(options.withTrigger ? [scheduleTriggerNode()] : [])],
+                    connections: [],
+                },
+                undefined,
+                options.canUpdateFlows ?? true,
+                options.canRunFlows ?? true
+            );
+            const fake = {
+                transform: { position: { x: 100, y: 100 }, scaledPosition: { x: 0, y: 0 }, scale: 1 },
+                getPosition(): { x: number; y: number } {
+                    return fake.transform.position;
+                },
+                redraw: (): void => undefined,
+                emitCanvasChangeEvent: (): void => undefined,
+            };
+            canvas = fake;
+            fixture.componentInstance['fCanvasComponent'] = fake as unknown as FlowGraphComponent['fCanvasComponent'];
+        }
+
+        function select(...nodeIds: string[]): void {
+            fixture.componentInstance['selectionManager'].selectedNodeIds.set(nodeIds);
+        }
+
+        function press(init: KeyboardEventInit): KeyboardEvent {
+            const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+            document.body.dispatchEvent(event);
+            return event;
+        }
+
+        function notePosition(): { x: number; y: number } | undefined {
+            return fixture.debugElement.injector
+                .get(FlowService)
+                .nodes()
+                .find((node) => node.id === 'note-1')?.position;
+        }
+
+        it.each([
+            ['ArrowRight', {}, { x: 220, y: 0 }],
+            ['ArrowLeft', {}, { x: 180, y: 0 }],
+            ['ArrowDown', {}, { x: 200, y: 20 }],
+            ['ArrowUp', {}, { x: 200, y: -20 }],
+            ['ArrowRight', { shiftKey: true }, { x: 400, y: 0 }],
+            ['ArrowUp', { shiftKey: true }, { x: 200, y: -200 }],
+        ] as const)('moves a selected node one dot on %s, ten with Shift %o', (key, modifiers, expected) => {
+            setUp();
+            select('note-1');
+
+            const event = press({ code: key, key, ...modifiers });
+
+            expect(notePosition()).toEqual(expected);
+            expect(canvas.transform.position).toEqual({ x: 100, y: 100 });
+            expect(event.defaultPrevented).toBe(true);
+        });
+
+        it('moves every selected node together', () => {
+            setUp();
+            const flowService = fixture.debugElement.injector.get(FlowService);
+            const startNode = () => flowService.nodes().find((node) => node.type === NodeType.START)!;
+            const startBefore = startNode().position;
+            select(startNode().id, 'note-1');
+
+            press({ code: 'ArrowDown', key: 'ArrowDown' });
+
+            expect(notePosition()).toEqual({ x: 200, y: 20 });
+            expect(startNode().position.y).toBe(startBefore.y + 20);
+        });
+
+        it('makes one undo step per key press, however long the key is held', () => {
+            setUp();
+            select('note-1');
+            const stateChanged = vi.spyOn(TestBed.inject(UndoRedoService), 'stateChanged');
+
+            press({ code: 'ArrowRight', key: 'ArrowRight' });
+            press({ code: 'ArrowRight', key: 'ArrowRight', repeat: true });
+            press({ code: 'ArrowRight', key: 'ArrowRight', repeat: true });
+            press({ code: 'ArrowRight', key: 'ArrowRight' });
+
+            expect(notePosition()).toEqual({ x: 280, y: 0 });
+            expect(stateChanged).toHaveBeenCalledTimes(2);
+        });
+
+        it('pans the canvas as before when nothing is selected, and Shift + arrow does nothing', () => {
+            setUp();
+
+            press({ code: 'ArrowRight', key: 'ArrowRight' });
+            const shifted = press({ code: 'ArrowRight', key: 'ArrowRight', shiftKey: true });
+
+            expect(canvas.transform.position).toEqual({ x: 60, y: 100 });
+            expect(notePosition()).toEqual({ x: 200, y: 0 });
+            expect(shifted.defaultPrevented).toBe(false);
+        });
+
+        it('still pans fast with Ctrl + arrow while a node is selected', () => {
+            setUp();
+            select('note-1');
+
+            press({ code: 'ArrowRight', key: 'ArrowRight', ctrlKey: true });
+
+            expect(canvas.transform.position).toEqual({ x: -100, y: 100 });
+            expect(notePosition()).toEqual({ x: 200, y: 0 });
+        });
+
+        it('says why and moves nothing in a read-only flow', () => {
+            setUp({ canUpdateFlows: false });
+            select('note-1');
+            const notifyBlocked = vi
+                .spyOn(fixture.debugElement.injector.get(FlowReadOnlyService), 'notifyBlocked')
+                .mockImplementation(() => undefined);
+
+            press({ code: 'ArrowRight', key: 'ArrowRight' });
+
+            expect(notePosition()).toEqual({ x: 200, y: 0 });
+            expect(notifyBlocked).toHaveBeenCalled();
+        });
+
+        it('moves the nodes it can and says why the others stay, once per key press', () => {
+            setUp({ canRunFlows: false, withTrigger: true });
+            select('note-1', 'schedule-1');
+            const flowService = fixture.debugElement.injector.get(FlowService);
+            const notifyNodeTypeBlocked = vi
+                .spyOn(fixture.debugElement.injector.get(FlowReadOnlyService), 'notifyNodeTypeBlocked')
+                .mockImplementation(() => undefined);
+
+            press({ code: 'ArrowRight', key: 'ArrowRight' });
+            press({ code: 'ArrowRight', key: 'ArrowRight', repeat: true });
+
+            expect(notePosition()).toEqual({ x: 240, y: 0 });
+            expect(flowService.nodes().find((node) => node.id === 'schedule-1')?.position).toEqual({ x: 0, y: 400 });
+            expect(notifyNodeTypeBlocked).toHaveBeenCalledOnce();
+            expect(notifyNodeTypeBlocked).toHaveBeenCalledWith(NodeType.SCHEDULE_TRIGGER);
+        });
+
+        describe('when the node reaches the edge of the visible canvas', () => {
+            // jsdom has no layout: give the canvas a 520 x 400 box at the window's top left.
+            function layOutCanvas(): void {
+                const flowHost = fixture.nativeElement.querySelector('f-flow') as HTMLElement;
+                vi.spyOn(flowHost, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 520, 400));
+            }
+
+            it('scrolls the canvas by as much as the node went past the edge', () => {
+                setUp();
+                layOutCanvas();
+                select('note-1');
+                canvas.transform.position = { x: -100, y: 100 };
+
+                // The note spans 100..300 on screen; a Shift step right takes it to 300..500, 20px past the
+                // limit (40px from the 520px edge), so the canvas moves 20px left.
+                press({ code: 'ArrowRight', key: 'ArrowRight', shiftKey: true });
+
+                expect(notePosition()).toEqual({ x: 400, y: 0 });
+                expect(canvas.transform.position).toEqual({ x: -120, y: 100 });
+            });
+
+            it('scrolls no further than the step, so a node already off screen does not make the canvas jump', () => {
+                setUp();
+                layOutCanvas();
+                select('note-1');
+                canvas.transform.position = { x: -400, y: 100 };
+
+                // The note spans -200..0 on screen, far past the left limit; one step left scrolls one step.
+                press({ code: 'ArrowLeft', key: 'ArrowLeft' });
+
+                expect(notePosition()).toEqual({ x: 180, y: 0 });
+                expect(canvas.transform.position).toEqual({ x: -380, y: 100 });
+            });
+
+            it('treats the open side panel as the right edge', () => {
+                setUp();
+                layOutCanvas();
+                select('note-1');
+                canvas.transform.position = { x: -100, y: 100 };
+                fixture.componentInstance['nodePanelShell'] = {
+                    panelLeftEdge: () => 400,
+                } as unknown as FlowGraphComponent['nodePanelShell'];
+
+                // The panel starts at 400, so the limit is 360; the Shift step to 300..500 is 140px past it.
+                press({ code: 'ArrowRight', key: 'ArrowRight', shiftKey: true });
+
+                expect(canvas.transform.position).toEqual({ x: -240, y: 100 });
+            });
+
+            it('leaves the canvas still while the node stays inside', () => {
+                setUp();
+                layOutCanvas();
+                select('note-1');
+
+                press({ code: 'ArrowDown', key: 'ArrowDown' });
+
+                expect(notePosition()).toEqual({ x: 200, y: 20 });
+                expect(canvas.transform.position).toEqual({ x: 100, y: 100 });
+            });
+
+            it('follows a long Shift step past the top edge', () => {
+                setUp();
+                layOutCanvas();
+                select('note-1');
+
+                // The note's top moves from 100 to -100 on screen; the top limit is 40.
+                press({ code: 'ArrowUp', key: 'ArrowUp', shiftKey: true });
+
+                expect(notePosition()).toEqual({ x: 200, y: -200 });
+                expect(canvas.transform.position).toEqual({ x: 100, y: 240 });
+            });
+        });
+
+        it('moves nothing while a dialog is open', () => {
+            setUp();
+            select('note-1');
+            (TestBed.inject(Dialog).openDialogs as unknown[]).push({});
+
+            press({ code: 'ArrowRight', key: 'ArrowRight', shiftKey: true });
+            press({ code: 'ArrowRight', key: 'ArrowRight' });
+
+            expect(notePosition()).toEqual({ x: 200, y: 0 });
+        });
+    });
+
+    describe('showing a node picked in the node search', () => {
+        it.each([
+            ['brings a zoomed-out canvas back to 100% around the node', 0.5, 'resetScaleAndCenterGroupOrNode'],
+            ['only centres the node at 100% or closer', 1, 'centerGroupOrNode'],
+        ] as const)('%s', (_case, scale, expectedCall) => {
+            const fixture = mount(false, { nodes: [createStartNode(), noteNode()], connections: [] });
+            const canvas = {
+                getScale: () => scale,
+                resetScaleAndCenterGroupOrNode: vi.fn(),
+                centerGroupOrNode: vi.fn(),
+            };
+            fixture.componentInstance['fCanvasComponent'] = canvas as unknown as FlowGraphComponent['fCanvasComponent'];
+
+            fixture.componentInstance.onZoomInNode(noteNode());
+
+            expect(canvas[expectedCall]).toHaveBeenCalledWith('note-1', true);
+            const otherCall =
+                expectedCall === 'centerGroupOrNode' ? 'resetScaleAndCenterGroupOrNode' : 'centerGroupOrNode';
+            expect(canvas[otherCall]).not.toHaveBeenCalled();
+        });
+    });
+
     describe('viewport', () => {
         function fakeCanvas(): {
             transform: { position: { x: number; y: number }; scaledPosition: { x: number; y: number }; scale: number };
@@ -1460,7 +1724,7 @@ describe('FlowGraphComponent', () => {
                 ]);
                 const before = cloneFlowState(flowService.getFlowState());
                 expect(autoArrangeButton().disabled).toBe(false);
-                expect(autoArrangeButton().title).toBe('Auto arrange');
+                expect(autoArrangeButton().getAttribute('aria-label')).toBe('Auto arrange');
 
                 autoArrange();
 
@@ -1569,14 +1833,65 @@ describe('FlowGraphComponent', () => {
                 return TestBed.inject(HttpTestingController);
             }
 
+            let success: ReturnType<typeof vi.spyOn>;
+            const agentTask = { instructions: '', output_schema: {} };
+
+            // What the backend returns: rows it rolled back, so every id below is new to the flow.
+            const importedContent = {
+                python_node_list: [
+                    { ...livePython, id: 1982, node_number: 1, node_name: 'A', metadata: { position: { x: 0, y: 0 } } },
+                    {
+                        ...livePython,
+                        id: 1983,
+                        node_number: 2,
+                        node_name: 'B',
+                        metadata: { position: { x: 300, y: 50 } },
+                    },
+                ],
+                agent_node_list: [
+                    {
+                        ...liveAgent,
+                        id: 1984,
+                        node_number: 3,
+                        metadata: { position: { x: 600, y: 0 } },
+                        tasks: [
+                            { ...agentTask, id: 900, name: 'Draft', order: 0, context_tasks: [] },
+                            { ...agentTask, id: 901, name: 'Review', order: 1, context_tasks: [900] },
+                        ],
+                    },
+                ],
+                edge_list: [{ id: 2, graph: 3, start_node_id: 1982, end_node_id: 1983, metadata: {} }],
+            };
+
+            /**
+             * Imports `importedContent` into a flow whose note is unsaved; returns the flow from before.
+             * `beforeResponse` runs while the request is in flight.
+             */
+            async function importNodes(beforeResponse: () => void = () => undefined): Promise<FlowModel> {
+                mountCanvas(FLOW_ACTIONS_WITH_USE);
+                success = vi.spyOn(TestBed.inject(ToastService), 'success').mockImplementation(() => undefined);
+                flowService.setNodeNumberFloor(20);
+                const before = flowService.getFlowState();
+
+                const http = importFile();
+                beforeResponse();
+                http.expectOne((request) => request.url.endsWith('graphs/3/partial-import/')).flush({
+                    content: importedContent,
+                    summary: {},
+                });
+                // The import selects the new nodes and fits the canvas once they are on it.
+                await new Promise((resolve) => setTimeout(resolve, 0));
+                http.verify();
+                return before;
+            }
+
             it('explains the refusal of a file with trigger nodes to a user without Flows:Use, importing nothing', () => {
-                const component = mountCanvas(FLOW_ACTIONS_WITHOUT_USE);
+                mountCanvas(FLOW_ACTIONS_WITHOUT_USE);
+                const nodesBefore = flowService.nodes();
                 const confirm = vi
                     .spyOn(TestBed.inject(ConfirmationDialogService), 'confirm')
                     .mockReturnValue(of('close'));
                 const error = vi.spyOn(TestBed.inject(ToastService), 'error').mockImplementation(() => undefined);
-                const importComplete = vi.fn();
-                component.importComplete.subscribe(importComplete);
 
                 importFile()
                     .expectOne(
@@ -1592,20 +1907,69 @@ describe('FlowGraphComponent', () => {
 
                 expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ title: USE_PERMISSION_REQUIRED_TITLE }));
                 expect(error).not.toHaveBeenCalled();
-                expect(importComplete).not.toHaveBeenCalled();
+                expect(flowService.nodes()).toBe(nodesBefore);
             });
 
-            it('imports a file the backend accepts', () => {
-                const component = mountCanvas(FLOW_ACTIONS_WITH_USE);
-                vi.spyOn(TestBed.inject(ToastService), 'success').mockImplementation(() => undefined);
-                const importComplete = vi.fn();
-                component.importComplete.subscribe(importComplete);
+            it('adds the nodes unsaved, like a paste, right of the flow, without reloading it or needing it saved', async () => {
+                const before = await importNodes();
 
-                importFile()
-                    .expectOne((request) => request.url.endsWith('graphs/3/partial-import/'))
-                    .flush({});
+                const existingIds = new Set(before.nodes.map((node) => node.id));
+                const imported = flowService.nodes().filter((node) => !existingIds.has(node.id));
+                const maxRightEdge = Math.max(...before.nodes.map((node) => node.position.x + node.size.width));
+                expect(imported.map((node) => [node.node_name, node.backendId, node.nodeNumber])).toEqual([
+                    ['A', null, 21],
+                    ['B', null, 22],
+                    [liveAgent.node_name, null, 23],
+                ]);
+                for (const node of imported) {
+                    expect(node.position.x).toBeGreaterThan(maxRightEdge);
+                }
+                const [nodeA, nodeB] = imported;
+                expect(flowService.connections()).toEqual([
+                    expect.objectContaining({ sourceNodeId: nodeA.id, targetNodeId: nodeB.id }),
+                ]);
+                expect(success).toHaveBeenCalledWith('Import successful', 3000, 'bottom-right');
+            });
 
-                expect(importComplete).toHaveBeenCalledTimes(1);
+            it('discards a response that arrives once the editor is locked, saying so', async () => {
+                const before = await importNodes(() => fixture.componentRef.setInput('isSaving', true));
+
+                expect(flowService.nodes()).toEqual(before.nodes);
+                expect(warning).toHaveBeenCalledWith(
+                    'Import discarded: the editor was busy. Try again.',
+                    4000,
+                    'bottom-right'
+                );
+                expect(success).not.toHaveBeenCalled();
+            });
+
+            it('sends the imported nodes, their edge and agent tasks as new rows on the next flow save', async () => {
+                const before = await importNodes();
+
+                const current = flowService.getFlowState();
+                const idMap = buildUuidToBackendIdMap(current.nodes);
+                const payload = buildBulkSavePayload(
+                    3,
+                    getNodeDiff(before, current),
+                    getConnectionDiff(before, current, idMap),
+                    current,
+                    idMap,
+                    1
+                );
+
+                const [nodeA, nodeB] = flowService.nodes().filter((node) => node.type === NodeType.PYTHON);
+                expect(payload['python_node_list']).toEqual([
+                    expect.objectContaining({ id: null, temp_id: nodeA.id }),
+                    expect.objectContaining({ id: null, temp_id: nodeB.id }),
+                ]);
+                expect(payload['edge_list']).toEqual([{ graph: 3, start_temp_id: nodeA.id, end_temp_id: nodeB.id }]);
+                // The task ids were rows the backend rolled back: the context goes by temp id instead.
+                const [agent] = payload['agent_node_list'] as { tasks: AgentNodeTaskWrite[] }[];
+                const [draft, review] = agent.tasks;
+                expect(agent.tasks.map((task) => task.id)).toEqual([undefined, undefined]);
+                expect(review).toEqual(
+                    expect.objectContaining({ context_task_ids: [], context_task_temp_ids: [draft.temp_id] })
+                );
             });
         });
     });

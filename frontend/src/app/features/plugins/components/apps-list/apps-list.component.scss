@@ -1,0 +1,138 @@
+// A column whose list scrolls when the owner caps its height (the popover does).
+:host {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+// Indented under its row and set off by a line, so the apps read as that row's children.
+:host(.apps-list--inline) {
+    margin: 0 0 var(--space-xs) 1.1875rem; // the line sits under the row icon's centre
+    padding-left: var(--space-sm);
+    border-left: 1px solid var(--color-divider-subtle);
+}
+
+.apps-list__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-md) var(--space-sm);
+}
+
+.apps-list__heading {
+    flex-shrink: 0;
+    color: var(--color-text-primary);
+}
+
+.apps-list__organization {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--color-text-secondary);
+}
+
+.apps-list__search {
+    padding: 0 var(--space-md) var(--space-sm);
+}
+
+.apps-list__items {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    overflow-y: auto;
+
+    :host(.apps-list--inline) & {
+        padding: 0;
+    }
+}
+
+.apps-list__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm);
+    border-radius: 8px;
+    color: var(--color-text-primary);
+    text-decoration: none;
+    transition: background-color 0.2s ease-out;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &--current {
+        background-color: var(--color-ghost-btn-active);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+}
+
+.apps-list__text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.apps-list__name {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    min-width: 0;
+}
+
+.apps-list__name-text,
+.apps-list__description {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.apps-list__description {
+    color: var(--color-text-secondary);
+}
+
+// The same green as the dot on the Apps row; dark text in both themes, as the fill does not change with the theme.
+.apps-list__new {
+    flex-shrink: 0;
+    padding: 0 5px;
+    border-radius: 4px;
+    background-color: var(--success-color);
+    color: var(--color-text-on-bright);
+    font-size: var(--text-caption-size);
+    font-weight: var(--text-caption-weight);
+    line-height: var(--text-caption-line-height);
+}
+
+.apps-list__check {
+    color: var(--accent-color);
+}
+
+.apps-list__empty {
+    padding: 10px var(--space-sm);
+    color: var(--color-text-secondary);
+}
+
+// Whatever the owner projects under the list; nothing at all when it projects nothing.
+.apps-list__footer {
+    padding: 4px;
+    border-top: 1px solid var(--color-divider-subtle);
+
+    &:empty {
+        display: none;
+    }
+
+    :host(.apps-list--inline) & {
+        padding: 0;
+        border-top: 0;
+    }
+}

@@ -20,6 +20,15 @@ x-storage-env: &storage-env
   STORAGE_PORT: ${STORAGE_PORT:?}
   STORAGE_BUCKET: ${STORAGE_BUCKET:?}
 
+x-retention-env: &retention-env
+  RETENTION_SESSIONS_DAYS: ${RETENTION_SESSIONS_DAYS:?}
+  RETENTION_SESSION_MAX_DAYS: ${RETENTION_SESSION_MAX_DAYS:?}
+  RETENTION_CONVERSATIONS_DAYS: ${RETENTION_CONVERSATIONS_DAYS:?}
+  RETENTION_CONVERSATION_MAX_DAYS: ${RETENTION_CONVERSATION_MAX_DAYS:?}
+  RETENTION_AUDIT_DAYS: ${RETENTION_AUDIT_DAYS:?}
+  RETENTION_AUDIT_MAX_DAYS: ${RETENTION_AUDIT_MAX_DAYS:?}
+  RETENTION_AUDIT_MIN_DAYS: ${RETENTION_AUDIT_MIN_DAYS:?}
+
 x-communication-env: &communication-env
   CODE_RESULT_CHANNEL: ${CODE_RESULT_CHANNEL:?}
   CODE_EXEC_CHANNEL: ${CODE_EXEC_CHANNEL:?}
@@ -41,6 +50,15 @@ x-communication-env: &communication-env
   REALTIME_AGENTS_SCHEMA_CHANNEL: ${REALTIME_AGENTS_SCHEMA_CHANNEL:?}
   REALTIME_CHANNELS_INVALIDATE_CHANNEL: ${REALTIME_CHANNELS_INVALIDATE_CHANNEL:?}
   KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
+
+# Bounded container logs (50 MB at most), for services a plugin can make log at will: a plugin's
+# flood of requests writes a line per request to plugins_egress's log, and its failing queries
+# to plugins_db's.
+x-bounded-logs: &bounded-logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
 
 #x-communication-env: &communication_env
 #  COMMUNICATION_BROKER_USER: ${COMMUNICATION_BROKER_USER}
@@ -68,7 +86,7 @@ services:
     hostname: django_app
     command: ./entrypoint.sh
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *retention-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DB_USER: ${DB_USER:?}
@@ -82,6 +100,7 @@ services:
       DJANGO_DB_POOL_TIMEOUT: ${DJANGO_DB_POOL_TIMEOUT:?}
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:?}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?}
+      AVATAR_URL_SIGNING_SECRET: ${AVATAR_URL_SIGNING_SECRET:?}
       DJANGO_DEBUG: ${DJANGO_DEBUG:?}
       DJANGO_RECYCLE_BIN_RETENTION_DAYS: ${DJANGO_RECYCLE_BIN_RETENTION_DAYS:?}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?}
@@ -142,13 +161,43 @@ services:
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
 
+      SANDBOX_HOST: ${SANDBOX_HOST:?}
+      SANDBOX_PORT: ${SANDBOX_PORT:?}
+      SANDBOX_CLIENT_TIMEOUT: ${SANDBOX_CLIENT_TIMEOUT:?}
+
       AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
       AUDITOR_URL: ${AUDITOR_URL:?}
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       AUDIT_TOKEN_TTL_SECONDS: ${AUDIT_TOKEN_TTL_SECONDS:?}
       AUDIT_JWT_SECRET: ${AUDIT_JWT_SECRET:?}
+
+      PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
+      PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
+      PLUGINS_TRUSTED_SIGNING_KEYS: ${PLUGINS_TRUSTED_SIGNING_KEYS:?}
+      PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
+      PLUGINS_GRACE_PERIOD_DAYS: ${PLUGINS_GRACE_PERIOD_DAYS:?}
+      PLUGINS_STORAGE_BUCKET: ${PLUGINS_STORAGE_BUCKET:?}
+      PLUGINS_GATEWAY_SECRET: ${PLUGINS_GATEWAY_SECRET:?}
+      PLUGINS_NODE_NAME: ${PLUGINS_NODE_NAME:?}
+      PLUGINS_NODE_KEY: ${PLUGINS_NODE_KEY:?}
+      PLUGINS_NODE_UID_RANGE: ${PLUGINS_NODE_UID_RANGE:?}
+      PLUGINS_INTERNAL_API_URL: ${PLUGINS_INTERNAL_API_URL:?}
+      PLUGINS_MAX_PROCESS_MEMORY_MB: ${PLUGINS_MAX_PROCESS_MEMORY_MB:?}
+      PLUGINS_MAX_DB_CONNECTIONS: ${PLUGINS_MAX_DB_CONNECTIONS:?}
+      PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS: ${PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS:?}
+      PLUGINS_MAX_REQUESTS_PER_MINUTE: ${PLUGINS_MAX_REQUESTS_PER_MINUTE:?}
+      PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE: ${PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE:?}
+      PLUGINS_MAX_REQUEST_BODY_MB: ${PLUGINS_MAX_REQUEST_BODY_MB:?}
+      # Plugin development mode, for a deployment on your own machine only (django_app refuses to
+      # start with it elsewhere, and without docker-compose.plugins-dev.yaml, which alone sets
+      # PLUGINS_DEV_LOOPBACK_ONLY). The address development backends use is published only by
+      # that file.
+      PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
+      PLUGINS_DEV_API_PORT: ${PLUGINS_DEV_API_PORT:?}
     volumes:
       - media_data:/app/media
+      # Approved plugins' SPA files, published here and served by epicstaff-nginx (read-only).
+      - plugin_spa:/srv/plugin-spa
     networks:
       backend-network:
         aliases:
@@ -160,6 +209,8 @@ services:
       redis:
         condition: service_healthy
       storage:
+        condition: service_healthy
+      sandbox_new:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${DJANGO_PORT:?}/ht/')\""]
@@ -192,6 +243,9 @@ services:
       REALTIME_DB_PASSWORD: ${REALTIME_DB_PASSWORD:?}
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
+      SANDBOX_HOST: ${SANDBOX_HOST:?}
+      SANDBOX_PORT: ${SANDBOX_PORT:?}
+      REALTIME_SANDBOX_TIMEOUT: ${REALTIME_SANDBOX_TIMEOUT:?}
     networks:
       - backend-network
     depends_on:
@@ -203,6 +257,8 @@ services:
 #        condition: service_started
       django_app:
         condition: service_healthy
+      sandbox_new:
+        condition: service_started
 
   manager:
     restart: unless-stopped
@@ -212,13 +268,16 @@ services:
       dockerfile: ./manager/Dockerfile.man
     container_name: manager_container
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env, *retention-env]
       MANAGER_DB_USER: ${MANAGER_DB_USER:?}
       MANAGER_DB_PASSWORD: ${MANAGER_DB_PASSWORD:?}
       MANAGER_LOG_LEVEL: ${MANAGER_LOG_LEVEL:?}
       AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:?}
       AUDITOR_EXPORT_DATA_DIR: ${AUDITOR_EXPORT_DATA_DIR:?}
       AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS: ${AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS:?}
+      CHAT_ENABLED: ${CHAT_ENABLED:?}
+      CHAT_UPSTREAM_URL: ${CHAT_UPSTREAM_URL:?}
+      CHAT_INTERNAL_API_KEY: ${CHAT_INTERNAL_API_KEY:?}
     networks:
       - backend-network
     volumes:
@@ -260,6 +319,9 @@ services:
       KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
       REALTIME_DB_USER: ${REALTIME_DB_USER:?}
       REALTIME_DB_PASSWORD: ${REALTIME_DB_PASSWORD:?}
+      SANDBOX_DB_USER: ${SANDBOX_DB_USER:?}
+      SANDBOX_DB_PASSWORD: ${SANDBOX_DB_PASSWORD:?}
+      SANDBOX_DB_SCHEMA: ${SANDBOX_DB_SCHEMA:?}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
     volumes:
@@ -334,6 +396,9 @@ services:
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DJANGO_API_KEY: ${DJANGO_API_KEY:?}
+      SANDBOX_HOST: ${SANDBOX_HOST:?}
+      SANDBOX_PORT: ${SANDBOX_PORT:?}
+      CREW_SANDBOX_TIMEOUT: ${CREW_SANDBOX_TIMEOUT:?}
     networks:
       - backend-network
     tty: true
@@ -341,72 +406,73 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      sandbox:
+      sandbox_new:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  sandbox:
-    restart: unless-stopped
-    image: ghcr.io/epicstaff/sandbox:${IMAGE_TAG:?}
-    build:
-      context: .
-      dockerfile: ./sandbox/Dockerfile.sandbox
-    container_name: sandbox
-    init: true
-    environment:
-      # Deliberately no *storage-env here: sandbox must never hold the admin
-      # STORAGE_USER/STORAGE_PASSWORD credential. Only the non-secret
-      # endpoint/bucket connection details are passed explicitly below;
-      # per-execution credentials arrive inside the task payload, already
-      # minted and scoped by django_app.
-      <<: [*docker-env, *redis-env, *communication-env]
-      CONTAINER_SAVEFILES_PATH: ${CONTAINER_SAVEFILES_PATH:?}
-      SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
-      SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
-      SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
-      SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:?}
-      SANDBOX_REQUIRE_SIGNAL_ISOLATION: ${SANDBOX_REQUIRE_SIGNAL_ISOLATION:?}
-      SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
-      SANDBOX_BLOCK_PRIVATE_NETWORK: ${SANDBOX_BLOCK_PRIVATE_NETWORK:?}
-      SANDBOX_MAX_EXECUTION_TIMEOUT: ${SANDBOX_MAX_EXECUTION_TIMEOUT:?}
-      SANDBOX_DEFAULT_EXECUTION_TIMEOUT: ${SANDBOX_DEFAULT_EXECUTION_TIMEOUT:?}
-      SANDBOX_LOG_LEVEL: ${SANDBOX_LOG_LEVEL:?}
-      STORAGE_HOST: ${STORAGE_HOST:?}
-      STORAGE_PORT: ${STORAGE_PORT:?}
-      STORAGE_SSL: ${STORAGE_SSL:?}
-      STORAGE_BUCKET: ${STORAGE_BUCKET:?}
-    volumes:
-      - sandbox_venvs:${SANDBOX_BASE_VENV_PATH:?}
-      - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}
-    networks:
-      - sandbox-network
-    tty: true
-    stdin_open: true
-    mem_limit: "2g"
-    # Security hardening: drop all Linux capabilities except those the root
-    # parent process needs. pip/venv run as root (they install internal local
-    # packages from root-owned /app/src/shared/* source dirs where egg-info is
-    # written in-place, and sandboxuser cannot write there). Only the final
-    # code-execution subprocess is dropped to sandboxuser.
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - SETUID  # setuid/setgid before spawning the user-code child.
-      - SETGID
-      - CHOWN  # chown per-exec output and home dirs to sandboxuser.
-      - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
-      - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
-      - KILL  # signal the dropped-privilege user-code child's process group on execution timeout.
-      - NET_ADMIN  # install the per-uid egress firewall at startup. User code drops to sandboxuser and never holds it; root pip does (same accepted risk as pip itself).
-    depends_on:
-      redis:
-        condition: service_healthy
-      # The egress firewall resolves the storage IP once at startup for its carve-out.
-      storage:
-        condition: service_started
+  # The old sandbox is replaced by sandbox_new and is not started any more.
+  # Kept, commented out, until it is deleted; the body below is developer's
+  # current one, so uncommenting it would not hit a removed env var.
+  # sandbox:
+  #   restart: unless-stopped
+  #   image: ghcr.io/epicstaff/sandbox:${IMAGE_TAG:?}
+  #   build:
+  #     context: .
+  #     dockerfile: ./sandbox/Dockerfile.sandbox
+  #   container_name: sandbox
+  #   init: true
+  #   environment:
+  #     # Deliberately no *storage-env here: sandbox must never hold the admin
+  #     # STORAGE_USER/STORAGE_PASSWORD credential. Only the non-secret
+  #     # endpoint/bucket connection details are passed explicitly below;
+  #     # per-execution credentials arrive inside the task payload, already
+  #     # minted and scoped by django_app.
+  #     <<: [*docker-env, *redis-env, *communication-env]
+  #     SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
+  #     SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
+  #     SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
+  #     SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:?}
+  #     SANDBOX_REQUIRE_SIGNAL_ISOLATION: ${SANDBOX_REQUIRE_SIGNAL_ISOLATION:?}
+  #     SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
+  #     SANDBOX_BLOCK_PRIVATE_NETWORK: ${SANDBOX_BLOCK_PRIVATE_NETWORK:?}
+  #     SANDBOX_MAX_EXECUTION_TIMEOUT: ${SANDBOX_MAX_EXECUTION_TIMEOUT:?}
+  #     SANDBOX_DEFAULT_EXECUTION_TIMEOUT: ${SANDBOX_DEFAULT_EXECUTION_TIMEOUT:?}
+  #     SANDBOX_LOG_LEVEL: ${SANDBOX_LOG_LEVEL:?}
+  #     STORAGE_HOST: ${STORAGE_HOST:?}
+  #     STORAGE_PORT: ${STORAGE_PORT:?}
+  #     STORAGE_SSL: ${STORAGE_SSL:?}
+  #     STORAGE_BUCKET: ${STORAGE_BUCKET:?}
+  #   volumes:
+  #     - sandbox_venvs:${SANDBOX_BASE_VENV_PATH:?}
+  #   networks:
+  #     - sandbox-network
+  #   tty: true
+  #   stdin_open: true
+  #   mem_limit: "2g"
+  #   # Security hardening: drop all Linux capabilities except those the root
+  #   # parent process needs. pip/venv run as root (they install internal local
+  #   # packages from root-owned /app/src/shared/* source dirs where egg-info is
+  #   # written in-place, and sandboxuser cannot write there). Only the final
+  #   # code-execution subprocess is dropped to sandboxuser.
+  #   security_opt:
+  #     - no-new-privileges:true
+  #   cap_drop:
+  #     - ALL
+  #   cap_add:
+  #     - SETUID  # setuid/setgid before spawning the user-code child.
+  #     - SETGID
+  #     - CHOWN  # chown per-exec output and home dirs to sandboxuser.
+  #     - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
+  #     - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
+  #     - KILL  # signal the dropped-privilege user-code child's process group on execution timeout.
+  #     - NET_ADMIN  # install the per-uid egress firewall at startup. User code drops to sandboxuser and never holds it; root pip does (same accepted risk as pip itself).
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #     # The egress firewall resolves the storage IP once at startup for its carve-out.
+  #     storage:
+  #       condition: service_started
 
   storage:
     image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
@@ -437,12 +503,21 @@ services:
     depends_on:
       storage:
         condition: service_healthy
+    # The policy PUT replaces the bucket's whole policy: anonymous read of system/avatars/ only.
+    # storage publishes no port, so this only lets nginx read avatars without credentials
+    # inside the docker network; the gate for clients is nginx's avatar URL signature check.
     entrypoint: >
       /bin/sh -c "
       status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
       --aws-sigv4 'aws:amz:us-east-1:s3' --user '${STORAGE_USER:?}:${STORAGE_PASSWORD:?}'
       http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}) &&
-      case $$status in 200|409) echo 'Bucket ready.' ;; *) echo \"Bucket creation failed: HTTP $$status\" && exit 1 ;; esac
+      case $$status in 200|409) echo 'Bucket ready.' ;; *) echo \"Bucket creation failed: HTTP $$status\" && exit 1 ;; esac &&
+      status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
+      --aws-sigv4 'aws:amz:us-east-1:s3' --user '${STORAGE_USER:?}:${STORAGE_PASSWORD:?}'
+      -H 'Content-Type: application/json'
+      --data-binary '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::${STORAGE_BUCKET:?}/system/avatars/*\"]}]}'
+      'http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}?policy') &&
+      case $$status in 2??) echo 'Avatars are readable without credentials.' ;; *) echo \"Bucket policy failed: HTTP $$status\" && exit 1 ;; esac
       "
     restart: on-failure
 
@@ -461,6 +536,7 @@ services:
       CHAT_ENABLED: ${CHAT_ENABLED:?}
       CHAT_API_URL: ${CHAT_API_URL:?}
       AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
     networks:
       - frontend-network
 
@@ -508,6 +584,9 @@ services:
     environment:
       NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?}
       NGINX_SSL_MODE: ${NGINX_SSL_MODE:?}
+      NGINX_HSTS_ENABLED: ${NGINX_HSTS_ENABLED:?}
+      # The load balancer whose X-Forwarded-Proto nginx passes on, or none.
+      NGINX_TRUSTED_PROXIES: ${NGINX_TRUSTED_PROXIES:?}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       FRONTEND_HOST: ${FRONTEND_HOST:?}
@@ -520,14 +599,83 @@ services:
       AUDITOR_PORT: ${AUDITOR_PORT:?}
       CHAT_ENABLED: ${CHAT_ENABLED:?}
       CHAT_UPSTREAM_URL: ${CHAT_UPSTREAM_URL:?}
+      STORAGE_HOST: ${STORAGE_HOST:?}
+      STORAGE_PORT: ${STORAGE_PORT:?}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:?}
+      AVATAR_URL_SIGNING_SECRET: ${AVATAR_URL_SIGNING_SECRET:?}
+      PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
+      PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
+      PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
+      PLUGINS_MAX_REQUEST_BODY_MB: ${PLUGINS_MAX_REQUEST_BODY_MB:?}
+      # The plugins network's subnet: nginx denies it on 80/443 and allows only it on 8081.
+      PLUGINS_NETWORK_SUBNET: ${PLUGINS_NETWORK_SUBNET:?}
+      # Sent with every plugin gateway check (django_app answers a check without it with 404), and
+      # with every request of the internal API listener (plugin and node keys work only with it).
+      PLUGINS_GATEWAY_SECRET: ${PLUGINS_GATEWAY_SECRET:?}
+      # EpicStaff's public origin: the only page allowed to frame a plugin.
+      DJANGO_FRONTEND_BASE_URL: ${DJANGO_FRONTEND_BASE_URL:?}
+      # Plugin development mode: the plugin pages' development servers and the development API
+      # listener (8082). nginx refuses to start with it unless EpicStaff and the plugin domain use
+      # .localhost names and docker-compose.plugins-dev.yaml is in the command: that file publishes
+      # 80 and 443 on 127.0.0.1 only, publishes 8082, and alone sets PLUGINS_DEV_LOOPBACK_ONLY.
+      PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
-      - ./nginx/docker-entrypoint.d/15-normalize-chat-enabled.envsh:/docker-entrypoint.d/15-normalize-chat-enabled.envsh:ro
+      # Entrypoint hooks use the long syntax so a missing file stops `up` with an
+      # error naming it: the short syntax creates an empty folder in its place, and
+      # nginx silently skips anything that is not a file. Only the Linux engine
+      # enforces this; Docker Desktop on Windows still creates the folder.
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/15-normalize-chat-enabled.envsh
+        target: /docker-entrypoint.d/15-normalize-chat-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/16-check-ssl-mode.envsh
+        target: /docker-entrypoint.d/16-check-ssl-mode.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/16-normalize-plugins-enabled.envsh
+        target: /docker-entrypoint.d/16-normalize-plugins-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+        target: /docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/18-check-trusted-proxies.envsh
+        target: /docker-entrypoint.d/18-check-trusted-proxies.envsh
+        read_only: true
+        bind:
+          create_host_path: false
       - ./nginx/certs:/etc/nginx/certs:ro
       - media_data:/usr/share/nginx/html/media:ro
+      - plugin_spa:/srv/plugin-spa:ro
+      # The login callback pages every plugin host serves under /.well-known/epicstaff/, and the
+      # maintenance page it shows on its SPA paths while the plugin is being upgraded.
+      - ./nginx/plugin-platform:/usr/share/nginx/plugin-platform:ro
+    # Namespaced to this container, no privileges needed. Every proxied request opens a new
+    # upstream connection (no upstream keepalive is configured, and a proxy_pass through a
+    # variable, as plugin backends need, cannot have one). Without reuse, the sockets nginx closes
+    # wait in TIME_WAIT until the local ports to one busy upstream run out, and every request to
+    # it fails with a 502.
+    sysctls:
+      net.ipv4.tcp_tw_reuse: "1"
     networks:
-      - backend-network
-      - frontend-network
+      backend-network:
+      frontend-network:
+      # The internal API listener (port 8081) for the plugin node and plugin backends, which
+      # reach EpicStaff only this way: django_app is not on plugins-network.
+      plugins-network:
+        aliases:
+          - epicstaff-api
     depends_on:
       django_app:
         condition: service_healthy
@@ -535,6 +683,14 @@ services:
         condition: service_started
       realtime:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8081/nginx-health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      # Unhealthy about 90s after start: later than the 60s deploy.sh waits, so the deploy
+      # catches a crash-looping nginx (restarting), not one that runs but stops answering.
+      retries: 3
+      start_period: 10s
     restart: always
 
 
@@ -579,6 +735,9 @@ services:
       AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:?}
       AGENT_DROP_UNSUPPORTED_LLM_PARAMS: ${AGENT_DROP_UNSUPPORTED_LLM_PARAMS:?}
       AGENT_CONTEXT_WARNING_RATIO: ${AGENT_CONTEXT_WARNING_RATIO:?}
+      SANDBOX_HOST: ${SANDBOX_HOST:?}
+      SANDBOX_PORT: ${SANDBOX_PORT:?}
+      AGENT_SANDBOX_TIMEOUT: ${AGENT_SANDBOX_TIMEOUT:?}
       AGENT_MCP_DESCRIBE_CACHE_TTL: ${AGENT_MCP_DESCRIBE_CACHE_TTL:?}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT:?}
       GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT:?}
@@ -691,6 +850,7 @@ services:
       KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
       KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
       KNOWLEDGE_MAX_PROCESS_WORKERS: ${KNOWLEDGE_MAX_PROCESS_WORKERS:?}
+      KNOWLEDGE_PROCESS_TIMEOUT: ${KNOWLEDGE_PROCESS_TIMEOUT:?}
       KNOWLEDGE_STORAGE_BUCKET: ${KNOWLEDGE_STORAGE_BUCKET:?}
       KNOWLEDGE_TOKENIZER_PATH: ${KNOWLEDGE_TOKENIZER_PATH:?}
       KNOWLEDGE_CUSTOM_EMBED_BASE_URL: ${KNOWLEDGE_CUSTOM_EMBED_BASE_URL:?}
@@ -721,9 +881,11 @@ services:
       CHAT_DJANGO_HOST_HEADER: ${CHAT_DJANGO_HOST_HEADER:?}
       DJANGO_API_KEY: ${DJANGO_API_KEY:?}
       CHAT_PUBLIC_BASE_URL: ${CHAT_PUBLIC_BASE_URL:?}
+      CHAT_WIDGET_URL: ${CHAT_WIDGET_URL:?}
       CHAT_CALLBACK_URL: ${CHAT_CALLBACK_URL:?}
       CHAT_TRUSTED_PROXIES: ${CHAT_TRUSTED_PROXIES:?}
       CHAT_DJANGO_TIMEOUT: ${CHAT_DJANGO_TIMEOUT:?}
+      CHAT_INTERNAL_API_KEY: ${CHAT_INTERNAL_API_KEY:?}
       CHAT_IP_MESSAGE_RATE: ${CHAT_IP_MESSAGE_RATE:?}
       CHAT_IP_CONVERSATION_RATE: ${CHAT_IP_CONVERSATION_RATE:?}
       CHAT_RECONCILE_INTERVAL: ${CHAT_RECONCILE_INTERVAL:?}
@@ -745,6 +907,8 @@ services:
       CHAT_RESPONSE_TIME_MAX: ${CHAT_RESPONSE_TIME_MAX:?}
       CHAT_CLOSE_AFTER_DEFAULT: ${CHAT_CLOSE_AFTER_DEFAULT:?}
       CHAT_CLOSE_AFTER_MAX: ${CHAT_CLOSE_AFTER_MAX:?}
+      CHAT_ACTION_MAX_BYTES: ${CHAT_ACTION_MAX_BYTES:?}
+      CHAT_EXTRA_DATA_MAX_BYTES: ${CHAT_EXTRA_DATA_MAX_BYTES:?}
     networks:
       - backend-network
     depends_on:
@@ -782,20 +946,272 @@ services:
       retries: 30
     restart: unless-stopped
 
+  # The plugin node. Gated behind profiles: ["plugins"]: it starts only when COMPOSE_PROFILES
+  # includes "plugins" (with PLUGINS_ENABLED=true). Nothing outside the profile may depend on it.
+  # It runs every plugin backend as its own Unix user: the launcher (PID 1) is root with only
+  # SETUID, SETGID and CHOWN, the agent and the plugins have no capability at all.
+  es_plugins:
+    image: ghcr.io/epicstaff/es_plugins:${IMAGE_TAG:?}
+    build:
+      context: .
+      dockerfile: ./es_plugins/Dockerfile
+    container_name: es_plugins
+    hostname: es_plugins
+    profiles: ["plugins"]
+    user: root
+    read_only: true
+    tmpfs:
+      # Root-owned 0755: no plugin can write /tmp or /dev/shm, so it cannot fill them or use
+      # them to reach another plugin. Plugins get TMPDIR in their own data directory.
+      - /tmp:mode=0755
+      - /run:mode=0755
+      - /dev/shm:mode=0755
+    cap_drop:
+      - ALL
+    # NET_ADMIN, BPF and SETPCAP are the entrypoint's only: it installs the per-plugin connection
+    # caps and the bind refusal, then starts the launcher with SETUID, SETGID and CHOWN alone in
+    # every capability set.
+    cap_add:
+      - SETUID  # switch to a plugin's UID (spawn, kill helper, purge helper)
+      - SETGID  # drop groups and switch to a plugin's GID
+      - CHOWN  # hand per-plugin directories and runtime files to their UID
+      - NET_ADMIN  # the connection caps to plugins_db and the egress proxy (es_plugins.network_limits)
+      - BPF  # refuse inet bind() to plugin UIDs, in this container's cgroup (es_plugins.bind_refusal)
+      - SETPCAP  # take NET_ADMIN, BPF and SETPCAP out of the launcher's bounding set
+    security_opt:
+      - no-new-privileges:true
+    # Plugins and the agent share this namespace's ephemeral ports: a port in TIME_WAIT may be
+    # reused for a new outbound connection (each plugin's rate of new ones is also capped), and
+    # the range is widened above the node's plugin ports (20001-20999).
+    sysctls:
+      net.ipv4.tcp_tw_reuse: "1"
+      net.ipv4.ip_local_port_range: "21000 65535"
+    pids_limit: 4096
+    # The agent holds a socket for every port of the node's range (999) for its whole life, so
+    # no plugin can bind one; the launcher gives each plugin its own lower limit.
+    ulimits:
+      nofile:
+        soft: 8192
+        hard: 8192
+    cpus: ${ES_PLUGINS_CPUS:?}
+    mem_limit: ${ES_PLUGINS_MEMORY:?}
+    environment:
+      <<: [*docker-env]
+      PLUGINS_NODE_NAME: ${PLUGINS_NODE_NAME:?}
+      PLUGINS_NODE_KEY: ${PLUGINS_NODE_KEY:?}
+      PLUGINS_NODE_UID_RANGE: ${PLUGINS_NODE_UID_RANGE:?}
+      PLUGINS_INTERNAL_API_URL: ${PLUGINS_INTERNAL_API_URL:?}
+      ES_PLUGINS_DISK_MB_PER_PLUGIN: ${ES_PLUGINS_DISK_MB_PER_PLUGIN:?}
+      ES_PLUGINS_FILES_PER_PLUGIN: ${ES_PLUGINS_FILES_PER_PLUGIN:?}
+      # Each plugin's cap on open connections to plugins_db, set by the entrypoint.
+      PLUGINS_MAX_DB_CONNECTIONS: ${PLUGINS_MAX_DB_CONNECTIONS:?}
+      # Provisions plugin databases on plugins_db; no process the agent starts gets it.
+      PLUGINS_DB_ADMIN_PASSWORD: ${PLUGINS_DB_ADMIN_PASSWORD:?}
+      # Backs up a plugin's database before an upgrade, as plugins_backup; only pg_dump gets it.
+      PLUGINS_DB_BACKUP_PASSWORD: ${PLUGINS_DB_BACKUP_PASSWORD:?}
+    volumes:
+      # Unbounded by itself: put it on a file system of its own for a hard limit (see
+      # docs/plugins/operator/enable-plugins.md). The agent caps each plugin's share of it.
+      - es_plugins_data:/var/lib/es_plugins
+      # The egress proxy's policy, which the agent writes; below a directory no plugin UID may
+      # pass through, so plugins cannot read each other's hosts or password hashes.
+      - plugin_egress_policy:/var/lib/es_plugins_egress/policy
+    # plugins-network: nginx reaches the plugins here, they reach EpicStaff's API through nginx's
+    # internal listener and the internet through plugins_egress. plugins-db-network: plugins_db.
+    # No other route to the internet or to the other services.
+    networks:
+      - plugins-network
+      - plugins-db-network
+    healthcheck:
+      # The agent touches this file every 5 s, on a clock of its own (a slow django_app or a
+      # long install does not delay it).
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.stat('/run/es_plugins/agent.heartbeat').st_mtime > 30)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # No depends_on: the agent retries until nginx's internal listener answers, and the node
+    # lab (src/es_plugins/lab) extends this service without the rest of the stack.
+    # Every plugin's output passes through this log; the node keeps each plugin's own as well.
+    logging: *bounded-logs
+    restart: unless-stopped
+
+  # The plugin databases: one PostgreSQL cluster, a database and three roles per plugin that
+  # declares one. Gated behind profiles: ["plugins"]; nothing outside the profile may depend on it.
+  # Only the plugin node reaches it, on plugins-db-network; django_app never connects. The
+  # superuser exists for the one init step (plugins_db/init) and works only over the container's
+  # own socket (plugins_db/pg_hba.conf). See docs/plugins/operator/enable-plugins.md.
+  plugins_db:
+    image: postgres:17.11@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+    container_name: plugins_db
+    hostname: plugins_db
+    profiles: ["plugins"]
+    # reserved_connections: slots only plugins_admin (pg_use_reserved_connections) may take once
+    # it has logged in. A connection takes a slot before it logs in, so these alone cannot keep
+    # plugins from locking the plugin node out: es_plugins caps each plugin's open connections
+    # (PLUGINS_MAX_DB_CONNECTIONS), and max_connections must leave room for every plugin's cap
+    # (see docs/plugins/operator/enable-plugins.md). temp_file_limit: the temporary
+    # files one server process may write, so one plugin's sorts cannot fill the volume; it counts
+    # per process (each connection and each parallel worker), and only a superuser can raise it.
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf", "-c", "max_connections=${PLUGINS_DB_MAX_CONNECTIONS:?}", "-c", "reserved_connections=5", "-c", "password_encryption=scram-sha-256", "-c", "authentication_timeout=10s", "-c", "temp_file_limit=1GB"]
+    environment:
+      POSTGRES_PASSWORD: ${PLUGINS_DB_SUPERUSER_PASSWORD:?}
+      PLUGINS_DB_ADMIN_PASSWORD: ${PLUGINS_DB_ADMIN_PASSWORD:?}
+      PLUGINS_DB_BACKUP_PASSWORD: ${PLUGINS_DB_BACKUP_PASSWORD:?}
+    volumes:
+      - plugins_pgdata:/var/lib/postgresql/data
+      - ./plugins_db/init:/docker-entrypoint-initdb.d:ro
+      - ./plugins_db/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    networks:
+      - plugins-db-network
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "plugins_admin", "-d", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    logging: *bounded-logs
+    restart: unless-stopped
+
+  # The egress proxy, plugin backends' only way to the internet: CONNECT to port 443 of the hosts
+  # a plugin's manifest declares, authenticated as that plugin, never to a private address. Gated
+  # behind profiles: ["plugins"]; nothing outside the profile may depend on it. The plugin node
+  # writes its policy into plugin_egress_policy. The entrypoint installs a firewall against private
+  # destinations in this container's network namespace before Squid starts (plugins_egress/).
+  plugins_egress:
+    image: ghcr.io/epicstaff/plugins_egress:${IMAGE_TAG:?}
+    build:
+      context: ./plugins_egress
+      dockerfile: Dockerfile
+    container_name: plugins_egress
+    hostname: plugins_egress
+    profiles: ["plugins"]
+    read_only: true
+    # Squid writes only its PID file (/run/squid) and logs to stdout and stderr.
+    tmpfs:
+      - /run:mode=0755
+      - /tmp
+    cap_drop:
+      - ALL
+    # The entrypoint's only: NET_ADMIN installs the firewall, SETPCAP takes every capability but
+    # SETUID and SETGID out of Squid's bounding set, CHOWN hands the log pipes to Squid's user.
+    # Squid keeps SETUID and SETGID to switch from root to that user.
+    cap_add:
+      - NET_ADMIN
+      - SETPCAP
+      - CHOWN
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "1"
+      net.ipv6.conf.default.disable_ipv6: "1"
+    mem_limit: 256m
+    pids_limit: 128
+    volumes:
+      - plugin_egress_policy:/etc/squid/policy:ro
+    # plugins-network for the plugin backends, plugins-egress-network for the way out.
+    networks:
+      - plugins-network
+      - plugins-egress-network
+    healthcheck:
+      test: ["CMD", "python3", "-I", "-c", "import socket; socket.create_connection(('127.0.0.1', 3128), 5).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *bounded-logs
+    restart: unless-stopped
+
+  sandbox_new:
+    image: ghcr.io/epicstaff/sandbox_new:${IMAGE_TAG:?}
+    container_name: sandbox_new
+    build:
+      context: .
+      dockerfile: ./sandbox_new/Dockerfile
+    command: ./entrypoint.sh
+    init: true
+    networks:
+      - backend-network
+    # Not django_app: it is the other way round now. A django_app data migration
+    # moves the libraries Python code used to carry into venvs through this API,
+    # so this service and its own migrations have to be up before django_app runs.
+    # crewdb only has to be running, not healthy, for the same reason: it reports
+    # healthy at the end of a setup phase that itself waits for django_app's
+    # migrations, so waiting for it here would deadlock all three. The role and the
+    # schema this service needs are created in crewdb's first phase, and the
+    # entrypoint waits for them.
+    depends_on:
+      crewdb:
+        condition: service_started
+      storage:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # The port opens only after `piccolo migrations forwards all` in the
+    # entrypoint, so healthy means the schema is current and the API answers.
+    healthcheck:
+      test: ["CMD", "python3", "-I", "-c", "import socket; socket.create_connection(('127.0.0.1', ${SANDBOX_PORT:?}), 5).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    environment:
+      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      STORAGE_HOST: ${STORAGE_HOST:?}
+      STORAGE_PORT: ${STORAGE_PORT:?}
+      STORAGE_SSL: ${STORAGE_SSL:?}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:?}
+      SANDBOX_HOST: ${SANDBOX_HOST:?}
+      SANDBOX_PORT: ${SANDBOX_PORT:?}
+      SANDBOX_DEBUG: ${SANDBOX_DEBUG:?}
+      SANDBOX_LOG_LEVEL: ${SANDBOX_LOG_LEVEL:?}
+      SANDBOX_DB_USER: ${SANDBOX_DB_USER:?}
+      SANDBOX_DB_PASSWORD: ${SANDBOX_DB_PASSWORD:?}
+      SANDBOX_DB_SCHEMA: ${SANDBOX_DB_SCHEMA:?}
+      SANDBOX_VENVS_DIR: ${SANDBOX_VENVS_DIR:?}
+      SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
+      SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:?}
+      SANDBOX_REQUIRE_SIGNAL_ISOLATION: ${SANDBOX_REQUIRE_SIGNAL_ISOLATION:?}
+      SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
+      SANDBOX_MAX_EXECUTION_TIMEOUT: ${SANDBOX_MAX_EXECUTION_TIMEOUT:?}
+      SANDBOX_DEFAULT_EXECUTION_TIMEOUT: ${SANDBOX_DEFAULT_EXECUTION_TIMEOUT:?}
+      SANDBOX_MAX_RESULT_SIZE: ${SANDBOX_MAX_RESULT_SIZE:?}
+    volumes:
+      - sandbox_venvs:${SANDBOX_VENVS_DIR:?}
+    mem_limit: "2g"
+    # Same hardening as the old sandbox: the root parent needs just enough to
+    # drop the user-code child to sandboxuser, chown per-exec dirs, and kill its
+    # process group on timeout. Everything else is dropped.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID  # setuid/setgid before spawning the user-code child.
+      - SETGID
+      - CHOWN  # chown per-exec output and home dirs to sandboxuser.
+      - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
+      - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
+      - KILL  # signal the dropped-privilege child's process group on timeout.
+
 volumes:
-  sandbox_venvs:
-    external: true
-  crew_pgdata:
-    external: true
-  media_data:
-    external: true
-  opensearch_data:
-    external: true
+  sandbox_venvs: {}
+  crew_pgdata: {}
+  media_data: {}
+  opensearch_data: {}
   redis_data: {}
   code_instances: {}
   rustfs_data: {}
   auditor_data: {}
   chat_pgdata: {}
+  plugin_spa: {}
+  es_plugins_data: {}
+  plugins_pgdata: {}
+  plugin_egress_policy: {}
 
 networks:
   backend-network:
@@ -806,4 +1222,19 @@ networks:
     driver: bridge
     external: true
   sandbox-network:
+    driver: bridge
+  # Plugin backends, the plugin node and nginx (as epicstaff-api) only; no outside access.
+  # A fixed subnet, so nginx can deny it on 80/443 and allow only it on the internal listener.
+  plugins-network:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: ${PLUGINS_NETWORK_SUBNET:?}
+  # plugins_db and the plugin node only: nginx and the egress proxy cannot reach the database.
+  plugins-db-network:
+    driver: bridge
+    internal: true
+  # The egress proxy's way out, and nothing else on it.
+  plugins-egress-network:
     driver: bridge

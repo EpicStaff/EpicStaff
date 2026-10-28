@@ -23,7 +23,7 @@ from tables.import_export.strategies.nodes.webhook_trigger_node import (
     WebhookTriggerNodeStrategy,
 )
 from tables.models import Graph, PythonCode, TelegramTriggerNode, WebhookTriggerNode
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 
 VALID_TEST_PAYLOAD = {"order_id": 42, "text": "привіт 🙂", "items": [{"sku": "A-1"}]}
 NUL_PAYLOADS = [{"text": "a\x00b"}, {"nested": {"key\x00": 1}}, {"items": [{"deep": "\x00"}]}]
@@ -48,7 +48,11 @@ def source_graph(default_org, mock_telegram_service):
 
 @pytest.fixture
 def export_data(source_graph):
-    return ExportService(entity_registry).export_entities(EntityType.GRAPH, [source_graph.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [source_graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def _exported_nodes(export_data, node_type):

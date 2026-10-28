@@ -65,7 +65,6 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             results = await build_index(
                 config=config,
                 input_documents=input_documents,
-                verbose=True,
                 is_update_run=is_update_run,
             )
 

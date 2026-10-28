@@ -1,0 +1,5 @@
+test-results/
+playwright-report/
+# The stack file of npm run e2e:seed: it holds passwords.
+.stack.json
+.stack.json.*.tmp

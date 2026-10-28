@@ -78,7 +78,10 @@ import {
 } from '../../../../features/flows/models/graph.model';
 import { RunGraphResponse } from '../../../../features/flows/models/run-session.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
-import { FlowUsePermissionRefusalService } from '../../../../features/flows/services/flow-use-permission-refusal.service';
+import {
+    FlowUsePermissionRefusalService,
+    UsePermissionAction,
+} from '../../../../features/flows/services/flow-use-permission-refusal.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
@@ -93,6 +96,7 @@ import { ToastService } from '../../../../services/notifications';
 import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
 import { renumberUnsavedNodesHolding } from '../../../../visual-programming/core/helpers/node-number.util';
 import { isTriggerNodeType } from '../../../../visual-programming/core/helpers/trigger-node-type.util';
+import { EditorActionId } from '../../../../visual-programming/core/keymap/editor-actions';
 import {
     CdtExplanations,
     PromptConfig,
@@ -142,18 +146,36 @@ import {
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
     patchLiveFlowWithBackendIds,
-    toDirtyComparableFlowState,
 } from '../../../../visual-programming/utils/save';
 import { withGraphScheduleTriggerRuntimeState } from '../../../../visual-programming/utils/save/schedule-trigger-runtime-state';
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
 import { invalidExecutionTimeoutMessages } from '../../../../visual-programming/utils/validation/execution-timeout.validator';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
+import { PREVIEW_BLOCKED_MESSAGES } from './components/header/flow-header.constants';
 import {
     SHORTCUTS_MODAL_HEIGHT_PX,
     ShortcutsModalComponent,
 } from './components/shortcuts-modal/shortcuts-modal.component';
 import { SerialSaveQueue } from './serial-save-queue';
+
+/**
+ * The shortcut of a header or sessions panel button: the handler its output is bound to, behind the checks that hide
+ * or disable it.
+ */
+interface ButtonShortcut {
+    readonly action: EditorActionId;
+    /** Which "needs the Use permission" text to show when the keymap says the user may not use this action. */
+    readonly usePermissionAction?: UsePermissionAction;
+    /** Set when the button is disabled in a version preview; its tooltip there. */
+    readonly previewBlockedMessage?: string;
+    /**
+     * Set when the button exists only in some states, whatever the user's permissions: while it is false the key
+     * does nothing and says nothing, as there is no button to press.
+     */
+    readonly isButtonPresent?: () => boolean;
+    readonly handle: () => void;
+}
 
 /**
  * How long a node's burst of explanation-save requests has to go quiet before one
@@ -229,6 +251,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly cdtExplanationsApiService = inject(CdtExplanationsApiService);
     private readonly easterEggTrigger = inject(EasterEggTriggerService);
     private readonly flowGraphHost = viewChild(FlowGraphComponent, { read: ElementRef<HTMLElement> });
+    /** The sessions panel; there only while it is open. */
+    private readonly messagesPanel = viewChild(FlowMessagesPanelComponent);
     private readonly isSnakeGameActive = signal(false);
     /** Board element the snake-game overlay covers; null while no game is running. */
     protected readonly snakeGameBoard = computed<HTMLElement | null>(() =>
@@ -275,11 +299,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         return buildFlowModelFromGraphDto(graph);
     });
     public readonly currentFlowState = computed<FlowModel>(() => this.flowService.getFlowState());
-    public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
-        const current = toDirtyComparableFlowState(this.currentFlowState());
-        const saved = toDirtyComparableFlowState(this.savedFlowStateService.savedFlow());
-        return JSON.stringify(current) !== JSON.stringify(saved);
-    });
+    public readonly hasUnsavedChangesSignal = this.savedFlowStateService.hasUnsavedChanges;
 
     /**
      * Every request that writes the graph with its `save_version` goes through this,
@@ -386,6 +406,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             allowInEditable: true,
             destroyRef: this.destroyRef,
         });
+        this.registerButtonShortcuts();
 
         effect(() => {
             const params = this.routeQueryParamMap();
@@ -535,105 +556,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.fetchGraph(graphId, true, true);
     }
 
-    public handlePartialImportComplete(): void {
-        const graphId = Number(this.route.snapshot.paramMap.get('id'));
-        if (!isFinite(graphId)) return;
-
-        // Capture the set of backendIds already on canvas before the fetch.
-        // These identify "pre-existing" server nodes so we can isolate only
-        // the newly-imported ones after the server graph is loaded.
-        const preImportBackendIds = new Set<number>(
-            this.loadedFlowState()
-                .nodes.map((n) => n.backendId)
-                .filter((id): id is number => id !== null)
-        );
-
-        forkJoin({
-            graph: this.flowApiService.getGraphById(graphId, true),
-            flows: this.flowApiService.getGraphsLight().pipe(catchError(() => of([] as GetGraphLightRequest[]))),
-        })
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                tap(({ graph, flows }) => {
-                    // Update graphState so loadedFlowState() recomputes via
-                    // buildFlowModelFromGraphDto (the shared post-load pipeline); also refresh availableFlowLights.
-                    this.setGraphState(graph);
-                    this.availableFlowLights.set(flows);
-                    this.flowService.setNodeNumberFloor(graph.node_number_seq);
-
-                    const serverFlow = this.loadedFlowState();
-
-                    // Nodes from the server whose backendId was not present before
-                    // the import — these are the newly-imported nodes.
-                    const newServerNodes = serverFlow.nodes.filter(
-                        (n) => n.backendId !== null && !preImportBackendIds.has(n.backendId)
-                    );
-                    const newServerNodeIds = new Set<string>(newServerNodes.map((n) => n.id));
-
-                    // Connections that are entirely within the newly-imported node set.
-                    // Cross-boundary connections (new ↔ pre-existing) are skipped because
-                    // the server-generated UUIDs don't match the canvas UUIDs of
-                    // pre-existing nodes.
-                    const newServerConnections = serverFlow.connections.filter(
-                        (c) => newServerNodeIds.has(c.sourceNodeId) && newServerNodeIds.has(c.targetNodeId)
-                    );
-
-                    const currentState = this.flowService.getFlowState();
-
-                    // The imported nodes keep the numbers the backend gave them from the graph counter.
-                    // An unsaved canvas node may hold one of them (the backend never saw it): that
-                    // node moves to a number past the counter, set as the floor above.
-                    const localNodes = renumberUnsavedNodesHolding(currentState.nodes, numbersOf(newServerNodes), () =>
-                        this.flowService.getNextNodeNumber()
-                    );
-
-                    const mergedFlow = normalizeFlowPorts({
-                        nodes: [...localNodes, ...newServerNodes],
-                        connections: [...currentState.connections, ...newServerConnections],
-                    });
-
-                    // An unsaved table moved off an imported number takes its grid layout along.
-                    this.carryCdtGridStateToNewNumbers(graphId, currentState, mergedFlow);
-
-                    // setFlow retriggers ngOnChanges in flow-graph, which runs
-                    // _shiftImportedNodes (using _preImportBackendIds set by doPartialImport)
-                    // and fitAfterNextFlowChange.
-                    // The saved baseline is intentionally NOT updated — the flow stays dirty.
-                    this.flowService.setFlow(mergedFlow);
-
-                    // Run the same warning toasts as applyLoadedGraphState.
-                    const blockedCount = this.countBlockedSubgraphNodes(serverFlow);
-                    if (blockedCount > 0) {
-                        this.toastService.warning(
-                            `${blockedCount} subgraph node(s) reference missing flows and were blocked.`,
-                            6000,
-                            'bottom-right'
-                        );
-                    }
-
-                    this.llmConfigStorageService
-                        .getAllConfigs()
-                        .pipe(takeUntilDestroyed(this.destroyRef))
-                        .subscribe((configs) => {
-                            const cdtMissingCount = this.countCdtNodesWithMissingLlmConfig(serverFlow, configs);
-                            if (cdtMissingCount > 0) {
-                                this.toastService.warning(
-                                    `${cdtMissingCount} classification decision table node(s) reference a missing LLM config.`,
-                                    6000,
-                                    'bottom-right'
-                                );
-                            }
-                        });
-                }),
-                catchError(() => {
-                    this.toastService.error('Failed to load imported nodes');
-                    return EMPTY;
-                }),
-                finalize(() => this.cdr.markForCheck())
-            )
-            .subscribe();
-    }
-
     public onExtractToSubflow(selectedNodeIds: Set<string>): void {
         if (!this.graph?.id || this.isSaving()) return;
         if (this.flowReadOnly.isReadOnly()) {
@@ -751,8 +673,19 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 // Step 8: Optionally delete the subflow.
                 switchMap((deleteSubflow) => {
                     if (deleteSubflow) {
-                        return this.flowStorageService.deleteFlow(subgraphId).pipe(
-                            map(() => true),
+                        return this.flowStorageService.bulkDelete([subgraphId]).pipe(
+                            map((response) => {
+                                const gone = [...response.deleted_ids, ...response.not_found_ids].includes(subgraphId);
+                                if (!gone) {
+                                    const reason = response.skipped.find((entry) => entry.id === subgraphId)?.reason;
+                                    this.toastService.warning(
+                                        reason === 'in_use_restricted'
+                                            ? "Unpacked successfully, but the subflow is used somewhere you don't have access to, so it was kept"
+                                            : 'Unpacked successfully, but the subflow could not be deleted, so it was kept'
+                                    );
+                                }
+                                return gone;
+                            }),
                             catchError(() => {
                                 this.toastService.error('Unpacked successfully, but failed to delete the subflow');
                                 return of(false);
@@ -2194,9 +2127,71 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .subscribe(() => openVersionDialog());
     }
 
+    /**
+     * The header's Run, Sessions, Open / close chat and Get cURL keys, and the sessions panel's Stop session key. The
+     * page owns them, not the header or the panel: it handles what those buttons emit, or holds the panel, and knows
+     * the state they depend on. Each key calls the same handler its button's output is bound to, after the checks
+     * made by hiding or disabling that button: without Flows:Use it says the action needs it, and in a version
+     * preview it says what the button's tooltip says.
+     */
+    private registerButtonShortcuts(): void {
+        const shortcuts: readonly ButtonShortcut[] = [
+            {
+                action: 'flow.run',
+                usePermissionAction: 'run',
+                previewBlockedMessage: PREVIEW_BLOCKED_MESSAGES.run,
+                handle: () => this.handleRunFlow(),
+            },
+            {
+                action: 'flow.stop-session',
+                usePermissionAction: 'stopSession',
+                // The panel decides whether its selected session can be stopped; closed, it has no Stop button.
+                isButtonPresent: () => this.messagesPanel()?.canStopSelectedSession ?? false,
+                handle: () => this.messagesPanel()?.onStopSession(),
+            },
+            {
+                action: 'flow.sessions',
+                previewBlockedMessage: PREVIEW_BLOCKED_MESSAGES.sessions,
+                handle: () => this.handleViewSessions(),
+            },
+            { action: 'flow.chat', handle: () => this.onToggleAssistant() },
+            {
+                action: 'flow.curl',
+                usePermissionAction: 'getCurl',
+                previewBlockedMessage: PREVIEW_BLOCKED_MESSAGES.getCurl,
+                handle: () => this.handleGetCurl(),
+            },
+        ];
+        for (const shortcut of shortcuts) {
+            this.keymap.register(shortcut.action, () => this.onButtonShortcut(shortcut), {
+                // The header, and with it the buttons, only exists once the flow has loaded; the node menu's backdrop
+                // covers the buttons while it is open.
+                when: () =>
+                    this.isLoaded() &&
+                    !this.flowGraphComponent?.isNodeMenuOpen() &&
+                    (shortcut.isButtonPresent?.() ?? true),
+                destroyRef: this.destroyRef,
+            });
+        }
+    }
+
+    private onButtonShortcut(shortcut: ButtonShortcut): void {
+        if (this.keymap.unavailableActionIds().has(shortcut.action)) {
+            if (shortcut.usePermissionAction) {
+                this.usePermissionRefusal.showActionRefusal(shortcut.usePermissionAction);
+            }
+            return;
+        }
+        if (shortcut.previewBlockedMessage && this.isPreviewing()) {
+            this.toastService.info(shortcut.previewBlockedMessage);
+            return;
+        }
+        shortcut.handle();
+    }
+
     private saveFromShortcut(): void {
         if (this.previewedVersion()) {
-            this.toastService.info('Exit preview mode to save');
+            this.toastService.info(PREVIEW_BLOCKED_MESSAGES.save);
             return;
         }
         if (this.flowReadOnly.isReadOnly()) {

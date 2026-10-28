@@ -171,7 +171,7 @@ CARRIERS = [
 
 class TestCarrierFields:
     """The carrier must be readable in-process but invisible in every dump: it is
-    what keeps Secret row ids out of Session.graph_schema and off the wire."""
+    what keeps Secret row ids off the wire."""
 
     @pytest.mark.parametrize("model_cls,carrier,target", CARRIERS)
     def test_secret_id_is_readable_in_process_but_never_dumped(self, model_cls, carrier, target):
@@ -225,8 +225,7 @@ class TestResolvePayload:
         assert resolved.llms[0].config.api_key == "sk-llm-nested"
         assert resolved.embedder.config.api_key == "sk-embed-nested"
 
-        # The input object is what gets persisted to graph_schema — it must not
-        # have been touched.
+        # Resolution happens on a copy: the caller's object must not have been touched.
         assert payload.llms[0].config.api_key is None
         assert payload.embedder.config.api_key is None
 
@@ -444,7 +443,6 @@ class TestResolveNamed:
             venv_name="default",
             code='def main(): return get_secret("NODE_KEY")',
             entrypoint="main",
-            libraries=[],
             secret_names=["NODE_KEY"],
         )
 
@@ -467,8 +465,8 @@ class TestResolveNamed:
 @pytest.mark.django_db
 class TestResolveHeaderMarkers:
     """`epicstaff_secret(<name>)` markers inside the extra_headers dict resolve to
-    plaintext on the payload copy only; the persisted original keeps the markers,
-    so no raw credential ever reaches Session.graph_schema."""
+    plaintext on the payload copy only; the caller's original keeps the markers,
+    so no raw credential ever reaches it."""
 
     def test_marker_replaced_with_plaintext(self, org):
         secret_service.create(text="sk-hdr", org=org, name="AZURE_KEY")
@@ -554,7 +552,7 @@ class TestResolveHeaderMarkers:
 
         secret_resolver.resolve_payload(payload=payload, org_id=org.id)
 
-        # The caller's object is persisted to graph_schema -- it must keep the marker.
+        # Resolution happens on a copy: the caller's object must keep the marker.
         assert payload.extra_headers == {"api-key": "epicstaff_secret(ORIG)"}
 
     def test_foreign_org_name_is_not_resolvable(self, org, other_org):

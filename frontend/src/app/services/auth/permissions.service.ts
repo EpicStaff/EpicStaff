@@ -13,6 +13,12 @@ import { Observable, of, tap } from 'rxjs';
 
 import { ConfigService } from '../config';
 
+/** Met when the user may do any one of these actions on the resource. */
+export interface PermissionRequirement {
+    readonly resource: ResourceCode;
+    readonly anyOf: readonly ActionCode[];
+}
+
 @Injectable({
     providedIn: 'root',
 })
@@ -71,8 +77,12 @@ export class PermissionsService implements StorageService {
         return Array.isArray(actions) && actions.includes(action);
     }
 
-    canAny(resource: ResourceCode, actions: ActionCode[]): boolean {
+    canAny(resource: ResourceCode, actions: readonly ActionCode[]): boolean {
         return actions.some((action) => this.can(resource, action));
+    }
+
+    meets(requirement: PermissionRequirement): boolean {
+        return this.canAny(requirement.resource, requirement.anyOf);
     }
 
     /** Multi-org gate: can the current user do `action` on `resource` in org `orgId`?
@@ -120,13 +130,20 @@ export class PermissionsService implements StorageService {
         );
     }
 
+    /** Whether any Settings tab is open to the caller in the active org. */
     canOpenConfigureModelsDialog(): boolean {
         return (
             this.can(ResourceCode.LlmConfigs, ActionCode.Read) ||
             this.can(ResourceCode.Voice, ActionCode.Read) ||
             this.can(ResourceCode.Webhooks, ActionCode.Read) ||
-            this.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create])
+            this.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]) ||
+            this.canSeePluginActivity()
         );
+    }
+
+    /** Plugin activity is audit data: whoever may read the org's audit trail sees what plugins do in it. */
+    canSeePluginActivity(): boolean {
+        return this.configService.isPluginsEnabled && this.can(ResourceCode.Audit, ActionCode.Read);
     }
 
     /** Quickstart creates LLM configs and then updates the defaults, so it needs both. */

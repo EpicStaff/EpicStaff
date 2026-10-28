@@ -28,12 +28,6 @@ export function sortedNumbers(values: readonly number[] | null | undefined): num
     return [...(values ?? [])].sort((left, right) => left - right);
 }
 
-/** Python libraries: the export stores a space-separated string, the live API a list. */
-export function toLibraryList(libraries: string | readonly string[] | null | undefined): string[] {
-    const list = typeof libraries === 'string' ? libraries.split(/\s+/) : [...(libraries ?? [])];
-    return sortedStrings(list.map((library) => library.trim()).filter(Boolean));
-}
-
 /** Decimal columns arrive as strings (`"0.70"`) from the export and as rounded floats from the live API. */
 export function roundDecimal(value: number | string | null | undefined, places = 2): number | null {
     if (value === null || value === undefined || value === '') return null;

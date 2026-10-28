@@ -2,12 +2,11 @@
 with the payload a real run would send — storage scope, org_id and secrets —
 while the legacy `python_code_id` path keeps running the bare code.
 
-Real view, service, converter and secret resolver. The Redis client is mocked
-(`redis_client_mock`), so the published sandbox message is what is asserted, and
-so is minting storage credentials (`minted_credentials`), which would otherwise
-need the organization's storage admin account in the object store."""
-
-import json
+Real view, service, converter and secret resolver. The sandbox is replaced by a
+recording HTTP intake (`sandbox_intake`), so the submitted body is what is
+asserted, and so is minting storage credentials (`minted_credentials`), which
+would otherwise need the organization's storage admin account in the object
+store."""
 
 import pytest
 from django.utils import timezone
@@ -39,8 +38,8 @@ def minted_credentials(monkeypatch):
     return requested_scopes
 
 
-def _published_tasks(redis_client_mock):
-    return [json.loads(call.args[1]) for call in redis_client_mock.publish.call_args_list]
+def _submitted_tasks(sandbox_intake):
+    return sandbox_intake.bodies
 
 
 @pytest.fixture
@@ -89,7 +88,7 @@ class TestPythonNodeTarget:
         acme_graph,
         attached_file,
         member_only,
-        redis_client_mock,
+        sandbox_intake,
         minted_credentials,
     ):
         node = _python_node(acme_graph, use_storage=True)
@@ -97,7 +96,7 @@ class TestPythonNodeTarget:
         response = _run_target(acme_client, "python_node", node.id, {"x": 1})
 
         assert response.status_code == 200, response.data
-        [task] = _published_tasks(redis_client_mock)
+        [task] = _submitted_tasks(sandbox_intake)
         assert task["use_storage"] is True
         assert task["storage_allowed_paths"] == [
             "docs/input.csv",
@@ -108,7 +107,6 @@ class TestPythonNodeTarget:
         assert minted_credentials == [
             {"storage_allowed_paths": task["storage_allowed_paths"], "org_id": acme.id}
         ]
-        assert task["org_id"] == acme.id
         assert task["global_kwargs"]["org_id"] == acme.id
         assert task["session_id"] is None
         assert task["func_kwargs"] == {"x": 1}
@@ -120,33 +118,32 @@ class TestPythonNodeTarget:
         assert result.status == PythonCodeResult.Status.PENDING
 
     def test_storage_node_without_attached_files_still_gets_its_folder(
-        self, acme_client, acme_graph, redis_client_mock, minted_credentials
+        self, acme_client, acme_graph, sandbox_intake, minted_credentials
     ):
         node = _python_node(acme_graph, use_storage=True)
 
         response = _run_target(acme_client, "python_node", node.id)
 
         assert response.status_code == 200, response.data
-        [task] = _published_tasks(redis_client_mock)
+        [task] = _submitted_tasks(sandbox_intake)
         assert task["storage_allowed_paths"] == [f"test-runs/python_node-{node.id}/"]
 
     def test_node_without_storage_sends_no_storage_fields(
-        self, acme_client, acme, acme_graph, attached_file, redis_client_mock
+        self, acme_client, acme, acme_graph, attached_file, sandbox_intake
     ):
         node = _python_node(acme_graph, use_storage=False)
 
         response = _run_target(acme_client, "python_node", node.id)
 
         assert response.status_code == 200, response.data
-        [task] = _published_tasks(redis_client_mock)
+        [task] = _submitted_tasks(sandbox_intake)
         assert task["use_storage"] is False
-        assert task["storage_allowed_paths"] is None
+        assert task["storage_allowed_paths"] == []
         assert task["storage_org_prefix"] is None
-        assert task["org_id"] == acme.id
         assert task["global_kwargs"]["org_id"] == acme.id
 
     def test_declared_secret_reaches_the_sandbox_message(
-        self, acme_client, acme, acme_graph, redis_client_mock
+        self, acme_client, acme, acme_graph, sandbox_intake
     ):
         secret = secret_service.create(text=PLAINTEXT, org=acme, name="TARGET_KEY")
         node = _python_node(
@@ -157,11 +154,11 @@ class TestPythonNodeTarget:
         response = _run_target(acme_client, "python_node", node.id)
 
         assert response.status_code == 200, response.data
-        [task] = _published_tasks(redis_client_mock)
+        [task] = _submitted_tasks(sandbox_intake)
         assert task["secrets"] == {"TARGET_KEY": PLAINTEXT}
 
     def test_undeclared_secret_is_rejected_before_anything_is_written(
-        self, acme_client, acme, acme_graph, redis_client_mock
+        self, acme_client, acme, acme_graph, sandbox_intake
     ):
         secret_service.create(text=PLAINTEXT, org=acme, name="TARGET_KEY")
         node = _python_node(
@@ -172,7 +169,7 @@ class TestPythonNodeTarget:
 
         assert response.status_code == 400
         assert "TARGET_KEY" in str(response.data)
-        assert not redis_client_mock.publish.call_args_list
+        assert sandbox_intake.bodies == []
         assert not PythonCodeResult.objects.exists()
 
 
@@ -186,14 +183,14 @@ def _webhook_trigger_node(graph, *, use_storage):
 @pytest.mark.django_db
 class TestWebhookTriggerNodeTarget:
     def test_storage_node_gets_attached_files_and_its_test_run_folder(
-        self, acme_client, acme, acme_graph, attached_file, redis_client_mock, minted_credentials
+        self, acme_client, acme, acme_graph, attached_file, sandbox_intake, minted_credentials
     ):
         node = _webhook_trigger_node(acme_graph, use_storage=True)
 
         response = _run_target(acme_client, "webhook_trigger_node", node.id)
 
         assert response.status_code == 200, response.data
-        [task] = _published_tasks(redis_client_mock)
+        [task] = _submitted_tasks(sandbox_intake)
         assert task["use_storage"] is True
         assert task["storage_allowed_paths"] == [
             "docs/input.csv",
@@ -204,30 +201,50 @@ class TestWebhookTriggerNodeTarget:
         assert minted_credentials == [
             {"storage_allowed_paths": task["storage_allowed_paths"], "org_id": acme.id}
         ]
-        assert task["org_id"] == acme.id
+        assert task["global_kwargs"]["org_id"] == acme.id
         assert task["session_id"] is None
         assert PythonCodeResult.objects.get(
             execution_id=response.data["execution_id"]
         ).python_code_id == node.python_code_id
 
     def test_node_without_storage_sends_no_storage_fields(
-        self, acme_client, acme, acme_graph, attached_file, redis_client_mock
+        self, acme_client, acme, acme_graph, attached_file, sandbox_intake
     ):
         node = _webhook_trigger_node(acme_graph, use_storage=False)
 
         response = _run_target(acme_client, "webhook_trigger_node", node.id)
 
         assert response.status_code == 200, response.data
-        [task] = _published_tasks(redis_client_mock)
+        [task] = _submitted_tasks(sandbox_intake)
         assert task["use_storage"] is False
-        assert task["storage_allowed_paths"] is None
+        assert task["storage_allowed_paths"] == []
         assert task["storage_org_prefix"] is None
-        assert task["org_id"] == acme.id
+        assert task["global_kwargs"]["org_id"] == acme.id
+
+
+@pytest.mark.django_db
+class TestSandboxRefusesTheSubmission:
+    """A refused submission produces no result on the result channel, so the
+    PENDING row would never be completed by anything."""
+
+    def test_the_result_is_marked_error_instead_of_staying_pending(
+        self, acme_client, acme_graph, sandbox_intake
+    ):
+        sandbox_intake.status_code = 503
+        node = _python_node(acme_graph, use_storage=False)
+
+        response = _run_target(acme_client, "python_node", node.id)
+
+        assert response.status_code == 200, response.data
+        result = PythonCodeResult.objects.get(execution_id=response.data["execution_id"])
+        assert result.status == PythonCodeResult.Status.ERROR
+        assert result.stderr == "Could not reach the code sandbox for this run."
+        assert result.finished_at is not None
 
 
 @pytest.mark.django_db
 class TestTargetLookupIsOrgScoped:
-    def test_node_of_another_org_is_not_found(self, acme_client, beta_graph, redis_client_mock):
+    def test_node_of_another_org_is_not_found(self, acme_client, beta_graph, sandbox_intake):
         node = _python_node(beta_graph, use_storage=True)
 
         response = _run_target(acme_client, "python_node", node.id)
@@ -236,11 +253,11 @@ class TestTargetLookupIsOrgScoped:
         assert response.data["message"] == (
             f'target: Invalid pk "{node.id}" - object does not exist.'
         )
-        assert not redis_client_mock.publish.call_args_list
+        assert sandbox_intake.bodies == []
         assert not PythonCodeResult.objects.exists()
 
     def test_webhook_trigger_node_of_another_org_is_not_found(
-        self, acme_client, beta_graph, redis_client_mock
+        self, acme_client, beta_graph, sandbox_intake
     ):
         python_code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
         node = WebhookTriggerNode.objects.create(
@@ -251,9 +268,9 @@ class TestTargetLookupIsOrgScoped:
 
         assert response.status_code == 400
         assert "does not exist" in response.data["message"]
-        assert not redis_client_mock.publish.call_args_list
+        assert sandbox_intake.bodies == []
 
-    def test_soft_deleted_node_is_not_found(self, acme_client, acme_graph, redis_client_mock):
+    def test_soft_deleted_node_is_not_found(self, acme_client, acme_graph, sandbox_intake):
         node = _python_node(acme_graph, use_storage=True)
         PythonNode.all_objects.filter(pk=node.pk).update(
             active=False, soft_deleted_at=timezone.now()
@@ -263,16 +280,16 @@ class TestTargetLookupIsOrgScoped:
 
         assert response.status_code == 400
         assert "does not exist" in response.data["message"]
-        assert not redis_client_mock.publish.call_args_list
+        assert sandbox_intake.bodies == []
 
-    def test_missing_node_is_not_found(self, acme_client, redis_client_mock):
+    def test_missing_node_is_not_found(self, acme_client, sandbox_intake):
         response = _run_target(acme_client, "python_node", 999_999)
 
         assert response.status_code == 400
         assert "does not exist" in response.data["message"]
 
     def test_caller_without_flows_update_is_denied(
-        self, client_as, django_user_model, acme, acme_graph, role_viewer, redis_client_mock
+        self, client_as, django_user_model, acme, acme_graph, role_viewer, sandbox_intake
     ):
         viewer = django_user_model.objects.create_user(
             email="viewer-target-run@example.com", password="StrongPass123!"
@@ -285,13 +302,13 @@ class TestTargetLookupIsOrgScoped:
         response = _run_target(client, "python_node", node.id)
 
         assert response.status_code == 403
-        assert not redis_client_mock.publish.call_args_list
+        assert sandbox_intake.bodies == []
 
 
 @pytest.mark.django_db
 class TestRequestShape:
     def test_both_target_and_python_code_id_is_rejected(
-        self, acme_client, acme_graph, redis_client_mock
+        self, acme_client, acme_graph, sandbox_intake
     ):
         node = _python_node(acme_graph, use_storage=False)
 
@@ -306,25 +323,25 @@ class TestRequestShape:
 
         assert response.status_code == 400
         assert "exactly one" in response.data["message"]
-        assert not redis_client_mock.publish.call_args_list
+        assert sandbox_intake.bodies == []
 
-    def test_neither_target_nor_python_code_id_is_rejected(self, acme_client, redis_client_mock):
+    def test_neither_target_nor_python_code_id_is_rejected(self, acme_client, sandbox_intake):
         response = acme_client.post(URL, {"variables": {}}, format="json")
 
         assert response.status_code == 400
         assert "exactly one" in response.data["message"]
 
-    def test_unknown_target_type_is_rejected(self, acme_client, acme_graph, redis_client_mock):
+    def test_unknown_target_type_is_rejected(self, acme_client, acme_graph, sandbox_intake):
         node = _python_node(acme_graph, use_storage=False)
 
         response = _run_target(acme_client, "agent_node", node.id)
 
         assert response.status_code == 400
         assert "agent_node" in response.data["message"]
-        assert not redis_client_mock.publish.call_args_list
+        assert sandbox_intake.bodies == []
 
     def test_legacy_python_code_id_runs_bare_code_without_storage(
-        self, acme_client, acme_graph, attached_file, redis_client_mock
+        self, acme_client, acme_graph, attached_file, sandbox_intake
     ):
         node = _python_node(acme_graph, use_storage=True)
 
@@ -333,11 +350,12 @@ class TestRequestShape:
         )
 
         assert response.status_code == 200, response.data
-        [task] = _published_tasks(redis_client_mock)
-        assert task["venv_name"] == f"venv_{node.python_code_id}"
+        [task] = _submitted_tasks(sandbox_intake)
+        # The bare run has no venv of its own: null means the sandbox's default.
+        assert task["venv_id"] is None
         assert task["use_storage"] is False
-        assert task["storage_allowed_paths"] is None
-        assert task["org_id"] is None
+        assert task["storage_allowed_paths"] == []
+        assert task["storage_credentials"] is None
         assert "org_id" not in task["global_kwargs"]
         assert task["func_kwargs"] == {"x": 1}
 

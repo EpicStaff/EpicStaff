@@ -130,7 +130,9 @@ class RealtimeSurfaceService:
             entry["python_tool"] for entry in python_tool_entries if entry["mode"] == "allow"
         ]
         tools = []
-        for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids):
+        for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids).select_related(
+            "python_code__venv"
+        ):
             if python_tool.use_storage and storage_org_prefix is None:
                 # Fail closed, like converter_service: silently dropping the tool
                 # would start the realtime agent without a capability its surface

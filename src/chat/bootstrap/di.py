@@ -2,9 +2,14 @@ from collections.abc import Callable
 
 from application.orchestrators.bindings import BindingOrchestrator
 from application.orchestrators.budgets import BindingLimits
-from application.orchestrators.conversation import ConversationOrchestrator, RunConfig
+from application.orchestrators.conversation import (
+    ConversationOrchestrator,
+    PublicLimits,
+    RunConfig,
+)
 from application.orchestrators.identity import Operator
 from application.orchestrators.operators import OperatorOrchestrator
+from application.orchestrators.retention import RetentionOrchestrator
 from application.orchestrators.streams import StreamOrchestrator
 from application.ports import AbstractTickets
 from infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
@@ -37,6 +42,15 @@ def uow_factory(state: State):
 
 
 @register
+def public_limits(state: State) -> PublicLimits:
+    settings = state.settings
+    return PublicLimits(
+        action_max_bytes=settings.CHAT_ACTION_MAX_BYTES,
+        extra_data_max_bytes=settings.CHAT_EXTRA_DATA_MAX_BYTES,
+    )
+
+
+@register
 def conversations(state: State) -> ConversationOrchestrator:
     settings = state.settings
     return ConversationOrchestrator(
@@ -65,6 +79,7 @@ def bindings(state: State) -> BindingOrchestrator:
         lambda: SQLAlchemyUnitOfWork(state.session_factory),
         flows=state.django,
         public_base_url=settings.CHAT_PUBLIC_BASE_URL,
+        widget_url=settings.CHAT_WIDGET_URL,
         limits=BindingLimits(
             deployment_defaults={
                 "token_budget_per_conversation": settings.CHAT_CONVERSATION_TOKEN_BUDGET_DEFAULT,
@@ -87,6 +102,11 @@ def operators(state: State) -> OperatorOrchestrator:
     return OperatorOrchestrator(
         lambda: SQLAlchemyUnitOfWork(state.session_factory), flows=state.django, fanout=state.fanout
     )
+
+
+@register
+def retention(state: State) -> RetentionOrchestrator:
+    return RetentionOrchestrator(lambda: SQLAlchemyUnitOfWork(state.session_factory))
 
 
 @register

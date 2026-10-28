@@ -150,12 +150,6 @@ const FIELD_CASES: FieldCase[] = [
     { panel: WEBHOOK, change: NAME_CHANGE, marked: 'node_name', tooltip: '[Old] name' },
     {
         panel: WEBHOOK,
-        change: fieldChange('python_code.libraries', ['requests'], []),
-        marked: 'libraries',
-        tooltip: '[requests]',
-    },
-    {
-        panel: WEBHOOK,
         change: fieldChange('python_code.secret_names', ['DB_PASS'], []),
         marked: 'app-node-secrets-field',
         tooltip: '[DB_PASS]',

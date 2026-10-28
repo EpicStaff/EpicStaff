@@ -8,6 +8,7 @@ import { FlowsApiService } from '../../../../features/flows/services/flows-api.s
 import { ToastService } from '../../../../services/notifications';
 import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
 import { FlowService } from '../../../services/flow.service';
+import { NodeFactoryService } from '../../../services/node-factory.service';
 import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { ScheduleTriggerRuntimeService } from '../../../services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../services/side-panel.service';
@@ -122,6 +123,68 @@ describe('ScheduleTriggerNodePanelComponent naming', () => {
 
     it('keeps a name the user gave it', () => {
         expect(updatedName('Nightly import')).toBe('Nightly import');
+    });
+});
+
+describe('ScheduleTriggerNodePanelComponent with a node just dropped on the canvas', () => {
+    afterEach(() => vi.useRealTimers());
+
+    function openFreshNode() {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(2026, 9, 23, 12, 41, 7));
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                { provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } },
+            ],
+        });
+        TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
+        // After the component override: granting permissions instantiates the test module.
+        // Without Flows:Use a trigger node is read-only and the panel disables its whole form.
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE });
+        const node = TestBed.inject(NodeFactoryService).createNode(
+            NodeType.SCHEDULE_TRIGGER
+        ) as ScheduleTriggerNodeModel;
+        // Hours later: the panel must show the start the canvas shows, not a new one.
+        vi.setSystemTime(new Date(2026, 9, 23, 16, 5, 0));
+        const fixture = TestBed.createComponent(ScheduleTriggerNodePanelComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+        return fixture;
+    }
+
+    it('shows the name, start and inactive state the canvas shows', () => {
+        const fixture = openFreshNode();
+        const form = fixture.componentInstance.form;
+
+        expect(form.get('node_name')!.value).toBe('Once on 23 Oct 2026 at 13-00');
+        expect(form.get('start_date')!.value).toBe('23.10.2026');
+        expect(form.get('start_time')!.value).toBe('13:00');
+        expect(form.get('is_active')!.value).toBe(false);
+        expect(form.get('is_active')!.enabled).toBe(true);
+        expect(fixture.componentInstance.isDirty()).toBe(false);
+        fixture.destroy();
+    });
+
+    it('saves it unchanged when nothing was edited', () => {
+        const fixture = openFreshNode();
+
+        const saved = fixture.componentInstance.createUpdatedNode();
+
+        expect(saved.node_name).toBe('Once on 23 Oct 2026 at 13-00');
+        expect(saved.data.startDateTime).toBe('2026-10-23T13:00:00');
+        expect(saved.data.isActive).toBe(false);
+        fixture.destroy();
+    });
+
+    it('renames it after a new start time', () => {
+        const fixture = openFreshNode();
+
+        fixture.componentInstance.form.get('start_time')!.setValue('15:30');
+        const saved = fixture.componentInstance.createUpdatedNode();
+
+        expect(saved.node_name).toBe('Once on 23 Oct 2026 at 15-30');
+        fixture.destroy();
     });
 });
 

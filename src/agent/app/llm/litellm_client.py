@@ -16,7 +16,7 @@ import uuid
 from collections.abc import AsyncIterator
 
 import litellm
-from litellm.types.utils import CostPerToken
+from litellm.types.utils import CostPerToken, Usage
 from loguru import logger
 
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
@@ -117,6 +117,34 @@ def _usage_dict(usage) -> dict:
     }
 
 
+def _plain(value):
+    """Recursively turn pydantic models / SimpleNamespaces inside a usage payload into dicts."""
+    if isinstance(value, dict):
+        return {key: _plain(item) for key, item in value.items()}
+
+    if hasattr(value, "model_dump"):
+        return _plain(value.model_dump())
+
+    if hasattr(value, "__dict__"):
+        return _plain(vars(value))
+
+    return value
+
+
+def _as_litellm_usage(usage) -> Usage:
+    """Return the provider's usage as a litellm ``Usage``, keeping every field.
+
+    Cache-write counts and their 5m/1h split live in provider-specific fields
+    that ``_usage_dict`` does not carry, so the price-map path hands litellm
+    the original usage instead.
+    """
+    if isinstance(usage, Usage):
+        return usage
+
+    data = _plain(usage)
+    return Usage(**data)
+
+
 def _custom_cost_per_token(model_config: dict) -> CostPerToken | None:
     """Return the config's own token prices, or None when it does not set both."""
     input_cost = model_config.get("input_cost_per_token")
@@ -128,10 +156,8 @@ def _custom_cost_per_token(model_config: dict) -> CostPerToken | None:
     return CostPerToken(input_cost_per_token=input_cost, output_cost_per_token=output_cost)
 
 
-def _usage_cost_usd(
-    model: str, usage: dict, custom_cost_per_token: CostPerToken | None = None
-) -> float:
-    """Best-effort USD cost for a normalized usage dict.
+def _usage_cost_usd(model: str, usage, custom_cost_per_token: CostPerToken | None = None) -> float:
+    """Best-effort USD cost for the provider's raw usage (Usage / dict / SimpleNamespace).
 
     With ``custom_cost_per_token`` the config's own prices are used and the
     model is not looked up. Cached prompt tokens are then billed at the input
@@ -139,26 +165,28 @@ def _usage_cost_usd(
     passing ``cache_read_input_tokens`` as well would make litellm count them
     a second time.
 
-    Otherwise litellm's price map is used. ``model`` must be the real
+    Otherwise litellm's price map is used, fed the provider's original
+    ``usage`` so cache reads and cache writes (including the 5m/1h split)
+    are priced at their own rates. ``model`` must be the real
     ``provider/model`` string, NOT the Router's synthetic hash model name —
     litellm's price map only recognizes real model identifiers. Unmapped or
     self-hosted models raise inside litellm; swallowed to 0.0 since cost is a
     display-only value, never billing truth.
     """
     try:
+        litellm_usage = _as_litellm_usage(usage)
+
         if custom_cost_per_token is not None:
             prompt_cost, completion_cost = litellm.cost_per_token(
                 model=model,
-                prompt_tokens=usage["prompt_tokens"],
-                completion_tokens=usage["completion_tokens"],
+                prompt_tokens=litellm_usage.prompt_tokens,
+                completion_tokens=litellm_usage.completion_tokens,
                 custom_cost_per_token=custom_cost_per_token,
             )
         else:
             prompt_cost, completion_cost = litellm.cost_per_token(
                 model=model,
-                prompt_tokens=usage["prompt_tokens"],
-                completion_tokens=usage["completion_tokens"],
-                cache_read_input_tokens=usage["cached_prompt_tokens"],
+                usage_object=litellm_usage,
             )
         return prompt_cost + completion_cost
 
@@ -174,7 +202,7 @@ def _synthetic_call_id() -> str:
 
 def _usage_chunk(usage, model: str, custom_cost_per_token: CostPerToken | None = None) -> LLMChunk:
     usage_data = _usage_dict(usage)
-    usage_data["total_cost_usd"] = _usage_cost_usd(model, usage_data, custom_cost_per_token)
+    usage_data["total_cost_usd"] = _usage_cost_usd(model, usage, custom_cost_per_token)
     logger.debug("litellm usage={}", usage_data)
     return LLMChunk(usage=usage_data)
 

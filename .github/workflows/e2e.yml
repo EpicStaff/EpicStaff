@@ -110,7 +110,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # landlock_create_ruleset(NULL, 0, LANDLOCK_CREATE_RULESET_VERSION), as src/sandbox/landlock.py does.
+          # landlock_create_ruleset(NULL, 0, LANDLOCK_CREATE_RULESET_VERSION), as src/sandbox_new/worker/infrastructure/isolation/landlock.py does.
           ABI=$(python3 -c 'import ctypes; print(max(0, ctypes.CDLL(None).syscall(444, None, 0, 1)))')
           SIGNAL_ISOLATION=true
           # Signal isolation needs Landlock ABI 6 (Linux 6.12+); without it the sandbox refuses every run.
@@ -166,17 +166,6 @@ jobs:
         run: |
           set -euo pipefail
           E2E_COMPOSE_CMD="$DC" uv run --project tests/e2e python tests/e2e/scripts/wait_for_stack.py
-          # The sandbox logs its isolation state once at startup; "will be refused" means every
-          # python run would fail (missing Landlock, or no egress firewall / xt_owner match).
-          ISOLATION=$($DC logs --no-log-prefix sandbox | grep "isolation is") || {
-            echo "::error::The sandbox logged no isolation state; see its log in the e2e-logs artifact."
-            exit 1
-          }
-          echo "$ISOLATION"
-          if grep "will be refused" <<< "$ISOLATION"; then
-            echo "::error::The sandbox refuses executions on this runner (see the line above)."
-            exit 1
-          fi
 
       - name: Run e2e tests
         shell: bash

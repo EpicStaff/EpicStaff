@@ -13,7 +13,7 @@ const webhookDto: GetWebhookTriggerNodeRequest = {
     graph: 1,
     node_number: 1,
     node_name: 'Webhook Trigger #1',
-    python_code: { id: 5, libraries: [], code: 'def main(trigger_payload): pass', entrypoint: 'main' },
+    python_code: { id: 5, code: 'def main(trigger_payload): pass', entrypoint: 'main' },
     input_map: {},
     output_variable_path: null,
     webhook_trigger_path: '',

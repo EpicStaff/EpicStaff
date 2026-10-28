@@ -31,7 +31,7 @@ import { RestoreWarning } from './graph.model';
  * (backend `GraphStrategy.export_entity`, converted to the current import version and
  * filtered of missing dependencies). Node rows come from the per-node import serializers:
  * `graph`, `created_at`, `updated_at` and the authorship fields are never present, nested
- * python code has no `id` and carries `libraries` as a space-separated string.
+ * python code has no `id` and names its venv as `venv`.
  */
 
 /** Every `node_type` the backend export emits (backend `NODE_RELATIONS`). */
@@ -77,8 +77,10 @@ interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> extends SnapshotN
 
 export interface SnapshotPythonCode {
     code: string;
-    /** Space-separated library list, e.g. `"requests pandas"`. */
-    libraries: string;
+    /** Space-separated library list of a version saved before venvs; not read (see `toLivePythonCode`). */
+    libraries?: string;
+    /** Id of the venv the code runs in; absent in versions saved before venvs. */
+    venv?: number | null;
     entrypoint: string;
     global_kwargs?: Record<string, unknown>;
     /** Seconds; absent in versions saved before code had an execution timeout. */
@@ -159,9 +161,9 @@ export interface SnapshotScheduleTriggerNode extends SnapshotNodeBase<'ScheduleT
     next_run_date_time: string | null;
 }
 
-export type SnapshotClassificationPythonCode = Omit<CDTPythonCodeBlock, 'libraries' | 'secret_ids' | 'secrets'> & {
-    /** Space-separated library list, e.g. `"requests pandas"`. */
-    libraries: string;
+export type SnapshotClassificationPythonCode = Omit<CDTPythonCodeBlock, 'secret_ids' | 'secrets'> & {
+    /** Space-separated library list of a version saved before venvs; not read. */
+    libraries?: string;
 };
 
 export type SnapshotClassificationDecisionTableNode = SnapshotNodeOf<

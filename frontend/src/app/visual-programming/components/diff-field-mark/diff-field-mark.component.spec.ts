@@ -17,10 +17,10 @@ import { DiffFieldMarkChange, DiffFieldMarkComponent } from './diff-field-mark.c
             <span>variables.name</span>
         </app-diff-field-mark>
         <app-diff-field-mark
-            id="libraries"
-            [diffField]="'python_code.libraries'"
+            id="venv"
+            [diffField]="'python_code.venv_id'"
         >
-            <label>Libraries</label>
+            <label>Venv</label>
         </app-diff-field-mark>
         <app-diff-field-mark
             id="code"
@@ -122,7 +122,7 @@ describe('DiffFieldMarkComponent', () => {
         render([onDiff('changed')]);
 
         expect(element('output-path').classList).toContain('diff-value-marked');
-        expect(element('libraries').classList).not.toContain('diff-value-marked');
+        expect(element('venv').classList).not.toContain('diff-value-marked');
         // A row is marked by the mark itself.
         expect(element('row').classList).not.toContain('diff-value-marked');
     });
@@ -141,10 +141,10 @@ describe('DiffFieldMarkComponent', () => {
     it('leaves a field the diff does not change unmarked', () => {
         render([onDiff('changed')]);
 
-        expect(isMarked('libraries')).toBe(false);
-        expect(element('libraries').hasAttribute('tabindex')).toBe(false);
-        expect(element('libraries').hasAttribute('role')).toBe(false);
-        expect(element('libraries').textContent?.trim()).toBe('Libraries');
+        expect(isMarked('venv')).toBe(false);
+        expect(element('venv').hasAttribute('tabindex')).toBe(false);
+        expect(element('venv').hasAttribute('role')).toBe(false);
+        expect(element('venv').textContent?.trim()).toBe('Venv');
     });
 
     it.each(['added', 'deleted'] as const)('marks nothing on a node whose status is %s', (status) => {
@@ -221,7 +221,7 @@ describe('DiffFieldMarkComponent', () => {
     it('opens no tooltip on an unmarked field', () => {
         render([onDiff('changed')]);
 
-        dispatch('libraries', 'mouseenter');
+        dispatch('venv', 'mouseenter');
 
         expect(tooltip()).toBeNull();
     });

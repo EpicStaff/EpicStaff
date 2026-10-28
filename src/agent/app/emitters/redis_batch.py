@@ -13,10 +13,50 @@ from loguru import logger
 
 from app.emitters.base import Emitter
 from app.llm.client import LLMChunk
-from app.logging_utils import redact
+from app.logging_utils import format_exception_for_log, redact_payload, redact_value
 from shared.bench_log import BENCH_LEVEL
 from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
 from shared.redis_streams import RedisStreamClient, StreamEnvelope, agent_result_stream
+
+_RESULT_PASSTHROUGH_KEYS = {
+    "tool_invocations",
+    "iterations",
+    "stop_reason",
+    "token_usage",
+    "warnings",  # service-authored advisory templates; never tenant free text
+}
+
+_TASK_PASSTHROUGH_KEYS = {
+    "name",
+    "order",
+    "iterations",
+    "tool_invocations",
+    "stop_reason",
+    "token_usage",
+}
+
+
+def _mask_payload_for_logging(payload: dict) -> dict:
+    """Mask a result payload for logging: only counters, stop reasons, task names, and
+    service-authored warnings pass through.
+
+    Everything else — ``final_text``, ``structured_output``, ``error`` (which can echo
+    prompt content through ``str(exception)``), and any field added to the envelope
+    later — is digested. ``tasks`` is recursed into with its own allowlist.
+
+    Returns a masked copy; the original payload is not mutated.
+    """
+    tasks = payload.get("tasks")
+    without_tasks = {key: value for key, value in payload.items() if key != "tasks"}
+
+    masked = redact_payload(without_tasks, passthrough=_RESULT_PASSTHROUGH_KEYS)
+    masked["tasks"] = (
+        [redact_payload(task, passthrough=_TASK_PASSTHROUGH_KEYS) for task in tasks]
+        if isinstance(tasks, list)
+        else redact_value(tasks)
+    )
+
+    return masked
 
 
 class RedisStreamBatchEmitter(Emitter):
@@ -102,7 +142,7 @@ class RedisStreamBatchEmitter(Emitter):
         logger.opt(lazy=True).debug(
             "agent.result correlation_id={} payload={}",
             lambda: _corr_id,
-            lambda: redact(envelope.payload),
+            lambda: _mask_payload_for_logging(envelope.payload),
         )
         await self._publish(envelope)
         logger.log(
@@ -132,5 +172,5 @@ class RedisStreamBatchEmitter(Emitter):
         logger.error(
             "published agent.error correlation_id={} error={}",
             self._correlation_id,
-            error,
+            format_exception_for_log(error),
         )

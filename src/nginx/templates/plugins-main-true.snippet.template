@@ -1,0 +1,91 @@
+# PLUGINS_ENABLED=true: the plugin platform's routes on EpicStaff's own server.
+
+# A plugin backend runs on the plugins network and must never reach EpicStaff's own site on
+# 80/443, only its API through the internal listener on 8081. nginx listens on every network it
+# is on, so this server refuses the plugins subnet before choosing a location
+# ($plugin_network_caller, plugins-server-true.snippet).
+if ($plugin_network_caller) {
+    return 403;
+}
+
+# Package upload. Larger than the server's 50M limit and streamed to Django as it arrives, which
+# applies the same PLUGINS_MAX_PACKAGE_MB limit and reads the package from a temporary file.
+# Timeouts are between two reads or writes, not a limit on the whole upload.
+location = /api/admin/plugins/packages/ {
+    # Django's server spools a request's whole body before any view runs, so the upload view's
+    # own SuperAdmin check comes too late to keep strangers from filling its disk. nginx asks
+    # Django first, without the body, in its access phase (before it reads the body), and lets
+    # the upload through only on a 204. A refusal gets the same JSON envelope Django would send.
+    auth_request /_epicstaff/plugin-upload-permission;
+    error_page 401 = @plugin_upload_unauthenticated;
+    error_page 403 = @plugin_upload_forbidden;
+
+    proxy_pass http://backend_server;
+    include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+    include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
+    # One MiB above PLUGINS_MAX_PACKAGE_MB, room for the multipart framing: a package of exactly
+    # the cap reaches Django, which answers a larger one with its own JSON 413.
+    client_max_body_size ${PLUGINS_UPLOAD_BODY_MB}m;
+    proxy_http_version 1.1;
+    proxy_request_buffering off;
+    client_body_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+
+    proxy_set_header Authorization $http_authorization;
+    proxy_set_header X-API-Key $http_x_api_key;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $forwarded_proto;
+}
+
+# The upload route's access check: Django's PluginUploadPermissionView, asked with the caller's
+# credentials and without the body. `internal`, so only auth_request reaches it.
+location = /_epicstaff/plugin-upload-permission {
+    internal;
+    # No body limit here. The subrequest carries the upload's Content-Length, and nginx compares
+    # it with this location's limit although no body is read here: the server's 50M would turn
+    # every larger upload into a 500 (auth_request gets the 413). The upload route applies its own
+    # limit when nginx picks it, before the access phase runs this check.
+    client_max_body_size 0;
+    proxy_pass http://backend_server/api/admin/plugins/packages/upload-permission/;
+    include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+    include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
+    proxy_method GET;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Authorization $http_authorization;
+    proxy_set_header X-API-Key $http_x_api_key;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $forwarded_proto;
+}
+
+# Answered by nginx alone: the check above calls Django directly, never through this path.
+location = /api/admin/plugins/packages/upload-permission/ {
+    return 404;
+}
+
+location @plugin_upload_unauthenticated {
+    default_type application/json;
+    return 401 '{"status_code":401,"code":"not_authenticated","message":"Authentication credentials were not provided or are not valid."}';
+}
+
+location @plugin_upload_forbidden {
+    default_type application/json;
+    return 403 '{"status_code":403,"code":"permission_denied","message":"Only a SuperAdmin, logged in, may upload plugin packages."}';
+}
+
+# Reserved for the plugin gateway's access check, which only nginx itself may call. Refused here
+# so that no client ever reaches it, whatever Django mounts under it.
+location ^~ /api/plugin-gateway/ {
+    return 404;
+}
+
+# The plugin node's API: reached only through the internal listener on plugins-network
+# (plugins-internal-api-true.snippet), never from outside.
+location ^~ /api/plugin-nodes/ {
+    return 404;
+}

@@ -58,6 +58,7 @@ export const liveGraphSnapshot: GraphVersionSnapshot = {
         exported('StartNode', liveStart),
         exported('EndNode', liveEnd),
         exported('GraphNote', liveNote),
+        // Saved before venvs: libraries, no venv.
         exported('PythonNode', {
             ...livePython,
             python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: 'requests pandas' },

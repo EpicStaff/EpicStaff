@@ -18,7 +18,6 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
             webhook_trigger: wn.webhook_trigger,
             python_code: {
                 name: wn.node_name,
-                libraries: wn.python_code.libraries,
                 code: wn.python_code.code,
                 entrypoint: wn.python_code.entrypoint,
                 execution_timeout: wn.python_code.execution_timeout,

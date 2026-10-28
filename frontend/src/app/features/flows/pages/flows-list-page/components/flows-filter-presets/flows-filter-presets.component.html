@@ -1,0 +1,139 @@
+<div class="presets">
+    <div class="presets__header">
+        <span class="presets__title">Presets</span>
+        <span class="presets__visibility">
+            <app-svg-icon
+                icon="lock"
+                size="12px"
+            />
+            Only visible to you
+        </span>
+    </div>
+
+    @if (showCreateForm()) {
+        <div class="presets__save-form">
+            <input
+                #nameInput
+                class="presets__name-input"
+                type="text"
+                placeholder="New preset name..."
+                maxlength="150"
+                [value]="presetName()"
+                (input)="setNewPresetName($event)"
+                (keydown.enter)="saveNewPreset()"
+            />
+            <button
+                class="presets__btn presets__btn--accent"
+                type="button"
+                [disabled]="!canSave()"
+                (click)="saveNewPreset()"
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="12px"
+                />
+                Save
+            </button>
+        </div>
+    }
+
+    @if (!isLoading() && !loadError() && presets().length > 0) {
+        <app-search
+            class="presets__search"
+            mod="small"
+            placeholder="Search presets..."
+            [(searchTerm)]="searchTerm"
+        />
+    }
+
+    @if (isLoading()) {
+        <p class="presets__state">Loading...</p>
+    } @else if (loadError()) {
+        <p class="presets__state presets__state--error">Could not load presets.</p>
+    } @else if (presets().length === 0) {
+        <p class="presets__state">No presets yet.</p>
+    } @else if (filteredCards().length === 0) {
+        <p class="presets__state">No matching presets.</p>
+    } @else {
+        <div class="presets__list">
+            @for (card of filteredCards(); track card.preset.id) {
+                <div class="preset-card">
+                    @if (editingPresetId() === card.preset.id) {
+                        <input
+                            #renameInput
+                            class="preset-card__rename"
+                            type="text"
+                            maxlength="150"
+                            [value]="editingPresetName()"
+                            (input)="setRenameName($event)"
+                            (keydown.enter)="confirmRename(card.preset.id)"
+                            (keydown.escape)="cancelRename()"
+                            (blur)="confirmRename(card.preset.id)"
+                        />
+                    } @else {
+                        <button
+                            class="preset-card__main"
+                            type="button"
+                            (click)="applyPreset(card.preset)"
+                        >
+                            <div class="preset-card__header">
+                                <span class="preset-card__name">{{ card.preset.name }}</span>
+                                <div class="preset-card__actions">
+                                    <button
+                                        class="preset-card__action"
+                                        type="button"
+                                        title="Overwrite with current filters"
+                                        (click)="overwritePreset(card.preset)"
+                                    >
+                                        <app-svg-icon
+                                            icon="floppy"
+                                            size="14px"
+                                        />
+                                    </button>
+                                    <button
+                                        class="preset-card__action"
+                                        type="button"
+                                        title="Rename preset"
+                                        (click)="startRename(card.preset)"
+                                    >
+                                        <app-svg-icon
+                                            icon="edit"
+                                            size="14px"
+                                        />
+                                    </button>
+                                    <button
+                                        class="preset-card__action"
+                                        type="button"
+                                        title="Delete preset"
+                                        (click)="confirmDelete(card.preset)"
+                                    >
+                                        <app-svg-icon
+                                            icon="trash"
+                                            size="12px"
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+                            @if (card.chips.length > 0) {
+                                <span class="preset-card__chips">
+                                    @for (chip of card.chips; track chip.label) {
+                                        <span
+                                            class="preset-chip"
+                                            [title]="chip.label + ' ' + chip.value"
+                                        >
+                                            <span class="preset-chip__label">{{ chip.label }}</span>
+                                            <span class="preset-chip__value">{{ chip.value }}</span>
+                                        </span>
+                                    }
+                                    @if (card.hiddenChipCount > 0) {
+                                        <span class="preset-chip preset-chip--more">+{{ card.hiddenChipCount }}</span>
+                                    }
+                                </span>
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>

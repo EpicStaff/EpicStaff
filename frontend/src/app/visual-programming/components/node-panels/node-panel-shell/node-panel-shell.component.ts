@@ -5,6 +5,7 @@ import {
     computed,
     DestroyRef,
     effect,
+    ElementRef,
     inject,
     Injector,
     input,
@@ -53,6 +54,7 @@ interface PanelInstanceView {
     template: `
         @if (node() && panelComponent()) {
             <aside
+                #panel
                 class="node-panel"
                 [class.shake-attention]="isShaking()"
                 [class.expanded]="isExpanded()"
@@ -236,6 +238,7 @@ export class NodePanelShellComponent {
     });
 
     protected readonly outlet = viewChild(NgComponentOutlet);
+    private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
     protected readonly componentInputs = computed(() => {
         const node = this.node();
 
@@ -502,6 +505,11 @@ export class NodePanelShellComponent {
             console.error('Failed to capture node panel state via onSave', error);
             return null;
         }
+    }
+
+    /** Where the open panel starts on screen (viewport x), or null while it is closed; the canvas left of it stays visible. */
+    public panelLeftEdge(): number | null {
+        return this.panel()?.nativeElement.getBoundingClientRect().left ?? null;
     }
 
     public hasPanelInstance(): boolean {

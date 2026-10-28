@@ -83,6 +83,7 @@
             <!-- The holder's main action: Resolve, or Done on an Ongoing desk. -->
             @if (primaryAction(); as action) {
                 <app-button
+                    class="thread-header__action"
                     type="ghost"
                     mod="small"
                     [disabled]="isActionPending()"

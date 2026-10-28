@@ -35,7 +35,7 @@
             }
         </div>
         @if (item() && !readOnly()) {
-            <ng-container *appHasPermission="[ResourceCode.Files, ActionCode.Create]">
+            <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Update]">
                 <app-button
                     *appHasPermission="[ResourceCode.Flows, ActionCode.Read]"
                     class="storage-preview__add-to-flow"

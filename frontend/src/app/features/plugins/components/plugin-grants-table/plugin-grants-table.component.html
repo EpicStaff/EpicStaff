@@ -1,0 +1,299 @@
+<div class="grants__toolbar">
+    <span class="grants__count text-body">{{ count() }} {{ count() === 1 ? 'organization' : 'organizations' }}</span>
+    <app-button
+        type="primary"
+        leftIcon="plus"
+        [disabled]="!canGrant()"
+        (click)="canGrant() && openGrant()"
+    >
+        Grant
+    </app-button>
+</div>
+
+@if (loadError(); as message) {
+    <div
+        class="grants__error text-body"
+        role="alert"
+    >
+        <span>{{ message }}</span>
+        <app-button
+            type="outline-primary"
+            mod="small"
+            (click)="reload()"
+        >
+            Retry
+        </app-button>
+    </div>
+}
+
+<app-table
+    [columns]="columns"
+    [data]="rows()"
+    rowId="id"
+>
+    <ng-template
+        appTableCell="organization"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <span class="grants__cell">{{ grant.organization.name }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="state"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <div class="grants__state">
+                @switch (grant.state) {
+                    @case ('granting') {
+                        <span
+                            class="grants__installing text-body"
+                            aria-live="polite"
+                        >
+                            <app-spinner2 [size]="16" />
+                            {{ installProgress(grant) }}
+                        </span>
+                    }
+                    @case ('upgrading') {
+                        <div class="grants__stacked">
+                            <span
+                                class="grants__upgrading text-body"
+                                aria-live="polite"
+                            >
+                                <app-spinner2 [size]="16" />
+                                Upgrading…
+                            </span>
+                            <span class="grants__upgrade-progress grants__muted text-body-small">
+                                {{ upgradeProgress(grant) }}
+                            </span>
+                            @if (upgradeRetryError(grant); as retryError) {
+                                <span
+                                    class="grants__upgrade-last-error grants__muted text-body-small"
+                                    tabindex="0"
+                                    [matTooltip]="retryError"
+                                    matTooltipPosition="above"
+                                >
+                                    Last attempt failed: {{ retryError }}
+                                </span>
+                            }
+                        </div>
+                    }
+                    @case ('upgrade_failed') {
+                        <div class="grants__stacked">
+                            <app-plugin-badge
+                                aria-live="polite"
+                                [label]="stateLabel(grant)"
+                                [tone]="stateTone(grant)"
+                            />
+                            <span
+                                class="grants__upgrade-error grants__hook-error text-body-small"
+                                tabindex="0"
+                                [matTooltip]="upgradeError(grant)"
+                                matTooltipPosition="above"
+                            >
+                                {{ upgradeError(grant) }}
+                            </span>
+                        </div>
+                    }
+                    @case ('install_failed') {
+                        <div class="grants__stacked">
+                            <app-plugin-badge
+                                aria-live="polite"
+                                [label]="stateLabel(grant)"
+                                [tone]="stateTone(grant)"
+                            />
+                            <span
+                                class="grants__hook-error text-body-small"
+                                tabindex="0"
+                                [matTooltip]="installError(grant)"
+                                matTooltipPosition="above"
+                            >
+                                {{ installError(grant) }}
+                            </span>
+                        </div>
+                    }
+                    @case ('suspended') {
+                        <div class="grants__stacked">
+                            <app-plugin-badge
+                                aria-live="polite"
+                                [label]="stateLabel(grant)"
+                                [tone]="stateTone(grant)"
+                            />
+                            @if (grant.suspended_at) {
+                                <span class="grants__suspended-at grants__muted text-body-small">
+                                    Since {{ grant.suspended_at | date: 'mediumDate' }}
+                                </span>
+                            }
+                            @if (grant.purge_after) {
+                                <span class="grants__kept-until grants__muted text-body-small">
+                                    Data kept until {{ grant.purge_after | date: 'mediumDate' }}
+                                </span>
+                            }
+                        </div>
+                    }
+                    @case ('purging') {
+                        <div class="grants__stacked">
+                            <span
+                                class="grants__deleting text-body"
+                                aria-live="polite"
+                            >
+                                <app-spinner2 [size]="16" />
+                                Deleting data…
+                            </span>
+                            @if (dataRemovalOf(grant); as removal) {
+                                <span
+                                    class="grants__data-removal text-body-small"
+                                    [class.grants__hook-error]="removal.failed"
+                                    [class.grants__muted]="!removal.failed"
+                                    [attr.tabindex]="removal.failed ? 0 : null"
+                                    [matTooltip]="removal.message"
+                                    [matTooltipDisabled]="!removal.failed"
+                                    matTooltipPosition="above"
+                                >
+                                    {{ removal.message }}
+                                </span>
+                                @if (removal.progress) {
+                                    <span class="grants__data-removal-progress grants__muted text-body-small">
+                                        {{ removal.progress }}
+                                    </span>
+                                }
+                                @if (removal.lastError) {
+                                    <span
+                                        class="grants__data-removal-last-error grants__muted text-body-small"
+                                        tabindex="0"
+                                        [matTooltip]="removal.lastError"
+                                        matTooltipPosition="above"
+                                    >
+                                        Last attempt failed: {{ removal.lastError }}
+                                    </span>
+                                }
+                                <app-plugin-data-removal-actions
+                                    [identifier]="identifier()"
+                                    [pluginName]="pluginName()"
+                                    [job]="removal.job"
+                                    (changed)="reload()"
+                                />
+                            }
+                            @if (grant.last_purge_error; as purgeError) {
+                                <span
+                                    class="grants__purge-error grants__hook-error text-body-small"
+                                    tabindex="0"
+                                    [matTooltip]="purgeError"
+                                    matTooltipPosition="above"
+                                >
+                                    Some resources could not be deleted yet: {{ purgeError }}; EpicStaff retries every
+                                    hour
+                                </span>
+                            }
+                        </div>
+                    }
+                    @default {
+                        <app-plugin-badge
+                            aria-live="polite"
+                            [label]="stateLabel(grant)"
+                            [tone]="stateTone(grant)"
+                        />
+                    }
+                }
+            </div>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="version"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <span class="grants__cell">{{ grant.installed_version ?? '—' }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="serviceAccount"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            @if (grant.service_account; as account) {
+                <div class="grants__stack text-body-small">
+                    <span class="grants__primary">Created {{ account.created_at | date: 'mediumDate' }}</span>
+                    <span
+                        class="grants__muted"
+                        [matTooltip]="(account.key_last_used_at | date: 'medium') ?? ''"
+                        [matTooltipDisabled]="account.key_last_used_at === null"
+                        matTooltipPosition="above"
+                    >
+                        {{ keyLastUsed(grant) }}
+                    </span>
+                </div>
+            } @else {
+                <span class="grants__cell grants__muted">—</span>
+            }
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="ownedResources"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <span class="grants__cell">{{ grant.owned_resource_count }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="grantedBy"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <span class="grants__cell">{{ grant.granted_by?.email ?? '—' }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="grantedAt"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <span class="grants__cell">{{ grant.granted_at | date: 'mediumDate' }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="actions"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <div class="grants__actions">
+                @for (button of actionButtonsOf(grant); track button.action) {
+                    <app-button
+                        [type]="button.type"
+                        mod="small"
+                        [disabled]="isBusy(grant)"
+                        (click)="runAction(grant, button.action)"
+                    >
+                        {{ button.label }}
+                    </app-button>
+                }
+            </div>
+        }
+    </ng-template>
+
+    <div tableEmpty>
+        @if (isLoading()) {
+            <app-loading-spinner size="sm" />
+        } @else {
+            <h4 class="grants__empty-title">Not granted to any organization</h4>
+            <p class="grants__empty-subtitle text-body">
+                @if (canGrant()) {
+                    Grant it to an organization so its members can open it.
+                } @else {
+                    Approve the plugin before granting it.
+                }
+            </p>
+        }
+    </div>
+</app-table>
+
+@if (count() > pageSize) {
+    <app-pagination-controls
+        [pageSize]="pageSize"
+        [totalCount]="count()"
+        [currentPage]="page()"
+        (pageChange)="onPageChange($event)"
+    />
+}

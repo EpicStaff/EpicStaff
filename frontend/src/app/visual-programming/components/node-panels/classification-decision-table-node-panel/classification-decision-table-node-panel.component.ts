@@ -63,6 +63,7 @@ import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { CdtExplanationStoreService } from '../../../services/cdt-explanation-store.service';
 import { FlowService } from '../../../services/flow.service';
 import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
+import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import {
@@ -345,6 +346,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly explanationStore = inject(CdtExplanationStoreService);
+    private readonly savedFlowStateService = inject(SavedFlowStateService);
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -535,11 +537,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             pre_computation_code: [this.preCode],
             pre_input_map: this.fb.array([] as FormGroup[]),
             pre_output_variable_path: [preComp.output_variable_path || ''],
-            pre_libraries: [preComp.libraries?.join(', ') || ''],
             post_computation_code: [this.postCode],
             post_input_map: this.fb.array([] as FormGroup[]),
             post_output_variable_path: [postComp.output_variable_path || ''],
-            post_libraries: [postComp.libraries?.join(', ') || ''],
             default_next_node: [defaultNext],
             next_error_node: [errorNext],
             default_llm_config: [tableData.default_llm_config || null],
@@ -585,13 +585,11 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 this.codeChange$.next();
             });
 
-        ['pre_output_variable_path', 'pre_libraries', 'post_output_variable_path', 'post_libraries'].forEach(
-            (controlName) => {
-                form.get(controlName)!
-                    .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
-                    .subscribe(() => this.codeChange$.next());
-            }
-        );
+        ['pre_output_variable_path', 'post_output_variable_path'].forEach((controlName) => {
+            form.get(controlName)!
+                .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe(() => this.codeChange$.next());
+        });
 
         const groupsCopy = this.cloneConditionGroups(tableData.condition_groups || []);
         this.conditionGroups.set(groupsCopy);
@@ -624,7 +622,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 code: this.preCode,
                 input_map: preInputMap,
                 output_variable_path: this.form.value.pre_output_variable_path || undefined,
-                libraries: this.parseLibraries(this.form.value.pre_libraries),
                 secret_ids: this.preSelectedSecretIds(),
                 secret_names: this.preSecretNames(),
                 execution_timeout: this.preExecutionTimeout.value,
@@ -633,7 +630,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 code: this.postCode,
                 input_map: postInputMap,
                 output_variable_path: this.form.value.post_output_variable_path || undefined,
-                libraries: this.parseLibraries(this.form.value.post_libraries),
                 secret_ids: this.postSelectedSecretIds(),
                 secret_names: this.postSecretNames(),
                 execution_timeout: this.postExecutionTimeout.value,
@@ -999,6 +995,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     // ── Export ──
 
+    /** A version preview has no saved state of its own, and exporting would serve the live node, not the version. */
+    protected readonly showsExport = !this.flowReadOnly.isPreview;
+
     readonly exportFormatItems: ActionDropdownItem[] = [
         { label: 'JSON', value: 'json' },
         { label: 'CSV', value: 'csv' },
@@ -1014,7 +1013,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public exportAsJson(): void {
         const backendId = this.node().backendId;
-        if (backendId == null) {
+        if (this.savedFlowStateService.hasUnsavedChanges() || backendId == null) {
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
@@ -1028,20 +1027,22 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     public exportAsCsv(): void {
-        if (this.node().backendId == null) {
+        if (this.savedFlowStateService.hasUnsavedChanges()) {
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
         const exportData = this.cdtExportImportService.buildExportData({
             nodeName: this.form.value.node_name ?? '',
             preCode: this.preCode,
-            preLibraries: this.parseLibraries(this.form.value.pre_libraries),
+            // Always empty: libraries now live only on the venv, and the export
+            // carries no venv. See the note on CdtExportImportService.
+            preLibraries: [],
             preExecutionTimeout: this.preExecutionTimeout.value,
             preInputMap: this.serializeInputMap('pre_input_map'),
             preOutputVariablePath: this.form.value.pre_output_variable_path || null,
             preUseStorage: this.preUseStorage(),
             postCode: this.postCode,
-            postLibraries: this.parseLibraries(this.form.value.post_libraries),
+            postLibraries: [],
             postExecutionTimeout: this.postExecutionTimeout.value,
             postInputMap: this.serializeInputMap('post_input_map'),
             postOutputVariablePath: this.form.value.post_output_variable_path || null,
@@ -1102,8 +1103,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             postCode: this.postCode,
             preInputMap: this.serializeInputMap('pre_input_map'),
             postInputMap: this.serializeInputMap('post_input_map'),
-            preLibraries: this.parseLibraries(this.form.value.pre_libraries),
-            postLibraries: this.parseLibraries(this.form.value.post_libraries),
             preOutputVariablePath: this.form.value.pre_output_variable_path || null,
             postOutputVariablePath: this.form.value.post_output_variable_path || null,
             prompts: { ...this.prompts() },
@@ -1208,14 +1207,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     // ── Input map helpers ──
-
-    private parseLibraries(value: string | null | undefined): string[] {
-        if (!value) return [];
-        return value
-            .split(',')
-            .map((lib: string) => lib.trim())
-            .filter((lib: string) => lib.length > 0);
-    }
 
     private initializeInputMapArray(form: FormGroup, arrayName: string, map: Record<string, string>): void {
         const arr = form.get(arrayName) as FormArray;

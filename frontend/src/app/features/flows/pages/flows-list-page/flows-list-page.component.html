@@ -13,27 +13,7 @@
                 </h1>
             </div>
             <div class="header-actions">
-                @if (selectMode()) {
-                    <app-button
-                        type="ghost"
-                        (click)="cancelExport()"
-                    >
-                        Cancel
-                    </app-button>
-                    <app-button
-                        type="ghost"
-                        (click)="selectAllFlows()"
-                    >
-                        {{ isAllSelected() ? 'Deselect all' : 'Select all' }}
-                    </app-button>
-                    <app-button
-                        type="primary"
-                        [disabled]="selectedFlowIds().length === 0"
-                        (click)="confirmExport()"
-                    >
-                        Export {{ selectedFlowIds().length }} flows
-                    </app-button>
-                } @else {
+                @if (!selectMode()) {
                     <app-button
                         type="ghost"
                         [leftIcon]="'union'"
@@ -41,6 +21,22 @@
                     >
                         All sessions
                     </app-button>
+                }
+
+                <!-- Outside the select-mode branches: entering select mode must not recreate it (and close its menu). -->
+                <app-bulk-select-dropdown
+                    *appHasPermission="[ResourceCode.Flows, [ActionCode.Delete, ActionCode.Export]]"
+                    appearance="outline"
+                    [selectMode]="selectMode()"
+                    [selectedCount]="selectedFlowIds().length"
+                    [allSelected]="isAllSelected()"
+                    [disabled]="isDeleting()"
+                    (selectModeEntered)="onSelectClick()"
+                    (selectAllToggled)="selectAllFlows()"
+                    (cleared)="cancelSelection()"
+                />
+
+                @if (!selectMode()) {
                     <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Create]">
                         <div
                             class="import-group"
@@ -50,13 +46,16 @@
                             <button
                                 type="button"
                                 class="import-group__main"
+                                [appCollapseOnOverflow]="true"
+                                collapseOnOverflowTarget=".btn-label"
+                                collapseOnOverflowClass="btn--icon-only"
                                 (click)="onImportClick()"
                             >
                                 <app-svg-icon
                                     icon="download"
                                     size="1.1rem"
                                 />
-                                <span>Import</span>
+                                <span class="btn-label">Import</span>
                             </button>
                             <button
                                 type="button"
@@ -79,7 +78,18 @@
                             (closed)="closeImportOptions()"
                         />
                     </ng-container>
+                }
 
+                @if (selectMode()) {
+                    <app-button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+                        type="primary"
+                        [disabled]="selectedFlowIds().length === 0"
+                        (click)="confirmExport()"
+                    >
+                        Export {{ selectedFlowIds().length }} flows
+                    </app-button>
+                } @else {
                     <div
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                         class="export-group"
@@ -87,15 +97,32 @@
                         <button
                             type="button"
                             class="export-group__main"
-                            (click)="onExportClick()"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            (click)="onSelectClick()"
                         >
                             <app-svg-icon
                                 icon="upload"
                                 size="1.1rem"
                             />
-                            <span>Export</span>
+                            <span class="btn-label">Export</span>
                         </button>
                     </div>
+                }
+
+                @if (selectMode()) {
+                    <app-button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
+                        type="danger"
+                        leftIcon="trash"
+                        iconSize="14px"
+                        [disabled]="selectedFlowIds().length === 0 || isDeleting()"
+                        (click)="deleteSelectedFlows()"
+                    >
+                        Delete
+                    </app-button>
+                } @else {
                     <app-button
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
                         type="primary"
@@ -133,60 +160,6 @@
                     [(searchTerm)]="searchTerm"
                     (searchTermChange)="onSearchTermChange($event)"
                 />
-                <button
-                    #filterTrigger="cdkOverlayOrigin"
-                    cdkOverlayOrigin
-                    type="button"
-                    class="filter-trigger"
-                    [class.active]="hasActiveFilter() || filterMenuOpen()"
-                    (click)="toggleFilterMenu()"
-                >
-                    <app-svg-icon
-                        icon="filter-outline"
-                        size="1rem"
-                    />
-                    <span>Filter</span>
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="0.7rem"
-                        class="filter-chevron"
-                        [class.open]="filterMenuOpen()"
-                    />
-                </button>
-                @if (hasActiveFilter()) {
-                    <button
-                        type="button"
-                        class="filter-clear"
-                        matTooltip="Clear all filters"
-                        matTooltipPosition="above"
-                        (click)="clearAllFilters()"
-                    >
-                        <app-svg-icon
-                            icon="x"
-                            size="0.85rem"
-                        />
-                    </button>
-                }
-                <ng-template
-                    cdkConnectedOverlay
-                    [cdkConnectedOverlayOrigin]="filterTrigger"
-                    [cdkConnectedOverlayOpen]="filterMenuOpen()"
-                    [cdkConnectedOverlayHasBackdrop]="true"
-                    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
-                    [cdkConnectedOverlayOffsetY]="6"
-                    [cdkConnectedOverlayPositions]="[
-                        {
-                            originX: 'end',
-                            originY: 'bottom',
-                            overlayX: 'end',
-                            overlayY: 'top',
-                        },
-                    ]"
-                    (backdropClick)="closeFilterMenu()"
-                    (detach)="closeFilterMenu()"
-                >
-                    <app-flows-filter-menu (actionSelected)="onFilterMenuAction($event)" />
-                </ng-template>
             </div>
         </nav>
     </div>
@@ -233,10 +206,106 @@
                         <span class="breadcrumb-label">{{ activeLabelFilterDisplay() }}</span>
                     }
                 </div>
+
+                <div class="breadcrumb-actions">
+                    <button
+                        type="button"
+                        class="menu-trigger filter-trigger"
+                        [class.active]="showFilterSidebar() || activeFilterCount() > 0"
+                        (click)="toggleFilterSidebar()"
+                    >
+                        <app-svg-icon
+                            icon="filter-outline"
+                            size="0.875rem"
+                        />
+                        <span>
+                            Filter
+                            @if (activeFilterCount() > 0) {
+                                <span class="filter-count">({{ activeFilterCount() }})</span>
+                            }
+                        </span>
+                        @if (activeFilterCount() > 0) {
+                            <span
+                                class="filter-clear-inline"
+                                role="button"
+                                matTooltip="Clear all filters"
+                                matTooltipPosition="above"
+                                (click)="clearAllFilters($event)"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="0.875rem"
+                                />
+                            </span>
+                        }
+                    </button>
+
+                    <button
+                        #sortTrigger="cdkOverlayOrigin"
+                        cdkOverlayOrigin
+                        type="button"
+                        class="menu-trigger"
+                        [class.active]="sortMenuOpen() || activeSort() !== 'default'"
+                        (click)="toggleSortMenu()"
+                    >
+                        <app-svg-icon
+                            icon="arrow-up-down"
+                            size="0.875rem"
+                        />
+                        <span>{{ sortTriggerLabel() }}</span>
+                        <app-svg-icon
+                            icon="chevron-down"
+                            size="0.875rem"
+                            class="menu-chevron"
+                            [class.open]="sortMenuOpen()"
+                        />
+                    </button>
+                    <ng-template
+                        cdkConnectedOverlay
+                        [cdkConnectedOverlayOrigin]="sortTrigger"
+                        [cdkConnectedOverlayOpen]="sortMenuOpen()"
+                        [cdkConnectedOverlayHasBackdrop]="true"
+                        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                        [cdkConnectedOverlayOffsetY]="6"
+                        [cdkConnectedOverlayPositions]="[
+                            {
+                                originX: 'end',
+                                originY: 'bottom',
+                                overlayX: 'end',
+                                overlayY: 'top',
+                            },
+                        ]"
+                        (backdropClick)="closeSortMenu()"
+                        (detach)="closeSortMenu()"
+                    >
+                        <app-flows-sort-menu
+                            [activeSort]="activeSort()"
+                            (sortSelected)="onSortMenuAction($event)"
+                        />
+                    </ng-template>
+                </div>
             </div>
             <div class="content-wrapper">
                 <router-outlet></router-outlet>
             </div>
         </div>
+        @if (showFilterSidebar()) {
+            <aside
+                #filterPanel
+                class="filter-panel"
+                [style.flex-basis.px]="filterPanelWidth()"
+            >
+                <div
+                    class="resizable-sidebar-handle filter-panel__handle"
+                    sidebarAriaLabel="Resize filter panel"
+                    [sidebarSide]="'right'"
+                    [appResizableSidebar]="filterPanelWidthKey"
+                    [sidebarTarget]="filterPanel"
+                    [sidebarMinWidth]="filterPanelWidthOptions.minWidth"
+                    [sidebarMaxWidth]="filterPanelWidthOptions.maxWidth"
+                ></div>
+                <app-flows-filter-sidebar (closeSidebar)="toggleFilterSidebar()" />
+            </aside>
+        }
     </section>
 </div>

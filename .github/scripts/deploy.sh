@@ -92,10 +92,35 @@ $DC up -d --remove-orphans || failed=1
 sleep 60
 
 echo ">> checking for crashed containers"
-CRASHED=$($DC ps --status exited --format json \
-  | python3 -c "import sys,json; services=[c['Service'] for c in json.load(sys.stdin) if c['Service'] != 'storage-init']; print('\n'.join(services))" 2>/dev/null || true)
-if [ -n "$CRASHED" ]; then
-  echo "Crashed services: $CRASHED"
+# A crash-looping container (restart: always) is "restarting", not "exited", and a
+# failing healthcheck shows only in Health, so both count as crashed. Compose prints
+# one JSON object per line (older versions: one array); read both. A parse failure or
+# an empty list fails the deploy instead of passing it as "no crashes". storage-init
+# is one-shot: only its clean exit is expected.
+read -r -d '' CRASH_CHECK <<'PY' || true
+import json
+import sys
+
+text = sys.stdin.read().strip()
+if text.startswith("["):
+    containers = json.loads(text)
+else:
+    containers = [json.loads(line) for line in text.splitlines() if line.strip()]
+if not containers:
+    sys.exit("no containers found")
+for container in containers:
+    service, state, health = container["Service"], container["State"], container.get("Health")
+    if service == "storage-init" and state == "exited" and container.get("ExitCode") == 0:
+        continue
+    if state in ("exited", "restarting", "dead") or health == "unhealthy":
+        print(f"{service} (state={state}, health={health or 'none'})")
+PY
+if ! CRASHED=$($DC ps --all --format json | python3 -c "$CRASH_CHECK"); then
+  echo "Could not read container states"
+  failed=1
+elif [ -n "$CRASHED" ]; then
+  echo "Crashed services:"
+  echo "$CRASHED"
   failed=1
 fi
 

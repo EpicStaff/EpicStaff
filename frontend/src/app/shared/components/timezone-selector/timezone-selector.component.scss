@@ -33,8 +33,10 @@
         border-color: var(--accent-color, #685fff);
     }
 
-    &--open {
+    &--open,
+    &:focus-visible {
         border-color: var(--accent-color, #685fff);
+        outline: none;
     }
 
     &:disabled {
@@ -125,7 +127,8 @@
         border-bottom: none;
     }
 
-    &:hover {
+    &:hover,
+    &--active {
         background: var(--color-ks-hover-row);
     }
 

@@ -534,7 +534,9 @@
     --color-sidenav-background: var(--graphite-850);
     --color-modals-background: var(--graphite-850);
     --color-backdrop: rgba(30, 30, 30, 0.6); // dialog/overlay dim layer
+    --color-tour-backdrop: var(--black-alpha-70); // guided-tour spotlight dim
     --color-flow-card-bg: var(--graphite-750);
+    --color-table-border: var(--graphite-750);
     --color-surface-card: var(--graphite-825);
     --color-drag-drop-active: var(--black-alpha-28);
 
@@ -703,6 +705,7 @@
     --shadow-message-card: 0 4px 16px rgba(0, 0, 0, 0.2);
     --shadow-panel-elevated: 0 4px 16px rgba(0, 0, 0, 0.3);
     --shadow-card-subtle: 0 1px 3px rgba(0, 0, 0, 0.24);
+    --shadow-raised: 0px 2px 3px 0px var(--black-alpha-30), 0px 6px 10px 4px var(--black-alpha-15);
 
     //ui-kit colors
     --orange: rgba(255, 143, 63, 1);

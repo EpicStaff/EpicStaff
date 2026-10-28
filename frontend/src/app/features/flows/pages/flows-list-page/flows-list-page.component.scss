@@ -1,4 +1,5 @@
 @use '../../../../../styles/header-layout' as header;
+@use '../../../../../styles/a11y-mixins' as a11y;
 
 .flows-list-page {
     @include header.headerLayout();
@@ -89,56 +90,6 @@
         }
     }
 
-    .filter-trigger {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        height: 28px;
-        padding: 0 0.85rem;
-        background: transparent;
-        border: 1px solid var(--color-input-border);
-        border-radius: 4px;
-        color: var(--color-text-primary);
-        font-size: 0.75rem;
-        cursor: pointer;
-        transition: border-color 0.15s ease;
-
-        &:hover,
-        &.active {
-            border-color: var(--accent-color);
-        }
-
-        .filter-chevron {
-            color: var(--color-text-secondary);
-            transition: transform 0.15s ease;
-
-            &.open {
-                transform: rotate(180deg);
-            }
-        }
-    }
-
-    .filter-clear {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        background: transparent;
-        border: 1px solid var(--color-input-border);
-        border-radius: 0.5rem;
-        color: var(--color-text-secondary);
-        cursor: pointer;
-        transition:
-            color 0.15s,
-            border-color 0.15s;
-
-        &:hover {
-            color: var(--accent-color);
-            border-color: var(--accent-color);
-        }
-    }
-
     .body {
         display: flex;
         flex-direction: row;
@@ -158,8 +109,8 @@
                 display: flex;
                 align-items: center;
                 gap: 16px;
-                height: 40px;
-                padding: 0 40px;
+                min-height: 40px;
+                padding: 0 3.75rem 0 2.75rem;
                 border-bottom: 1px solid var(--color-divider-subtle);
                 flex-shrink: 0;
                 position: sticky;
@@ -182,7 +133,6 @@
                     height: 28px;
                     flex-shrink: 0;
 
-                    color: var(--color-text-secondary);
                     transition: color 0.15s ease;
 
                     &.active {
@@ -230,6 +180,13 @@
                         text-overflow: ellipsis;
                     }
                 }
+
+                .breadcrumb-actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.75rem;
+                    margin-left: auto;
+                }
             }
 
             .content-wrapper {
@@ -242,8 +199,80 @@
         }
     }
 
+    .menu-trigger {
+        display: inline-flex;
+        flex-shrink: 0;
+        align-items: center;
+        gap: 0.75rem;
+        height: 28px;
+        padding: 0 0.5rem;
+        background: transparent;
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        color: var(--color-text-primary);
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: border-color 0.15s ease;
+
+        &:hover,
+        &.active {
+            border-color: var(--accent-color);
+        }
+
+        .menu-chevron {
+            color: var(--color-text-secondary);
+            transition: transform 0.15s ease;
+
+            &.open {
+                transform: rotate(180deg);
+            }
+        }
+    }
+
+    .filter-trigger {
+        gap: 0.5rem;
+
+        .filter-count {
+            margin-left: 0.25rem;
+            color: var(--accent-color);
+            font-weight: 500;
+        }
+
+        .filter-clear-inline {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 28px;
+            width: 28px;
+            margin-right: -0.5rem;
+            color: var(--accent-color);
+            border-left: 1px solid var(--color-divider-subtle);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.15s;
+
+            &:hover {
+                background: var(--transparent-white-8);
+            }
+        }
+    }
+
     .search {
         width: 20rem;
+    }
+
+    .filter-panel {
+        position: relative;
+        flex: 0 0 auto;
+        min-width: 0;
+        min-height: 0;
+        border-left: 1px solid var(--color-divider-regular);
+        background-color: var(--color-sidenav-background);
+    }
+
+    .filter-panel__handle {
+        right: auto;
+        left: 0;
     }
 }
 
@@ -338,4 +367,32 @@
             background: var(--color-ghost-btn-active);
         }
     }
+}
+
+// Import and Export shrink with the header like its app-buttons do, down to the icon alone: collapse-on-overflow
+// sets `.btn--icon-only` once the label no longer fits. The hidden label stays the button's accessible name.
+.import-group,
+.export-group {
+    &__main {
+        position: relative;
+        min-width: 0;
+
+        .btn-label {
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        &.btn--icon-only {
+            padding: 0 0.6rem;
+
+            .btn-label {
+                @include a11y.visually-hidden;
+            }
+        }
+    }
+}
+
+.import-group__cog {
+    flex-shrink: 0;
 }

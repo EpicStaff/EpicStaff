@@ -1,0 +1,22 @@
+:host {
+    display: block;
+}
+
+.maintenance {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    max-width: 480px;
+    text-align: center;
+
+    &__message {
+        margin: 0;
+        color: var(--color-text-primary);
+    }
+
+    &__hint {
+        margin: 0;
+        color: var(--color-text-secondary);
+    }
+}

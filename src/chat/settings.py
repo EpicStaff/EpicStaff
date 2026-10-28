@@ -1,8 +1,9 @@
 import ipaddress
+import re
 import socket
 from pathlib import Path
 from typing import Annotated, Any
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 from common.humanize import Rate, to_rate
 from common.utils import INTEGER_COLUMN_MAX
@@ -65,6 +66,8 @@ PositiveFractionalSeconds = Annotated[
 RateLimit = Annotated[Rate, BeforeValidator(_rate)]
 # A plain token count that fits the INTEGER budget columns.
 TokenCount = Annotated[int, Field(gt=0, le=INTEGER_COLUMN_MAX)]
+# A plain byte count.
+ByteCount = Annotated[int, Field(gt=0)]
 # A binding's inactivity duration: whole seconds, at least the minute a binding may set, and
 # fitting its INTEGER column.
 BindingDuration = Annotated[int, Field(ge=60, le=INTEGER_COLUMN_MAX), BeforeValidator(_duration)]
@@ -90,26 +93,49 @@ def _internal_host(host: str) -> bool:
     return address.is_private or address.is_loopback
 
 
-def _origin(value: str) -> str:
-    """Accept an http(s) origin, optionally with a port, and drop a trailing slash."""
-    value = value.strip().rstrip("/")
+def _http_url(value: str) -> SplitResult:
+    """An absolute http(s) URL; plain http only where it cannot leave a private network."""
     parts = urlsplit(value)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise ValueError("must be an http:// or https:// URL with a host")
-    if parts.path or parts.query or parts.fragment:
-        raise ValueError("must be scheme://host[:port] with no path, query or fragment")
-    # Every system call carries DJANGO_API_KEY: plain http only where it cannot leave a private network.
     if parts.scheme == "http" and not _internal_host(parts.hostname):
         raise ValueError(
             "http is allowed only for a single-label host (compose service, localhost) "
             "or a private or loopback IP; use https"
         )
     _ = parts.port  # Raises ValueError on a non-numeric or out-of-range port.
+    return parts
+
+
+def _origin(value: str) -> str:
+    """Accept an http(s) origin, optionally with a port, and drop a trailing slash."""
+    value = value.strip().rstrip("/")
+    # Every system call carries DJANGO_API_KEY.
+    parts = _http_url(value)
+    if parts.path or parts.query or parts.fragment:
+        raise ValueError("must be scheme://host[:port] with no path, query or fragment")
+    return value
+
+
+# The embed snippet writes the widget URL into a double-quoted HTML attribute.
+_ATTRIBUTE_BREAKERS = re.compile(r'["<>\s]')
+
+
+def _widget_url(value: str) -> str:
+    """Accept the script URL the embed snippet loads: every visitor's browser runs it."""
+    value = value.strip()
+    if _ATTRIBUTE_BREAKERS.search(value):
+        raise ValueError(
+            "must not contain quotes, angle brackets or whitespace: the embed snippet puts it "
+            "in an HTML attribute"
+        )
+    _http_url(value)
     return value
 
 
 # scheme://host[:port], no path: the client appends the /api/... paths itself.
 Origin = Annotated[str, AfterValidator(_origin)]
+WidgetUrl = Annotated[str, AfterValidator(_widget_url)]
 
 
 class Settings(BaseModel):
@@ -141,8 +167,11 @@ class Settings(BaseModel):
     CHAT_DJANGO_HOST_HEADER: OptionalHeader
     DJANGO_API_KEY: str
     CHAT_DJANGO_TIMEOUT: PositiveFractionalSeconds
+    # The manager presents it to /chat/internal/ (retention purge); it can delete conversations.
+    CHAT_INTERNAL_API_KEY: str
 
     CHAT_PUBLIC_BASE_URL: str
+    CHAT_WIDGET_URL: WidgetUrl
     CHAT_CALLBACK_URL: str
     CHAT_TRUSTED_PROXIES: Networks
     CHAT_IP_MESSAGE_RATE: RateLimit
@@ -173,6 +202,10 @@ class Settings(BaseModel):
     CHAT_RESPONSE_TIME_MAX: BindingDuration
     CHAT_CLOSE_AFTER_DEFAULT: BindingDuration
     CHAT_CLOSE_AFTER_MAX: BindingDuration
+
+    # What a visitor message may carry beyond its desk's own limits: the same on every desk.
+    CHAT_ACTION_MAX_BYTES: ByteCount
+    CHAT_EXTRA_DATA_MAX_BYTES: ByteCount
 
     @model_validator(mode="after")
     def _release_waits_out_a_start(self) -> "Settings":
@@ -217,7 +250,7 @@ class Settings(BaseModel):
         return list(self.CHAT_TRUSTED_PROXIES)
 
 
-_FIELDS_READ_AS_SECRETS = ("CHAT_DB_PASSWORD", "DJANGO_API_KEY")
+_FIELDS_READ_AS_SECRETS = ("CHAT_DB_PASSWORD", "DJANGO_API_KEY", "CHAT_INTERNAL_API_KEY")
 
 
 def load_settings(environment: Env = env) -> Settings:

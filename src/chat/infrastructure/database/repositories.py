@@ -49,6 +49,7 @@ from sqlalchemy import (
     and_,
     any_,
     delete,
+    exists,
     func,
     insert,
     literal,
@@ -79,6 +80,14 @@ from infrastructure.database.models import (
 )
 
 HISTORY_ROLES = (Role.USER.value, Role.ASSISTANT.value, Role.OPERATOR.value)
+# What a past action keeps in a run's `chat_history`: which button, and what it said. An action
+# may carry up to CHAT_ACTION_MAX_BYTES (edited tables), and every later run repeats the history,
+# so its `params`, `tables` and anything else stay only in the run it started.
+HISTORY_ACTION_KEYS = ("type", "action", "text")
+
+
+def _history_action(action: dict) -> dict:
+    return {key: action[key] for key in HISTORY_ACTION_KEYS if key in action}
 
 
 @dataclass(frozen=True)
@@ -524,6 +533,36 @@ class ConversationRepository(_Repository, AbstractConversationRepository):
         ).scalars()
         return [to_domain(row, Conversation) for row in rows]
 
+    async def delete_inactive_batch(self, org_id: int, cutoff: datetime, limit: int) -> int:
+        owed_callback = exists().where(
+            CallbackReceiptRow.conversation_id == ConversationRow.id,
+            CallbackReceiptRow.secret != "",
+        )
+        last_active = func.coalesce(ConversationRow.last_message_at, ConversationRow.created_at)
+        # No run-state test: ck_conversation_closed_is_settled guarantees a closed row is idle and
+        # names no run. A row another transaction holds is skipped, not waited for; on one that
+        # transaction changed and committed meanwhile, FOR UPDATE re-checks the conversation's own
+        # columns on the locked version, while NOT EXISTS keeps the statement's snapshot.
+        batch = (
+            select(ConversationRow.id)
+            .where(
+                ConversationRow.org_id == org_id,
+                ConversationRow.closed_at.is_not(None),
+                last_active < cutoff,
+                ~owed_callback,
+            )
+            # Oldest first, and the order is what makes the plan read
+            # ix_conversation_org_id_closed_activity: without it Postgres takes the partial
+            # expression index for unselective and scans the table.
+            .order_by(last_active)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        result = await self._session.execute(
+            delete(ConversationRow).where(ConversationRow.id.in_(batch))
+        )
+        return result.rowcount
+
 
 class VisitorNumberRepository(_Repository, AbstractVisitorNumberRepository):
     async def next(self, binding_id: UUID) -> int:
@@ -710,7 +749,11 @@ class MessageRepository(_Repository, AbstractMessageRepository):
             )
         ).all()
         return [
-            {"role": role, "content": content, **({"action": action} if action is not None else {})}
+            {
+                "role": role,
+                "content": content,
+                **({"action": _history_action(action)} if action is not None else {}),
+            }
             for role, content, action in reversed(rows)
         ]
 

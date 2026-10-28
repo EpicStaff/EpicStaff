@@ -3,9 +3,10 @@ import io
 import sys
 
 import pytest
+import settings
 from application.commands import RunIndex, RunSearch
 from application.orchestrators.base import AbstractOrchestrator
-from bootstrap.lifespans import configure_logging
+from bootstrap.logging_setup import configure_logging
 from domain.models import NaiveSearchConfig
 from loguru import logger
 
@@ -68,6 +69,7 @@ class FailingOrchestrator(AbstractOrchestrator):
 def service_stderr(monkeypatch):
     stderr = io.StringIO()
     monkeypatch.setattr(sys, "stderr", stderr)
+    monkeypatch.setattr(settings, "LOG_LEVEL", "INFO")
     configure_logging()
     yield stderr
     logger.configure(handlers=[{"sink": sys.__stderr__}])

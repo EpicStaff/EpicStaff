@@ -14,7 +14,7 @@ from tables.import_export.services.partial_export_service import (
 from tables.models import Graph
 from tables.models.graph_models import GraphNote
 from tables.models.mcp_models import McpTool
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
@@ -27,7 +27,11 @@ def exported_mcp_tool(beta, member_only) -> dict:
         org=beta,
         created_by=member_only,
     )
-    return ExportService(entity_registry).export_entities(EntityType.MCP_TOOL, [tool.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(EntityType.MCP_TOOL, [tool.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 @pytest.fixture
@@ -35,7 +39,11 @@ def exported_note(acme) -> dict:
     source = Graph.objects.create(name="note-source", org=acme)
     note = GraphNote.objects.create(graph=source, content="imported note")
     node_ref = NodeRef(entity_type=EntityType.NOTE_NODE, node_id=note.id)
-    return GraphPartialExportService(entity_registry).export([node_ref], org_id=acme.id).data
+    return (
+        GraphPartialExportService(entity_registry)
+        .export([node_ref], org_id=acme.id, policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def _partial_import(client_as, user, org, graph, export_data):
@@ -72,11 +80,11 @@ def test_import_by_system_principal_leaves_new_row_unauthored(exported_mcp_tool,
     assert McpTool.objects.get(org=acme, name="exported-tool").created_by_id is None
 
 
-# ---- partial import edits the target graph ----
+# ---- partial import returns nodes unsaved and leaves the target graph alone ----
 
 
 @pytest.mark.django_db
-def test_partial_import_leaves_unauthored_graph_unauthored(
+def test_partial_import_leaves_unauthored_graph_unauthored_and_saves_no_node(
     client_as, admin_acme, acme, exported_note
 ):
     target = Graph.objects.create(name="ownerless-target", org=acme)
@@ -86,8 +94,10 @@ def test_partial_import_leaves_unauthored_graph_unauthored(
     assert response.status_code == status.HTTP_200_OK, response.content
     target.refresh_from_db()
     assert target.created_by_id is None
-    imported_note = GraphNote.objects.get(graph=target)
-    assert imported_note.created_by_id == admin_acme.id
+    assert [note["content"] for note in response.data["content"]["graph_note_list"]] == [
+        "imported note"
+    ]
+    assert not GraphNote.objects.filter(graph=target).exists()
 
 
 @pytest.mark.django_db
@@ -108,17 +118,22 @@ def test_partial_import_creating_only_dependencies_leaves_graph_unauthored(
     client_as, admin_acme, acme, beta
 ):
     target = Graph.objects.create(name="dependency-only-target", org=acme)
-    exported_tool = ExportService(entity_registry).export_entities(
-        EntityType.MCP_TOOL,
-        [
-            McpTool.objects.create(
-                name="dependency-only-tool",
-                transport="http://mcp.example.com/sse",
-                tool_name="search",
-                org=beta,
-            ).id
-        ],
-    )[EntityType.MCP_TOOL]
+    exported_tool = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.MCP_TOOL,
+            [
+                McpTool.objects.create(
+                    name="dependency-only-tool",
+                    transport="http://mcp.example.com/sse",
+                    tool_name="search",
+                    org=beta,
+                ).id
+            ],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data[EntityType.MCP_TOOL]
+    )
     export_data = {
         EntityType.MCP_TOOL: exported_tool,
         EntityType.CREW_NODE: [{"id": 5, "node_name": "retired crew node"}],

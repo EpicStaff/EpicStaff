@@ -1,4 +1,5 @@
 import math
+from typing import TYPE_CHECKING
 
 from rest_framework.exceptions import Throttled
 from utils.exceptions import CustomAPIExeption
@@ -6,6 +7,12 @@ from utils.exceptions import CustomAPIExeption
 from tables.constants.knowledge_constants import (
     ALLOWED_FILE_TYPES,
 )
+
+if TYPE_CHECKING:
+    # Only a type here: the import service imports this module.
+    from tables.services.knowledge_services.storage_document_import_service import (
+        SkippedStorageFile,
+    )
 
 __all__ = ["CustomAPIExeption"]
 
@@ -317,7 +324,24 @@ class PythonCodeToolConfigSerializerError(CustomAPIExeption):
 
 
 class DocumentUploadException(CustomAPIExeption):
-    """Base exception for document upload errors."""
+    """Base exception for document upload errors.
+
+    A 400 unless a subclass says otherwise: these describe what the client sent,
+    so one that reaches the exception handler must not render as a server error.
+    """
+
+    status_code = 400
+    default_detail = "The document upload was rejected."
+
+
+class UploadRejectedException(DocumentUploadException):
+    """Raised when files of an upload batch fail validation.
+
+    The message lists every problem: per-file size and type errors, and what
+    ``FileValidator`` rejected.
+    """
+
+    default_code = "upload_rejected"
 
 
 class FileSizeExceededException(DocumentUploadException):
@@ -361,6 +385,8 @@ class NoFilesProvidedException(DocumentUploadException):
 class DocumentNotFoundException(DocumentUploadException):
     """Raised when document is not found."""
 
+    status_code = 404
+
     def __init__(self, document_id):
         self.document_id = document_id
         super().__init__(f"Document with id {document_id} not found")
@@ -374,6 +400,40 @@ class InvalidCollectionIdException(DocumentUploadException):
         super().__init__(
             f"Invalid collection_id: '{collection_id_value}'. Must be a valid integer."
         )
+
+
+class StorageFilesNotFoundException(CustomAPIExeption):
+    """Raised when a requested storage file is missing, in another org, or a system file.
+
+    Deliberately carries no ids: naming the offending id would reveal which
+    ids exist in other organizations.
+    """
+
+    status_code = 404
+    default_detail = "Not found."
+    default_code = "not_found"
+
+
+class StorageImportLimitExceededException(DocumentUploadException):
+    """Raised when a storage import selects more files or bytes than one upload allows."""
+
+    default_code = "storage_import_limit_exceeded"
+
+
+class NothingToImportException(DocumentUploadException):
+    """Raised when every selected storage file was skipped.
+
+    The response also carries `skipped`: one `{storage_file_id, path, reason}`
+    per file, the same items a successful import lists.
+    """
+
+    default_detail = "None of the selected storage files can be imported"
+    default_code = "nothing_to_import"
+
+    def __init__(self, skipped: list["SkippedStorageFile"]):
+        super().__init__()
+        self.skipped = skipped
+        self.extra_response_data = {"skipped": [item.to_dict() for item in skipped]}
 
 
 class InvalidFieldType(CustomAPIExeption):
@@ -635,6 +695,28 @@ class LLMConfigInvalidError(CustomAPIExeption):
     default_code = "flow_assistant_llm_config_invalid"
 
 
+class ConfigProviderMissingError(CustomAPIExeption):
+    """Raised when an LLM or embedding config reaches a session without a usable provider.
+
+    The provider foreign keys are SET_NULL, so deleting a provider leaves the configs
+    that used it pointing at nothing. One class for both kinds: only the label in the
+    message differs.
+    """
+
+    status_code = 400
+    default_detail = "The config has no model or provider."
+    default_code = "config_provider_missing"
+
+    def __init__(self, config_kind: str, config_name: str):
+        self.config_kind = config_kind
+        self.config_name = config_name
+        super().__init__(
+            f"{config_kind} config '{config_name}' has no model or provider (it may have been deleted). "
+            "Choose a model with a provider and try again.",
+            code=self.default_code,
+        )
+
+
 class UnsupportedReasoningEffortError(CustomAPIExeption):
     """Raised when an LLM config's reasoning effort is one its model cannot take.
 
@@ -752,6 +834,18 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     status_code = 502
     default_detail = "The explanation could not be generated. Please try again."
     default_code = "cdt_explain_upstream_failed"
+
+
+class InUseRestrictedError(CustomAPIExeption):
+    """Raised by the single-object destroy path when the entity is referenced
+    from something the caller cannot see (BaseDeleteService.assert_deletable).
+    A fixed business rule on the row, not a change in the caller's own
+    permissions, so it carries its own code: the frontend must not treat it
+    as stale permissions."""
+
+    status_code = 403
+    default_detail = "This item is used somewhere you don't have access to, so it can't be deleted."
+    default_code = "in_use_restricted"
 
 
 class CdtExplainLLMConfigMissingKeyError(CustomAPIExeption):

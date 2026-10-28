@@ -2,6 +2,7 @@ import pytest
 
 from tables.models import Graph, StartNode
 from tables.import_export.enums import EntityType
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 ORPHAN_SUBGRAPH_ID = 999_999_999
 
@@ -32,7 +33,9 @@ class TestGraphMetadataOrphanSubgraphReference:
         )
         StartNode.objects.create(graph=graph, variables={})
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         id_mapper, _ = import_service.import_data(export_data, EntityType.GRAPH)
 

@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from django.db import transaction
 from django.utils import timezone
@@ -8,9 +8,11 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from tables.exceptions import ClassificationDecisionTableNodeNotFoundError
 from tables.graph_collab.notifications import GraphEditNotifier
 from tables.import_export.enums import EntityType
+from tables.import_export.export_exclusions import ExcludedEntity
 from tables.import_export.export_tabular_projections.export_classification_decision_table_csv import (
     export_condition_groups_csv,
 )
+from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.partial_export_service import (
     GraphPartialExportService,
@@ -26,6 +28,8 @@ from tables.serializers.model_serializers.node_serializers.flow_control_serializ
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
+from tables.services.secrets.request_actor import actor_from_request
+from tables.services.secrets.secret_use_checks import check_cdt_node_write
 from tables.utils.helpers import generate_file_name
 
 
@@ -37,6 +41,7 @@ class NodeExportResult:
     content_type: str | None = None
     filename: str | None = None
     errors: list | None = None
+    excluded: list[ExcludedEntity] = field(default_factory=list)
 
 
 @dataclass
@@ -89,6 +94,9 @@ class ClassificationDecisionTableNodeService:
             request=request,
         )
 
+        # After every validation, so a malformed payload reports its own errors first.
+        check_cdt_node_write(actor_from_request(request), instance, serializer.validated_data)
+
         node = serializer.save()
 
         children_untouched = (
@@ -132,7 +140,7 @@ class ClassificationDecisionTableNodeService:
             raise ClassificationDecisionTableNodeNotFoundError(pk)
         return node
 
-    def export(self, pk, export_format: str = "json", *, org_id: int) -> NodeExportResult:
+    def export(self, pk, export_format: str = "json", *, org_id: int, user) -> NodeExportResult:
         export_format = (export_format or "json").lower()
         if export_format not in ("json", "csv"):
             raise DRFValidationError({"export_format": "Unsupported format. Use 'json' or 'csv'."})
@@ -157,6 +165,7 @@ class ClassificationDecisionTableNodeService:
                 )
             ],
             org_id=org_id,
+            policy=ExportAccessPolicy.for_user(user, org_id),
         )
         if result.has_errors:
             return NodeExportResult(errors=result.errors)
@@ -165,6 +174,7 @@ class ClassificationDecisionTableNodeService:
             content=json.dumps(result.data, indent=4),
             content_type="application/json",
             filename=generate_file_name(f"{node.node_name}", prefix="CDT"),
+            excluded=result.excluded,
         )
 
     def save_explanations(

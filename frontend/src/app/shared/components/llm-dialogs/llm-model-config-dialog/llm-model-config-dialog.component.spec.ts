@@ -391,6 +391,28 @@ function validationErrorResponse(field: string, value: string, reason: string): 
     ) as Observable<never>;
 }
 
+/** The 400 the backend sends when a write would change where a secret goes and the caller lacks Secrets "Use". */
+const SECRET_USE_REFUSAL = new HttpErrorResponse({
+    status: 400,
+    error: {
+        status_code: 400,
+        code: 'invalid',
+        message:
+            'model: Changing where this sends its secrets requires the "Use" permission on Secrets. ' +
+            'The existing value was left unchanged. Ask an organization admin to grant it.',
+    },
+});
+
+const SERVER_ERROR = new HttpErrorResponse({
+    status: 500,
+    error: { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
+});
+
+function bannerText(fixture: ComponentFixture<LlmModelConfigDialogComponent>): string {
+    const banner = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('app-error-banner');
+    return banner && !banner.hidden ? (banner.textContent ?? '').trim() : '';
+}
+
 function unsupportedEffortResponse(): Observable<never> {
     return validationErrorResponse('reasoning_effort', 'xhigh', UNSUPPORTED_EFFORT_ERROR);
 }
@@ -450,7 +472,7 @@ describe('LlmModelConfigDialogComponent reasoning effort', () => {
         fixture.detectChanges();
 
         expect(reasoningErrorText(fixture)).toContain(UNSUPPORTED_EFFORT_ERROR);
-        expect(fixture.componentInstance.errorMessage()).toBeNull();
+        expect(bannerText(fixture)).toBe('');
         expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
         expect(saveButton(fixture).disabled).toBe(true);
 
@@ -483,8 +505,45 @@ describe('LlmModelConfigDialogComponent reasoning effort', () => {
         fixture.componentInstance.onSave();
         fixture.detectChanges();
 
-        expect(fixture.componentInstance.errorMessage()).toBe(reason);
+        expect(bannerText(fixture)).toBe(reason);
         expect(reasoningErrorText(fixture)).toBe('');
+    });
+
+    it('shows a secret Use refusal in the banner as a sentence, with the field label in words', async () => {
+        const { fixture, updateConfig } = await render(storedConfig(ALWAYS_REASONING_MODEL_ID, 'high'));
+        updateConfig.mockReturnValueOnce(throwError(() => SECRET_USE_REFUSAL));
+
+        fixture.componentInstance.onSave();
+        fixture.detectChanges();
+
+        expect(bannerText(fixture)).toBe(
+            'Model: Changing where this sends its secrets requires the "Use" permission on Secrets. ' +
+                'The existing value was left unchanged. Ask an organization admin to grant it.'
+        );
+        expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
+    });
+
+    it('clears the banner when the form is submitted again', async () => {
+        const { fixture, updateConfig } = await render(storedConfig(ALWAYS_REASONING_MODEL_ID, 'high'));
+        updateConfig.mockReturnValueOnce(throwError(() => SECRET_USE_REFUSAL));
+        fixture.componentInstance.onSave();
+        fixture.detectChanges();
+        expect(bannerText(fixture)).not.toBe('');
+
+        fixture.componentInstance.onSave();
+        fixture.detectChanges();
+
+        expect(bannerText(fixture)).toBe('');
+    });
+
+    it('shows a server error in the banner too', async () => {
+        const { fixture, updateConfig } = await render(storedConfig(ALWAYS_REASONING_MODEL_ID, 'high'));
+        updateConfig.mockReturnValueOnce(throwError(() => SERVER_ERROR));
+
+        fixture.componentInstance.onSave();
+        fixture.detectChanges();
+
+        expect(bannerText(fixture)).toBe('Unpredictable error');
     });
 
     it('resolves the stored model by id in edit mode and shows the stored reasoning effort', async () => {

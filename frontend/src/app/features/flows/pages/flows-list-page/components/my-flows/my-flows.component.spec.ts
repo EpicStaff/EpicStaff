@@ -4,7 +4,8 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shared/components';
-import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
+import { EXPORT_WARNING_DURATION_MS } from '@shared/constants';
+import { ActionCode, ExcludedExportEntity, ResourceCode, UserSummary } from '@shared/models';
 import { Observable, of, throwError } from 'rxjs';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
@@ -216,7 +217,6 @@ function render({ flows, canWrite = true, fetchedFlow }: Setup): Rendered {
             },
             { provide: ToastService, useValue: { error: toastError, success: vi.fn() } },
             { provide: RunGraphService, useValue: {} },
-            { provide: ConfirmationDialogService, useValue: {} },
             { provide: ImportExportService, useValue: {} },
         ],
     });
@@ -348,5 +348,81 @@ describe('MyFlowsComponent "View Details"', () => {
 
         expect(open).not.toHaveBeenCalled();
         expect(toastError).toHaveBeenCalledWith('Failed to load details of flow "Subflow 1"');
+    });
+});
+
+describe('MyFlowsComponent select mode', () => {
+    it('gives each card a secondary (light box, dark tick) checkbox in its own column before the title', () => {
+        const { fixture, host } = render({ flows: [FLOW] });
+
+        TestBed.inject(FlowsStorageService).setSelectMode(true);
+        fixture.detectChanges();
+
+        const flowCard = card(host, 'Test Flow 1');
+        const checkboxColumn = flowCard.querySelector('.card-body > .selection-checkbox');
+        expect(checkboxColumn?.querySelector('app-checkbox input')?.classList).toContain('secondary');
+        expect(checkboxColumn?.nextElementSibling?.classList).toContain('card-content');
+    });
+});
+
+describe('MyFlowsComponent export action', () => {
+    const toastWarning = vi.fn();
+    const toastSuccess = vi.fn();
+
+    function exportFlowWith(excluded: ExcludedExportEntity[]): void {
+        toastWarning.mockReset();
+        toastSuccess.mockReset();
+        window.URL.createObjectURL = vi.fn(() => 'blob:x');
+        window.URL.revokeObjectURL = vi.fn();
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+        TestBed.configureTestingModule({
+            providers: [
+                provideRouter([]),
+                {
+                    provide: FlowsStorageService,
+                    useValue: {
+                        filteredFlows: signal([]),
+                        isFlowsLoaded: signal(false),
+                        selectMode: signal(false),
+                        selectedFlowIds: signal([]),
+                        getFlows: () => of([]),
+                    },
+                },
+                { provide: LabelsStorageService, useValue: { activeLabelFilter: signal('all') } },
+                { provide: FlowsApiService, useValue: {} },
+                { provide: RunGraphService, useValue: {} },
+                { provide: ToastService, useValue: { success: toastSuccess, warning: toastWarning, error: vi.fn() } },
+                { provide: ConfirmationDialogService, useValue: {} },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
+                {
+                    provide: ImportExportService,
+                    useValue: { exportFlow: () => of({ blob: new Blob(['{}']), excluded }) },
+                },
+            ],
+        });
+        const fixture = TestBed.createComponent(MyFlowsComponent);
+        fixture.detectChanges();
+        fixture.componentInstance.handleFlowCardAction({ action: 'export', flow: SOURCE_FLOW });
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('warns, with a long duration, about entities left out of the export', () => {
+        exportFlowWith([{ type: 'AgentDefinition', count: 2, names: ['A', 'B'] }]);
+
+        expect(toastSuccess).toHaveBeenCalledWith('Flow "Support Flow" exported successfully');
+        expect(toastWarning).toHaveBeenCalledWith(
+            expect.stringContaining('A, B'),
+            EXPORT_WARNING_DURATION_MS,
+            undefined
+        );
+    });
+
+    it('shows no warning when nothing was excluded', () => {
+        exportFlowWith([]);
+
+        expect(toastSuccess).toHaveBeenCalled();
+        expect(toastWarning).not.toHaveBeenCalled();
     });
 });

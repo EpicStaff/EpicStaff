@@ -103,6 +103,7 @@ def mock_session_data() -> SessionData:
     return SessionData(
         id=123,
         org_id=1,
+        audit_retention_days=0,
         initial_state={"input": "Hello"},
         graph=GraphData(
             name="example_graph",
@@ -110,10 +111,8 @@ def mock_session_data() -> SessionData:
                 PythonNodeData(
                     node_name="start_node",
                     python_code=PythonCodeData(
-                        venv_name="venv-default",
                         code="def main(): return 'next_node'",
                         entrypoint="main",
-                        libraries=[],
                         global_kwargs={},
                     ),
                     input_map={},
@@ -122,10 +121,8 @@ def mock_session_data() -> SessionData:
                 PythonNodeData(
                     node_name="end_node",
                     python_code=PythonCodeData(
-                        venv_name="venv-default",
                         code="def main(): return 'end'",
                         entrypoint="main",
-                        libraries=["requests"],
                         global_kwargs={},
                     ),
                     input_map={},
@@ -134,10 +131,8 @@ def mock_session_data() -> SessionData:
                 PythonNodeData(
                     node_name="error_node",
                     python_code=PythonCodeData(
-                        venv_name="venv-default",
                         code="def main(): return 'ERROR HANDELED'",
                         entrypoint="main",
-                        libraries=[],
                         global_kwargs={},
                     ),
                     input_map={},
@@ -291,6 +286,7 @@ def _task_node_session_data(mock_llm_data) -> SessionData:
     return SessionData(
         id=456,
         org_id=1,
+        audit_retention_days=0,
         initial_state={},
         graph=GraphData(
             name="task_node_graph",
@@ -318,6 +314,7 @@ def _agent_node_session_data(mock_llm_data) -> SessionData:
     return SessionData(
         id=789,
         org_id=1,
+        audit_retention_days=0,
         initial_state={},
         graph=GraphData(
             name="agent_node_graph",
@@ -414,10 +411,8 @@ def _storage_python_node_data(
     return PythonNodeData(
         node_name=node_name,
         python_code=PythonCodeData(
-            venv_name="venv-default",
             code=f"def main(): return read_from_storage('{storage_path}')",
             entrypoint="main",
-            libraries=[],
             global_kwargs={},
             use_storage=True,
             storage_allowed_paths=["org_1/"],
@@ -457,6 +452,7 @@ def _storage_subgraph_session_data(
     return SessionData(
         id=777,
         org_id=1,
+        audit_retention_days=0,
         initial_state={},
         storage_credentials=storage_credentials,
         unique_subgraph_list=[
@@ -510,6 +506,7 @@ def _two_level_storage_subgraph_session_data(
     return SessionData(
         id=778,
         org_id=1,
+        audit_retention_days=0,
         initial_state={},
         storage_credentials=storage_credentials,
         unique_subgraph_list=[

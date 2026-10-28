@@ -228,6 +228,28 @@ describe('buildPreviewFlowModel', () => {
         expect((byId(ID.python) as PythonNodeModel).data.execution_timeout).toBeUndefined();
     });
 
+    it.each([
+        { kind: 'the venv of python code', code: { venv: 4 }, venvId: 4 },
+        { kind: 'no venv for code without one', code: { venv: null }, venvId: null },
+        // A version saved before venvs: its libraries are not read, and it runs in no venv.
+        { kind: 'no venv for a version saved before venvs', code: { libraries: 'requests pandas' }, venvId: null },
+    ])('keeps $kind', ({ code, venvId }) => {
+        const version: GraphVersionSnapshot = {
+            nodes: [
+                exported('PythonNode', {
+                    ...livePython,
+                    python_code: { code: 'def main(): pass', entrypoint: 'main', ...code },
+                }),
+            ],
+        };
+        const python = buildPreviewFlowModel(version, secretsByName, availableFlows).flow.nodes.find(
+            (node) => node.type === NodeType.PYTHON
+        ) as PythonNodeModel;
+
+        expect(python.data.venv_id).toBe(venvId);
+        expect(python.data).not.toHaveProperty('libraries');
+    });
+
     it('keeps the webhook storage flag and turns it off for versions saved without one', () => {
         const withStorage: GraphVersionSnapshot = {
             nodes: [

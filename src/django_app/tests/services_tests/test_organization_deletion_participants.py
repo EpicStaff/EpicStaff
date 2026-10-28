@@ -84,10 +84,12 @@ def test_tables_participant_is_registered_after_app_load():
 
 
 def test_registering_the_same_participant_type_twice_is_refused():
+    registered = len(participants())
+
     with pytest.raises(ValueError):
         register_participant(TablesOrganizationDeletion())
 
-    assert len(participants()) == 1
+    assert len(participants()) == registered
 
 
 def test_registering_an_already_known_label_is_refused():

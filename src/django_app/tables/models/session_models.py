@@ -1,5 +1,5 @@
-from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 from tables.models.base_models import CrewSessionMessage
@@ -35,7 +35,6 @@ class Session(models.Model):
     status_data = models.JSONField(default=dict)
     variables = models.JSONField(default=dict)
     created_at = models.DateTimeField(default=timezone.now)
-    graph_schema = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
     graph_user = models.ForeignKey(
         GraphOrganizationUser, on_delete=models.SET_NULL, default=None, null=True
     )
@@ -73,6 +72,16 @@ class Session(models.Model):
 
     class Meta:
         get_latest_by = ["id"]
+        indexes = [
+            # The retention job's pick: finished root sessions, by flow, oldest first. id
+            # completes its keyset order, so a batch is one index range with no sort.
+            # finished_at is set once, so status and token-usage updates stay HOT-eligible.
+            models.Index(
+                fields=["graph", "finished_at", "id"],
+                name="session_root_graph_finished",
+                condition=Q(parent_session__isnull=True, finished_at__isnull=False),
+            ),
+        ]
 
 
 class UserSessionMessage(CrewSessionMessage):
@@ -185,6 +194,7 @@ class SessionPrincipal(models.Model):
         API_KEY_USER = "api_key_user"
         API_KEY_SYSTEM = "api_key_system"
         TRIGGER = "trigger"
+        PLUGIN = "plugin"
         UNKNOWN = "unknown"
 
     session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name="principal")
@@ -206,3 +216,6 @@ class SessionPrincipal(models.Model):
         related_name="+",
     )
     email = models.CharField(max_length=256, default=None, blank=True, null=True)
+    # Set for PLUGIN runs only; `user` and `email` then name the person the plugin
+    # ran the flow on behalf of, or stay empty when it ran on its own.
+    plugin_identifier = models.CharField(max_length=32, default=None, blank=True, null=True)

@@ -23,6 +23,8 @@ from shared.models.knowledge import (
 )
 from shared.models.knowledge_new import FoundChunk, SearchOutcome, SearchUsage
 
+from tests.log_capture import assert_masked_exception, capture_logs_at, log_line_starting_with
+
 
 def _make_target(rag_type: str = "naive") -> KnowledgeSearchTarget:
     if rag_type == "graph":
@@ -235,3 +237,18 @@ async def test_sink_receives_no_usage_when_the_search_fails():
     await _naive_executor(FakeKnowledgeClient(raises=RuntimeError("down")), sink=sink)({"query": "test"})
 
     assert sink.usages == [None]
+
+
+async def test_failing_sink_logs_class_name_and_digest_only():
+    """The sink runs inside the request, so its exception can quote the query or a
+    retrieved chunk; the WARNING line names the class and digests the message."""
+    secret_marker = "SENSITIVE_KNOWLEDGE_QUERY_MARKER_13577"
+    sink = RecordingSink(raises=RuntimeError(f"publish failed: {secret_marker}"))
+
+    with capture_logs_at("WARNING") as logs:
+        await _naive_executor(FakeKnowledgeClient([]), sink=sink)({"query": "test"})
+
+    warning_line = log_line_starting_with(logs, "knowledge search sink failed rag_id=")
+    assert secret_marker not in warning_line
+    assert "rag_id=1" in warning_line
+    assert_masked_exception(warning_line, "RuntimeError")

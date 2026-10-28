@@ -1,21 +1,19 @@
-"""The one thing to get right. PythonCodeData is nested in GraphData, and
-session.graph_schema = session_data.graph.model_dump(mode="json").
+"""The one thing to get right. PythonCodeData is nested in GraphData, which
+django publishes to crew as part of SessionData.
 
 `secret_names` is excluded because nothing downstream of Redis needs it: it is a
 copy of PythonCode.secrets, the relation that is already the source of truth, so
-persisting it in graph_schema would duplicate a fact that can go stale. It is NOT
-a confidentiality measure — the names a node reads are string literals in `code`,
-which graph_schema stores in full, so they are visible there either way. Only the
-plaintext is secret.
+dumping it would duplicate a fact that can go stale. It is NOT a confidentiality
+measure — the names a node reads are string literals in `code`, which the payload
+carries in full, so they are visible there either way. Only the plaintext is secret.
 
 `secrets` is deliberately NOT excluded: it is the only way the plaintext
 crosses the django->crew Redis boundary (redis_service publishes
 `resolved.model_dump_json()`), and a field-level exclude cannot be switched
-back on for that one dump. What keeps `graph_schema` free of plaintext is not
-an exclude flag on this field — it is that SecretResolver.resolve_payload()
-only ever fills `secrets` on a deep copy, never on the caller's object, and
-`graph_schema` is built from that original, unresolved object. So on the
-object that gets persisted, `secrets` is always `{}`.
+back on for that one dump. What keeps the caller's object free of plaintext is
+not an exclude flag on this field — it is that SecretResolver.resolve_payload()
+only ever fills `secrets` on a deep copy, never on the caller's object. So on
+the unresolved original, `secrets` is always `{}`.
 
 CodeTaskData is the crew->sandbox message and is never persisted, so its
 `secrets` field is also a plain field, for the same delivery reason.
@@ -37,7 +35,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code='def main(): return get_secret("STRIPE_KEY")',
             entrypoint="main",
-            libraries=[],
             secret_names=["STRIPE_KEY"],
         )
 
@@ -48,7 +45,7 @@ class TestPythonCodeDataIsCarrierOnly:
         # nothing more.
         assert "STRIPE_KEY" in dumped["code"]
         # secrets is present but empty until resolved — this emptiness, not an
-        # exclude flag, is what keeps graph_schema free of plaintext.
+        # exclude flag, is what keeps the unresolved original free of plaintext.
         assert dumped["secrets"] == {}
 
     def test_resolved_payload_dump_does_carry_the_plaintext(self):
@@ -59,7 +56,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code="def main(): return 1",
             entrypoint="main",
-            libraries=[],
             secret_names=["STRIPE_KEY"],
         )
         data.secrets = {"STRIPE_KEY": "sk-live-for-the-sandbox"}
@@ -77,7 +73,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code="def main(): return 1",
             entrypoint="main",
-            libraries=[],
             secret_names=["STRIPE_KEY"],
         )
         data.secrets = {"A": "b"}
@@ -90,7 +85,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code="def main(): return 1",
             entrypoint="main",
-            libraries=[],
         )
 
         assert data.secret_names == []
@@ -101,7 +95,6 @@ class TestCodeTaskDataSerializesSecrets:
     def test_secrets_reach_the_wire(self):
         task = CodeTaskData(
             venv_name="default",
-            libraries=[],
             code="def main(): return 1",
             execution_id="exec-1",
             entrypoint="main",
@@ -115,7 +108,6 @@ class TestCodeTaskDataSerializesSecrets:
     def test_defaults_to_empty(self):
         task = CodeTaskData(
             venv_name="default",
-            libraries=[],
             code="def main(): return 1",
             execution_id="exec-1",
             entrypoint="main",
@@ -131,8 +123,7 @@ class TestLogSummaryIsSafe:
 
     def _task(self):
         return CodeTaskData(
-            venv_name="venv_9",
-            libraries=["requests"],
+            venv_id=9,
             code="def main(): return 1",
             execution_id="exec-42",
             entrypoint="main",
@@ -152,7 +143,7 @@ class TestLogSummaryIsSafe:
         summary = self._task().log_summary()
 
         assert "exec-42" in summary
-        assert "venv_9" in summary
+        assert "venv_id=9" in summary
         assert "main" in summary
         # "Did the node receive its declarations?" answered without disclosure.
         assert "secrets=1" in summary
@@ -160,7 +151,6 @@ class TestLogSummaryIsSafe:
     def test_summary_of_a_task_with_no_secrets(self):
         task = CodeTaskData(
             venv_name="default",
-            libraries=[],
             code="def main(): return 1",
             execution_id="exec-0",
             entrypoint="main",

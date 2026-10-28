@@ -1,6 +1,6 @@
 {
   "settings": {
-    "number_of_shards": 3,
+    "number_of_shards": 1,
     "auto_expand_replicas": "0-1"
   },
   "mappings": {
@@ -30,7 +30,9 @@
       },
 
       "event_time": { "type": "date" },
-      "record_time": { "type": "date" }
+      "record_time": { "type": "date" },
+
+      "retention_days": { "type": "integer" }
     }
   }
 }

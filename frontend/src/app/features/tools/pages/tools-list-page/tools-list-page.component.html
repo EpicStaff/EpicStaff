@@ -199,12 +199,10 @@
                     </ng-template>
 
                     <button
-                        #filterTrigger="cdkOverlayOrigin"
-                        cdkOverlayOrigin
                         type="button"
                         class="menu-trigger filter-trigger"
-                        [class.active]="filterMenuOpen() || activeFilterCount() > 0"
-                        (click)="toggleFilterMenu()"
+                        [class.active]="showFilterSidebar() || activeFilterCount() > 0"
+                        (click)="toggleFilterSidebar()"
                     >
                         <app-svg-icon
                             icon="filter-outline"
@@ -231,36 +229,6 @@
                             </span>
                         }
                     </button>
-                    <ng-template
-                        cdkConnectedOverlay
-                        [cdkConnectedOverlayOrigin]="filterTrigger"
-                        [cdkConnectedOverlayOpen]="filterMenuOpen()"
-                        [cdkConnectedOverlayHasBackdrop]="true"
-                        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
-                        [cdkConnectedOverlayOffsetY]="6"
-                        [cdkConnectedOverlayPositions]="[
-                            {
-                                originX: 'end',
-                                originY: 'bottom',
-                                overlayX: 'end',
-                                overlayY: 'top',
-                            },
-                        ]"
-                        (backdropClick)="closeFilterMenu()"
-                        (detach)="closeFilterMenu()"
-                    >
-                        <app-tools-filter-menu
-                            [initial]="viewState.filter()"
-                            [showSource]="showSourceFilter()"
-                            [includeExcludeIsSet]="includeExcludeIsSet()"
-                            [customFilterIsSet]="customFilterIsSet()"
-                            (save)="onFilterSave($event)"
-                            (cancel)="onFilterCancel()"
-                            (clear)="onFilterClear()"
-                            (openIncludeExclude)="onOpenIncludeExclude()"
-                            (openCustomFilter)="onOpenCustomFilter()"
-                        />
-                    </ng-template>
 
                     <button
                         #sortTrigger="cdkOverlayOrigin"
@@ -311,5 +279,26 @@
                 <router-outlet></router-outlet>
             </div>
         </div>
+        @if (showFilterSidebar()) {
+            <aside
+                #filterPanel
+                class="filter-panel"
+                [style.flex-basis.px]="filterPanelWidth()"
+            >
+                <div
+                    class="resizable-sidebar-handle filter-panel__handle"
+                    sidebarAriaLabel="Resize filter panel"
+                    [sidebarSide]="'right'"
+                    [appResizableSidebar]="filterPanelWidthKey"
+                    [sidebarTarget]="filterPanel"
+                    [sidebarMinWidth]="filterPanelWidthOptions.minWidth"
+                    [sidebarMaxWidth]="filterPanelWidthOptions.maxWidth"
+                ></div>
+                <app-tools-filter-sidebar
+                    [showSource]="showSourceFilter()"
+                    (closeSidebar)="toggleFilterSidebar()"
+                />
+            </aside>
+        }
     </section>
 </div>

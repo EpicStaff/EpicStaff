@@ -24,6 +24,8 @@ from mcp import McpError
 from mcp.types import INTERNAL_ERROR, ErrorData
 from shared.models.tools import McpToolData
 
+from tests.log_capture import assert_masked_exception, capture_logs_at, log_line_starting_with
+
 # ---------------------------------------------------------------------------
 # Fakes / helpers
 # ---------------------------------------------------------------------------
@@ -162,7 +164,7 @@ async def test_describe_falls_back_to_tool_name_when_description_empty():
 
     result = await gateway.describe(_mcp_data("do_thing"))
 
-    assert result.description == "do_thing"
+    assert result.description == "[external MCP tool description] do_thing"
 
 
 async def test_describe_falls_back_to_tool_name_when_description_whitespace_only():
@@ -172,7 +174,7 @@ async def test_describe_falls_back_to_tool_name_when_description_whitespace_only
 
     result = await gateway.describe(_mcp_data("do_thing"))
 
-    assert result.description == "do_thing"
+    assert result.description == "[external MCP tool description] do_thing"
 
 
 async def test_describe_returns_empty_schema_when_input_schema_none():
@@ -206,6 +208,33 @@ async def test_describe_truncates_long_description_strips_control_chars_and_pref
     assert "\x07" not in result.description
     assert "\x1f" not in result.description
     assert "\x7f" not in result.description
+
+
+async def test_describe_cleans_the_input_schema():
+    schema = {
+        "type": "object",
+        "properties": {"q": {"type": "string", "description": "Look\x1b[31m\x07 up" + "x" * 2000}},
+    }
+    tool = FakeTool(name="search", inputSchema=schema)
+    client = _make_client(list_tools_result=[tool])
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
+
+    result = await gateway.describe(_mcp_data("search"))
+
+    assert result.input_schema == {
+        "type": "object",
+        "properties": {"q": {"type": "string", "description": "Look[31m up" + "x" * 1013}},
+    }
+
+
+async def test_describe_refuses_a_tool_whose_schema_key_has_control_characters():
+    schema = {"type": "object", "properties": {"q\x07": {"type": "string"}}}
+    tool = FakeTool(name="search", inputSchema=schema)
+    client = _make_client(list_tools_result=[tool])
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
+
+    with pytest.raises(McpToolError, match=r"unsafe input schema: schema key 'q\\x07' contains control"):
+        await gateway.describe(_mcp_data("search"))
 
 
 async def test_describe_leaves_input_schema_unchanged_when_description_truncated():
@@ -291,8 +320,12 @@ async def test_describe_does_not_share_results_between_credentials():
 
 @pytest.mark.parametrize(
     "failure",
-    [ConnectionError("refused"), [FakeTool(name="other_tool")]],
-    ids=["unreachable", "tool-missing"],
+    [
+        ConnectionError("refused"),
+        [FakeTool(name="other_tool")],
+        [FakeTool(name="search", inputSchema={"properties": {"q\x07": {"type": "string"}}})],
+    ],
+    ids=["unreachable", "tool-missing", "unsafe-schema"],
 )
 async def test_failed_describe_is_not_cached(failure):
     factory = _CountingFactory([failure])
@@ -591,3 +624,21 @@ async def test_sdk_sends_tools_call_with_the_request_id_read_right_before_it():
         await client.call_tool("echo", {})
 
     assert ids_seen_by_server == [str(expected_request_id)]
+
+
+async def test_failed_cancel_logs_class_name_and_digest_only():
+    """A transport error raised while cancelling can quote the server URL and its
+    auth header; the WARNING line names the class and digests the message."""
+    secret_marker = "SENSITIVE_MCP_BEARER_TOKEN_86420"
+    client = _make_in_flight_client(_sdk_read_timeout())
+    client.cancel.side_effect = ConnectionError(f"POST failed: {secret_marker}")
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
+
+    with capture_logs_at("WARNING") as logs:
+        with pytest.raises(McpToolError):
+            await gateway.call(_mcp_data("browse"), {})
+
+    warning_line = log_line_starting_with(logs, "Failed to cancel MCP tool_name=")
+    assert secret_marker not in warning_line
+    assert "tool_name=browse" in warning_line
+    assert_masked_exception(warning_line, "ConnectionError")

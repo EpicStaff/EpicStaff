@@ -106,8 +106,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # --profile chat: config leaves profiled services out unless their profile is active.
-          docker compose --env-file src/.env -f "$COMPOSE_FILE" --profile chat config --format json > compose.json
+          # --profile chat --profile plugins: config leaves profiled services out unless their profile is active.
+          docker compose --env-file src/.env -f "$COMPOSE_FILE" --profile chat --profile plugins config --format json > compose.json
           ls -la compose.json
 
       - name: Generate build matrix

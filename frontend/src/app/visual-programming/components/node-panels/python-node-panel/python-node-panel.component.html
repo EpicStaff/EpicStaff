@@ -75,16 +75,22 @@
                         ></app-custom-input>
                     </app-diff-field-mark>
 
-                    <app-diff-field-mark [diffField]="'python_code.libraries'">
-                        <app-custom-input
-                            label="Libraries"
-                            tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                            formControlName="libraries"
-                            placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                            [activeColor]="activeColor"
-                            [readonly]="isReadOnly()"
-                        ></app-custom-input>
-                    </app-diff-field-mark>
+                    <div class="form-group">
+                        <app-diff-field-mark
+                            [diffField]="'python_code.venv_id'"
+                            [diffFormat]="venvNameFormat"
+                        >
+                            <app-select
+                                label="Venv"
+                                tooltipText="The virtual environment this Python code runs in. Leave empty to use the default environment."
+                                placeholder="Select venv"
+                                formControlName="venv"
+                                [items]="venvItems()"
+                                [loading]="loadingVenvs()"
+                                [readonly]="isReadOnly()"
+                            />
+                        </app-diff-field-mark>
+                    </div>
 
                     <!-- A node without its own timeout shows the default, so the tooltip does too. -->
                     <app-diff-field-mark

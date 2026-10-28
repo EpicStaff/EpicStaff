@@ -1,11 +1,16 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormArray, ReactiveFormsModule } from '@angular/forms';
 import { By } from '@angular/platform-browser';
-import { CustomInputComponent, ExecutionTimeoutFieldComponent, ExecutionTimeoutFormField } from '@shared/components';
+import {
+    CustomInputComponent,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
+    SelectComponent,
+} from '@shared/components';
 import { NodeType } from '@shared/models';
 import { Subject } from 'rxjs';
 
@@ -54,7 +59,6 @@ const pythonNode = {
     data: {
         code: 'def main(): pass',
         entrypoint: 'main',
-        libraries: [],
         secret_ids: [7],
         secret_names: ['STRIPE_KEY'],
     },
@@ -105,7 +109,7 @@ const STORED_NODE: PythonNode = {
     node_number: 1,
     node_name: 'Python #1',
     graph: 1,
-    python_code: { id: 5, libraries: ['requests'], code: 'def main(count): return count', entrypoint: 'main' },
+    python_code: { id: 5, code: 'def main(count): return count', entrypoint: 'main' },
     input_map: {},
     test_input: { count: '3' },
     output_variable_path: null,
@@ -229,18 +233,15 @@ describe('PythonNodePanelComponent test run', () => {
         });
     });
 
-    it('blocks the run after a code, libraries or secrets edit', () => {
+    it('blocks the run after a code or secrets edit', () => {
         open();
 
         panel.onPythonCodeChange('def main(count): return count + 1');
         expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
 
         panel.onPythonCodeChange(STORED_NODE.python_code.code);
-        panel.form.patchValue({ libraries: 'requests, pandas' });
-        expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
-
-        panel.form.patchValue({ libraries: 'requests' });
         expect(blocker()).toBeNull();
+
         panel.onSecretsChange([7]);
         expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
     });
@@ -731,6 +732,7 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
                     NodeStorageSectionComponent,
                     DiffFieldMarkComponent,
                     CodeDiffViewComponent,
+                    SelectComponent,
                 ],
                 schemas: [NO_ERRORS_SCHEMA],
             },
@@ -792,11 +794,11 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
             drawnBox: READ_ONLY_VALUE_BOX,
         },
         {
-            change: change('python_code.libraries', ['requests'], ['requests', 'numpy']),
-            marked: 'libraries',
-            badgeOn: '.readonly-value',
-            label: 'label',
-            drawnBox: READ_ONLY_VALUE_BOX,
+            change: change('python_code.venv_id', 3, null),
+            marked: 'venv',
+            badgeOn: '.selector__readonly-value',
+            label: 'app-tooltip',
+            drawnBox: null,
         },
         {
             change: change('python_code.secret_names', ['DB_PASS'], ['STRIPE_KEY']),
@@ -896,6 +898,34 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
             expect(hoverTooltip(root)).toBe(shown);
         }
     );
+
+    describe('a changed venv', () => {
+        /** Answers the panel's venv list request with venv 3, "data-science". */
+        function respondWithVenvs(): void {
+            TestBed.inject(HttpTestingController)
+                .expectOne((request) => request.url.endsWith('venvs/'))
+                .flush({
+                    count: 1,
+                    limit: 100,
+                    offset: 0,
+                    next: null,
+                    previous: null,
+                    result: [{ id: 3, name: 'data-science' }],
+                });
+            fixture.detectChanges();
+        }
+
+        it.each([
+            { kind: 'a listed venv by its name', current: 3, version: null, shown: '[data-science]' },
+            { kind: 'a venv the list does not hold by its id', current: 9, version: 3, shown: '[venv #9]' },
+            { kind: 'no venv as empty', current: null, version: 3, shown: '[empty]' },
+        ])('names $kind in the tooltip', ({ current, version, shown }) => {
+            const root = open('changed', [change('python_code.venv_id', current, version)]);
+            respondWithVenvs();
+
+            expect(hoverTooltip(root)).toBe(shown);
+        });
+    });
 
     describe('a changed code', () => {
         const CODE_CHANGE = change('python_code.code', 'a = 1\n', 'a = 2\n');

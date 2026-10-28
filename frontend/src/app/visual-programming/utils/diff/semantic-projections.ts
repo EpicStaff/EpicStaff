@@ -16,7 +16,6 @@ import {
     sortedStrings,
     sortWeekdays,
     stripNodeNumberSuffix,
-    toLibraryList,
 } from './normalize';
 
 /**
@@ -126,7 +125,8 @@ export const SEMANTIC_PROJECTIONS = {
     [NodeType.PYTHON]: {
         project: (node) => ({
             node_name: nodeName(node),
-            python_code: pythonCode(node.data),
+            // Only here: the webhook and table panels have no venv control, and their models do not carry one.
+            python_code: { ...pythonCode(node.data), venv_id: node.data.venv_id ?? null },
             use_storage: node.data.use_storage ?? false,
             ...inputOutput(node),
         }),
@@ -373,7 +373,6 @@ function pythonCode(code: CustomPythonCode): Projection {
     return {
         code: code.code,
         entrypoint: code.entrypoint,
-        libraries: toLibraryList(code.libraries),
         secret_names: sortedStrings(code.secret_names),
         execution_timeout: code.execution_timeout ?? null,
     };
@@ -503,7 +502,6 @@ function computation(
         code: block?.code || flat.code || null,
         input_map: block?.input_map || flat.inputMap || {},
         output_variable_path: block?.output_variable_path || flat.outputVariablePath || null,
-        libraries: toLibraryList(block?.libraries),
         secret_names: sortedStrings(block?.secret_names),
         execution_timeout: block?.execution_timeout ?? null,
     };

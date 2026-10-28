@@ -42,9 +42,13 @@ REQUIRED = {
     "CHAT_DJANGO_URL": "http://django_app:8000",
     "CHAT_DJANGO_HOST_HEADER": "localhost",
     "DJANGO_API_KEY": "k" * 32,
+    "CHAT_INTERNAL_API_KEY": "i" * 32,
     "CHAT_PUBLIC_BASE_URL": "http://localhost",
+    "CHAT_WIDGET_URL": "https://cdn.example.test/epicchat/embed.js",
     "CHAT_CALLBACK_URL": "http://chat:8200/chat/internal/v1/session-callbacks",
     "CHAT_TRUSTED_PROXIES": "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16",
+    "CHAT_ACTION_MAX_BYTES": "262144",
+    "CHAT_EXTRA_DATA_MAX_BYTES": "8192",
 }
 
 
@@ -155,7 +159,7 @@ def test_every_setting_is_required_with_no_code_default(environ, name):
         load_settings(Env())
 
 
-@pytest.mark.parametrize("name", ["DJANGO_API_KEY", "CHAT_DB_PASSWORD"])
+@pytest.mark.parametrize("name", ["DJANGO_API_KEY", "CHAT_DB_PASSWORD", "CHAT_INTERNAL_API_KEY"])
 @pytest.mark.parametrize("value", ["", "   ", "none", "NONE"])
 def test_secrets_refuse_empty_or_none(load, name, value):
     with pytest.raises(EnvironmentBlankError, match=name):
@@ -300,3 +304,35 @@ def test_startup_rejects_a_lifecycle_default_above_its_max(load, prefix):
     with pytest.raises(ValidationError, match=f"{prefix}_DEFAULT must not exceed {prefix}_MAX"):
         load(**{f"{prefix}_DEFAULT": "2h", f"{prefix}_MAX": "1h"})
     load(**{f"{prefix}_DEFAULT": "1h", f"{prefix}_MAX": "1h"})
+
+
+@pytest.mark.parametrize("name", ["CHAT_ACTION_MAX_BYTES", "CHAT_EXTRA_DATA_MAX_BYTES"])
+@pytest.mark.parametrize("value", ["0", "-1", "12m", "1.5"])
+def test_a_public_api_limit_is_a_positive_whole_count(load, name, value):
+    with pytest.raises(ValidationError, match=name):
+        load(**{name: value})
+
+
+@pytest.mark.parametrize("url", [
+    "https://epicstaffchat.pages.dev/embed.js",
+    "https://v3-0-0.epicstaffchat.pages.dev/embed.js?build=7&lang=en",
+    "http://localhost:4200/embed.js",
+    "http://192.168.1.20/chat/embed.js",
+])
+def test_the_widget_url_is_an_absolute_https_url_or_an_internal_http_one(load, url):
+    assert load(CHAT_WIDGET_URL=url).CHAT_WIDGET_URL == url
+
+
+@pytest.mark.parametrize("url", [
+    "http://cdn.example.com/embed.js",  # the script every visitor runs: never over plain http in public
+    "ftp://cdn.example.com/embed.js",
+    "//cdn.example.com/embed.js",
+    "embed.js",
+    "none",
+    'https://cdn.example.com/embed.js" onload="alert(1)',  # it goes into a quoted HTML attribute
+    "https://cdn.example.com/<script>.js",
+    "https://cdn.example.com/embed .js",
+])
+def test_startup_refuses_a_widget_url_that_is_not_one_or_would_break_the_snippet(load, url):
+    with pytest.raises(ValidationError, match="CHAT_WIDGET_URL"):
+        load(CHAT_WIDGET_URL=url)

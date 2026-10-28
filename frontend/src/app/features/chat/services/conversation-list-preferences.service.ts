@@ -5,29 +5,17 @@ import { ChatInboxOrder, ChatInboxSection } from '../models/chat.model';
 const STORAGE_KEY = 'chat:conversationList';
 const SECTIONS: readonly ChatInboxSection[] = ['waiting', 'in_progress', 'test', 'closed', 'bot'];
 const ORDERS: readonly ChatInboxOrder[] = ['newest', 'oldest'];
-// Tests and Closed are there to look into, not to work through.
-const DEFAULT_COLLAPSED: readonly ChatInboxSection[] = ['test', 'closed'];
-// The sections a value stored before `known` existed had a say on: Closed came later, so it takes its default there.
-const SECTIONS_BEFORE_KNOWN: readonly ChatInboxSection[] = ['waiting', 'in_progress', 'test', 'bot'];
 
 /** What the conversations column remembers per browser, as one JSON object. The search is never remembered. */
 interface ConversationListPreferences {
-    collapsed: ChatInboxSection[];
+    expanded: ChatInboxSection | null;
     order: ChatInboxOrder;
     // Only the conversations the user holds.
     isMineOnly: boolean;
 }
 
-/**
- * As stored: with the sections that existed when it was saved. `collapsed` speaks for those only, so a section added
- * later takes its default (collapsed or not) instead of reading as one the user opened.
- */
-interface StoredPreferences extends ConversationListPreferences {
-    known: readonly ChatInboxSection[];
-}
-
 const defaults = (): ConversationListPreferences => ({
-    collapsed: [...DEFAULT_COLLAPSED],
+    expanded: 'waiting',
     order: 'newest',
     isMineOnly: false,
 });
@@ -40,16 +28,13 @@ const defaults = (): ConversationListPreferences => ({
 export class ConversationListPreferencesService {
     private readonly preferences = signal<ConversationListPreferences>(this.read());
 
-    readonly collapsed = computed((): ReadonlySet<ChatInboxSection> => new Set(this.preferences().collapsed));
+    readonly expanded = computed(() => this.preferences().expanded);
     /** In progress, Tests and Bot; Waiting is always longest wait first, Closed most recently closed first. */
     readonly order = computed(() => this.preferences().order);
     readonly isMineOnly = computed(() => this.preferences().isMineOnly);
 
-    setCollapsed(section: ChatInboxSection, collapsed: boolean): void {
-        const sections = new Set(this.preferences().collapsed);
-        if (collapsed) sections.add(section);
-        else sections.delete(section);
-        this.save({ collapsed: SECTIONS.filter((item) => sections.has(item)) });
+    setExpanded(expanded: ChatInboxSection | null): void {
+        this.save({ expanded });
     }
 
     setOrder(order: ChatInboxOrder): void {
@@ -63,8 +48,7 @@ export class ConversationListPreferencesService {
     private save(change: Partial<ConversationListPreferences>): void {
         this.preferences.update((preferences) => ({ ...preferences, ...change }));
         try {
-            const stored: StoredPreferences = { ...this.preferences(), known: SECTIONS };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(this.preferences()));
         } catch {
             // localStorage unavailable (quota exceeded, private mode): the choice still holds in memory.
         }
@@ -87,20 +71,12 @@ export class ConversationListPreferencesService {
         if (!value || typeof value !== 'object') return defaults();
         const fields = value as Record<string, unknown>;
         const fallback = defaults();
+        const expanded = fields['expanded'];
         return {
-            collapsed: parseCollapsed(fields['collapsed'], fields['known']) ?? fallback.collapsed,
+            expanded:
+                expanded === null ? null : (SECTIONS.find((section) => section === expanded) ?? fallback.expanded),
             order: ORDERS.find((order) => order === fields['order']) ?? fallback.order,
             isMineOnly: typeof fields['isMineOnly'] === 'boolean' ? fields['isMineOnly'] : fallback.isMineOnly,
         };
     }
-}
-
-// Known sections only, in column order; anything else in storage is ignored. A section the stored value did not know
-// yet takes its default.
-function parseCollapsed(collapsed: unknown, known: unknown): ChatInboxSection[] | null {
-    if (!Array.isArray(collapsed)) return null;
-    const knownSections: readonly unknown[] = Array.isArray(known) ? known : SECTIONS_BEFORE_KNOWN;
-    return SECTIONS.filter((section) =>
-        knownSections.includes(section) ? collapsed.includes(section) : DEFAULT_COLLAPSED.includes(section)
-    );
 }

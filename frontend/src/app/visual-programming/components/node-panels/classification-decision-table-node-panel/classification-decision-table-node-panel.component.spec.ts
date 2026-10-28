@@ -10,6 +10,7 @@ import { NodeType } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
 import { of } from 'rxjs';
 
+import { ImportExportService } from '../../../../core/services/import-export.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import {
@@ -25,6 +26,7 @@ import { ClassificationDecisionTableNodeModel, NodeModel } from '../../../core/m
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
 import { CdtExplainApiService } from '../../../services/cdt-explain-api.service';
 import { FlowService } from '../../../services/flow.service';
+import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
@@ -585,6 +587,7 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         } as ClassificationDecisionTableNodeModel;
         const flowService = TestBed.inject(FlowService);
         flowService.setFlow({ nodes: [timedNode], connections: [] });
+        TestBed.inject(SavedFlowStateService).setSavedFlow(flowService.getFlowState());
 
         fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
         fixture.componentRef.setInput('node', flowService.nodes()[0]);
@@ -634,6 +637,27 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         const rows = (downloadFile.mock.calls[0][0] as string).split('\n');
         expect(rows).toContain('pre_python_code_execution_timeout,90');
         expect(rows).toContain('post_python_code_execution_timeout,45');
+    });
+
+    it.each([
+        ['CSV', (target: ClassificationDecisionTableNodePanelComponent) => target.exportAsCsv()],
+        ['JSON', (target: ClassificationDecisionTableNodePanelComponent) => target.exportAsJson()],
+    ])('does not export to %s while the flow has unsaved changes, and says to save first', (_format, exportIt) => {
+        open(90, undefined);
+        const toastWarning = vi.spyOn(TestBed.inject(ToastService), 'warning').mockImplementation(() => undefined);
+        const downloadFile = vi
+            .spyOn(TestBed.inject(CdtExportImportService), 'downloadFile')
+            .mockImplementation(() => undefined);
+        const cdtExport = vi.spyOn(TestBed.inject(ImportExportService), 'cdtExport');
+        const flowService = TestBed.inject(FlowService);
+        flowService.updateNode({ ...flowService.nodes()[0], node_name: 'Renamed after the last save' });
+
+        exportIt(panel);
+
+        expect(toastWarning).toHaveBeenCalledTimes(1);
+        expect(toastWarning.mock.calls[0][0]).toBe('Save the flow before exporting');
+        expect(downloadFile).not.toHaveBeenCalled();
+        expect(cdtExport).not.toHaveBeenCalled();
     });
 
     /** Types into the timeout input of `tab`, as the user does, and stays in it: no blur, no Enter. */
@@ -690,7 +714,7 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         return item['pre_python_code'] as Record<string, unknown> | null;
     }
 
-    it('shows and enables the timeout of every block, with or without code, like its libraries', () => {
+    it('shows and enables the timeout of every block, with or without code', () => {
         open(90, undefined, '  ');
 
         expect(showsTimeoutOnTab('precomputation')).toBe(true);
@@ -842,7 +866,7 @@ describe('ClassificationDecisionTableNodePanelComponent — the pre- and post-co
             flagged: ['Pre-computation (restore changes this tab)'],
         },
         {
-            changed: changeOf('pre_computation.libraries', ['requests'], []),
+            changed: changeOf('pre_computation.execution_timeout', 90, null),
             flagged: ['Pre-computation (restore changes this tab)'],
         },
         {
@@ -868,11 +892,6 @@ describe('ClassificationDecisionTableNodePanelComponent — the pre- and post-co
         );
 
     it.each([
-        {
-            tab: 'precomputation' as const,
-            change: changeOf('pre_computation.libraries', ['requests'], []),
-            description: 'Current canvas: requests',
-        },
         {
             tab: 'precomputation' as const,
             change: changeOf('pre_computation.output_variable_path', 'pre.out', null),

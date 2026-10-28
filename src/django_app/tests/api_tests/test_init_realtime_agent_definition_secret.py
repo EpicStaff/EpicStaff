@@ -6,16 +6,12 @@ The `agent_id` path resolves `rt_api_key_secret_id` -> plaintext through
 org-scoped resolution. Merging `main` (which still read the removed plaintext
 `RealtimeConfig.api_key` column) into the secrets branch broke exactly this
 path, so both halves are pinned here — the key reaches the payload, and it can
-only come from the caller's own org.
+only come from the agent's own realtime config.
 
-`config` is an unconstrained `DictField` and `RealtimeService.init_realtime_agent_definition`
-setattrs every key that exists on the payload, so `rt_api_key_secret_id` is a
-declared carrier a caller can override directly in the request body.
-`test_agent_definition_config_cannot_name_another_orgs_secret` proves a
-foreign org's secret id is rejected; `test_agent_definition_config_with_own_orgs_secret_still_works`
-is the matching positive control -- proving the theft is blocked is worthless
-if the legitimate override (a caller pointing at one of their own org's other
-secrets) broke along with it.
+`config` is a client-supplied `DictField`. Naming a Secret in it
+(`rt_api_key_secret_id`) is ignored, whether the Secret belongs to another
+organization or to the caller's own: the key a session uses is the one its
+agent's realtime config names, which is what run admission checks.
 """
 
 import json
@@ -24,7 +20,8 @@ import pytest
 from rest_framework.test import APIClient
 
 from agents.models import AgentDefinition
-from rbac.models import Organization
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentDefinition
 from tables.services.secrets import secret_service
 from tests.fixtures import *  # noqa: F401,F403
@@ -121,15 +118,15 @@ def test_agent_definition_config_cannot_name_another_orgs_secret(
         format="json",
     )
 
-    # Pin the cause to SecretResolver's org filter, not some unrelated failure.
-    assert resp.status_code == 400, resp.data
-    assert "could not be resolved" in resp.data["error"]
+    assert resp.status_code == 201, resp.data
+    payload = _published_payload(redis_client_mock)
+    assert payload["rt_api_key"] == REALTIME_PLAINTEXT
     published = "".join(str(call) for call in redis_client_mock.publish.call_args_list)
     assert FOREIGN_PLAINTEXT not in published
 
 
 @pytest.mark.django_db
-def test_agent_definition_config_with_own_orgs_secret_still_works(
+def test_agent_definition_config_cannot_swap_in_another_secret_of_the_org(
     default_org_client, rt_agent_definition, default_org, redis_client_mock
 ):
     own_secret = secret_service.create(
@@ -146,5 +143,47 @@ def test_agent_definition_config_with_own_orgs_secret_still_works(
     )
 
     assert resp.status_code == 201, resp.data
+    payload = _published_payload(redis_client_mock)
+    assert payload["rt_api_key"] == REALTIME_PLAINTEXT
     published = "".join(str(call) for call in redis_client_mock.publish.call_args_list)
-    assert "sk-own-rt-definition-key" in published
+    assert "sk-own-rt-definition-key" not in published
+
+
+@pytest.fixture
+def member_client(default_org, django_user_model):
+    """A Member of the organization: may start realtime sessions, holds no `secrets: use`."""
+    member = django_user_model.objects.create_user(
+        email="rt-definition-member@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(
+        user=member,
+        org=default_org,
+        role=Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True),
+    )
+    client = APIClient()
+    client.force_authenticate(user=member)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+    return client
+
+
+@pytest.mark.django_db
+def test_a_member_without_secrets_use_cannot_send_an_org_secret_through_the_config(
+    member_client, rt_agent_definition, default_org, redis_client_mock
+):
+    org_secret = secret_service.create(
+        text="sk-org-secret-the-member-may-not-use", org=default_org, name="payments-key"
+    )
+
+    resp = member_client.post(
+        "/api/init-realtime/",
+        {
+            "agent_definition_id": rt_agent_definition.pk,
+            "config": {"rt_api_key_secret_id": org_secret.pk},
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 201, resp.data
+    assert _published_payload(redis_client_mock)["rt_api_key"] == REALTIME_PLAINTEXT
+    published = "".join(str(call) for call in redis_client_mock.publish.call_args_list)
+    assert "sk-org-secret-the-member-may-not-use" not in published

@@ -1,0 +1,201 @@
+<div class="detail">
+    <a
+        class="detail__back text-body-medium"
+        [routerLink]="listRoute"
+    >
+        <app-svg-icon
+            icon="arrow-left"
+            size="16px"
+        />
+        Plugins
+    </a>
+
+    @if (plugin(); as current) {
+        <header class="detail__header">
+            <app-plugin-icon
+                [src]="current.icon_url"
+                size="40px"
+            />
+            <div class="detail__identity">
+                <h2 class="detail__name text-h2">{{ current.name }}</h2>
+                <span class="detail__muted text-body-small">
+                    <code>{{ current.identifier }}</code>
+                    @if (current.current_version) {
+                        · version {{ current.current_version }}
+                    }
+                </span>
+            </div>
+            <div class="detail__badges">
+                <app-plugin-badge
+                    [label]="stateLabel()"
+                    [tone]="stateTone()"
+                />
+                <app-plugin-badge
+                    [label]="trustLabel()"
+                    [tone]="trustTone()"
+                />
+            </div>
+            @if (actionButtons().length > 0) {
+                <div class="detail__actions">
+                    @for (button of actionButtons(); track button.action) {
+                        <app-button
+                            [type]="button.type"
+                            mod="small"
+                            [disabled]="isActing()"
+                            (click)="runAction(button.action)"
+                        >
+                            {{ button.label }}
+                        </app-button>
+                    }
+                </div>
+            }
+        </header>
+
+        <app-plugin-lifecycle-banner
+            [plugin]="current"
+            [pollError]="pollError()"
+        />
+
+        <div
+            class="detail__tabs"
+            role="tablist"
+        >
+            <app-tab-button
+                [active]="tab() === 'overview'"
+                (action)="selectTab('overview')"
+            >
+                Overview
+            </app-tab-button>
+            <app-tab-button
+                [active]="tab() === 'organizations'"
+                (action)="selectTab('organizations')"
+            >
+                Organizations
+            </app-tab-button>
+            @if (hasBackend()) {
+                <app-tab-button
+                    [active]="tab() === 'settings'"
+                    (action)="selectTab('settings')"
+                >
+                    Settings
+                </app-tab-button>
+                <app-tab-button
+                    [active]="tab() === 'limits'"
+                    (action)="selectTab('limits')"
+                >
+                    Limits
+                </app-tab-button>
+                <app-tab-button
+                    [active]="tab() === 'runtime'"
+                    (action)="selectTab('runtime')"
+                >
+                    Runtime
+                </app-tab-button>
+            }
+            @if (hasDevelopmentTab()) {
+                <app-tab-button
+                    [active]="tab() === 'development'"
+                    (action)="selectTab('development')"
+                >
+                    Development
+                </app-tab-button>
+            }
+            <app-tab-button
+                [active]="tab() === 'activity'"
+                (action)="selectTab('activity')"
+            >
+                Activity
+            </app-tab-button>
+        </div>
+
+        @switch (tab()) {
+            @case ('overview') {
+                <div class="detail__overview">
+                    @if (current.pending_package; as pending) {
+                        <div class="detail__pending text-body">
+                            <span>Version {{ pending.version }} is waiting for review.</span>
+                            <app-button
+                                type="primary"
+                                mod="small"
+                                (click)="reviewPending()"
+                            >
+                                Review
+                            </app-button>
+                        </div>
+                    }
+                    <dl class="detail__facts text-body">
+                        <dt>Description</dt>
+                        <dd>{{ current.description }}</dd>
+                        <dt>Plugin address</dt>
+                        <dd>
+                            <code>{{ current.frame_origin }}</code>
+                        </dd>
+                        <dt>Active grants</dt>
+                        <dd>{{ current.grant_count }}</dd>
+                    </dl>
+                    @if (current.current_package; as approved) {
+                        <app-plugin-review-panel [review]="approved" />
+                    } @else {
+                        <p class="detail__muted text-body">No version of this plugin is approved yet.</p>
+                    }
+                </div>
+            }
+            @case ('organizations') {
+                <app-plugin-grants-table
+                    [identifier]="current.identifier"
+                    [pluginName]="current.name"
+                    [canGrant]="canGrant()"
+                    [pluginState]="current.state"
+                    (grantsChanged)="refreshPlugin()"
+                />
+                @if (hasBackend()) {
+                    <app-plugin-data-removals
+                        [identifier]="current.identifier"
+                        [pluginName]="current.name"
+                        [pluginState]="current.state"
+                    />
+                }
+            }
+            @case ('settings') {
+                <app-plugin-settings-form
+                    [identifier]="current.identifier"
+                    (saved)="refreshPlugin()"
+                />
+            }
+            @case ('limits') {
+                <app-plugin-limits-form
+                    [identifier]="current.identifier"
+                    (saved)="refreshPlugin()"
+                />
+            }
+            @case ('runtime') {
+                <app-plugin-runtime-panel
+                    [identifier]="current.identifier"
+                    [pluginName]="current.name"
+                    [openUpgrade]="current.open_upgrade"
+                    [revealBackups]="revealBackups()"
+                    [developmentBackendPort]="current.development?.backend_port ?? null"
+                    (runtimeChanged)="refreshPlugin()"
+                />
+            }
+            @case ('development') {
+                <app-plugin-development-panel
+                    [identifier]="current.identifier"
+                    [pluginName]="current.name"
+                    (changed)="refreshPlugin()"
+                />
+            }
+            @case ('activity') {
+                <app-plugin-admin-activity [identifier]="current.identifier" />
+            }
+        }
+    } @else if (loadError(); as failure) {
+        <app-fetch-error-state
+            [title]="errorTitle()"
+            [message]="failure.message"
+            (retry)="reload()"
+        />
+    } @else if (isLoading()) {
+        <app-loading-spinner />
+    }
+</div>

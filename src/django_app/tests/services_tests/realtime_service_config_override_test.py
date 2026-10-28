@@ -48,15 +48,18 @@ def test_whitelist_contains_exactly_the_known_legitimate_keys():
 
     - `input_audio_format` / `output_audio_format`: the Twilio bridge's
       `_voice_stream_handler` (`src/realtime/api/main.py`).
-    - `rt_api_key_secret_id`: browser/JWT override of the realtime API key's
-      Secret row, org-scoped by `SecretResolver` at publish time (see
-      test_init_realtime_cross_org_secret.py) -- not a plain overwrite.
     """
-    assert _ALLOWED_CONFIG_OVERRIDE_KEYS == {
-        "input_audio_format",
-        "output_audio_format",
-        "rt_api_key_secret_id",
-    }
+    assert _ALLOWED_CONFIG_OVERRIDE_KEYS == {"input_audio_format", "output_audio_format"}
+
+
+def test_the_realtime_api_key_secret_cannot_be_overridden():
+    """The key's Secret comes only from the agent's realtime config, which run
+    admission walks; a request naming another Secret is ignored."""
+    data = _make_chat_data(rt_api_key_secret_id=11)
+
+    _apply_config_overrides(data, {"rt_api_key_secret_id": 99})
+
+    assert data.rt_api_key_secret_id == 11
 
 
 def test_whitelisted_audio_format_keys_are_applied():

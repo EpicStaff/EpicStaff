@@ -90,6 +90,8 @@ from tables.views.model_view_sets import (
     SubGraphNodeModelViewSet,
     TaskNodeViewSet,
     TelegramTriggerNodeViewSet,
+    FlowFilterPresetViewSet,
+    ToolFilterPresetViewSet,
     ToolLabelViewSet,
     TwilioChannelViewSet,
     TwilioConfigureWebhookView,
@@ -185,6 +187,8 @@ router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 
 router.register(r"labels", LabelViewSet)
 router.register(r"audit-filter-presets", AuditFilterPresetViewSet)
+router.register(r"flow-filter-presets", FlowFilterPresetViewSet)
+router.register(r"tool-filter-presets", ToolFilterPresetViewSet)
 router.register(r"tool-labels", ToolLabelViewSet, basename="tool-label")
 router.register(r"secrets", SecretViewSet)
 router.register(r"key-value-tables", KeyValueTableViewSet, basename="key-value-tables")
@@ -302,6 +306,11 @@ urlpatterns = [
         "documents/source-collection/<str:collection_id>/upload/",
         DocumentManagementViewSet.as_view({"post": "upload_documents"}),
         name="document-upload",
+    ),
+    path(
+        "documents/source-collection/<str:collection_id>/from-storage/",
+        DocumentManagementViewSet.as_view({"post": "import_from_storage"}),
+        name="document-import-from-storage",
     ),
     path(
         "source-collections/<str:collection_id>/documents/",

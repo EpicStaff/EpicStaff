@@ -6,12 +6,13 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { EnterSubmitDirective } from '@shared/directives';
 import { ModelTypes } from '@shared/models';
 import { EmbeddingConfigStorageService, SecretsStorageService } from '@shared/services';
-import { trackPickedSecrets } from '@shared/utils';
+import { extractHttpErrorMessage, isClientError, trackPickedSecrets } from '@shared/utils';
 
 import { ToastService } from '../../../../services/notifications';
 import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
 import { BinnedSecretNoteComponent } from '../../binned-secret-note/binned-secret-note.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
+import { ErrorBannerComponent } from '../../error-banner/error-banner.component';
 import { CustomInputComponent } from '../../form-input/form-input.component';
 import { HintMessageComponent } from '../../hint-message/hint-message.component';
 import { KeyValueListComponent } from '../../key-value-list/key-value-list.component';
@@ -27,6 +28,7 @@ import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selec
         BinnedSecretNoteComponent,
         ButtonComponent,
         CustomInputComponent,
+        ErrorBannerComponent,
         IconButtonComponent,
         KeyValueListComponent,
         LlmModelSelectorComponent,
@@ -49,6 +51,7 @@ export class EmbeddingModelConfigDialogComponent {
 
     isSaving = signal<boolean>(false);
     isLoading = signal<boolean>(false);
+    errorMessage = signal<string | null>(null);
 
     isEditMode = computed(() => !!this.data?.configId);
     title = computed(() => (this.isEditMode() ? 'Edit Embedding Configuration' : 'Add Embedding Configuration'));
@@ -114,6 +117,8 @@ export class EmbeddingModelConfigDialogComponent {
             this.form.markAllAsTouched();
             return;
         }
+        // Cleared before the duplicate-name check, so an old refusal does not sit beside its toast.
+        this.errorMessage.set(null);
 
         const formValue = this.form.value;
         const trimmedName = (formValue.custom_name as string).trim();
@@ -143,17 +148,14 @@ export class EmbeddingModelConfigDialogComponent {
             },
             error: (err: HttpErrorResponse) => {
                 this.isSaving.set(false);
-                this.toast.error(this.parseConfigError(err));
+                const fallback = this.isEditMode() ? 'Configuration update failed.' : 'Configuration creation failed.';
+                if (isClientError(err)) {
+                    this.errorMessage.set(extractHttpErrorMessage(err, fallback));
+                    return;
+                }
+                this.toast.error(fallback);
             },
         });
-    }
-
-    private parseConfigError(err: HttpErrorResponse): string {
-        const nameError = err?.error?.custom_name?.[0] as string | undefined;
-        if (nameError?.toLowerCase().includes('already exists')) {
-            return 'An embedding configuration with this name already exists. Please choose a different name.';
-        }
-        return this.isEditMode() ? 'Configuration update failed.' : 'Configuration creation failed.';
     }
 
     protected readonly ModelTypes = ModelTypes;

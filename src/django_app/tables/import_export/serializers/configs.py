@@ -29,8 +29,6 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
     provider_field = None
     config_model = None
     model_fk_field = None
-    # Header dicts whose `epicstaff_secret(<name>)` markers reference secrets by name.
-    secret_marker_fields: tuple[str, ...] = ()
 
     class Meta:
         abstract = True
@@ -53,7 +51,6 @@ class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigIm
     provider_field = "llm_provider"
     model_fk_field = "model"
     config_model = LLMConfig
-    secret_marker_fields = ("extra_headers",)
 
     model = serializers.PrimaryKeyRelatedField(read_only=True)
 
@@ -79,7 +76,6 @@ class EmbeddingConfigImportSerializer(BaseConfigImportSerializer):
     provider_field = "embedding_provider"
     model_fk_field = "model"
     config_model = EmbeddingConfig
-    secret_marker_fields = ("extra_headers",)
 
     embedding_model = serializers.PrimaryKeyRelatedField(read_only=True)
 

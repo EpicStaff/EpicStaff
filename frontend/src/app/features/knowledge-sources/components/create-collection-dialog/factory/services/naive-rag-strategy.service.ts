@@ -56,6 +56,10 @@ export class NaiveRagStrategy implements RagCreationStrategy {
         );
     }
 
+    getRagId(): number | null {
+        return this.naiveRagSignal()?.naive_rag_id ?? null;
+    }
+
     startIndexing(data?: { configIds: number[]; pendingDeleteIds?: number[] }): Observable<boolean> {
         const naiveRagId = this.naiveRagSignal()?.naive_rag_id;
         if (!naiveRagId) return of(false);

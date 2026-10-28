@@ -6,27 +6,42 @@ import uuid
 
 import redis.asyncio as aioredis
 from loguru import logger
+from pydantic import ValidationError
 
+from app.logging_utils import format_exception_for_log, summarize_validation_error
+from app.sandbox.http_client import AsyncClient
 from shared.bench_log import BENCH_LEVEL
 from shared.models.tools import CodeResultData, CodeTaskData
 
 
 class SandboxClient:
+    """Submits code executions to sandbox_new over HTTP; receives results on Redis.
+
+    Intake is `POST /executions` (sandbox_new's HTTP API). Results come back on the
+    shared Redis result channel and are matched to their pending request by
+    execution_id, exactly as before. The task's storage credentials are minted
+    upstream and only passed through here; sandbox_new rejects a task with
+    `use_storage` set and no credentials.
+    """
+
     def __init__(
         self,
         host: str,
         port: int,
         password: str | None,
-        request_channel: str,
         result_channel: str,
+        sandbox_base_url: str,
+        sandbox_timeout: float,
     ) -> None:
         self._host = host
         self._port = port
         self._password = password
-        self._request_channel = request_channel
         self._result_channel = result_channel
+        self._sandbox_base_url = sandbox_base_url
+        self._sandbox_timeout = sandbox_timeout
         self._redis: aioredis.Redis | None = None
         self._pubsub: aioredis.client.PubSub | None = None
+        self._http: AsyncClient | None = None
         self._reader_task: asyncio.Task | None = None
         self._pending: dict[str, asyncio.Future[CodeResultData]] = {}
         self._started = False
@@ -44,6 +59,7 @@ class SandboxClient:
         pubsub = redis_conn.pubsub()
         self._pubsub = pubsub
         await pubsub.subscribe(self._result_channel)
+        self._http = AsyncClient(base_url=self._sandbox_base_url, timeout=self._sandbox_timeout)
         self._reader_task = asyncio.create_task(self._reader_loop())
         self._started = True
         logger.info("SandboxClient started, subscribed to {}", self._result_channel)
@@ -65,6 +81,9 @@ class SandboxClient:
 
         self._pending.clear()
 
+        if self._http is not None:
+            await self._http.aclose()
+
         if self._pubsub is not None:
             await self._pubsub.close()
 
@@ -75,16 +94,37 @@ class SandboxClient:
         logger.info("SandboxClient stopped")
 
     async def submit(self, task: CodeTaskData, *, timeout: float | None = None) -> CodeResultData:
-        assert self._redis is not None, "SandboxClient.start() must be called before submit()"
+        assert self._http is not None, "SandboxClient.start() must be called before submit()"
         execution_id = str(uuid.uuid4())
-        task = task.model_copy(update={"execution_id": execution_id})
 
         loop = asyncio.get_running_loop()
         future: asyncio.Future[CodeResultData] = loop.create_future()
         self._pending[execution_id] = future
 
         try:
-            await self._redis.publish(self._request_channel, task.model_dump_json())
+            await self._http.request(
+                "POST",
+                "/executions",
+                json={
+                    "execution_id": execution_id,
+                    "venv_id": task.venv_id,
+                    "session_id": task.session_id,
+                    "code": task.code,
+                    "entrypoint": task.entrypoint,
+                    "func_kwargs": task.func_kwargs or {},
+                    "global_kwargs": task.global_kwargs or {},
+                    "secrets": task.secrets,
+                    "use_storage": task.use_storage,
+                    "storage_allowed_paths": task.storage_allowed_paths or [],
+                    "storage_org_prefix": task.storage_org_prefix,
+                    "storage_credentials": (
+                        task.storage_credentials.model_dump()
+                        if task.storage_credentials is not None
+                        else None
+                    ),
+                    "timeout": task.execution_timeout,
+                },
+            )
             logger.log(
                 BENCH_LEVEL,
                 "bench {checkpoint}",
@@ -115,8 +155,17 @@ class SandboxClient:
 
                 try:
                     result = CodeResultData.model_validate_json(data)
+                except ValidationError as error:
+                    logger.warning(
+                        "SandboxClient: failed to parse pubsub message: validation={}",
+                        summarize_validation_error(error),
+                    )
+                    continue
                 except Exception as error:
-                    logger.warning("SandboxClient: failed to parse pubsub message: {}", error)
+                    logger.warning(
+                        "SandboxClient: failed to parse pubsub message: error={}",
+                        format_exception_for_log(error),
+                    )
                     continue
 
                 future = self._pending.get(result.execution_id)
@@ -128,7 +177,9 @@ class SandboxClient:
             raise
 
         except Exception as error:
-            logger.error("SandboxClient reader loop failed: {}", error)
+            logger.error(
+                "SandboxClient reader loop failed: error={}", format_exception_for_log(error)
+            )
             connection_error = ConnectionError(f"SandboxClient reader loop failed: {error}")
 
             for future in self._pending.values():

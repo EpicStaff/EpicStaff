@@ -1,6 +1,6 @@
 <div
     class="editor-wrapper"
-    [class.panel-open]="!!sidePanelService.selectedNode()"
+    [class.panel-open]="isNodePanelShown()"
     [class.readonly]="flowReadOnly.isReadOnly()"
 >
     <f-flow
@@ -38,6 +38,11 @@
             <f-circle-pattern></f-circle-pattern>
         </f-background>
         <f-magnetic-lines></f-magnetic-lines>
+        <!-- Dragging a node or a wire near an edge scrolls the canvas. -->
+        <f-auto-pan
+            fEdgeThreshold="40"
+            fAcceleration
+        ></f-auto-pan>
         <f-canvas fZoom>
             <f-snap-connection
                 fBehavior="fixed"
@@ -115,7 +120,7 @@
                 <app-flow-base-node
                     [node]="node"
                     [multiSelectActive]="selectionManager.multiSelectActive()"
-                    [fMinimapClass]="getMinimapClassForNode(node)"
+                    [fMinimapClass]="getMinimapClasses(node)"
                     fNode
                     fDragHandle
                     [fNodeId]="node.id"
@@ -126,6 +131,8 @@
                     (mouseenter)="hoveredNodeId.set(node.id)"
                     (mouseleave)="hoveredNodeId.set(null)"
                     (portMouseenter)="hoveredNodeId.set(node.id)"
+                    [class.is-dimmed]="hoverContext() !== null && !hoverContext()!.nodeIds.has(node.id)"
+                    [class.is-unused]="unusedNodeIds().has(node.id)"
                     (fNodePositionChange)="onNodePositionChanged($event, node)"
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"
@@ -155,7 +162,8 @@
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="routingOrchestrator.backwardConnectionIds().has(connection.id)"
                     [class.is-reassign-follower]="reassignHandler.followerIds().has(connection.id)"
-                    [class.node-hovered]="hoveredNodeConnectionIds().has(connection.id)"
+                    [class.is-dimmed]="hoverContext() !== null && !hoverContext()!.connectionIds.has(connection.id)"
+                    [class.on-hover-path]="hoverContext()?.connectionIds.has(connection.id) ?? false"
                     [class.diff-added]="flowDiffState.connectionStatus(connection.id) === 'added'"
                     [class.diff-deleted]="flowDiffState.connectionStatus(connection.id) === 'deleted'"
                     [class.diff-unchanged]="flowDiffState.connectionStatus(connection.id) === 'unchanged'"
@@ -268,7 +276,7 @@
             <div class="top-left-actions__column">
                 <button
                     class="domain-button"
-                    matTooltip="Configure domain"
+                    [matTooltip]="keymap.withShortcut('Configure domain', 'flow.domain')"
                     matTooltipPosition="right"
                     (click)="onDomainClick()"
                 >
@@ -277,12 +285,11 @@
 
                 <app-flow-shortcuts-button
                     icon="multi-select"
-                    label="S"
-                    iconSize="14px"
-                    [textEnd]="true"
+                    iconSize="16px"
+                    iconOffsetY="-2px"
+                    ariaLabel="Multi-select"
+                    tooltip="Multi-select"
                     [active]="selectionManager.multiSelectActive()"
-                    matTooltip="Multi-select"
-                    matTooltipPosition="right"
                     (clicked)="onToggleMultiSelect()"
                 ></app-flow-shortcuts-button>
 
@@ -290,8 +297,10 @@
                     #shortcutsAnchor
                     #shortcutsButton
                 >
-                    <app-flow-shortcuts-button (clicked)="onOpenShortcuts(shortcutsAnchor)">
-                    </app-flow-shortcuts-button>
+                    <app-flow-shortcuts-button
+                        [tooltip]="keymap.withShortcut('Keyboard shortcuts', 'navigating.shortcuts')"
+                        (clicked)="onOpenShortcuts(shortcutsAnchor)"
+                    ></app-flow-shortcuts-button>
                 </div>
             </div>
 
@@ -303,11 +312,15 @@
         </div>
 
         <div class="top-right-controls">
-            <div class="top-right-actions">
+            <div
+                class="top-right-actions"
+                appHideOverflowingChildren
+            >
                 @if (selectionManager.selectedNodeCount() > 0 && !isPreview) {
                     <button
                         class="arrange-btn extract-subflow-btn"
-                        matTooltip="Extract to Subflow"
+                        data-hide-on-overflow
+                        [matTooltip]="keymap.withShortcut('Extract to Subflow', 'flow.extract-subflow')"
                         matTooltipPosition="below"
                         (click)="onExtractToSubflow()"
                     >
@@ -316,6 +329,7 @@
                 }
                 @if (!isPreview) {
                     <app-flow-export-import-button
+                        data-hide-on-overflow
                         [selectedCount]="selectionManager.selectedNodeCount()"
                         [allSelectedAreCdt]="selectionManager.allSelectedAreCdt()"
                         (exportSelectedJson)="onExportSelectedAsJson()"
@@ -324,9 +338,9 @@
                         (import)="onImportNodes()"
                     ></app-flow-export-import-button>
                 }
-                @if (currentFlowId && !isPreview) {
+                @if (currentFlowId && !isPreview && canReadFiles()) {
                     <app-flow-files-button
-                        *appHasPermission="[ResourceCode.Files, ActionCode.Read]"
+                        data-hide-on-overflow
                         [flowId]="currentFlowId"
                         [flowName]="flowName"
                     ></app-flow-files-button>
@@ -334,8 +348,9 @@
                 @if (!flowReadOnly.isReadOnly()) {
                     <button
                         class="arrange-btn"
-                        title="Auto arrange"
-                        matTooltip="Auto arrange"
+                        data-hide-on-overflow
+                        aria-label="Auto arrange"
+                        [matTooltip]="keymap.withShortcut('Auto arrange', 'flow.auto-arrange')"
                         matTooltipPosition="below"
                         [disabled]="isAutoArrangeDisabled()"
                         (click)="onAutoArrange()"
@@ -348,9 +363,10 @@
                 }
                 <button
                     class="arrange-btn settings-icon-btn"
+                    data-hide-on-overflow
                     (click)="openSettings()"
-                    title="Flow Settings"
-                    matTooltip="Flow settings"
+                    aria-label="Flow settings"
+                    [matTooltip]="keymap.withShortcut('Flow settings', 'flow.settings')"
                     matTooltipPosition="below"
                 >
                     <i class="ti ti-settings"></i>
@@ -361,6 +377,14 @@
 
     @if (!flowReadOnly.isReadOnly()) {
         <app-flow-action-panel (undoRedoPerformed)="onUndoRedoPerformed()"></app-flow-action-panel>
+    }
+
+    @if (flowSettings.highlightUnusedNodes()) {
+        <app-unused-nodes-bar
+            class="unused-nodes-bar-slot"
+            [nodes]="unusedNodesInCanvasOrder()"
+            (nodeFocus)="onZoomInNode($event)"
+        />
     }
 
     @if (showContextMenu()) {

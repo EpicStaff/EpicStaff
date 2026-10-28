@@ -80,12 +80,10 @@ export function convertDecisionTableToCdt(dtNode: DecisionTableNodeModel): {
         pre_computation: {
             code: '',
             input_map: {},
-            libraries: [],
         },
         post_computation: {
             code: '',
             input_map: {},
-            libraries: [],
         },
         condition_groups: conditionGroups,
         route_variable_name: 'route_code',

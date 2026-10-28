@@ -16,9 +16,30 @@ if [[ "$1" = "healthcheck-users" ]]; then
     fi
 fi
 
+# Without ON_ERROR_STOP psql exits 0 after a failed statement, so a role that was
+# never created would still let setup finish and report healthy.
+setup_psql() {
+    psql -X -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" "$@"
+}
+
+# Role, schema and database names are spliced into the SQL below as both literals
+# and quoted identifiers, so only plain names are accepted. An empty value passes
+# here: an unset role is skipped, and any other empty name fails in its statement.
+require_plain_name() {
+    local variable_name="$1"
+    local value="${!variable_name:-}"
+    if [[ -n "$value" && ! "$value" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,62}$ ]]; then
+        echo "[setup] ERROR: ${variable_name} must be 1-63 letters, digits, '_', '.' or '-', starting with a letter or '_'" >&2
+        return 1
+    fi
+}
+
 # USER CREATION FUNCTIONS
 # These only create the DB roles — no table grants.
 # Safe to run as soon as postgres is up.
+# Passwords are read by psql (\getenv) and quoted by format(); the shell never splices
+# them into SQL. A failing statement may carry one, so its text is kept out of the
+# server log and psql prints only the error message.
 
 create_manager_user() {
     local manager_user="${MANAGER_DB_USER}"
@@ -30,17 +51,14 @@ create_manager_user() {
     fi
 
     echo "[manager] Creating role if not exists..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${manager_user}') THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${manager_user}', '${manager_password}');
-        RAISE NOTICE '[manager] Created user ${manager_user}';
-    ELSE
-        RAISE NOTICE '[manager] User ${manager_user} already exists, skipping';
-    END IF;
-END
-\$\$;
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password MANAGER_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${manager_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${manager_user}')
+\gexec
 
 GRANT USAGE ON SCHEMA public TO "${manager_user}";
 
@@ -60,17 +78,14 @@ create_knowledge_user() {
     fi
 
     echo "[knowledge] Creating role if not exists..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${knowledge_user}') THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${knowledge_user}', '${knowledge_password}');
-        RAISE NOTICE '[knowledge] Created user ${knowledge_user}';
-    ELSE
-        RAISE NOTICE '[knowledge] User ${knowledge_user} already exists, skipping';
-    END IF;
-END
-\$\$;
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password KNOWLEDGE_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${knowledge_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${knowledge_user}')
+\gexec
 
 GRANT USAGE ON SCHEMA public TO "${knowledge_user}";
 ALTER USER "${knowledge_user}" CREATEDB;
@@ -93,17 +108,14 @@ create_realtime_user() {
     fi
 
     echo "[realtime] Creating role if not exists..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${realtime_user}') THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${realtime_user}', '${realtime_password}');
-        RAISE NOTICE '[realtime] Created user ${realtime_user}';
-    ELSE
-        RAISE NOTICE '[realtime] User ${realtime_user} already exists, skipping';
-    END IF;
-END
-\$\$;
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password REALTIME_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${realtime_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${realtime_user}')
+\gexec
 
 GRANT USAGE ON SCHEMA public TO "${realtime_user}";
 
@@ -111,6 +123,35 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
     REVOKE ALL ON TABLES FROM "${realtime_user}";
 EOF
     echo "[realtime] Role ready: ${realtime_user}"
+}
+
+create_sandbox_user() {
+    local sandbox_user="${SANDBOX_DB_USER}"
+    local sandbox_password="${SANDBOX_DB_PASSWORD}"
+    local sandbox_schema="${SANDBOX_DB_SCHEMA}"
+
+    if [[ -z "$sandbox_user" || -z "$sandbox_password" ]]; then
+        echo "[sandbox] WARNING: SANDBOX_DB_USER or SANDBOX_DB_PASSWORD not set, skipping"
+        return 0
+    fi
+
+    echo "[sandbox] Creating role and owned schema if not exists..."
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password SANDBOX_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${sandbox_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${sandbox_user}')
+\gexec
+
+-- The sandbox role owns its own schema and everything it creates there (its venv
+-- table and Piccolo's own migration table). Default the role's search_path to it so
+-- every sandbox connection and migration targets this namespace. No public grants.
+CREATE SCHEMA IF NOT EXISTS "${sandbox_schema}" AUTHORIZATION "${sandbox_user}";
+ALTER ROLE "${sandbox_user}" SET search_path = "${sandbox_schema}";
+EOF
+    echo "[sandbox] Role and schema ready: ${sandbox_user} owns schema ${sandbox_schema}"
 }
 
 # TABLE PERMISSION GRANT FUNCTIONS
@@ -122,7 +163,7 @@ grant_manager_permissions() {
     [[ -z "$manager_user" ]] && return 0
 
     echo "[manager] Granting table permissions..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
+    setup_psql <<EOF || return 1
 DO \$\$
 BEGIN
     IF EXISTS (
@@ -130,8 +171,10 @@ BEGIN
         WHERE table_schema = 'public' AND table_name = 'tables_session'
     ) THEN
         REVOKE ALL ON TABLE tables_session FROM "${manager_user}";
-        GRANT SELECT ON TABLE tables_session TO "${manager_user}";
-        RAISE NOTICE '[manager] Granted SELECT on tables_session';
+        GRANT SELECT, DELETE ON TABLE tables_session TO "${manager_user}";
+        -- FOR UPDATE SKIP LOCKED in the retention job needs UPDATE on at least one column.
+        GRANT UPDATE (finished_at) ON TABLE tables_session TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE, UPDATE (finished_at) on tables_session';
     ELSE
         RAISE NOTICE '[manager] tables_session not found, skipping';
     END IF;
@@ -179,6 +222,153 @@ BEGIN
     ELSE
         RAISE NOTICE '[manager] realtime_agent_chat not found, skipping';
     END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'rbac_organization'
+    ) THEN
+        REVOKE ALL ON TABLE rbac_organization FROM "${manager_user}";
+        GRANT SELECT ON TABLE rbac_organization TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT on rbac_organization';
+    ELSE
+        RAISE NOTICE '[manager] rbac_organization not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'rbac_organization_config'
+    ) THEN
+        REVOKE ALL ON TABLE rbac_organization_config FROM "${manager_user}";
+        GRANT SELECT ON TABLE rbac_organization_config TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT on rbac_organization_config';
+    ELSE
+        RAISE NOTICE '[manager] rbac_organization_config not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_graph'
+    ) THEN
+        REVOKE ALL ON TABLE tables_graph FROM "${manager_user}";
+        GRANT SELECT ON TABLE tables_graph TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT on tables_graph';
+    ELSE
+        RAISE NOTICE '[manager] tables_graph not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_graphsessionmessage'
+    ) THEN
+        REVOKE ALL ON TABLE tables_graphsessionmessage FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_graphsessionmessage TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_graphsessionmessage';
+    ELSE
+        RAISE NOTICE '[manager] tables_graphsessionmessage not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_usersessionmessage'
+    ) THEN
+        REVOKE ALL ON TABLE tables_usersessionmessage FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_usersessionmessage TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_usersessionmessage';
+    ELSE
+        RAISE NOTICE '[manager] tables_usersessionmessage not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_agentsessionmessage'
+    ) THEN
+        REVOKE ALL ON TABLE tables_agentsessionmessage FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_agentsessionmessage TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_agentsessionmessage';
+    ELSE
+        RAISE NOTICE '[manager] tables_agentsessionmessage not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_tasksessionmessage'
+    ) THEN
+        REVOKE ALL ON TABLE tables_tasksessionmessage FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_tasksessionmessage TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_tasksessionmessage';
+    ELSE
+        RAISE NOTICE '[manager] tables_tasksessionmessage not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_sessionwarningmessage'
+    ) THEN
+        REVOKE ALL ON TABLE tables_sessionwarningmessage FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_sessionwarningmessage TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessionwarningmessage';
+    ELSE
+        RAISE NOTICE '[manager] tables_sessionwarningmessage not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_sessionprincipal'
+    ) THEN
+        REVOKE ALL ON TABLE tables_sessionprincipal FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_sessionprincipal TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessionprincipal';
+    ELSE
+        RAISE NOTICE '[manager] tables_sessionprincipal not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_sessioncallback'
+    ) THEN
+        REVOKE ALL ON TABLE tables_sessioncallback FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_sessioncallback TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessioncallback';
+    ELSE
+        RAISE NOTICE '[manager] tables_sessioncallback not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_sessionstoragefile'
+    ) THEN
+        REVOKE ALL ON TABLE tables_sessionstoragefile FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_sessionstoragefile TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessionstoragefile';
+    ELSE
+        RAISE NOTICE '[manager] tables_sessionstoragefile not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_sessiontrigger'
+    ) THEN
+        REVOKE ALL ON TABLE tables_sessiontrigger FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_sessiontrigger TO "${manager_user}";
+        -- Retention only clears the link to a deleted parent session.
+        GRANT UPDATE (triggered_by_session_id) ON TABLE tables_sessiontrigger TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE, UPDATE (triggered_by_session_id) on tables_sessiontrigger';
+    ELSE
+        RAISE NOTICE '[manager] tables_sessiontrigger not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_keyvaluetableentry'
+    ) THEN
+        REVOKE ALL ON TABLE tables_keyvaluetableentry FROM "${manager_user}";
+        GRANT SELECT ON TABLE tables_keyvaluetableentry TO "${manager_user}";
+        -- Retention only clears the link to a deleted session.
+        GRANT UPDATE (updated_by_session_id) ON TABLE tables_keyvaluetableentry TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, UPDATE (updated_by_session_id) on tables_keyvaluetableentry';
+    ELSE
+        RAISE NOTICE '[manager] tables_keyvaluetableentry not found, skipping';
+    END IF;
 END
 \$\$;
 EOF
@@ -190,7 +380,7 @@ grant_knowledge_permissions() {
     [[ -z "$knowledge_user" ]] && return 0
 
     echo "[knowledge] Granting table permissions..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
+    setup_psql <<EOF || return 1
 DO \$\$
 DECLARE
     tbl  text;
@@ -283,7 +473,7 @@ grant_realtime_permissions() {
     [[ -z "$realtime_user" ]] && return 0
 
     echo "[realtime] Granting table permissions..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
+    setup_psql <<EOF || return 1
 DO \$\$
 BEGIN
     IF EXISTS (
@@ -313,6 +503,20 @@ EOF
 REQUIRED_TABLES=(
     # manager
     "tables_session"
+    "rbac_organization"
+    "rbac_organization_config"
+    "tables_graph"
+    "tables_graphsessionmessage"
+    "tables_usersessionmessage"
+    "tables_agentsessionmessage"
+    "tables_tasksessionmessage"
+    "tables_sessionwarningmessage"
+    "tables_sessionprincipal"
+    "tables_sessioncallback"
+    "tables_sessionstoragefile"
+    "tables_sessiontrigger"
+    "tables_keyvaluetableentry"
+    "storage_credentials_temp_account"
     # knowledge
     "tables_naiverag"
     "tables_naiveragchunk"
@@ -350,7 +554,7 @@ install_event_triggers() {
     local realtime_user="${REALTIME_DB_USER}"
 
     echo "[triggers] Installing event triggers for auto-grant..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
+    setup_psql <<EOF
 -- Auto-grant table permissions on CREATE TABLE
 CREATE OR REPLACE FUNCTION auto_grant_table_permissions()
 RETURNS event_trigger
@@ -365,10 +569,11 @@ BEGIN
     LOOP
         tbl_name := split_part(obj.object_identity, '.', 2);
 
-        -- manager: SELECT only
+        -- manager: SELECT, DELETE; FOR UPDATE SKIP LOCKED needs UPDATE on at least one column
         IF tbl_name = 'tables_session' THEN
-            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
-            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            EXECUTE format('GRANT UPDATE (finished_at) ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE,UPDATE (finished_at) on % to ${manager_user}', tbl_name;
         END IF;
 
         -- manager: SELECT + UPDATE for schedule trigger
@@ -393,6 +598,86 @@ BEGIN
         IF tbl_name = 'realtime_agent_chat' THEN
             EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
             RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT for the retention job
+        IF tbl_name = 'rbac_organization' THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT for the retention job
+        IF tbl_name = 'rbac_organization_config' THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT for the retention job
+        IF tbl_name = 'tables_graph' THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_graphsessionmessage' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_usersessionmessage' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_agentsessionmessage' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_tasksessionmessage' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_sessionwarningmessage' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_sessionprincipal' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_sessioncallback' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_sessionstoragefile' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE, UPDATE of the session link for the retention job
+        IF tbl_name = 'tables_sessiontrigger' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            EXECUTE format('GRANT UPDATE (triggered_by_session_id) ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE,UPDATE (triggered_by_session_id) on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, UPDATE of the session link for the retention job
+        IF tbl_name = 'tables_keyvaluetableentry' THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            EXECUTE format('GRANT UPDATE (updated_by_session_id) ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,UPDATE (updated_by_session_id) on % to ${manager_user}', tbl_name;
         END IF;
 
         -- knowledge: read-only tables
@@ -479,6 +764,15 @@ background_setup() {
     (
         export TARGET_DB="${POSTGRES_DB}"
 
+        # set -e ends setup on the first failure, before the healthcheck flag is
+        # written; -E lets this trap fire for failures inside the functions too.
+        set -E
+        trap 'echo "=== [setup] ERROR: setup stopped on the error above; crewdb will not report healthy ===" >&2' ERR
+
+        for name_variable in POSTGRES_DB MANAGER_DB_USER KNOWLEDGE_DB_USER REALTIME_DB_USER SANDBOX_DB_USER SANDBOX_DB_SCHEMA; do
+            require_plain_name "$name_variable"
+        done
+
         echo "=== [setup] Phase 1: Waiting for PostgreSQL and target database to be ready ==="
         # pg_isready only checks if postgres accepts connections — it returns true
         # even during the initdb temp-server phase, before POSTGRES_DB is created.
@@ -493,6 +787,7 @@ background_setup() {
         create_manager_user
         create_knowledge_user
         create_realtime_user
+        create_sandbox_user
         install_event_triggers
         echo "=== [setup] Phase 1 complete: all roles created, event triggers installed ==="
 
@@ -504,15 +799,18 @@ background_setup() {
         while [[ $attempt -lt $max_attempts ]]; do
             if all_tables_exist; then
                 echo "=== [setup] All required tables found. Granting permissions... ==="
-                grant_manager_permissions
-                grant_knowledge_permissions
-                grant_realtime_permissions
-                touch "$USERS_CREATED_FLAG"
-                echo "=== [setup] Phase 2 complete: all permissions granted. crewdb is FULLY READY ==="
-                exit 0
+                # Django migrates while this runs, so a grant can hit a table a migration is
+                # altering. The grants are idempotent: retry on the next attempt instead of
+                # stopping setup for good.
+                if grant_manager_permissions && grant_knowledge_permissions && grant_realtime_permissions; then
+                    touch "$USERS_CREATED_FLAG"
+                    echo "=== [setup] Phase 2 complete: all permissions granted. crewdb is FULLY READY ==="
+                    exit 0
+                fi
+                echo "[setup] Granting permissions failed (see the error above); retrying"
             fi
             attempt=$(( attempt + 1 ))
-            echo "[setup] Attempt ${attempt}/${max_attempts} — tables not ready yet, retrying in 10s..."
+            echo "[setup] Attempt ${attempt}/${max_attempts} — not ready yet, retrying in 10s..."
             sleep 10
         done
 
@@ -523,6 +821,9 @@ background_setup() {
 
 if [[ "$1" = 'postgres' ]] || [[ "$1" = 'docker-entrypoint.sh' && "$2" = 'postgres' ]]; then
     echo "=== Starting Custom PostgreSQL Entrypoint ==="
+    # /tmp survives a container restart; a flag left by the previous run would report
+    # healthy before this run's setup has succeeded.
+    rm -f "$USERS_CREATED_FLAG"
     background_setup
 fi
 

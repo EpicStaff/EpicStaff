@@ -18,23 +18,23 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import {
-    AppCustomFilterDialogComponent,
-    AppCustomFilterDialogData,
-    AppCustomFilterDialogResult,
-    AppIncludeExcludeDialogComponent,
-    AppIncludeExcludeDialogData,
-    AppIncludeExcludeDialogResult,
     AppSvgIconComponent,
+    BulkSelectDropdownComponent,
     ButtonComponent,
-    IncludeExcludeTab,
     LabelSidebarComponent,
     SearchComponent,
     TabButtonComponent,
 } from '@shared/components';
-import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import {
+    CollapseOnOverflowDirective,
+    HasPermissionDirective,
+    HideInlineSubtitleOnOverflowDirective,
+    ResizableSidebarDirective,
+} from '@shared/directives';
 import { ActionCode, LabelTreeNode, ResourceCode } from '@shared/models';
 import {
     AppStorageService,
+    BulkDeleteService,
     EmbeddingConfigStorageService,
     EmbeddingModelsStorageService,
     LABELS_STORE,
@@ -43,6 +43,8 @@ import {
     LlmProvidersStorageService,
     RealtimeConfigStorageService,
     RealtimeModelsStorageService,
+    SidebarWidthOptions,
+    SidebarWidthService,
     StorageService,
     TranscriptionConfigStorageService,
     TranscriptionModelsStorageService,
@@ -53,9 +55,20 @@ import {
     extractHttpErrorMessage,
     ImportFileData,
     JsonObject,
+    showExportExclusionWarning,
 } from '@shared/utils';
 import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
-import { catchError, debounceTime, distinctUntilChanged, map, switchMap, take } from 'rxjs/operators';
+import {
+    catchError,
+    debounceTime,
+    distinctUntilChanged,
+    filter,
+    finalize,
+    map,
+    switchMap,
+    take,
+    tap,
+} from 'rxjs/operators';
 
 import { ImportFlowRequestOptions, ImportResult } from '../../../../core/models/import-result.model';
 import {
@@ -66,21 +79,25 @@ import {
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { isUsableCondition } from '../../../audit/models/audit-filter.models';
 import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
-import {
-    FlowsFilterMenuAction,
-    FlowsFilterMenuComponent,
-} from '../../components/filter/flows-filter-menu/flows-filter-menu.component';
 import { ImportFlowOptionsPopoverComponent } from '../../components/import-flow-options-popover/import-flow-options-popover.component';
 import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
 import { ImportReviewDialogComponent } from '../../components/import-review-dialog/import-review-dialog.component';
-import { EMPTY_FLOWS_FILTER, FlowsFilterState } from '../../models/flow-filter.model';
+import { EMPTY_FLOWS_FILTER, FlowsFilterState, FlowSortOrder } from '../../models/flow-filter.model';
 import { GraphDto } from '../../models/graph.model';
 import { FlowCopyImportFacadeService } from '../../services/flow-copy-import-facade.service';
 import { FlowsStorageService } from '../../services/flows-storage.service';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { parseFilterFromParams, serializeFilterToParams } from '../../utils/flow-filter-url.utils';
+import { flowsBulkDeleteGroup } from '../../utils/flows-bulk-delete.util';
+import { FlowsFilterSidebarComponent } from './components/flows-filter-sidebar/flows-filter-sidebar.component';
+import { FLOWS_SORT_MENU_ITEMS, FlowsSortMenuComponent } from './components/flows-sort-menu/flows-sort-menu.component';
+
+const FILTER_PANEL_WIDTH_KEY = 'flows-filter-panel';
+const FILTER_PANEL_WIDTH_OPTIONS = { defaultWidth: 360, minWidth: 280, maxWidth: 640 } satisfies SidebarWidthOptions;
 
 @Component({
     templateUrl: './flows-list-page.component.html',
@@ -90,17 +107,21 @@ import { parseFilterFromParams, serializeFilterToParams } from '../../utils/flow
         RouterLink,
         RouterLinkActive,
         ButtonComponent,
+        BulkSelectDropdownComponent,
         TabButtonComponent,
         FormsModule,
         AppSvgIconComponent,
         LabelSidebarComponent,
         HideInlineSubtitleOnOverflowDirective,
+        CollapseOnOverflowDirective,
         ImportFlowOptionsPopoverComponent,
         OverlayModule,
-        FlowsFilterMenuComponent,
         HasPermissionDirective,
         MatTooltipModule,
         SearchComponent,
+        FlowsFilterSidebarComponent,
+        FlowsSortMenuComponent,
+        ResizableSidebarDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
@@ -126,6 +147,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private importFlowSettings = inject(ImportFlowSettingsService);
     private destroyRef = inject(DestroyRef);
     private appStorage = inject(AppStorageService);
+    private bulkDeleteService = inject(BulkDeleteService);
+    private recycleBinSettings = inject(RecycleBinSettingsService);
 
     private readonly storageInvalidationMap: Record<string, StorageService[]> = {
         LLMModel: [inject(LlmModelsStorageService), inject(LlmProvidersStorageService)],
@@ -142,20 +165,43 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
     public selectMode = this.flowStorageService.selectMode;
     public selectedFlowIds = this.flowStorageService.selectedFlowIds;
+    public isDeleting = this.flowStorageService.isDeleting;
+
     public readonly filterState = this.flowStorageService.filter;
 
-    public readonly hasActiveFilter = computed(() => {
-        const f = this.filterState();
-        return (
-            f.sortOrder !== 'default' ||
-            f.includedFlowIds !== null ||
-            f.includedLabelIds !== null ||
-            f.customFilter !== null
-        );
+    // --- Filter sidebar & sort menu ---
+    public showSidebar = signal<boolean>(true);
+    public showFilterSidebar = signal<boolean>(false);
+    public sortMenuOpen = signal<boolean>(false);
+
+    protected readonly filterPanelWidthKey = FILTER_PANEL_WIDTH_KEY;
+    protected readonly filterPanelWidthOptions = FILTER_PANEL_WIDTH_OPTIONS;
+    protected readonly filterPanelWidth = inject(SidebarWidthService).getWidth(
+        FILTER_PANEL_WIDTH_KEY,
+        FILTER_PANEL_WIDTH_OPTIONS
+    );
+
+    private readonly sortDropdownOrders: readonly FlowSortOrder[] = FLOWS_SORT_MENU_ITEMS.map((i) => i.value);
+
+    public readonly activeSort = computed<FlowSortOrder>(() => {
+        const order = this.filterState().sortOrder;
+        return this.sortDropdownOrders.includes(order) ? order : 'default';
     });
 
-    public showSidebar = signal<boolean>(true);
-    public filterMenuOpen = signal<boolean>(false);
+    public readonly sortTriggerLabel = computed<string>(() => {
+        const order = this.activeSort();
+        if (order === 'default') return 'Sort';
+        return FLOWS_SORT_MENU_ITEMS.find((i) => i.value === order)?.label ?? 'Sort';
+    });
+
+    public readonly activeFilterCount = computed<number>(() => {
+        const f = this.filterState();
+        let n = 0;
+        if (f.includedFlowIds !== null) n++;
+        if (f.includedLabelIds !== null) n++;
+        if (f.customConditions.some((group) => group.conditions.some((c) => isUsableCondition(c)))) n++;
+        return n;
+    });
 
     public readonly activeLabelFilterDisplay = computed(() => {
         const filter = this.labelsStorage.activeLabelFilter();
@@ -252,38 +298,25 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
             this.flowStorageService.setFilter(initial);
             this.cdr.markForCheck();
 
-            const hasIdsToValidate = initial.includedFlowIds !== null || initial.includedLabelIds !== null;
-            if (!hasIdsToValidate) return;
-
             forkJoin({
                 flows: this.flowStorageService.getFlows(),
                 labels: this.labelsStorage.loadLabels(),
-            }).subscribe(({ flows, labels }) => {
-                const knownFlowIds = new Set(flows.map((f) => f.id));
+            }).subscribe(({ labels }) => {
                 const knownLabelIds = new Set(labels.map((l) => l.id));
 
-                const validatedFlowIds =
-                    initial.includedFlowIds === null
-                        ? null
-                        : initial.includedFlowIds.filter((id) => knownFlowIds.has(id));
                 const validatedLabelIds =
                     initial.includedLabelIds === null
                         ? null
                         : initial.includedLabelIds.filter((id) => knownLabelIds.has(id));
 
-                const flowsChanged =
-                    validatedFlowIds !== null &&
-                    initial.includedFlowIds !== null &&
-                    validatedFlowIds.length !== initial.includedFlowIds.length;
                 const labelsChanged =
                     validatedLabelIds !== null &&
                     initial.includedLabelIds !== null &&
                     validatedLabelIds.length !== initial.includedLabelIds.length;
 
-                if (!flowsChanged && !labelsChanged) return;
+                if (!labelsChanged) return;
 
                 this.applyFilterPatch({
-                    includedFlowIds: validatedFlowIds && validatedFlowIds.length > 0 ? validatedFlowIds : null,
                     includedLabelIds: validatedLabelIds && validatedLabelIds.length > 0 ? validatedLabelIds : null,
                 });
             });
@@ -326,97 +359,32 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         });
     }
 
-    public toggleFilterMenu(): void {
-        this.filterMenuOpen.update((open) => !open);
+    // --- Filter sidebar ---
+    public toggleFilterSidebar(): void {
+        this.showFilterSidebar.update((v) => !v);
     }
 
-    public closeFilterMenu(): void {
-        this.filterMenuOpen.set(false);
+    // --- Sort menu ---
+    public toggleSortMenu(): void {
+        this.sortMenuOpen.update((v) => !v);
     }
 
-    public onFilterMenuAction(action: FlowsFilterMenuAction): void {
-        this.closeFilterMenu();
-        switch (action) {
-            case 'sort_asc':
-                this.applyFilterPatch({ sortOrder: 'name_asc' });
-                return;
-            case 'sort_desc':
-                this.applyFilterPatch({ sortOrder: 'name_desc' });
-                return;
-            case 'include_exclude':
-                this.openIncludeExcludeDialog('primary');
-                return;
-            case 'custom_filter':
-                this.openCustomFilterDialog();
-                return;
-        }
+    public closeSortMenu(): void {
+        this.sortMenuOpen.set(false);
     }
 
-    public clearAllFilters(): void {
-        const reset: FlowsFilterState = {
-            ...EMPTY_FLOWS_FILTER,
-            searchTerm: this.flowStorageService.getCurrentFilter().searchTerm,
-        };
-        this.flowStorageService.setFilter(reset);
-        this.syncFilterToUrl(reset);
-        this.cdr.markForCheck();
+    public onSortMenuAction(sort: FlowSortOrder): void {
+        this.closeSortMenu();
+        const next = this.filterState().sortOrder === sort ? 'default' : sort;
+        this.applyFilterPatch({ sortOrder: next });
     }
 
-    private openIncludeExcludeDialog(initialTab: IncludeExcludeTab): void {
-        this.labelsStorage.loadLabels().subscribe(() => {
-            const current = this.flowStorageService.getCurrentFilter();
-            const data: AppIncludeExcludeDialogData = {
-                initialTab,
-                primaryTab: {
-                    label: 'Flows',
-                    icon: 'flow',
-                    searchPlaceholder: 'Search flow...',
-                    emptyText: 'No flows match the search.',
-                },
-                items: this.flowStorageService.flows().map((f) => ({ id: f.id, name: f.name })),
-                selectedItemIds: current.includedFlowIds,
-                selectedLabelIds: current.includedLabelIds,
-            };
-            const ref = this.dialog.open<AppIncludeExcludeDialogResult | undefined>(AppIncludeExcludeDialogComponent, {
-                data,
-                panelClass: 'flows-filter-dialog-panel',
-                hasBackdrop: true,
-                providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
-            });
-            ref.closed.subscribe((result) => {
-                if (!result) return;
-                this.applyFilterPatch({
-                    includedFlowIds: result.includedItemIds,
-                    includedLabelIds: result.includedLabelIds,
-                });
-            });
-        });
-    }
-
-    private openCustomFilterDialog(): void {
-        const data: AppCustomFilterDialogData = {
-            scopes: [
-                { key: 'flow_name', label: 'Flows', icon: 'flow', heading: 'Show flows matching the name conditions' },
-                {
-                    key: 'label_name',
-                    label: 'Labels',
-                    icon: 'label',
-                    heading: 'Show flows matching the label conditions',
-                },
-            ],
-            initialCondition: this.flowStorageService.getCurrentFilter().customFilter,
-        };
-        const ref = this.dialog.open<AppCustomFilterDialogResult | undefined>(AppCustomFilterDialogComponent, {
-            data,
-            panelClass: 'flows-filter-dialog-panel',
-            hasBackdrop: true,
-        });
-        ref.closed.subscribe((result) => {
-            if (!result) return;
-            // Shared dialog stores scope as `string`; flows narrows it back to its own union.
-            this.applyFilterPatch({
-                customFilter: result.condition as FlowsFilterState['customFilter'],
-            });
+    public clearAllFilters(event?: MouseEvent): void {
+        event?.stopPropagation();
+        this.applyFilterPatch({
+            sortOrder: this.filterState().sortOrder,
+            includedLabelIds: EMPTY_FLOWS_FILTER.includedLabelIds,
+            customConditions: EMPTY_FLOWS_FILTER.customConditions,
         });
     }
 
@@ -579,11 +547,11 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         return result;
     }
 
-    public onExportClick(): void {
+    public onSelectClick(): void {
         this.flowStorageService.setSelectMode(true);
     }
 
-    public cancelExport(): void {
+    public cancelSelection(): void {
         this.flowStorageService.setSelectMode(false);
     }
 
@@ -594,7 +562,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         }
 
         this.importExportService.bulkExportFlow(ids).subscribe({
-            next: (blob) => {
+            next: ({ blob, excluded }) => {
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -603,11 +571,33 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 window.URL.revokeObjectURL(url);
 
                 this.flowStorageService.setSelectMode(false);
+
+                showExportExclusionWarning(this.toastService, excluded);
             },
             error: (error) => {
                 console.error('Bulk export failed:', error);
             },
         });
+    }
+
+    public deleteSelectedFlows(): void {
+        const selectedIds = new Set(this.selectedFlowIds());
+        const flows = this.flowStorageService.flows().filter((flow) => selectedIds.has(flow.id));
+        if (flows.length === 0) {
+            return;
+        }
+
+        this.isDeleting.set(true);
+        this.bulkDeleteService
+            .run([flowsBulkDeleteGroup(this.flowStorageService, flows, this.recycleBinSettings.retentionDays())])
+            .pipe(
+                tap(() => this.flowStorageService.setSelectMode(false)),
+                filter((outcomes) => outcomes.some((outcome) => (outcome.response?.deleted_count ?? 0) > 0)),
+                switchMap(() => this.flowStorageService.getFlows(true, this.labelsStorage.activeLabelFilter())),
+                finalize(() => this.isDeleting.set(false)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
     }
 
     public selectAllFlows(): void {

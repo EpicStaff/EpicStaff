@@ -20,6 +20,7 @@ from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from src.shared.models import GraphData, SessionData
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = None):
@@ -30,7 +31,7 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
 
     def empty_session_data(session, start_node, token_budget=None, run_type=""):
         graph = GraphData(name="g", entrypoint="__end__", end_node=None)
-        return SessionData(id=session.id, org_id=session.graph.org_id, graph=graph)
+        return SessionData(id=session.id, org_id=session.graph.org_id, audit_retention_days=0, graph=graph)
 
     monkeypatch.setattr(sm, "create_session_data", empty_session_data)
     monkeypatch.setattr(sm.redis_service, "publish_session_data", lambda **kwargs: 2)
@@ -62,16 +63,28 @@ def _add_subgraph_message(session_id: int, message_type: str, exec_id: str, **ex
 
 
 def _export(session_id: int) -> dict:
-    data = ExportService(entity_registry).export_entities(
-        EntityType.SESSION, [session_id]
+    data = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.SESSION,
+            [session_id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data
     )
     [exported] = data[EntityType.SESSION]
     return exported
 
 
 def _export_csv_rows(session_id: int) -> list[dict]:
-    data = ExportService(entity_registry).export_entities(
-        EntityType.SESSION, [session_id]
+    data = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.SESSION,
+            [session_id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data
     )
     response = CsvExportFormatStrategy(SessionTabularProjection()).render(
         data, EntityType.SESSION, "session", str(session_id)

@@ -401,7 +401,7 @@ class UserManagementService(CrossOrgResourceService):
 
     @staticmethod
     def _user_external_artifacts(instance: User) -> dict[str, int]:
-        """Report the avatar file, which lives on local disk rather than in MinIO."""
+        """Report the avatar object that deleting the user orphans in the bucket."""
         if not instance.avatar:
             return {}
         return {"avatar": 1}

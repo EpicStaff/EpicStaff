@@ -1,0 +1,17 @@
+# PLUGINS_DEV_MODE=true, in each SPA location of the plugin server (= /index.html and /): before
+# the published files, nginx asks django_app's page decision for this plugin. 204: the published
+# files are served, exactly as without development mode. 403 with X-Plugin-Spa-Upstream: the
+# request goes to that frontend development server instead (@plugin_development_page,
+# plugins-development-server-true.snippet).
+#
+# The maintenance flag is tested first (the rewrite phase, before this access-phase check): while
+# the plugin is being upgraded, its pages show the maintenance page and Django is not asked.
+auth_request /_plugin_development_page_check;
+auth_request_set $plugin_spa_upstream $upstream_http_x_plugin_spa_upstream;
+error_page 403 = @plugin_development_page;
+# A decision nginx could not get (django_app down, or any answer but 204 and 403, which
+# auth_request turns into 500): fail closed, never serve the published files instead.
+error_page 500 = @plugin_development_unreachable;
+# @plugin_development_page answers through a second error page when the development server cannot
+# be reached; nginx decides at the first hop whether another may follow.
+recursive_error_pages on;

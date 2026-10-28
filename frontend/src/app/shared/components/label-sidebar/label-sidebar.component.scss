@@ -355,6 +355,10 @@
         color: var(--label-color, var(--color-ks-text));
         transition: color 0.15s ease;
     }
+
+    &.dragging {
+        opacity: 0.5;
+    }
 }
 
 .label-error {
