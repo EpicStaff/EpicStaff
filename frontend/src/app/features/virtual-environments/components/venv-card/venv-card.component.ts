@@ -80,12 +80,14 @@ export class VenvCardComponent {
         return count > 0 ? this.venv().libs.slice(-count) : [];
     }
 
-    onToggleFavorite(): void {
-        this.favoriteChange.emit(!this.venv().is_favorite);
+    /** The whole card opens the venv, so the row carries the action the pencil used to. */
+    onCardClick(): void {
+        if (!this.canEdit()) return;
+        this.editRequested.emit();
     }
 
-    onEdit(): void {
-        this.editRequested.emit();
+    onToggleFavorite(): void {
+        this.favoriteChange.emit(!this.venv().is_favorite);
     }
 
     onDelete(): void {

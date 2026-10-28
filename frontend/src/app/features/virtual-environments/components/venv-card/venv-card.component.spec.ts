@@ -77,3 +77,44 @@ describe('VenvCardComponent library chips', () => {
         expect(parts(chip(0))).toEqual(['2.14.1']);
     });
 });
+
+describe('VenvCardComponent opening the venv', () => {
+    function render(canEdit: boolean) {
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        TestBed.configureTestingModule({ imports: [VenvCardComponent] });
+        const fixture = TestBed.createComponent(VenvCardComponent);
+        fixture.componentRef.setInput('venv', venvWith([]));
+        fixture.componentRef.setInput('canEdit', canEdit);
+        const edits = vi.fn();
+        fixture.componentInstance.editRequested.subscribe(edits);
+        fixture.detectChanges();
+        return { fixture, edits, host: fixture.nativeElement as HTMLElement };
+    }
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('opens the venv when the card itself is clicked', () => {
+        const { edits, host } = render(true);
+
+        host.querySelector<HTMLElement>('.venv-card')!.click();
+
+        expect(edits).toHaveBeenCalledOnce();
+    });
+
+    it('stays shut for a user who may not edit', () => {
+        const { edits, host } = render(false);
+
+        host.querySelector<HTMLElement>('.venv-card')!.click();
+
+        expect(edits).not.toHaveBeenCalled();
+    });
+
+    // The buttons on the card do their own thing; the card underneath must not also fire.
+    it('does not open the venv when the star is clicked', () => {
+        const { edits, host } = render(true);
+
+        host.querySelector<HTMLElement>('.venv-card__icon-btn')!.click();
+
+        expect(edits).not.toHaveBeenCalled();
+    });
+});
