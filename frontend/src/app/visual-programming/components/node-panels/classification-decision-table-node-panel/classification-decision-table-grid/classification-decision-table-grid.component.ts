@@ -33,6 +33,7 @@ import {
     MultiSelectComponent,
     SelectItem,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { AgGridAngular, AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -168,6 +169,7 @@ interface GroupOverlayItem {
         HelpTooltipComponent,
         MatTooltipModule,
         MultiSelectComponent,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './classification-decision-table-grid.component.html',
     styleUrls: ['./classification-decision-table-grid.component.scss'],
