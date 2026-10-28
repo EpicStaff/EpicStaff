@@ -20,23 +20,13 @@ from tables.serializers.model_serializers.tag_serializers import (
     EmbeddingTagSerializer,
 )
 from tables.serializers.utils.mixins import TagHandlingMixin
-from tables.serializers.utils.secret_destination_guard_mixin import (
-    EMBEDDING_MODEL_ENDPOINT_FIELDS,
-    SecretDestinationGuardMixin,
-)
-from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
 from tables.validators.extra_headers_validator import validate_extra_headers
 
 
 class EmbeddingModelSerializer(
-    AuthorSummarySerializerMixin,
-    SecretDestinationGuardMixin,
-    TagHandlingMixin,
-    serializers.ModelSerializer,
+    AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
 ):
-    secret_destination_fields = EMBEDDING_MODEL_ENDPOINT_FIELDS
-
     tags = EmbeddingTagSerializer(many=True, required=False)
     tag_model = EmbeddingModelTag
 
@@ -68,13 +58,9 @@ class EmbeddingModelSerializer(
 class EmbeddingConfigSerializer(
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
-    SecretReferenceGuardMixin,
     TagHandlingMixin,
     serializers.ModelSerializer,
 ):
-    secret_reference_fields = ("api_key_secret_id",)
-    secret_marker_fields = ("extra_headers",)
-
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
         source="api_key_secret",

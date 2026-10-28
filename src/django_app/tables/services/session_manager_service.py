@@ -3,6 +3,7 @@ from dataclasses import replace
 from django.db import transaction
 from django.utils import timezone
 from rbac.access.principals import is_pinned_org_principal
+from rbac.governance.organization_retention import effective_retention_days_for_org
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import (
@@ -16,6 +17,7 @@ from src.shared.models import (
     SubGraphNodeData,
     TaskNodeData,
 )
+from src.shared.retention import DataType
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.exceptions import GraphEntryPointException
 from tables.models import (
@@ -236,13 +238,15 @@ class SessionManagerService(metaclass=SingletonMeta):
             session.graph, unique_subgraphs, session, start_node=start_node
         )
 
+        org_id = session.graph.org_id
         return SessionData(
             id=session.pk,
-            org_id=session.graph.org_id,
+            org_id=org_id,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
             initial_state=dict(session.variables),
             run_type=run_type,
+            audit_retention_days=effective_retention_days_for_org(org_id, DataType.AUDIT),
             token_budget=token_budget,
         )
 
@@ -363,9 +367,6 @@ class SessionManagerService(metaclass=SingletonMeta):
                 org=graph.org,
             )
 
-            Session.objects.filter(pk=session.pk).update(
-                graph_schema=session_data.graph.model_dump(mode="json"),
-            )
             # Again just before crew hears of the session: a suspension that committed
             # while it was being built must not reach crew.
             assert_still_admitted(admission)

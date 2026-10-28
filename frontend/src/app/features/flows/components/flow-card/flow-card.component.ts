@@ -36,6 +36,10 @@ export class FlowCardComponent {
     @Input({ required: true }) flow!: GetGraphLightRequest;
     @Input() selectMode: boolean = false;
     @Input() isSelected: boolean = false;
+    /** True while a bulk delete is in flight; disables the selection checkbox and stops
+     *  selection from being toggled, so a run that is about to complete can't wipe a
+     *  selection made while it's running. */
+    @Input() isDeleting: boolean = false;
     @Output() selectionToggle = new EventEmitter<void>();
     @Output() cardClick = new EventEmitter<GetGraphLightRequest>();
     @Output() action = new EventEmitter<FlowCardAction>();
@@ -127,6 +131,7 @@ export class FlowCardComponent {
 
     onSelectionToggle(event: MouseEvent): void {
         event.stopPropagation();
+        if (this.isDeleting) return;
         this.selectionToggle.emit();
     }
 
@@ -147,21 +152,15 @@ export class FlowCardComponent {
     }
 
     public onSubflowActionSelected({ action, trigger }: FlowMenuSelection, subflow: SubflowLightDto): void {
-        const flowLike: GetGraphLightRequest = {
-            id: subflow.id,
-            uuid: '',
-            name: subflow.name,
-            description: subflow.description,
-            tags: subflow.tags,
-            label_ids: subflow.label_ids,
-            created_at: subflow.created_at,
-            updated_at: subflow.updated_at,
-        };
-        this.action.emit({ action, flow: flowLike, trigger });
+        this.action.emit({ action, flow: this.toFlowLike(subflow), trigger });
     }
 
     public onSubflowClick(subflow: SubflowLightDto): void {
-        const flowLike: GetGraphLightRequest = {
+        this.cardClick.emit(this.toFlowLike(subflow));
+    }
+
+    private toFlowLike(subflow: SubflowLightDto): GetGraphLightRequest {
+        return {
             id: subflow.id,
             uuid: '',
             name: subflow.name,
@@ -170,7 +169,7 @@ export class FlowCardComponent {
             label_ids: subflow.label_ids,
             created_at: subflow.created_at,
             updated_at: subflow.updated_at,
+            save_version: subflow.save_version,
         };
-        this.cardClick.emit(flowLike);
     }
 }

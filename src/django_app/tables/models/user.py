@@ -16,6 +16,7 @@ import uuid
 
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
+from django.core.files.storage import storages
 from django.db import models
 
 DISPLAY_NAME_MAX_LENGTH = 255
@@ -25,6 +26,9 @@ SHORTCUTS_MAX_OVERRIDE_ENTRIES = 100
 SHORTCUTS_MAX_TEXT_LENGTH = 64
 SHORTCUTS_MAX_PARAMS = 5
 SHORTCUTS_MAX_PARAM_INTEGER = 2**53 - 1
+
+TOUR_KEY_MAX_LENGTH = 64
+TOURS_MAX_PER_USER = 50
 
 _DIGITS = re.compile(r"\d")
 
@@ -107,6 +111,11 @@ def _avatar_upload_path(instance, filename):
     return f"avatars/{instance.id}/{uuid.uuid4().hex}{ext}"
 
 
+def avatar_storage():
+    """Return the `avatars` storage; a callable keeps its settings out of migrations."""
+    return storages["avatars"]
+
+
 def default_custom_shortcuts() -> dict:
     return {"custom": [], "overrides": {}}
 
@@ -114,14 +123,11 @@ def default_custom_shortcuts() -> dict:
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     display_name = models.CharField(max_length=DISPLAY_NAME_MAX_LENGTH, blank=True, null=True)
-    avatar = models.ImageField(upload_to=_avatar_upload_path, blank=True, null=True)
+    avatar = models.ImageField(
+        upload_to=_avatar_upload_path, storage=avatar_storage, blank=True, null=True
+    )
     is_superadmin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
-    quickstart_tour_completed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When the user finished or skipped the Quick Start tour; null means not completed or skipped yet.",
-    )
     custom_shortcuts = models.JSONField(default=default_custom_shortcuts, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -147,3 +153,22 @@ class User(AbstractBaseUser, PermissionsMixin):
         if self.display_name and self.display_name.strip():
             return self.display_name
         return display_name_from_email(self.email)
+
+
+class UserTourProgress(models.Model):
+    """A guided tour the user finished or skipped; no row means not done yet.
+
+    Owned by the user, not by an organization: a tour is seen once per person,
+    whichever organization they are working in.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="tour_progress")
+    tour_key = models.CharField(max_length=TOUR_KEY_MAX_LENGTH)
+    completed_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "tour_key"], name="unique_user_tour_progress_tour_key"
+            ),
+        ]

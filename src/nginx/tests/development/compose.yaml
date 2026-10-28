@@ -31,6 +31,8 @@ x-nginx-environment: &nginx-environment
   # Plain http on the developer's machine, with nothing in front: no Strict-Transport-Security on
   # the plugin hosts, the development server's page included (the gateway lab has it on).
   NGINX_HSTS_ENABLED: "false"
+  # Nothing in front of nginx on the developer's machine.
+  NGINX_TRUSTED_PROXIES: none
   DJANGO_HOST: decision
   DJANGO_PORT: "8000"
   FRONTEND_HOST: frontend
@@ -51,6 +53,10 @@ x-nginx-environment: &nginx-environment
   PLUGINS_MAX_PACKAGE_MB: "300"
   PLUGINS_MAX_REQUEST_BODY_MB: "1"
   PLUGINS_NETWORK_SUBNET: *plugins-subnet
+  STORAGE_HOST: storage
+  STORAGE_PORT: "9000"
+  STORAGE_BUCKET: epicstaff
+  AVATAR_URL_SIGNING_SECRET: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
 
 x-nginx: &nginx
   image: ${DEVELOPMENT_LAB_NGINX_IMAGE:?}
@@ -81,6 +87,12 @@ x-nginx: &nginx
     - type: bind
       source: ../../docker-entrypoint.d/17-normalize-hsts-enabled.envsh
       target: /docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+      read_only: true
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ../../docker-entrypoint.d/18-check-trusted-proxies.envsh
+      target: /docker-entrypoint.d/18-check-trusted-proxies.envsh
       read_only: true
       bind:
         create_host_path: false

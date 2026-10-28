@@ -171,8 +171,10 @@ BEGIN
         WHERE table_schema = 'public' AND table_name = 'tables_session'
     ) THEN
         REVOKE ALL ON TABLE tables_session FROM "${manager_user}";
-        GRANT SELECT ON TABLE tables_session TO "${manager_user}";
-        RAISE NOTICE '[manager] Granted SELECT on tables_session';
+        GRANT SELECT, DELETE ON TABLE tables_session TO "${manager_user}";
+        -- FOR UPDATE SKIP LOCKED in the retention job needs UPDATE on at least one column.
+        GRANT UPDATE (finished_at) ON TABLE tables_session TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE, UPDATE (finished_at) on tables_session';
     ELSE
         RAISE NOTICE '[manager] tables_session not found, skipping';
     END IF;
@@ -219,6 +221,153 @@ BEGIN
         RAISE NOTICE '[manager] Granted SELECT on realtime_agent_chat';
     ELSE
         RAISE NOTICE '[manager] realtime_agent_chat not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'rbac_organization'
+    ) THEN
+        REVOKE ALL ON TABLE rbac_organization FROM "${manager_user}";
+        GRANT SELECT ON TABLE rbac_organization TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT on rbac_organization';
+    ELSE
+        RAISE NOTICE '[manager] rbac_organization not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'rbac_organization_config'
+    ) THEN
+        REVOKE ALL ON TABLE rbac_organization_config FROM "${manager_user}";
+        GRANT SELECT ON TABLE rbac_organization_config TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT on rbac_organization_config';
+    ELSE
+        RAISE NOTICE '[manager] rbac_organization_config not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_graph'
+    ) THEN
+        REVOKE ALL ON TABLE tables_graph FROM "${manager_user}";
+        GRANT SELECT ON TABLE tables_graph TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT on tables_graph';
+    ELSE
+        RAISE NOTICE '[manager] tables_graph not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_graphsessionmessage'
+    ) THEN
+        REVOKE ALL ON TABLE tables_graphsessionmessage FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_graphsessionmessage TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_graphsessionmessage';
+    ELSE
+        RAISE NOTICE '[manager] tables_graphsessionmessage not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_usersessionmessage'
+    ) THEN
+        REVOKE ALL ON TABLE tables_usersessionmessage FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_usersessionmessage TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_usersessionmessage';
+    ELSE
+        RAISE NOTICE '[manager] tables_usersessionmessage not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_agentsessionmessage'
+    ) THEN
+        REVOKE ALL ON TABLE tables_agentsessionmessage FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_agentsessionmessage TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_agentsessionmessage';
+    ELSE
+        RAISE NOTICE '[manager] tables_agentsessionmessage not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_tasksessionmessage'
+    ) THEN
+        REVOKE ALL ON TABLE tables_tasksessionmessage FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_tasksessionmessage TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_tasksessionmessage';
+    ELSE
+        RAISE NOTICE '[manager] tables_tasksessionmessage not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_sessionwarningmessage'
+    ) THEN
+        REVOKE ALL ON TABLE tables_sessionwarningmessage FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_sessionwarningmessage TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessionwarningmessage';
+    ELSE
+        RAISE NOTICE '[manager] tables_sessionwarningmessage not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_sessionprincipal'
+    ) THEN
+        REVOKE ALL ON TABLE tables_sessionprincipal FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_sessionprincipal TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessionprincipal';
+    ELSE
+        RAISE NOTICE '[manager] tables_sessionprincipal not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_sessioncallback'
+    ) THEN
+        REVOKE ALL ON TABLE tables_sessioncallback FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_sessioncallback TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessioncallback';
+    ELSE
+        RAISE NOTICE '[manager] tables_sessioncallback not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_sessionstoragefile'
+    ) THEN
+        REVOKE ALL ON TABLE tables_sessionstoragefile FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_sessionstoragefile TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessionstoragefile';
+    ELSE
+        RAISE NOTICE '[manager] tables_sessionstoragefile not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_sessiontrigger'
+    ) THEN
+        REVOKE ALL ON TABLE tables_sessiontrigger FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE tables_sessiontrigger TO "${manager_user}";
+        -- Retention only clears the link to a deleted parent session.
+        GRANT UPDATE (triggered_by_session_id) ON TABLE tables_sessiontrigger TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE, UPDATE (triggered_by_session_id) on tables_sessiontrigger';
+    ELSE
+        RAISE NOTICE '[manager] tables_sessiontrigger not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_keyvaluetableentry'
+    ) THEN
+        REVOKE ALL ON TABLE tables_keyvaluetableentry FROM "${manager_user}";
+        GRANT SELECT ON TABLE tables_keyvaluetableentry TO "${manager_user}";
+        -- Retention only clears the link to a deleted session.
+        GRANT UPDATE (updated_by_session_id) ON TABLE tables_keyvaluetableentry TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, UPDATE (updated_by_session_id) on tables_keyvaluetableentry';
+    ELSE
+        RAISE NOTICE '[manager] tables_keyvaluetableentry not found, skipping';
     END IF;
 END
 \$\$;
@@ -354,6 +503,20 @@ EOF
 REQUIRED_TABLES=(
     # manager
     "tables_session"
+    "rbac_organization"
+    "rbac_organization_config"
+    "tables_graph"
+    "tables_graphsessionmessage"
+    "tables_usersessionmessage"
+    "tables_agentsessionmessage"
+    "tables_tasksessionmessage"
+    "tables_sessionwarningmessage"
+    "tables_sessionprincipal"
+    "tables_sessioncallback"
+    "tables_sessionstoragefile"
+    "tables_sessiontrigger"
+    "tables_keyvaluetableentry"
+    "storage_credentials_temp_account"
     # knowledge
     "tables_naiverag"
     "tables_naiveragchunk"
@@ -406,10 +569,11 @@ BEGIN
     LOOP
         tbl_name := split_part(obj.object_identity, '.', 2);
 
-        -- manager: SELECT only
+        -- manager: SELECT, DELETE; FOR UPDATE SKIP LOCKED needs UPDATE on at least one column
         IF tbl_name = 'tables_session' THEN
-            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
-            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            EXECUTE format('GRANT UPDATE (finished_at) ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE,UPDATE (finished_at) on % to ${manager_user}', tbl_name;
         END IF;
 
         -- manager: SELECT + UPDATE for schedule trigger
@@ -434,6 +598,86 @@ BEGIN
         IF tbl_name = 'realtime_agent_chat' THEN
             EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
             RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT for the retention job
+        IF tbl_name = 'rbac_organization' THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT for the retention job
+        IF tbl_name = 'rbac_organization_config' THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT for the retention job
+        IF tbl_name = 'tables_graph' THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_graphsessionmessage' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_usersessionmessage' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_agentsessionmessage' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_tasksessionmessage' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_sessionwarningmessage' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_sessionprincipal' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_sessioncallback' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE for the retention job
+        IF tbl_name = 'tables_sessionstoragefile' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, DELETE, UPDATE of the session link for the retention job
+        IF tbl_name = 'tables_sessiontrigger' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            EXECUTE format('GRANT UPDATE (triggered_by_session_id) ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE,UPDATE (triggered_by_session_id) on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT, UPDATE of the session link for the retention job
+        IF tbl_name = 'tables_keyvaluetableentry' THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            EXECUTE format('GRANT UPDATE (updated_by_session_id) ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,UPDATE (updated_by_session_id) on % to ${manager_user}', tbl_name;
         END IF;
 
         -- knowledge: read-only tables

@@ -1,5 +1,7 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { BulkDeleteOptions, BulkDeleteResponse } from '@shared/models';
+import { bulkDeleteParams } from '@shared/utils';
 import { map, Observable } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
@@ -41,7 +43,11 @@ export class GeminiRealtimeConfigService {
         return this.http.put<GeminiRealtimeConfig>(`${this.apiUrl}${data.id}/`, data, { headers: this.headers });
     }
 
-    delete(id: number): Observable<void> {
-        return this.http.delete<void>(`${this.apiUrl}${id}/`, { headers: this.headers });
+    bulkDelete(ids: number[], options: BulkDeleteOptions = {}): Observable<BulkDeleteResponse> {
+        return this.http.post<BulkDeleteResponse>(
+            `${this.apiUrl}bulk-delete/`,
+            { ids },
+            { params: bulkDeleteParams(options) }
+        );
     }
 }

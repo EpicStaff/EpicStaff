@@ -45,6 +45,12 @@
     }
 }
 
+.panel-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .version-card {
     display: flex;
     align-items: flex-start;
@@ -74,6 +80,15 @@
     &--previewed:hover {
         background-color: var(--color-ghost-btn-active);
     }
+}
+
+.version-checkbox {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding-top: 0.125rem;
+    // With the card's 8px gap: 12px to the title. The ⋮ menu never shows next to it, so its gap stays 8px.
+    margin-right: 4px;
 }
 
 .version-info {
@@ -140,6 +155,10 @@
     padding: 1rem;
     border-top: 1px solid var(--graphite-940);
     flex-shrink: 0;
+}
+
+.footer-delete-button {
+    width: 100%;
 }
 
 .restore-version-btn {

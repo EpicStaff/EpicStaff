@@ -18,16 +18,12 @@ import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { RAG_TYPE_CONFIG } from '../../constants/constants';
-import {
-    getIndexingConfirmationData,
-    getIndexingConfirmationDataWithEstimate,
-    IndexingDocumentInfo,
-} from '../../helpers/get-indexing-confirmation-data.util';
 import { RagType } from '../../models/base-rag.model';
 import { CreateCollectionStep } from '../../models/collection.model';
 import { DisplayedListDocument } from '../../models/document.model';
-import { RagConfiguration } from '../../models/rag-configuration';
+import { IndexingDocumentInfo, RagConfiguration } from '../../models/rag-configuration';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
+import { IndexingConfirmationDialogService } from '../../services/indexing-confirmation-dialog.service';
 import { RagDeleteRegistryService } from '../../services/rag-delete-registry.service';
 import { StepSelectRagComponent } from './components/steps/step-select-rag/step-select-rag.component';
 import { StepUploadFilesComponent } from './components/steps/step-upload-files/step-upload-files.component';
@@ -64,6 +60,7 @@ export class CreateCollectionDialogComponent {
     private collectionsStorageService = inject(CollectionsStorageService);
     private toastService = inject(ToastService);
     private confirmation = inject(ConfirmationDialogService);
+    private indexingConfirmation = inject(IndexingConfirmationDialogService);
     private ragDeleteRegistry = inject(RagDeleteRegistryService);
     private permissionService = inject(PermissionsService);
 
@@ -176,6 +173,7 @@ export class CreateCollectionDialogComponent {
             const strategy = this.factory.create(type);
             this.strategy.set(strategy);
             return strategy.create(collectionId, embedderId, this.selectedLLM() ?? undefined).pipe(
+                switchMap((created) => (created ? this.refreshCollection(collectionId) : of(created))),
                 catchError(() => {
                     this.toastService.error('Failed to create RAG');
                     return of(false);
@@ -228,7 +226,8 @@ export class CreateCollectionDialogComponent {
 
     private handleIndexing(): Observable<boolean> {
         const strategy = this.strategy();
-        if (!strategy || !this.strategyComponent) return of(false);
+        const ragType = this.selectedRagType();
+        if (!strategy || !ragType || !this.strategyComponent) return of(false);
 
         const componentInstance: RagConfiguration = this.strategyComponent['_componentRef'].instance;
         const componentData = componentInstance.getConfigurationData();
@@ -251,11 +250,19 @@ export class CreateCollectionDialogComponent {
 
         const savePending$: Observable<unknown> = componentInstance.uploadPendingForChecked?.() ?? of(null);
 
-        const confirmationData = strategy.estimateIndexing
-            ? getIndexingConfirmationDataWithEstimate(indexingDocs, strategy.estimateIndexing(configIds))
-            : getIndexingConfirmationData(indexingDocs);
+        const ragId = strategy.getRagId();
+        const modelNames =
+            ragId !== null
+                ? this.collectionsStorageService.getRagModelNames(this.data.collection_id, ragId, ragType)
+                : { embedderName: null, llmName: null };
+        const confirmation$ = this.indexingConfirmation.confirm({
+            documents: indexingDocs,
+            ragType,
+            ...modelNames,
+            estimate$: strategy.estimateIndexing?.(configIds),
+        });
 
-        return this.confirmation.confirm(confirmationData).pipe(
+        return confirmation$.pipe(
             takeUntilDestroyed(this.destroyRef),
             filter((result) => result === true),
             switchMap(() => savePending$),
@@ -275,6 +282,18 @@ export class CreateCollectionDialogComponent {
                     })
                 );
             })
+        );
+    }
+
+    /**
+     * Loads the collection again so the cache holds the RAG just created: the indexing confirmation takes its embedder
+     * and LLM names from there, and otherwise only the next poll (every few seconds) would bring it. A failed load
+     * only drops the names from the confirmation, so it never fails the step.
+     */
+    private refreshCollection(collectionId: number): Observable<boolean> {
+        return this.collectionsStorageService.getFullCollection(collectionId, true).pipe(
+            map(() => true),
+            catchError(() => of(true))
         );
     }
 

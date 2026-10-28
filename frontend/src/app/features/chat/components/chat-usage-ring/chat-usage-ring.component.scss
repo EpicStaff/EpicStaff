@@ -28,6 +28,10 @@
         flex-shrink: 0;
     }
 
+    &__text {
+        display: var(--usage-ring-text-display, inline);
+    }
+
     &__svg {
         flex-shrink: 0;
         // The arc starts at the top and runs clockwise.

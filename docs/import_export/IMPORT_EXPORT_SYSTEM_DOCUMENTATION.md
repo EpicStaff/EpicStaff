@@ -81,6 +81,12 @@ creation are organization-scoped:
 Every `get_org_scope_q` returns `Q()` when `org_id is None`, so direct/internal
 callers that do not pass an org are unaffected.
 
+**Secret markers.** `BaseConfigStrategy.create_entity` calls `check_config_import` with the
+strategy's `marker_fields` (`extra_headers` for LLM and embedding configs). A created config
+carrying an `epicstaff_secret(<name>)` marker needs `secrets:USE` for the importing user;
+a denial is a `400` that rolls the import back. Configs the import reuses are never written
+and are not checked.
+
 ---
 
 ## Adding New Entities

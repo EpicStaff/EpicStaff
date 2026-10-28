@@ -2,6 +2,8 @@
     #triggerBtn
     class="tz-selector__btn"
     type="button"
+    aria-haspopup="listbox"
+    [attr.aria-expanded]="open()"
     [disabled]="isDisabled()"
     [class.tz-selector__btn--open]="open()"
     [class.tz-selector__btn--placeholder]="!selectedValue()"
@@ -36,15 +38,30 @@
                 class="tz-selector__search"
                 type="text"
                 placeholder="Search timezone..."
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded="true"
+                [attr.aria-controls]="listId"
+                [attr.aria-activedescendant]="activeIndex() < 0 ? null : optionId(activeIndex())"
                 [ngModel]="searchQuery()"
-                (ngModelChange)="searchQuery.set($event)"
+                (ngModelChange)="onSearchChange($event)"
+                (keydown)="onSearchKeydown($event)"
             />
         </div>
-        <div class="tz-selector__list">
-            @for (tz of filteredOptions(); track tz.iana) {
+        <div
+            class="tz-selector__list"
+            role="listbox"
+            aria-label="Timezones"
+            [id]="listId"
+        >
+            @for (tz of filteredOptions(); track tz.iana; let index = $index) {
                 <div
                     class="tz-selector__option"
+                    role="option"
+                    [id]="optionId(index)"
+                    [attr.aria-selected]="index === activeIndex()"
                     [class.tz-selector__option--selected]="tz.iana === selectedValue()"
+                    [class.tz-selector__option--active]="index === activeIndex()"
                     (click)="onSelect(tz)"
                 >
                     <span class="tz-selector__iana">{{ tz.iana }}</span>

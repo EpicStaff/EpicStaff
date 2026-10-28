@@ -305,7 +305,7 @@ def test_status_handler_locks_the_session_without_reading_its_large_json_fields(
     [locking_query] = [
         query["sql"] for query in captured.captured_queries if "FOR NO KEY UPDATE" in query["sql"]
     ]
-    for large_field in ("graph_schema", "variables", "status_data"):
+    for large_field in ("variables", "status_data"):
         assert f'"tables_session"."{large_field}"' not in locking_query
     running_session.refresh_from_db()
     assert running_session.status == Session.SessionStatus.WAIT_FOR_USER

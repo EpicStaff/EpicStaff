@@ -1,20 +1,22 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, linkedSignal } from '@angular/core';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 /**
  * Round user avatar: the avatar image when there is one, otherwise the initials of `name`,
  * otherwise a generic person placeholder (no name, e.g. a user who never set a display name).
+ * An image that fails to load (e.g. an expired signed link) falls back the same way.
  */
 @Component({
     selector: 'app-user-avatar',
     imports: [AppSvgIconComponent],
     template: `
-        @if (avatarUrl()) {
+        @if (avatarUrl() && !imageFailed()) {
             <img
                 [src]="avatarUrl()"
                 alt="User avatar"
                 class="avatar-img"
+                (error)="imageFailed.set(true)"
             />
         } @else if (initials()) {
             <span class="initials">{{ initials() }}</span>
@@ -61,6 +63,9 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 export class UserAvatarComponent {
     readonly name = input.required<string | null>();
     readonly avatarUrl = input<string | null>(null);
+
+    // Resets on every new URL so a fresh link gets a fresh try.
+    protected readonly imageFailed = linkedSignal({ source: this.avatarUrl, computation: () => false });
 
     // Letters first ("j0hn" -> "JH"); no letters falls back to raw characters ("007" -> "00").
     readonly initials = computed(() => {

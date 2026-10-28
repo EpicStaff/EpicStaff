@@ -83,16 +83,8 @@ def patched_storage(
     return fake_client
 
 
-@pytest.fixture
-def sandbox_dir(tmp_path, monkeypatch):
-    """Point CONTAINER_SAVEFILES_PATH at an isolated temp directory, mirroring
-    the sandbox's savefiles/ cwd convention used by RouteTool in each main.py."""
-    monkeypatch.setenv("CONTAINER_SAVEFILES_PATH", str(tmp_path))
-    return tmp_path
-
-
 def load_tool_main(tool_dir_name: str) -> ModuleType:
-    """Import a tool's main.py as an isolated module, e.g. load_tool_main("read_file_tool")."""
+    """Import a tool's main.py as an isolated module, e.g. load_tool_main("sleep_tool")."""
     main_path = TOOLS_ROOT / tool_dir_name / "main.py"
     module_name = f"_shared_tool_{tool_dir_name}_main"
 

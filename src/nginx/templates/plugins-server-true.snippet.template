@@ -93,7 +93,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         # No Set-Cookie or Clear-Site-Data from a plugin host, even Django's, and no
         # X-Frame-Options: Django's DENY would stop EpicStaff from framing the response. The
         # snippet's Cookie line changes nothing here: no request header is passed on.
@@ -203,7 +203,7 @@ server {
         proxy_set_header X-EpicStaff-Plugin-Context $plugin_context;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header X-Forwarded-Host $host;
         # A plugin must not route nginx internally (into /_plugin_gateway_check, which would hand
         # it the gateway's headers).

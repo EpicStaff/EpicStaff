@@ -9,6 +9,7 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { GetMeResponse, ResourceCode } from '@shared/models';
 
+import { ProfileTourProgressStore, TOUR_PROGRESS_STORE } from '../../../core/guided-tour';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { AvailablePlugin } from '../../../features/plugins/models/available-plugin.model';
 import { AppReturnUrlService } from '../../../features/plugins/services/app-return-url.service';
@@ -106,7 +107,6 @@ describe('LeftSidebarComponent', () => {
                         can: () => true,
                         resolveStorageTab: () => 'files',
                         canOpenConfigureModelsDialog: () => true,
-                        canApplyQuickstart: () => false,
                         canAccessWorkspace: () => true,
                         resolveDefaultRoute: () => '/agents',
                         get isSuperadmin(): boolean {
@@ -114,6 +114,8 @@ describe('LeftSidebarComponent', () => {
                         },
                     },
                 },
+                // The account menu lists the tours, as in the app; none is registered here.
+                { provide: TOUR_PROGRESS_STORE, useExisting: ProfileTourProgressStore },
                 {
                     provide: ConfigService,
                     useValue: { isAuditTrailEnabled: false, isChatEnabled: true, isPluginsEnabled: true },
@@ -770,12 +772,13 @@ describe('LeftSidebarComponent page shortcuts', () => {
                         can: (resource: ResourceCode) => !hiddenResources.has(resource),
                         resolveStorageTab: () => 'files',
                         canOpenConfigureModelsDialog: () => settingsAllowed,
-                        canApplyQuickstart: () => false,
                         canAccessWorkspace: () => workspaceAllowed,
                         resolveDefaultRoute: () => '/agents',
                         isSuperadmin: false,
                     },
                 },
+                // The account menu lists the tours, as in the app; none is registered here.
+                { provide: TOUR_PROGRESS_STORE, useExisting: ProfileTourProgressStore },
                 { provide: ConfigService, useValue: config },
             ],
         });
