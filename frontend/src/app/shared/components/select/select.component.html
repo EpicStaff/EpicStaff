@@ -168,7 +168,7 @@
                 </div>
             }
 
-            @if (!filteredItems().length && !(allowCustomValue() && search().trim())) {
+            @if (!hasVisibleItems() && !(allowCustomValue() && search().trim())) {
                 <div
                     class="selector__option selector__option--empty"
                     [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"

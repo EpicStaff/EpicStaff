@@ -115,26 +115,34 @@ export class SelectComponent implements ControlValueAccessor {
      * the template has a single shape to render.
      *
      * Items without a `group` come first and keep no heading -- a picker's leading row, such
-     * as a "none" option, has to stay at the top rather than sink under the first heading.
+     * as a "none" option. They are fixed rows: the search narrows the groups under them and
+     * leaves them where they are, so the way out of a search is always on screen.
+     *
      * Groups follow in the order they first appear, and the order inside each one is the
-     * order of `items`, so a sort the caller applied survives the split. Headings come from
+     * order of `items`, so a sort the caller applied survives the split. They are built from
      * `filteredItems`, so a search narrows within the groups instead of collapsing them.
      */
     protected readonly groupedItems = computed<SelectItemGroup[]>(() => {
         const items = this.filteredItems();
         if (!this.grouped()) return [{ group: null, items }];
 
-        const buckets = new Map<string | null, SelectItem[]>([[null, []]]);
+        const pinned = this.items().filter((item) => !item.group);
+        const buckets = new Map<string, SelectItem[]>();
         for (const item of items) {
-            const group = item.group ?? null;
-            const bucket = buckets.get(group);
+            if (!item.group) continue;
+            const bucket = buckets.get(item.group);
             if (bucket) bucket.push(item);
-            else buckets.set(group, [item]);
+            else buckets.set(item.group, [item]);
         }
-        return [...buckets]
-            .filter(([, bucketItems]) => bucketItems.length > 0)
-            .map(([group, bucketItems]) => ({ group, items: bucketItems }));
+        return [
+            ...(pinned.length ? [{ group: null, items: pinned }] : []),
+            ...[...buckets].map(([group, bucketItems]) => ({ group, items: bucketItems })),
+        ];
     });
+
+    /** Whether the panel has a row to show. Not `filteredItems`: in a grouped panel the fixed
+     *  rows survive a search, and an "empty" notice under them would contradict them. */
+    protected readonly hasVisibleItems = computed(() => this.groupedItems().some((group) => group.items.length > 0));
 
     private controlDisabled = signal(false);
     isDisabled = computed(() => this.disabled() || this.controlDisabled());

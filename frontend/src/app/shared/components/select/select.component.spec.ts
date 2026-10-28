@@ -92,7 +92,8 @@ describe('SelectComponent', () => {
             search(fixture, 'a');
 
             expect(headings()).toEqual(['Favorites', 'All']);
-            expect(rows()).toEqual(['beta', 'alpha', 'gamma']);
+            // 'None' is outside the groups, so the search leaves it where it is.
+            expect(rows()).toEqual(['None', 'beta', 'alpha', 'gamma']);
         });
 
         it('drops a heading whose items the search left out', () => {
@@ -101,7 +102,17 @@ describe('SelectComponent', () => {
             search(fixture, 'gam');
 
             expect(headings()).toEqual(['All']);
-            expect(rows()).toEqual(['gamma']);
+            expect(rows()).toEqual(['None', 'gamma']);
+        });
+
+        it('keeps the fixed row, and no empty notice, when the search matches nothing', () => {
+            const fixture = openPanel(ITEMS, true);
+
+            search(fixture, 'nothing matches this');
+
+            expect(headings()).toEqual([]);
+            expect(rows()).toEqual(['None']);
+            expect(document.querySelector('.selector__option--empty')).toBeNull();
         });
     });
 });
