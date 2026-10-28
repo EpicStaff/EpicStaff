@@ -495,7 +495,7 @@ class RunSession(APIView):
             else TriggerSpec.manual()
         )
         api_key = request.auth if isinstance(request.auth, ApiKey) else None
-        # Running needs only FLOWS READ, but a payload value at a declared org path
+        # Running needs FLOWS USE, but a payload value at a declared org path
         # is written back to the flow's shared memory: overriding one is managing
         # the flow's persistent variables, which takes FLOWS UPDATE. A sub-flow
         # payload is built by the parent's agent from whoever started the chain,
