@@ -6,6 +6,8 @@ export type GraphRagChunkStrategy = 'tokens' | 'sentence';
 export interface CollectionDetailsGraphRag {
     embedder_id: string;
     embedder_name: string;
+    /** The LLM config's custom name; null when the RAG has no LLM. */
+    llm_name: string | null;
     is_ready_for_indexing: boolean;
     message: string | null;
     rag_id: number;

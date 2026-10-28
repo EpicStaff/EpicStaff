@@ -54,6 +54,9 @@ export class DynamicTableComponent implements OnInit {
     // When set, navigable rows show the navigate button inside this cell instead of the action column.
     navigateCellKey = input<string | null>(null);
 
+    // Label of that in-cell navigate control; `isEmpty` shows it as an "add" prompt instead of a summary.
+    navigateCellLabel = input<((row: TableRow) => { text: string; isEmpty: boolean }) | null>(null);
+
     // Optionally disable a cell input based on row and column key
     isCellDisabled = input<((row: TableRow, colKey: string) => boolean) | null>(null);
 

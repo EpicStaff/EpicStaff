@@ -56,7 +56,9 @@
     <div class="header-actions">
         <span
             class="tooltip-host"
-            [matTooltip]="isPreviewMode() ? 'Exit preview mode to view sessions' : 'Sessions'"
+            [matTooltip]="
+                isPreviewMode() ? previewBlockedMessages.sessions : keymap.withShortcut('Sessions', 'flow.sessions')
+            "
             matTooltipPosition="below"
         >
             <button
@@ -75,31 +77,34 @@
                 <span class="btn-label">Sessions</span>
             </button>
         </span>
-        <span
-            *appHasPermission="[ResourceCode.Flows, ActionCode.Use]"
-            class="tooltip-host"
-            [matTooltip]="isPreviewMode() ? 'Exit preview mode to get the cURL command' : 'Get cURL'"
-            matTooltipPosition="below"
-        >
-            <button
-                class="get-curl-button"
-                [appCollapseOnOverflow]="true"
-                collapseOnOverflowTarget=".btn-label"
-                collapseOnOverflowClass="btn--icon-only"
-                collapseOnOverflowRequireSelector="app-svg-icon"
-                [disabled]="isPreviewMode()"
-                (click)="onGetCurl()"
+        @if (canUseFlow()) {
+            <span
+                class="tooltip-host"
+                [matTooltip]="
+                    isPreviewMode() ? previewBlockedMessages.getCurl : keymap.withShortcut('Get cURL', 'flow.curl')
+                "
+                matTooltipPosition="below"
             >
-                <span class="btn-label">Get cURL</span>
-            </button>
-        </span>
+                <button
+                    class="get-curl-button"
+                    [appCollapseOnOverflow]="true"
+                    collapseOnOverflowTarget=".btn-label"
+                    collapseOnOverflowClass="btn--icon-only"
+                    collapseOnOverflowRequireSelector="app-svg-icon"
+                    [disabled]="isPreviewMode()"
+                    (click)="onGetCurl()"
+                >
+                    <span class="btn-label">Get cURL</span>
+                </button>
+            </span>
+        }
         <button
             class="open-chat-button"
             [appCollapseOnOverflow]="true"
             collapseOnOverflowTarget=".btn-label"
             collapseOnOverflowClass="btn--icon-only"
             collapseOnOverflowRequireSelector=".open-chat-button__icon"
-            [matTooltip]="isAssistantOpen ? 'Close chat' : 'Open chat'"
+            [matTooltip]="keymap.withShortcut(isAssistantOpen ? 'Close chat' : 'Open chat', 'flow.chat')"
             matTooltipPosition="below"
             (click)="onToggleAssistant()"
         >
@@ -126,7 +131,9 @@
             >
                 <span
                     class="tooltip-host"
-                    [matTooltip]="isPreviewMode() ? 'Exit preview mode to save' : 'Save'"
+                    [matTooltip]="
+                        isPreviewMode() ? previewBlockedMessages.save : keymap.withShortcut('Save', 'editing.save')
+                    "
                     matTooltipPosition="below"
                 >
                     <button
@@ -147,7 +154,7 @@
                 </span>
                 <span
                     class="tooltip-host"
-                    [matTooltip]="isPreviewMode() ? 'Exit preview mode to save' : 'Save options'"
+                    [matTooltip]="isPreviewMode() ? previewBlockedMessages.save : 'Save options'"
                     matTooltipPosition="below"
                 >
                     <button
@@ -185,31 +192,32 @@
                 />
             </ng-template>
         </ng-container>
-        <span
-            *appHasPermission="[ResourceCode.Flows, ActionCode.Use]"
-            class="tooltip-host"
-            [matTooltip]="isPreviewMode() ? 'Exit preview mode to run the flow' : 'Run'"
-            matTooltipPosition="below"
-        >
-            <button
-                class="run-button"
-                [appCollapseOnOverflow]="true"
-                collapseOnOverflowTarget=".btn-label"
-                collapseOnOverflowClass="btn--icon-only"
-                collapseOnOverflowRequireSelector="app-svg-icon"
-                [disabled]="isSaving || isRunning || isPreviewMode()"
-                (click)="onRun()"
+        @if (canUseFlow()) {
+            <span
+                class="tooltip-host"
+                [matTooltip]="isPreviewMode() ? previewBlockedMessages.run : keymap.withShortcut('Run', 'flow.run')"
+                matTooltipPosition="below"
             >
-                @if (isRunning) {
-                    <app-spinner2 [size]="16"></app-spinner2>
-                } @else {
-                    <app-svg-icon
-                        icon="player-play-filled"
-                        size="1.25rem"
-                    />
-                }
-                <span class="btn-label">Run</span>
-            </button>
-        </span>
+                <button
+                    class="run-button"
+                    [appCollapseOnOverflow]="true"
+                    collapseOnOverflowTarget=".btn-label"
+                    collapseOnOverflowClass="btn--icon-only"
+                    collapseOnOverflowRequireSelector="app-svg-icon"
+                    [disabled]="isSaving || isRunning || isPreviewMode()"
+                    (click)="onRun()"
+                >
+                    @if (isRunning) {
+                        <app-spinner2 [size]="16"></app-spinner2>
+                    } @else {
+                        <app-svg-icon
+                            icon="player-play-filled"
+                            size="1.25rem"
+                        />
+                    }
+                    <span class="btn-label">Run</span>
+                </button>
+            </span>
+        }
     </div>
 </div>

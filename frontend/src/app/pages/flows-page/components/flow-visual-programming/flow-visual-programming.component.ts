@@ -78,7 +78,10 @@ import {
 } from '../../../../features/flows/models/graph.model';
 import { RunGraphResponse } from '../../../../features/flows/models/run-session.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
-import { FlowUsePermissionRefusalService } from '../../../../features/flows/services/flow-use-permission-refusal.service';
+import {
+    FlowUsePermissionRefusalService,
+    UsePermissionAction,
+} from '../../../../features/flows/services/flow-use-permission-refusal.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
@@ -93,6 +96,7 @@ import { ToastService } from '../../../../services/notifications';
 import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
 import { renumberUnsavedNodesHolding } from '../../../../visual-programming/core/helpers/node-number.util';
 import { isTriggerNodeType } from '../../../../visual-programming/core/helpers/trigger-node-type.util';
+import { EditorActionId } from '../../../../visual-programming/core/keymap/editor-actions';
 import {
     CdtExplanations,
     PromptConfig,
@@ -148,11 +152,30 @@ import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpac
 import { invalidExecutionTimeoutMessages } from '../../../../visual-programming/utils/validation/execution-timeout.validator';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
+import { PREVIEW_BLOCKED_MESSAGES } from './components/header/flow-header.constants';
 import {
     SHORTCUTS_MODAL_HEIGHT_PX,
     ShortcutsModalComponent,
 } from './components/shortcuts-modal/shortcuts-modal.component';
 import { SerialSaveQueue } from './serial-save-queue';
+
+/**
+ * The shortcut of a header or sessions panel button: the handler its output is bound to, behind the checks that hide
+ * or disable it.
+ */
+interface ButtonShortcut {
+    readonly action: EditorActionId;
+    /** Which "needs the Use permission" text to show when the keymap says the user may not use this action. */
+    readonly usePermissionAction?: UsePermissionAction;
+    /** Set when the button is disabled in a version preview; its tooltip there. */
+    readonly previewBlockedMessage?: string;
+    /**
+     * Set when the button exists only in some states, whatever the user's permissions: while it is false the key
+     * does nothing and says nothing, as there is no button to press.
+     */
+    readonly isButtonPresent?: () => boolean;
+    readonly handle: () => void;
+}
 
 /**
  * How long a node's burst of explanation-save requests has to go quiet before one
@@ -228,6 +251,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly cdtExplanationsApiService = inject(CdtExplanationsApiService);
     private readonly easterEggTrigger = inject(EasterEggTriggerService);
     private readonly flowGraphHost = viewChild(FlowGraphComponent, { read: ElementRef<HTMLElement> });
+    /** The sessions panel; there only while it is open. */
+    private readonly messagesPanel = viewChild(FlowMessagesPanelComponent);
     private readonly isSnakeGameActive = signal(false);
     /** Board element the snake-game overlay covers; null while no game is running. */
     protected readonly snakeGameBoard = computed<HTMLElement | null>(() =>
@@ -381,6 +406,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             allowInEditable: true,
             destroyRef: this.destroyRef,
         });
+        this.registerButtonShortcuts();
 
         effect(() => {
             const params = this.routeQueryParamMap();
@@ -647,8 +673,19 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 // Step 8: Optionally delete the subflow.
                 switchMap((deleteSubflow) => {
                     if (deleteSubflow) {
-                        return this.flowStorageService.deleteFlow(subgraphId).pipe(
-                            map(() => true),
+                        return this.flowStorageService.bulkDelete([subgraphId]).pipe(
+                            map((response) => {
+                                const gone = [...response.deleted_ids, ...response.not_found_ids].includes(subgraphId);
+                                if (!gone) {
+                                    const reason = response.skipped.find((entry) => entry.id === subgraphId)?.reason;
+                                    this.toastService.warning(
+                                        reason === 'in_use_restricted'
+                                            ? "Unpacked successfully, but the subflow is used somewhere you don't have access to, so it was kept"
+                                            : 'Unpacked successfully, but the subflow could not be deleted, so it was kept'
+                                    );
+                                }
+                                return gone;
+                            }),
                             catchError(() => {
                                 this.toastService.error('Unpacked successfully, but failed to delete the subflow');
                                 return of(false);
@@ -2090,9 +2127,71 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .subscribe(() => openVersionDialog());
     }
 
+    /**
+     * The header's Run, Sessions, Open / close chat and Get cURL keys, and the sessions panel's Stop session key. The
+     * page owns them, not the header or the panel: it handles what those buttons emit, or holds the panel, and knows
+     * the state they depend on. Each key calls the same handler its button's output is bound to, after the checks
+     * made by hiding or disabling that button: without Flows:Use it says the action needs it, and in a version
+     * preview it says what the button's tooltip says.
+     */
+    private registerButtonShortcuts(): void {
+        const shortcuts: readonly ButtonShortcut[] = [
+            {
+                action: 'flow.run',
+                usePermissionAction: 'run',
+                previewBlockedMessage: PREVIEW_BLOCKED_MESSAGES.run,
+                handle: () => this.handleRunFlow(),
+            },
+            {
+                action: 'flow.stop-session',
+                usePermissionAction: 'stopSession',
+                // The panel decides whether its selected session can be stopped; closed, it has no Stop button.
+                isButtonPresent: () => this.messagesPanel()?.canStopSelectedSession ?? false,
+                handle: () => this.messagesPanel()?.onStopSession(),
+            },
+            {
+                action: 'flow.sessions',
+                previewBlockedMessage: PREVIEW_BLOCKED_MESSAGES.sessions,
+                handle: () => this.handleViewSessions(),
+            },
+            { action: 'flow.chat', handle: () => this.onToggleAssistant() },
+            {
+                action: 'flow.curl',
+                usePermissionAction: 'getCurl',
+                previewBlockedMessage: PREVIEW_BLOCKED_MESSAGES.getCurl,
+                handle: () => this.handleGetCurl(),
+            },
+        ];
+        for (const shortcut of shortcuts) {
+            this.keymap.register(shortcut.action, () => this.onButtonShortcut(shortcut), {
+                // The header, and with it the buttons, only exists once the flow has loaded; the node menu's backdrop
+                // covers the buttons while it is open.
+                when: () =>
+                    this.isLoaded() &&
+                    !this.flowGraphComponent?.isNodeMenuOpen() &&
+                    (shortcut.isButtonPresent?.() ?? true),
+                destroyRef: this.destroyRef,
+            });
+        }
+    }
+
+    private onButtonShortcut(shortcut: ButtonShortcut): void {
+        if (this.keymap.unavailableActionIds().has(shortcut.action)) {
+            if (shortcut.usePermissionAction) {
+                this.usePermissionRefusal.showActionRefusal(shortcut.usePermissionAction);
+            }
+            return;
+        }
+        if (shortcut.previewBlockedMessage && this.isPreviewing()) {
+            this.toastService.info(shortcut.previewBlockedMessage);
+            return;
+        }
+        shortcut.handle();
+    }
+
     private saveFromShortcut(): void {
         if (this.previewedVersion()) {
-            this.toastService.info('Exit preview mode to save');
+            this.toastService.info(PREVIEW_BLOCKED_MESSAGES.save);
             return;
         }
         if (this.flowReadOnly.isReadOnly()) {

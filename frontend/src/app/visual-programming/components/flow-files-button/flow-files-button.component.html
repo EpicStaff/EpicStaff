@@ -5,7 +5,7 @@
     collapseOnOverflowTarget=".flow-files-btn__label"
     collapseOnOverflowClass="flow-files-btn--icon-only"
     (click)="openDialog()"
-    [matTooltip]="isReadOnly() ? 'View flow files' : 'Add files to flow'"
+    [matTooltip]="keymap.withShortcut(isReadOnly() ? 'View flow files' : 'Add files to flow', 'flow.add-files')"
 >
     <app-svg-icon
         icon="file-upload"

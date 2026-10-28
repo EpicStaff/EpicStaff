@@ -55,6 +55,17 @@ export class VariableSectionComponent {
         return t === 'object' || t === 'array';
     };
 
+    /** "3 fields" / "1 item" once an object or array has children; "Define fields" / "Define items" before. */
+    readonly navigateCellLabel = (row: TableRow): { text: string; isEmpty: boolean } => {
+        const noun = row.data['type'] === 'array' ? 'item' : 'field';
+        const children = row.data['children'];
+        const count = Array.isArray(children) ? children.length : 0;
+        if (count === 0 && !this.readOnly()) {
+            return { text: `Define ${noun}s`, isEmpty: true };
+        }
+        return { text: `${count} ${noun}${count === 1 ? '' : 's'}`, isEmpty: false };
+    };
+
     readonly isCellDisabled = (row: TableRow, colKey: string): boolean => {
         if (this.readOnly()) {
             return true;

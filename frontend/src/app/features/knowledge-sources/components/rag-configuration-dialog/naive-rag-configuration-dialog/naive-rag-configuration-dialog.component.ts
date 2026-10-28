@@ -6,7 +6,6 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, Observable, of } from 'rxjs';
 import { filter, finalize, switchMap } from 'rxjs/operators';
 
-import { CollectionsStorageService } from '../../../services/collections-storage.service';
 import { NaiveRagDocumentsStorageService } from '../../../services/naive-rag-documents-storage.service';
 import { NaiveRagConfigurationComponent } from '../../naive-rag-configuration/naive-rag-configuration.component';
 import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.component';
@@ -19,7 +18,6 @@ import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.com
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent {
-    private collectionsStorage = inject(CollectionsStorageService);
     private documentsStorage = inject(NaiveRagDocumentsStorageService);
     private ragConfiguration = viewChild.required(NaiveRagConfigurationComponent);
     hasUnsavedChanges = computed(() => this.ragConfiguration().hasUnsavedChanges());

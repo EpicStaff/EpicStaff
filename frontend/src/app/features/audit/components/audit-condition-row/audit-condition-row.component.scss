@@ -23,7 +23,7 @@ app-audit-operator-select {
     flex: 1 1 0;
 }
 
-.condition-row__key,
+input.condition-row__key,
 .condition-row__value {
     height: 32px;
     padding: 0 8px;
@@ -44,7 +44,7 @@ app-audit-operator-select {
 }
 
 .condition-row__value {
-    width: 100%;
+    width: calc(100% - 34px);
 }
 
 .condition-row__remove {
@@ -52,14 +52,14 @@ app-audit-operator-select {
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    width: 22px;
-    height: 22px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     border: none;
     border-radius: 4px;
     background: none;
     color: var(--color-text-secondary);
-    font-size: 12px;
+    font-size: 18px;
     line-height: 1;
     cursor: pointer;
 

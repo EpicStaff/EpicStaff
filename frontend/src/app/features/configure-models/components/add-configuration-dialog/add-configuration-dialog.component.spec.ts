@@ -50,12 +50,6 @@ describe('AddConfigurationDialogComponent embedding extra headers and LLM pricin
                     provide: LlmConfigStorageService,
                     useValue: { createConfig: createLlmConfig } as unknown as LlmConfigStorageService,
                 },
-                { provide: OpenAIRealtimeConfigStorageService, useValue: {} as OpenAIRealtimeConfigStorageService },
-                {
-                    provide: ElevenLabsRealtimeConfigStorageService,
-                    useValue: {} as ElevenLabsRealtimeConfigStorageService,
-                },
-                { provide: GeminiRealtimeConfigStorageService, useValue: {} as GeminiRealtimeConfigStorageService },
                 {
                     provide: SecretsStorageService,
                     useValue: {
@@ -283,9 +277,12 @@ async function render(
                     secrets: signal([]),
                     getSecrets: () => of([]),
                     maskTail: () => '',
+                    selectItems: () => [],
+                    isBinned: () => false,
                 } as unknown as SecretsStorageService,
             },
             { provide: EmbeddingConfigStorageService, useValue: tabStorages.embeddingConfigStorage ?? {} },
+            // The voice form stays rendered (hidden) on every tab; it reaches storage only on save.
             { provide: OpenAIRealtimeConfigStorageService, useValue: tabStorages.openaiRealtimeStorage ?? {} },
             { provide: ElevenLabsRealtimeConfigStorageService, useValue: {} },
             { provide: GeminiRealtimeConfigStorageService, useValue: {} },
@@ -545,6 +542,18 @@ const SERVER_ERROR = new HttpErrorResponse({
     error: { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
 });
 
+/** Types into the voice form's Configuration Name, as a user would. */
+function typeVoiceName(fixture: ComponentFixture<AddConfigurationDialogComponent>, value: string): HTMLInputElement {
+    const field = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll('app-realtime-config-form app-custom-input')
+    ).find((element) => element.textContent!.includes('Configuration Name'))!;
+    const nameInput = field.querySelector('input')!;
+    nameInput.value = value;
+    nameInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    return nameInput;
+}
+
 describe('AddConfigurationDialogComponent embedding and realtime save errors', () => {
     beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
     afterEach(() => vi.unstubAllGlobals());
@@ -571,7 +580,8 @@ describe('AddConfigurationDialogComponent embedding and realtime save errors', (
             openaiRealtimeStorage: { createConfig: () => throwError(() => error) },
         });
         fixture.componentInstance.setActiveTab('realtime');
-        fixture.componentInstance.openaiForm.patchValue({ custom_name: 'support-voice' });
+        fixture.detectChanges();
+        typeVoiceName(fixture, 'support-voice');
         fixture.componentInstance.onSubmit();
         fixture.detectChanges();
         return fixture;
@@ -600,5 +610,46 @@ describe('AddConfigurationDialogComponent embedding and realtime save errors', (
         const fixture = await submitRealtime(SERVER_ERROR);
 
         expect(bannerText(fixture)).toBe('Failed to save configuration.');
+    });
+});
+
+describe('AddConfigurationDialogComponent voice tab', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('keeps what was typed on the voice tab after visiting another tab', async () => {
+        const { fixture } = await render();
+        fixture.componentInstance.setActiveTab('realtime');
+        fixture.detectChanges();
+        const nameInput = typeVoiceName(fixture, 'Support line');
+
+        fixture.componentInstance.setActiveTab('llm');
+        fixture.detectChanges();
+        fixture.componentInstance.setActiveTab('realtime');
+        fixture.detectChanges();
+
+        expect(nameInput.isConnected).toBe(true);
+        expect(nameInput.value).toBe('Support line');
+    });
+
+    it('finishes a voice save started before switching tabs, and starts no second save meanwhile', async () => {
+        const voiceResponse = new Subject<unknown>();
+        const createLlmConfig = vi.fn(() => EMPTY);
+        const { fixture } = await render(getCachedModelById, createLlmConfig, {
+            openaiRealtimeStorage: { createConfig: () => voiceResponse },
+        });
+        await pickModel(fixture, PLAIN_MODEL_ID); // a complete LLM form, so only the guard can stop its save
+        const close = TestBed.inject(DialogRef).close;
+        fixture.componentInstance.setActiveTab('realtime');
+        fixture.detectChanges();
+        typeVoiceName(fixture, 'Support line');
+
+        fixture.componentInstance.onSubmit();
+        fixture.componentInstance.setActiveTab('llm');
+        fixture.componentInstance.onSubmit();
+        voiceResponse.next({ id: 1 });
+
+        expect(createLlmConfig).not.toHaveBeenCalled();
+        expect(close).toHaveBeenCalledWith(true);
     });
 });

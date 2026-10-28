@@ -1,0 +1,267 @@
+// Frame, header and spacing follow the shared confirmation dialog (`app-confirmation-dialog`).
+.dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-height: calc(100vh - 2rem);
+    padding: 24px;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 10px;
+    background: var(--color-modals-background);
+    color: var(--color-text-primary);
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 0 -24px;
+        padding: 0 24px 16px;
+        border-bottom: 1px solid var(--color-divider-subtle);
+    }
+
+    &__title-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    &__icon {
+        color: var(--color-ks-status-warning);
+    }
+
+    &__title {
+        margin: 0;
+        font-size: var(--text-h4-size);
+        font-weight: var(--text-h4-weight);
+        line-height: var(--text-h4-line-height);
+    }
+
+    &__close {
+        margin-right: -8px;
+    }
+
+    // Only the body scrolls, so a long file list never pushes the buttons out of view.
+    &__body {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    &__actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+}
+
+.intro {
+    margin: 0;
+    color: var(--color-ks-transparent-text-60);
+    overflow-wrap: anywhere;
+
+    strong {
+        color: var(--color-text-primary);
+        font-weight: var(--text-body-medium-weight);
+    }
+}
+
+// Empty when there is no estimate. It stays displayed (a hidden live region isn't announced when it fills),
+// and the negative margin takes back the body's gap so it leaves no hole.
+.estimate-region:empty {
+    margin-top: -16px;
+}
+
+.estimate {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    &__tiles {
+        display: grid;
+        grid-auto-columns: minmax(0, 1fr);
+        grid-auto-flow: column;
+        gap: 8px;
+    }
+
+    &__tile {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 12px;
+        border-radius: 4px;
+        background: var(--color-input-background);
+    }
+
+    &__label {
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__value {
+        color: var(--color-text-primary);
+        font-variant-numeric: tabular-nums;
+    }
+
+    &__note {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin: 0;
+        color: var(--color-ks-transparent-text-60);
+    }
+}
+
+// The chat's "working" dots (chat-messages `.loading-dots`), sitting on the value's line so the tile
+// keeps its height while the estimate loads.
+@keyframes dot-flashing {
+    0% {
+        opacity: 0.2;
+    }
+    100% {
+        opacity: 0.8;
+    }
+}
+
+.loading-dots {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+
+    &__dot {
+        width: 6px;
+        height: 6px;
+        margin: 0 2px;
+        border-radius: 50%;
+        background-color: currentColor;
+        opacity: 0.6;
+        animation: dot-flashing 1s infinite alternate;
+
+        // The hidden "Estimating" text is the first span, so the dots are the 2nd to 4th.
+        &:nth-of-type(3) {
+            animation-delay: 0.3s;
+        }
+
+        &:nth-of-type(4) {
+            animation-delay: 0.6s;
+        }
+    }
+}
+
+.estimate-message {
+    margin: 0;
+    color: var(--color-ks-transparent-text-60);
+}
+
+.attention {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    // The shared confirmation dialog's caution block: a curved bar, no fill.
+    padding: 8px 12px;
+    border-left: 3px solid var(--color-ks-status-warning);
+    border-radius: 10px;
+
+    &__title {
+        color: var(--color-ks-status-warning);
+    }
+
+    &__text {
+        margin: 0;
+        color: var(--color-ks-transparent-text-60);
+
+        strong {
+            color: var(--color-text-primary);
+            font-weight: var(--text-body-medium-weight);
+        }
+    }
+}
+
+// Same collapsible list as the shared confirmation dialog's breakdown, in its warning colour.
+.files {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    &__toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: var(--color-text-primary);
+        text-align: left;
+        cursor: pointer;
+        user-select: none;
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+    }
+
+    &__chevron {
+        transition: transform 0.2s ease;
+
+        &.collapsed {
+            transform: rotate(-90deg);
+        }
+    }
+
+    &__count {
+        margin-left: auto;
+        color: var(--color-ks-status-warning);
+        font-variant-numeric: tabular-nums;
+    }
+
+    &__list {
+        max-height: 200px;
+        margin: 0;
+        padding: 4px 12px;
+        overflow-y: auto;
+        border-left: 3px solid var(--color-ks-status-warning);
+        border-radius: 10px;
+        list-style: none;
+    }
+
+    // 27px with its divider, as in the design.
+    &__item {
+        display: flex;
+        align-items: center;
+        min-height: 27px;
+        padding: 0;
+        border-bottom: 1px solid var(--color-divider-subtle);
+        color: var(--color-text-primary);
+
+        &:last-child {
+            border-bottom: none;
+        }
+    }
+
+    // One line per file: a long name is cut with "…" and shown in full in its tooltip.
+    &__name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+:host {
+    display: block;
+    animation: dialog-fade-in 0.2s ease-out;
+}
+
+@keyframes dialog-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
