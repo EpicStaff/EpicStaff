@@ -155,8 +155,17 @@ EOF
 }
 
 # TABLE PERMISSION GRANT FUNCTIONS
-# Called only after Django migrations have run.
+# Called once the required tables exist, which is usually while Django is still migrating.
 # Each function is safe to call multiple times.
+#
+# GRANT and REVOKE take no lock on the table: they rewrite its pg_class row directly. A
+# migration altering the same table rewrites that row too, and the grant then fails with
+# "tuple concurrently updated" once the migration commits. Each grant therefore first locks
+# its table in SHARE UPDATE EXCLUSIVE mode, which every ALTER TABLE and CREATE INDEX
+# conflicts with but plain reads and writes do not, so it waits for the migration instead.
+# Every table is granted in a transaction of its own: holding one table's lock while
+# waiting for another could deadlock with a migration, and Postgres might cancel the
+# migration to break it. lock_timeout bounds the wait; a timeout is retried by setup.
 
 grant_manager_permissions() {
     local manager_user="${MANAGER_DB_USER}"
@@ -164,12 +173,15 @@ grant_manager_permissions() {
 
     echo "[manager] Granting table permissions..."
     setup_psql <<EOF || return 1
+SET lock_timeout = '1min';
+
 DO \$\$
 BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_session'
     ) THEN
+        LOCK TABLE tables_session IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_session FROM "${manager_user}";
         GRANT SELECT, DELETE ON TABLE tables_session TO "${manager_user}";
         -- FOR UPDATE SKIP LOCKED in the retention job needs UPDATE on at least one column.
@@ -178,176 +190,256 @@ BEGIN
     ELSE
         RAISE NOTICE '[manager] tables_session not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_scheduletriggernode'
     ) THEN
+        LOCK TABLE tables_scheduletriggernode IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_scheduletriggernode FROM "${manager_user}";
         GRANT SELECT, UPDATE ON TABLE tables_scheduletriggernode TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT, UPDATE on tables_scheduletriggernode';
     ELSE
         RAISE NOTICE '[manager] tables_scheduletriggernode not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'storage_credentials_temp_account'
     ) THEN
+        LOCK TABLE storage_credentials_temp_account IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE storage_credentials_temp_account FROM "${manager_user}";
         GRANT SELECT, DELETE ON TABLE storage_credentials_temp_account TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT, DELETE on storage_credentials_temp_account';
     ELSE
         RAISE NOTICE '[manager] storage_credentials_temp_account not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_pythoncoderesult'
     ) THEN
+        LOCK TABLE tables_pythoncoderesult IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_pythoncoderesult FROM "${manager_user}";
         GRANT SELECT ON TABLE tables_pythoncoderesult TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT on tables_pythoncoderesult';
     ELSE
         RAISE NOTICE '[manager] tables_pythoncoderesult not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'realtime_agent_chat'
     ) THEN
+        LOCK TABLE realtime_agent_chat IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE realtime_agent_chat FROM "${manager_user}";
         GRANT SELECT ON TABLE realtime_agent_chat TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT on realtime_agent_chat';
     ELSE
         RAISE NOTICE '[manager] realtime_agent_chat not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'rbac_organization'
     ) THEN
+        LOCK TABLE rbac_organization IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE rbac_organization FROM "${manager_user}";
         GRANT SELECT ON TABLE rbac_organization TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT on rbac_organization';
     ELSE
         RAISE NOTICE '[manager] rbac_organization not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'rbac_organization_config'
     ) THEN
+        LOCK TABLE rbac_organization_config IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE rbac_organization_config FROM "${manager_user}";
         GRANT SELECT ON TABLE rbac_organization_config TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT on rbac_organization_config';
     ELSE
         RAISE NOTICE '[manager] rbac_organization_config not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_graph'
     ) THEN
+        LOCK TABLE tables_graph IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_graph FROM "${manager_user}";
         GRANT SELECT ON TABLE tables_graph TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT on tables_graph';
     ELSE
         RAISE NOTICE '[manager] tables_graph not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_graphsessionmessage'
     ) THEN
+        LOCK TABLE tables_graphsessionmessage IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_graphsessionmessage FROM "${manager_user}";
         GRANT SELECT, DELETE ON TABLE tables_graphsessionmessage TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_graphsessionmessage';
     ELSE
         RAISE NOTICE '[manager] tables_graphsessionmessage not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_usersessionmessage'
     ) THEN
+        LOCK TABLE tables_usersessionmessage IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_usersessionmessage FROM "${manager_user}";
         GRANT SELECT, DELETE ON TABLE tables_usersessionmessage TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_usersessionmessage';
     ELSE
         RAISE NOTICE '[manager] tables_usersessionmessage not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_agentsessionmessage'
     ) THEN
+        LOCK TABLE tables_agentsessionmessage IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_agentsessionmessage FROM "${manager_user}";
         GRANT SELECT, DELETE ON TABLE tables_agentsessionmessage TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_agentsessionmessage';
     ELSE
         RAISE NOTICE '[manager] tables_agentsessionmessage not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_tasksessionmessage'
     ) THEN
+        LOCK TABLE tables_tasksessionmessage IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_tasksessionmessage FROM "${manager_user}";
         GRANT SELECT, DELETE ON TABLE tables_tasksessionmessage TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_tasksessionmessage';
     ELSE
         RAISE NOTICE '[manager] tables_tasksessionmessage not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_sessionwarningmessage'
     ) THEN
+        LOCK TABLE tables_sessionwarningmessage IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_sessionwarningmessage FROM "${manager_user}";
         GRANT SELECT, DELETE ON TABLE tables_sessionwarningmessage TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessionwarningmessage';
     ELSE
         RAISE NOTICE '[manager] tables_sessionwarningmessage not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_sessionprincipal'
     ) THEN
+        LOCK TABLE tables_sessionprincipal IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_sessionprincipal FROM "${manager_user}";
         GRANT SELECT, DELETE ON TABLE tables_sessionprincipal TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessionprincipal';
     ELSE
         RAISE NOTICE '[manager] tables_sessionprincipal not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_sessioncallback'
     ) THEN
+        LOCK TABLE tables_sessioncallback IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_sessioncallback FROM "${manager_user}";
         GRANT SELECT, DELETE ON TABLE tables_sessioncallback TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessioncallback';
     ELSE
         RAISE NOTICE '[manager] tables_sessioncallback not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_sessionstoragefile'
     ) THEN
+        LOCK TABLE tables_sessionstoragefile IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_sessionstoragefile FROM "${manager_user}";
         GRANT SELECT, DELETE ON TABLE tables_sessionstoragefile TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT, DELETE on tables_sessionstoragefile';
     ELSE
         RAISE NOTICE '[manager] tables_sessionstoragefile not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_sessiontrigger'
     ) THEN
+        LOCK TABLE tables_sessiontrigger IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_sessiontrigger FROM "${manager_user}";
         GRANT SELECT, DELETE ON TABLE tables_sessiontrigger TO "${manager_user}";
         -- Retention only clears the link to a deleted parent session.
@@ -356,11 +448,16 @@ BEGIN
     ELSE
         RAISE NOTICE '[manager] tables_sessiontrigger not found, skipping';
     END IF;
+END
+\$\$;
 
+DO \$\$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_keyvaluetableentry'
     ) THEN
+        LOCK TABLE tables_keyvaluetableentry IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE tables_keyvaluetableentry FROM "${manager_user}";
         GRANT SELECT ON TABLE tables_keyvaluetableentry TO "${manager_user}";
         -- Retention only clears the link to a deleted session.
@@ -381,6 +478,8 @@ grant_knowledge_permissions() {
 
     echo "[knowledge] Granting table permissions..."
     setup_psql <<EOF || return 1
+SET lock_timeout = '1min';
+
 DO \$\$
 DECLARE
     tbl  text;
@@ -423,38 +522,28 @@ DECLARE
     ];
 
 BEGIN
-    -- Revoke stale permissions only on tables this function manages
-    FOREACH tbl IN ARRAY all_managed LOOP
+    -- COMMIT after each table ends its transaction and releases its lock (see above).
+    FOREACH tbl IN ARRAY ro_tables || su_tables || crud_tables LOOP
         IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
-            EXECUTE format('REVOKE ALL ON TABLE %I FROM %I', tbl, '${knowledge_user}');
-        END IF;
-    END LOOP;
-
-    FOREACH tbl IN ARRAY ro_tables LOOP
-        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
-            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl, '${knowledge_user}');
-            RAISE NOTICE '[knowledge] SELECT granted on %', tbl;
+            EXECUTE format('LOCK TABLE %I IN SHARE UPDATE EXCLUSIVE MODE', tbl);
+            -- Revoke stale permissions only on tables this function manages
+            IF tbl = ANY (all_managed) THEN
+                EXECUTE format('REVOKE ALL ON TABLE %I FROM %I', tbl, '${knowledge_user}');
+            END IF;
+            IF tbl = ANY (ro_tables) THEN
+                EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl, '${knowledge_user}');
+                RAISE NOTICE '[knowledge] SELECT granted on %', tbl;
+            ELSIF tbl = ANY (su_tables) THEN
+                EXECUTE format('GRANT SELECT, UPDATE ON TABLE %I TO %I', tbl, '${knowledge_user}');
+                RAISE NOTICE '[knowledge] SELECT,UPDATE granted on %', tbl;
+            ELSE
+                EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl, '${knowledge_user}');
+                RAISE NOTICE '[knowledge] CRUD granted on %', tbl;
+            END IF;
         ELSE
             RAISE NOTICE '[knowledge] % not found, skipping', tbl;
         END IF;
-    END LOOP;
-
-    FOREACH tbl IN ARRAY su_tables LOOP
-        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
-            EXECUTE format('GRANT SELECT, UPDATE ON TABLE %I TO %I', tbl, '${knowledge_user}');
-            RAISE NOTICE '[knowledge] SELECT,UPDATE granted on %', tbl;
-        ELSE
-            RAISE NOTICE '[knowledge] % not found, skipping', tbl;
-        END IF;
-    END LOOP;
-
-    FOREACH tbl IN ARRAY crud_tables LOOP
-        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
-            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl, '${knowledge_user}');
-            RAISE NOTICE '[knowledge] CRUD granted on %', tbl;
-        ELSE
-            RAISE NOTICE '[knowledge] % not found, skipping', tbl;
-        END IF;
+        COMMIT;
     END LOOP;
 
     -- Sequence for naiveragchunk
@@ -474,12 +563,15 @@ grant_realtime_permissions() {
 
     echo "[realtime] Granting table permissions..."
     setup_psql <<EOF || return 1
+SET lock_timeout = '1min';
+
 DO \$\$
 BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'realtime_session_items'
     ) THEN
+        LOCK TABLE realtime_session_items IN SHARE UPDATE EXCLUSIVE MODE;
         REVOKE ALL ON TABLE realtime_session_items FROM "${realtime_user}";
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE realtime_session_items TO "${realtime_user}";
         RAISE NOTICE '[realtime] CRUD granted on realtime_session_items';
