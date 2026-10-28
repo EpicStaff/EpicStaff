@@ -184,6 +184,11 @@
                 background: var(--graphite-690);
             }
 
+            &.drag-over {
+                outline: 2px dashed var(--accent-color);
+                background: var(--purple-alpha-8);
+            }
+
             .subflow-main {
                 display: flex;
                 align-items: flex-start;

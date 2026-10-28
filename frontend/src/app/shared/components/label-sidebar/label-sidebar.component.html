@@ -104,7 +104,7 @@
             [class.dragging]="draggingLabelId() === item.node.id"
             [style.paddingLeft]="getIndentPadding(item.depth)"
             [style.--label-color]="getLabelIconColor(item.node)"
-            [attr.draggable]="isDragEnabled()"
+            [attr.draggable]="canDragLabel()"
             (dragstart)="onLabelDragStart($event, item.node)"
             (dragend)="onLabelDragEnd()"
             (click)="selectLabel(item.node.id)"

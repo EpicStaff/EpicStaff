@@ -1,8 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent } from '@shared/components';
-import { getLabelColorOption } from '@shared/models';
+import { LabelDropDirective } from '@shared/directives';
+import { getLabelColorOption, ResourceCode } from '@shared/models';
 
 import { GetGraphLightRequest, SubflowLightDto } from '../../models/graph.model';
 import { LabelsStorageService } from '../../services/labels-storage.service';
@@ -32,21 +33,20 @@ export interface FlowLabelDropEvent {
         CheckboxComponent,
         AppSvgIconComponent,
         MatTooltipModule,
+        LabelDropDirective,
     ],
     templateUrl: './flow-card.component.html',
     styleUrls: ['./flow-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FlowCardComponent {
-    @Input({ required: true }) flow!: GetGraphLightRequest;
-    @Input() selectMode: boolean = false;
-    @Input() isSelected: boolean = false;
-    @Output() selectionToggle = new EventEmitter<void>();
-    @Output() cardClick = new EventEmitter<GetGraphLightRequest>();
-    @Output() action = new EventEmitter<FlowCardAction>();
+    readonly flow = input.required<GetGraphLightRequest>();
+    readonly selectMode = input<boolean>(false);
+    readonly isSelected = input<boolean>(false);
+    readonly selectionToggle = output<void>();
+    readonly cardClick = output<GetGraphLightRequest>();
+    readonly action = output<FlowCardAction>();
     readonly labelDrop = output<FlowLabelDropEvent>();
-
-    readonly isDragOver = signal<boolean>(false);
 
     private readonly labelsStorage = inject(LabelsStorageService);
 
@@ -54,8 +54,10 @@ export class FlowCardComponent {
     public isExpanded = signal<boolean>(false);
     public subflowMenuStates = new Map<number, boolean>();
 
+    protected readonly ResourceCode = ResourceCode;
+
     get hasSubflows(): boolean {
-        return !!this.flow?.subflows?.length;
+        return !!this.flow()?.subflows?.length;
     }
 
     toggleSubflows(event: MouseEvent): void {
@@ -122,7 +124,7 @@ export class FlowCardComponent {
     }
 
     onCardClick(): void {
-        this.cardClick.emit(this.flow);
+        this.cardClick.emit(this.flow());
     }
 
     onMenuToggle(isOpen: boolean): void {
@@ -138,35 +140,32 @@ export class FlowCardComponent {
         this.selectionToggle.emit();
     }
 
-    onDragOver(event: DragEvent): void {
-        if (!this.hasLabelData(event)) return;
-        event.preventDefault();
-        event.stopPropagation();
-        this.isDragOver.set(true);
-    }
-
-    onDragLeave(event: DragEvent): void {
-        const related = event.relatedTarget as Node | null;
-        const card = event.currentTarget as HTMLElement;
-        if (related && card.contains(related)) return;
-        this.isDragOver.set(false);
-    }
-
-    onDrop(event: DragEvent): void {
-        event.preventDefault();
-        event.stopPropagation();
-        this.isDragOver.set(false);
-        const labelId = this.extractLabelId(event);
-        if (labelId === null) return;
-        const currentIds = this.flow.label_ids ?? [];
+    onLabelDropped(labelId: number): void {
+        const currentIds = this.flow().label_ids ?? [];
         if (currentIds.includes(labelId)) return;
-        this.labelDrop.emit({ flow: this.flow, labelIds: [...currentIds, labelId] });
+        this.labelDrop.emit({ flow: this.flow(), labelIds: [...currentIds, labelId] });
+    }
+
+    onSubflowLabelDropped(labelId: number, subflow: SubflowLightDto): void {
+        const currentIds = subflow.label_ids ?? [];
+        if (currentIds.includes(labelId)) return;
+        const flowLike: GetGraphLightRequest = {
+            id: subflow.id,
+            uuid: '',
+            name: subflow.name,
+            description: subflow.description,
+            tags: subflow.tags,
+            label_ids: subflow.label_ids,
+            created_at: subflow.created_at,
+            updated_at: subflow.updated_at,
+        };
+        this.labelDrop.emit({ flow: flowLike, labelIds: [...currentIds, labelId] });
     }
 
     private emitAction(action: FlowAction, trigger: HTMLElement): void {
         this.action.emit({
             action,
-            flow: this.flow,
+            flow: this.flow(),
             trigger,
         });
     }
@@ -205,16 +204,5 @@ export class FlowCardComponent {
             updated_at: subflow.updated_at,
         };
         this.cardClick.emit(flowLike);
-    }
-
-    private hasLabelData(event: DragEvent): boolean {
-        return event.dataTransfer?.types.includes('application/x-label-id') ?? false;
-    }
-
-    private extractLabelId(event: DragEvent): number | null {
-        const raw = event.dataTransfer?.getData('application/x-label-id');
-        if (!raw) return null;
-        const id = Number(raw);
-        return Number.isFinite(id) ? id : null;
     }
 }

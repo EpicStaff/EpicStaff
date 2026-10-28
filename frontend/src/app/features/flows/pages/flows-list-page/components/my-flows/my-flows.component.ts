@@ -26,6 +26,7 @@ import {
 import { DragScrollDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
 import { showExportExclusionWarning } from '@shared/utils';
+import { switchMap } from 'rxjs';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications';
@@ -244,11 +245,11 @@ export class MyFlowsComponent implements AfterViewChecked {
     public onLabelDrop(event: FlowLabelDropEvent): void {
         this.flowsService
             .updateFlowLabels(event.flow.id, event.labelIds, event.flow.save_version)
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                switchMap(() => this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()))
+            )
             .subscribe({
-                next: () => {
-                    this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()).subscribe();
-                },
                 error: () => {
                     this.toastService.error(`Failed to update labels for "${event.flow.name}".`);
                 },

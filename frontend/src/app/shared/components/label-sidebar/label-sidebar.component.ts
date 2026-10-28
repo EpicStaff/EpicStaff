@@ -117,6 +117,7 @@ export class LabelSidebarComponent implements OnInit {
     });
 
     readonly draggingLabelId = signal<number | null>(null);
+    readonly canDragLabel = computed<boolean>(() => this.permissions.can(this.resourceCode(), ActionCode.Update));
 
     ngOnInit(): void {
         this.labelsStorage.loadLabels().subscribe();
@@ -280,11 +281,6 @@ export class LabelSidebarComponent implements OnInit {
 
     getIndentPadding(depth: number): string {
         return `${depth * 1.2 + 1}rem`;
-    }
-
-    isDragEnabled(): boolean {
-        const resource = this.resourceCode();
-        return this.permissions.can(resource, ActionCode.Update);
     }
 
     onLabelDragStart(event: DragEvent, node: LabelTreeNode): void {
