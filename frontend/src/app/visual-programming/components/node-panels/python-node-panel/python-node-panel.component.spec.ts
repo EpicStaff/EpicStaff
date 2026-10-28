@@ -671,6 +671,7 @@ describe('PythonNodePanelComponent venv selection', () => {
 
     const BUILDING = venv(5, 'ml base', 'processing');
     const READY = venv(6, 'web', 'completed');
+    const QUEUED = venv(7, 'queued base', 'declared');
 
     /** The panel with a stubbed sandbox and a dialog that answers `confirmed` without opening. */
     function create(confirmed: boolean, venvs: Venv[] = [BUILDING, READY]) {
@@ -713,6 +714,18 @@ describe('PythonNodePanelComponent venv selection', () => {
         panel.onVenvChanged(BUILDING.id);
 
         expect(panel.form.get('venv')!.value).toBe(READY.id);
+    });
+
+    // Declared means the build has not even started: the flow waits just the same, so the
+    // warning has to cover it and not only a build already running.
+    it('warns before a venv whose build has not started yet is used', () => {
+        const { panel, confirm } = create(true, [QUEUED, READY]);
+
+        panel.form.get('venv')!.setValue(QUEUED.id);
+        panel.onVenvChanged(QUEUED.id);
+
+        expect(confirm).toHaveBeenCalledOnce();
+        expect(panel.form.get('venv')!.value).toBe(QUEUED.id);
     });
 
     it('says nothing about a venv that is built', () => {
