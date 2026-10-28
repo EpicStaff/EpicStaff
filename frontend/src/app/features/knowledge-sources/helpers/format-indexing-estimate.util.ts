@@ -1,53 +1,41 @@
-import { escapeHtml, formatCostUsd, formatTokens, toFiniteNumber } from '@shared/utils';
+import { formatCostUsd, formatTokens, toFiniteNumber } from '@shared/utils';
 
 import { IndexingEstimate } from '../models/base-rag.model';
 
-export const ESTIMATE_DISCLAIMER = 'This is an estimate — the actual token usage and cost may differ.';
 export const ALREADY_INDEXED_MESSAGE = 'Already indexed with these settings — re-running will not use any tokens.';
 
-export function formatEmbeddingEstimate(embedding: IndexingEstimate['embedding']): string | null {
-    const tokens = toFiniteNumber(embedding?.tokens);
-    if (tokens === null) return null;
-    const prefix = embedding.exact ? '' : '≈ ';
-    const tokensText = `${prefix}${formatTokens(tokens)} tokens`;
-    const cost = toFiniteNumber(embedding.cost_usd);
-    if (cost === null) return tokensText;
-    return `${tokensText} · ${prefix}${formatCostUsd(cost)}`;
-}
-
-/** Plain-text lines (no markup) describing the estimate. Invalid values are skipped. */
-function getIndexingEstimateLines(estimate: IndexingEstimate): string[] {
-    const lines: string[] = [];
-    const embeddingText = formatEmbeddingEstimate(estimate.embedding);
-    if (embeddingText) lines.push(`Embedding: ${embeddingText}`);
-    return lines;
-}
-
-function renderLines(lines: string[]): string {
-    return lines.map((line) => `<div class="dialog-callout__line">${escapeHtml(line)}</div>`).join('');
-}
+const APPROXIMATE_PREFIX = '≈ ';
 
 /**
- * HTML for the confirmation dialog callout. When no documents will be indexed it is just the "already indexed"
- * line; otherwise a titled estimate with a disclaimer. Never throws: a malformed estimate yields an empty string
- * so indexing is not blocked.
+ * What the confirmation dialog shows for the estimate: `loading` while it is requested, `unavailable` when there is
+ * none (failed, missing or malformed — indexing is never blocked), `already-indexed` when nothing will be embedded,
+ * `ready` with the formatted tile values otherwise (`cost` is null when the price is unknown).
  */
-export function getIndexingEstimateHtml(estimate: IndexingEstimate | null): string {
-    if (!estimate) return '';
-    try {
-        if (estimate.document_count === 0) {
-            return `<div class="dialog-callout">${renderLines([ALREADY_INDEXED_MESSAGE])}</div>`;
-        }
-        const lines = getIndexingEstimateLines(estimate);
-        if (!lines.length) return '';
-        return (
-            '<div class="dialog-callout">' +
-            '<div class="dialog-callout__title">Estimated usage</div>' +
-            renderLines(lines) +
-            `<div class="dialog-callout__note">${escapeHtml(ESTIMATE_DISCLAIMER)}</div>` +
-            '</div>'
-        );
-    } catch {
-        return '';
-    }
+export type IndexingEstimateView =
+    | { state: 'loading' }
+    | { state: 'unavailable' }
+    | { state: 'already-indexed' }
+    | { state: 'ready'; tokens: string; cost: string | null };
+
+export function toIndexingEstimateView(estimate: IndexingEstimate | null): IndexingEstimateView {
+    if (!estimate) return { state: 'unavailable' };
+    if (estimate.document_count === 0) return { state: 'already-indexed' };
+
+    const tokens = toFiniteNumber(estimate.embedding?.tokens);
+    if (tokens === null) return { state: 'unavailable' };
+
+    const prefix = estimate.embedding.exact ? '' : APPROXIMATE_PREFIX;
+    return {
+        state: 'ready',
+        tokens: `${prefix}${formatTokens(tokens)}`,
+        cost: formatEstimatedCost(estimate.embedding.cost_usd, prefix),
+    };
+}
+
+function formatEstimatedCost(costUsd: unknown, prefix: string): string | null {
+    const cost = toFiniteNumber(costUsd);
+    if (cost === null) return null;
+    const costText = formatCostUsd(cost);
+    // "< $0.01" is already a bound; "≈ < $0.01" would say it twice.
+    return costText.startsWith('<') ? costText : `${prefix}${costText}`;
 }

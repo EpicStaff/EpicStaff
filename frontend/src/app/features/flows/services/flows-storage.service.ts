@@ -1,4 +1,5 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { BulkDeleteResponse, BulkDeleteTarget } from '@shared/models';
 import { StorageService } from '@shared/services';
 import { Observable, of, throwError } from 'rxjs';
 import { catchError, delay, shareReplay, tap } from 'rxjs/operators';
@@ -20,7 +21,7 @@ const TEMPLATE_FLOWS: GraphDto[] = [];
 @Injectable({
     providedIn: 'root',
 })
-export class FlowsStorageService implements StorageService {
+export class FlowsStorageService implements StorageService, BulkDeleteTarget {
     private readonly flowsApiService = inject(FlowsApiService);
     private readonly labelsStorage = inject(LabelsStorageService);
 
@@ -39,6 +40,10 @@ export class FlowsStorageService implements StorageService {
 
     public selectMode = signal<boolean>(false);
     public selectedFlowIds = signal<number[]>([]);
+    /** True while a bulk delete triggered from select mode is in flight. Lives here, not on a
+     *  page component, because `my-flows` (routed via `router-outlet`) and the flows list page
+     *  both need it and have no direct parent-child binding to share it through. */
+    public isDeleting = signal<boolean>(false);
 
     public readonly filteredFlows = computed(() => {
         const flows = this.flowsSignal();
@@ -241,40 +246,49 @@ export class FlowsStorageService implements StorageService {
         );
     }
 
-    public deleteFlow(id: number): Observable<void> {
-        return this.flowsApiService.deleteGraph(id).pipe(
-            tap(() => {
-                const currentFlows = this.flowsSignal();
-                this.flowsSignal.set(
-                    currentFlows
-                        .filter((f) => f.id !== id)
-                        .map((f) => {
-                            if (!f.subflows?.length) return f;
-                            const updatedSubflows = f.subflows.filter((s) => s.id !== id);
-                            if (updatedSubflows.length === f.subflows.length) return f;
-                            return { ...f, subflows: updatedSubflows };
-                        })
-                );
-                // Remove deleted flow from export selection
-                const currentSelected = this.selectedFlowIds();
-                if (currentSelected.includes(id)) {
-                    this.selectedFlowIds.set(currentSelected.filter((selectedId) => selectedId !== id));
-                }
-                // Remove deleted flow from active include/exclude filter
-                const currentFilter = this.filterSignal();
-                if (currentFilter.includedFlowIds !== null && currentFilter.includedFlowIds.includes(id)) {
-                    const remaining = currentFilter.includedFlowIds.filter((fid) => fid !== id);
-                    this.setFilter({
-                        ...currentFilter,
-                        includedFlowIds: remaining.length > 0 ? remaining : null,
-                    });
-                }
-            })
-        );
-    }
-
     public copyFlow(sourceId: number, newName: string): Observable<GraphDto> {
         return this.flowsApiService.copyGraph(sourceId, newName).pipe(tap((created) => this.addFlowToCache(created)));
+    }
+
+    // --- Bulk Delete ---
+    public previewBulkDelete(ids: number[]): Observable<BulkDeleteResponse> {
+        return this.flowsApiService.bulkDeleteGraphs(ids, { dryRun: true });
+    }
+
+    public bulkDelete(ids: number[]): Observable<BulkDeleteResponse> {
+        return this.flowsApiService
+            .bulkDeleteGraphs(ids)
+            .pipe(tap((response) => this.removeFromCache([...response.deleted_ids, ...response.not_found_ids])));
+    }
+
+    public removeFromCache(ids: number[]): void {
+        if (ids.length === 0) return;
+        const idSet = new Set(ids);
+        const currentFlows = this.flowsSignal();
+        this.flowsSignal.set(
+            currentFlows
+                .filter((f) => !idSet.has(f.id))
+                .map((f) => {
+                    if (!f.subflows?.length) return f;
+                    const updatedSubflows = f.subflows.filter((s) => !idSet.has(s.id));
+                    if (updatedSubflows.length === f.subflows.length) return f;
+                    return { ...f, subflows: updatedSubflows };
+                })
+        );
+        // Remove deleted flows from the selection
+        const currentSelected = this.selectedFlowIds();
+        if (currentSelected.some((selectedId) => idSet.has(selectedId))) {
+            this.selectedFlowIds.set(currentSelected.filter((selectedId) => !idSet.has(selectedId)));
+        }
+        // Remove deleted flows from the active include/exclude filter
+        const currentFilter = this.filterSignal();
+        if (currentFilter.includedFlowIds !== null && currentFilter.includedFlowIds.some((fid) => idSet.has(fid))) {
+            const remaining = currentFilter.includedFlowIds.filter((fid) => !idSet.has(fid));
+            this.setFilter({
+                ...currentFilter,
+                includedFlowIds: remaining.length > 0 ? remaining : null,
+            });
+        }
     }
 
     // --- Cache Management ---
@@ -336,5 +350,6 @@ export class FlowsStorageService implements StorageService {
         this.filterSignal.set(EMPTY_FLOWS_FILTER);
         this.selectMode.set(false);
         this.selectedFlowIds.set([]);
+        this.isDeleting.set(false);
     }
 }

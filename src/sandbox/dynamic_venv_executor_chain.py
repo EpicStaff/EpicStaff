@@ -18,7 +18,6 @@ import settings
 from jail import build_jail
 from landlock import abi_version
 from network_policy import NetworkPolicy, decide_network_policy
-from savefiles_ownership import ensure_savefiles_writable
 from secret_scrubber import build_masking_values, masking_enabled, scrub
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
 from src.shared.models import CodeResultData
@@ -563,7 +562,6 @@ except Exception:
         env = build_base_env(context["python_executable"])
         env["HOME"] = context["home_path"]
         env["TMPDIR"] = context["tmp_path"]
-        env["CONTAINER_SAVEFILES_PATH"] = os.environ.get("CONTAINER_SAVEFILES_PATH", ".")
         if context.get("use_storage"):
             env["STORAGE_ENDPOINT"] = settings.STORAGE_ENDPOINT
             env["STORAGE_BUCKET_NAME"] = settings.STORAGE_BUCKET_NAME
@@ -696,7 +694,6 @@ except Exception:
                     build_jail(
                         exec_dir=Path(context["result_file_path"]).parent,
                         venv_path=Path(python_executable).parent.parent,
-                        savefiles_root=Path(context["work_dir"]),
                     )
                 )
             if network_decision.policy is NetworkPolicy.BLOCK_ALL:
@@ -920,7 +917,10 @@ class DynamicVenvExecutorChain:
         os.makedirs(home_path, exist_ok=True)
         tmp_path = output_path / "tmp"
         os.makedirs(tmp_path, exist_ok=True)
-        work_dir = os.environ.get("CONTAINER_SAVEFILES_PATH", ".")
+        # The child's cwd: a subdir, so a relative write such as `output.txt` cannot
+        # replace the control files (code.py, output.txt, storage_mutations.json).
+        work_path = output_path / "work"
+        os.makedirs(work_path, exist_ok=True)
 
         if _can_drop_privileges():
             """Allow sandboxuser write access to the pre-execution dirs it writes output.txt and
@@ -930,6 +930,7 @@ class DynamicVenvExecutorChain:
                 os.chown(output_path, SANDBOX_UID, SANDBOX_GID)
                 os.chown(home_path, SANDBOX_UID, SANDBOX_GID)
                 os.chown(tmp_path, SANDBOX_UID, SANDBOX_GID)
+                os.chown(work_path, SANDBOX_UID, SANDBOX_GID)
             except OSError as chown_error:
                 logger.error(
                     "Failed to chown execution dirs (EPERM?): {}",
@@ -941,10 +942,6 @@ class DynamicVenvExecutorChain:
                     stdout="",
                     returncode=1,
                 )
-            # TEMPORARY: remove with the savefiles feature (see savefiles_ownership.py).
-            # Unlike the execution dirs above, a failure here only warns: code that
-            # does not write to savefiles still runs.
-            ensure_savefiles_writable(work_dir, SANDBOX_UID, SANDBOX_GID)
 
         context = {
             "base_venv_path": self.base_venv_path,
@@ -958,7 +955,7 @@ class DynamicVenvExecutorChain:
             "global_kwargs": global_kwargs,
             "home_path": str(home_path),
             "tmp_path": str(tmp_path),
-            "work_dir": work_dir,
+            "work_dir": str(work_path),
             "use_storage": use_storage,
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,

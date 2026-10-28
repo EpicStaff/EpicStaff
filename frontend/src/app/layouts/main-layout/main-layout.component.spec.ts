@@ -7,6 +7,9 @@ import { provideRouter, Router, RouterLink } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { BehaviorSubject, map, Observable } from 'rxjs';
 
+import { GuidedTourService, provideGuidedTours, TOUR_PROGRESS_STORE } from '../../core/guided-tour';
+import { TOUR_RENDERER_LOADER } from '../../core/guided-tour/renderer/tour-renderer';
+import { FakeTourProgressStore, FakeTourRenderer } from '../../core/guided-tour/testing/guided-tour-testing';
 import { AppNavigationDrawerService, HIDE_SIDENAV_ON_PHONE } from '../../core/services/app-navigation-drawer.service';
 import { pluginPageMatcher } from '../../features/plugins/pages/plugin-host-page/plugin-page.matcher';
 import { AppReturnUrlService } from '../../features/plugins/services/app-return-url.service';
@@ -51,6 +54,8 @@ describe('MainLayoutComponent', () => {
     const isPhone = new BehaviorSubject(false);
     let harness: RouterTestingHarness;
     let drawer: AppNavigationDrawerService;
+    let tourProgress: FakeTourProgressStore;
+    let tourRenderers: FakeTourRenderer[];
 
     const host = (): HTMLElement => harness.fixture.nativeElement as HTMLElement;
     const wrapper = (): HTMLElement => host().querySelector('.sidebar-wrapper') as HTMLElement;
@@ -68,9 +73,13 @@ describe('MainLayoutComponent', () => {
 
     beforeEach(async () => {
         isPhone.next(false);
+        tourProgress = new FakeTourProgressStore();
+        tourRenderers = [];
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([
+                    // Out of the app shell, like the sign-in page a sign-out leads to.
+                    { path: 'login', component: PageStubComponent },
                     {
                         path: '',
                         component: MainLayoutComponent,
@@ -97,6 +106,23 @@ describe('MainLayoutComponent', () => {
                     },
                 },
                 { provide: InteractivityChecker, useClass: LaidOutInteractivityChecker },
+                provideGuidedTours(() => ({
+                    key: 'intro',
+                    label: 'Intro',
+                    icon: 'help',
+                    autoStart: 'until-completed',
+                    isAvailable: () => true,
+                    steps: [{ id: 'welcome', content: { title: 'Welcome', body: [] } }],
+                })),
+                { provide: TOUR_PROGRESS_STORE, useValue: tourProgress },
+                {
+                    provide: TOUR_RENDERER_LOADER,
+                    useValue: async () => {
+                        const renderer = new FakeTourRenderer();
+                        tourRenderers.push(renderer);
+                        return renderer;
+                    },
+                },
             ],
         });
         TestBed.overrideComponent(MainLayoutComponent, {
@@ -283,5 +309,21 @@ describe('MainLayoutComponent', () => {
         }
         expect(drawer.isOpen()).toBe(true);
         expect(TestBed.inject(Router).url).toBe('/chat-bindings/b-1?conversation=c-1');
+    });
+
+    it('auto-starts tours while it is shown, and stops the running one, unsaved, once it is gone (sign-out)', async () => {
+        const tours = TestBed.inject(GuidedTourService);
+
+        tourProgress.signIn(1);
+        await settle();
+
+        expect(tours.activeTour()?.key).toBe('intro');
+        expect(tourRenderers.at(-1)?.view?.content.title).toBe('Welcome');
+
+        await harness.navigateByUrl('/login');
+
+        expect(tours.activeTour()).toBeNull();
+        expect(tourRenderers.at(-1)?.isDisposed).toBe(true);
+        expect(tourProgress.savedTourKeys).toEqual([]);
     });
 });

@@ -66,6 +66,10 @@ services:
       PLUGINS_MAX_REQUEST_BODY_MB: "1"
       DJANGO_FRONTEND_BASE_URL: https://epicstaff.test
       PLUGINS_NETWORK_SUBNET: *plugins-subnet
+      STORAGE_HOST: storage
+      STORAGE_PORT: "9000"
+      STORAGE_BUCKET: epicstaff
+      AVATAR_URL_SIGNING_SECRET: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
     volumes:
       - ../../templates/:/etc/nginx/templates:ro
       # Every hook in src/nginx/docker-entrypoint.d, as src/docker-compose.yaml mounts them

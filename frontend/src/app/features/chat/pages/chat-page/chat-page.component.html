@@ -139,7 +139,9 @@
         [class.inbox--animated]="openConversation.isStackAnimated()"
     >
         <aside
+            #conversationsColumn
             class="inbox__sidebar"
+            [style.width.px]="isPhone() ? null : conversationsWidth()"
             [attr.inert]="isPhone() && selected() ? '' : null"
         >
             @if (isPhone()) {
@@ -203,8 +205,22 @@
             <app-conversation-list
                 [bindingId]="bindingId() ?? null"
                 [selectedId]="selectedId()"
+                [canCollapse]="!isPhone()"
+                [isCompact]="isConversationsCompact()"
                 (selectedChange)="selectConversation($event)"
+                (compactToggle)="toggleConversations()"
             />
+            @if (!isPhone()) {
+                <div
+                    class="resizable-sidebar-handle"
+                    sidebarAriaLabel="Resize conversations column"
+                    [appResizableSidebar]="conversationsWidthKey"
+                    [sidebarTarget]="conversationsColumn"
+                    [sidebarMinWidth]="conversationsWidthOptions.minWidth"
+                    [sidebarMaxWidth]="conversationsWidthOptions.maxWidth"
+                    [sidebarCollapse]="conversationsWidthOptions.collapse"
+                ></div>
+            }
         </aside>
 
         <section

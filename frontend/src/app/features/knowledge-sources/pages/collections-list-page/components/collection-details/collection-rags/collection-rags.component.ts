@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
@@ -13,7 +13,7 @@ import { GraphRagConfigurationDialog } from '../../../../../components/rag-confi
 import { NaiveRagConfigurationDialog } from '../../../../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
 import { RagConfigurationDialogComponent } from '../../../../../components/rag-configuration-dialog/rag-configuration-dialog.component';
 import { RAG_STATUS_CONFIG, RAG_TYPE_CONFIG } from '../../../../../constants/constants';
-import { getIndexingUsageLines } from '../../../../../helpers/format-indexing-usage.util';
+import { getIndexingUsageDetails, IndexingUsageDetail } from '../../../../../helpers/format-indexing-usage.util';
 import { RagType } from '../../../../../models/base-rag.model';
 import { CreateCollectionDtoResponse } from '../../../../../models/collection.model';
 import { CollectionsStorageService } from '../../../../../services/collections-storage.service';
@@ -40,13 +40,15 @@ export class CollectionRagsComponent {
 
     collection = input.required<CreateCollectionDtoResponse>();
 
-    protected readonly usageLines = computed(() => {
-        const linesByType: Partial<Record<RagType, string[]>> = {};
+    protected readonly usageDetails = computed(() => {
+        const detailsByType: Partial<Record<RagType, IndexingUsageDetail[]>> = {};
         for (const config of this.collection().rag_configurations) {
-            linesByType[config.rag_type] = getIndexingUsageLines(config.indexing_usage);
+            detailsByType[config.rag_type] = getIndexingUsageDetails(config.indexing_usage);
         }
-        return linesByType;
+        return detailsByType;
     });
+    /** RAG types whose usage details are open; each row toggles on its own, all start collapsed. */
+    protected readonly expandedUsageTypes = signal<ReadonlySet<RagType>>(new Set());
 
     ragTypeConfig = RAG_TYPE_CONFIG;
     ragStatusConfig = RAG_STATUS_CONFIG;
@@ -64,6 +66,22 @@ export class CollectionRagsComponent {
             this.openRagConfigurationDialog(ragConfig!.rag_id, type, GraphRagConfigurationDialog);
             return;
         }
+    }
+
+    protected toggleUsage(type: RagType): void {
+        this.expandedUsageTypes.update((expanded) => {
+            const next = new Set(expanded);
+            if (next.has(type)) {
+                next.delete(type);
+            } else {
+                next.add(type);
+            }
+            return next;
+        });
+    }
+
+    protected usageDetailsId(type: RagType): string {
+        return `rag-usage-${this.collection().collection_id}-${type}`;
     }
 
     onDeleteRag(type: RagType, ragId: number): void {

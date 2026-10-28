@@ -1,11 +1,11 @@
 from main import main
 
 if __name__ == "__main__":
-    print("Local/Remote GitHub Search Tool Test")
+    print("Remote GitHub Search Tool Test")
     
-    repo_path_or_url = input("Enter path to local repo or GitHub URL: ").strip()
+    repo_path_or_url = input("Enter GitHub URL: ").strip()
     if not repo_path_or_url:
-        print("Error: You must enter a local path or GitHub URL.")
+        print("Error: You must enter a GitHub URL.")
         exit(1)
     
     query = input("Enter search query: ").strip()

@@ -91,6 +91,7 @@ services:
       DJANGO_DB_POOL_TIMEOUT: ${DJANGO_DB_POOL_TIMEOUT:?}
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:?}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?}
+      AVATAR_URL_SIGNING_SECRET: ${AVATAR_URL_SIGNING_SECRET:?}
       DJANGO_DEBUG: ${DJANGO_DEBUG:?}
       DJANGO_RECYCLE_BIN_RETENTION_DAYS: ${DJANGO_RECYCLE_BIN_RETENTION_DAYS:?}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?}
@@ -199,6 +200,8 @@ services:
       redis:
         condition: service_healthy
       storage:
+        condition: service_healthy
+      sandbox_new:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${DJANGO_PORT:?}/ht/')\""]
@@ -414,7 +417,6 @@ services:
   #     # per-execution credentials arrive inside the task payload, already
   #     # minted and scoped by django_app.
   #     <<: [*docker-env, *redis-env, *communication-env]
-  #     CONTAINER_SAVEFILES_PATH: ${CONTAINER_SAVEFILES_PATH:?}
   #     SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
   #     SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
   #     SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
@@ -431,7 +433,6 @@ services:
   #     STORAGE_BUCKET: ${STORAGE_BUCKET:?}
   #   volumes:
   #     - sandbox_venvs:${SANDBOX_BASE_VENV_PATH:?}
-  #     - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}
   #   networks:
   #     - sandbox-network
   #   tty: true
@@ -490,12 +491,21 @@ services:
     depends_on:
       storage:
         condition: service_healthy
+    # The policy PUT replaces the bucket's whole policy: anonymous read of system/avatars/ only.
+    # storage publishes no port, so this only lets nginx read avatars without credentials
+    # inside the docker network; the gate for clients is nginx's avatar URL signature check.
     entrypoint: >
       /bin/sh -c "
       status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
       --aws-sigv4 'aws:amz:us-east-1:s3' --user '${STORAGE_USER:?}:${STORAGE_PASSWORD:?}'
       http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}) &&
-      case $$status in 200|409) echo 'Bucket ready.' ;; *) echo \"Bucket creation failed: HTTP $$status\" && exit 1 ;; esac
+      case $$status in 200|409) echo 'Bucket ready.' ;; *) echo \"Bucket creation failed: HTTP $$status\" && exit 1 ;; esac &&
+      status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
+      --aws-sigv4 'aws:amz:us-east-1:s3' --user '${STORAGE_USER:?}:${STORAGE_PASSWORD:?}'
+      -H 'Content-Type: application/json'
+      --data-binary '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::${STORAGE_BUCKET:?}/system/avatars/*\"]}]}'
+      'http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}?policy') &&
+      case $$status in 2??) echo 'Avatars are readable without credentials.' ;; *) echo \"Bucket policy failed: HTTP $$status\" && exit 1 ;; esac
       "
     restart: on-failure
 
@@ -577,6 +587,10 @@ services:
       AUDITOR_PORT: ${AUDITOR_PORT:?}
       CHAT_ENABLED: ${CHAT_ENABLED:?}
       CHAT_UPSTREAM_URL: ${CHAT_UPSTREAM_URL:?}
+      STORAGE_HOST: ${STORAGE_HOST:?}
+      STORAGE_PORT: ${STORAGE_PORT:?}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:?}
+      AVATAR_URL_SIGNING_SECRET: ${AVATAR_URL_SIGNING_SECRET:?}
       PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
       PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
       PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
@@ -1109,15 +1123,29 @@ services:
     init: true
     networks:
       - backend-network
+    # Not django_app: it is the other way round now. A django_app data migration
+    # moves the libraries Python code used to carry into venvs through this API,
+    # so this service and its own migrations have to be up before django_app runs.
+    # crewdb only has to be running, not healthy, for the same reason: it reports
+    # healthy at the end of a setup phase that itself waits for django_app's
+    # migrations, so waiting for it here would deadlock all three. The role and the
+    # schema this service needs are created in crewdb's first phase, and the
+    # entrypoint waits for them.
     depends_on:
       crewdb:
-        condition: service_healthy
-      django_app:
-        condition: service_healthy
+        condition: service_started
       storage:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # The port opens only after `piccolo migrations forwards all` in the
+    # entrypoint, so healthy means the schema is current and the API answers.
+    healthcheck:
+      test: ["CMD", "python3", "-I", "-c", "import socket; socket.create_connection(('127.0.0.1', ${SANDBOX_PORT:?}), 5).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     environment:
       <<: [*docker-env, *database-env, *redis-env, *communication-env]
       STORAGE_HOST: ${STORAGE_HOST:?}
@@ -1138,6 +1166,7 @@ services:
       SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
       SANDBOX_MAX_EXECUTION_TIMEOUT: ${SANDBOX_MAX_EXECUTION_TIMEOUT:?}
       SANDBOX_DEFAULT_EXECUTION_TIMEOUT: ${SANDBOX_DEFAULT_EXECUTION_TIMEOUT:?}
+      SANDBOX_MAX_RESULT_SIZE: ${SANDBOX_MAX_RESULT_SIZE:?}
     volumes:
       - sandbox_venvs:${SANDBOX_VENVS_DIR:?}
     mem_limit: "2g"
@@ -1157,14 +1186,10 @@ services:
       - KILL  # signal the dropped-privilege child's process group on timeout.
 
 volumes:
-  sandbox_venvs:
-    external: true
-  crew_pgdata:
-    external: true
-  media_data:
-    external: true
-  opensearch_data:
-    external: true
+  sandbox_venvs: {}
+  crew_pgdata: {}
+  media_data: {}
+  opensearch_data: {}
   redis_data: {}
   code_instances: {}
   rustfs_data: {}

@@ -45,11 +45,11 @@ import {
     ICurrentSelection,
 } from '@foblex/flow';
 import { AppSvgIconComponent, AuthorshipDetailsSource } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, NodeType, ResourceCode, ShortcutParams } from '@shared/models';
+import { NodeType, ShortcutParams } from '@shared/models';
 import { fromEvent, Subject } from 'rxjs';
 
 import { GetGraphLightRequest, GraphContentDto } from '../../features/flows/models/graph.model';
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
 import { DomainDialogComponent, DomainDialogData } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
@@ -64,6 +64,8 @@ import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classificatio
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
+import { UnusedNodesBarComponent } from '../components/unused-nodes-bar/unused-nodes-bar.component';
+import { FLOW_ACTION_PERMISSIONS } from '../core/constants/flow-action-permissions';
 import { HideOverflowingChildrenDirective } from '../core/directives/hide-overflowing-children.directive';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
@@ -121,6 +123,14 @@ const CANVAS_PAN_STEP_PX = 40;
 
 const CANVAS_PAN_FAST_STEP_PX = 200;
 
+// One dot of the canvas background per arrow press, ten with Shift.
+const SELECTION_MOVE_STEP_PX = GRID_CELL_SIZE;
+
+const SELECTION_MOVE_FAST_STEP_PX = 10 * GRID_CELL_SIZE;
+
+// How close to the visible edge a node moved by the arrows may come before the canvas follows it.
+const SELECTION_FOLLOW_MARGIN_PX = 2 * GRID_CELL_SIZE;
+
 /** Horizontal gap between the flow's right edge and the nodes a partial import adds. */
 const IMPORT_GAP_PX = 200;
 
@@ -157,6 +167,7 @@ const IMPORT_GAP_PX = 200;
         MouseTrackerDirective,
         FlowGraphContextMenuComponent,
         FlowActionPanelComponent,
+        UnusedNodesBarComponent,
         NodesSearchComponent,
         NodePanelShellComponent,
         FlowShortcutsButtonComponent,
@@ -166,7 +177,6 @@ const IMPORT_GAP_PX = 200;
         FlowExportImportButtonComponent,
         FlowFilesButtonComponent,
         MatTooltipModule,
-        HasPermissionDirective,
     ],
 })
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
@@ -209,6 +219,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
     private readonly shortcutsAnchor = viewChild.required<ElementRef<HTMLElement>>('shortcutsAnchor');
     private readonly flowHost = viewChild.required('flowHost', { read: ElementRef<HTMLElement> });
+    private readonly filesButton = viewChild(FlowFilesButtonComponent);
+    private readonly exportImportButton = viewChild(FlowExportImportButtonComponent);
 
     public closeNodesSearch(): void {
         this.nodesSearchComponent?.closeSearch();
@@ -226,6 +238,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private lastPointer: IPoint | null = null;
     protected isLoaded = signal(false);
     protected showContextMenu = signal(false);
+    /** The node menu is open; keys outside the canvas should leave the flow alone meanwhile. */
+    public readonly isNodeMenuOpen = this.showContextMenu.asReadonly();
     private readonly arrangeAnimator = inject(FlowArrangeAnimatorService);
     protected readonly hasUnarrangedChanges = this.arrangeAnimator.hasUnarrangedChanges;
     protected readonly isArranging = this.arrangeAnimator.isArranging;
@@ -238,6 +252,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     /** Gates every Foblex gesture that edits the graph (move, resize, rotate, connect, reassign, waypoints). */
     readonly editGestureTrigger = (): boolean => !this.flowReadOnly.isReadOnly();
+
+    protected readonly canReadFiles = computed(() => this.permissions.meets(FLOW_ACTION_PERMISSIONS.files));
 
     protected readonly isAutoArrangeDisabled = computed(
         () =>
@@ -302,6 +318,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             : new Set()
     );
 
+    /** Left to right, then top to bottom — the order the unused-nodes bar steps through them. */
+    protected readonly unusedNodesInCanvasOrder = computed(() =>
+        this.flowService
+            .nodes()
+            .filter((node) => this.unusedNodeIds().has(node.id))
+            .sort((first, second) => first.position.x - second.position.x || first.position.y - second.position.y)
+    );
+
     protected getMinimapClasses(node: NodeModel): string[] {
         const classes = getMinimapClassForNode(node);
         return this.unusedNodeIds().has(node.id) ? [...classes, 'is-unused'] : classes;
@@ -341,7 +365,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly injector = inject(Injector);
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
-    private readonly keymap = inject(KeymapService);
+    protected readonly keymap = inject(KeymapService);
+    private readonly permissions = inject(PermissionsService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly ngZone = inject(NgZone);
 
@@ -399,16 +424,78 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
         this.keymap.register('node.subgraph', (_event, { params }) => this.onSubgraphShortcut(params), options);
+        this.registerToolbarShortcuts();
+        // The keys zoom around the middle of the visible canvas; the wheel zooms at the pointer.
+        const zoomOptions = { destroyRef: this.destroyRef, when: () => !this.showContextMenu() };
+        this.keymap.register('zoom.in', () => this.fZoomDirective.zoomIn(), zoomOptions);
+        this.keymap.register('zoom.out', () => this.fZoomDirective.zoomOut(), zoomOptions);
         for (const action of EDITOR_ACTIONS) {
             if ('pan' in action) {
                 const pan = action.pan;
-                this.keymap.register(action.id, () => this.onPanShortcut(pan), {
+                this.keymap.register(action.id, (event) => this.onArrowShortcut(event, pan), {
                     ...options,
                     runOutsideAngular: true,
                     when: (event) => this.isCanvasKeyTarget(event.target),
                 });
             }
+            if ('moveSelection' in action) {
+                const move = action.moveSelection;
+                this.keymap.register(action.id, (event) => this.moveSelectedNodes(event, move), {
+                    ...options,
+                    when: (event) => this.isCanvasKeyTarget(event.target) && this.hasSelectedNodes(),
+                });
+            }
         }
+    }
+
+    // Each key does what its toolbar button does. Where the button is not shown (read-only, preview, permissions)
+    // the key says why, as node keys do. The keymap already keeps these keys away from text fields and dialogs.
+    private registerToolbarShortcuts(): void {
+        // The node menu's backdrop takes any click on the toolbar while it is open.
+        const options = { destroyRef: this.destroyRef, when: () => !this.showContextMenu() };
+        this.keymap.register('flow.auto-arrange', () => this.onAutoArrangeShortcut(), options);
+        this.keymap.register('flow.add-files', () => this.onAddFilesShortcut(), options);
+        this.keymap.register('flow.export-import', () => this.onExportImportShortcut(), options);
+        this.keymap.register('flow.extract-subflow', () => this.onExtractToSubflowShortcut(), options);
+        this.keymap.register('flow.settings', () => this.openSettings(), options);
+        this.keymap.register('flow.domain', () => this.onDomainClick(), options);
+    }
+
+    private onAutoArrangeShortcut(): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        if (!this.isAutoArrangeDisabled()) {
+            this.onAutoArrange();
+        }
+    }
+
+    // Without Files:Read or a flow id there is no files button, but the flow is not read-only: nothing to say.
+    private onAddFilesShortcut(): void {
+        if (this.isPreview) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        this.filesButton()?.openDialog();
+    }
+
+    // The menu is not there in a version preview, and empty without Flows:Export and Flows:Update.
+    private onExportImportShortcut(): void {
+        const menu = this.exportImportButton();
+        if (!menu?.canUseMenu()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        menu.toggleMenuFromKeyboard();
+    }
+
+    private onExtractToSubflowShortcut(): void {
+        if (this.isPreview) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        this.onExtractToSubflow();
     }
 
     private isCanvasKeyTarget(target: EventTarget | null): boolean {
@@ -416,6 +503,111 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return false;
         }
         return target === target.ownerDocument?.body || this.flowHost().nativeElement.contains(target);
+    }
+
+    // With nodes selected the plain arrows move them; Ctrl/Cmd + arrow still pans fast.
+    private onArrowShortcut(event: KeyboardEvent, pan: CanvasPan): void {
+        if (!pan.fast && this.hasSelectedNodes()) {
+            this.ngZone.run(() => this.moveSelectedNodes(event, pan));
+            return;
+        }
+        this.onPanShortcut(pan);
+    }
+
+    private hasSelectedNodes(): boolean {
+        return this.selectionManager.selectedNodeIds().length > 0;
+    }
+
+    private moveSelectedNodes(event: KeyboardEvent, move: CanvasPan): void {
+        if (this.isDialogOpen() || this.showContextMenu()) {
+            return;
+        }
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        const selectedIds = new Set(this.selectionManager.selectedNodeIds());
+        const selected = this.flowService.nodes().filter((node) => selectedIds.has(node.id));
+        const movable = selected.filter((node) => !this.isNodeReadOnly(node));
+        // Like a drag, a selection with nodes that cannot move says so; the others still move.
+        const blocked = selected.find((node) => this.isNodeReadOnly(node));
+        if (blocked && !event.repeat) {
+            this.flowReadOnly.notifyNodeTypeBlocked(blocked.type);
+        }
+        if (movable.length === 0) {
+            return;
+        }
+        // A held key is one undo step, like one drag.
+        if (!event.repeat) {
+            this.undoRedoService.stateChanged();
+        }
+        this.arrangeAnimator.markUnarranged();
+        const step = move.fast ? SELECTION_MOVE_FAST_STEP_PX : SELECTION_MOVE_STEP_PX;
+        const moved = movable.map((node) => ({
+            ...node,
+            position: {
+                x: this.snapToGrid(node.position.x) + move.x * step,
+                y: this.snapToGrid(node.position.y) + move.y * step,
+            },
+        }));
+        moved.forEach((node) => this.flowService.updateNode(node));
+        this.routingOrchestrator.rerouteSegmentConnections();
+        this.followMovedNodes(moved, move, step);
+    }
+
+    // The canvas follows nodes moved past the visible edge, in the direction of the move, by how far they went past it
+    // but never more than the step: a selection that was already off screen (Ctrl+A on a large flow) scrolls along
+    // with it step by step instead of jumping to its far edge.
+    private followMovedNodes(nodes: readonly NodeModel[], move: CanvasPan, step: number): void {
+        const canvas = this.fCanvasComponent;
+        const view = this.visibleCanvasRect();
+        if (!canvas?.transform || !view) {
+            return;
+        }
+        const { position, scaledPosition, scale } = canvas.transform;
+        const offset = PointExtensions.sum(position, scaledPosition);
+        const left = Math.min(...nodes.map((node) => node.position.x)) * scale + offset.x;
+        const top = Math.min(...nodes.map((node) => node.position.y)) * scale + offset.y;
+        const right = Math.max(...nodes.map((node) => node.position.x + node.size.width)) * scale + offset.x;
+        const bottom = Math.max(...nodes.map((node) => node.position.y + node.size.height)) * scale + offset.y;
+        const maxShift = step * scale;
+        const shiftX =
+            move.x > 0
+                ? Math.max(-maxShift, Math.min(0, view.right - right))
+                : move.x < 0
+                  ? Math.min(maxShift, Math.max(0, view.left - left))
+                  : 0;
+        const shiftY =
+            move.y > 0
+                ? Math.max(-maxShift, Math.min(0, view.bottom - bottom))
+                : move.y < 0
+                  ? Math.min(maxShift, Math.max(0, view.top - top))
+                  : 0;
+        if (shiftX === 0 && shiftY === 0) {
+            return;
+        }
+        canvas.transform.position = PointExtensions.initialize(position.x + shiftX, position.y + shiftY);
+        canvas.redraw();
+        canvas.emitCanvasChangeEvent();
+    }
+
+    /** The part of the canvas the user sees, in canvas host pixels, inset by the follow margin; null before layout. */
+    private visibleCanvasRect(): { left: number; top: number; right: number; bottom: number } | null {
+        const host = this.flowHost().nativeElement.getBoundingClientRect();
+        if (host.width === 0 || host.height === 0) {
+            return null;
+        }
+        // The side panel covers the right of the canvas.
+        const visibleRight = Math.min(host.right, this.nodePanelShell?.panelLeftEdge() ?? host.right) - host.left;
+        if (visibleRight <= 2 * SELECTION_FOLLOW_MARGIN_PX) {
+            return null;
+        }
+        return {
+            left: SELECTION_FOLLOW_MARGIN_PX,
+            top: SELECTION_FOLLOW_MARGIN_PX,
+            right: visibleRight - SELECTION_FOLLOW_MARGIN_PX,
+            bottom: host.height - SELECTION_FOLLOW_MARGIN_PX,
+        };
     }
 
     private onPanShortcut(pan: CanvasPan): void {
@@ -1110,8 +1302,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.flowService.updateNode(updatedNode);
     }
 
+    // Like the Decision Tree search: a zoomed-out canvas comes back to 100% around the node, otherwise it only centres.
     public onZoomInNode(node: NodeModel): void {
-        this.fCanvasComponent.centerGroupOrNode(node.id, true);
+        if (this.fCanvasComponent.getScale() < 1) {
+            this.fCanvasComponent.resetScaleAndCenterGroupOrNode(node.id, true);
+        } else {
+            this.fCanvasComponent.centerGroupOrNode(node.id, true);
+        }
     }
 
     public onNodeDoubleClickAndZoom(data: { node: NodeModel; event: MouseEvent }): void {
@@ -1561,7 +1758,4 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             });
         });
     }
-
-    protected readonly ResourceCode = ResourceCode;
-    protected readonly ActionCode = ActionCode;
 }

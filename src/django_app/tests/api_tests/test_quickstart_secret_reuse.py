@@ -7,6 +7,8 @@ unbounded across runs, because _attach_api_key_secret ran once per config.
 """
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -17,14 +19,15 @@ from tables.models.provider import Provider
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
+from tables.services.quickstart_service import QuickstartService
 from tables.services.secrets import secret_encryption, secret_service
 
 
 def error_text(resp):
     """Validation details as one string, whatever shape the body has.
 
-    The view raises ValidationError, and utils/exception_handler.py flattens every
-    APIException into {"status_code", "code", "message"} — so the per-field dict
+    Serializer errors and secret Use denials both reach utils/exception_handler.py,
+    which flattens them into {"status_code", "code", "message"} — so the per-field dict
     DRF produces is not what reaches the client.
     """
     return str(resp.data)
@@ -269,3 +272,184 @@ def test_foreign_secret_error_matches_a_nonexistent_id(
         return "".join(ch for ch in str(detail) if not ch.isdigit())
 
     assert without_digits(error_text(a)) == without_digits(error_text(b))
+
+
+# ---- which model the bundle secret is attached to ----
+#
+# A custom model can send requests to any base_url. One created under the catalog
+# name must not silently receive the quickstart secret.
+
+OPENAI_LLM_MODEL_NAME = "gpt-4o-mini"
+OPENAI_EMBEDDING_MODEL_NAME = "text-embedding-3-small"
+
+MODEL_KINDS = [
+    pytest.param(
+        LLMModel, "llm_provider", OPENAI_LLM_MODEL_NAME, LLMConfig, id="llm"
+    ),
+    pytest.param(
+        EmbeddingModel,
+        "embedding_provider",
+        OPENAI_EMBEDDING_MODEL_NAME,
+        EmbeddingConfig,
+        id="embedding",
+    ),
+]
+
+
+def _seed_built_in_models_except(provider, skipped_model_class):
+    """Seed the openai catalog models, leaving out the one under test."""
+    if skipped_model_class is not LLMModel:
+        LLMModel.objects.create(name=OPENAI_LLM_MODEL_NAME, llm_provider=provider)
+    if skipped_model_class is not EmbeddingModel:
+        EmbeddingModel.objects.create(
+            name=OPENAI_EMBEDDING_MODEL_NAME, embedding_provider=provider
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("model_class, provider_field, model_name, config_class", MODEL_KINDS)
+def test_quickstart_prefers_built_in_model_over_custom_with_same_name(
+    client_a, org, openai_seeded, quickstart_url,
+    model_class, provider_field, model_name, config_class,
+):
+    built_in = model_class.objects.get(name=model_name, org__isnull=True)
+    model_class.objects.create(
+        name=model_name,
+        org=org,
+        is_custom=True,
+        base_url="https://attacker.example",
+        **{provider_field: openai_seeded},
+    )
+
+    resp = client_a.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-cold-start"}, format="json"
+    )
+
+    assert resp.status_code == 200, resp.content
+    assert config_class.objects.get(custom_name="quickstart_openai").model_id == built_in.id
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("model_class, provider_field, model_name, config_class", MODEL_KINDS)
+def test_quickstart_refuses_custom_model_with_base_url_when_no_built_in(
+    client_a, org, quickstart_url, model_class, provider_field, model_name, config_class,
+):
+    provider = Provider.objects.create(name="openai")
+    _seed_built_in_models_except(provider, model_class)
+    model_class.objects.create(
+        name=model_name,
+        org=org,
+        is_custom=True,
+        base_url="https://attacker.example",
+        **{provider_field: provider},
+    )
+
+    resp = client_a.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-cold-start"}, format="json"
+    )
+
+    assert resp.status_code == 400, resp.content
+    assert f'custom model "{model_name}"' in resp.data["error"]
+    # The refusal rolls back the whole bundle, including the configs and the
+    # secret written before the model lookup.
+    assert not Secret.objects.filter(org=org).exists()
+    assert not LLMConfig.objects.filter(org=org).exists()
+    assert not EmbeddingConfig.objects.filter(org=org).exists()
+    assert not OpenAIRealtimeConfig.objects.filter(org=org).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("empty_base_url", [None, ""])
+@pytest.mark.parametrize("model_class, provider_field, model_name, config_class", MODEL_KINDS)
+def test_quickstart_uses_custom_model_without_base_url_when_no_built_in(
+    client_a, org, quickstart_url,
+    model_class, provider_field, model_name, config_class, empty_base_url,
+):
+    provider = Provider.objects.create(name="openai")
+    _seed_built_in_models_except(provider, model_class)
+    own_model = model_class.objects.create(
+        name=model_name,
+        org=org,
+        is_custom=True,
+        base_url=empty_base_url,
+        **{provider_field: provider},
+    )
+
+    resp = client_a.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-cold-start"}, format="json"
+    )
+
+    assert resp.status_code == 200, resp.content
+    assert config_class.objects.get(custom_name="quickstart_openai").model_id == own_model.id
+    assert model_class.objects.filter(name=model_name).count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("model_class, provider_field, model_name, config_class", MODEL_KINDS)
+def test_quickstart_locks_reused_org_model(
+    client_a, org, quickstart_url, model_class, provider_field, model_name, config_class,
+):
+    # Locked so a concurrent edit of the model's base_url either lands before the
+    # base_url check reads it, or waits until the bundle's config is committed and
+    # then counts it.
+    provider = Provider.objects.create(name="openai")
+    _seed_built_in_models_except(provider, model_class)
+    model_class.objects.create(
+        name=model_name, org=org, is_custom=True, **{provider_field: provider}
+    )
+
+    with CaptureQueriesContext(connection) as captured:
+        resp = client_a.post(
+            quickstart_url, {"provider": "openai", "api_key": "sk-cold-start"}, format="json"
+        )
+
+    assert resp.status_code == 200, resp.content
+    table = model_class._meta.db_table
+    assert any(
+        "FOR UPDATE" in query["sql"] and f'FROM "{table}"' in query["sql"]
+        for query in captured.captured_queries
+    )
+
+
+@pytest.mark.django_db
+def test_quickstart_unsupported_provider_returns_its_reason(
+    client_a, org, quickstart_url
+):
+    # The provider exists, so the serializer accepts it, but quickstart has no
+    # model defaults for it: a refusal the user can act on, returned as written.
+    Provider.objects.create(name="anthropic")
+
+    resp = client_a.post(
+        quickstart_url, {"provider": "anthropic", "api_key": "sk-cold-start"}, format="json"
+    )
+
+    assert resp.status_code == 400, resp.content
+    assert resp.data["error"].startswith("Unsupported provider: anthropic.")
+    assert not Secret.objects.filter(org=org).exists()
+
+
+@pytest.mark.django_db
+def test_quickstart_unexpected_error_does_not_leak_exception_text(
+    client_a, org, openai_seeded, quickstart_url, monkeypatch
+):
+    # Fails after the secret and every config are written, so the rollback is
+    # observable too.
+    def fail_with_internal_detail(*args, **kwargs):
+        raise RuntimeError("secret internal detail")
+
+    monkeypatch.setattr(QuickstartService, "_apply_quickstart_tag", fail_with_internal_detail)
+
+    resp = client_a.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-cold-start"}, format="json"
+    )
+
+    assert resp.status_code == 500, resp.content
+    assert resp.data == {
+        "detail": "Error quickstart",
+        "error": "Quickstart failed. Please try again or contact support.",
+    }
+    assert b"secret internal detail" not in resp.content
+    assert not Secret.objects.filter(org=org).exists()
+    assert not LLMConfig.objects.filter(org=org).exists()
+    assert not EmbeddingConfig.objects.filter(org=org).exists()
+    assert not OpenAIRealtimeConfig.objects.filter(org=org).exists()

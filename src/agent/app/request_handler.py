@@ -18,6 +18,7 @@ from app.data_loader import DataLoader
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.exceptions import RunCancelled
 from app.factory import RunnerFactory
+from app.logging_utils import redact_payload
 from shared.bench_log import BENCH_LEVEL
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
@@ -86,10 +87,10 @@ class RequestHandler:
             envelope.type,
             correlation_id,
         )
-        logger.debug(
+        logger.opt(lazy=True).debug(
             "envelope payload correlation_id={} payload={}",
-            correlation_id,
-            envelope.payload,
+            lambda: correlation_id,
+            lambda: redact_payload(envelope.payload, passthrough={"request_key"}),
         )
 
         try:

@@ -47,6 +47,11 @@ upstream webhook_server {
     server ${WEBHOOK_HOST}:${WEBHOOK_PORT} resolve;
 }
 
+upstream storage_server {
+    zone storage_server 64k;
+    server ${STORAGE_HOST}:${STORAGE_PORT} resolve;
+}
+
 # Docker's embedded DNS. The upstreams above re-resolve through it (`resolve`), so a
 # recreated container's new IP is picked up without restarting nginx; the
 # /auditor/ location also resolves the auditor through it at request time.
@@ -270,6 +275,27 @@ server {
         include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    }
+
+    # Only a URL signed by django_app (AvatarStorage.url) gets through: no or a wrong
+    # signature is 403, an expired one 410. The bucket policy storage-init sets lets nginx
+    # read <bucket>/system/avatars/ without credentials inside the docker network.
+    # Query arguments are dropped after the check: S3 reads them as subresources and
+    # header overrides.
+    location /media/avatars/ {
+        secure_link $arg_s,$arg_e;
+        secure_link_md5 "$secure_link_expires$uri ${AVATAR_URL_SIGNING_SECRET}";
+        if ($secure_link = "") {
+            return 403;
+        }
+        if ($secure_link = "0") {
+            return 410;
+        }
+        set $args "";
+        proxy_pass http://storage_server/${STORAGE_BUCKET}/system/avatars/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
+        proxy_set_header Authorization "";
     }
 
     location /media/ {
