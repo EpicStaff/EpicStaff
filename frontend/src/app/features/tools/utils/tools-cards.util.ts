@@ -68,9 +68,8 @@ export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: T
     if (typeof sidebarLabelFilter === 'number' && !labels.includes(sidebarLabelFilter)) return false;
 
     // Favorite-only / Not-favorite-only.
-    if (filter.showFavorite && filter.showNotFavorite) return true;
-    if (filter.showFavorite && !adapter.favoriteOf(tool)) return false;
-    if (filter.showNotFavorite && adapter.favoriteOf(tool)) return false;
+    if (filter.showFavoriteOnly && !adapter.favoriteOf(tool)) return false;
+    if (filter.showNotFavoriteOnly && adapter.favoriteOf(tool)) return false;
 
     if (applySourceFilter && adapter.builtInOf && filter.sourceBuiltIn !== filter.sourceCustom) {
         const isBuiltIn = adapter.builtInOf(tool);

@@ -5,8 +5,8 @@ export type ToolSortOrder = 'default' | 'last_modified' | 'name_asc' | 'name_des
 export type UsageBucket = 'agent_surface' | 'shared_surface' | 'inline_surface';
 
 export interface ToolsFilterState {
-    showFavorite: boolean;
-    showNotFavorite: boolean;
+    showFavoriteOnly: boolean;
+    showNotFavoriteOnly: boolean;
     sourceBuiltIn: boolean;
     sourceCustom: boolean;
     usageBuckets: readonly UsageBucket[];
@@ -18,8 +18,8 @@ export interface ToolsFilterState {
 }
 
 export const EMPTY_TOOLS_FILTER: ToolsFilterState = {
-    showFavorite: false,
-    showNotFavorite: false,
+    showFavoriteOnly: false,
+    showNotFavoriteOnly: false,
     sourceBuiltIn: false,
     sourceCustom: false,
     usageBuckets: [],

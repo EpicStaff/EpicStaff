@@ -213,7 +213,7 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     public readonly activeFilterCount = computed<number>(() => {
         const f = this.viewState.filter();
         let n = 0;
-        if (f.showFavorite || f.showNotFavorite) n++;
+        if (f.showFavoriteOnly || f.showNotFavoriteOnly) n++;
         if (this.showSourceFilter() && f.sourceBuiltIn !== f.sourceCustom) n++;
         if (f.usageBuckets.length > 0 || f.unusedOnly) n++;
         if (this.includeExcludeIsSet()) n++;
@@ -306,8 +306,8 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         // nested inside the trigger button.
         event?.stopPropagation();
         this.viewState.patchFilter({
-            showFavorite: EMPTY_TOOLS_FILTER.showFavorite,
-            showNotFavorite: EMPTY_TOOLS_FILTER.showNotFavorite,
+            showFavoriteOnly: EMPTY_TOOLS_FILTER.showFavoriteOnly,
+            showNotFavoriteOnly: EMPTY_TOOLS_FILTER.showNotFavoriteOnly,
             sourceBuiltIn: EMPTY_TOOLS_FILTER.sourceBuiltIn,
             sourceCustom: EMPTY_TOOLS_FILTER.sourceCustom,
             usageBuckets: EMPTY_TOOLS_FILTER.usageBuckets,

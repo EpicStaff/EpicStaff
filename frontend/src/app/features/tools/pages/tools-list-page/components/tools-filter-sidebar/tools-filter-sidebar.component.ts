@@ -60,8 +60,8 @@ const CUSTOM_KEY_OPTIONS: { value: string; label: string }[] = [
 
 /** Keys from ToolsFilterState that the sidebar controls (excludes sortOrder). */
 type SidebarFilterKeys =
-    | 'showFavorite'
-    | 'showNotFavorite'
+    | 'showFavoriteOnly'
+    | 'showNotFavoriteOnly'
     | 'sourceBuiltIn'
     | 'sourceCustom'
     | 'usageBuckets'
@@ -74,8 +74,8 @@ type SidebarFilterState = Pick<ToolsFilterState, SidebarFilterKeys>;
 
 function snapshotSidebarFilter(filter: ToolsFilterState): SidebarFilterState {
     return {
-        showFavorite: filter.showFavorite,
-        showNotFavorite: filter.showNotFavorite,
+        showFavoriteOnly: filter.showFavoriteOnly,
+        showNotFavoriteOnly: filter.showNotFavoriteOnly,
         sourceBuiltIn: filter.sourceBuiltIn,
         sourceCustom: filter.sourceCustom,
         usageBuckets: [...filter.usageBuckets],
@@ -142,16 +142,15 @@ export class ToolsFilterSidebarComponent implements OnInit {
 
     protected readonly statusValue = computed(() => {
         const result: string[] = [];
-        if (this.pending().showFavorite) result.push('favorite');
-        if (this.pending().showNotFavorite) result.push('not_favorite');
+        if (this.pending().showFavoriteOnly) result.push('favorite');
+        if (this.pending().showNotFavoriteOnly) result.push('not_favorite');
         return result;
     });
 
     protected readonly statusSummary = computed(() => {
-        const result: string[] = [];
-        if (this.pending().showFavorite) result.push('Favorite');
-        if (this.pending().showNotFavorite) result.push('Not Favorite');
-        return result.join(', ');
+        if (this.pending().showFavoriteOnly) return 'Favorite';
+        if (this.pending().showNotFavoriteOnly) return 'Not Favorite';
+        return '';
     });
 
     protected readonly sourceValue = computed(() => {
@@ -162,10 +161,9 @@ export class ToolsFilterSidebarComponent implements OnInit {
     });
 
     protected readonly sourceSummary = computed(() => {
-        const parts: string[] = [];
-        if (this.pending().sourceBuiltIn) parts.push('Built In');
-        if (this.pending().sourceCustom) parts.push('Custom');
-        return parts.join(', ');
+        if (this.pending().sourceBuiltIn) return 'Built In';
+        if (this.pending().sourceCustom) return 'Custom';
+        return '';
     });
 
     protected readonly usageValue = computed(() => {
@@ -245,21 +243,53 @@ export class ToolsFilterSidebarComponent implements OnInit {
     }
 
     protected onStatusChange(values: string[]): void {
-        this.patchPending({
-            showFavorite: values.includes('favorite'),
-            showNotFavorite: values.includes('not_favorite'),
-        });
+        const wasFavorite = this.pending().showFavoriteOnly;
+        const isFavorite = values.includes('favorite');
+        const isNotFavorite = values.includes('not_favorite');
+
+        if (isFavorite && !wasFavorite) {
+            this.patchPending({
+                showFavoriteOnly: true,
+                showNotFavoriteOnly: false,
+            });
+        } else if (isNotFavorite && !this.pending().showNotFavoriteOnly) {
+            this.patchPending({
+                showFavoriteOnly: false,
+                showNotFavoriteOnly: true,
+            });
+        } else {
+            this.patchPending({
+                showFavoriteOnly: isFavorite,
+                showNotFavoriteOnly: isNotFavorite,
+            });
+        }
     }
 
     protected clearStatus(): void {
-        this.patchPending({ showFavorite: false, showNotFavorite: false });
+        this.patchPending({ showFavoriteOnly: false, showNotFavoriteOnly: false });
     }
 
     protected onSourceChange(values: string[]): void {
-        this.patchPending({
-            sourceBuiltIn: values.includes('built_in'),
-            sourceCustom: values.includes('custom'),
-        });
+        const wasBuilt = this.pending().sourceBuiltIn;
+        const isBuilt = values.includes('built_in');
+        const isNotBuilt = values.includes('custom');
+
+        if (isBuilt && !wasBuilt) {
+            this.patchPending({
+                sourceBuiltIn: true,
+                sourceCustom: false,
+            });
+        } else if (isNotBuilt && !this.pending().sourceCustom) {
+            this.patchPending({
+                sourceBuiltIn: false,
+                sourceCustom: true,
+            });
+        } else {
+            this.patchPending({
+                sourceBuiltIn: isBuilt,
+                sourceCustom: isNotBuilt,
+            });
+        }
     }
 
     protected clearSource(): void {

@@ -21,8 +21,8 @@ export interface ToolPresetBody {
 /** Snapshot the current filter state for persisting as a preset body. */
 export function buildPresetBody(state: ToolsFilterState): ToolPresetBody {
     return {
-        showFavoriteOnly: state.showFavorite,
-        showNotFavoriteOnly: state.showNotFavorite,
+        showFavoriteOnly: state.showFavoriteOnly,
+        showNotFavoriteOnly: state.showNotFavoriteOnly,
         sourceBuiltIn: state.sourceBuiltIn,
         sourceCustom: state.sourceCustom,
         usageBuckets: [...state.usageBuckets],
@@ -40,13 +40,14 @@ export function restorePresetState(body: Record<string, unknown>): ToolsFilterSt
 
     // Backend key names → frontend key names
     if ('showFavoriteOnly' in body && typeof body['showFavoriteOnly'] === 'boolean')
-        mapped.showFavorite = body['showFavoriteOnly'];
+        mapped.showFavoriteOnly = body['showFavoriteOnly'];
     if ('showNotFavoriteOnly' in body && typeof body['showNotFavoriteOnly'] === 'boolean')
-        mapped.showNotFavorite = body['showNotFavoriteOnly'];
+        mapped.showNotFavoriteOnly = body['showNotFavoriteOnly'];
     // Forward compat with old presets that used the frontend key names
-    if ('showFavorite' in body && typeof body['showFavorite'] === 'boolean') mapped.showFavorite = body['showFavorite'];
-    if ('showNotFavorite' in body && typeof body['showNotFavorite'] === 'boolean')
-        mapped.showNotFavorite = body['showNotFavorite'];
+    if ('showFavoriteOnly' in body && typeof body['showFavoriteOnly'] === 'boolean')
+        mapped.showFavoriteOnly = body['showFavoriteOnly'];
+    if ('showNotFavoriteOnly' in body && typeof body['showNotFavoriteOnly'] === 'boolean')
+        mapped.showNotFavoriteOnly = body['showNotFavoriteOnly'];
 
     if ('sourceBuiltIn' in body && typeof body['sourceBuiltIn'] === 'boolean')
         mapped.sourceBuiltIn = body['sourceBuiltIn'];

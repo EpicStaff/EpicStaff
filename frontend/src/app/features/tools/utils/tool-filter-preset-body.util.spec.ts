@@ -5,8 +5,8 @@ describe('buildPresetBody', () => {
     it('maps frontend state keys to backend key names', () => {
         const state: ToolsFilterState = {
             ...EMPTY_TOOLS_FILTER,
-            showFavorite: true,
-            showNotFavorite: false,
+            showFavoriteOnly: true,
+            showNotFavoriteOnly: false,
             sortOrder: 'name_asc',
         };
         const body = buildPresetBody(state);
@@ -29,15 +29,15 @@ describe('buildPresetBody', () => {
 describe('restorePresetState', () => {
     it('restores from backend key names (primary path)', () => {
         const result = restorePresetState({ showFavoriteOnly: true, showNotFavoriteOnly: false });
-        expect(result.showFavorite).toBe(true);
-        expect(result.showNotFavorite).toBe(false);
+        expect(result.showFavoriteOnly).toBe(true);
+        expect(result.showNotFavoriteOnly).toBe(false);
         expect(result.sortOrder).toBe('default');
         expect(result.customConditions).toEqual(EMPTY_TOOLS_FILTER.customConditions);
     });
 
     it('restores from frontend key names (forward compat)', () => {
-        const result = restorePresetState({ showFavorite: true });
-        expect(result.showFavorite).toBe(true);
+        const result = restorePresetState({ showFavoriteOnly: true });
+        expect(result.showFavoriteOnly).toBe(true);
     });
 
     it('returns exact defaults for an empty body', () => {
@@ -48,7 +48,7 @@ describe('restorePresetState', () => {
     it('round-trips through buildPresetBody', () => {
         const state: ToolsFilterState = {
             ...EMPTY_TOOLS_FILTER,
-            showFavorite: true,
+            showFavoriteOnly: true,
             sourceBuiltIn: true,
             sortOrder: 'name_asc',
             includedToolIds: [1, 2, 3],

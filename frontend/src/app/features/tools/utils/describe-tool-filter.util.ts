@@ -30,10 +30,10 @@ function describeConditionValue(condition: { op: string; value: string }): strin
 export function describeToolFilter(state: ToolsFilterState): FilterChip[] {
     const chips: FilterChip[] = [];
 
-    if (state.showFavorite) {
+    if (state.showFavoriteOnly) {
         chips.push({ label: 'Favorites', value: 'Only' });
     }
-    if (state.showNotFavorite) {
+    if (state.showNotFavoriteOnly) {
         chips.push({ label: 'Not Favorites', value: 'Only' });
     }
 

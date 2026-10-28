@@ -11,13 +11,13 @@ describe('describeToolFilter', () => {
         expect(describeToolFilter(EMPTY_TOOLS_FILTER)).toEqual([]);
     });
 
-    it('produces a Favorites chip when showFavorite is true', () => {
-        const chips = describeToolFilter(makeState({ showFavorite: true }));
+    it('produces a Favorites chip when showFavoriteOnly is true', () => {
+        const chips = describeToolFilter(makeState({ showFavoriteOnly: true }));
         expect(chips).toEqual([{ label: 'Favorites', value: 'Only' }]);
     });
 
-    it('produces a Not Favorites chip when showNotFavorite is true', () => {
-        const chips = describeToolFilter(makeState({ showNotFavorite: true }));
+    it('produces a Not Favorites chip when showNotFavoriteOnly is true', () => {
+        const chips = describeToolFilter(makeState({ showNotFavoriteOnly: true }));
         expect(chips).toEqual([{ label: 'Not Favorites', value: 'Only' }]);
     });
 
@@ -91,7 +91,7 @@ describe('describeToolFilter', () => {
     it('combines multiple active filters into multiple chips', () => {
         const chips = describeToolFilter(
             makeState({
-                showFavorite: true,
+                showFavoriteOnly: true,
                 sourceBuiltIn: true,
                 sortOrder: 'most_used',
             })
