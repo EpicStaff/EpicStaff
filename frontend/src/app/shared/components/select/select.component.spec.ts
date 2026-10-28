@@ -63,6 +63,23 @@ describe('SelectComponent', () => {
         expect(fixture.componentInstance.open()).toBe(true);
     });
 
+    it('shows what an option carries, and paints its status label', () => {
+        openPanel(
+            [{ name: 'api-service', value: 1, meta: 'fastapi, uvicorn +2', tip: 'Building', tipColor: 'var(--x)' }],
+            false
+        );
+
+        expect(document.querySelector('.selector__meta')!.textContent!.trim()).toBe('fastapi, uvicorn +2');
+        expect(document.querySelector('.selector__tip')!.getAttribute('style')).toContain('var(--x)');
+    });
+
+    it('leaves out both cells for an option that carries neither', () => {
+        openPanel([{ name: 'plain', value: 1 }], false);
+
+        expect(document.querySelector('.selector__meta')).toBeNull();
+        expect(document.querySelector('.selector__tip')).toBeNull();
+    });
+
     describe('grouping', () => {
         const ITEMS: SelectItem[] = [
             { name: 'None', value: null },

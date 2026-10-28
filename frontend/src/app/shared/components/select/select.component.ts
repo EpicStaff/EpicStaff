@@ -32,6 +32,11 @@ export interface SelectItem<T = unknown> {
     icon?: string;
     /** Shown, but not selectable: an option the user may not pick, such as a venv whose build failed. */
     disabled?: boolean;
+    /** Secondary text between the name and `tip`, muted and truncated: what the option carries,
+     *  such as the libraries a venv installs. */
+    meta?: string;
+    /** CSS color for `tip`, where the text carries a state of its own (a build still running). */
+    tipColor?: string;
     /** CSS color (e.g. `var(--success-color)`) of a dot shown before the name, in the trigger, options and readonly value. */
     dotColor?: string;
     /** app-svg-icon id for an optional trailing action button rendered at the end of the item row (e.g. edit-pencil). */

@@ -149,8 +149,15 @@
                                 <span class="selector__subtitle">{{ item.subtitle }}</span>
                             }
                         </div>
+                        @if (item.meta) {
+                            <span class="selector__meta">{{ item.meta }}</span>
+                        }
                         @if (item.tip) {
-                            <span class="selector__tip">{{ item.tip }}</span>
+                            <span
+                                class="selector__tip"
+                                [style.color]="item.tipColor"
+                                >{{ item.tip }}</span
+                            >
                         }
                     </div>
                 }
