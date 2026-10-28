@@ -12,6 +12,7 @@ import { VENV_STATUS_VIEWS, VenvStatus, VenvStatusView } from '../../models/venv
             <span
                 class="venv-status text-body-small-large"
                 [class]="view.cssClass"
+                [style.color]="view.color"
                 [matTooltip]="error() ?? ''"
                 [matTooltipDisabled]="!error()"
                 matTooltipPosition="above"

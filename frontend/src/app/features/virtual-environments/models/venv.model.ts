@@ -21,14 +21,32 @@ export interface VenvStatusView {
     label: string;
     icon: string;
     cssClass: string;
+    /** Foreground color, bound inline so the badge and the picker's label cannot drift apart.
+     *  The badge's stylesheet keeps the matching background. */
+    color: string;
 }
 
 /** How each status is shown, wherever it is shown: the card's badge and the picker's label
- *  read the same wording. `completed` has nothing to say, so it has no view. */
+ *  read the same wording and the same color. `completed` has nothing to say, so it has no view. */
 export const VENV_STATUS_VIEWS: Record<VenvStatus, VenvStatusView | null> = {
-    processing: { label: 'Building', icon: 'loader', cssClass: 'venv-status--processing' },
-    failed: { label: 'Failed', icon: 'alert-triangle', cssClass: 'venv-status--failed' },
-    declared: { label: 'Queued', icon: 'edit-pencil', cssClass: 'venv-status--declared' },
+    processing: {
+        label: 'Building',
+        icon: 'loader',
+        cssClass: 'venv-status--processing',
+        color: 'var(--color-status-info)',
+    },
+    failed: {
+        label: 'Failed',
+        icon: 'alert-triangle',
+        cssClass: 'venv-status--failed',
+        color: 'var(--color-status-error)',
+    },
+    declared: {
+        label: 'Queued',
+        icon: 'edit-pencil',
+        cssClass: 'venv-status--declared',
+        color: 'var(--color-ks-transparent-text-60)',
+    },
     completed: null,
 };
 
