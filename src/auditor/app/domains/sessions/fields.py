@@ -12,7 +12,7 @@ STATUS_VALUES = frozenset({"completed", "failed"})
 KNOWN_FIELDS: dict[str, FieldSpec] = {
     # main fields
     "id": FieldSpec(RANGE_OPS | SELECT_OPS),
-    "session_id": FieldSpec(SELECT_OPS | RANGE_OPS),
+    "session_id": FieldSpec(SELECT_OPS | RANGE_OPS, numeric=True),
     "session_message_id": FieldSpec(SELECT_OPS),
     "status": FieldSpec(SELECT_OPS, allowed_values=STATUS_VALUES),
     "kind": FieldSpec(SELECT_OPS),
