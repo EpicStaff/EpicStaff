@@ -21,14 +21,19 @@
         [formGroup]="form"
     >
         <div class="control">
-            <label class="label">
+            <label
+                class="label"
+                for="copy-role-name"
+            >
                 <span>Name<span class="required">*</span></span>
                 <app-help-tooltip
                     text="Name for the duplicated role. Must be unique within the target organization."
+                    ariaLabel="Name help"
                     position="right"
                 />
             </label>
             <app-custom-input
+                [id]="'copy-role-name'"
                 placeholder="Role name..."
                 formControlName="name"
             />
@@ -36,13 +41,14 @@
         </div>
 
         <div class="control">
-            <label class="label">
+            <div class="label">
                 <span>Assign to Organization</span>
                 <app-help-tooltip
                     text="Organization where the duplicated role will be created."
+                    ariaLabel="Assign to Organization help"
                     position="right"
                 />
-            </label>
+            </div>
             <app-select
                 placeholder="Select organization..."
                 [items]="orgOptions()"

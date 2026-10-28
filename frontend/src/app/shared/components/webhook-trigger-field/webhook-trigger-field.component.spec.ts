@@ -366,10 +366,13 @@ describe('WebhookTriggerFieldComponent', () => {
             expect(readonlyText(fixture, 'localhost_name')).toBe('local');
         });
 
-        it('leaves no input to type into', () => {
+        it('leaves no input to type into, only the help buttons that explain the fields', () => {
             const { fixture } = render(TELEGRAM_TRIGGER, { readonly: true });
+            const controls = Array.from(
+                (fixture.nativeElement as HTMLElement).querySelectorAll('input, button')
+            ).filter((control) => !control.closest('app-help-tooltip'));
 
-            expect((fixture.nativeElement as HTMLElement).querySelectorAll('input, button')).toHaveLength(0);
+            expect(controls).toHaveLength(0);
         });
 
         it('states the current secret without inviting a change', () => {

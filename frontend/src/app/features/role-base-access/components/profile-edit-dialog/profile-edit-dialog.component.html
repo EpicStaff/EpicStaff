@@ -22,14 +22,19 @@
         [formGroup]="form"
     >
         <div class="control">
-            <label class="label">
+            <label
+                class="label"
+                for="profile-edit-full-name"
+            >
                 Full Name<span class="required">*</span>
                 <app-help-tooltip
                     [text]="'Your display name shown across the platform.'"
+                    ariaLabel="Full Name help"
                     position="right"
                 />
             </label>
             <app-custom-input
+                [id]="'profile-edit-full-name'"
                 placeholder="Enter full name..."
                 formControlName="full_name"
             />
@@ -37,27 +42,33 @@
         </div>
 
         <div class="control">
-            <label class="label">
+            <label
+                class="label"
+                for="profile-edit-email"
+            >
                 Email
                 <app-help-tooltip
                     [text]="'Email address is read-only and cannot be changed here.'"
+                    ariaLabel="Email help"
                     position="right"
                 />
             </label>
             <app-custom-input
+                [id]="'profile-edit-email'"
                 placeholder="Enter email..."
                 formControlName="email"
             />
         </div>
 
         <div class="control top">
-            <label class="label">
+            <div class="label">
                 Picture
                 <app-help-tooltip
                     [text]="'Upload a profile photo. Supported formats: JPG, PNG.'"
+                    ariaLabel="Picture help"
                     position="right"
                 />
-            </label>
+            </div>
             <app-avatar-upload
                 [initialUrl]="data.avatarUrl"
                 (imageChange)="onAvatarChanged($event)"

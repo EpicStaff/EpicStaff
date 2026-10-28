@@ -120,7 +120,8 @@ function select(fixture: ComponentFixture<LlmReasoningEffortFieldComponent>): HT
 }
 
 function optionLabels(fixture: ComponentFixture<LlmReasoningEffortFieldComponent>): (string | undefined)[] {
-    select(fixture)!.querySelector<HTMLButtonElement>('button')!.click();
+    // The select trigger, not the help button its label row renders first.
+    select(fixture)!.querySelector<HTMLButtonElement>('.selector__btn')!.click();
     fixture.detectChanges();
     return Array.from(
         TestBed.inject(OverlayContainer).getContainerElement().querySelectorAll('.selector__option .selector__text')
