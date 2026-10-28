@@ -4,7 +4,7 @@ from django.core.management.base import BaseCommand
 class Command(BaseCommand):
     help = (
         "Permanently delete recycle-bin items older than DJANGO_RECYCLE_BIN_RETENTION_DAYS. "
-        "Safe to run while the web server's daily job runs."
+        "Safe to run while the scheduled purge runs."
     )
 
     def handle(self, *args, **options):
