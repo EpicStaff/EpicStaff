@@ -1,18 +1,25 @@
 <div
     class="flow-card"
-    [class.selected]="isSelected"
-    [class.select-mode]="selectMode"
+    [class.selected]="isSelected()"
+    [class.select-mode]="selectMode()"
     [class.has-subflows]="hasSubflows"
     [class.is-expanded]="isExpanded()"
-    (click)="selectMode ? onSelectionToggle($event) : onCardClick()"
+    [class.drag-over]="cardDrop.isDragOver()"
+    (click)="selectMode() ? onSelectionToggle($event) : onCardClick()"
 >
-    <div class="card-body">
-        @if (selectMode) {
+    <div
+        class="card-body"
+        appLabelDrop
+        [resourceCode]="ResourceCode.Flows"
+        (labelDropped)="onLabelDropped($event)"
+        #cardDrop="appLabelDrop"
+    >
+        @if (selectMode()) {
             <div class="selection-checkbox">
                 <app-checkbox
                     color="secondary"
-                    [checked]="isSelected"
-                    [disabled]="isDeleting"
+                    [checked]="isSelected()"
+                    [disabled]="isDeleting()"
                 ></app-checkbox>
             </div>
         }
@@ -20,14 +27,14 @@
             <div class="card-main">
                 <div class="card-info">
                     <div class="name-row">
-                        <span class="flow-name">{{ flow.name }}</span>
-                        <span class="flow-id">- ID {{ flow.id }}</span>
+                        <span class="flow-name">{{ flow().name }}</span>
+                        <span class="flow-id">- ID {{ flow().id }}</span>
                     </div>
                     <div
                         class="flow-description"
-                        [class.placeholder]="!flow.description"
+                        [class.placeholder]="!flow().description"
                     >
-                        {{ flow.description || 'No description provided.' }}
+                        {{ flow().description || 'No description provided.' }}
                     </div>
                 </div>
                 <div class="card-actions">
@@ -54,7 +61,7 @@
 
             <div class="card-footer">
                 <div class="label-chips">
-                    @for (labelId of flow.label_ids || []; track labelId) {
+                    @for (labelId of flow().label_ids || []; track labelId) {
                         @let labelName = getLabelName(labelId);
                         @if (labelName) {
                             <span
@@ -69,8 +76,8 @@
                     }
                 </div>
                 <div class="flow-date">
-                    <span class="date-part">{{ formatDateOnly(flow.updated_at) }}</span>
-                    <span class="time-part">, {{ formatTimeOnly(flow.updated_at) }}</span>
+                    <span class="date-part">{{ formatDateOnly(flow().updated_at) }}</span>
+                    <span class="time-part">, {{ formatTimeOnly(flow().updated_at) }}</span>
                 </div>
             </div>
         </div>
@@ -78,10 +85,15 @@
 
     @if (isExpanded() && hasSubflows) {
         <div class="subflows-list">
-            @for (subflow of flow.subflows; track subflow.id) {
+            @for (subflow of flow().subflows; track subflow.id) {
                 <div
                     class="subflow-item"
+                    appLabelDrop
+                    [resourceCode]="ResourceCode.Flows"
+                    [class.drag-over]="subflowDrop.isDragOver()"
                     (click)="$event.stopPropagation(); onSubflowClick(subflow)"
+                    (labelDropped)="onSubflowLabelDropped($event, subflow)"
+                    #subflowDrop="appLabelDrop"
                 >
                     <div class="subflow-main">
                         <div class="subflow-info">

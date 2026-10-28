@@ -1,7 +1,12 @@
 <div
     class="tool-card"
+    appLabelDrop
+    [resourceCode]="ResourceCode.Tools"
     [class.selected]="selected()"
+    [class.drag-over]="cardDrop.isDragOver()"
     (click)="onCardClick()"
+    (labelDropped)="onLabelDropped($event)"
+    #cardDrop="appLabelDrop"
 >
     <div class="card-body">
         <div class="card-top-row">
