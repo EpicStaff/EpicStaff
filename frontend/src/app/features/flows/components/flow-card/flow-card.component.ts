@@ -154,17 +154,7 @@ export class FlowCardComponent {
     onSubflowLabelDropped(labelId: number, subflow: SubflowLightDto): void {
         const currentIds = subflow.label_ids ?? [];
         if (currentIds.includes(labelId)) return;
-        const flowLike: GetGraphLightRequest = {
-            id: subflow.id,
-            uuid: '',
-            name: subflow.name,
-            description: subflow.description,
-            tags: subflow.tags,
-            label_ids: subflow.label_ids,
-            created_at: subflow.created_at,
-            updated_at: subflow.updated_at,
-        };
-        this.labelDrop.emit({ flow: flowLike, labelIds: [...currentIds, labelId] });
+        this.labelDrop.emit({ flow: this.toFlowLike(subflow), labelIds: [...currentIds, labelId] });
     }
 
     private emitAction(action: FlowAction, trigger: HTMLElement): void {

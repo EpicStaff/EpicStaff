@@ -1,20 +1,21 @@
 <div
     class="flow-card"
-    appLabelDrop
-    [resourceCode]="ResourceCode.Flows"
     [class.selected]="isSelected()"
     [class.select-mode]="selectMode()"
     [class.has-subflows]="hasSubflows"
     [class.is-expanded]="isExpanded()"
     [class.drag-over]="cardDrop.isDragOver()"
     (click)="selectMode() ? onSelectionToggle($event) : onCardClick()"
-    (labelDropped)="onLabelDropped($event)"
-    #cardDrop="appLabelDrop"
 >
-    <div class="card-body">
+    <div
+        class="card-body"
+        appLabelDrop
+        [resourceCode]="ResourceCode.Flows"
+        (labelDropped)="onLabelDropped($event)"
+        #cardDrop="appLabelDrop"
+    >
         @if (selectMode()) {
             <div class="selection-checkbox">
-<!--                    TODO check is deleting -->
                 <app-checkbox
                     color="secondary"
                     [checked]="isSelected()"
