@@ -1,3 +1,5 @@
+@use '../../../../../styles/tooltip';
+
 .venv-card {
     display: flex;
     flex-direction: column;
@@ -117,12 +119,11 @@
         grid-template-columns: auto auto;
         column-gap: 16px;
         row-gap: 4px;
+        @include tooltip.tooltip-surface;
         max-width: 360px;
-        padding: 8px 12px;
-        border-radius: 4px;
-        background-color: var(--mat-tooltip-container-color);
-        color: var(--mat-tooltip-supporting-text-color);
+        padding: var(--tooltip-padding);
         overflow-wrap: anywhere;
+        filter: var(--tooltip-shadow);
         // Never under the pointer, so it cannot steal the chip's hover.
         pointer-events: none;
     }

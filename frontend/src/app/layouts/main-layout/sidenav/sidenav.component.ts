@@ -21,6 +21,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink } from '@angular/router';
 import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
@@ -43,7 +44,6 @@ import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
 import { EasterEggTriggerService } from '../../../services/easter-egg-trigger.service';
 import { isMainSidenavExpanded } from '../main-sidenav-width';
-import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
     id: string;
@@ -53,7 +53,6 @@ interface NavItem {
     activePaths?: string[];
     icon?: string;
     label: string;
-    showTooltip: boolean;
     /** Function (not boolean) so signal reads inside happen at template-eval time.
      *  Ensures the sidebar refreshes when active-org permissions reload after an org switch. */
     isPermitted: () => boolean;
@@ -64,7 +63,6 @@ interface NavItem {
     /** The badge link's accessible name for a count. */
     badgeLabel?: (count: number) => string;
     action?: () => void;
-    customClass?: string;
     /** Draws a divider above the item, separating it from the group before it. */
     separatedAbove?: boolean;
 }
@@ -96,8 +94,8 @@ function isEditableTarget(element: Element): boolean {
 @Component({
     selector: 'app-left-sidebar',
     imports: [
-        TooltipComponent,
         RouterLink,
+        MatTooltip,
         OverlayModule,
         PortalModule,
         UserMenuComponent,
@@ -163,8 +161,6 @@ export class LeftSidebarComponent {
     });
     /** The apps that were new when the open list opened: they keep their tag while it stays open. */
     protected readonly newAppTags = signal<ReadonlySet<string>>(new Set());
-    /** The row under the pointer, for the tooltips of the rows drawn for apps. */
-    protected readonly hoveredRow = signal<string | null>(null);
 
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
@@ -175,11 +171,9 @@ export class LeftSidebarComponent {
     public recycleBinNavItem: NavItem;
     /** Shown next to the logo when expanded; names the logo image when collapsed. */
     protected readonly productName = 'EpicStaff';
-    public showProfileTooltip = false;
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
-    public showAccountTooltip = false;
     protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
     protected readonly backToEpicStaffLabel = BACK_TO_EPICSTAFF_LABEL;
     protected readonly manageAppsUrl = MANAGE_APPS_URL;
@@ -244,14 +238,12 @@ export class LeftSidebarComponent {
         routeLink: 'workspace',
         label: 'Workspace',
         isPermitted: () => this.activeMembership() !== null && this.permissionService.canAccessWorkspace(),
-        showTooltip: false,
     };
     private readonly profileNavItem: NavItem = {
         id: 'profile',
         routeLink: 'profile',
         label: 'Profile',
         isPermitted: () => this.user() !== null,
-        showTooltip: false,
     };
 
     constructor() {
@@ -264,7 +256,6 @@ export class LeftSidebarComponent {
                 icon: 'agents',
                 label: 'Agents',
                 isPermitted: () => this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
-                showTooltip: false,
             },
             {
                 id: 'tools',
@@ -273,7 +264,6 @@ export class LeftSidebarComponent {
                 icon: 'tools',
                 label: 'Tools',
                 isPermitted: () => this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
-                showTooltip: false,
             },
             {
                 id: 'venvs',
@@ -282,7 +272,6 @@ export class LeftSidebarComponent {
                 icon: 'venvs',
                 label: 'Virtual Environments',
                 isPermitted: () => this.permissionService.can(ResourceCode.Venvs, ActionCode.Read),
-                showTooltip: false,
             },
             {
                 id: 'files',
@@ -291,7 +280,6 @@ export class LeftSidebarComponent {
                 icon: 'sources',
                 label: 'Storage',
                 isPermitted: () => this.permissionService.resolveStorageTab() !== null,
-                showTooltip: false,
             },
             {
                 id: 'flows',
@@ -300,7 +288,6 @@ export class LeftSidebarComponent {
                 icon: 'flows',
                 label: 'Flows',
                 isPermitted: () => this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
-                showTooltip: false,
             },
             {
                 id: 'chats',
@@ -309,7 +296,6 @@ export class LeftSidebarComponent {
                 icon: 'chats',
                 isPermitted: () => true,
                 label: 'Chats',
-                showTooltip: false,
             },
             {
                 id: 'chat',
@@ -322,7 +308,6 @@ export class LeftSidebarComponent {
                 badge: () => this.chatInboxStream.waitingCount(),
                 badgeLink: '/chat-bindings/all',
                 badgeLabel: (count) => `Conversations inbox: ${count} waiting for a person`,
-                showTooltip: false,
             },
             {
                 id: 'audit',
@@ -333,7 +318,6 @@ export class LeftSidebarComponent {
                 isPermitted: () =>
                     this.configService.isAuditTrailEnabled &&
                     this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
-                showTooltip: false,
                 separatedAbove: true,
             },
         ];
@@ -346,8 +330,6 @@ export class LeftSidebarComponent {
             icon: 'settings',
             label: 'Settings',
             isPermitted: () => this.permissionService.canOpenConfigureModelsDialog(),
-            showTooltip: false,
-            customClass: 'settings-tooltip',
         });
 
         // Hidden when no bin tab is readable, the same rule as Files. No `icon`: that names a sprite icon,
@@ -359,7 +341,6 @@ export class LeftSidebarComponent {
             label: 'Recycle Bin',
             isPermitted: () =>
                 visibleRecycleBinTabs((resource, action) => this.permissionService.can(resource, action)).length > 0,
-            showTooltip: false,
         };
     }
 

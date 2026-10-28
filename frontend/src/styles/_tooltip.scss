@@ -1,0 +1,12 @@
+// The look every tooltip shares: matTooltip (styles/_material.scss) and the app's own overlays.
+// Only colour, text and corners. Padding (var(--tooltip-padding)), width, wrapping, overflow and the shadow
+// (filter: var(--tooltip-shadow), on the element that also holds the arrow) are set by each caller.
+// Emits no CSS, so a component stylesheet can @use it.
+@mixin tooltip-surface {
+    background-color: var(--tooltip-bg);
+    color: var(--tooltip-text);
+    border-radius: var(--tooltip-radius);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+}

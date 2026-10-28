@@ -73,7 +73,6 @@
                             class="surface-card__action surface-card__action--accent"
                             matTooltip="Open in Shared Surfaces"
                             matTooltipPosition="above"
-                            matTooltipClass="custom-tooltip"
                             (click)="onHeaderAction('openSource', $event)"
                         >
                             <app-svg-icon
@@ -87,7 +86,6 @@
                             class="surface-card__action surface-card__action--accent"
                             matTooltip="Detach from this place"
                             matTooltipPosition="above"
-                            matTooltipClass="custom-tooltip"
                             (click)="onDetachPlace($event)"
                         >
                             <app-svg-icon
@@ -104,7 +102,6 @@
                             class="surface-card__action surface-card__action--accent"
                             matTooltip="Delete surface"
                             matTooltipPosition="above"
-                            matTooltipClass="custom-tooltip"
                             (click)="onHeaderAction('delete', $event)"
                         >
                             <app-svg-icon
@@ -714,7 +711,6 @@
                                     appTooltipOnOverflow
                                     [matTooltip]="col.name"
                                     matTooltipPosition="above"
-                                    matTooltipClass="custom-tooltip"
                                     >{{ col.name }}</span
                                 >
                                 @if (collectionsWithoutRag().has(col.id)) {

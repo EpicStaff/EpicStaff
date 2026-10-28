@@ -197,139 +197,136 @@ $logo-padding-bottom: 0.75rem;
 
     .sidenav-nav-item {
         width: 100%;
+        position: relative;
+        display: flex;
+        justify-content: center;
 
-        .tooltip-wrapper {
-            position: relative;
+        // On the icon wrapper's top-right corner, 2px inside it.
+        .sidenav-badge {
+            @include count-badge.pill;
+            position: absolute;
+            top: 2px;
+            right: 2px;
+        }
+
+        // A sibling of the item's link (links cannot nest). Its 24px target (WCAG 2.5.8) sits on the icon box's
+        // top-right corner and reaches past it, clear of the icon itself; the pill inside looks like the others.
+        // Anchored to the row's left edge: $row-inset collapsed, $nav-padding-inline expanded.
+        .sidenav-badge-link {
+            position: absolute;
+            top: -4px;
+            left: calc(#{$row-inset} + #{$row-size} + 6px);
+
+            .sidenav.expanded & {
+                left: calc(#{$nav-padding-inline} + #{$row-size} + 6px);
+            }
+            transform: translateX(-100%);
+            z-index: 1;
             display: flex;
+            align-items: center;
             justify-content: center;
+            min-width: 24px;
+            height: 24px;
+            text-decoration: none;
+            border-radius: 12px;
 
-            // On the icon wrapper's top-right corner, 2px inside it.
             .sidenav-badge {
-                @include count-badge.pill;
-                position: absolute;
-                top: 2px;
-                right: 2px;
+                position: static;
             }
 
-            // A sibling of the item's link (links cannot nest). Its 24px target (WCAG 2.5.8) sits on the icon box's
-            // top-right corner and reaches past it, clear of the icon itself; the pill inside looks like the others.
-            // Anchored to the row's left edge: $row-inset collapsed, $nav-padding-inline expanded.
-            .sidenav-badge-link {
-                position: absolute;
-                top: -4px;
-                left: calc(#{$row-inset} + #{$row-size} + 6px);
+            &:focus-visible {
+                outline: 1px solid var(--accent-color);
+            }
+        }
 
-                .sidenav.expanded & {
-                    left: calc(#{$nav-padding-inline} + #{$row-size} + 6px);
-                }
-                transform: translateX(-100%);
-                z-index: 1;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                min-width: 24px;
-                height: 24px;
-                text-decoration: none;
-                border-radius: 12px;
+        // The size of the other nav icons (app-svg-icon size="1.25rem"): Tabler's glyph has the same square box.
+        .recycle-bin-icon,
+        .sidenav-font-icon {
+            font-size: 1.25rem;
+            line-height: 1;
+        }
 
-                .sidenav-badge {
-                    position: static;
-                }
+        // A row that opens a list (Apps, the app switcher) rather than a page: a button drawn like the links.
+        .sidenav-nav-button {
+            border: 0;
+            background-color: transparent;
+            font: inherit;
+            text-align: left;
+        }
 
-                &:focus-visible {
-                    outline: 1px solid var(--accent-color);
-                }
+        // The current app's name, framed: it opens the switcher rather than a page.
+        .sidenav-switcher {
+            box-shadow: inset 0 0 0 1px var(--color-border);
+        }
+
+        // Expanded rows end with what the row opens: a chevron, or the switcher's up-and-down arrows (a Tabler
+        // glyph, sized like the 16px sprite chevron).
+        .sidenav-row-trail {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: 2rem;
+            margin-left: auto;
+            font-size: 1rem;
+            line-height: 1;
+            color: var(--color-text-secondary);
+        }
+
+        // A new app is in the Apps list: a dot on the icon's top-right corner, ringed in the sidebar colour.
+        .sidenav-new-dot {
+            position: absolute;
+            top: 8px;
+            right: 7px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success-color);
+            box-shadow: 0 0 0 2px var(--color-sidenav-background);
+        }
+
+        .sidenav-nav-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-sm);
+            text-decoration: none;
+            color: var(--white);
+            cursor: pointer;
+            width: $row-size;
+            height: $row-size;
+            padding: 0;
+            border-radius: 0.5rem;
+            // Only colours animate: the row geometry changes with the sidebar width and must follow the pointer.
+            transition: background-color 0.2s ease-out;
+            margin: 0 auto;
+            position: relative;
+
+            &:hover {
+                background-color: var(--white-alpha-5);
+            }
+            &.active {
+                background-color: var(--purple-alpha-15);
             }
 
-            // The size of the other nav icons (app-svg-icon size="1.25rem"): Tabler's glyph has the same square box.
-            .recycle-bin-icon,
-            .sidenav-font-icon {
-                font-size: 1.25rem;
-                line-height: 1;
-            }
-
-            // A row that opens a list (Apps, the app switcher) rather than a page: a button drawn like the links.
-            .sidenav-nav-button {
-                border: 0;
-                background-color: transparent;
-                font: inherit;
-                text-align: left;
-            }
-
-            // The current app's name, framed: it opens the switcher rather than a page.
-            .sidenav-switcher {
-                box-shadow: inset 0 0 0 1px var(--color-border);
-            }
-
-            // Expanded rows end with what the row opens: a chevron, or the switcher's up-and-down arrows (a Tabler
-            // glyph, sized like the 16px sprite chevron).
-            .sidenav-row-trail {
+            .sidenav-link-icon {
+                position: relative;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 flex-shrink: 0;
-                width: 2rem;
-                margin-left: auto;
-                font-size: 1rem;
-                line-height: 1;
-                color: var(--color-text-secondary);
-            }
-
-            // A new app is in the Apps list: a dot on the icon's top-right corner, ringed in the sidebar colour.
-            .sidenav-new-dot {
-                position: absolute;
-                top: 8px;
-                right: 7px;
-                width: 8px;
-                height: 8px;
-                border-radius: 50%;
-                background-color: var(--success-color);
-                box-shadow: 0 0 0 2px var(--color-sidenav-background);
-            }
-
-            .sidenav-nav-link {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: var(--space-sm);
-                text-decoration: none;
-                color: var(--white);
-                cursor: pointer;
                 width: $row-size;
                 height: $row-size;
-                padding: 0;
-                border-radius: 0.5rem;
-                // Only colours animate: the row geometry changes with the sidebar width and must follow the pointer.
-                transition: background-color 0.2s ease-out;
-                margin: 0 auto;
-                position: relative;
-
-                &:hover {
-                    background-color: var(--white-alpha-5);
-                }
-                &.active {
-                    background-color: var(--purple-alpha-15);
-                }
-
-                .sidenav-link-icon {
-                    position: relative;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    flex-shrink: 0;
-                    width: $row-size;
-                    height: $row-size;
-                    color: var(--gray-400);
-                    transition: color 0.2s ease-in-out;
-                }
-                &:hover .sidenav-link-icon,
-                &:hover .sidenav-row-label {
-                    color: var(--gray-200);
-                }
-                &.active .sidenav-link-icon,
-                &.active .sidenav-row-label {
-                    color: var(--accent-color);
-                }
+                color: var(--gray-400);
+                transition: color 0.2s ease-in-out;
+            }
+            &:hover .sidenav-link-icon,
+            &:hover .sidenav-row-label {
+                color: var(--gray-200);
+            }
+            &.active .sidenav-link-icon,
+            &.active .sidenav-row-label {
+                color: var(--accent-color);
             }
         }
     }
@@ -396,12 +393,6 @@ $logo-padding-bottom: 0.75rem;
     transition: color 0.2s ease-in-out;
 }
 
-.user-avatar-wrapper {
-    position: relative;
-    display: flex;
-    justify-content: center;
-}
-
 .user-avatar-btn {
     display: flex;
     align-items: center;
@@ -463,7 +454,7 @@ app-user-menu {
 }
 
 // Expanded: rows stretch to the sidebar width (minus the inset) and show their labels left-aligned.
-// The account menu is positioned against its full-width wrapper, so it can span the expanded row.
+// The account menu is positioned against its full-width row, so it can span it when expanded.
 .sidenav.expanded {
     // The toggle takes its own place in the row, so the name never runs under it.
     .logo-container .app-logo {
@@ -474,7 +465,7 @@ app-user-menu {
         padding-inline: 0 var(--space-sm);
     }
 
-    .sidenav-nav-item .tooltip-wrapper .sidenav-nav-link,
+    .sidenav-nav-item .sidenav-nav-link,
     .user-avatar-btn {
         flex: 1 1 auto;
         min-width: 0;

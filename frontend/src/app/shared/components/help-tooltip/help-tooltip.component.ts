@@ -71,7 +71,7 @@ export class HelpTooltipComponent {
     /** Override `size` on one axis for a non-square icon; passed through to `app-svg-icon`. */
     readonly width = input<string>();
     readonly height = input<string>();
-    @Input() tooltipClass = 'custom-tooltip';
+    @Input() tooltipClass = '';
 
     get tooltipPosition(): TooltipPosition {
         if (this.position === 'top') {
