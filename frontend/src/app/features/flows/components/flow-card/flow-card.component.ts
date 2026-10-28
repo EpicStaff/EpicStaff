@@ -152,21 +152,15 @@ export class FlowCardComponent {
     }
 
     public onSubflowActionSelected({ action, trigger }: FlowMenuSelection, subflow: SubflowLightDto): void {
-        const flowLike: GetGraphLightRequest = {
-            id: subflow.id,
-            uuid: '',
-            name: subflow.name,
-            description: subflow.description,
-            tags: subflow.tags,
-            label_ids: subflow.label_ids,
-            created_at: subflow.created_at,
-            updated_at: subflow.updated_at,
-        };
-        this.action.emit({ action, flow: flowLike, trigger });
+        this.action.emit({ action, flow: this.toFlowLike(subflow), trigger });
     }
 
     public onSubflowClick(subflow: SubflowLightDto): void {
-        const flowLike: GetGraphLightRequest = {
+        this.cardClick.emit(this.toFlowLike(subflow));
+    }
+
+    private toFlowLike(subflow: SubflowLightDto): GetGraphLightRequest {
+        return {
             id: subflow.id,
             uuid: '',
             name: subflow.name,
@@ -175,7 +169,7 @@ export class FlowCardComponent {
             label_ids: subflow.label_ids,
             created_at: subflow.created_at,
             updated_at: subflow.updated_at,
+            save_version: subflow.save_version,
         };
-        this.cardClick.emit(flowLike);
     }
 }
