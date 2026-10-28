@@ -36,6 +36,12 @@ const USER: GetMeResponse = {
 
 const TOUR_LABELS = ['Intro', 'Guide', 'Tips'];
 
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
 /** Opens the menu the way the sidenav does: shown while open, and closing it removes it. */
 @Component({
     imports: [UserMenuComponent],
@@ -102,6 +108,8 @@ describe('UserMenuComponent tours', () => {
     }
 
     beforeEach(() => {
+        // jsdom has no ResizeObserver; the overflow tooltips on the user and organization labels need one.
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         isGuideAvailable = signal(false);
         testbed = setUpGuidedTourTestbed({
             tours: [

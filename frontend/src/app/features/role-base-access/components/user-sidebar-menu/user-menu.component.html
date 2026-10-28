@@ -5,8 +5,20 @@
             [avatarUrl]="user().avatar_url"
         />
         <div class="user-info">
-            <div class="user-name">{{ user().display_name || user().email }}</div>
-            <div class="user-email">{{ user().email }}</div>
+            <div
+                class="user-name"
+                appTooltipOnOverflow
+                [matTooltip]="user().display_name || user().email"
+            >
+                {{ user().display_name || user().email }}
+            </div>
+            <div
+                class="user-email"
+                appTooltipOnOverflow
+                [matTooltip]="user().email"
+            >
+                {{ user().email }}
+            </div>
         </div>
     </section>
 
@@ -22,8 +34,20 @@
                 >
                     <app-org-avatar [name]="org.organization.name" />
                     <div class="org-info">
-                        <div class="org-name text-body-small">{{ org.organization.name }}</div>
-                        <div class="org-role">{{ org.role.name }}</div>
+                        <div
+                            class="org-name text-body-small"
+                            appTooltipOnOverflow
+                            [matTooltip]="org.organization.name"
+                        >
+                            {{ org.organization.name }}
+                        </div>
+                        <div
+                            class="org-role"
+                            appTooltipOnOverflow
+                            [matTooltip]="org.role.name"
+                        >
+                            {{ org.role.name }}
+                        </div>
                     </div>
                 </li>
             }
