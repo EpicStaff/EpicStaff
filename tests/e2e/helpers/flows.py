@@ -38,11 +38,14 @@ class FlowRun:
 
 
 def runtime_node_name(node: dict) -> str:
-    """The name a node's session messages carry: `"<node_name> #<node id>"`.
+    """The name a node's session messages carry: `"<node_name> #<node_number> #<node id>"`.
 
-    The session manager builds it so two nodes with the same name stay distinguishable.
+    Mirrors Django's `utils.graph_utils.runtime_node_name`: the graph-scoped number is
+    left out for unnumbered nodes, and the global id keeps same-named nodes apart.
     """
-    return f"{node['node_name']} #{node['id']}"
+    node_number = node.get("node_number")
+    label = node["node_name"] if node_number is None else f"{node['node_name']} #{node_number}"
+    return f"{label} #{node['id']}"
 
 
 def runtime_name_of(flow: CreatedFlow, node_list: str) -> str:
