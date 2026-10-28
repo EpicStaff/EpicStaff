@@ -48,7 +48,7 @@ Keep your coding agent. It writes tools, flows, and routing rules brilliantly â€
     
 ## Visual Agent Orchestrator in Action
 
-![Watch the EpicStaff Demo](https://github.com/EpicStaff/EpicStaff-resources/blob/main/how_to_create_flow.gif?raw=true)
+![Watch the EpicStaff Demo](https://github.com/user-attachments/assets/1b4659da-a79a-4da7-ab33-745702befd75)
 </div>
     
 ---
