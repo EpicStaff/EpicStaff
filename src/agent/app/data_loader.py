@@ -14,10 +14,15 @@ import json
 
 import redis.asyncio as aioredis
 from loguru import logger
+from pydantic import ValidationError
 from redis.exceptions import RedisError
 
 from app.exceptions import DataLoadError
-from app.logging_utils import redact_payload
+from app.logging_utils import (
+    format_exception_for_log,
+    redact_payload,
+    summarize_validation_error,
+)
 from shared.models.agent_service import AgentRequest
 from shared.redis_streams import StreamEnvelope
 
@@ -174,6 +179,16 @@ class DataLoader:
                 **data,
             )
         except Exception as error:
+            error_details = (
+                f"validation={summarize_validation_error(error)}"
+                if isinstance(error, ValidationError)
+                else f"error={format_exception_for_log(error)}"
+            )
+            logger.error(
+                "failed to parse AgentRequest key={} {}",
+                request_key,
+                error_details,
+            )
             raise DataLoadError(
                 f"Failed to parse AgentRequest from key '{request_key}': {error}"
             ) from error
@@ -199,7 +214,11 @@ class DataLoader:
         try:
             return not await self._client.exists(request_key)
         except RedisError as error:
-            logger.warning("withdrawal check failed key={}, continuing: {}", request_key, error)
+            logger.warning(
+                "withdrawal check failed key={}, continuing: {}",
+                request_key,
+                format_exception_for_log(error),
+            )
             return False
 
     def _extract_request_key(self, envelope: StreamEnvelope) -> str:

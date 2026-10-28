@@ -738,6 +738,27 @@ async def test_llm_raises_returns_llm_error_no_on_error():
     assert len(error_events) == 0
 
 
+async def test_llm_error_logs_the_exception_class_without_its_message():
+    """The llm_error log line carries no raw exception text; LoopResult.error still does."""
+    secret_marker = "LLM_CRASH_SECRET_13579"
+    raw_error_text = f"provider rejected sk-live-{secret_marker}"
+    emitter = RecordingEmitter()
+    context = make_context()
+    tools = StubToolRegistry({})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient([], chat_raises=RuntimeError(raw_error_text))
+
+    with capture_logs_at("DEBUG") as messages:
+        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    error_line = log_line_starting_with(messages, "loop llm_error")
+    assert "correlation_id=test-corr" in error_line
+    assert "RuntimeError" in error_line
+    assert "<redacted" in error_line
+    assert secret_marker not in "\n".join(messages)
+    assert result.error == raw_error_text
+
+
 async def test_timeout_fires_mid_execution():
     """Wall-clock limit fires during tool execution → stop_reason='timeout', on_error NOT called."""
     emitter = RecordingEmitter()

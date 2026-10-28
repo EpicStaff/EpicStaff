@@ -6,6 +6,7 @@ import settings
 from loguru import logger
 
 from app.knowledge.events import KnowledgeEventSink
+from app.logging_utils import format_exception_for_log
 from shared.knowledge.client import KnowledgeClient
 from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import ToolResult
@@ -32,7 +33,7 @@ async def _notify_sink(
         logger.warning(
             "knowledge search sink failed rag_id={} error={}",
             target.rag_id,
-            exc,
+            format_exception_for_log(exc),
         )
 
 
