@@ -24,7 +24,7 @@
                 class="segmented__option"
                 [class.segmented__option--active]="value() === option.value"
                 [disabled]="isDisabled()"
-                [title]="option.tooltip ?? ''"
+                [matTooltip]="option.tooltip ?? ''"
                 (click)="select(option)"
             >
                 @if (option.icon) {
@@ -50,7 +50,7 @@
                 class="item"
                 [style.width]="`calc(100% / ${count})`"
                 [class.active]="option.value === value()"
-                [title]="option.tooltip ?? ''"
+                [matTooltip]="option.tooltip ?? ''"
                 (click)="select(option)"
             >
                 @if (option.icon) {

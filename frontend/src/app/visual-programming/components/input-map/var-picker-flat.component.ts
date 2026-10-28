@@ -9,6 +9,7 @@ import {
     signal,
     viewChildren,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { isPathUnder } from '../../core/helpers/variable-path.util';
 
@@ -26,7 +27,7 @@ let nextPickerId = 0;
 
 @Component({
     selector: 'app-var-picker-flat',
-    imports: [],
+    imports: [MatTooltipModule],
     template: `
         <div class="vpf-container">
             <!-- mousedown keeps focus in the host's input, so its blur does not close the list before a click lands. -->
@@ -47,7 +48,8 @@ let nextPickerId = 0;
                             class="vpf-item"
                             role="option"
                             [id]="optionId($index)"
-                            [title]="item.fullPath"
+                            [matTooltip]="item.fullPath"
+                            matTooltipPosition="right"
                             [style.padding-left.px]="indentPx(item.depth)"
                             [disabled]="item.disabled"
                             [class.vpf-item--highlighted]="$index === highlightedIndex()"

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 
 import { AuditEnumOption } from '../../models/audit-filter.models';
@@ -6,7 +7,7 @@ import { AuditEnumOption } from '../../models/audit-filter.models';
 @Component({
     selector: 'app-audit-checkbox-enum',
     standalone: true,
-    imports: [CheckboxComponent, AppSvgIconComponent],
+    imports: [CheckboxComponent, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './audit-checkbox-enum.component.html',
     styleUrls: ['./audit-checkbox-enum.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

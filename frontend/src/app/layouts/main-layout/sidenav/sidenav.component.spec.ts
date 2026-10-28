@@ -3,7 +3,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { Component, signal, WritableSignal } from '@angular/core';
+import { Component, getDebugNode, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
@@ -24,6 +24,12 @@ import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
 import { LeftSidebarComponent } from './sidenav.component';
+
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
 
 const COLLAPSED_WIDTH = 60;
 const EXPANDED_WIDTH = 240;
@@ -85,6 +91,8 @@ describe('LeftSidebarComponent', () => {
     let isSuperadmin: boolean;
 
     beforeEach(() => {
+        // jsdom has no ResizeObserver; the overflow tooltips on the account labels need one.
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         activeOrgId = signal<number | null>(1);
         availablePlugins = signal<AvailablePlugin[]>([]);
         loadedOrgId = signal<number | null>(null);
@@ -164,6 +172,10 @@ describe('LeftSidebarComponent', () => {
 
     function accountRow(): HTMLElement {
         return element.querySelector<HTMLElement>('.user-avatar-btn')!;
+    }
+
+    function tooltipOf(label: Element): MatTooltip {
+        return getDebugNode(label)!.injector.get(MatTooltip);
     }
 
     function logoName(): HTMLElement | null {
@@ -297,11 +309,11 @@ describe('LeftSidebarComponent', () => {
             expect(tooltipTexts()).not.toContain('Account');
         });
 
-        it('shows the active organization and the role in it on the account row, the full name as a title', () => {
+        it('shows the active organization and the role in it on the account row, the full name in a tooltip', () => {
             const orgLabel = accountRow().querySelector('.sidenav-row-label')!;
 
             expect(orgLabel.textContent!.trim()).toBe(ORG_NAME);
-            expect(orgLabel.getAttribute('title')).toBe(ORG_NAME);
+            expect(tooltipOf(orgLabel).message).toBe(ORG_NAME);
             expect(accountRow().querySelector('.account-role')!.textContent!.trim()).toBe('Admin');
         });
 
@@ -311,7 +323,7 @@ describe('LeftSidebarComponent', () => {
 
             const userLabel = accountRow().querySelector('.sidenav-row-label')!;
             expect(userLabel.textContent!.trim()).toBe(DISPLAY_NAME);
-            expect(userLabel.getAttribute('title')).toBe(DISPLAY_NAME);
+            expect(tooltipOf(userLabel).message).toBe(DISPLAY_NAME);
         });
 
         it.each([
@@ -726,6 +738,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
     let availablePlugins: WritableSignal<AvailablePlugin[]>;
 
     beforeEach(() => {
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         hiddenResources = new Set();
         leaveFlowAllowed = true;
         workspaceAllowed = true;

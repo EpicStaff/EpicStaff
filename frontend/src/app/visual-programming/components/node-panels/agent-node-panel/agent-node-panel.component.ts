@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ColumnResizeDividerComponent,
@@ -99,6 +100,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ColumnResizeDividerComponent,
         InputsYouCanUseComponent,
         IfFlowEditableDirective,
+        MatTooltipModule,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],

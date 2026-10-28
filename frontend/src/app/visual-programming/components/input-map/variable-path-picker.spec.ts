@@ -1,5 +1,6 @@
-import { Component, signal } from '@angular/core';
+import { Component, getDebugNode, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { PickerItem } from './var-picker-flat.component';
 import {
@@ -100,12 +101,14 @@ describe('VariablePathPicker', () => {
     let host: RowsHostComponent;
 
     const input = (row: number): HTMLInputElement => fixture.nativeElement.querySelectorAll('.row-value')[row];
+    // A row's full variable path, shown in its tooltip.
+    const fullPath = (item: Element): string => getDebugNode(item)!.injector.get(MatTooltip).message;
     const listed = (): string[] =>
-        Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), (item) => item.title);
+        Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), fullPath);
     const highlighted = (): string[] =>
-        Array.from(document.querySelectorAll<HTMLElement>('.vpf-item--highlighted'), (item) => item.title);
+        Array.from(document.querySelectorAll<HTMLElement>('.vpf-item--highlighted'), fullPath);
     const disabled = (): string[] =>
-        Array.from(document.querySelectorAll<HTMLButtonElement>('.vpf-item:disabled'), (item) => item.title);
+        Array.from(document.querySelectorAll<HTMLButtonElement>('.vpf-item:disabled'), fullPath);
     const press = (row: number, key: string, init: KeyboardEventInit = {}): KeyboardEvent => {
         const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
         input(row).dispatchEvent(event);
@@ -526,7 +529,7 @@ describe('VariablePathPicker', () => {
             press(0, 'ArrowDown');
             press(0, 'ArrowDown');
             const active = document.getElementById(input(0).getAttribute('aria-activedescendant')!);
-            expect(active?.title).toBe('variables.user.id');
+            expect(fullPath(active!)).toBe('variables.user.id');
             expect(active?.getAttribute('aria-selected')).toBe('true');
 
             // Each picker has its own ids.
@@ -581,9 +584,7 @@ describe('VariablePathPicker', () => {
 
         expect(document.querySelector('app-var-picker-flat input')).toBeNull();
         type(0, 'variables.pl');
-        expect(Array.from(document.querySelectorAll<HTMLElement>('.vpf-item'), (item) => item.title)).toEqual([
-            'variables.plan',
-        ]);
+        expect(Array.from(document.querySelectorAll<HTMLElement>('.vpf-item'), fullPath)).toEqual(['variables.plan']);
     });
 
     it('closes when focus leaves the input, e.g. on Tab, but not for one of its rows or a click on a row', () => {

@@ -102,7 +102,11 @@ describe('WebhookTriggersSectionComponent "View Details"', () => {
         const { fixture } = render(true);
         const actions = (fixture.nativeElement as HTMLElement).querySelectorAll('.trigger-card__action');
 
-        expect(Array.from(actions, (action) => action.getAttribute('title'))).toEqual(['More', 'Edit', 'Delete']);
+        expect(Array.from(actions, (action) => action.getAttribute('aria-label'))).toEqual([
+            'More actions',
+            'Edit',
+            'Delete',
+        ]);
     });
 
     it('offers "View Details" to a user who can only read webhook triggers', () => {
@@ -214,7 +218,7 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
     afterEach(() => TestBed.inject(HttpTestingController).verify());
 
     function editButton(fixture: ComponentFixture<WebhookTriggersSectionComponent>): HTMLButtonElement {
-        return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[title="Edit"]')!;
+        return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[aria-label="Edit"]')!;
     }
 
     function pressEdit(fixture: ComponentFixture<WebhookTriggersSectionComponent>): void {

@@ -25,6 +25,7 @@ import {
     ValidatorFn,
     Validators,
 } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     CustomInputComponent,
@@ -37,6 +38,7 @@ import {
     TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, KEY_VALUE_MODE_COLORS, ResourceCode } from '@shared/models';
 import { formatNodeLabel } from '@shared/utils';
 import {
@@ -169,6 +171,8 @@ interface EntryFormValue {
         AppSvgIconComponent,
         TooltipComponent,
         NgTemplateOutlet,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './key-value-node-panel.component.html',
     styleUrls: ['./key-value-node-panel.component.scss'],

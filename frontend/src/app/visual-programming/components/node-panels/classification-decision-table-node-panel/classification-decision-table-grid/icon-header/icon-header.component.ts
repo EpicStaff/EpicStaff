@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
@@ -13,11 +14,11 @@ export interface IconHeaderParams extends IHeaderParams {
 
 @Component({
     selector: 'app-icon-header',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     template: `
         <div
             class="icon-header"
-            [title]="tooltip"
+            [matTooltip]="tooltip"
         >
             @if (label) {
                 <span class="icon-header-label">{{ label }}</span>

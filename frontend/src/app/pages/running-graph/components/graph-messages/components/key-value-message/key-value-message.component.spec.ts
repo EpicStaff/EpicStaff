@@ -1,4 +1,6 @@
+import { getDebugNode } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { CopyButtonComponent } from '@shared/components';
 
@@ -72,6 +74,19 @@ function mappings(element: HTMLElement): string[] {
 }
 
 describe('KeyValueMessageComponent', () => {
+    // jsdom has no ResizeObserver; the title's overflow tooltip needs one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => vi.unstubAllGlobals());
+
     it('summarises a read with found and not-found counts', () => {
         const element = render({
             mode: 'read',
@@ -521,7 +536,7 @@ describe('KeyValueMessageComponent', () => {
         const title = element.querySelector('.title') as HTMLElement;
         const style = getComputedStyle(title);
 
-        expect(title.getAttribute('title')).toBe(longName);
+        expect(getDebugNode(title)!.injector.get(MatTooltip).message).toBe(longName);
         expect(text(element, '.title .table-name')).toBe(longName);
         expect(chips(element)).toEqual([{ label: '0 found', neutral: false }]);
         expect([style.whiteSpace, style.overflow, style.textOverflow]).toEqual(['nowrap', 'hidden', 'ellipsis']);

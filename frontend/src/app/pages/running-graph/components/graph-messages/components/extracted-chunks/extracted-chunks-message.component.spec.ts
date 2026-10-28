@@ -40,6 +40,19 @@ function texts(element: HTMLElement, selector: string): string[] {
 }
 
 describe('ExtractedChunksMessageComponent', () => {
+    // jsdom has no ResizeObserver; the chunk source's overflow tooltip needs one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => vi.unstubAllGlobals());
+
     it('shows tokens and cost when token usage is present', () => {
         const element = render({ token_usage: { total_tokens: 1234, total_cost_usd: 0.5 } });
         expect(texts(element, '.usage')).toEqual(['≈ 1,234 tokens · $0.50']);

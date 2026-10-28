@@ -60,7 +60,8 @@
                                 <span
                                     class="dropdown-trigger__label"
                                     [class.dropdown-trigger__label--placeholder]="!selectedTableName()"
-                                    [attr.title]="selectedTableName()"
+                                    appTooltipOnOverflow
+                                    [matTooltip]="selectedTableName() ?? ''"
                                 >
                                     {{ tableTriggerLabel() }}
                                 </span>
@@ -193,7 +194,8 @@
                                 <button
                                     type="button"
                                     class="remove-entry"
-                                    title="Remove"
+                                    aria-label="Remove"
+                                    matTooltip="Remove"
                                     [disabled]="configurationLocked()"
                                     (click)="removeEntry(i)"
                                 >

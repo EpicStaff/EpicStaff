@@ -21,7 +21,8 @@
             <button
                 #kebabOrigin
                 class="header-btn"
-                title="Menu"
+                aria-label="Menu"
+                matTooltip="Menu"
                 (click)="onKebabClick()"
             >
                 <app-svg-icon
@@ -33,7 +34,8 @@
             @if (mode() === 'floating') {
                 <button
                     class="header-btn"
-                    [title]="isFullHeight() ? 'Restore height' : 'Full height'"
+                    [attr.aria-label]="isFullHeight() ? 'Restore height' : 'Full height'"
+                    [matTooltip]="isFullHeight() ? 'Restore height' : 'Full height'"
                     (click)="onExpandClick()"
                 >
                     <app-svg-icon
@@ -45,7 +47,8 @@
 
             <button
                 class="header-btn"
-                [title]="mode() === 'docked' ? 'Float' : 'Dock'"
+                [attr.aria-label]="mode() === 'docked' ? 'Float' : 'Dock'"
+                [matTooltip]="mode() === 'docked' ? 'Float' : 'Dock'"
                 (click)="onToggleMode()"
             >
                 <app-svg-icon
@@ -56,7 +59,8 @@
 
             <button
                 class="header-btn"
-                title="Minimize"
+                aria-label="Minimize"
+                matTooltip="Minimize"
                 (click)="close()"
             >
                 <app-svg-icon
@@ -172,7 +176,7 @@
                                     class="copy-btn"
                                     [class.copy-btn--copied]="copiedMessageIndex() === $index"
                                     (click)="copyAssistantMessage(message, $index)"
-                                    title="Copy message"
+                                    matTooltip="Copy message"
                                     aria-label="Copy message"
                                 >
                                     @if (copiedMessageIndex() === $index) {
@@ -257,7 +261,7 @@
                                 type="button"
                                 class="input-area__send-btn input-area__send-btn--stop"
                                 (click)="assistantService.cancelStream()"
-                                title="Stop generating"
+                                matTooltip="Stop generating"
                                 aria-label="Stop generating"
                             >
                                 <app-svg-icon
@@ -270,7 +274,8 @@
                                 class="input-area__send-btn"
                                 [disabled]="sendDisabled()"
                                 (click)="sendMessage()"
-                                title="Send (Enter)"
+                                aria-label="Send"
+                                matTooltip="Send (Enter)"
                             >
                                 <app-svg-icon
                                     icon="send"

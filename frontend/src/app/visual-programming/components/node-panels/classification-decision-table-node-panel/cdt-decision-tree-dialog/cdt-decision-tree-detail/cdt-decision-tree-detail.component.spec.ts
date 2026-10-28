@@ -67,6 +67,18 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
+/**
+ * The observer the window's geometry runs on — the one watching the window body.
+ * The title's overflow tooltip brings an observer of its own; it is not this one.
+ */
+function geometryObserver(body: HTMLElement): FakeResizeObserver {
+    const watchers = FakeResizeObserver.instances.filter((observer) =>
+        observer.observed.some(({ target }) => target === body)
+    );
+    expect(watchers).toHaveLength(1);
+    return watchers[0];
+}
+
 describe('CdtDecisionTreeDetailComponent scroll reset', () => {
     let fixture: ComponentFixture<CdtDecisionTreeDetailComponent>;
     let body: HTMLElement;
@@ -147,11 +159,10 @@ describe('CdtDecisionTreeDetailComponent code block geometry', () => {
         expect(body.classList).toContain('cdt-tree-detail__body--at-end');
     });
 
-    it("watches the window, the explanation and the code block's host for size changes", () => {
+    it("watches the window, the explanation and the code block's host with one observer", () => {
         const element = fixture.nativeElement as HTMLElement;
 
-        expect(FakeResizeObserver.instances).toHaveLength(1);
-        expect(FakeResizeObserver.instances[0].observed).toEqual([
+        expect(geometryObserver(body).observed).toEqual([
             { target: body, options: undefined },
             { target: element.querySelector('.cdt-tree-detail__section'), options: undefined },
             { target: element.querySelector('app-cdt-decision-tree-code'), options: { box: 'border-box' } },
@@ -198,7 +209,7 @@ describe('CdtDecisionTreeDetailComponent code block geometry', () => {
             // The code section reopening: the host's top padding pushes the block down.
             stubTop(code, 196);
 
-            FakeResizeObserver.instances[0].trigger();
+            geometryObserver(body).trigger();
 
             // 100 + 600 - 24 - 196
             expect(body.style.getPropertyValue('--cdt-code-block-height')).toBe('480px');
@@ -207,11 +218,12 @@ describe('CdtDecisionTreeDetailComponent code block geometry', () => {
 
     it('lets go of the listener and the observer when destroyed', () => {
         const removeEventListener = vi.spyOn(body, 'removeEventListener');
+        const observer = geometryObserver(body);
 
         fixture.destroy();
 
         expect(removeEventListener).toHaveBeenCalledWith('scroll', expect.any(Function));
-        expect(FakeResizeObserver.instances[0].disconnected).toBe(true);
+        expect(observer.disconnected).toBe(true);
     });
 });
 

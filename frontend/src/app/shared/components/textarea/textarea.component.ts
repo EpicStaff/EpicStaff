@@ -9,12 +9,13 @@ import {
     ViewChild,
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-textarea',
-    imports: [TooltipComponent],
+    imports: [TooltipComponent, MatTooltipModule],
     templateUrl: './textarea.component.html',
     styleUrls: ['./textarea.component.scss'],
     providers: [

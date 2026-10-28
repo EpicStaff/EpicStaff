@@ -138,6 +138,16 @@ function hintText(fixture: ComponentFixture<LlmReasoningEffortFieldComponent>): 
     return (fixture.nativeElement as HTMLElement).querySelector('app-hint-message')?.textContent ?? '';
 }
 
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('LlmReasoningEffortFieldComponent', () => {
     it('stays hidden and submits null for a model without reasoning support', async () => {
         const { fixture } = await render(PLAIN_MODEL_ID);

@@ -28,7 +28,8 @@
             @if (summary()) {
                 <span
                     class="filter-group__summary"
-                    [title]="summary()"
+                    appTooltipOnOverflow
+                    [matTooltip]="summary()"
                     >{{ summary() }}</span
                 >
             }

@@ -3,6 +3,7 @@ import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AuthorshipDetailsDialogService,
     ButtonComponent,
@@ -36,6 +37,7 @@ import {
         CdkMenuTrigger,
         CdkMenu,
         CdkMenuItem,
+        MatTooltipModule,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

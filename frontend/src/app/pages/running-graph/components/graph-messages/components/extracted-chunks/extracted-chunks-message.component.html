@@ -113,7 +113,8 @@
                                 @if (chunk.source || ragKind === 'naive') {
                                     <div
                                         class="chunk-source"
-                                        [title]="chunk.source || 'Unknown source'"
+                                        appTooltipOnOverflow
+                                        [matTooltip]="chunk.source || 'Unknown source'"
                                     >
                                         {{ chunk.source || 'Unknown source' }}
                                     </div>

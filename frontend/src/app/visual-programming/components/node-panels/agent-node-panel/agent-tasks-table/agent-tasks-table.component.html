@@ -15,7 +15,8 @@
                         <button
                             type="button"
                             class="att-clear-all"
-                            title="Clear all tasks"
+                            aria-label="Clear all tasks"
+                            matTooltip="Clear all tasks"
                             (click)="clearAll()"
                         >
                             <app-svg-icon
@@ -85,7 +86,7 @@
                                 class="att-expand-icon"
                                 icon="editor-expand"
                                 size="0.875rem"
-                                title="Expand"
+                                matTooltip="Expand"
                                 (click)="onExpandCell(i, 'instructions', $event)"
                             />
                         </div>
@@ -107,7 +108,7 @@
                                 class="att-expand-icon"
                                 icon="editor-expand"
                                 size="0.875rem"
-                                title="Expand"
+                                matTooltip="Expand"
                                 (click)="onExpandCell(i, 'schema', $event)"
                             />
                         </div>
@@ -138,7 +139,8 @@
                                 <button
                                     type="button"
                                     class="att-remove-btn"
-                                    title="Remove task"
+                                    aria-label="Remove task"
+                                    matTooltip="Remove task"
                                     (click)="removeTask(i)"
                                 >
                                     <app-svg-icon

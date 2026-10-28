@@ -1,7 +1,9 @@
 import { PercentPipe, TitleCasePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CopyButtonComponent } from '@shared/components';
 import { RAG_TYPE_LABELS } from '@shared/constants';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { formatSmallCostUsd, formatTokens, toFiniteNumber } from '@shared/utils';
 
 import {
@@ -14,7 +16,14 @@ import {
 
 @Component({
     selector: 'app-extracted-chunks-message',
-    imports: [PercentPipe, TitleCasePipe, AppSvgIconComponent, CopyButtonComponent],
+    imports: [
+        PercentPipe,
+        TitleCasePipe,
+        AppSvgIconComponent,
+        CopyButtonComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './extracted-chunks-message.component.html',
     styleUrls: ['./extracted-chunks-message.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -113,7 +113,8 @@
             <button
                 class="panel-toggle-btn"
                 (click)="togglePanel(); $event.stopPropagation()"
-                [title]="isPanelOpen() ? 'Close panel' : 'Open panel'"
+                [attr.aria-label]="isPanelOpen() ? 'Close panel' : 'Open panel'"
+                [matTooltip]="isPanelOpen() ? 'Close panel' : 'Open panel'"
             >
                 <app-svg-icon
                     [icon]="isPanelOpen() ? 'chevron-right' : 'chevron-left'"
@@ -154,7 +155,8 @@
                             <button
                                 class="preview-open-btn"
                                 (click)="onViewSession(session.id)"
-                                title="Open session"
+                                aria-label="Open session"
+                                matTooltip="Open session"
                             >
                                 <app-svg-icon
                                     icon="arrow-up-right"

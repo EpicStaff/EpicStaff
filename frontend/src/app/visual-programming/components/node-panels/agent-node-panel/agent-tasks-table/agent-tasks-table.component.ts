@@ -10,6 +10,7 @@ import {
     signal,
     ViewChild,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, MultiSelectComponent, SelectItem } from '@shared/components';
 
 import { ToastService } from '../../../../../services/notifications';
@@ -28,7 +29,13 @@ interface ResolvedTaskRef extends AgentNodeTaskUi {
 
 @Component({
     selector: 'app-agent-tasks-table',
-    imports: [DragDropModule, AppSvgIconComponent, MultiSelectComponent, VariableHighlightTextareaComponent],
+    imports: [
+        DragDropModule,
+        AppSvgIconComponent,
+        MatTooltipModule,
+        MultiSelectComponent,
+        VariableHighlightTextareaComponent,
+    ],
     templateUrl: './agent-tasks-table.component.html',
     styleUrls: ['./agent-tasks-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

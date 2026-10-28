@@ -95,7 +95,11 @@ describe('VoiceSettingsSectionComponent "View Details"', () => {
         const { fixture } = render(true);
         const actions = (fixture.nativeElement as HTMLElement).querySelectorAll('.channel-card__action');
 
-        expect(Array.from(actions, (action) => action.getAttribute('title'))).toEqual(['More', 'Edit', 'Delete']);
+        expect(Array.from(actions, (action) => action.getAttribute('aria-label'))).toEqual([
+            'More actions',
+            'Edit',
+            'Delete',
+        ]);
     });
 
     it('offers "View Details" to a user who can only read voice channels', () => {

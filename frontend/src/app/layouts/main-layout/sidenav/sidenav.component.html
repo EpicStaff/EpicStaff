@@ -384,12 +384,14 @@
                             <span class="account-text">
                                 <span
                                     class="sidenav-row-label text-body-small-large"
-                                    [attr.title]="membership.organization.name"
+                                    appTooltipOnOverflow
+                                    [matTooltip]="membership.organization.name"
                                     >{{ membership.organization.name }}</span
                                 >
                                 <span
                                     class="account-role text-body-small"
-                                    [attr.title]="membership.role.name"
+                                    appTooltipOnOverflow
+                                    [matTooltip]="membership.role.name"
                                     >{{ membership.role.name }}</span
                                 >
                             </span>
@@ -402,7 +404,8 @@
                         @if (isExpanded()) {
                             <span
                                 class="sidenav-row-label text-body-medium"
-                                [attr.title]="accountLabel()"
+                                appTooltipOnOverflow
+                                [matTooltip]="accountLabel()"
                                 >{{ accountLabel() }}</span
                             >
                         }

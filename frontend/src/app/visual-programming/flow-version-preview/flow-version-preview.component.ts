@@ -2,7 +2,9 @@ import { Dialog } from '@angular/cdk/dialog';
 import { DOCUMENT } from '@angular/common';
 import { Component, computed, DestroyRef, effect, inject, input, output, viewChild } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, SpinnerComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { SecretsStorageService } from '@shared/services';
 import { catchError, filter, forkJoin, fromEvent, of } from 'rxjs';
 
@@ -32,7 +34,7 @@ type PreviewFlowModel = ReturnType<typeof buildPreviewFlowModel>;
  */
 @Component({
     selector: 'app-flow-version-preview',
-    imports: [FlowGraphComponent, AppSvgIconComponent, SpinnerComponent],
+    imports: [FlowGraphComponent, AppSvgIconComponent, SpinnerComponent, MatTooltipModule, TooltipOnOverflowDirective],
     providers: [...FLOW_EDITOR_STATE_PROVIDERS, { provide: FLOW_EDITOR_PREVIEW, useValue: true }],
     templateUrl: './flow-version-preview.component.html',
     styleUrl: './flow-version-preview.component.scss',

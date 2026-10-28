@@ -25,6 +25,16 @@ const TWO_SAME_NAMED_NODES = usageOf([
     { id: 12, node_number: 2, name: 'Fetch', node_type: NodeType.PYTHON, code_field: null },
 ]);
 
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('SecretUsageDialogComponent', () => {
     let fixture: ComponentFixture<SecretUsageDialogComponent>;
     let element: HTMLElement;
@@ -52,7 +62,7 @@ describe('SecretUsageDialogComponent', () => {
 
     /** The dialog's own "Open node" button, one per node row. */
     function openNodeButtons(): HTMLElement[] {
-        return Array.from(element.querySelectorAll<HTMLElement>('button[title="Open node"]'));
+        return Array.from(element.querySelectorAll<HTMLElement>('button[aria-label="Open node"]'));
     }
 
     it('lists two same-named nodes as two rows and counts both', () => {

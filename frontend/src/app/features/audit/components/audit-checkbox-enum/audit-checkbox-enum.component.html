@@ -2,7 +2,7 @@
     <label
         class="checkbox-enum__option"
         [class.is-disabled]="isDisabled(option.value)"
-        [title]="isDisabled(option.value) ? disabledHint() : ''"
+        [matTooltip]="isDisabled(option.value) ? disabledHint() : ''"
     >
         <app-checkbox
             [checked]="isSelected(option.value)"

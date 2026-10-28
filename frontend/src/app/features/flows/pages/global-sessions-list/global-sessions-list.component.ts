@@ -10,6 +10,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 import {
     ActionDropdownButtonComponent,
@@ -51,6 +52,7 @@ import {
         SelectComponent,
         HasPermissionDirective,
         StopButtonComponent,
+        MatTooltipModule,
     ],
     templateUrl: './global-sessions-list.component.html',
     styleUrls: ['./global-sessions-list.component.scss'],

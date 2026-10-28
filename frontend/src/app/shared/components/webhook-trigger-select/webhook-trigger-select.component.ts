@@ -19,6 +19,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     ActionCode,
     BinnedWebhookTrigger,
@@ -41,7 +42,7 @@ import {
     selector: 'app-webhook-trigger-select',
     templateUrl: './webhook-trigger-select.component.html',
     styleUrls: ['./webhook-trigger-select.component.scss'],
-    imports: [FormsModule, OverlayModule, TooltipComponent, WarningNoteComponent],
+    imports: [FormsModule, OverlayModule, TooltipComponent, WarningNoteComponent, MatTooltipModule],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,

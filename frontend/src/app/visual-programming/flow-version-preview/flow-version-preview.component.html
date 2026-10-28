@@ -27,7 +27,8 @@
     ></app-svg-icon>
     <span
         class="preview-bar__title"
-        [attr.title]="version().name"
+        appTooltipOnOverflow
+        [matTooltip]="version().name"
         >Preview Mode – {{ version().name }}</span
     >
     @if (warnings().length > 0) {

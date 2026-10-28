@@ -1,6 +1,8 @@
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { signal } from '@angular/core';
+import { getDebugNode, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
+import { LabelDto } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
 import { of } from 'rxjs';
 
@@ -27,8 +29,8 @@ interface Rendered {
     emitted: ToolCardMenuActionEvent[];
 }
 
-function render(tool: ToolCardVM, canWrite = true): Rendered {
-    const labels = { labels: signal([]), labelTree: signal([]), loadLabels: () => of([]) };
+function render(tool: ToolCardVM, canWrite = true, storedLabels: LabelDto[] = []): Rendered {
+    const labels = { labels: signal(storedLabels), labelTree: signal([]), loadLabels: () => of([]) };
     TestBed.configureTestingModule({
         providers: [
             { provide: PermissionsService, useValue: { can: () => canWrite } },
@@ -108,5 +110,27 @@ describe('ToolCardComponent "View Details" menu item', () => {
 
         expect(menuItems(overlay).length).toBeGreaterThan(0);
         expect(viewDetailsItem(overlay)).toBeUndefined();
+    });
+});
+
+describe('ToolCardComponent label chips', () => {
+    function label(id: number, name: string, fullPath: string): LabelDto {
+        return { id, name, parent: null, full_path: fullPath, created_at: '', metadata: {} };
+    }
+
+    it('shows the full path on hover only for a nested label', () => {
+        const { fixture } = render({ ...CUSTOM_TOOL, labelIds: [1, 2] }, true, [
+            label(1, 'Search', 'Search'),
+            label(2, 'GitHub', 'Search/GitHub'),
+        ]);
+
+        const tooltips = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.label-chip')).map(
+            (chip) => getDebugNode(chip)!.injector.get(MatTooltip)
+        );
+
+        expect(tooltips.map((tooltip) => [tooltip.message, tooltip.disabled])).toEqual([
+            ['Search', true],
+            ['Search/GitHub', false],
+        ]);
     });
 });

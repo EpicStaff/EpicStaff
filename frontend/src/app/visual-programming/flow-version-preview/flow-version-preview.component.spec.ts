@@ -83,6 +83,15 @@ describe('FlowVersionPreviewComponent', () => {
     let fixture: ComponentFixture<FlowVersionPreviewComponent>;
 
     beforeEach(() => {
+        // jsdom has no ResizeObserver; the preview bar title's overflow tooltip needs one.
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        );
         responses = new Map();
         TestBed.configureTestingModule({
             providers: [
@@ -111,7 +120,10 @@ describe('FlowVersionPreviewComponent', () => {
         TestBed.overrideComponent(FlowGraphComponent, { set: { template: '', imports: [] } });
     });
 
-    afterEach(() => vi.restoreAllMocks());
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
 
     async function render(versionId: number): Promise<void> {
         fixture.componentRef.setInput('version', version(versionId));

@@ -17,6 +17,7 @@ import {
     viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     CheckboxComponent,
@@ -24,6 +25,7 @@ import {
     ConfirmationDialogService,
     SearchComponent,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { downloadBlob, escapeHtml } from '@shared/utils';
 import { catchError, EMPTY, filter, finalize, Observable, switchMap, tap } from 'rxjs';
 
@@ -113,9 +115,11 @@ function modeLabel(state: AuditFilterState | null): string {
         AppSvgIconComponent,
         AuditMatchScopeComponent,
         CheckboxComponent,
+        MatTooltipModule,
         NgTemplateOutlet,
         OverlayModule,
         SearchComponent,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './audit-presets.component.html',
     styleUrl: './audit-presets.component.scss',

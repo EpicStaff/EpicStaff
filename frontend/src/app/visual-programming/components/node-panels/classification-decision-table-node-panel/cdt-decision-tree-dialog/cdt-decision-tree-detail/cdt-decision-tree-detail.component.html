@@ -10,7 +10,8 @@
         <div class="cdt-tree-detail__heading-group">
             <h3
                 class="cdt-tree-detail__title"
-                [title]="block().title"
+                appTooltipOnOverflow
+                [matTooltip]="block().title"
             >
                 {{ block().title }}
             </h3>

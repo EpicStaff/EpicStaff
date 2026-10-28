@@ -9,10 +9,7 @@
     }
 
     @if (readonly()) {
-        <span
-            class="selector__readonly-value"
-            [attr.title]="selectedItem()?.name || null"
-        >
+        <span class="selector__readonly-value">
             @if (selectedItem()?.icon) {
                 <app-svg-icon
                     [icon]="selectedItem()!.icon!"
@@ -61,7 +58,8 @@
                     }
                     <span
                         class="selector__text"
-                        [attr.title]="selectedItem()?.name || null"
+                        appTooltipOnOverflow
+                        [matTooltip]="displayText()"
                     >
                         {{ displayText() }}
                     </span>

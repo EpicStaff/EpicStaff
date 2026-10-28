@@ -17,7 +17,9 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../buttons';
 import { CheckboxComponent } from '../checkbox/checkbox.component';
@@ -32,7 +34,7 @@ export type MultiSelectOrigin = HTMLElement | { x: number; y: number; width?: nu
 
 @Component({
     selector: 'app-multi-select',
-    imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent],
+    imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent, MatTooltipModule, TooltipOnOverflowDirective],
     templateUrl: './multi-select.component.html',
     styleUrls: ['./multi-select.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

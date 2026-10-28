@@ -1,5 +1,6 @@
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ICellEditorParams } from 'ag-grid-community';
 
 import { PromptConfig } from '../../../../../core/models/classification-decision-table.model';
@@ -22,7 +23,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
 
 @Component({
     selector: 'app-prompt-id-cell-editor',
-    imports: [FormsModule],
+    imports: [FormsModule, MatTooltipModule],
     template: `
         <div
             class="prompt-editor-popup"
@@ -44,7 +45,8 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 <button
                     class="pe-add-btn"
                     type="button"
-                    title="Navigate to Prompt Library"
+                    aria-label="Navigate to Prompt Library"
+                    matTooltip="Navigate to Prompt Library"
                     (click)="navigateToPrompts()"
                 >
                     <i class="ti ti-plus"></i>
@@ -71,7 +73,8 @@ interface PromptIdEditorParams extends ICellEditorParams {
                                 <button
                                     class="pe-item-open-btn"
                                     type="button"
-                                    title="Open in Prompt Library"
+                                    aria-label="Open in Prompt Library"
+                                    matTooltip="Open in Prompt Library"
                                     (click)="openPromptForEdit(p.id, $event)"
                                 >
                                     <i class="ti ti-arrow-up-right"></i>

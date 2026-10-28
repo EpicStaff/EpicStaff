@@ -8,7 +8,6 @@
         class="ivt__btn"
         [class.ivt__btn--active]="view() === 'preview'"
         [attr.aria-pressed]="view() === 'preview'"
-        title="Markdown preview"
         (click)="select('preview')"
     >
         <app-svg-icon
@@ -22,7 +21,6 @@
         class="ivt__btn"
         [class.ivt__btn--active]="view() === 'edit'"
         [attr.aria-pressed]="view() === 'edit'"
-        title="Edit instructions"
         (click)="select('edit')"
     >
         <app-svg-icon

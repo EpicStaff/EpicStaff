@@ -466,20 +466,26 @@
                     <div class="file-table__head">
                         <span class="file-table__col-resource">Resource</span>
                         @for (col of visiblePermColumns(); track col.key) {
-                            <button
-                                type="button"
-                                class="file-table__col-perm file-table__col-perm--btn"
-                                [class.file-table__col-perm--allow]="columnPermState(col.key) === 'allow'"
-                                [class.file-table__col-perm--deny]="columnPermState(col.key) === 'deny'"
-                                [title]="col.label"
-                                [disabled]="readOnly()"
-                                (click)="toggleColumnPerm(col.key)"
+                            <!-- The label lives only in the tooltip, and a disabled (read-only) button gets no mouse events. -->
+                            <span
+                                class="file-table__col-perm-host"
+                                [matTooltip]="col.label"
                             >
-                                <app-svg-icon
-                                    [icon]="col.icon"
-                                    size="14px"
-                                />
-                            </button>
+                                <button
+                                    type="button"
+                                    class="file-table__col-perm file-table__col-perm--btn"
+                                    [class.file-table__col-perm--allow]="columnPermState(col.key) === 'allow'"
+                                    [class.file-table__col-perm--deny]="columnPermState(col.key) === 'deny'"
+                                    [attr.aria-label]="col.label"
+                                    [disabled]="readOnly()"
+                                    (click)="toggleColumnPerm(col.key)"
+                                >
+                                    <app-svg-icon
+                                        [icon]="col.icon"
+                                        size="14px"
+                                    />
+                                </button>
+                            </span>
                         }
                         @if (!readOnly()) {
                             <span class="file-table__col-remove">
@@ -526,7 +532,7 @@
                                     }
                                     <span
                                         class="file-row__name"
-                                        [title]="row.path"
+                                        [matTooltip]="row.path"
                                         >{{ row.name }}</span
                                     >
                                 </span>
@@ -539,7 +545,8 @@
                                                 class="perm-cell"
                                                 [class.perm-cell--allow]="frow.perms[col.key] === 'allow'"
                                                 [class.perm-cell--deny]="frow.perms[col.key] === 'deny'"
-                                                [title]="frow.perms[col.key]"
+                                                [attr.aria-label]="permCellLabel(frow, col)"
+                                                [matTooltip]="permCellLabel(frow, col)"
                                                 [disabled]="readOnly()"
                                                 (click)="togglePerm(frow, col.key)"
                                             >
@@ -590,7 +597,7 @@
                                     <span class="file-row__chevron-spacer"></span>
                                     <span
                                         class="file-row__name"
-                                        [title]="row.row.path || row.row.name"
+                                        [matTooltip]="row.row.path || row.row.name"
                                         >{{ row.row.name }}</span
                                     >
                                 </span>
@@ -602,7 +609,8 @@
                                             class="perm-cell"
                                             [class.perm-cell--allow]="row.row.perms[col.key] === 'allow'"
                                             [class.perm-cell--deny]="row.row.perms[col.key] === 'deny'"
-                                            [title]="row.row.perms[col.key]"
+                                            [attr.aria-label]="permCellLabel(row.row, col)"
+                                            [matTooltip]="permCellLabel(row.row, col)"
                                             [disabled]="readOnly()"
                                             (click)="togglePerm(row.row, col.key)"
                                         >

@@ -11,6 +11,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { CDT_COLUMN_KIND } from '../../cdt.constants';
 import { filterByQuery } from '../../cdt-search-filter.util';
@@ -91,7 +92,7 @@ const SYMBOLIC_TOKENS = new Set([
 @Component({
     selector: 'app-expression-builder',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FormsModule],
+    imports: [FormsModule, MatTooltipModule],
     templateUrl: './expression-builder.component.html',
     styleUrls: ['./expression-builder.component.scss'],
 })

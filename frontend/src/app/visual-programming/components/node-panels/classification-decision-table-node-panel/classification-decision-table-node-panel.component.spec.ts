@@ -177,6 +177,16 @@ function configurePanelTestBed({ isPreview = false, providers = [] as Provider[]
     });
 }
 
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('ClassificationDecisionTableNodePanelComponent — enabling Continue on a wired route code', () => {
     let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
     let panel: ClassificationDecisionTableNodePanelComponent;

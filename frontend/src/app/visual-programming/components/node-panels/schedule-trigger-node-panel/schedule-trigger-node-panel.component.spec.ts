@@ -52,6 +52,16 @@ const unsavedScheduleNode: ScheduleTriggerNodeModel = {
     output_variable_path: null,
 };
 
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('ScheduleTriggerNodePanelComponent with backendId null', () => {
     afterEach(() => vi.useRealTimers());
 

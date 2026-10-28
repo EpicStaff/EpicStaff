@@ -18,6 +18,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
+import { TooltipOnOverflowDirective } from '../../../../../../shared/directives/tooltip-on-overflow.directive';
 import { CDT_TREE_COPY } from '../cdt-decision-tree.constants';
 import { CdtTreeBlock } from '../cdt-decision-tree.model';
 import { CdtDecisionTreeCodeComponent } from '../cdt-decision-tree-code/cdt-decision-tree-code.component';
@@ -42,7 +43,13 @@ const AT_END_CLASS = 'cdt-tree-detail__body--at-end';
  */
 @Component({
     selector: 'app-cdt-decision-tree-detail',
-    imports: [AppSvgIconComponent, CopyButtonComponent, MatTooltipModule, CdtDecisionTreeCodeComponent],
+    imports: [
+        AppSvgIconComponent,
+        CopyButtonComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+        CdtDecisionTreeCodeComponent,
+    ],
     templateUrl: './cdt-decision-tree-detail.component.html',
     styleUrls: ['./cdt-decision-tree-detail.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

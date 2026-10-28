@@ -133,11 +133,7 @@
                                     size="13px"
                                 ></app-svg-icon>
 
-                                <span
-                                    class="files-dialog__item-name"
-                                    [title]="node.name"
-                                    >{{ node.name }}</span
-                                >
+                                <span class="files-dialog__item-name">{{ node.name }}</span>
 
                                 @if (node.type === 'file' && node.size != null) {
                                     <span class="files-dialog__item-size">({{ node.size | fileSize: 'auto' }})</span>

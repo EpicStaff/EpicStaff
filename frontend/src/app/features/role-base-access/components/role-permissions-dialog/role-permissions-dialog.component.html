@@ -85,7 +85,8 @@
                                             class="action-head"
                                             role="columnheader"
                                             [attr.aria-label]="actionLabel(action)"
-                                            [title]="actionLabel(action)"
+                                            appTooltipOnOverflow=".action-label"
+                                            [matTooltip]="actionLabel(action)"
                                         >
                                             <app-svg-icon
                                                 [icon]="actionIcon(action)"

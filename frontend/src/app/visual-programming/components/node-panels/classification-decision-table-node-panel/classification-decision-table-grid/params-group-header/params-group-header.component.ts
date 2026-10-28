@@ -8,6 +8,7 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { IHeaderGroupAngularComp } from 'ag-grid-angular';
 import { IHeaderGroupParams } from 'ag-grid-community';
 
@@ -25,7 +26,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
 
 @Component({
     selector: 'app-params-group-header',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -35,7 +36,8 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             <button
                 class="add-btn"
                 (click)="handleAdd($event)"
-                title="Add variable"
+                aria-label="Add variable"
+                matTooltip="Add variable"
             >
                 <i class="ti ti-plus"></i>
             </button>
@@ -51,7 +53,8 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                         #chevronBtn
                         class="chevron-btn"
                         (click)="toggleMenu($event)"
-                        title="Column options"
+                        aria-label="Column options"
+                        matTooltip="Column options"
                     >
                         <i class="ti ti-chevron-down"></i>
                     </button>
@@ -59,7 +62,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 @if (!(isPinned && isPinned())) {
                     <span
                         class="drag-grip-btn"
-                        title="Drag to reposition"
+                        matTooltip="Drag to reposition"
                     >
                         <app-svg-icon
                             icon="drag-grip"

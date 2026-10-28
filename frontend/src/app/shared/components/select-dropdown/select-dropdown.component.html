@@ -42,7 +42,7 @@
                         [class.select-dropdown__action--icon-only]="action.iconOnly"
                         [disabled]="action.disabled"
                         [attr.aria-label]="action.iconOnly ? action.label : null"
-                        [attr.title]="action.iconOnly ? action.label : null"
+                        [matTooltip]="action.iconOnly ? action.label : ''"
                         (click)="onHeaderAction()"
                     >
                         @if (action.icon) {

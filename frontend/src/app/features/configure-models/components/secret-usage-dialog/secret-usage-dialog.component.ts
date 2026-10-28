@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import {
     AppIconComponent,
@@ -74,6 +75,7 @@ const CONFIG_TYPE_LABELS = new Map<SecretUsageResourceType, string>([
         LoadingSpinnerComponent,
         ButtonComponent,
         HelpTooltipComponent,
+        MatTooltipModule,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

@@ -117,6 +117,16 @@ function emittedTrigger(control: FormControl<WebhookTriggerWrite | null>): Webho
     return control.value as WebhookTriggerModel;
 }
 
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('WebhookTriggerFieldComponent', () => {
     it('names a binned tunnel token, with the note, though the trigger was loaded without events', () => {
         const { fixture } = render(TELEGRAM_TRIGGER);

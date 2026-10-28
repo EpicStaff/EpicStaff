@@ -23,7 +23,21 @@ function openReadonly(checkboxPosition: 'left' | 'right'): HTMLElement[] {
 }
 
 describe('MultiSelectComponent read-only view', () => {
-    afterEach(() => document.querySelectorAll('.cdk-overlay-container').forEach((container) => container.remove()));
+    // jsdom has no ResizeObserver; the item names' overflow tooltips need one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => {
+        document.querySelectorAll('.cdk-overlay-container').forEach((container) => container.remove());
+        vi.unstubAllGlobals();
+    });
 
     it('shows no checkboxes in a read-only view', () => {
         expect(openReadonly('left')).toHaveLength(0);

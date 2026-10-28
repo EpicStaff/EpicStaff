@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { AppSvgIconComponent, Spinner2Component } from '@shared/components';
 import { downloadBlob } from '@shared/utils';
@@ -31,7 +32,7 @@ interface TreeNode {
 
 @Component({
     selector: 'app-export-session-files-dialog',
-    imports: [FormsModule, AppSvgIconComponent, Spinner2Component, FileSizePipe],
+    imports: [FormsModule, AppSvgIconComponent, Spinner2Component, FileSizePipe, MatTooltipModule],
     templateUrl: './export-session-files-dialog.component.html',
     styleUrls: ['./export-session-files-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -24,7 +24,8 @@
             <span class="header-text">
                 <span
                     class="title"
-                    [title]="data.table_name"
+                    appTooltipOnOverflow
+                    [matTooltip]="data.table_name"
                     >{{ titlePrefix() }} <span class="table-name">{{ data.table_name }}</span></span
                 >
                 @for (chip of chips(); track chip.label) {

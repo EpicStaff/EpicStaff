@@ -69,6 +69,16 @@ function providerButton(fixture: ComponentFixture<RealtimeConfigFormComponent>, 
     )!;
 }
 
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('RealtimeConfigFormComponent', () => {
     it('asks for provider, API key, configuration name and model name, in that order', () => {
         const { fixture } = render();

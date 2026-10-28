@@ -18,8 +18,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { deepEqual } from '@shared/utils';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
@@ -40,7 +42,14 @@ export type SelectVariant = 'default' | 'boxed';
 
 @Component({
     selector: 'app-select',
-    imports: [NgClass, OverlayModule, TooltipComponent, AppSvgIconComponent],
+    imports: [
+        NgClass,
+        OverlayModule,
+        TooltipComponent,
+        AppSvgIconComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './select.component.html',
     styleUrls: ['./select.component.scss'],
     providers: [

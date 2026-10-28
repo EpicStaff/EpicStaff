@@ -1,5 +1,6 @@
-import { signal } from '@angular/core';
+import { getDebugNode, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { NODE_COLORS, NodeType } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { of } from 'rxjs';
@@ -54,6 +55,7 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.llm-warning-badge')).find(
             (badge) => badge.textContent!.trim() === 'No table'
         );
+    const tooltipOf = (element: HTMLElement): string => getDebugNode(element)!.injector.get(MatTooltip).message;
 
     function render(node: NodeModel, readOnly = false): void {
         TestBed.configureTestingModule({
@@ -81,7 +83,7 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         expect(summaryParts()).toEqual(['Write', 'Very very long tabl…', '2 keys']);
         expect(separators()).toEqual(['/', '/']);
         expect(summaryTab()!.textContent).not.toContain('#');
-        expect(summaryTab()!.title).toBe('Write / Very very long table name / 2 keys');
+        expect(tooltipOf(summaryTab()!)).toBe('Write / Very very long table name / 2 keys');
     });
 
     it('reads the summary once to screen readers, from the header icon, with the table name in full', () => {
@@ -126,13 +128,13 @@ describe('FlowBaseNodeComponent key-value summary', () => {
     it('flags a node without a table and says where to pick one', () => {
         render(NO_TABLE_NODE);
 
-        expect(noTableBadge()!.title).toBe('Select a table in the node panel');
+        expect(tooltipOf(noTableBadge()!)).toBe('Select a table in the node panel');
     });
 
     it('flags a node without a table in a read-only flow without asking to pick one', () => {
         render(NO_TABLE_NODE, true);
 
-        expect(noTableBadge()!.title).toBe('No table selected');
+        expect(tooltipOf(noTableBadge()!)).toBe('No table selected');
     });
 
     it('is only for key-value nodes', () => {
