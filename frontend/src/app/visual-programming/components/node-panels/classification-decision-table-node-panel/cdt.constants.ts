@@ -73,6 +73,20 @@ export const CDT_ROUTE_CONTINUE_COPY = {
     enableContinueFailed: "Couldn't remove the connection from this route code, so Continue was not enabled.",
 } as const;
 
+// ── Column freeze ─────────────────────────────────────────────────────────────
+
+/** Column group ids of the Expression and Manipulation Params groups. */
+export const CDT_EXPR_PARAMS_GROUP_ID = 'expr-params-group';
+export const CDT_MANIP_PARAMS_GROUP_ID = 'manip-params-group';
+
+/** The frozen columns may take up at most this share of the table width, so some of the table still scrolls. */
+export const CDT_FREEZE_MAX_WIDTH_RATIO = 0.9;
+
+export const CDT_FREEZE_COPY = {
+    /** Toast when a freeze is refused for being too wide. */
+    tooWide: "You can't freeze columns that take up more than 90% of the table width.",
+} as const;
+
 // ── Header auto-collapse ──────────────────────────────────────────────────────
 
 /** Grid scrollTop (px) past which the panel's node-header block collapses. */
