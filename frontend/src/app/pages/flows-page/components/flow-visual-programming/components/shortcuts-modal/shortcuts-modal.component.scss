@@ -289,8 +289,17 @@
 }
 
 .shortcuts__card,
-.shortcuts__card-body {
+.shortcuts__card-body,
+.shortcuts__card-item {
     display: contents;
+}
+
+// Chrome ignores break-after: avoid in multi-column layout, so a heading left at the bottom of a column
+// would be cut off from its rows. The first item carries the heading inside one unbreakable box; the
+// remaining rows stay separate column items, so a long section still continues into the next column.
+.shortcuts__card-item:first-child {
+    display: block;
+    break-inside: avoid;
 }
 
 .shortcuts__card:not(:first-child) .shortcuts__card-title {
@@ -306,7 +315,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     margin-bottom: 12px;
-    break-after: avoid;
 }
 
 .shortcuts__row {
@@ -319,12 +327,12 @@
     break-inside: avoid;
 }
 
-.shortcuts__row:first-child {
+.shortcuts__card-item:first-child > .shortcuts__row {
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
 }
 
-.shortcuts__row:last-child {
+.shortcuts__card-item:last-child > .shortcuts__row:last-child {
     border-bottom-left-radius: 8px;
     border-bottom-right-radius: 8px;
 }
