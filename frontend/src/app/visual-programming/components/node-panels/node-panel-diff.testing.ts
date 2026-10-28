@@ -39,6 +39,8 @@ export const SHOWN_DIFF_MARKS = [
     '.entry-order-note',
     '.att-row--added',
     '.att-row--removed',
+    '.prompt-card--added',
+    '.prompt-card--removed',
     // A decision table grid given row changes; ag-grid draws the rows themselves later (the grid specs check them).
     '.decision-grid--diff-rows',
     'app-code-diff-view',

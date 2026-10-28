@@ -13,8 +13,9 @@ import {
 } from '../../../../utils/diff';
 
 // The row marks of a decision table grid (Decision Table, Classification Decision Table) on the Changes tab of a
-// version preview: a row a restore changes gets a yellow frame, one it adds a green frame, and the groups it removes
-// show as extra rows, red, struck and faded, that can never be edited, selected or saved.
+// version preview: a row a restore changes gets a yellow pen badge and yellow text, one it adds a green plus badge and
+// green text, and the groups it removes show as extra rows with a red bin badge, red, struck and faded, that can never
+// be edited, selected or saved.
 
 /** A group only the canvas has, as the grid shows it after the version's rows: never part of the table's rows. */
 export type RemovedGroupRow = ConditionGroup & { readonly removedByRestore: true };

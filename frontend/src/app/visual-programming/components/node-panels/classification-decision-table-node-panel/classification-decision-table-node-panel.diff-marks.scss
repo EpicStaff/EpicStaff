@@ -1,0 +1,91 @@
+@use '../../../../../styles/diff-value-mark' as diff-value-mark;
+
+// The panel's version diff marks (Changes tab of a version preview), apart from its other styles.
+
+// The default LLM has no control in the panel: a line of its own across the header, only while a restore changes it.
+.default-llm-mark {
+    grid-column: 1 / -1;
+}
+
+.default-llm-line {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+}
+
+@include diff-value-mark.marked-inside('.default-llm-line', $draws-box: true);
+
+.prompts-section {
+    // Room for the badge on the corner of the first card, inside the list that would clip it.
+    .prompts-list--diff {
+        padding: calc(#{diff-value-mark.$badge-size} / 2) calc(#{diff-value-mark.$badge-size} / 2) 0 0;
+    }
+
+    // A card a restore changes: its header holds the mark (tooltip, focus), so the fields inside an opened card show
+    // their own tooltips alone. The header is not positioned, so the mark's frame and badge are placed on the card.
+    .prompt-card--changed,
+    .prompt-card--added {
+        position: relative;
+        // The badge sticks out of the card's corner.
+        overflow: visible;
+    }
+
+    .prompt-card--changed > .prompt-card-header.diff-field-mark--shown {
+        position: static;
+        // The frame takes the card's rounded corners.
+        border-radius: inherit;
+    }
+
+    .prompt-card--added {
+        @include diff-value-mark.row-frame(var(--color-diff-added));
+    }
+
+    // A canvas prompt a restore removes, as the removed rows of the other tables: red, struck, faded.
+    .prompt-card--removed {
+        opacity: var(--diff-deleted-opacity);
+
+        .prompt-card-header {
+            cursor: default;
+        }
+
+        .prompt-id,
+        .result-badge {
+            color: var(--color-diff-deleted);
+            text-decoration: line-through;
+        }
+    }
+}
+
+// A field inside an opened card or the side editor: the border only, no pen badge (the card has it).
+.prompt-field-mark.diff-field-mark--shown {
+    position: relative;
+    border-radius: 4px;
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+.prompt-field-mark--frame.diff-field-mark--shown {
+    @include diff-value-mark.row-frame(var(--color-diff-changed));
+
+    // Above the value box, which paints its own background.
+    &::before {
+        z-index: 1;
+    }
+
+    // A read-only input has no box of its own: room for the text inside the frame.
+    .field-input:read-only {
+        padding: 8px 12px;
+    }
+}
+
+.side-editor-prompt-text > .prompt-field-mark.diff-field-mark--shown {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}

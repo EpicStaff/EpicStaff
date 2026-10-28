@@ -17,6 +17,8 @@
 // `:host-context` matches any ancestor, so a marked component nested inside another wrapped one would be marked
 // too. The mark turns off its own outline, so a wrapped component without either would also get no focus ring.
 
+@use 'sass:list';
+
 $context: '.diff-value-marked';
 
 $badge-size: 16px;
@@ -100,10 +102,19 @@ $badge-size: 16px;
 
 /// The pen badge as the content of a pseudo-element, without its position.
 @mixin pen-badge {
-    // The pen of tabler's `.ti-pencil`, with empty alternative text: the mark names the field for screen readers
-    // (role="group", aria-labelledby; a grid row's name cell).
+    // The pen of tabler's `.ti-pencil`.
+    @include status-badge('\eb04', var(--color-diff-changed));
+}
+
+/// A round status badge with a tabler glyph as the content of a pseudo-element, without its position. The glyph has
+/// empty alternative text: the mark names the field or row for screen readers (role="group", aria-labelledby; a grid
+/// row's name cell).
+/// @param $glyph the glyph's code in tabler's icon font (its `.ti-*:before` content).
+/// @param $color the badge's background: the status colour.
+@mixin status-badge($glyph, $color) {
     @include badge-look;
-    content: '\eb04' / '';
+    background-color: $color;
+    content: list.slash($glyph, '');
     // The icon font by name, as a pseudo-element cannot take the `ti` class; no `text-*` token fits a glyph.
     font-family: 'tabler-icons';
     font-style: normal;
@@ -157,43 +168,53 @@ $row-frame-offset: var(--diff-row-frame-offset, 0px);
 }
 
 /// The row marks of an ag-grid table (the decision table grids), included under `::ng-deep` in the grid's styles; the
-/// rows get their classes from `condition-group-row-marks.ts`. A row a restore changes or adds gets a frame on its edge,
-/// over its cells, pinned ones too, so it keeps its width. The grid's viewport clips whatever sticks out of a row, so
-/// the pen badge of a changed row cannot sit on the frame's corner as in other tables: it sits inside the row's first
-/// cell, at its left. A row a restore removes: red, struck and faded, as the removed rows of the other tables.
+/// rows get their classes from `condition-group-row-marks.ts`. No frame: a badge in the row's first cell, at its left
+/// (the grid's viewport clips whatever sticks out of a row), with the canvas node badges' icons (a pen for changed, a
+/// plus for added, a bin for removed), and the row's text in the status colour. A row a restore removes is also struck
+/// and faded, as the removed rows of the other tables.
 /// @param $first-cell the selector of the cell that holds the badge.
 @mixin grid-row-marks($first-cell) {
-    .ag-row.condition-group-row--changed {
-        @include row-frame(var(--color-diff-changed));
-    }
+    $statuses: (
+        'changed': (
+            '\eb04',
+            var(--color-diff-changed),
+        ),
+        'added': (
+            '\eb0b',
+            var(--color-diff-added),
+        ),
+        'removed': (
+            '\eb41',
+            var(--color-diff-deleted),
+        ),
+    );
 
-    .ag-row.condition-group-row--added {
-        @include row-frame(var(--color-diff-added));
-    }
+    @each $status, $badge in $statuses {
+        $glyph: list.nth($badge, 1);
+        $color: list.nth($badge, 2);
 
-    .ag-row.condition-group-row--changed,
-    .ag-row.condition-group-row--added {
-        // Above the pinned cells, which ag-grid lifts to z-index 2 and 3.
-        &::before {
-            z-index: 4;
+        .ag-row.condition-group-row--#{$status} #{$first-cell}::after {
+            @include status-badge($glyph, $color);
+            position: absolute;
+            top: 50%;
+            left: 4px;
+            transform: translateY(-50%);
+        }
+
+        // `!important`: the grids colour cell text inline (`cellStyle`) and inside their cell renderers.
+        .ag-row.condition-group-row--#{$status} .ag-cell {
+            &,
+            * {
+                color: $color !important;
+            }
         }
     }
 
-    .ag-row.condition-group-row--changed #{$first-cell}::after {
-        @include pen-badge;
-        position: absolute;
-        top: 50%;
-        left: 4px;
-        transform: translateY(-50%);
-    }
-
-    // `!important`: the grids colour cell text inline (`cellStyle`) and inside their cell renderers.
     .ag-row.condition-group-row--removed .ag-cell {
         opacity: var(--diff-deleted-opacity);
 
         &,
         * {
-            color: var(--color-diff-deleted) !important;
             text-decoration: line-through;
         }
     }

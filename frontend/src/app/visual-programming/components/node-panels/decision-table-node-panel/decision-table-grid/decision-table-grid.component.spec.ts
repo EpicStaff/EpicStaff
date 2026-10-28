@@ -163,6 +163,14 @@ describe('DecisionTableGridComponent — version diff row marks', { timeout: GRI
         expect(gridCell(host, 3, 'index').textContent?.trim()).toBe('3');
     });
 
+    it('gives each marked row its row number as its first cell, which the styles draw the status badge in', async () => {
+        await render(ROW_CHANGES);
+
+        for (const rowIndex of [0, 1, 3]) {
+            expect(rowOf(host, rowIndex).querySelector('[role="gridcell"]')?.getAttribute('col-id')).toBe('index');
+        }
+    });
+
     it('tells screen readers what a restore does to each marked row, before its name', async () => {
         await render(ROW_CHANGES);
 

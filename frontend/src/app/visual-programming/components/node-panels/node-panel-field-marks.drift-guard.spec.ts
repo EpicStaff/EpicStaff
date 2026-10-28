@@ -25,7 +25,8 @@ import {
 // panel that shows nothing of what a restore changes. A field added to a projection (`semantic-projections.ts`)
 // without a mark in its panel fails here. For each field the panel is opened on the Changes tab with only that
 // field changed, narrow and widened (some panels lay out other content when widened); it must then show a mark of
-// some kind (a field mark, an Input List, Key-Value or task row, a note under a list, a code diff). The items of a
+// some kind (a field mark, an Input List, Key-Value or task row, a note under a list, a code diff); a panel with tabs
+// (the Classification Decision Table) counts the marks of every tab. The items of a
 // keyed collection (Agent tasks, decision table groups) are changed one field at a time, as the diff reports them,
 // and also added and removed whole. An item's place in the list (`position`) only changes with another item's, so the
 // guard swaps the first two items for it.
@@ -52,18 +53,10 @@ const WITHOUT_PANEL: Partial<Record<NodeType, string>> = {
 };
 
 /**
- * Panels whose field marks come in a later step of this feature (the other tabs of the Classification Decision Table).
- * This list must be empty once that step is done.
+ * Panels that show their fields on tabs, by the selector of their tab buttons: the guard counts the marks of every tab.
  */
-const MARKS_PENDING: readonly NodeType[] = [NodeType.CLASSIFICATION_TABLE];
-
-/**
- * The fields of a pending panel that are marked already, by their top-level name: they are guarded now, the rest of the
- * panel waits in `MARKS_PENDING`. The Classification Decision Table's header and its Decision Table tab are marked; its
- * Pre / Post-computation and Prompt library tabs come later.
- */
-const MARKED_WHILE_PENDING: Partial<Record<NodeType, readonly FieldName[]>> = {
-    [NodeType.CLASSIFICATION_TABLE]: ['node_name', 'default_next_node', 'next_error_node', 'condition_groups'],
+const TAB_BUTTONS: Partial<Record<NodeType, string>> = {
+    [NodeType.CLASSIFICATION_TABLE]: '.tab-btn, .tab-link',
 };
 
 /** Item fields that change only together with another item's: the place in the list. */
@@ -77,7 +70,7 @@ const VERSION_NODES: Partial<Record<NodeType, () => NodeModel>> = {
     [NodeType.AGENT]: () => agentNodeWithTasks(),
     [NodeType.SCHEDULE_TRIGGER]: () => scheduleNodeWith({ intervalUnit: 'weeks', weekdays: ['mon', 'wed'] }),
     [NodeType.TABLE]: () => withSecondConditionGroup(NodeType.TABLE),
-    [NodeType.CLASSIFICATION_TABLE]: () => withSecondConditionGroup(NodeType.CLASSIFICATION_TABLE),
+    [NodeType.CLASSIFICATION_TABLE]: () => withPrompt(withSecondConditionGroup(NodeType.CLASSIFICATION_TABLE)),
 };
 
 /** Fields a panel shows only for some values of another field, each with a version node that shows it. */
@@ -117,10 +110,7 @@ const LAYOUTS = [
     { layout: 'widened', expanded: true },
 ] as const;
 
-const GUARDED_TYPES = Object.values(NodeType).filter(
-    (type) => Object.hasOwn(PANEL_COMPONENT_MAP, type) && !MARKS_PENDING.includes(type)
-);
-const PARTLY_GUARDED_TYPES = MARKS_PENDING.filter((type) => Object.hasOwn(MARKED_WHILE_PENDING, type));
+const GUARDED_TYPES = Object.values(NodeType).filter((type) => Object.hasOwn(PANEL_COMPONENT_MAP, type));
 
 // jsdom has no ResizeObserver; the decision table panels' directives only need it to exist.
 class ResizeObserverStub {
@@ -137,6 +127,22 @@ function withSecondConditionGroup(type: NodeType.TABLE | NodeType.CLASSIFICATION
     return {
         ...node,
         data: { ...node.data, table: { ...node.data.table, condition_groups: [first, second] } },
+    } as NodeModel;
+}
+
+/** A classification table with a prompt, so the prompt cards are checked. */
+function withPrompt(node: NodeModel): NodeModel {
+    const table = node as ClassificationDecisionTableNodeModel;
+    const prompt = {
+        prompt_text: 'Sort the ticket',
+        llm_config: 3,
+        output_schema: { type: 'object' },
+        result_variable: 'category',
+        variable_mappings: { ticket: 'variables.ticket' },
+    };
+    return {
+        ...table,
+        data: { ...table.data, table: { ...table.data.table, prompts: { triage: prompt } } },
     } as NodeModel;
 }
 
@@ -275,18 +281,20 @@ function casesToMarkOf(type: NodeType): GuardCase[] {
     return guardCasesOf(type).filter(({ field }) => !Object.hasOwn(NO_MARK_ON_PURPOSE[type] ?? {}, field));
 }
 
-/** The cases of a pending type whose field is marked already (`MARKED_WHILE_PENDING`). */
-function markedCasesOfPending(type: NodeType): GuardCase[] {
-    const marked = MARKED_WHILE_PENDING[type] ?? [];
-    return casesToMarkOf(type).filter(({ field }) => marked.includes(field.split(/[.[]/)[0] as FieldName));
-}
-
 /** How many marks the panel of `node` shows on the Changes tab when a restore makes `changes` alone. */
 function shownMarkCount(type: NodeType, node: NodeModel, changes: FieldChange[], expanded: boolean): number {
     const fixture = openPanelOnChangesTab(PANEL_COMPONENT_MAP[type], node, changes, { expanded });
     LOAD_OPTIONS[type]?.();
     fixture.detectChanges();
-    const count = (fixture.nativeElement as HTMLElement).querySelectorAll(SHOWN_DIFF_MARKS).length;
+    const root = fixture.nativeElement as HTMLElement;
+    const tabSelector = TAB_BUTTONS[type];
+    const tabs = tabSelector ? Array.from(root.querySelectorAll<HTMLElement>(tabSelector)) : [];
+    let count = root.querySelectorAll(SHOWN_DIFF_MARKS).length;
+    for (const tab of tabs) {
+        tab.click();
+        fixture.detectChanges();
+        count += root.querySelectorAll(SHOWN_DIFF_MARKS).length;
+    }
     fixture.destroy();
     // So one test can open a panel again.
     TestBed.resetTestingModule();
@@ -297,16 +305,13 @@ describe('Node panel field marks: drift guard', () => {
     beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
     afterEach(() => vi.unstubAllGlobals());
 
-    it('knows every node type: guarded by its panel, pending, or without a panel', () => {
+    it('knows every node type: guarded by its panel, or without a panel', () => {
         for (const type of Object.values(NodeType)) {
             const hasPanel = Object.hasOwn(PANEL_COMPONENT_MAP, type);
             expect(
                 hasPanel !== Object.hasOwn(WITHOUT_PANEL, type),
                 `Node type ${type}: give it a panel, or add it to WITHOUT_PANEL with the reason`
             ).toBe(true);
-        }
-        for (const type of MARKS_PENDING) {
-            expect(Object.hasOwn(PANEL_COMPONENT_MAP, type), `Pending node type ${type} has no panel`).toBe(true);
         }
     });
 
@@ -322,11 +327,11 @@ describe('Node panel field marks: drift guard', () => {
         }
     });
 
-    it.each([...GUARDED_TYPES, ...PARTLY_GUARDED_TYPES])(
+    it.each(GUARDED_TYPES)(
         'opens %s with an item of each keyed collection, so their item fields are checked',
         (type) => {
             const statusesOf = (changes: FieldChange[]) => changes.map(({ status }) => status);
-            const cases = MARKS_PENDING.includes(type) ? markedCasesOfPending(type) : guardCasesOf(type);
+            const cases = guardCasesOf(type);
             const collections = cases
                 .filter(({ changes }) => statusesOf(changes).includes('deleted'))
                 .map(({ field }) => field);
@@ -340,10 +345,7 @@ describe('Node panel field marks: drift guard', () => {
         }
     );
 
-    const CASES = [
-        ...GUARDED_TYPES.map((type) => ({ type, cases: casesToMarkOf(type) })),
-        ...PARTLY_GUARDED_TYPES.map((type) => ({ type, cases: markedCasesOfPending(type) })),
-    ].flatMap(({ type, cases }) =>
+    const CASES = GUARDED_TYPES.map((type) => ({ type, cases: casesToMarkOf(type) })).flatMap(({ type, cases }) =>
         cases.flatMap((guardCase) =>
             LAYOUTS.map(({ layout, expanded }) => ({
                 type,
@@ -381,26 +383,4 @@ describe('Node panel field marks: drift guard', () => {
             ).toBeGreaterThan(0);
         }
     );
-
-    it('guards only fields a pending panel shows, and every one it names', () => {
-        for (const [type, fields] of Object.entries(MARKED_WHILE_PENDING)) {
-            const diffed = guardCasesOf(type as NodeType).map(({ field }) => field.split(/[.[]/)[0]);
-            for (const field of fields ?? []) {
-                expect(
-                    diffed,
-                    `${field} is not a diffed field of ${type}: remove it from MARKED_WHILE_PENDING`
-                ).toContain(field);
-            }
-        }
-    });
-
-    it.each(MARKS_PENDING)('%s is still pending: some diffed field of its panel has no mark yet', (type) => {
-        const allMarked = casesToMarkOf(type).every(({ node, changes }) =>
-            LAYOUTS.every(({ expanded }) => shownMarkCount(type, node, changes, expanded) > 0)
-        );
-
-        expect(allMarked, `Every diffed field of the ${type} panel is marked: remove ${type} from MARKS_PENDING`).toBe(
-            false
-        );
-    });
 });

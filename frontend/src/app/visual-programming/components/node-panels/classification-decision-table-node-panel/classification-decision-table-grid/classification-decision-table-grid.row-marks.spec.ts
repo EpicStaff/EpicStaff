@@ -12,6 +12,7 @@ import {
     gridCell,
     gridRowChanges,
     rowMark,
+    rowOf,
     rowStatusOf,
     shownGridRows,
     shownRowTooltip,
@@ -143,6 +144,16 @@ describe('ClassificationDecisionTableGridComponent — version diff row marks', 
             { name: 'other', mark: 'changed' },
             { name: 'legacy', mark: 'removed' },
         ]);
+    });
+
+    it('gives each marked row its Enable cell as its first cell, which the styles draw the status badge in', async () => {
+        await render(rowChangesOf);
+
+        for (const rowIndex of [0, 1]) {
+            expect(rowOf(host, rowIndex).querySelector('[role="gridcell"]')?.getAttribute('col-id')).toBe(
+                'dock_visible'
+            );
+        }
     });
 
     it('folds a removed rule with its group', async () => {
