@@ -1,0 +1,13 @@
+@use 'tooltip';
+
+// ag-grid's built-in cell tooltip, painted like matTooltip. The validation and formula error tooltips keep
+// ag-grid's error colours.
+.ag-tooltip:not(.ag-cell-editor-tooltip, .ag-cell-formula-tooltip, .ag-calculated-column-expression-tooltip) {
+    @include tooltip.tooltip-surface;
+    padding: var(--tooltip-padding);
+    filter: var(--tooltip-shadow);
+    max-width: 360px;
+    border: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}

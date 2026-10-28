@@ -24,7 +24,7 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -33,7 +33,6 @@ import {
     MultiSelectComponent,
     SelectItem,
 } from '@shared/components';
-import { TooltipOnOverflowDirective } from '@shared/directives';
 import { AgGridAngular, AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -169,7 +168,6 @@ interface GroupOverlayItem {
         HelpTooltipComponent,
         MatTooltipModule,
         MultiSelectComponent,
-        TooltipOnOverflowDirective,
     ],
     templateUrl: './classification-decision-table-grid.component.html',
     styleUrls: ['./classification-decision-table-grid.component.scss'],
@@ -951,6 +949,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         suppressRowTransform: true,
         suppressCellFocus: false,
         stopEditingWhenCellsLoseFocus: true,
+        tooltipShowMode: 'whenTruncated',
+        tooltipShowDelay: inject(MAT_TOOLTIP_DEFAULT_OPTIONS).showDelay,
         domLayout: 'normal',
         rowDragManaged: false,
         animateRows: true,
@@ -1735,6 +1735,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             editable: true,
             flex: 1,
             minWidth: 140,
+            tooltipValueGetter: (params) => params.value,
             suppressMovable: true,
             cellStyle: {
                 fontSize: '14px',
