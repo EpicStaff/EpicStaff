@@ -25,6 +25,7 @@ const DIFF_CANVAS: FlowDiffCanvasState = {
     ]),
     connections: new Map([['connection-deleted', 'deleted']]),
     versionOnlyPortIds: new Set(['table_decision-out-yes']),
+    currentOnlyRoutePortIds: new Set(['table_decision-out-no']),
     nodeIdByKey: new Map([['uuid:end', 'node-unchanged']]),
 };
 
@@ -41,6 +42,7 @@ describe('FlowDiffStateService', () => {
         expect(service.hasMissingReferences('node-unchanged')).toBe(false);
         expect(service.connectionStatus('connection-deleted')).toBeNull();
         expect(service.isVersionOnlyPort('table_decision-out-yes')).toBe(false);
+        expect(service.isCurrentOnlyRoutePort('table_decision-out-no')).toBe(false);
     });
 
     it('gives the status of each node and connection of the diff canvas shown', () => {
@@ -51,6 +53,8 @@ describe('FlowDiffStateService', () => {
         expect(service.nodeStatus('node-unchanged')).toBe('unchanged');
         expect(service.connectionStatus('connection-deleted')).toBe('deleted');
         expect(service.isVersionOnlyPort('table_decision-out-yes')).toBe(true);
+        expect(service.isCurrentOnlyRoutePort('table_decision-out-no')).toBe(true);
+        expect(service.isCurrentOnlyRoutePort('table_decision-out-yes')).toBe(false);
     });
 
     it("gives a node's whole diff for its panel only while a diff canvas is shown", () => {

@@ -29,20 +29,6 @@ export const isDecisionPortRole = (role: string) =>
     role === 'decision-default' ||
     role === 'decision-error';
 
-/**
- * A decision table's route ports that no row shows: on a version diff canvas, the routes only the current
- * canvas has (the union node carries the ports of both sides). Default and error always have a row.
- */
-export function routePortsWithoutRow(ports: readonly ViewPort[] | null, rowPortIds: ReadonlySet<string>): ViewPort[] {
-    return (ports ?? []).filter(
-        (port) =>
-            port.port_type === 'output' &&
-            port.role !== 'decision-default' &&
-            port.role !== 'decision-error' &&
-            !rowPortIds.has(port.id)
-    );
-}
-
 export function parsePortId(portId: string): { nodeId: string; portRole: string } | null {
     const underscoreIndex = portId.indexOf('_');
     if (underscoreIndex === -1) return null;

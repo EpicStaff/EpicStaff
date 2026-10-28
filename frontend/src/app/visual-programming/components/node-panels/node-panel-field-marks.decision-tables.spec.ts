@@ -78,6 +78,7 @@ function open(panel: Panel, fields: FieldChange[], options: ChangesTabOptions = 
         nodes: new Map(),
         connections: new Map(),
         versionOnlyPortIds: new Set(),
+        currentOnlyRoutePortIds: new Set(),
         nodeIdByKey: new Map([[TASK_KEY, task.id]]),
     });
     fixture.detectChanges();

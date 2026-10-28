@@ -68,4 +68,9 @@ export class FlowDiffStateService {
     public isVersionOnlyPort(portId: string): boolean {
         return this.state()?.versionOnlyPortIds.has(portId) ?? false;
     }
+
+    /** Whether only the current canvas has this route port of a node on both sides: a route a restore removes. */
+    public isCurrentOnlyRoutePort(portId: string): boolean {
+        return this.state()?.currentOnlyRoutePortIds.has(portId) ?? false;
+    }
 }

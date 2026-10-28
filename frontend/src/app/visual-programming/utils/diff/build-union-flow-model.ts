@@ -1,7 +1,11 @@
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { generatePortsForNode, slugifyPortName } from '../../core/helpers/helpers';
+import {
+    generatePortsForClassificationDecisionTableNode,
+    generatePortsForNode,
+    slugifyPortName,
+} from '../../core/helpers/helpers';
 import {
     CollisionBounds,
     findNearestFreePosition,
@@ -54,6 +58,12 @@ export interface FlowDiffCanvasState {
      */
     versionOnlyPortIds: ReadonlySet<string>;
     /**
+     * The route ports that only the current side of a node on both sides has: the routes a restore removes. The
+     * node draws a "removed" row for each of these and for nothing else, and placement grows the node by one row
+     * per port here, so drawing and placement count the same rows.
+     */
+    currentOnlyRoutePortIds: ReadonlySet<string>;
+    /**
      * The canvas id of every node by its match key (`NodeDiffEntry.key`), the value a node reference has in a field
      * change (`nodeRef`), so a panel can name the node a route leads to.
      */
@@ -95,20 +105,25 @@ export function buildUnionFlowModel(diff: FlowDiff, createId: () => string = gen
 
     const extraRowsByUnionId = new Map<string, number>();
     const versionOnlyPortIds = new Set<string>();
+    const currentOnlyRoutePortIds = new Set<string>();
     const unionNodeOf = (entry: NodeDiffEntry): NodeModel => {
         const unionId = unionIdByKey.get(entry.key)!;
         const base = (entry.versionNode ?? entry.currentNode)!;
         const ownIds = entry.versionNode ? unionIdByVersionId : unionIdByCurrentId;
-        const { ports, otherSideOnlyOutputs, shownSideOnlyPortIds } = mergePorts(unionId, entry);
-        extraRowsByUnionId.set(unionId, otherSideOnlyOutputs);
-        if (entry.versionNode) shownSideOnlyPortIds.forEach((portId) => versionOnlyPortIds.add(portId));
+        const { ports, otherSideOnlyRoutePortIds, shownSideOnlyPortIds } = mergePorts(unionId, entry);
+        const extraRows = otherSideOnlyRoutePortIds.length;
+        extraRowsByUnionId.set(unionId, extraRows);
+        if (entry.versionNode) {
+            shownSideOnlyPortIds.forEach((portId) => versionOnlyPortIds.add(portId));
+            otherSideOnlyRoutePortIds.forEach((portId) => currentOnlyRoutePortIds.add(portId));
+        }
         return {
             ...base,
             id: unionId,
             backendId: null,
             data: withTableReferences(base, ownIds),
             ports,
-            size: { ...base.size, height: base.size.height + otherSideOnlyOutputs * tableRowHeight(base.type) },
+            size: { ...base.size, height: base.size.height + extraRows * tableRowHeight(base.type) },
         } as NodeModel;
     };
 
@@ -171,33 +186,40 @@ export function buildUnionFlowModel(diff: FlowDiff, createId: () => string = gen
             nodes: placedNodes,
             connections: [...sidesByConnectionId.values()].map(({ connection }) => connection),
         },
-        diffState: { nodes: nodeStates, connections: connectionStates, versionOnlyPortIds, nodeIdByKey: unionIdByKey },
+        diffState: {
+            nodes: nodeStates,
+            connections: connectionStates,
+            versionOnlyPortIds,
+            currentOnlyRoutePortIds,
+            nodeIdByKey: unionIdByKey,
+        },
         unionIdByVersionId,
     };
 }
 
 /**
  * The ports of the shown side first, then the ones only the other side has. Only decision tables can
- * differ (their output ports come from their groups); `otherSideOnlyOutputs` counts the extra rows a
- * table shows for them. `shownSideOnlyPortIds` are the shown side's ports the other side lacks; empty
- * for a node on one side only.
+ * differ (their output ports come from their groups); `otherSideOnlyRoutePortIds` are the route ports
+ * only the other side has, one extra row each. `shownSideOnlyPortIds` are the shown side's ports the
+ * other side lacks. Both are empty for a node on one side only.
  */
 function mergePorts(
     unionId: string,
     entry: NodeDiffEntry
-): { ports: ViewPort[]; otherSideOnlyOutputs: number; shownSideOnlyPortIds: string[] } {
+): { ports: ViewPort[]; otherSideOnlyRoutePortIds: string[]; shownSideOnlyPortIds: string[] } {
     const [shown, other] = entry.versionNode
         ? [entry.versionNode, entry.currentNode]
         : [entry.currentNode!, entry.versionNode];
     const ports = generatePortsForNode(unionId, shown.type, shown.data);
-    if (!other) return { ports, otherSideOnlyOutputs: 0, shownSideOnlyPortIds: [] };
+    if (!other) return { ports, otherSideOnlyRoutePortIds: [], shownSideOnlyPortIds: [] };
     const shownIds = new Set(ports.map((port) => port.id));
     const otherPorts = generatePortsForNode(unionId, other.type, other.data);
     const otherIds = new Set(otherPorts.map((port) => port.id));
     const otherSideOnly = otherPorts.filter((port) => !shownIds.has(port.id));
+    const otherRowPortIds = routePortIdsWithRow(unionId, other);
     return {
         ports: [...ports, ...otherSideOnly],
-        otherSideOnlyOutputs: otherSideOnly.filter((port) => port.port_type === 'output').length,
+        otherSideOnlyRoutePortIds: otherSideOnly.filter((port) => otherRowPortIds.has(port.id)).map((port) => port.id),
         shownSideOnlyPortIds: ports.filter((port) => !otherIds.has(port.id)).map((port) => port.id),
     };
 }
@@ -227,6 +249,29 @@ function clearGrownTables(
         const others = nodes.filter((other) => other.id !== node.id);
         nodes[index] = { ...node, position: findNearestFreePosition(node.position, boundsOf(node), others, boundsOf) };
     });
+}
+
+/**
+ * The route ports of a decision table that its own canvas shows a row for (Default and Error excluded: they are on
+ * both sides, with their own rows). A classification table group without a route code still gets a port, keyed by its
+ * name, but no row and no edge, so it is left out: a restore removing it shows no removed row.
+ */
+function routePortIdsWithRow(unionId: string, node: NodeModel): ReadonlySet<string> {
+    const ports =
+        node.type === NodeType.CLASSIFICATION_TABLE
+            ? generatePortsForClassificationDecisionTableNode(
+                  unionId,
+                  (node.data.table.condition_groups ?? []).filter((group) => !!group.route_code)
+              )
+            : generatePortsForNode(unionId, node.type, node.data);
+    return new Set(
+        ports
+            .filter(
+                (port) =>
+                    port.port_type === 'output' && port.role !== 'decision-default' && port.role !== 'decision-error'
+            )
+            .map((port) => port.id)
+    );
 }
 
 function tableRowHeight(type: NodeType): number {

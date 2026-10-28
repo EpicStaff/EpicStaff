@@ -27,7 +27,7 @@ const ADDED_ROUTE_PORT = `${table.id}_decision-out-yes`;
 describe('DecisionTableNodeComponent', () => {
     let fixture: ComponentFixture<DecisionTableNodeComponent>;
 
-    function render(diffCanvas: { versionOnlyPortIds: string[] } | null): void {
+    function render(diffCanvas: { versionOnlyPortIds: string[]; currentOnlyRoutePortIds?: string[] } | null): void {
         TestBed.configureTestingModule({
             providers: [{ provide: FlowReadOnlyService, useValue: { isReadOnly: signal(true) } }],
         });
@@ -40,6 +40,7 @@ describe('DecisionTableNodeComponent', () => {
                 nodes: new Map([[UNION_TABLE.id, { status: 'changed', fields: [], missingReferences: [] }]]),
                 connections: new Map(),
                 versionOnlyPortIds: new Set(diffCanvas.versionOnlyPortIds),
+                currentOnlyRoutePortIds: new Set(diffCanvas.currentOnlyRoutePortIds ?? []),
                 nodeIdByKey: new Map(),
             }
         );
@@ -54,13 +55,20 @@ describe('DecisionTableNodeComponent', () => {
     const rows = (): HTMLElement[] => [...fixture.nativeElement.querySelectorAll('.decision-table__group')];
 
     it('draws a row with a connector for a route a restore removes, named and labelled for it, on a diff canvas', () => {
-        render({ versionOnlyPortIds: [] });
+        render({ versionOnlyPortIds: [], currentOnlyRoutePortIds: [REMOVED_ROUTE_PORT] });
 
         const row = rowOf(REMOVED_ROUTE_PORT)!;
         expect(row.textContent?.trim()).toBe('canvas only');
         expect(row.classList).toContain('decision-table__group--removed');
         expect(row.getAttribute('aria-label')).toBe('Restore removes this condition');
         expect(row.getAttribute('title')).toBe('Restore removes this condition');
+    });
+
+    it('draws a removed row only for a route the diff says only the current canvas has', () => {
+        render({ versionOnlyPortIds: [], currentOnlyRoutePortIds: [] });
+
+        expect(rowOf(REMOVED_ROUTE_PORT)).toBeNull();
+        expect(rows().some((row) => row.classList.contains('decision-table__group--removed'))).toBe(false);
     });
 
     it('marks the row of a route only the version has as one a restore adds, and no other row', () => {

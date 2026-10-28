@@ -511,6 +511,7 @@ describe('NodePanelShellComponent', () => {
                     ),
                     connections: new Map(),
                     versionOnlyPortIds: new Set(),
+                    currentOnlyRoutePortIds: new Set(),
                     nodeIdByKey: new Map(),
                 }
             );

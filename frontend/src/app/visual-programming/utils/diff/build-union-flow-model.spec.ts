@@ -163,6 +163,122 @@ describe('buildUnionFlowModel', () => {
             expect(nodeOf(model, UUID.task).position).toEqual({ x: 0, y: 100 });
         });
 
+        describe('a classification table whose version has groups without a route code', () => {
+            // Such a group has a port (keyed by its name) but no row, on both canvases.
+            const routeA = liveClassificationTable.condition_groups[0];
+            const noRouteCode = (id: number, name: string) => ({ ...routeA, id, group_name: name, route_code: null });
+            const route = (id: number, code: string) => ({ ...routeA, id, group_name: code, route_code: code });
+            const versionTable = {
+                ...liveClassificationTable,
+                ...at(0, 0),
+                condition_groups: [routeA, noRouteCode(20, 'Condition 5'), noRouteCode(21, 'Condition 4')],
+            };
+            const python = { ...livePython, ...at(0, 300) };
+
+            it('grows by the routes only the canvas has, not by its own rowless groups, and moves the node below off it', () => {
+                const liveTable = {
+                    ...liveClassificationTable,
+                    ...at(0, 0),
+                    condition_groups: [routeA, route(30, 'R1'), route(31, 'R2'), route(32, 'R3')],
+                };
+
+                const model = unionOf(
+                    load({ python_node_list: [python], classification_decision_table_node_list: [versionTable] }),
+                    load({ python_node_list: [python], classification_decision_table_node_list: [liveTable] })
+                );
+
+                const table = nodeOf(model, UUID.classificationTable);
+                expect([...model.diffState.currentOnlyRoutePortIds].sort()).toEqual([
+                    `${table.id}_decision-route-r1`,
+                    `${table.id}_decision-route-r2`,
+                    `${table.id}_decision-route-r3`,
+                ]);
+                // Header, route A, three removed routes, Default, Error: 7 rows of 60.
+                expect(table.size.height).toBe(420);
+                expect(overlaps(nodeOf(model, UUID.python), table)).toBe(false);
+            });
+
+            it('does not grow or move anything when the canvas has no route of its own', () => {
+                const model = unionOf(
+                    load({ python_node_list: [python], classification_decision_table_node_list: [versionTable] }),
+                    load({
+                        python_node_list: [python],
+                        classification_decision_table_node_list: [{ ...liveClassificationTable, ...at(0, 0) }],
+                    })
+                );
+
+                const table = nodeOf(model, UUID.classificationTable);
+                expect(model.diffState.currentOnlyRoutePortIds.size).toBe(0);
+                expect(table.size.height).toBe(240);
+                expect(nodeOf(model, UUID.python).position).toEqual({ x: 0, y: 300 });
+            });
+        });
+
+        it('does not grow by a group of the canvas without a route code, which the canvas shows no row for', () => {
+            const routeA = liveClassificationTable.condition_groups[0];
+            const python = { ...livePython, ...at(0, 300) };
+            const liveTable = {
+                ...liveClassificationTable,
+                ...at(0, 0),
+                condition_groups: [routeA, { ...routeA, id: 22, group_name: 'Fresh group', route_code: null }],
+            };
+
+            const model = unionOf(
+                load({
+                    python_node_list: [python],
+                    classification_decision_table_node_list: [{ ...liveClassificationTable, ...at(0, 0) }],
+                }),
+                load({ python_node_list: [python], classification_decision_table_node_list: [liveTable] })
+            );
+
+            expect(model.diffState.currentOnlyRoutePortIds.size).toBe(0);
+            expect(nodeOf(model, UUID.classificationTable).size.height).toBe(240);
+            expect(nodeOf(model, UUID.python).position).toEqual({ x: 0, y: 300 });
+        });
+
+        it('moves a node under one grown table clear of a second grown table too', () => {
+            const decisionExtra = { ...liveDecisionTable.condition_groups[0], id: 9, group_name: 'extra', order: 2 };
+            const routeA = liveClassificationTable.condition_groups[0];
+            const classificationExtras = ['R1', 'R2', 'R3'].map((code, index) => ({
+                ...routeA,
+                id: 40 + index,
+                group_name: code,
+                route_code: code,
+            }));
+            const python = { ...livePython, ...at(0, 280) };
+            const classificationAt = at(0, 400);
+            const version = load({
+                python_node_list: [python],
+                decision_table_node_list: [{ ...liveDecisionTable, ...at(0, 0) }],
+                classification_decision_table_node_list: [{ ...liveClassificationTable, ...classificationAt }],
+            });
+            const live = load({
+                python_node_list: [python],
+                decision_table_node_list: [
+                    {
+                        ...liveDecisionTable,
+                        ...at(0, 0),
+                        condition_groups: [...liveDecisionTable.condition_groups, decisionExtra],
+                    },
+                ],
+                classification_decision_table_node_list: [
+                    {
+                        ...liveClassificationTable,
+                        ...classificationAt,
+                        condition_groups: [routeA, ...classificationExtras],
+                    },
+                ],
+            });
+
+            const model = unionOf(version, live);
+
+            const moved = nodeOf(model, UUID.python);
+            expect(moved.position).not.toEqual({ x: 0, y: 280 });
+            expect(overlaps(moved, nodeOf(model, UUID.decisionTable))).toBe(false);
+            expect(overlaps(moved, nodeOf(model, UUID.classificationTable))).toBe(false);
+            expect(nodeOf(model, UUID.classificationTable).position).toEqual({ x: 0, y: 400 });
+        });
+
         it('keeps a canvas-only node where it is when no free spot is within the search radius', () => {
             const version = load({
                 graph_note_list: [{ ...liveNote, ...at(-2000, -2000, { width: 4000, height: 4000 }) }],
@@ -287,6 +403,25 @@ describe('buildUnionFlowModel', () => {
                 )!;
                 expect([...model.diffState.versionOnlyPortIds]).toEqual([`${table.id}_${extraRoutePort}`]);
                 expect([...swappedBack.diffState.versionOnlyPortIds]).toEqual([]);
+            }
+        );
+
+        it.each(cases)(
+            'lists the route only the canvas side of a $table has as one a restore removes, and no other port',
+            ({ versionRows, liveRows, removedRoutePort }) => {
+                const targets = {
+                    end_node_list: [liveEnd],
+                    task_node_list: [liveTask],
+                    agent_node_list: [liveAgent],
+                };
+                const model = unionOf(load({ ...targets, ...versionRows }), load({ ...targets, ...liveRows }));
+                const swapped = unionOf(load({ ...targets, ...liveRows }), load({ ...targets, ...versionRows }));
+
+                const table = model.flow.nodes.find(
+                    (node) => node.type === NodeType.TABLE || node.type === NodeType.CLASSIFICATION_TABLE
+                )!;
+                expect([...model.diffState.currentOnlyRoutePortIds]).toEqual([`${table.id}_${removedRoutePort}`]);
+                expect([...swapped.diffState.currentOnlyRoutePortIds]).toEqual([]);
             }
         );
 

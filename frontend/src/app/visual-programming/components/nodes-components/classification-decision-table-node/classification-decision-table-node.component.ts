@@ -8,7 +8,6 @@ import { LlmConfigStorageService } from '@shared/services';
 import { formatNodeLabel } from '@shared/utils';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
-import { routePortsWithoutRow } from '../../../core/helpers/helpers';
 import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { CDT_HEADER_HEIGHT, CDT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
@@ -55,16 +54,13 @@ export class ClassificationDecisionTableNodeComponent {
             );
     }
 
-    /** On a version diff canvas: the routes only the current canvas has, which a restore removes. */
+    /**
+     * On a version diff canvas: the routes only the current canvas has, which a restore removes. A port of the
+     * shown side without a row (a group with no route code) stays undrawn, as in the live editor.
+     */
     get removedRoutePorts(): ViewPort[] {
         if (!this.flowDiffState.isActive()) return [];
-        const rowPortIds = new Set(
-            this.conditionGroups
-                .filter((group) => !!group.route_code)
-                .map((group) => this.getPortForGroup(group)?.id)
-                .filter((id) => id !== undefined)
-        );
-        return routePortsWithoutRow(this.node.ports, rowPortIds);
+        return (this.node.ports ?? []).filter((port) => this.flowDiffState.isCurrentOnlyRoutePort(port.id));
     }
 
     /** On a version diff canvas: whether the group's route is only in the version, so a restore adds it. */

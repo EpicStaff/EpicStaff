@@ -338,6 +338,7 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
                 nodes: new Map([[node.id, { ...state, fields: [], missingReferences: [] }]]),
                 connections: new Map(),
                 versionOnlyPortIds: new Set(),
+                currentOnlyRoutePortIds: new Set(),
                 nodeIdByKey: new Map(),
             }
         );

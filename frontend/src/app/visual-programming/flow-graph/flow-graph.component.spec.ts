@@ -1009,6 +1009,7 @@ describe('FlowGraphComponent', () => {
             ]),
             connections: new Map(),
             versionOnlyPortIds: new Set(),
+            currentOnlyRoutePortIds: new Set(),
             nodeIdByKey: new Map(),
         };
 
@@ -1038,6 +1039,7 @@ describe('FlowGraphComponent', () => {
                 nodes: new Map([[START.id, { status, fields, missingReferences: [] }]]),
                 connections: new Map(),
                 versionOnlyPortIds: new Set(),
+                currentOnlyRoutePortIds: new Set(),
                 nodeIdByKey: new Map(),
             });
 
@@ -1112,6 +1114,7 @@ describe('FlowGraphComponent', () => {
                         [removedEdge.id, 'deleted'],
                     ]),
                     versionOnlyPortIds: new Set(),
+                    currentOnlyRoutePortIds: new Set(),
                     nodeIdByKey: new Map(),
                 }
             ).componentInstance;
@@ -1768,6 +1771,7 @@ describe('FlowGraphComponent', () => {
                 ),
                 connections: new Map(Object.entries(edgeStatuses)),
                 versionOnlyPortIds: new Set(),
+                currentOnlyRoutePortIds: new Set(),
                 nodeIdByKey: new Map(),
             };
             fixture = mount(

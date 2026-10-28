@@ -5,7 +5,6 @@ import { FFlowModule } from '@foblex/flow';
 import { formatNodeLabel } from '@shared/utils';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
-import { routePortsWithoutRow } from '../../../core/helpers/helpers';
 import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { DT_HEADER_HEIGHT, DT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
@@ -49,10 +48,7 @@ export class DecisionTableNodeComponent {
     /** On a version diff canvas: the routes only the current canvas has, which a restore removes. */
     get removedRoutePorts(): ViewPort[] {
         if (!this.flowDiffState.isActive()) return [];
-        const rowPortIds = new Set(
-            this.conditionGroups.map((group) => this.getPortForGroup(group)?.id).filter((id) => id !== undefined)
-        );
-        return routePortsWithoutRow(this.node.ports, rowPortIds);
+        return (this.node.ports ?? []).filter((port) => this.flowDiffState.isCurrentOnlyRoutePort(port.id));
     }
 
     /** On a version diff canvas: whether the group's route is only in the version, so a restore adds it. */
