@@ -246,6 +246,9 @@ export class MyFlowsComponent implements AfterViewChecked {
             .updateFlowLabels(event.flow.id, event.labelIds, event.flow.save_version)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
+                next: () => {
+                    this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()).subscribe();
+                },
                 error: () => {
                     this.toastService.error(`Failed to update labels for "${event.flow.name}".`);
                 },
