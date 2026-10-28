@@ -296,6 +296,7 @@ server {
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_set_header Authorization "";
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location /media/ {
