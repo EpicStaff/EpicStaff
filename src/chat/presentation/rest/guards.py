@@ -1,4 +1,6 @@
-from domain.errors import ForbiddenError
+import hmac
+
+from domain.errors import ForbiddenError, InvalidInternalKeyError
 from litestar.connection import ASGIConnection
 from litestar.handlers.base import BaseRouteHandler
 
@@ -16,3 +18,21 @@ async def chats_guard(connection: ASGIConnection, route_handler: BaseRouteHandle
     if not operator.allows_any(actions):
         raise ForbiddenError(" or ".join(f"chats:{action}" for action in actions) + " is required.")
     connection.state.operator = operator
+
+
+INTERNAL_API_KEY_HEADER = "X-Internal-Api-Key"
+
+
+async def internal_api_key_guard(
+    connection: ASGIConnection, route_handler: BaseRouteHandler
+) -> None:
+    """Require CHAT_INTERNAL_API_KEY in `X-Internal-Api-Key`, compared in constant time.
+
+    A guard runs before the body is read, so a caller without the key learns nothing about how
+    the endpoint validates its input.
+    """
+    presented = connection.headers.get(INTERNAL_API_KEY_HEADER, "")
+    expected = connection.app.state.settings.CHAT_INTERNAL_API_KEY
+    # As bytes: compare_digest raises TypeError on a non-ASCII str instead of returning False.
+    if not hmac.compare_digest(presented.encode(), expected.encode()):
+        raise InvalidInternalKeyError()

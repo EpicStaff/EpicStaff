@@ -1,11 +1,11 @@
 """Removes injected secret values from a completed execution's output.
 
-The inbound half of secret delivery keeps plaintext out of generated source, out of
-graph_schema, and out of logs. This is the outbound half: the sandbox is the last
-point that holds both the plaintext values and the process's output, so scrubbing
-here covers every downstream consumer -- PythonCodeResult, GraphSessionMessage, the
-SSE stream, the tool observation handed to the LLM, and both container logs -- with
-no change in Django or crew.
+The inbound half of secret delivery keeps plaintext out of generated source, off the
+caller's unresolved session data, and out of logs. This is the outbound half: the
+sandbox is the last point that holds both the plaintext values and the process's
+output, so scrubbing here covers every downstream consumer -- PythonCodeResult,
+GraphSessionMessage, the SSE stream, the tool observation handed to the LLM, and both
+container logs -- with no change in Django or crew.
 
 Scope: accidental disclosure by an author who is already permitted to read the
 secret. A determined author can still exfiltrate by encoding or chunking the value,

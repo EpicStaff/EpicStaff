@@ -18,15 +18,13 @@ import { Router, RouterLink } from '@angular/router';
 import {
     AuthorshipDetailsDialogService,
     AuthorshipDetailsSource,
-    ConfirmationDialogService,
-    ConfirmationResult,
     FetchErrorStateComponent,
     LoadingSpinnerComponent,
 } from '@shared/components';
 import { DragScrollDirective } from '@shared/directives';
-import { LABELS_STORE } from '@shared/services';
+import { BulkDeleteService, LABELS_STORE } from '@shared/services';
 import { showExportExclusionWarning } from '@shared/utils';
-import { switchMap } from 'rxjs';
+import { filter, switchMap } from 'rxjs/operators';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications';
@@ -44,6 +42,7 @@ import { FlowsApiService } from '../../../../services/flows-api.service';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
 import { RunGraphService } from '../../../../services/run-graph-session.service';
+import { flowsBulkDeleteGroup } from '../../../../utils/flows-bulk-delete.util';
 
 @Component({
     selector: 'app-my-flows',
@@ -66,7 +65,7 @@ export class MyFlowsComponent implements AfterViewChecked {
     private readonly router = inject(Router);
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
-    private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly bulkDeleteService = inject(BulkDeleteService);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly importExportService = inject(ImportExportService);
     private readonly labelsStorage = inject(LabelsStorageService);
@@ -86,6 +85,7 @@ export class MyFlowsComponent implements AfterViewChecked {
     public readonly isFlowsLoaded = this.flowsService.isFlowsLoaded;
     public readonly selectMode = this.flowsService.selectMode;
     public readonly selectedFlowIds = this.flowsService.selectedFlowIds;
+    public readonly isDeleting = this.flowsService.isDeleting;
     public readonly isMeasuring = signal(true);
     public readonly visibleCount = signal<number>(Infinity);
 
@@ -257,20 +257,14 @@ export class MyFlowsComponent implements AfterViewChecked {
     }
 
     private confirmAndDeleteFlow(flow: GetGraphLightRequest): void {
-        this.confirmationDialogService
-            .confirmMoveToRecycleBin(flow.name, this.recycleBinSettings.retentionDays(), 50)
-            .subscribe((result: ConfirmationResult) => {
-                if (result === true) {
-                    this.flowsService.deleteFlow(flow.id).subscribe({
-                        next: () => {
-                            this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()).subscribe();
-                        },
-                        error: (err) => {
-                            console.error(`Error deleting flow ${flow.id} - ${flow.name}`, err);
-                        },
-                    });
-                }
-            });
+        this.bulkDeleteService
+            .run([flowsBulkDeleteGroup(this.flowsService, [flow], this.recycleBinSettings.retentionDays())])
+            .pipe(
+                filter((outcomes) => outcomes.some((outcome) => (outcome.response?.deleted_count ?? 0) > 0)),
+                switchMap(() => this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter())),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
     }
 
     private openRenameDialog(flow: GetGraphLightRequest): void {

@@ -38,7 +38,7 @@ from tables.models import (
 from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.models.label_models import Label
 from tables.services.node_number_service import NodeNumberService, source_order_key
-from tables.services.secrets.reference_guard import pinned_principal_of_user
+from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
 
 # Every reverse relation on Graph that holds its content (nodes, notes, edges).
 GRAPH_CHILD_RELATIONS = (*NODE_RELATIONS.values(), "edge_list")
@@ -308,7 +308,7 @@ class GraphStrategy(EntityImportExportStrategy):
         "Before import" backup version, whose secret declarations re-link it when
         that version is restored.
 
-        The key is linked with a plain save, past the serializers' secret guards, so a
+        The key is linked with a plain save, past the secret Use checks, so a
         pinned-org principal (a plugin) gets it only when it may reference that secret:
         never the organization's own bot key.
         """

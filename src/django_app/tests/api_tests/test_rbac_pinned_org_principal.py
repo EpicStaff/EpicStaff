@@ -56,9 +56,11 @@ from tables.serializers.model_serializers.session_serializers import (
 )
 from tables.services.graph_message_store import GraphMessageStore
 from tables.services.persistent_variables_service import PersistentVariablesService
-from tables.serializers.model_serializers.llm_serializers import LLMConfigSerializer, LLMModelSerializer
 from tables.services.secrets import secret_service
-from tables.services.secrets.reference_guard import secret_destination_guard, secret_reference_guard
+from tables.services.secrets.request_actor import actor_from_request
+from tables.services.secrets.exceptions import IncompletePluginCredentialError
+from tables.services.secrets.pinned_principal_rules import pinned_principal_of_request
+from tables.services.secrets.secret_use_checks import check_llm_config_write
 from tables.services.session_access import get_runnable_graph
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.storage_service.db_sync import StorageFileSync
@@ -457,17 +459,13 @@ def test_a_plugin_credential_without_the_whole_protocol_is_refused_not_taken_for
     else:
         person_shaped = SimpleNamespace(is_authenticated=True, is_plugin_credential=False)
         request = _guarded_request(person_shaped, auth=FakePluginKey())
-    serializer = LLMConfigSerializer(context={"request": request})
 
     assert not is_pinned_org_principal(request.user)
-    with pytest.raises(PermissionDenied):
-        secret_reference_guard.assert_unchanged_or_permitted(
-            serializer=serializer, attrs={"api_key_secret": secret}, fields=("api_key_secret_id",)
-        )
-    with pytest.raises(PermissionDenied):
-        secret_destination_guard.assert_may_change_endpoints(
-            serializer=LLMModelSerializer(context={"request": request}), attrs={"base_url": "https://x.example"}, fields=("base_url",)
-        )
+    with pytest.raises(IncompletePluginCredentialError):
+        check_llm_config_write(actor_from_request(request), None, {"api_key_secret": secret})
+    # The model viewsets' endpoint guard asks this before any other write check.
+    with pytest.raises(IncompletePluginCredentialError):
+        pinned_principal_of_request(request)
 
 
 def test_user_api_key_is_still_refused_on_secrets(member_only, acme, issue_api_key):

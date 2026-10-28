@@ -33,6 +33,7 @@ from shared.models.agent_service import (
 )
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
+from tests.log_capture import log_line_starting_with, capture_logs_at
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -597,3 +598,121 @@ async def test_final_text_left_over_from_an_unfinished_tool_loop_is_enforced():
     assert emitter.errors == []
     assert loop.call_count == 2
     assert emitter.finals[0].structured_output == {"y": 7}
+
+
+# ---------------------------------------------------------------------------
+# Tests: logging redaction
+# ---------------------------------------------------------------------------
+
+
+async def test_instructions_and_messages_redaction_in_logs():
+    secret_marker = "SUPER_SECRET_API_KEY_12345"
+    emitter = FakeEmitter()
+    runner = _runner()
+    request = _request({"task_instructions": f"Process this: {secret_marker}"})
+
+    with capture_logs_at("DEBUG") as logs:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    instructions_line = log_line_starting_with(logs, "task instructions=")
+    assert secret_marker not in instructions_line
+    assert "<redacted" in instructions_line
+
+    messages_line = log_line_starting_with(logs, "prompt messages")
+    assert secret_marker not in messages_line
+    assert "<redacted" in messages_line
+
+
+async def test_final_text_redaction_in_logs():
+    secret_output = "SENSITIVE_ANSWER_OUTPUT_789"
+    emitter = FakeEmitter()
+
+    class SecretResultLoop(AgentLoop):
+        async def run(self, context, tools, emitter, stop) -> LoopResult:
+            return LoopResult(
+                final_text=secret_output,
+                tool_invocations=0,
+                iterations=1,
+                stop_reason="completed",
+            )
+
+    runner = _runner(loop=SecretResultLoop())
+    request = _request({"task_instructions": "Do something"})
+
+    with capture_logs_at("DEBUG") as logs:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    log_text = "\n".join(logs)
+    assert secret_output not in log_text
+    assert "final_text" in log_text
+    assert "<redacted" in log_text
+
+
+# ---------------------------------------------------------------------------
+# Tests: output_schema logging
+# ---------------------------------------------------------------------------
+
+
+async def test_single_task_redacts_output_schema_descriptions():
+    """Only the schema's property names may be logged; descriptions can carry PII."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "User's full name — PII"},
+            "age": {"type": "integer", "description": "SENSITIVE_MARKER_12345"},
+        },
+        "required": ["name", "age"],
+    }
+
+    emitter = FakeEmitter()
+    runner = _runner()
+    request = _request({"task_instructions": "Extract data", "output_schema": schema})
+
+    with capture_logs_at("DEBUG") as messages:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    log_output = "".join(messages)
+    assert "SENSITIVE_MARKER_12345" not in log_output
+    assert "PII" not in log_output
+
+    output_schema_line = log_line_starting_with(messages, "output_schema=")
+    assert "age" in output_schema_line
+    assert "name" in output_schema_line
+
+
+@pytest.mark.parametrize(
+    ("output_schema", "expected_line"),
+    [
+        ({"type": "object", "properties": None}, "output_schema=[]"),
+        ({"type": "object"}, "output_schema=[]"),
+        ({"type": "object", "properties": "not-a-mapping"}, "output_schema=[]"),
+    ],
+    ids=["properties_is_null", "properties_missing", "properties_not_a_mapping"],
+)
+async def test_output_schema_log_survives_a_schema_without_usable_properties(
+    output_schema, expected_line
+):
+    """output_schema is unvalidated JSON; logging it must never fail the request."""
+    emitter = FakeEmitter()
+    runner = _runner()
+    request = _request({"task_instructions": "Extract data", "output_schema": output_schema})
+
+    with capture_logs_at("DEBUG") as messages:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    assert log_line_starting_with(messages, "output_schema=") == expected_line
+
+
+async def test_output_schema_log_digests_a_schema_that_is_not_a_dict():
+    """A non-dict output_schema is digested instead of crashing the log call."""
+    secret_marker = "SCHEMA_AS_STRING_SECRET_42"
+    emitter = FakeEmitter()
+    runner = _runner()
+    request = _request({"task_instructions": "Extract data", "output_schema": secret_marker})
+
+    with capture_logs_at("DEBUG") as messages:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    output_schema_line = log_line_starting_with(messages, "output_schema=")
+    assert "<redacted" in output_schema_line
+    assert secret_marker not in output_schema_line

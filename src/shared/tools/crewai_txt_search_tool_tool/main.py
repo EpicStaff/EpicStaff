@@ -1,18 +1,15 @@
-import os
 from typing import Optional
 import urllib.request
+from urllib.parse import urlparse
 
 
 def read_txt_file(txt: str) -> str:
-    """Load text from a file path or URL."""
-    if txt.startswith("http://") or txt.startswith("https://"):
-        with urllib.request.urlopen(txt) as response:
-            return response.read().decode("utf-8")
-    elif os.path.isfile(txt):
-        with open(txt, "r", encoding="utf-8") as f:
-            return f.read()
-    else:
-        raise FileNotFoundError(f"TXT file not found: {txt}")
+    """Load text from an http(s) URL."""
+    url = urlparse(txt)
+    if url.scheme not in ("http", "https") or not url.netloc:
+        raise ValueError(f"'{txt}' is not an http(s) URL")
+    with urllib.request.urlopen(txt) as response:
+        return response.read().decode("utf-8")
 
 
 def search_in_text(
@@ -38,7 +35,7 @@ def main(
     Entry point for TXTSearchTool.
 
     Args:
-        txt (str): File path or URL of a TXT file.
+        txt (str): http(s) URL of a TXT file.
         search_query (str): Search query.
         similarity_threshold (float, optional): Currently unused.
         limit (int, optional): Max number of results.

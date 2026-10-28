@@ -1,5 +1,5 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { ActivePermissions, GetMeResponse, ShortcutSettings } from '@shared/models';
 
@@ -27,7 +27,7 @@ const BASE_USER: GetMeResponse = {
     active_organization_id: 3,
     active_permissions: ACTIVE_PERMISSIONS,
     avatar_url: null,
-    quickstart_tour_completed: true,
+    completed_tours: [],
     custom_shortcuts: { custom: [], overrides: {} },
 };
 
@@ -114,5 +114,95 @@ describe('ProfileService shortcut settings', () => {
 
         expect(failedWith?.status).toBe(400);
         expect(service.shortcutSettings()).toEqual(SAVED);
+    });
+});
+
+describe('ProfileService tour progress', () => {
+    let service: ProfileService;
+    let httpMock: HttpTestingController;
+
+    const OTHER_USER: GetMeResponse = { ...BASE_USER, id: 8, email: 'john@example.com', display_name: 'John Roe' };
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
+            ],
+        });
+        service = TestBed.inject(ProfileService);
+        httpMock = TestBed.inject(HttpTestingController);
+    });
+
+    afterEach(() => httpMock.verify());
+
+    function loadUser(user: GetMeResponse): void {
+        service.getCurrentUser().subscribe();
+        httpMock.expectOne({ method: 'GET', url: PROFILE_URL }).flush(user);
+    }
+
+    function expectTourSave(tourKey: string): TestRequest {
+        return httpMock.expectOne({ method: 'POST', url: `${PROFILE_URL}tours/${tourKey}/complete/` });
+    }
+
+    it('saves the tour with an empty POST, emits the completed tours, and the signed-in user then lists it', () => {
+        loadUser({ ...BASE_USER, completed_tours: ['release-notes'] });
+        let completedTours: readonly string[] | undefined;
+
+        service.markTourCompleted('quick-start').subscribe((tours) => (completedTours = tours));
+        const request = expectTourSave('quick-start');
+        expect(request.request.body).toBeNull();
+        request.flush({ ...BASE_USER, completed_tours: ['quick-start', 'release-notes'] });
+
+        expect(completedTours).toEqual(['quick-start', 'release-notes']);
+        expect(service.currentUserSignal()?.completed_tours).toEqual(['quick-start', 'release-notes']);
+    });
+
+    it('sends the tour key as a single encoded path segment', () => {
+        loadUser(BASE_USER);
+
+        service.markTourCompleted('a b/c').subscribe({ error: () => undefined });
+
+        expectTourSave('a%20b%2Fc').flush(
+            { status_code: 400, code: 'invalid', message: 'Invalid tour key.' },
+            { status: 400, statusText: 'Bad Request' }
+        );
+    });
+
+    it('keeps a profile change that landed while the save was on its way', () => {
+        loadUser(BASE_USER);
+
+        service.markTourCompleted('quick-start').subscribe();
+        service.updateCurrentUser({ display_name: 'Jane Smith' }).subscribe();
+        httpMock
+            .expectOne({ method: 'PATCH', url: PROFILE_URL })
+            .flush({ ...BASE_USER, display_name: 'Jane Smith', completed_tours: ['quick-start'] });
+        // The backend read this profile before the rename.
+        expectTourSave('quick-start').flush({ ...BASE_USER, completed_tours: ['quick-start'] });
+
+        expect(service.currentUserSignal()?.display_name).toBe('Jane Smith');
+        expect(service.currentUserSignal()?.completed_tours).toEqual(['quick-start']);
+    });
+
+    it('does not bring the user back when the save lands after sign-out', () => {
+        loadUser(BASE_USER);
+
+        service.markTourCompleted('quick-start').subscribe();
+        service.clearCurrentUser();
+        expectTourSave('quick-start').flush({ ...BASE_USER, completed_tours: ['quick-start'] });
+
+        expect(service.currentUserSignal()).toBeNull();
+    });
+
+    it('does not change another user who signed in while the save was on its way', () => {
+        loadUser(BASE_USER);
+
+        service.markTourCompleted('quick-start').subscribe();
+        service.clearCurrentUser();
+        loadUser(OTHER_USER);
+        expectTourSave('quick-start').flush({ ...BASE_USER, completed_tours: ['quick-start'] });
+
+        expect(service.currentUserSignal()).toEqual(OTHER_USER);
     });
 });

@@ -146,7 +146,7 @@ from .tag_models import (
     RealtimeTranscriptionConfigTag,
     Tag,
 )
-from .user import User
+from .user import User, UserTourProgress
 from .webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     LocalhostWebhookConfig,
@@ -292,6 +292,7 @@ __all__ = [
     "TwilioChannel",
     "User",
     "UserSessionMessage",
+    "UserTourProgress",
     "WebhookTrigger",
     "WebhookTriggerAuth",
     "WebhookTriggerAuthKind",

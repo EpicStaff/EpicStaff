@@ -16,6 +16,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 
+import { nextListIndex } from '../../utils/list-navigation.util';
+
 interface TimezoneOption {
     iana: string;
     offsetLabel: string;
@@ -91,6 +93,8 @@ function buildTimezoneOptions(): TimezoneOption[] {
 
 const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = buildTimezoneOptions();
 
+let nextSelectorId = 0;
+
 @Component({
     selector: 'app-timezone-selector',
     imports: [OverlayModule, FormsModule],
@@ -107,6 +111,9 @@ export class TimezoneSelectorComponent implements ControlValueAccessor {
     isDisabled = signal(false);
     selectedValue = signal<string | null>(null);
     searchQuery = signal('');
+    /** The option the arrow keys point at in the open list, or -1; Enter picks it. */
+    readonly activeIndex = signal(-1);
+    protected readonly listId = `tz-selector-list-${nextSelectorId++}`;
 
     readonly allOptions = ALL_TIMEZONE_OPTIONS;
 
@@ -159,6 +166,19 @@ export class TimezoneSelectorComponent implements ControlValueAccessor {
                 .backdropClick()
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe(() => this.close());
+
+            // Listening here makes this list, not a dialog under it, the one Esc closes. Stopping the key keeps it from
+            // window-level handlers too, such as the flow editor's Esc that would close the node side panel.
+            this.overlayRef
+                .keydownEvents()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((event) => {
+                    if (event.key === 'Escape') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.close();
+                    }
+                });
         }
 
         // Sync width on every open so the dropdown matches the trigger
@@ -169,15 +189,60 @@ export class TimezoneSelectorComponent implements ControlValueAccessor {
         this.overlayRef.attach(portal);
         this.open.set(true);
         this.searchQuery.set('');
-        setTimeout(() => this.searchInput?.nativeElement?.focus(), 50);
+        // The list opens on the current timezone, so the arrows start from it.
+        this.activeIndex.set(this.filteredOptions().findIndex((tz) => tz.iana === this.selectedValue()));
+        setTimeout(() => {
+            this.searchInput?.nativeElement?.focus();
+            this.scrollToActive();
+        }, 50);
     }
 
     close(): void {
+        const wasOpen = this.open();
         if (this.overlayRef) {
             this.overlayRef.detach();
         }
         this.onTouched();
         this.open.set(false);
+        // Back on the button, so Tab goes on from there.
+        if (wasOpen) this.triggerBtn?.nativeElement.focus();
+    }
+
+    protected optionId(index: number): string {
+        return `${this.listId}-${index}`;
+    }
+
+    // Typing highlights the first match, so Enter takes it.
+    protected onSearchChange(query: string): void {
+        this.searchQuery.set(query);
+        this.activeIndex.set(this.filteredOptions().length > 0 ? 0 : -1);
+        this.scrollToActive();
+    }
+
+    // Focus stays in the search field; the arrows move the highlight and Enter picks it. Home and End stay with the caret.
+    protected onSearchKeydown(event: KeyboardEvent): void {
+        if (event.key === 'Enter') {
+            const option = this.filteredOptions()[this.activeIndex()];
+            if (option) {
+                event.preventDefault();
+                this.onSelect(option);
+            }
+            return;
+        }
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        const next = nextListIndex(event.key, this.activeIndex(), this.filteredOptions().length);
+        if (next === null) return;
+        event.preventDefault();
+        this.activeIndex.set(next);
+        this.scrollToActive();
+    }
+
+    private scrollToActive(): void {
+        const index = this.activeIndex();
+        if (index < 0) return;
+        this.overlayRef?.overlayElement
+            .querySelector(`#${CSS.escape(this.optionId(index))}`)
+            ?.scrollIntoView?.({ block: 'nearest' });
     }
 
     onSelect(tz: TimezoneOption): void {

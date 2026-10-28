@@ -8,6 +8,7 @@ import {
     haveSameEntries,
     haveSameOverrides,
     identifyRows,
+    isOverridableActionId,
     readCustomEntries,
     readKeyOverrides,
     resolveShortcuts,
@@ -41,7 +42,8 @@ describe('resolveShortcuts', () => {
 
         expect(resolved.bindings.get('node.python')).toEqual(['Shift+KeyP']);
         expect(resolved.bindings.get('editing.redo')).toEqual(['Mod+Shift+KeyZ', 'Mod+KeyY']);
-        expect(resolved.bindings.get('zoom.in')).toEqual([]);
+        expect(resolved.bindings.get('zoom.in')).toEqual(['Mod+Equal', 'Mod+Shift+Equal']);
+        expect(resolved.bindings.get('navigating.node-menu')).toEqual([]);
         expect(resolved.customShortcuts).toEqual([]);
         expect([...resolved.unboundIds]).toEqual([]);
     });
@@ -130,6 +132,7 @@ describe('resolveShortcuts', () => {
         ['a mac Ctrl chord', rows(['node.agent', 'Ctrl+KeyQ'])],
         ['the sidebar next-page key', rows(['node.agent', 'Alt+ArrowDown'])],
         ['the sidebar previous-page key', rows(['editing.save', 'Alt+ArrowUp'])],
+        ['the zoom out key, saved before zoom had keys', rows(['node.agent', 'Mod+Minus'])],
     ])('keeps a stored row with %s without a key and keeps every default', (_case, value) => {
         const resolved = resolveShortcuts(value);
 
@@ -151,10 +154,10 @@ describe('resolveShortcuts', () => {
     });
 
     it.each<[string, readonly CustomShortcutRow[], number]>([
-        ['nothing to reset', rows(['editing.save', 'Alt+KeyS'], ['node.task', null]), 0],
+        ['nothing to reset', rows(['editing.save', 'Alt+KeyO'], ['node.task', null]), 0],
         [
             'two rows holding node base keys',
-            rows(['node.task', 'Shift+KeyP'], ['editing.save', 'Alt+KeyS'], ['editing.undo', 'Shift+KeyA']),
+            rows(['node.task', 'Shift+KeyP'], ['editing.save', 'Alt+KeyO'], ['editing.undo', 'Shift+KeyA']),
             2,
         ],
     ])('counts the rows a reset to defaults would clear with %s', (_case, value, expected) => {
@@ -326,11 +329,11 @@ describe('applyShortcutChange', () => {
             [
                 'a free key, appended',
                 rows(['node.task', 'Alt+KeyT']),
-                { kind: 'add-custom', id: 'new', action: 'editing.undo', chord: 'Alt+KeyU' },
+                { kind: 'add-custom', id: 'new', action: 'editing.undo', chord: 'Alt+KeyH' },
                 null,
                 [
                     ['node.task', 'Alt+KeyT'],
-                    ['editing.undo', 'Alt+KeyU'],
+                    ['editing.undo', 'Alt+KeyH'],
                 ],
             ],
             [
@@ -385,7 +388,7 @@ describe('applyShortcutChange', () => {
                 'a reset to defaults: rows on node base keys lose their keys, unique keys stay',
                 rows(
                     ['node.task', 'Shift+KeyP'],
-                    ['editing.save', 'Alt+KeyS'],
+                    ['editing.save', 'Alt+KeyO'],
                     ['editing.undo', 'Shift+KeyA'],
                     ['node.agent', null]
                 ),
@@ -393,7 +396,7 @@ describe('applyShortcutChange', () => {
                 null,
                 [
                     ['node.task', null],
-                    ['editing.save', 'Alt+KeyS'],
+                    ['editing.save', 'Alt+KeyO'],
                     ['editing.undo', null],
                     ['node.agent', null],
                 ],
@@ -785,7 +788,7 @@ describe('node key overrides', () => {
             { 'node.python': 'Alt+KeyQ', 'node.task': null },
         ],
     ])('sets a node key to %s', (_case, stored, chord, displaces, expected) => {
-        const result = applyShortcutChange(NO_ROWS, { kind: 'set-node-key', action: 'node.python', chord }, stored);
+        const result = applyShortcutChange(NO_ROWS, { kind: 'set-key-override', action: 'node.python', chord }, stored);
 
         expect(result).toMatchObject({ accepted: true, displaces });
         expect(overridesAfter(result)).toEqual(expected);
@@ -796,7 +799,7 @@ describe('node key overrides', () => {
         ['a reserved key', NO_ROWS, 'Mod+KeyC', 'reserved', null],
         ['a key without a modifier', NO_ROWS, 'KeyQ', 'bare-key', null],
     ])('refuses a node key on %s', (_case, value, chord, rejection, takenBy) => {
-        const result = applyShortcutChange(value, { kind: 'set-node-key', action: 'node.python', chord });
+        const result = applyShortcutChange(value, { kind: 'set-key-override', action: 'node.python', chord });
 
         expect(result).toMatchObject({ accepted: false, rejection });
         expect(result.accepted ? null : (result.takenBy?.action ?? null)).toBe(takenBy);
@@ -805,7 +808,7 @@ describe('node key overrides', () => {
     it('resets one node key and leaves the other overrides alone', () => {
         const result = applyShortcutChange(
             NO_ROWS,
-            { kind: 'reset-node-key', action: 'node.python' },
+            { kind: 'reset-key-override', action: 'node.python' },
             overrides(['node.python', 'Alt+KeyQ'], ['node.task', null])
         );
 
@@ -816,7 +819,7 @@ describe('node key overrides', () => {
         ['an Additional row', rows(['node.agent', 'Shift+KeyP']), overrides(['node.python', 'Alt+KeyQ']), 'node.agent'],
         ['another override', NO_ROWS, overrides(['node.python', 'Alt+KeyQ'], ['node.task', 'Shift+KeyP']), 'node.task'],
     ])('refuses to reset a node key whose default %s now holds', (_case, value, stored, holder) => {
-        const result = applyShortcutChange(value, { kind: 'reset-node-key', action: 'node.python' }, stored);
+        const result = applyShortcutChange(value, { kind: 'reset-key-override', action: 'node.python' }, stored);
 
         expect(result).toMatchObject({ accepted: false, rejection: 'taken', takenBy: { action: holder } });
     });
@@ -834,18 +837,18 @@ describe('node key overrides', () => {
 
     it('clears every override on reset to defaults', () => {
         const result = applyShortcutChange(
-            rows(['editing.save', 'Alt+KeyS']),
+            rows(['editing.save', 'Alt+KeyO']),
             { kind: 'reset-to-defaults' },
             overrides(['node.python', 'Alt+KeyQ'], ['node.task', null])
         );
 
         expect(overridesAfter(result)).toEqual({});
-        expect(entriesOf(rowsAfter(result))).toEqual([['editing.save', 'Alt+KeyS']]);
+        expect(entriesOf(rowsAfter(result))).toEqual([['editing.save', 'Alt+KeyO']]);
     });
 
     it('refuses an override for an action without a built-in node key as a programming error', () => {
         expect(() =>
-            applyShortcutChange(NO_ROWS, { kind: 'set-node-key', action: 'editing.save', chord: 'Alt+KeyQ' })
+            applyShortcutChange(NO_ROWS, { kind: 'set-key-override', action: 'editing.save', chord: 'Alt+KeyQ' })
         ).toThrow();
     });
 
@@ -880,5 +883,130 @@ describe('node key overrides', () => {
         ['another key', overrides(['a', 'X']), overrides(['a', 'Y']), false],
     ])('compares %s', (_case, first, second, same) => {
         expect(haveSameOverrides(first, second)).toBe(same);
+    });
+});
+
+describe('flow toolbar keys', () => {
+    function overridesAfter(result: ShortcutChangeResult): Record<string, KeyChord | null> {
+        if (!result.accepted) throw new Error(`change was rejected: ${result.rejection}`);
+        return Object.fromEntries(result.overrides);
+    }
+
+    it.each<[EditorActionId, KeyChord]>([
+        ['flow.run', 'Mod+Enter'],
+        ['flow.stop-session', 'Mod+Shift+Enter'],
+        ['flow.sessions', 'Alt+KeyS'],
+        ['flow.chat', 'Alt+KeyC'],
+        ['flow.curl', 'Alt+KeyK'],
+        ['flow.auto-arrange', 'Alt+KeyL'],
+        ['flow.add-files', 'Alt+KeyU'],
+        ['flow.export-import', 'Alt+KeyX'],
+        ['flow.extract-subflow', 'Alt+KeyG'],
+        ['flow.settings', 'Alt+Comma'],
+        ['flow.domain', 'Alt+KeyM'],
+    ])('binds %s to %s by default', (actionId, chord) => {
+        const resolved = resolveShortcuts(NO_ROWS);
+
+        expect(resolved.bindings.get(actionId)).toEqual([chord]);
+        expect(resolved.holders.get(chord)).toEqual({ action: actionId, source: 'default', customShortcutId: null });
+    });
+
+    it.each<[string, boolean]>([
+        ['flow.run', true],
+        ['flow.stop-session', true],
+        ['flow.settings', true],
+        ['node.python', true],
+        ['node.subgraph', false],
+        ['editing.save', false],
+        ['editing.escape', false],
+        ['navigating.node-search', false],
+        ['navigating.shortcuts', false],
+        ['selection.zone', false],
+        ['zoom.in', false],
+        ['gone.action', false],
+    ])('lets the user change the own key of %s: %s', (actionId, expected) => {
+        expect(isOverridableActionId(actionId)).toBe(expected);
+    });
+
+    it('gives a flow key an Additional row already uses to that row and leaves the flow action Not set', () => {
+        const resolved = resolveShortcuts(rows(['editing.save', 'Alt+KeyC']));
+
+        expect(resolved.builtInBindings.get('flow.chat')).toEqual([]);
+        expect(resolved.unboundIds.has('flow.chat')).toBe(true);
+        expect(resolved.bindings.get('editing.save')).toEqual(['Mod+KeyS', 'Alt+KeyC']);
+        expect(resolved.holders.get('Alt+KeyC')).toMatchObject({ action: 'editing.save', source: 'custom' });
+        expect(resolved.defaultsResetClearCount).toBe(1);
+    });
+
+    it.each<[string, ShortcutChange]>([
+        ['an Additional row', { kind: 'add-custom', id: 'new', action: 'flow.chat', chord: 'Mod+KeyC' }],
+        ['a flow key', { kind: 'set-key-override', action: 'flow.chat', chord: 'Mod+KeyC' }],
+        ['a flow key on the shortcuts list key', { kind: 'set-key-override', action: 'flow.run', chord: 'Mod+Slash' }],
+    ])('refuses %s on the default key of a protected section', (_case, change) => {
+        expect(applyShortcutChange(NO_ROWS, change)).toMatchObject({ accepted: false, rejection: 'reserved' });
+        expect(resolveShortcuts(NO_ROWS).bindings.get('editing.copy')).toEqual(['Mod+KeyC']);
+    });
+
+    it('gives a flow key to a saved node key the user chose earlier and leaves the flow action Not set', () => {
+        const resolved = resolveShortcuts(NO_ROWS, new Map([['node.python', 'Alt+KeyS']]));
+
+        expect(resolved.builtInBindings.get('node.python')).toEqual(['Alt+KeyS']);
+        expect(resolved.builtInBindings.get('flow.sessions')).toEqual([]);
+        expect(resolved.unboundIds.has('flow.sessions')).toBe(true);
+        expect(resolved.holders.get('Alt+KeyS')).toMatchObject({ action: 'node.python', source: 'override' });
+    });
+
+    it('accepts a flow action as an Additional row', () => {
+        const result = applyShortcutChange(NO_ROWS, {
+            kind: 'add-custom',
+            id: 'new',
+            action: 'flow.run',
+            chord: 'Alt+KeyR',
+        });
+
+        expect(result).toMatchObject({ accepted: true, displaces: null });
+        expect(entriesOf(rowsAfter(result))).toEqual([['flow.run', 'Alt+KeyR']]);
+        expect(resolveShortcuts(rowsAfter(result)).bindings.get('flow.run')).toEqual(['Mod+Enter', 'Alt+KeyR']);
+    });
+
+    it('changes, clears and resets the key of a flow action', () => {
+        const changed = applyShortcutChange(NO_ROWS, {
+            kind: 'set-key-override',
+            action: 'flow.chat',
+            chord: 'Alt+KeyJ',
+        });
+        expect(overridesAfter(changed)).toEqual({ 'flow.chat': 'Alt+KeyJ' });
+        const stored = new Map([['flow.chat', 'Alt+KeyJ']]);
+        expect(resolveShortcuts(NO_ROWS, stored).bindings.get('flow.chat')).toEqual(['Alt+KeyJ']);
+
+        const cleared = applyShortcutChange(NO_ROWS, { kind: 'set-key-override', action: 'flow.chat', chord: null });
+        expect(overridesAfter(cleared)).toEqual({ 'flow.chat': null });
+
+        const reset = applyShortcutChange(NO_ROWS, { kind: 'reset-key-override', action: 'flow.chat' }, stored);
+        expect(overridesAfter(reset)).toEqual({});
+    });
+
+    it('moves a flow key to a node and leaves the flow action without a key', () => {
+        const result = applyShortcutChange(NO_ROWS, {
+            kind: 'set-key-override',
+            action: 'node.python',
+            chord: 'Alt+KeyL',
+        });
+
+        expect(result).toMatchObject({ accepted: true, displaces: 'flow.auto-arrange' });
+    });
+
+    it('gives the flow key back on reset to defaults and clears the Additional row that held it', () => {
+        const result = applyShortcutChange(
+            rows(['editing.save', 'Alt+KeyC'], ['editing.undo', 'Alt+KeyJ']),
+            { kind: 'reset-to-defaults' },
+            new Map([['flow.run', 'Alt+KeyR']])
+        );
+
+        expect(overridesAfter(result)).toEqual({});
+        expect(entriesOf(rowsAfter(result))).toEqual([
+            ['editing.save', null],
+            ['editing.undo', 'Alt+KeyJ'],
+        ]);
     });
 });

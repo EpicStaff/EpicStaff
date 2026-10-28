@@ -59,12 +59,10 @@ export interface ConversationSectionView {
     mineEmptyTitle?: string;
     // Above the rows of a section that ignores the sort order.
     orderNote?: string;
-    // A search opens it for the column while it is collapsed: what it holds is otherwise out of sight.
-    opensForSearch?: boolean;
 }
 
 /**
- * Top to bottom: the queue first, then what operators are on, Tests and Closed (both collapsed by default: there to
+ * Top to bottom: the queue first (the one open by default), then what operators are on, Tests and Closed (there to
  * look into, not to work through), and Bot last — always live and endless, so anything below it would be out of reach.
  */
 export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
@@ -99,7 +97,6 @@ export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
         emptyTitle: 'Nothing closed yet',
         emptyDescription: 'Conversations an operator resolved, the visitor ended or that went quiet end up here.',
         orderNote: 'Most recently closed first',
-        opensForSearch: true,
     },
     {
         id: 'bot',
@@ -149,29 +146,30 @@ export class ConversationListStore {
     // Bumped by every load: a section has loaded once its first page for the current generation has landed.
     private readonly generation = signal(0);
     /**
-     * Sections opened for this column only, over the remembered choice: to look for a conversation the page was asked
-     * to open. The user's own toggle of one replaces it with a remembered choice again.
+     * Sections opened for this column only, beside the remembered one: to look for a conversation the page was asked
+     * to open, or for a test that started. Folding one ends its opening; opening a folded one ends them all.
      */
     private readonly openedForColumn = signal<ReadonlySet<ChatInboxSection>>(new Set());
     /**
-     * Sections a search opened for this column only (Closed): the search starting opens them while collapsed, and
-     * clearing it folds back those the user has not toggled since. Nothing of it is remembered.
+     * The sections open while a search runs, for this column only: every one as it starts, then as the user folds and
+     * opens them. Clearing the search returns to the remembered one. Nothing of it is remembered.
      */
     private readonly openedForSearch = signal<ReadonlySet<ChatInboxSection>>(new Set());
-    // Collapsed as shown: the remembered choice, unless opened for this column or for its search.
-    private readonly collapsed = computed(() => {
-        const opened = new Set([...this.openedForColumn(), ...this.openedForSearch()]);
-        return new Set([...this.preferences.collapsed()].filter((section) => !opened.has(section)));
+    // Open as shown: the search's own while searching, else the remembered section and those opened for this column.
+    private readonly expanded = computed((): ReadonlySet<ChatInboxSection> => {
+        if (this.isSearching()) return this.openedForSearch();
+        const remembered = this.preferences.expanded();
+        return new Set([...(remembered ? [remembered] : []), ...this.openedForColumn()]);
     });
     /** Each section the query lists, in column order, with its state and whether it is open. */
     readonly view = computed(() => {
         const sections = this.sections();
-        const collapsed = this.collapsed();
+        const expanded = this.expanded();
         const query = this.query();
         return CONVERSATION_SECTIONS.filter((section) => listsSection(query, section.id)).map((section) => ({
             section,
             state: sections[section.id],
-            isExpanded: !collapsed.has(section.id),
+            isExpanded: expanded.has(section.id),
         }));
     });
     /** The rows as shown, top to bottom: those of the open sections, in order. What ↑/↓ moves through. */
@@ -217,12 +215,12 @@ export class ConversationListStore {
     /**
      * Lists `query` from the start: every section starts over. Open sections keep their rows on screen until their
      * first pages land; a collapsed section, or one the query does not list, is emptied and loads only once shown. A
-     * search starting opens the collapsed sections that open for one; clearing it folds them back.
+     * search starting opens every section; clearing it folds them back.
      */
     load(query: ConversationListQuery): void {
         const wasSearching = !!this.query().search;
         if (!query.search) this.openedForSearch.set(new Set());
-        else if (!wasSearching) this.openedForSearch.set(this.sectionsOpeningForSearch());
+        else if (!wasSearching) this.openedForSearch.set(new Set(CONVERSATION_SECTIONS.map(({ id }) => id)));
         this.querySignal.set(query);
         this.generation.update((generation) => generation + 1);
         this.rowsSinceReload = new Map();
@@ -246,23 +244,23 @@ export class ConversationListStore {
     }
 
     toggle(section: ChatInboxSection): void {
-        this.setCollapsed(section, !this.collapsed().has(section));
-    }
-
-    /**
-     * The user's choice, remembered per browser (it ends an opening for this column or for its search); opening a
-     * listed section that has not loaded for this query loads its first page.
-     */
-    setCollapsed(section: ChatInboxSection, collapsed: boolean): void {
-        this.openedForColumn.update((sections) => withoutSection(sections, section));
-        this.openedForSearch.update((sections) => withoutSection(sections, section));
-        this.preferences.setCollapsed(section, collapsed);
+        if (this.isSearching()) {
+            this.openedForSearch.update((sections) =>
+                sections.has(section) ? withoutSection(sections, section) : new Set([...sections, section])
+            );
+        } else if (this.expanded().has(section)) {
+            this.openedForColumn.update((sections) => withoutSection(sections, section));
+            if (this.preferences.expanded() === section) this.preferences.setExpanded(null);
+        } else {
+            this.openedForColumn.set(new Set());
+            this.preferences.setExpanded(section);
+        }
         this.showChange(section);
     }
 
     /** Opens a collapsed section in this column only; the remembered choice stays as it is. */
     openForColumn(section: ChatInboxSection): void {
-        if (!this.collapsed().has(section)) return;
+        if (this.preferences.expanded() === section || this.openedForColumn().has(section)) return;
         this.openedForColumn.update((sections) => new Set([...sections, section]));
         this.showChange(section);
     }
@@ -275,18 +273,8 @@ export class ConversationListStore {
         );
     }
 
-    // The collapsed sections a search shows: those whose rows would otherwise stay out of sight while searching.
-    private sectionsOpeningForSearch(): ReadonlySet<ChatInboxSection> {
-        const collapsed = this.collapsed();
-        return new Set(
-            CONVERSATION_SECTIONS.filter(({ id, opensForSearch }) => opensForSearch && collapsed.has(id)).map(
-                ({ id }) => id
-            )
-        );
-    }
-
     private isOpen(section: ChatInboxSection): boolean {
-        return listsSection(this.query(), section) && !this.collapsed().has(section);
+        return listsSection(this.query(), section) && this.expanded().has(section);
     }
 
     // A section opened or closed: re-arranged rows do not animate, and a newly open one loads its first page.

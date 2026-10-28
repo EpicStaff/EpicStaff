@@ -217,7 +217,6 @@ function render({ flows, canWrite = true, fetchedFlow }: Setup): Rendered {
             },
             { provide: ToastService, useValue: { error: toastError, success: vi.fn() } },
             { provide: RunGraphService, useValue: {} },
-            { provide: ConfirmationDialogService, useValue: {} },
             { provide: ImportExportService, useValue: {} },
         ],
     });
@@ -349,6 +348,20 @@ describe('MyFlowsComponent "View Details"', () => {
 
         expect(open).not.toHaveBeenCalled();
         expect(toastError).toHaveBeenCalledWith('Failed to load details of flow "Subflow 1"');
+    });
+});
+
+describe('MyFlowsComponent select mode', () => {
+    it('gives each card a secondary (light box, dark tick) checkbox in its own column before the title', () => {
+        const { fixture, host } = render({ flows: [FLOW] });
+
+        TestBed.inject(FlowsStorageService).setSelectMode(true);
+        fixture.detectChanges();
+
+        const flowCard = card(host, 'Test Flow 1');
+        const checkboxColumn = flowCard.querySelector('.card-body > .selection-checkbox');
+        expect(checkboxColumn?.querySelector('app-checkbox input')?.classList).toContain('secondary');
+        expect(checkboxColumn?.nextElementSibling?.classList).toContain('card-content');
     });
 });
 

@@ -836,6 +836,18 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     default_code = "cdt_explain_upstream_failed"
 
 
+class InUseRestrictedError(CustomAPIExeption):
+    """Raised by the single-object destroy path when the entity is referenced
+    from something the caller cannot see (BaseDeleteService.assert_deletable).
+    A fixed business rule on the row, not a change in the caller's own
+    permissions, so it carries its own code: the frontend must not treat it
+    as stale permissions."""
+
+    status_code = 403
+    default_detail = "This item is used somewhere you don't have access to, so it can't be deleted."
+    default_code = "in_use_restricted"
+
+
 class CdtExplainLLMConfigMissingKeyError(CustomAPIExeption):
     """Raised instead of `CdtExplainUpstreamError` when the LLM config has no API key.
 

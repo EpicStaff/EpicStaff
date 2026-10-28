@@ -322,6 +322,16 @@ class ApiKeyLimitExceededError(CustomAPIExeption):
     default_code = "api_key_limit_exceeded"
 
 
+class TourLimitExceededError(CustomAPIExeption):
+    """Raised by UserProfileService.complete_tour when the user already has
+    the maximum number of completed tours and the key is a new one. The
+    raise-site puts the actual maximum in the detail."""
+
+    status_code = 400
+    default_detail = "Maximum number of completed tours reached."
+    default_code = "tour_limit_exceeded"
+
+
 class FirstSetupDisabledError(CustomAPIExeption):
     """Raised by FirstSetupView when settings.FIRST_SETUP_MODE is not
     `open`. The HTTP endpoint is anonymous, so on an internet-exposed

@@ -19,6 +19,11 @@
         </button>
     </div>
 
+    <app-error-banner
+        class="create-model__error"
+        [message]="errorMessage()"
+    />
+
     <div
         class="create-model__content"
         [formGroup]="form"

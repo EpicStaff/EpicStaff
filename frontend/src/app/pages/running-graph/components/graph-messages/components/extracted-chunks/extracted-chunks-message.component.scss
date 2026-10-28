@@ -85,6 +85,11 @@
     font-size: 0.8rem;
 }
 
+// The RAG type uses the system purple; the chunk-count chip keeps the indigo.
+.chip--rag-type {
+    color: var(--accent-color);
+}
+
 .content-wrapper {
     display: grid;
     grid-template-rows: 1fr;

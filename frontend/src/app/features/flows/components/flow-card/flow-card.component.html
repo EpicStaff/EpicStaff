@@ -3,6 +3,7 @@
     appLabelDrop
     [resourceCode]="ResourceCode.Flows"
     [class.selected]="isSelected()"
+    [class.select-mode]="selectMode()"
     [class.has-subflows]="hasSubflows"
     [class.is-expanded]="isExpanded()"
     [class.drag-over]="cardDrop.isDragOver()"
@@ -10,65 +11,74 @@
     (labelDropped)="onLabelDropped($event)"
     #cardDrop="appLabelDrop"
 >
-    <div class="card-main">
-        <div class="card-info">
-            <div class="name-row">
-                @if (selectMode()) {
-                    <div class="selection-checkbox">
-                        <app-checkbox [checked]="isSelected()"></app-checkbox>
+    <div class="card-body">
+        @if (selectMode()) {
+            <div class="selection-checkbox">
+<!--                    TODO check is deleting -->
+                <app-checkbox
+                    color="secondary"
+                    [checked]="isSelected()"
+                    [disabled]="isDeleting()"
+                ></app-checkbox>
+            </div>
+        }
+        <div class="card-content">
+            <div class="card-main">
+                <div class="card-info">
+                    <div class="name-row">
+                        <span class="flow-name">{{ flow().name }}</span>
+                        <span class="flow-id">- ID {{ flow().id }}</span>
                     </div>
-                }
-                <span class="flow-name">{{ flow().name }}</span>
-                <span class="flow-id">- ID {{ flow().id }}</span>
-            </div>
-            <div
-                class="flow-description"
-                [class.placeholder]="!flow().description"
-            >
-                {{ flow().description || 'No description provided.' }}
-            </div>
-        </div>
-        <div class="card-actions">
-            @if (hasSubflows) {
-                <app-button
-                    [type]="isExpanded() ? 'outline-primary' : 'primary'"
-                    mod="small"
-                    (click)="toggleSubflows($event)"
-                    >Subflows
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="16px"
-                        [style.transform]="isExpanded() ? 'rotate(180deg)' : ''"
-                    />
-                </app-button>
-            }
-            <app-flow-menu
-                [isOpen]="isMenuOpen"
-                (menuToggle)="onMenuToggle($event)"
-                (actionSelected)="onActionSelected($event)"
-            ></app-flow-menu>
-        </div>
-    </div>
-
-    <div class="card-footer">
-        <div class="label-chips">
-            @for (labelId of flow().label_ids || []; track labelId) {
-                @let labelName = getLabelName(labelId);
-                @if (labelName) {
-                    <span
-                        class="label-chip"
-                        [ngStyle]="getLabelChipStyles(labelId)"
-                        [matTooltip]="getLabelFullPath(labelId)"
-                        matTooltipPosition="above"
-                        matTooltipClass="allow-scroll-tooltip"
-                        >{{ labelName }}</span
+                    <div
+                        class="flow-description"
+                        [class.placeholder]="!flow().description"
                     >
-                }
-            }
-        </div>
-        <div class="flow-date">
-            <span class="date-part">{{ formatDateOnly(flow().updated_at) }}</span>
-            <span class="time-part">, {{ formatTimeOnly(flow().updated_at) }}</span>
+                        {{ flow().description || 'No description provided.' }}
+                    </div>
+                </div>
+                <div class="card-actions">
+                    @if (hasSubflows) {
+                        <app-button
+                            [type]="isExpanded() ? 'outline-primary' : 'primary'"
+                            mod="small"
+                            (click)="toggleSubflows($event)"
+                            >Subflows
+                            <app-svg-icon
+                                icon="chevron-down"
+                                size="16px"
+                                [style.transform]="isExpanded() ? 'rotate(180deg)' : ''"
+                            />
+                        </app-button>
+                    }
+                    <app-flow-menu
+                        [isOpen]="isMenuOpen"
+                        (menuToggle)="onMenuToggle($event)"
+                        (actionSelected)="onActionSelected($event)"
+                    ></app-flow-menu>
+                </div>
+            </div>
+
+            <div class="card-footer">
+                <div class="label-chips">
+                    @for (labelId of flow().label_ids || []; track labelId) {
+                        @let labelName = getLabelName(labelId);
+                        @if (labelName) {
+                            <span
+                                class="label-chip"
+                                [ngStyle]="getLabelChipStyles(labelId)"
+                                [matTooltip]="getLabelFullPath(labelId)"
+                                matTooltipPosition="above"
+                                matTooltipClass="allow-scroll-tooltip"
+                                >{{ labelName }}</span
+                            >
+                        }
+                    }
+                </div>
+                <div class="flow-date">
+                    <span class="date-part">{{ formatDateOnly(flow().updated_at) }}</span>
+                    <span class="time-part">, {{ formatTimeOnly(flow().updated_at) }}</span>
+                </div>
+            </div>
         </div>
     </div>
 

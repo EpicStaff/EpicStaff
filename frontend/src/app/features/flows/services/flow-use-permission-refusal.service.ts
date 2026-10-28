@@ -19,6 +19,9 @@ export type UsePermissionRefusalOperation =
     | 'createFromVersion'
     | 'unpack';
 
+/** An action on the open flow that needs Flows:Use itself, whatever the flow contains. */
+export type UsePermissionAction = 'run' | 'getCurl' | 'stopSession';
+
 /** What holds the trigger nodes, and the operation as the subject of "… requires the Use permission". */
 const REFUSAL_COPY: Record<UsePermissionRefusalOperation, { source: string; action: string }> = {
     copy: { source: 'This flow', action: '<strong>Copying</strong> it' },
@@ -27,6 +30,13 @@ const REFUSAL_COPY: Record<UsePermissionRefusalOperation, { source: string; acti
     restore: { source: 'This version', action: '<strong>Restoring</strong> it' },
     createFromVersion: { source: 'This version', action: '<strong>Creating a flow</strong> from it' },
     unpack: { source: 'This subflow', action: '<strong>Unpacking</strong> it' },
+};
+
+/** The action as the subject of "… requires the Use permission". */
+const ACTION_REFUSAL_COPY: Record<UsePermissionAction, string> = {
+    run: '<strong>Running</strong> this flow',
+    getCurl: '<strong>Getting the cURL command</strong> for this flow',
+    stopSession: '<strong>Stopping</strong> a session of this flow',
 };
 
 function isUsePermissionRefusal(error: unknown): error is HttpErrorResponse {
@@ -39,9 +49,10 @@ function isUsePermissionRefusal(error: unknown): error is HttpErrorResponse {
 
 /**
  * Handles the refusal of an operation that would bring trigger nodes into a flow for a user without
- * Flows:Use: says why in an OK-only warning dialog. `catchRefusal` does so for the backend's refusal and
- * completes without emitting, so the caller's success and error handling both stay silent; any other error
- * passes through unchanged. The text is the frontend's own, per operation.
+ * Flows:Use, and of an action that needs Flows:Use itself (`showActionRefusal`): says why in an OK-only
+ * warning dialog. `catchRefusal` does so for the backend's refusal and completes without emitting, so the
+ * caller's success and error handling both stay silent; any other error passes through unchanged. The text
+ * is the frontend's own, per operation.
  */
 @Injectable({
     providedIn: 'root',
@@ -68,6 +79,18 @@ export class FlowUsePermissionRefusalService {
             title: USE_PERMISSION_REQUIRED_TITLE,
             message: `${source} contains trigger nodes (Webhook, Telegram, Schedule).`,
             caution: `${action} requires the <strong>Use</strong> permission on flows.`,
+            type: 'warning',
+            hideConfirm: true,
+            cancelText: 'OK',
+        });
+    }
+
+    /** Says, OK-only, that the action needs Flows:Use; for an action the user reached without its button. */
+    showActionRefusal(action: UsePermissionAction): void {
+        // Static text only, as in `showRefusal`.
+        this.confirmationDialog.confirm({
+            title: USE_PERMISSION_REQUIRED_TITLE,
+            message: `${ACTION_REFUSAL_COPY[action]} requires the <strong>Use</strong> permission on flows.`,
             type: 'warning',
             hideConfirm: true,
             cancelText: 'OK',

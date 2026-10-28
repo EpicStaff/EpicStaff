@@ -7,7 +7,14 @@
         let-item
         let-i="index"
     >
-        <app-list-row class="files__file">
+        <app-list-row
+            class="files__file"
+            [class.files__file--previewable]="item.document_id"
+            [attr.role]="item.document_id ? 'button' : null"
+            [attr.tabindex]="item.document_id ? 0 : null"
+            (click)="onPreview(item)"
+            (keydown.enter)="onPreview(item)"
+        >
             <div class="files__name-column">
                 <span>{{ i + 1 }}</span>
                 <app-svg-icon
@@ -42,22 +49,13 @@
                     <app-list-actions>
                         @if (item.document_id) {
                             <app-svg-icon
-                                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Read]"
-                                icon="eye"
-                                size="0.875rem"
-                                class="files__close-action"
-                                matTooltip="Preview file"
-                                matTooltipPosition="above"
-                                (click)="previewRequested.emit(item.document_id)"
-                            />
-                            <app-svg-icon
                                 *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
                                 icon="download"
                                 size="0.875rem"
                                 class="files__close-action"
                                 matTooltip="Download file"
                                 matTooltipPosition="above"
-                                (click)="onDownload(item.document_id)"
+                                (click)="$event.stopPropagation(); onDownload(item.document_id)"
                             />
                         }
                         <app-svg-icon
@@ -67,7 +65,7 @@
                             class="files__close-action"
                             matTooltip="Remove file"
                             matTooltipPosition="above"
-                            (click)="onDelete(item)"
+                            (click)="$event.stopPropagation(); onDelete(item)"
                         />
                     </app-list-actions>
                 }

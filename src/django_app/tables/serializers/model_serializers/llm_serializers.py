@@ -30,11 +30,6 @@ from tables.validators.token_price_validator import validate_token_prices_set_to
 
 from ..utils.llm_config_data_validation import LLMConfigDataFieldsValidationMixin
 from ..utils.mixins import TagHandlingMixin
-from ..utils.secret_destination_guard_mixin import (
-    LLM_MODEL_ENDPOINT_FIELDS,
-    SecretDestinationGuardMixin,
-)
-from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
 class RealtimeModelSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
@@ -51,11 +46,7 @@ class RealtimeModelSerializer(AuthorSummarySerializerMixin, serializers.ModelSer
         ]
 
 
-class RealtimeConfigSerializer(
-    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
-):
-    secret_reference_fields = ("api_key_secret_id",)
-
+class RealtimeConfigSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
         source="api_key_secret",
@@ -89,10 +80,8 @@ class RealtimeTranscriptionModelSerializer(
 
 
 class RealtimeTranscriptionConfigSerializer(
-    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+    AuthorSummarySerializerMixin, serializers.ModelSerializer
 ):
-    secret_reference_fields = ("api_key_secret_id",)
-
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
         source="api_key_secret",
@@ -114,13 +103,9 @@ class LLMConfigSerializer(
     LLMConfigDataFieldsValidationMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
-    SecretReferenceGuardMixin,
     TagHandlingMixin,
     serializers.ModelSerializer,
 ):
-    secret_reference_fields = ("api_key_secret_id",)
-    secret_marker_fields = ("extra_headers",)
-
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
         source="api_key_secret",
@@ -178,13 +163,8 @@ class LLMConfigSerializer(
 
 
 class LLMModelSerializer(
-    AuthorSummarySerializerMixin,
-    SecretDestinationGuardMixin,
-    TagHandlingMixin,
-    serializers.ModelSerializer,
+    AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
 ):
-    secret_destination_fields = LLM_MODEL_ENDPOINT_FIELDS
-
     capabilities = LLMModelTagSerializer(source="tags", many=True, required=False)
     tag_model = LLMModelTag
     supports_reasoning = serializers.SerializerMethodField()

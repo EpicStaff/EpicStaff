@@ -3,6 +3,7 @@ import {
     ChangeDetectorRef,
     Component,
     EventEmitter,
+    inject,
     Input,
     OnChanges,
     OnDestroy,
@@ -21,6 +22,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { GraphSessionLight, GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { KeymapService } from '../../../../visual-programming/services/keymap.service';
 import { GraphMessagesComponent } from '../graph-messages/graph-messages.component';
 import { SessionIdSwitcherComponent } from '../session-id-switcher/session-id-switcher.component';
 
@@ -51,6 +53,7 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+    protected readonly keymap = inject(KeymapService);
 
     private readonly destroy$ = new Subject<void>();
 
