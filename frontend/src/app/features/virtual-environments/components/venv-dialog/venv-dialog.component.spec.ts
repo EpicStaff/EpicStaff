@@ -26,6 +26,7 @@ function storedVenv(libs: VenvLib[]): Venv {
         error: null,
         owner: null,
         created_at: null,
+        is_favorite: false,
     };
 }
 

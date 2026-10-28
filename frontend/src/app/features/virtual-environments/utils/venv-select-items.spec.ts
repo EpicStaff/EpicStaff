@@ -1,0 +1,76 @@
+import { Venv, VENV_STATUS_VIEWS, VenvLib, VenvStatus } from '../models/venv.model';
+import { FAVORITES_GROUP, OTHER_GROUP, toVenvSelectItems } from './venv-select-items';
+
+function lib(name: string): VenvLib {
+    return { name, specification: '', version: null, description: null };
+}
+
+function venv(
+    id: number,
+    name: string,
+    isFavorite: boolean,
+    status: VenvStatus = 'completed',
+    libs: VenvLib[] = []
+): Venv {
+    return {
+        id,
+        name,
+        libs,
+        status,
+        error: null,
+        owner: null,
+        created_at: null,
+        is_favorite: isFavorite,
+    };
+}
+
+describe('toVenvSelectItems', () => {
+    it('puts the favorites first and keeps the given order inside each group', () => {
+        const items = toVenvSelectItems([
+            venv(1, 'b', false),
+            venv(2, 'z', true),
+            venv(3, 'a', false),
+            venv(4, 'y', true),
+        ]);
+
+        // Neither group is re-sorted: 'z' before 'y' and 'b' before 'a' are the caller's order,
+        // which is the order the backend sorted the venvs into.
+        expect(items.map((item) => item.name)).toEqual(['z', 'y', 'b', 'a']);
+        expect(items.map((item) => item.group)).toEqual([FAVORITES_GROUP, FAVORITES_GROUP, OTHER_GROUP, OTHER_GROUP]);
+        expect(items.map((item) => item.value)).toEqual([2, 4, 1, 3]);
+    });
+
+    it.each([
+        { status: 'completed' as VenvStatus, tip: undefined, disabled: false },
+        { status: 'processing' as VenvStatus, tip: 'Building', disabled: false },
+        { status: 'declared' as VenvStatus, tip: 'Queued', disabled: false },
+        { status: 'failed' as VenvStatus, tip: 'Failed', disabled: true },
+    ])('labels a $status venv and lets it be picked: $disabled', ({ status, tip, disabled }) => {
+        const [item] = toVenvSelectItems([venv(1, 'ml base', false, status)]);
+
+        expect(item.tip).toBe(tip);
+        expect(item.disabled).toBe(disabled);
+    });
+
+    it('paints the status label the colour the venv list page uses', () => {
+        const [building] = toVenvSelectItems([venv(1, 'ml base', false, 'processing')]);
+        const [ready] = toVenvSelectItems([venv(2, 'web', false, 'completed')]);
+
+        expect(building.tipColor).toBe(VENV_STATUS_VIEWS.processing!.color);
+        expect(ready.tipColor).toBeUndefined();
+    });
+
+    it.each([
+        { libs: [] as VenvLib[], meta: undefined },
+        { libs: [lib('fastapi')], meta: 'fastapi' },
+        { libs: [lib('fastapi'), lib('uvicorn'), lib('httpx')], meta: 'fastapi, uvicorn, httpx' },
+        {
+            libs: [lib('fastapi'), lib('uvicorn'), lib('httpx'), lib('pydantic'), lib('redis')],
+            meta: 'fastapi, uvicorn, httpx +2',
+        },
+    ])('summarises $libs.length libraries as $meta', ({ libs, meta }) => {
+        const [item] = toVenvSelectItems([venv(1, 'api-service', false, 'completed', libs)]);
+
+        expect(item.meta).toBe(meta);
+    });
+});

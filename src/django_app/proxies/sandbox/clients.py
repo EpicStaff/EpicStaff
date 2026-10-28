@@ -15,6 +15,8 @@ class SandboxVenvClient(Client):
         self,
         *,
         ids: Iterable[str],
+        search: str | None = None,
+        order: str | None = None,
         limit: str | None = None,
         offset: str | None = None,
     ) -> dict:
@@ -29,6 +31,10 @@ class SandboxVenvClient(Client):
                 "result": [],
             }
         params: dict = {"ids": ids}
+        if search is not None:
+            params["search"] = search
+        if order is not None:
+            params["order"] = order
         if limit is not None:
             params["limit"] = limit
         if offset is not None:

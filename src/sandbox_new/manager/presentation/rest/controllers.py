@@ -8,6 +8,7 @@ from src.shared.bench_log import BENCH_LEVEL
 
 from manager.application.orchestrators import JobOrchestrator, VenvCRUDOrchestrator
 from manager.application.ports import AbstractUnitOfWork
+from manager.domain.enums import VenvOrder
 from manager.presentation.rest import schemas
 
 ERROR_RESPONSES = {
@@ -38,8 +39,9 @@ class VenvController(Controller):
         summary="List virtual environments",
         description=(
             "Returns one page of venvs together with the total number matching the "
-            "filter. `count` is that total, counted before `limit` and `offset` are "
-            "applied, so it does not shrink as you page through the result."
+            "filters. `count` is that total, counted after `ids` and `search` have "
+            "narrowed the result but before `limit` and `offset` are applied, so it "
+            "does not shrink as you page through the result."
         ),
         response_description="A page of venvs and the total before paging.",
         responses=ERROR_RESPONSES,
@@ -51,12 +53,29 @@ class VenvController(Controller):
             default=None,
             description="Restrict the result to these venv ids. Omit to list every venv.",
         ),
+        search: str | None = Parameter(
+            default=None,
+            description=(
+                "Keep the venvs whose name contains this text, ignoring case. The text is "
+                "matched literally, so `%` and `_` are those characters, not wildcards."
+            ),
+        ),
+        order: VenvOrder = Parameter(
+            default=VenvOrder.DEFAULT,
+            description="How to sort the venvs before they are paged.",
+        ),
         limit: int | None = Parameter(default=None, description="Maximum venvs to return."),
         offset: int | None = Parameter(default=None, description="Venvs to skip before the page."),
     ) -> schemas.VenvListSchema:
         """Return a page of venvs."""
         orchestrator = VenvCRUDOrchestrator(uow)
-        objs, count = await orchestrator.list(ids=ids, limit=limit, offset=offset)
+        objs, count = await orchestrator.list(
+            ids=ids,
+            name_contains=search.strip() if search else None,
+            order=order,
+            limit=limit,
+            offset=offset,
+        )
         return schemas.VenvListSchema(
             count=count,
             limit=limit or 0,

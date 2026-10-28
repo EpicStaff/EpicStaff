@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import builtins
 
-from manager.domain.enums import VenvStatus
+from manager.domain.enums import VenvOrder, VenvStatus
 from manager.domain.models import Venv
 
 
@@ -13,15 +13,19 @@ class AbstractVenvRepository(abc.ABC):
         self,
         *,
         ids: builtins.list[int] | None = None,
+        name_contains: str | None = None,
+        order: VenvOrder = VenvOrder.DEFAULT,
         limit: int | None = None,
         offset: int | None = None,
     ) -> tuple[builtins.list[Venv], int]:
-        """Return a page of venvs and the total matching the filter.
+        """Return a page of venvs and the total matching the filters.
 
         `ids` restricts the result to those venv ids -- the gateway passes the
         caller organization's ids so one org never sees another's venvs; `None`
-        lists all. `limit`/`offset` page the rows; the returned count is the
-        total before paging.
+        lists all. `name_contains` keeps the venvs whose name contains it,
+        ignoring case. `order` sorts the rows before they are paged.
+        `limit`/`offset` page the rows; the returned count is the total matching
+        the filters, counted before paging.
         """
 
     @abc.abstractmethod

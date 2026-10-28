@@ -123,35 +123,49 @@
             class="selector__list"
             [class.selector__list--boxed]="variant() === 'boxed'"
         >
-            @for (item of filteredItems(); track item.name) {
-                <div
-                    class="selector__option selector__option--exists"
-                    [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
-                    [class.selector__option--selected]="item.value === selectedValue()"
-                    (click)="select(item)"
-                >
-                    @if (item.icon) {
-                        <app-svg-icon
-                            [icon]="item.icon"
-                            [size]="'16px'"
-                        ></app-svg-icon>
-                    }
-                    @if (item.dotColor; as dotColor) {
-                        <span
-                            class="selector__dot"
-                            [style.background-color]="dotColor"
-                        ></span>
-                    }
-                    <div class="selector__option-body">
-                        <span class="selector__text">{{ item.name }}</span>
-                        @if (item.subtitle && variant() === 'boxed') {
-                            <span class="selector__subtitle">{{ item.subtitle }}</span>
+            @for (group of groupedItems(); track group.group ?? '') {
+                @if (group.group) {
+                    <div class="selector__group-label">{{ group.group }}</div>
+                }
+                @for (item of group.items; track item.name) {
+                    <div
+                        class="selector__option selector__option--exists"
+                        [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
+                        [class.selector__option--selected]="item.value === selectedValue()"
+                        [class.selector__option--disabled]="item.disabled"
+                        [attr.aria-disabled]="item.disabled ? true : null"
+                        (click)="select(item)"
+                    >
+                        @if (item.icon) {
+                            <app-svg-icon
+                                [icon]="item.icon"
+                                [size]="'16px'"
+                            ></app-svg-icon>
+                        }
+                        @if (item.dotColor; as dotColor) {
+                            <span
+                                class="selector__dot"
+                                [style.background-color]="dotColor"
+                            ></span>
+                        }
+                        <div class="selector__option-body">
+                            <span class="selector__text">{{ item.name }}</span>
+                            @if (item.subtitle && variant() === 'boxed') {
+                                <span class="selector__subtitle">{{ item.subtitle }}</span>
+                            }
+                        </div>
+                        @if (item.meta) {
+                            <span class="selector__meta">{{ item.meta }}</span>
+                        }
+                        @if (item.tip) {
+                            <span
+                                class="selector__tip"
+                                [style.color]="item.tipColor"
+                                >{{ item.tip }}</span
+                            >
                         }
                     </div>
-                    @if (item.tip) {
-                        <span class="selector__tip">{{ item.tip }}</span>
-                    }
-                </div>
+                }
             }
 
             @if (allowCustomValue() && search().trim() && !hasExactMatch()) {
@@ -166,7 +180,7 @@
                 </div>
             }
 
-            @if (!filteredItems().length && !(allowCustomValue() && search().trim())) {
+            @if (!hasVisibleItems() && !(allowCustomValue() && search().trim())) {
                 <div
                     class="selector__option selector__option--empty"
                     [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"

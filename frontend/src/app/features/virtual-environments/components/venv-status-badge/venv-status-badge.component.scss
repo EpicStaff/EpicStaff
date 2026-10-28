@@ -1,3 +1,5 @@
+// The foreground colors live in VENV_STATUS_VIEWS and are bound inline: the picker's
+// status label reads the same value. Only the backgrounds belong to the badge.
 .venv-status {
     display: inline-flex;
     align-items: center;
@@ -11,7 +13,6 @@
 }
 
 .venv-status--processing {
-    color: var(--color-status-info);
     background-color: var(--sky-alpha-6);
 
     .venv-status__icon {
@@ -20,13 +21,11 @@
 }
 
 .venv-status--failed {
-    color: var(--color-status-error);
     background-color: var(--red-alpha-6);
     cursor: help;
 }
 
 .venv-status--declared {
-    color: var(--color-ks-transparent-text-60);
     background-color: var(--transparent-white-8);
 }
 
