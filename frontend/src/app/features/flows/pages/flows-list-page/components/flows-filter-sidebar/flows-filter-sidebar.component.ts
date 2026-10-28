@@ -10,7 +10,6 @@ import {
 } from '../../../../../audit/models/audit-filter.models';
 import { DEEP_TEXT_OPERATORS } from '../../../../../audit/models/audit-filter-options';
 import { EMPTY_FLOWS_FILTER, FlowsFilterState } from '../../../../models/flow-filter.model';
-import { GetGraphLightRequest } from '../../../../models/graph.model';
 import { FlowFilterPresetsStorageService } from '../../../../services/flow-filter-presets-storage.service';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
@@ -63,7 +62,6 @@ export class FlowsFilterSidebarComponent implements OnInit {
 
     public readonly closeSidebar = output<void>();
 
-    protected readonly flowsExpanded = signal(false);
     protected readonly labelsExpanded = signal(false);
     protected readonly customExpanded = signal(false);
 
@@ -79,28 +77,6 @@ export class FlowsFilterSidebarComponent implements OnInit {
 
     protected readonly customKeyOptions = CUSTOM_KEY_OPTIONS;
     protected readonly customOperators: AuditFilterOp[] = [...DEEP_TEXT_OPERATORS, 'is_empty', 'is_not_empty'];
-
-    protected readonly flowOptions = computed<FlowsEnumOption[]>(() =>
-        this.flowsStorage
-            .flows()
-            .slice()
-            .sort((a: GetGraphLightRequest, b: GetGraphLightRequest) =>
-                a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-            )
-            .map((flow: GetGraphLightRequest) => ({ value: String(flow.id), label: flow.name }))
-    );
-
-    protected readonly flowsValue = computed(() => {
-        const ids = this.pending().includedFlowIds;
-        if (ids === null) return [];
-        return ids.map(String);
-    });
-
-    protected readonly flowsSummary = computed(() => {
-        const ids = this.pending().includedFlowIds;
-        if (ids === null || ids.length === 0) return '';
-        return `${ids.length} selected`;
-    });
 
     protected readonly labelOptions = computed<FlowsEnumOption[]>(() =>
         this.labels().map((label: LabelDto) => ({ value: String(label.id), label: label.name }))
@@ -143,15 +119,6 @@ export class FlowsFilterSidebarComponent implements OnInit {
         this.flowsStorage.patchFilter(this.pending());
         this.isCreatingPreset.set(true);
         this.activeTab.set('presets');
-    }
-
-    protected onFlowsChange(values: string[]): void {
-        const ids = values.map(Number);
-        this.patchPending({ includedFlowIds: ids.length === 0 ? null : ids });
-    }
-
-    protected clearFlows(): void {
-        this.patchPending({ includedFlowIds: null });
     }
 
     protected onLabelsChange(values: string[]): void {

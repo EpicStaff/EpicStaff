@@ -51,21 +51,6 @@
             <!-- FILTERS heading -->
             <div class="filter-sidebar__heading">FILTERS</div>
 
-            <!-- Flows -->
-            <app-flows-filter-group
-                label="Flows"
-                [(expanded)]="flowsExpanded"
-                [summary]="flowsSummary()"
-                (cleared)="clearFlows()"
-            >
-                <app-flows-checkbox-enum
-                    [options]="flowOptions()"
-                    [searchable]="true"
-                    [value]="flowsValue()"
-                    (valueChange)="onFlowsChange($event)"
-                />
-            </app-flows-filter-group>
-
             <!-- Labels -->
             <app-flows-filter-group
                 label="Labels"

@@ -298,38 +298,25 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
             this.flowStorageService.setFilter(initial);
             this.cdr.markForCheck();
 
-            const hasIdsToValidate = initial.includedFlowIds !== null || initial.includedLabelIds !== null;
-            if (!hasIdsToValidate) return;
-
             forkJoin({
                 flows: this.flowStorageService.getFlows(),
                 labels: this.labelsStorage.loadLabels(),
-            }).subscribe(({ flows, labels }) => {
-                const knownFlowIds = new Set(flows.map((f) => f.id));
+            }).subscribe(({ labels }) => {
                 const knownLabelIds = new Set(labels.map((l) => l.id));
 
-                const validatedFlowIds =
-                    initial.includedFlowIds === null
-                        ? null
-                        : initial.includedFlowIds.filter((id) => knownFlowIds.has(id));
                 const validatedLabelIds =
                     initial.includedLabelIds === null
                         ? null
                         : initial.includedLabelIds.filter((id) => knownLabelIds.has(id));
 
-                const flowsChanged =
-                    validatedFlowIds !== null &&
-                    initial.includedFlowIds !== null &&
-                    validatedFlowIds.length !== initial.includedFlowIds.length;
                 const labelsChanged =
                     validatedLabelIds !== null &&
                     initial.includedLabelIds !== null &&
                     validatedLabelIds.length !== initial.includedLabelIds.length;
 
-                if (!flowsChanged && !labelsChanged) return;
+                if (!labelsChanged) return;
 
                 this.applyFilterPatch({
-                    includedFlowIds: validatedFlowIds && validatedFlowIds.length > 0 ? validatedFlowIds : null,
                     includedLabelIds: validatedLabelIds && validatedLabelIds.length > 0 ? validatedLabelIds : null,
                 });
             });
@@ -396,7 +383,6 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         event?.stopPropagation();
         this.applyFilterPatch({
             sortOrder: this.filterState().sortOrder,
-            includedFlowIds: EMPTY_FLOWS_FILTER.includedFlowIds,
             includedLabelIds: EMPTY_FLOWS_FILTER.includedLabelIds,
             customConditions: EMPTY_FLOWS_FILTER.customConditions,
         });

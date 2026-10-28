@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('rbac', '0004_organization_config'),
-        ('tables', '0281_merge_sessionprincipal_plugin_and_pythoncode_venv'),
+        ('tables', '0282_merge_retention_and_venv'),
     ]
 
     operations = [
