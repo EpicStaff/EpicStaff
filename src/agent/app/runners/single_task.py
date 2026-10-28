@@ -5,7 +5,7 @@ from loguru import logger
 from app.emitters.base import Emitter
 from app.enums import EmitterMode, RunType
 from app.exceptions import AgentServiceError
-from app.logging_utils import redact_messages, redact_value
+from app.logging_utils import format_exception_for_log, redact_messages, redact_value
 from app.loop.context import CancellationCheck
 from app.prompt.single_task import SingleTaskPromptBuilder
 from app.runners.base import Runner
@@ -140,12 +140,16 @@ class SingleTaskRunner(Runner):
             logger.error(
                 "single_task failed correlation_id={} error={}",
                 request.correlation_id,
-                error,
+                format_exception_for_log(error),
             )
             await emitter.on_error(error)  # expected domain failure → agent.error; do NOT re-raise
 
         except Exception as error:
-            logger.exception("single_task crashed correlation_id={}", request.correlation_id)
+            logger.error(
+                "single_task crashed correlation_id={} error={}",
+                request.correlation_id,
+                format_exception_for_log(error),
+            )
             await emitter.on_error(error)  # unexpected failure → agent.error; do NOT re-raise
 
     def _parse_payload(self, payload: dict) -> tuple[str, dict | None]:
