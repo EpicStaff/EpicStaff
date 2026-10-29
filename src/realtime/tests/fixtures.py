@@ -1,14 +1,44 @@
-from fastapi import WebSocket
+import json
 import pytest
 from unittest.mock import AsyncMock
+import httpx
 from application.tool_manager_service import ToolManagerService
 from infrastructure.messaging.redis_service import RedisService
 from infrastructure.messaging.python_code_executor_service import (
     PythonCodeExecutorService,
 )
+from infrastructure.sandbox.sandbox_client import SandboxExecutionClient
 from src.shared.models import RealtimeAgentChatData
 from tool_executors.base_tool_executor import BaseToolExecutor
 from tests.conftest import CONNECTION_KEY
+
+
+class RecordingSandboxIntake:
+    """Stands in for the sandbox HTTP intake: records every submitted body and
+    answers with `status_code`, so tests exercise the real client and the real
+    request serialization and only the network is replaced."""
+
+    BASE_URL = "http://sandbox.test"
+
+    def __init__(self, status_code: int = 202):
+        self.status_code = status_code
+        self.bodies: list[dict] = []
+
+    def client(self) -> SandboxExecutionClient:
+        return SandboxExecutionClient(
+            base_url=self.BASE_URL, transport=httpx.MockTransport(self._handle)
+        )
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/executions"
+        body = json.loads(request.content)
+        self.bodies.append(body)
+        if self.status_code >= 400:
+            return httpx.Response(self.status_code, json={"detail": "rejected"})
+        return httpx.Response(
+            self.status_code,
+            json={"execution_id": body["execution_id"], "status": "pending"},
+        )
 
 
 class FakeTokenizer:
@@ -19,11 +49,6 @@ class FakeTokenizer:
 
     def detokenize(self, tokens) -> str:
         return "x" * len(tokens)
-
-
-@pytest.fixture
-def fake_tokenizer():
-    return FakeTokenizer()
 
 
 class DummyToolExecutor(BaseToolExecutor):
@@ -38,17 +63,6 @@ class DummyToolExecutor(BaseToolExecutor):
     async def get_realtime_tool_model(self):
         return {"name": self.tool_name, "type": "mock"}
 
-
-@pytest.mark.asyncio
-@pytest.fixture
-def mock_ws_client():
-    # Creating a mock WebSocket client
-    ws_client = AsyncMock(spec=WebSocket)
-    ws_client.send_json = AsyncMock()
-    ws_client.receive_json = AsyncMock(
-        return_value={"type": "response", "message": "Hello, user!"}
-    )
-    return ws_client
 
 
 @pytest.fixture
@@ -87,17 +101,15 @@ def redis_service():
 
 
 @pytest.fixture
-def tool_manager(redis_service) -> ToolManagerService:
+def sandbox_intake() -> RecordingSandboxIntake:
+    return RecordingSandboxIntake()
+
+
+@pytest.fixture
+def tool_manager(redis_service, sandbox_intake) -> ToolManagerService:
     return ToolManagerService(
-        python_code_executor_service=PythonCodeExecutorService(redis_service),
+        python_code_executor_service=PythonCodeExecutorService(
+            redis_service, sandbox_intake.client()
+        ),
         knowledge_client=AsyncMock(),
     )
-
-
-@pytest.mark.asyncio
-@pytest.fixture
-def mock_ws_client():
-    # Creating a mock WebSocket client
-    ws_client = AsyncMock(spec=WebSocket)
-
-    return ws_client

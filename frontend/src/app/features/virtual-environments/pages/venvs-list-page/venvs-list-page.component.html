@@ -1,0 +1,180 @@
+<div class="venvs-page">
+    <div class="sticky-header">
+        <header class="header">
+            <div
+                class="header-titles"
+                appHideInlineSubtitleOnOverflow
+            >
+                <h1 class="title">
+                    Virtual Environments
+                    <span class="subtitle-inline"
+                        >Isolated Python environments with pinned libraries, reusable across flows, tools and
+                        agents.</span
+                    >
+                </h1>
+            </div>
+            <div class="header-actions">
+                <app-button
+                    *appHasPermission="[ResourceCode.Venvs, ActionCode.Create]"
+                    type="primary"
+                    leftIcon="plus"
+                    (click)="onCreate()"
+                >
+                    Create venv
+                </app-button>
+            </div>
+        </header>
+        <nav class="tabs">
+            <div class="tabs-left">
+                <app-tab-button
+                    mod="sm"
+                    [active]="true"
+                >
+                    Venvs
+                </app-tab-button>
+            </div>
+            <div class="tabs-right">
+                <button
+                    #filterTrigger="cdkOverlayOrigin"
+                    cdkOverlayOrigin
+                    type="button"
+                    class="menu-trigger filter-trigger"
+                    [class.active]="filterMenuOpen() || activeFilterCount() > 0"
+                    (click)="toggleFilterMenu()"
+                >
+                    <app-svg-icon
+                        icon="filter-outline"
+                        size="0.875rem"
+                    />
+                    <span>
+                        Filter
+                        @if (activeFilterCount() > 0) {
+                            <span class="filter-count">({{ activeFilterCount() }})</span>
+                        }
+                    </span>
+                    @if (activeFilterCount() > 0) {
+                        <span
+                            class="filter-clear-inline"
+                            role="button"
+                            matTooltip="Clear all filters"
+                            matTooltipPosition="above"
+                            (click)="clearAllFilters($event)"
+                        >
+                            <app-svg-icon
+                                icon="x"
+                                size="0.875rem"
+                            />
+                        </span>
+                    }
+                </button>
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="filterTrigger"
+                    [cdkConnectedOverlayOpen]="filterMenuOpen()"
+                    [cdkConnectedOverlayHasBackdrop]="true"
+                    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                    [cdkConnectedOverlayOffsetY]="6"
+                    [cdkConnectedOverlayPositions]="menuPositions"
+                    (backdropClick)="closeFilterMenu()"
+                    (detach)="closeFilterMenu()"
+                >
+                    <app-venvs-filter-menu
+                        [initial]="filterState()"
+                        (save)="onFilterSave($event)"
+                        (cancel)="closeFilterMenu()"
+                        (clear)="onFilterClear()"
+                    />
+                </ng-template>
+
+                <button
+                    #sortTrigger="cdkOverlayOrigin"
+                    cdkOverlayOrigin
+                    type="button"
+                    class="menu-trigger"
+                    [class.active]="sortMenuOpen() || sortOrder() !== 'default'"
+                    (click)="toggleSortMenu()"
+                >
+                    <app-svg-icon
+                        icon="arrow-up-down"
+                        size="0.875rem"
+                    />
+                    <span>{{ sortTriggerLabel() }}</span>
+                    <app-svg-icon
+                        icon="chevron-down"
+                        size="0.875rem"
+                        class="menu-chevron"
+                        [class.open]="sortMenuOpen()"
+                    />
+                </button>
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="sortTrigger"
+                    [cdkConnectedOverlayOpen]="sortMenuOpen()"
+                    [cdkConnectedOverlayHasBackdrop]="true"
+                    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                    [cdkConnectedOverlayOffsetY]="6"
+                    [cdkConnectedOverlayPositions]="menuPositions"
+                    (backdropClick)="closeSortMenu()"
+                    (detach)="closeSortMenu()"
+                >
+                    <app-venvs-sort-menu
+                        [activeSort]="sortOrder()"
+                        (sortSelected)="onSortSelected($event)"
+                    />
+                </ng-template>
+
+                <app-search
+                    class="search"
+                    mod="small"
+                    placeholder="Search by name..."
+                    [(searchTerm)]="searchTerm"
+                />
+            </div>
+        </nav>
+    </div>
+
+    <section class="venvs-page__body">
+        @if (isLoading()) {
+            <div class="venvs-page__list">
+                @for (placeholder of [0, 1, 2, 3]; track placeholder) {
+                    <div class="venvs-page__skeleton">
+                        <div class="venvs-page__skeleton-row">
+                            <span class="venvs-page__skeleton-bar venvs-page__skeleton-bar--name"></span>
+                        </div>
+                        <div class="venvs-page__skeleton-row">
+                            <div class="venvs-page__skeleton-chips">
+                                @for (chip of [0, 1, 2, 3]; track chip) {
+                                    <span class="venvs-page__skeleton-bar venvs-page__skeleton-bar--chip"></span>
+                                }
+                            </div>
+                            <span class="venvs-page__skeleton-bar venvs-page__skeleton-bar--meta"></span>
+                        </div>
+                    </div>
+                }
+            </div>
+        } @else if (venvs().length === 0) {
+            <div class="venvs-page__list">
+                <div class="venvs-page__empty text-body">
+                    @if (searchTerm().trim()) {
+                        <p>No venvs match "{{ searchTerm() }}".</p>
+                    } @else {
+                        <p>No venvs found. Create your first venv to get started.</p>
+                    }
+                </div>
+            </div>
+        } @else {
+            <div class="venvs-page__list">
+                @for (venv of venvs(); track venv.id) {
+                    <app-venv-card
+                        [venv]="venv"
+                        [canEdit]="canUpdate()"
+                        [canDelete]="canDelete()"
+                        (editRequested)="onEdit(venv)"
+                        (deleteRequested)="onDelete(venv)"
+                        (favoriteChange)="onFavoriteChange(venv, $event)"
+                    />
+                }
+            </div>
+        }
+    </section>
+</div>

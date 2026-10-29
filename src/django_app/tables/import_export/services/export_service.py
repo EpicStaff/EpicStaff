@@ -1,8 +1,17 @@
 from collections import defaultdict
+from dataclasses import dataclass, field
 
 from tables.import_export.constants import IMPORT_VERSION, MAIN_ENTITY_KEY
 from tables.import_export.enums import EntityType
+from tables.import_export.export_exclusions import ExcludedEntity, ExcludedEntityRecorder
+from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import EntityRegistry
+
+
+@dataclass
+class ExportResult:
+    data: dict = field(default_factory=dict)
+    excluded: list[ExcludedEntity] = field(default_factory=list)
 
 
 class ExportService:
@@ -14,8 +23,16 @@ class ExportService:
         entity_type: EntityType,
         entity_ids: list[int],
         org_id: int | None = None,
-    ) -> dict:
-        collector = DependencyCollector(self.registry, org_id=org_id)
+        *,
+        policy: ExportAccessPolicy,
+    ) -> ExportResult:
+        """Export entities with their dependencies, leaving out those `policy` denies.
+
+        The requested entities themselves are never filtered; only dependencies
+        reached from them are, and anything reachable only through a denied
+        dependency is dropped with it.
+        """
+        collector = DependencyCollector(self.registry, org_id=org_id, policy=policy)
 
         for entity_id in entity_ids:
             collector.collect(entity_type, entity_id)
@@ -23,16 +40,27 @@ class ExportService:
         data = collector.to_dict()
         data[MAIN_ENTITY_KEY] = entity_type
         data["version"] = IMPORT_VERSION
-        return data
+        return ExportResult(data=data, excluded=collector.excluded)
 
 
 class DependencyCollector:
     """Recursively collects all dependencies for export"""
 
-    def __init__(self, registry: EntityRegistry, org_id: int | None = None):
+    def __init__(
+        self,
+        registry: EntityRegistry,
+        org_id: int | None = None,
+        *,
+        policy: ExportAccessPolicy,
+    ):
         self.registry = registry
         self.org_id = org_id
         self.collected = defaultdict(dict)
+        self._exclusions = ExcludedEntityRecorder(registry, policy, org_id)
+
+    @property
+    def excluded(self) -> list[ExcludedEntity]:
+        return self._exclusions.excluded
 
     def collect(self, entity_type: str, entity_id: int):
         """Recursively collect entity and all its dependencies"""
@@ -50,6 +78,8 @@ class DependencyCollector:
 
         for dep_type, dep_ids in dependencies.items():
             for dep_id in dep_ids:
+                if not self._exclusions.admits(dep_type, dep_id):
+                    continue
                 self.collect(dep_type, dep_id)
 
         self.collected[entity_type][entity_id] = instance

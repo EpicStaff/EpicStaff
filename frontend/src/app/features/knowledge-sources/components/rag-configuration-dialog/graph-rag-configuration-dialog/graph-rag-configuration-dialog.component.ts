@@ -5,11 +5,9 @@ import { ButtonComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, Observable, of } from 'rxjs';
-import { filter, switchMap, tap } from 'rxjs/operators';
+import { filter, finalize, switchMap, tap } from 'rxjs/operators';
 
-import { getIndexingConfirmationData } from '../../../helpers/get-indexing-confirmation-data.util';
 import { CollectionGraphRag } from '../../../models/graph-rag.model';
-import { CollectionsStorageService } from '../../../services/collections-storage.service';
 import { GraphRagService } from '../../../services/graph-rag.service';
 import { GraphRagDocumentsStorageService } from '../../../services/graph-rag-documents-storage.service';
 import { GraphRagConfigurationComponent } from '../../graph-rag-configuration/graph-rag-configuration.component';
@@ -24,7 +22,6 @@ import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.com
 })
 export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent implements OnInit {
     private graphRagService = inject(GraphRagService);
-    private collectionsStorage = inject(CollectionsStorageService);
     private graphRagDocumentsStorage = inject(GraphRagDocumentsStorageService);
     private ragConfiguration = viewChild(GraphRagConfigurationComponent);
 
@@ -48,7 +45,9 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
             .filter((id) => processing.has(id));
     });
     hasUnsavedChanges = computed(() => this.ragConfiguration()?.hasUnsavedChanges() ?? false);
-    indexingDisabled = computed(() => !this.docConfigIds().length && !this.hasUnsavedChanges());
+    indexingDisabled = computed(
+        () => this.isPreparingIndexing() || (!this.docConfigIds().length && !this.hasUnsavedChanges())
+    );
     runButtonLabel = computed(() => {
         return this.ragConfiguration()?.indexMode() === 'total_reindex' ? 'Save & Re-index' : 'Save & Run Index';
     });
@@ -86,6 +85,8 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
     }
 
     runIndexing() {
+        if (this.isPreparingIndexing()) return;
+
         const ragComponent = this.ragConfiguration();
         if (!ragComponent) return;
 
@@ -113,8 +114,8 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
                   )
             : of(null);
 
-        this.confirmation
-            .confirm(getIndexingConfirmationData(ragComponent.getIndexingDocuments()))
+        this.isPreparingIndexing.set(true);
+        this.confirmIndexing(ragComponent.getIndexingDocuments(), configIds)
             .pipe(
                 filter((result) => result === true),
                 switchMap(() => delete$),
@@ -138,7 +139,8 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
                             })
                         );
                 }),
-                takeUntilDestroyed(this.destroyRef)
+                takeUntilDestroyed(this.destroyRef),
+                finalize(() => this.isPreparingIndexing.set(false))
             )
             .subscribe({
                 error: (err: HttpErrorResponse) => {

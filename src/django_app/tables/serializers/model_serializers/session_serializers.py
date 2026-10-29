@@ -31,21 +31,23 @@ class AgentSessionMessageSerializer(serializers.ModelSerializer):
 
 class SessionTriggerSerializer(serializers.ModelSerializer):
     trigger_id = serializers.IntegerField(read_only=True, allow_null=True)
+    is_test_run = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = SessionTrigger
-        fields = ("trigger_type", "trigger_id")
+        fields = ("trigger_type", "trigger_id", "is_test_run")
 
 
 class SessionPrincipalSerializer(serializers.ModelSerializer):
     class Meta:
         model = SessionPrincipal
-        fields = ["kind", "user", "api_key", "email"]
+        fields = ["kind", "user", "api_key", "email", "plugin_identifier"]
 
 
 class SessionSerializer(serializers.ModelSerializer):
     trigger = SessionTriggerSerializer(read_only=True)
     principal = SessionPrincipalSerializer(read_only=True)
+    callback_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Session
@@ -58,11 +60,15 @@ class SessionSerializer(serializers.ModelSerializer):
             "created_at",
             "finished_at",
             "graph",
-            "graph_schema",
             "parent_session",
             "trigger",
             "principal",
+            "callback_status",
         ]
+
+    def get_callback_status(self, session) -> str | None:
+        callback = getattr(session, "callback", None)
+        return callback.status if callback is not None else None
 
 
 class SessionLightSerializer(serializers.ModelSerializer):

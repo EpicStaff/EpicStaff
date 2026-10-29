@@ -1,0 +1,87 @@
+@if (isPhone()) {
+    <!-- The header's box would cost a phone a sixth of its height; the page's own nav bar says where the user is. -->
+    <h1 class="visually-hidden">Conversations</h1>
+} @else {
+    <header class="header">
+        <div
+            class="header-titles"
+            appHideInlineSubtitleOnOverflow
+        >
+            <h1 class="title">
+                Conversations
+                <span class="subtitle-inline">
+                    Publish flows as website chats and step in when a visitor needs a person.
+                </span>
+            </h1>
+        </div>
+    </header>
+}
+
+<!-- Inert behind the open drawer, so neither the focus nor a screen reader wanders out of it. -->
+<div
+    class="desks-shell__body"
+    [attr.inert]="isDrawerShown() ? '' : null"
+>
+    @if (!isPhone()) {
+        <div
+            #railColumn
+            class="desks-shell__rail"
+            [style.width.px]="railWidth()"
+        >
+            <app-desk-rail
+                [waitingByDesk]="waitingByDesk()"
+                [isCompact]="isRailCompact()"
+                (compactToggle)="toggleRail()"
+            />
+            <div
+                class="resizable-sidebar-handle"
+                sidebarAriaLabel="Resize desks column"
+                [appResizableSidebar]="railWidthKey()"
+                [sidebarTarget]="railColumn"
+                [sidebarMinWidth]="railWidthOptions().minWidth"
+                [sidebarMaxWidth]="railWidthOptions().maxWidth"
+                [sidebarCollapse]="railWidthOptions().collapse"
+            ></div>
+        </div>
+    }
+    <div class="desks-shell__page">
+        <router-outlet />
+    </div>
+</div>
+
+<!-- After the body: on close, the body's inert goes first, so the focus can return to the desk switcher in it. -->
+@if (isDrawerShown()) {
+    <div
+        class="desk-drawer__backdrop"
+        animate.enter="desk-drawer__backdrop--entering"
+        animate.leave="desk-drawer__backdrop--leaving"
+        (click)="deskDrawer.close()"
+    ></div>
+    <div
+        class="desk-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Desks"
+        cdkTrapFocus
+        animate.enter="desk-drawer--entering"
+        animate.leave="desk-drawer--leaving"
+        (keydown.escape)="deskDrawer.close()"
+    >
+        <app-desk-rail
+            presentation="drawer"
+            [waitingByDesk]="waitingByDesk()"
+            (picked)="deskDrawer.close()"
+        />
+        <button
+            type="button"
+            class="desk-drawer__app-menu"
+            (click)="openAppMenu()"
+        >
+            <app-svg-icon
+                icon="expand-sidebar"
+                size="1.25rem"
+            />
+            <span class="text-body-medium">App menu</span>
+        </button>
+    </div>
+}

@@ -43,7 +43,6 @@ export class AuthService {
     // Access token lives ONLY in memory. The refresh token lives ONLY in a
     // backend-managed HttpOnly cookie and is not accessible from JS.
     private readonly accessTokenSignal = signal<string | null>(null);
-    public readonly accessToken = this.accessTokenSignal.asReadonly();
 
     private get baseUrl(): string {
         return `${this.configService.apiUrl}auth/`;
@@ -88,8 +87,9 @@ export class AuthService {
     }
 
     logout(): Observable<void> {
-        this.currentUserService.clearCurrentUser();
-        this.appStorage.clearAll();
+        // At once, so nothing of the session stays on screen while the server is asked; the sign-out below forgets
+        // again whatever a page loaded meanwhile.
+        this.forgetSession();
 
         return this.http.post<void>(`${this.baseUrl}logout/`, {}, { withCredentials: true }).pipe(
             tap(() => this.removeTokenAndNavToLogin()),
@@ -108,7 +108,7 @@ export class AuthService {
 
     confirmResetPassword(data: ConfirmResetPasswordRequest): Observable<ConfirmResetPasswordResponse> {
         return this.http
-            .post<ResetPasswordResponse>(`${this.baseUrl}password-reset/confirm/`, data)
+            .post<ConfirmResetPasswordResponse>(`${this.baseUrl}password-reset/confirm/`, data)
             .pipe(catchError((err) => throwError(() => err)));
     }
 
@@ -150,8 +150,14 @@ export class AuthService {
         );
     }
 
+    /**
+     * Ends the session in this tab and shows the sign-in page. Every sign-out ends here, a requested one and one forced
+     * by a token refresh that failed, so whoever signs in next in this tab gets nothing of this session: not its user,
+     * its cached data, or the page "Back to EpicStaff" leads to.
+     */
     removeTokenAndNavToLogin(): void {
         this.accessTokenSignal.set(null);
+        this.forgetSession();
         void this.router.navigate(['/login']);
     }
 
@@ -170,6 +176,12 @@ export class AuthService {
 
     storeAccessToken(accessToken: string): void {
         this.accessTokenSignal.set(accessToken);
+    }
+
+    /** The signed-in user, and every storage registered in `APP_STORAGE`. */
+    private forgetSession(): void {
+        this.currentUserService.clearCurrentUser();
+        this.appStorage.clearAll();
     }
 
     private getTokenPayload(token: string): TokenDecoded | null {

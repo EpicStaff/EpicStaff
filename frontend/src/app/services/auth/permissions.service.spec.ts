@@ -20,28 +20,67 @@ function serviceWith(readable: ResourceCode[]): PermissionsService {
     return service;
 }
 
-describe('PermissionsService files tab', () => {
+describe('PermissionsService storage tab', () => {
     it('opens Key-Value Tables for a role that can read only key-value tables', () => {
         const service = serviceWith([ResourceCode.KeyValueTables]);
-        expect(service.resolveFilesTab()).toBe('/files/key-value-tables');
-        expect(service.resolveDefaultRoute()).toBe('/files/key-value-tables');
+        expect(service.resolveStorageTab()).toBe('/storage/key-value-tables');
+        expect(service.resolveDefaultRoute()).toBe('/storage/key-value-tables');
     });
 
-    it('prefers Knowledge Sources, then Storage, over Key-Value Tables', () => {
+    it('prefers Knowledge Sources, then Files, over Key-Value Tables', () => {
         expect(
             serviceWith([
                 ResourceCode.KeyValueTables,
                 ResourceCode.Files,
                 ResourceCode.KnowledgeSources,
-            ]).resolveFilesTab()
-        ).toBe('/files/knowledge-sources');
+            ]).resolveStorageTab()
+        ).toBe('/storage/knowledge-sources');
         TestBed.resetTestingModule();
-        expect(serviceWith([ResourceCode.KeyValueTables, ResourceCode.Files]).resolveFilesTab()).toBe('/files/storage');
+        expect(serviceWith([ResourceCode.KeyValueTables, ResourceCode.Files]).resolveStorageTab()).toBe(
+            '/storage/files'
+        );
     });
 
-    it('has no Files tab without read on any of them, and falls back to the profile', () => {
+    it('has no Storage tab without read on any of them, and falls back to the profile', () => {
         const service = serviceWith([]);
-        expect(service.resolveFilesTab()).toBeNull();
+        expect(service.resolveStorageTab()).toBeNull();
         expect(service.resolveDefaultRoute()).toBe('/profile');
+    });
+});
+
+describe('PermissionsService settings access', () => {
+    function serviceFor(grants: Partial<Record<ResourceCode, ActionCode[]>>, isPluginsEnabled: boolean) {
+        TestBed.configureTestingModule({
+            providers: [provideHttpClient(), { provide: ConfigService, useValue: { isPluginsEnabled } }],
+        });
+        const service = TestBed.inject(PermissionsService);
+        service.setActivePermissions({
+            org_id: 1,
+            is_superadmin: false,
+            role: { id: 1, name: 'Custom' },
+            permissions: grants as ActivePermissions['permissions'],
+        });
+        return service;
+    }
+
+    it('opens Settings to a role that reads only the audit trail while plugins are on', () => {
+        const service = serviceFor({ [ResourceCode.Audit]: [ActionCode.Read] }, true);
+
+        expect(service.canSeePluginActivity()).toBe(true);
+        expect(service.canOpenConfigureModelsDialog()).toBe(true);
+    });
+
+    it('keeps Settings closed to that role while plugins are off', () => {
+        const service = serviceFor({ [ResourceCode.Audit]: [ActionCode.Read] }, false);
+
+        expect(service.canSeePluginActivity()).toBe(false);
+        expect(service.canOpenConfigureModelsDialog()).toBe(false);
+    });
+
+    it('opens Settings to a settings permission without plugin activity', () => {
+        const service = serviceFor({ [ResourceCode.Voice]: [ActionCode.Read] }, true);
+
+        expect(service.canSeePluginActivity()).toBe(false);
+        expect(service.canOpenConfigureModelsDialog()).toBe(true);
     });
 });

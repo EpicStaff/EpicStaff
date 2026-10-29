@@ -2,6 +2,7 @@ from services.graph.events import StopEvent
 from services.graph.nodes.python_node import PythonNode
 from services.run_python_code_service import RunPythonCodeService
 from src.shared.models import PythonCodeData
+from src.shared.models.storage_scope import StorageCredentials
 
 
 class FileContentExtractorNode(PythonNode):
@@ -18,16 +19,18 @@ class FileContentExtractorNode(PythonNode):
         storage_allowed_paths: list[str] | None = None,
         storage_org_prefix: str | None = None,
         org_id: int | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         if not input_map:
             raise ValueError("FileContentExtractor input cannot be empty.")
 
         arg_names = input_map.keys()
+        # TODO: this code imports pdfplumber and python-docx. Libraries now come
+        # only from the venv, and this node declares none, so it runs in the
+        # sandbox's default venv and fails there until it is given its own.
         code_data = PythonCodeData(
-            venv_name="default",
             code=self._get_extractor_code(arg_names),
             entrypoint="main",
-            libraries=["pdfplumber", "python-docx"],
             use_storage=True,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
@@ -43,6 +46,7 @@ class FileContentExtractorNode(PythonNode):
             output_variable_path=output_variable_path,
             python_code_executor_service=python_code_executor_service,
             python_code_data=code_data,
+            storage_credentials=storage_credentials,
         )
 
     def _get_extractor_code(self, arg_names: list[str]):

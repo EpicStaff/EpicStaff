@@ -12,6 +12,7 @@ from rest_framework import status
 from tables.models.graph_models import KnowledgeNode
 from tables.models.knowledge_models import (
     KnowledgeNodeGraphRagBasicSearchConfig,
+    KnowledgeNodeGraphRagLocalSearchConfig,
     KnowledgeNodeNaiveRagSearchConfig,
 )
 from tests.fixtures import *  # noqa: F401,F403
@@ -152,3 +153,29 @@ def test_update_knowledge_node_without_search_configs_keeps_existing(
         KnowledgeNodeNaiveRagSearchConfig.objects.get(knowledge_node=node).search_limit
         == 9
     )
+
+
+@pytest.mark.django_db
+def test_update_proportion_exceeding_one_with_stored_value_returns_400(auth_client, graph):
+    node = KnowledgeNode.objects.create(graph=graph, node_name="KB Local")
+    KnowledgeNodeGraphRagLocalSearchConfig.objects.create(
+        knowledge_node=node, text_unit_prop=0.5, community_prop=0.1
+    )
+
+    payload = {
+        "save_version": graph.save_version,
+        "knowledge_node_list": [
+            {
+                "id": node.id,
+                "graph": graph.id,
+                "node_name": "KB Local Renamed",
+                "search_configs": {"graph": {"local": {"community_prop": 0.9}}},
+            }
+        ],
+    }
+    resp = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
+    node.refresh_from_db()
+    assert node.node_name == "KB Local"
+    assert KnowledgeNodeGraphRagLocalSearchConfig.objects.get(knowledge_node=node).community_prop == 0.1

@@ -6,6 +6,7 @@ import { PromptConfig } from '../../../core/models/classification-decision-table
 import { GetClassificationDecisionTableNodeRequest } from '../../../core/models/classification-decision-table-node.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
+import { readCdtExplanations } from '../../cdt-explanations';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapClassificationDecisionTableNodeToModel(
@@ -53,7 +54,7 @@ export function mapClassificationDecisionTableNodeToModel(
         backendId: n.id,
         type: NodeType.CLASSIFICATION_TABLE,
         node_name: n.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: n.node_number ?? undefined,
         data: {
             name: n.node_name,
             table: {
@@ -73,17 +74,17 @@ export function mapClassificationDecisionTableNodeToModel(
                     code: n.pre_python_code?.code ?? '',
                     input_map: n.pre_input_map ?? {},
                     output_variable_path: n.pre_output_variable_path ?? null,
-                    libraries: n.pre_python_code?.libraries ?? [],
                     secret_ids: toSecretIds(n.pre_python_code?.secrets),
                     secret_names: toSecretNames(n.pre_python_code?.secrets),
+                    execution_timeout: n.pre_python_code?.execution_timeout,
                 },
                 post_computation: {
                     code: n.post_python_code?.code ?? '',
                     input_map: n.post_input_map ?? {},
                     output_variable_path: n.post_output_variable_path ?? null,
-                    libraries: n.post_python_code?.libraries ?? [],
                     secret_ids: toSecretIds(n.post_python_code?.secrets),
                     secret_names: toSecretNames(n.post_python_code?.secrets),
+                    execution_timeout: n.post_python_code?.execution_timeout,
                 },
                 condition_groups: conditionGroups,
                 sections: reconcileCdtSections(
@@ -103,5 +104,6 @@ export function mapClassificationDecisionTableNodeToModel(
         input_map: {},
         output_variable_path: null,
         size: ui.size,
+        explanations: readCdtExplanations(n.metadata as Record<string, unknown> | undefined),
     };
 }

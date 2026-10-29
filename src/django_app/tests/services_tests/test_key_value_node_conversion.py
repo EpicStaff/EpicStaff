@@ -11,6 +11,7 @@ def node(graph, default_org) -> KeyValueNode:
     return KeyValueNode.objects.create(
         graph=graph,
         node_name="persist",
+        node_number=2,
         key_value_table=table,
         mode="write",
         entries=[{"key": "profile_{variables.user.id}", "value": "variables.profile"}],
@@ -35,5 +36,7 @@ def test_graph_data_carries_key_value_nodes(graph, node):
     Edge.objects.create(graph=graph, start_node_id=start_node.id, end_node_id=node.id)
 
     # _build_graph_data has no public wrapper; it is the unit that assembles GraphData.
-    graph_data = SessionManagerService()._build_graph_data(graph, None, None)
-    assert [item.node_name for item in graph_data.key_value_node_list] == [f"persist #{node.id}"]
+    graph_data = SessionManagerService()._build_graph_data(
+        graph, None, None, start_node=start_node
+    )
+    assert [item.node_name for item in graph_data.key_value_node_list] == [f"persist #2 #{node.id}"]

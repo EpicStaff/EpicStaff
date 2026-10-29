@@ -1,0 +1,248 @@
+@use '../../../../../styles/breakpoints' as bp;
+@use '../../../../../styles/touch';
+
+.bindings-dialog {
+    background-color: var(--color-background-body);
+    border-radius: 0.75rem;
+    width: 640px;
+    max-width: 100%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    color: var(--color-text-primary);
+
+    // Fixed like the agent additional settings dialog, so switching tabs does not resize it.
+    &--editing {
+        height: min(720px, 90vh);
+    }
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.5rem 2.5rem 1.25rem;
+        border-bottom: 1px solid var(--color-divider-subtle);
+    }
+
+    &__title {
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        line-height: var(--text-h3-line-height);
+    }
+
+    &__icon-btn {
+        display: inline-flex;
+        background: none;
+        border: 0;
+        padding: 0;
+        cursor: pointer;
+        color: var(--color-text-secondary);
+
+        &:hover {
+            color: var(--color-text-primary);
+        }
+    }
+
+    &__form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 24px;
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+    }
+
+    // Same tab strip as the agent additional settings dialog.
+    &__tabs {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0 24px;
+        border-bottom: 1px solid var(--color-divider-subtle);
+
+        // The shared tab button sets its own font, so the agent settings strip's look is applied on its button.
+        app-tab-button ::ng-deep .tab-btn {
+            color: var(--accent-color);
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
+            line-height: var(--text-body-medium-line-height);
+
+            &:hover {
+                color: var(--color-text-primary);
+            }
+
+            &.active {
+                color: var(--color-text-primary);
+                border-bottom-color: var(--color-text-primary);
+            }
+        }
+    }
+
+    &__tab-divider {
+        font-size: 1.5rem;
+        color: var(--color-divider-subtle);
+    }
+
+    &__tab {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+
+        &[hidden] {
+            display: none;
+        }
+
+        // A lone stepper lines up with the left column of a paired row
+        > app-input-number {
+            max-width: calc(50% - 8px);
+        }
+    }
+
+    &__row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    &__error-message {
+        background-color: var(--red-450-alpha-10);
+        color: var(--color-error);
+        padding: 12px;
+        border-radius: 4px;
+    }
+
+    &__secret {
+        padding: 24px;
+    }
+
+    // Rotate key sits apart from Cancel / Save, on the left.
+    &__rotate {
+        margin-right: auto;
+    }
+
+    &__actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 20px 24px;
+    }
+}
+
+.bindings-dialog__contract-error {
+    color: var(--color-error);
+}
+
+// The desk style: two cards, each a native radio with its name and one line on what it does.
+.bindings-dialog__style {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+// As the other fields' labels (the shared tooltip label).
+.bindings-dialog__style-legend {
+    padding: 0;
+    margin-bottom: 8px;
+    color: var(--color-text-secondary);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+}
+
+.bindings-dialog__style-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 8px;
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &:has(:checked) {
+        border-color: var(--accent-color);
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &:has(:focus-visible) {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+.bindings-dialog__style-radio {
+    flex-shrink: 0;
+    margin: 3px 0 0;
+    accent-color: var(--accent-color);
+}
+
+.bindings-dialog__style-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.bindings-dialog__style-description {
+    color: var(--color-text-secondary);
+}
+
+.bindings-dialog__backlog-lead {
+    margin: 0;
+}
+
+.bindings-dialog__backlog-effects {
+    margin: 4px 0 0;
+    padding-left: 20px;
+}
+
+// Phones: a sheet from the bottom edge (see `ChatBindingActionsService`), the screen's width, rounded on top only, the
+// form scrolling inside it and the actions clear of the home indicator.
+@include bp.phone {
+    .bindings-dialog {
+        width: 100%;
+        max-height: calc(100dvh - 24px);
+        border-radius: 0.75rem 0.75rem 0 0;
+
+        &--editing {
+            height: calc(100dvh - 24px);
+        }
+
+        &__header,
+        &__form,
+        &__secret {
+            padding: 16px;
+        }
+
+        &__tabs {
+            padding: 0 16px;
+            overflow-x: auto;
+        }
+
+        &__row {
+            grid-template-columns: 1fr;
+        }
+
+        &__tab > app-input-number {
+            max-width: none;
+        }
+
+        &__actions {
+            flex-wrap: wrap;
+            padding: 12px 16px max(12px, env(safe-area-inset-bottom, 0px));
+        }
+    }
+
+    // iOS zooms into a field with smaller text: every field of the form. Important: each shared field sets its size
+    // with a selector of its own, and this one must win whatever that is.
+    .bindings-dialog__form ::ng-deep :is(input, textarea) {
+        font-size: touch.$input-font-size !important;
+    }
+}

@@ -1,9 +1,8 @@
 """
 RedisStreamToolEventEmitter: extends ``RedisStreamBatchEmitter`` with live
 ``agent.tool_call`` / ``agent.tool_result`` envelopes published to the run's
-own result stream as they happen, in addition to buffering everything for the
-terminal ``agent.result`` payload (unchanged by construction — the parent
-implementation still owns buffering).
+own result stream as they happen. The terminal ``agent.result`` payload is
+still owned by the parent.
 
 Live envelopes are best-effort: a publish failure is logged and swallowed so
 an auxiliary streaming failure never aborts the run.
@@ -15,10 +14,11 @@ from loguru import logger
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.llm.client import LLMChunk
+from app.logging_utils import format_exception_for_log
 from app.usage import TokenUsageAccumulator
 from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import LoopResult, ToolResult
-from shared.models.knowledge_new import FoundChunk
+from shared.models.knowledge_new import FoundChunk, SearchUsage
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 LIVE_ARGUMENTS_MAX_CHARS = 2000
@@ -33,7 +33,7 @@ def _truncate(text: str, max_chars: int) -> tuple[str, bool]:
 
 
 class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
-    """Publishes live tool-call/tool-result events while still buffering.
+    """Publishes live tool-call/tool-result events before the batch result.
 
     Only ``on_tool_call``, ``on_tool_result``, and ``on_chunk`` are overridden.
     ``on_start``, ``on_warning``, ``on_final``, and ``on_error`` inherit the
@@ -72,7 +72,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
                 "failed to publish live {} correlation_id={} error={}",
                 event_type,
                 self._correlation_id,
-                error,
+                format_exception_for_log(error),
             )
 
     async def on_task_start(self, task_name: str, task_order: int) -> None:
@@ -102,14 +102,12 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         self._current_task = None
 
     async def on_chunk(self, chunk: LLMChunk) -> None:
-        """Accumulate cumulative token usage, then keep buffering as usual."""
+        """Accumulate token usage for the next live event's delta."""
         if chunk.usage:
             self._usage.add(chunk.usage)
 
-        await super().on_chunk(chunk)
-
     async def on_tool_call(self, call: dict) -> None:
-        """Publish a live ``agent.tool_call`` envelope, then buffer as usual.
+        """Publish a live ``agent.tool_call`` envelope.
 
         Suppressed for knowledge tools — ``agent.knowledge_search`` carries
         the richer payload instead, and the live-publish path is skipped
@@ -120,7 +118,6 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         self._call_names[call_id] = name
 
         if name in self._knowledge_tools:
-            await super().on_tool_call(call)
             return
 
         arguments, truncated = _truncate(call.get("arguments", ""), LIVE_ARGUMENTS_MAX_CHARS)
@@ -136,17 +133,14 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
             },
         )
 
-        await super().on_tool_call(call)
-
     async def on_tool_result(self, result: ToolResult) -> None:
-        """Publish a live ``agent.tool_result`` envelope, then buffer as usual.
+        """Publish a live ``agent.tool_result`` envelope.
 
         Suppressed for knowledge tools — see ``on_tool_call``.
         """
         name = self._call_names.get(result.tool_call_id)
 
         if name in self._knowledge_tools:
-            await super().on_tool_result(result)
             return
 
         content, truncated = _truncate(result.content, LIVE_CONTENT_MAX_CHARS)
@@ -163,8 +157,6 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
             },
         )
 
-        await super().on_tool_result(result)
-
     def register_knowledge_tool(self, name: str) -> None:
         """Record ``name`` as a knowledge-search tool whose live tool-call/
         tool-result envelopes must be suppressed in favour of
@@ -177,6 +169,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         query: str,
         result: list[FoundChunk] | str,
         error: str | None = None,
+        usage: SearchUsage | None = None,
     ) -> None:
         """Publish a live ``agent.knowledge_search`` envelope carrying the
         structured knowledge response (crew parity with ``extracted_chunks``),
@@ -198,7 +191,9 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
             "rag_search_config": target.search_config.model_dump(),
             "chunks": [chunk.model_dump() for chunk in chunks],
             "answer": result if isinstance(result, str) else None,
-            "token_usage": {},
+            # Not in the agent loop's usage: crew forwards this envelope as an
+            # `extracted_chunks` message whose top-level `token_usage` the session adds up.
+            "token_usage": usage.to_token_usage() if usage is not None else {},
         }
 
         if error is not None:

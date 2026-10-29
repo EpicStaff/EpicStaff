@@ -13,11 +13,12 @@ Responsibilities:
 import json
 from collections import Counter
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import timedelta
 
 from asgiref.sync import sync_to_async
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import transaction
+from django.db import close_old_connections, transaction
 from django.db.models import Max
 from django.utils import timezone
 from tables.exceptions import (
@@ -30,7 +31,10 @@ from tables.models.flow_assistant_models import (
     FlowAssistantMessage,
 )
 from tables.services.llm_clients import (
+    TOOL_USE_FAILED_CODE,
     DoneEvent,
+    InvalidLLMConfigError,
+    LLMProviderError,
     StreamEvent,
     StructuredEvent,
     TokenEvent,
@@ -54,8 +58,53 @@ from .helpers import (
     _strip_markdown_tables,
 )
 from .node_registry import FLOW_ASSISTANT_NODE_TYPES
+from .output_schema import (
+    ANTHROPIC_FLOW_ASSISTANT_OUTPUT_SCHEMA,
+    FLOW_ASSISTANT_OUTPUT_SCHEMA,
+    normalize_table_cells,
+    uses_anthropic_structured_output,
+)
 from .system_prompt import SystemPromptInputs, build_system_prompt
 from .tools import _TOOL_CALLABLES, TOOL_SPECS
+
+
+@dataclass
+class _ProviderRetryBudget:
+    """One retry per user turn, shared by every LLM iteration of that turn."""
+
+    used: bool = False
+
+
+async def _stream_with_provider_retry(
+    client, payload: list[dict], retry_budget: _ProviderRetryBudget, conversation_id: int
+) -> AsyncIterator[StreamEvent]:
+    """Stream one LLM iteration, restarting it once if the provider aborts it unseen.
+
+    The restart happens only when the provider fails with a retryable code before this
+    iteration yielded anything, so the caller never sees a partial first attempt.
+    """
+    yielded_any = False
+    while True:
+        try:
+            async for event in client.stream_completion(payload, TOOL_SPECS):
+                yielded_any = True
+                yield event
+            return
+        except LLMProviderError as exc:
+            if exc.code != TOOL_USE_FAILED_CODE or yielded_any or retry_budget.used:
+                raise
+            # A cancelled turn must end, not start another request; the caller's
+            # cancel handling cannot run while this generator is retrying.
+            if await _is_cancel_requested(conversation_id):
+                raise
+            retry_budget.used = True
+            logger.warning(
+                "Flow Assistant retrying after provider error ({}) for conversation {}: {}",
+                exc.code,
+                conversation_id,
+                exc.message,
+            )
+
 
 # ── Service ───────────────────────────────────────────────────────────────────
 
@@ -92,16 +141,11 @@ class FlowAssistantService:
             if sn.subgraph
         ]
 
-        # ConditionalEdge is an edge, not a node (NodeTypeSpec.is_edge) — kept out
-        # of both the node counts and the "Nodes in this flow" list below, same
-        # as get_flow_overview.
-        node_specs = [spec for spec in FLOW_ASSISTANT_NODE_TYPES if not spec.is_edge]
-
         # Build "Nodes in this flow" list — up to 30 entries, sorted by (type, id).
         # One query per node table; node_counts below is derived from these same
         # rows instead of a second query per related manager.
         node_tuples: list[tuple[str, int, str]] = []
-        for spec in node_specs:
+        for spec in FLOW_ASSISTANT_NODE_TYPES:
             for node in spec.model.objects.filter(graph_id=graph.pk).only(*spec.only_fields()):
                 node_tuples.append((spec.label, node.pk, spec.display_name(node)))
         node_tuples.sort(key=lambda t: (t[0], t[1]))
@@ -109,7 +153,7 @@ class FlowAssistantService:
         counts_by_label = Counter(label for label, _, _ in node_tuples)
         node_counts = {
             spec.label: counts_by_label[spec.label]
-            for spec in node_specs
+            for spec in FLOW_ASSISTANT_NODE_TYPES
             if counts_by_label[spec.label]
         }
 
@@ -149,7 +193,10 @@ class FlowAssistantService:
             nodes_section=nodes_section,
             subflow_summary=subflow_summary,
         )
-        return build_system_prompt(inputs)
+        return build_system_prompt(
+            inputs,
+            anthropic_tables=uses_anthropic_structured_output(flow_assistant.llm_config),
+        )
 
     def start_conversation(
         self, flow_assistant: FlowAssistant, organization_user
@@ -237,8 +284,6 @@ class FlowAssistantService:
         end via an UPDATE query — so the model object is never left in an
         inconsistent in-memory state visible to concurrent readers.
         """
-        from .output_schema import FLOW_ASSISTANT_OUTPUT_SCHEMA
-
         flow_assistant = await sync_to_async(
             lambda: FlowAssistant.objects.select_related(
                 "graph", "llm_config__model__llm_provider"
@@ -260,10 +305,14 @@ class FlowAssistantService:
         try:
             client = get_llm_client(
                 flow_assistant.llm_config,
-                output_schema=FLOW_ASSISTANT_OUTPUT_SCHEMA,
+                output_schema=(
+                    ANTHROPIC_FLOW_ASSISTANT_OUTPUT_SCHEMA
+                    if uses_anthropic_structured_output(flow_assistant.llm_config)
+                    else FLOW_ASSISTANT_OUTPUT_SCHEMA
+                ),
                 api_key=api_key,
             )
-        except UnsupportedLLMProviderError as exc:
+        except (UnsupportedLLMProviderError, InvalidLLMConfigError) as exc:
             raise LLMConfigInvalidError(str(exc)) from exc
 
         graph_id = flow_assistant.graph_id
@@ -293,6 +342,7 @@ class FlowAssistantService:
         # These persist across tool-call iterations within a single turn.
         reasoning_observed_this_turn: bool = False
         tool_calls_this_turn: int = 0
+        provider_retry_budget = _ProviderRetryBudget()
 
         # True once working_messages has gained tool_call or tool entries during
         # this turn — used by the finally block to decide whether a partial
@@ -335,7 +385,9 @@ class FlowAssistantService:
                     }
                     structured_payload = _partial_json.try_parse_full(json_buffer)
                     if structured_payload is not None:
-                        partial["ef_tables"] = structured_payload.get("ef_tables") or []
+                        partial["ef_tables"] = normalize_table_cells(
+                            structured_payload.get("ef_tables") or []
+                        )
                         partial["action_message"] = structured_payload.get("action_message") or []
                     if partial_content or partial.get("ef_tables") or partial.get("action_message"):
                         working_messages.append(partial)
@@ -349,12 +401,20 @@ class FlowAssistantService:
                 current_tool_calls: list[dict] = []
                 is_final_turn = True  # assume final until we see tool calls
                 cancel_inner: bool = False  # set when cancel detected mid-stream
+                iteration_finish_reason: str | None = None
 
                 payload = _messages_for_llm(working_messages)
-                async for event in client.stream_completion(payload, TOOL_SPECS):
+                # Return the database connection to the pool before waiting on the LLM:
+                # Django would otherwise keep it until the stream ends, for the whole reply.
+                # Thread-sensitive, so it closes the connection of the thread that holds it.
+                await sync_to_async(close_old_connections)()
+                async for event in _stream_with_provider_retry(
+                    client, payload, provider_retry_budget, conversation.pk
+                ):
                     if isinstance(event, DoneEvent):
                         if event.reasoning_observed:
                             reasoning_observed_this_turn = True
+                        iteration_finish_reason = event.finish_reason
                         break
                     elif isinstance(event, ToolCallEvent):
                         is_final_turn = False
@@ -398,7 +458,9 @@ class FlowAssistantService:
                     }
                     structured_payload = _partial_json.try_parse_full(json_buffer)
                     if structured_payload is not None:
-                        partial["ef_tables"] = structured_payload.get("ef_tables") or []
+                        partial["ef_tables"] = normalize_table_cells(
+                            structured_payload.get("ef_tables") or []
+                        )
                         partial["action_message"] = structured_payload.get("action_message") or []
                     if partial_content or partial.get("ef_tables") or partial.get("action_message"):
                         working_messages.append(partial)
@@ -484,7 +546,7 @@ class FlowAssistantService:
 
             if structured_payload is not None:
                 final_text = structured_payload.get("message", "").strip()
-                ef_tables: list = structured_payload.get("ef_tables") or []
+                ef_tables: list = normalize_table_cells(structured_payload.get("ef_tables") or [])
                 action_message: list = structured_payload.get("action_message") or []
                 if ef_tables and final_text:
                     final_text = _strip_markdown_tables(final_text)
@@ -498,13 +560,28 @@ class FlowAssistantService:
             else:
                 # Fallback: treat accumulated raw content as plain text.
                 if json_buffer:
+                    truncation_note = (
+                        " Output was truncated by the token limit (finish_reason=length)."
+                        if iteration_finish_reason == "length"
+                        else ""
+                    )
                     logger.warning(
                         "FlowAssistantService: could not parse LLM JSON buffer as "
                         "structured output; falling back to raw text. "
-                        "Buffer length: {} chars.",
+                        "Buffer length: {} chars.{}",
                         len(json_buffer),
+                        truncation_note,
                     )
-                final_text = "".join(assistant_content_parts).strip()
+                    # Preview stays at DEBUG: the buffer can contain flow data.
+                    logger.debug(
+                        "FlowAssistantService: unparsed LLM JSON buffer preview: {!r}",
+                        json_buffer[:200],
+                    )
+                final_text = (
+                    _partial_json.extract_message_field(json_buffer).strip()
+                    or json_buffer.strip()
+                    or "".join(assistant_content_parts).strip()
+                )
                 ef_tables = []
                 action_message = []
                 # Mirror the structured branch: emit one terminal event so the
@@ -572,7 +649,9 @@ class FlowAssistantService:
                     }
                     structured_payload = _partial_json.try_parse_full(json_buffer)
                     if structured_payload is not None:
-                        partial["ef_tables"] = structured_payload.get("ef_tables") or []
+                        partial["ef_tables"] = normalize_table_cells(
+                            structured_payload.get("ef_tables") or []
+                        )
                         partial["action_message"] = structured_payload.get("action_message") or []
                     if partial_content or partial.get("ef_tables") or partial.get("action_message"):
                         working_messages.append(partial)

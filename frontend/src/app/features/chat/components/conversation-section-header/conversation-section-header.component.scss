@@ -1,0 +1,90 @@
+@use '../../../../../styles/count-badge';
+
+// The shared section header's look (agents explorer, the FE-1 column), with semantic tokens.
+:host {
+    display: block;
+}
+
+// Its whole height, border included, is the column's --conversation-section-header-height, which the column's scroll
+// padding uses too: focused rows and revealed sections stop below a stuck header, not under it.
+.conversation-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: var(--conversation-section-header-height);
+    padding: 0 12px;
+    box-sizing: border-box;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--color-divider-subtle);
+    color: var(--color-text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    user-select: none;
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: -1px;
+    }
+
+    &--compact {
+        justify-content: center;
+        padding: 0;
+    }
+
+    &__chevron,
+    &__icon {
+        flex-shrink: 0;
+        color: var(--color-text-secondary);
+    }
+
+    &__icon {
+        position: relative;
+        display: inline-flex;
+    }
+
+    &__badge {
+        @include count-badge.pill;
+        position: absolute;
+        top: -6px;
+        right: -10px;
+        box-shadow: 0 0 0 2px var(--color-background-body);
+    }
+
+    &__chevron {
+        transition: transform 0.15s ease;
+
+        &--collapsed {
+            transform: rotate(-90deg);
+        }
+    }
+
+    &__label {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--text-body-large-size);
+        font-weight: var(--text-body-large-weight);
+        line-height: var(--text-body-large-line-height);
+        letter-spacing: 0.04em;
+        text-transform: var(--text-body-large-transform);
+    }
+
+    &__count {
+        flex-shrink: 0;
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .conversation-section-header__chevron {
+        transition: none;
+    }
+}

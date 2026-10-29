@@ -3,12 +3,15 @@ from drf_spectacular.utils import (
     OpenApiExample,
     OpenApiParameter,
     OpenApiResponse,
-    inline_serializer,
 )
-from rest_framework import serializers as drf_serializers
 
-from tables.serializers.serializers import RunSessionSerializer
+from tables.serializers.serializers import (
+    BulkIdsSerializer,
+    RunSessionSerializer,
+    SessionTestRunSerializer,
+)
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
+from tables.serializers.utils.bulk_ids import BULK_DELETE_MAX_IDS
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
 RUN_SESSION_POST = {
@@ -16,7 +19,7 @@ RUN_SESSION_POST = {
     "description": (
         "Starts a new session for the given flow (`graph_id` or `graph_uuid`). "
         "Caller and organization are derived from the authenticated request. "
-        "Requires READ on flows. Uploaded `files` are base64-encoded into "
+        "Requires USE on flows. Uploaded `files` are base64-encoded into "
         "`variables` under the `files` key."
     ),
     "request": RunSessionSerializer,
@@ -77,7 +80,7 @@ RUN_SESSION_POST = {
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Caller lacks READ on flows in the flow's organization.",
+            description="Caller lacks USE on flows in the flow's organization.",
             examples=[
                 OpenApiExample(
                     "Permission denied",
@@ -113,6 +116,127 @@ RUN_SESSION_POST = {
     },
 }
 
+RUN_SESSION_TEST_POST = {
+    "summary": "Test-run a flow from a trigger node",
+    "description": (
+        "Starts a session at the given trigger node as if `payload` had been delivered "
+        "to it, without the HTTP ingress, tunnel or webhook authentication. The node "
+        "must belong to `graph_id` in the active organization. The session is recorded "
+        "with the node's trigger type and `is_test_run: true`. Requires both UPDATE and "
+        "USE on flows. "
+        "Webhook payloads are passed to the flow as `trigger_payload`; Telegram payloads "
+        "as `telegram_payload` and may only use the field parents and fields selected "
+        "on the node, plus the update envelope key `update_id`, which is accepted with "
+        "any value and passed through unchanged."
+    ),
+    "request": SessionTestRunSerializer,
+    "examples": [
+        OpenApiExample(
+            "Webhook trigger",
+            value={
+                "graph_id": 12,
+                "node_type": "webhook-trigger",
+                "node_id": 345,
+                "payload": {"order_id": 42, "status": "paid"},
+            },
+            request_only=True,
+        ),
+        OpenApiExample(
+            "Telegram trigger",
+            value={
+                "graph_id": 12,
+                "node_type": "telegram-trigger",
+                "node_id": 346,
+                "payload": {
+                    "update_id": 900001,
+                    "message": {"text": "hello", "chat": {"id": 1001}},
+                },
+            },
+            request_only=True,
+        ),
+    ],
+    "responses": {
+        201: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Session successfully started.",
+            examples=[
+                OpenApiExample(
+                    "Session started",
+                    value={"session_id": 981},
+                    response_only=True,
+                    status_codes=["201"],
+                ),
+            ],
+        ),
+        400: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description=(
+                "Validation failed, the payload does not fit the node, the "
+                "`X-Organization-Id` header is missing, or the session failed to start."
+            ),
+            examples=[
+                OpenApiExample(
+                    "Payload is not an object",
+                    value={
+                        "status_code": 400,
+                        "code": "invalid",
+                        "message": "payload: Test payload must be a JSON object.",
+                    },
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+                OpenApiExample(
+                    "Payload does not fit the Telegram node",
+                    value={
+                        "status_code": 400,
+                        "code": "test_run_payload_invalid",
+                        "message": "payload: 'message.photo': field not selected on this node",
+                        "errors": ["'message.photo': field not selected on this node"],
+                    },
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Requires both UPDATE and USE on flows in the active organization.",
+            examples=[
+                OpenApiExample(
+                    "Permission denied",
+                    value={
+                        "status_code": 403,
+                        "code": "permission_denied",
+                        "message": "You do not have permission to perform this action.",
+                    },
+                    response_only=True,
+                    status_codes=["403"],
+                ),
+            ],
+        ),
+        404: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description=(
+                "No trigger node of `node_type` with `node_id` exists in `graph_id` "
+                "within the active organization."
+            ),
+            examples=[
+                OpenApiExample(
+                    "Node not found",
+                    value={
+                        "status_code": 404,
+                        "code": "not_found",
+                        "message": "Not found.",
+                    },
+                    response_only=True,
+                    status_codes=["404"],
+                ),
+            ],
+        ),
+    },
+}
+
 RUN_SESSION_SSE_GET = {
     "summary": "Subscribe to real-time updates via SSE",
     "description": (
@@ -120,7 +244,7 @@ RUN_SESSION_SSE_GET = {
         "Continuously pushes the following event types:\n"
         "- **messages**: New or historical graph session messages\n"
         "- **status**: Session status updates\n"
-        "- **memory**: Memory entries related to this session\n"
+        "- **done**: The session has finished and the stream is closing; do not reconnect\n"
         "- **fatal-error**: If the view crashes, so the frontend can close the connection\n\n"
         "Note: This is a streaming endpoint and won't produce a visible response in Swagger UI. "
         "Use `?test=true` to receive a few finite sample events."
@@ -169,17 +293,8 @@ RUN_SESSION_SSE_GET = {
                     status_codes=["200"],
                 ),
                 OpenApiExample(
-                    "memory event",
-                    value={
-                        "event": "memory",
-                        "data": {
-                            "id": 7,
-                            "payload": {
-                                "run_id": 42,
-                                "content": "User prefers concise answers.",
-                            },
-                        },
-                    },
+                    "done event",
+                    value={"event": "done", "data": {"session_id": 42}},
                     response_only=True,
                     status_codes=["200"],
                 ),
@@ -214,6 +329,28 @@ SESSION_LIST_GET = {
             description="Whether to include all session details. Set to `false` to return only minimal fields. The `true` value is deprecated and will be removed in a future version.",
             required=False,
         ),
+        OpenApiParameter(
+            name="is_test_run",
+            location=OpenApiParameter.QUERY,
+            type=OpenApiTypes.BOOL,
+            description=(
+                "`true` returns only editor test runs (sessions started from a webhook or "
+                "Telegram trigger node). `false` returns every other session, including "
+                "sessions without a trigger record. Omit to return both. Any other value is a 400."
+            ),
+            required=False,
+        ),
+        OpenApiParameter(
+            name="id_search",
+            location=OpenApiParameter.QUERY,
+            type=OpenApiTypes.STR,
+            description=(
+                "Partial match on the session id: `12` returns sessions 12, 112, 1203, … "
+                "Surrounding whitespace is ignored and an empty value does not filter. "
+                "A value containing non-digits matches no session."
+            ),
+            required=False,
+        ),
     ],
     "responses": {
         200: OpenApiResponse(
@@ -236,23 +373,6 @@ SESSION_LIST_GET = {
                                 "status_data": {},
                                 "variables": {},
                                 "created_at": "2024-01-01T00:00:00Z",
-                                "graph_schema": {
-                                    "name": "string",
-                                    "end_node": None,
-                                    "graph_id": 0,
-                                    "edge_list": [],
-                                    "entrypoint": "string",
-                                    "llm_node_list": [],
-                                    "python_node_list": [],
-                                    "subgraph_node_list": [],
-                                    "conditional_edge_list": [],
-                                    "decision_table_node_list": [],
-                                    "file_extractor_node_list": [],
-                                    "key_value_node_list": [],
-                                    "audio_transcription_node_list": [],
-                                    "webhook_trigger_node_data_list": [],
-                                    "telegram_trigger_node_data_list": [],
-                                },
                                 "entrypoint": None,
                                 "token_usage": {
                                     "total_tokens": 0,
@@ -267,7 +387,8 @@ SESSION_LIST_GET = {
                                 "graph_user": None,
                                 "trigger": {
                                     "trigger_type": "manual",
-                                    "node_name": None,
+                                    "trigger_id": None,
+                                    "is_test_run": False,
                                 },
                                 "principal": {
                                     "kind": "user",
@@ -300,7 +421,8 @@ SESSION_LIST_GET = {
                                 "has_output_files": True,
                                 "trigger": {
                                     "trigger_type": "manual",
-                                    "node_name": None,
+                                    "trigger_id": None,
+                                    "is_test_run": False,
                                 },
                             }
                         ],
@@ -333,24 +455,6 @@ SESSION_RETRIEVE_GET = {
                         "status_data": {},
                         "variables": {},
                         "created_at": "2024-01-01T00:00:00Z",
-                        "graph_schema": {
-                            "name": "string",
-                            "end_node": None,
-                            "graph_id": 0,
-                            "edge_list": [],
-                            "entrypoint": "string",
-                            "llm_node_list": [],
-                            "crew_node_list": [],
-                            "python_node_list": [],
-                            "subgraph_node_list": [],
-                            "code_agent_node_list": [],
-                            "conditional_edge_list": [],
-                            "decision_table_node_list": [],
-                            "file_extractor_node_list": [],
-                            "audio_transcription_node_list": [],
-                            "webhook_trigger_node_data_list": [],
-                            "telegram_trigger_node_data_list": [],
-                        },
                         "entrypoint": None,
                         "token_usage": {
                             "total_tokens": 0,
@@ -438,12 +542,7 @@ SESSION_BULK_DELETE_POST = {
         "IDs that don't exist or belong to another organization are silently skipped, so `deleted` may be less than `len(ids)`. "
         "Sub-sessions of a deleted session are deleted with it; they count toward `deleted` only when their own ID was requested."
     ),
-    "request": inline_serializer(
-        name="SessionBulkDeleteRequest",
-        fields={
-            "ids": drf_serializers.ListField(child=drf_serializers.IntegerField()),
-        },
-    ),
+    "request": BulkIdsSerializer,
     "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -465,11 +564,20 @@ SESSION_BULK_DELETE_POST = {
         ),
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="`ids` is missing, not a list, or contains non-integer values.",
+            description=(
+                f"`ids` is missing, empty, longer than {BULK_DELETE_MAX_IDS}, or holds something other "
+                "than positive integers (booleans, strings and floats are rejected)."
+            ),
             examples=[
                 OpenApiExample(
                     "Invalid ids",
-                    value={"detail": "ids must be a list of integers."},
+                    value={"detail": "ids must be a list of positive integers."},
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+                OpenApiExample(
+                    "Too many ids",
+                    value={"detail": f"ids must have at most {BULK_DELETE_MAX_IDS} items."},
                     response_only=True,
                     status_codes=["400"],
                 ),
@@ -519,7 +627,7 @@ SESSION_WARNINGS_GET = {
 
 STOP_SESSION_POST = {
     "summary": "Stop a running session",
-    "description": "Sends a stop signal to the session identified by its session ID. The signal must be received by all required listeners (manager and crew); if fewer than expected acknowledge, the session is marked as errored.",
+    "description": "Sends a stop signal to the session identified by its session ID. Requires USE on flows in the organization that owns the session's flow. The signal must be received by all required listeners (manager and crew); if fewer than expected acknowledge, the session is marked as errored.",
     "responses": {
         204: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -534,6 +642,24 @@ STOP_SESSION_POST = {
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description=(
+                "Caller is a member of the session's organization but lacks USE on flows."
+            ),
+            examples=[
+                OpenApiExample(
+                    "Permission denied",
+                    value={
+                        "status_code": 403,
+                        "code": "permission_denied",
+                        "message": "You do not have permission to perform this action.",
+                    },
+                    response_only=True,
+                    status_codes=["403"],
+                ),
+            ],
+        ),
         404: OpenApiResponse(
             response=OpenApiTypes.STR,
             description=(

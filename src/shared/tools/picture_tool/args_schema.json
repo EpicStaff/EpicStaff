@@ -5,7 +5,12 @@
     "prompt": {
       "type": "string",
       "description": "Text prompt describing the image to generate."
+    },
+    "api_key": {
+      "type": "string",
+      "description": "OpenAI API key used to generate the image. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "input_type": "user_input"
     }
   },
-  "required": ["prompt"]
+  "required": ["prompt", "api_key"]
 }

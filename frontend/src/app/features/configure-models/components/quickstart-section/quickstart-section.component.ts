@@ -1,26 +1,19 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    computed,
-    DestroyRef,
-    inject,
-    input,
-    OnInit,
-    signal,
-    WritableSignal,
-} from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import {
     ButtonComponent,
     ConfirmationDialogData,
     ConfirmationDialogService,
     CustomInputComponent,
+    ErrorBannerComponent,
     HelpTooltipComponent,
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { ActionCode, LLMProvider, ModelTypes, ResourceCode } from '@shared/models';
+import { LLMProvider, ModelTypes } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
@@ -28,13 +21,13 @@ import {
     RealtimeConfigStorageService,
     TranscriptionConfigStorageService,
 } from '@shared/services';
-import { getProviderIconPath } from '@shared/utils';
+import { extractHttpErrorMessage, getProviderIconPath, isClientError } from '@shared/utils';
 import { EMPTY, filter, finalize, forkJoin, of } from 'rxjs';
 import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { ConfigureModelsTabId } from '../../enums/configure-models-tab-id.enum';
+import { QUICK_START_TOUR_ANCHORS, QuickStartResultStatus } from '../../../quick-start-tour/quick-start-tour-anchors';
 import { CreateQuickstartRequest } from '../../models/quickstart.model';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
@@ -44,7 +37,14 @@ import { QuickstartService } from '../../services/quickstart.service';
 
 @Component({
     selector: 'app-quickstart-section',
-    imports: [ReactiveFormsModule, CustomInputComponent, ButtonComponent, HelpTooltipComponent, SelectComponent],
+    imports: [
+        ReactiveFormsModule,
+        CustomInputComponent,
+        ButtonComponent,
+        ErrorBannerComponent,
+        HelpTooltipComponent,
+        SelectComponent,
+    ],
     templateUrl: './quickstart-section.component.html',
     styleUrls: ['./quickstart-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -65,12 +65,11 @@ export class QuickstartSectionComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
     private readonly toast = inject(ToastService);
     private readonly permissionService = inject(PermissionsService);
-
-    public activeTabSignal = input.required<WritableSignal<ConfigureModelsTabId>>();
+    private readonly router = inject(Router);
 
     public readonly quickStartForm = this.fb.group({
         apiKey: ['', [Validators.required]],
-        provider: [null, [Validators.required]],
+        provider: this.fb.control<string | null>(null, Validators.required),
     });
 
     public readonly quickstartCards = {
@@ -104,6 +103,8 @@ export class QuickstartSectionComponent implements OnInit {
     } as const;
 
     public isSaving = signal(false);
+    /** Why the server refused an Activate or an Update default models; shown above the form. */
+    public readonly errorMessage = signal<string | null>(null);
     public providers = signal<LLMProvider[]>([]);
     public quickstartStatus = signal<'activated' | 'updated' | 'synced' | null>(null);
 
@@ -115,11 +116,18 @@ export class QuickstartSectionComponent implements OnInit {
         }));
     });
 
-    protected readonly canApplyQuickstart = computed<boolean>(
-        () =>
-            this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create) &&
-            this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Update)
-    );
+    protected readonly canApplyQuickstart = computed<boolean>(() => this.permissionService.canApplyQuickstart());
+    /**
+     * Set only by a successful Activate on this visit to the tab (the component is created per route activation);
+     * exposes the result card to the Quick Start tour.
+     */
+    protected readonly hasActivatedInThisVisit = signal(false);
+    protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
+    /** The tour's status attribute on the result card; only the two states a successful Activate leads to. */
+    protected readonly tourResultStatus = computed<QuickStartResultStatus | null>(() => {
+        const status = this.quickstartStatus();
+        return this.hasActivatedInThisVisit() && (status === 'activated' || status === 'updated') ? status : null;
+    });
 
     protected readonly canRunActiveCardAction = computed<boolean>(() => {
         const status = this.quickstartStatus();
@@ -175,6 +183,7 @@ export class QuickstartSectionComponent implements OnInit {
         };
 
         this.isSaving.set(true);
+        this.errorMessage.set(null);
 
         this.quickstartService
             .createQuickstart(data)
@@ -184,6 +193,7 @@ export class QuickstartSectionComponent implements OnInit {
                         return this.quickstartService.applyQuickstart();
                     }
                     this.quickstartStatus.set('updated');
+                    this.hasActivatedInThisVisit.set(true);
                     this.toast.success('Quickstart updated.');
                     this.onReset();
                     return EMPTY;
@@ -191,11 +201,12 @@ export class QuickstartSectionComponent implements OnInit {
                 tap(() => {
                     this.onReset();
                     this.quickstartStatus.set('activated');
+                    this.hasActivatedInThisVisit.set(true);
                     this.toast.success('Quickstart created successfully.');
                 }),
-                catchError((error) => {
+                catchError((error: HttpErrorResponse) => {
                     console.error(error);
-                    this.toast.error('Failed to create/apply quickstart.');
+                    this.showError(error, 'Failed to create/apply quickstart.');
                     return EMPTY;
                 }),
                 finalize(() => {
@@ -244,7 +255,7 @@ export class QuickstartSectionComponent implements OnInit {
     }
 
     public onReviewDefaults(): void {
-        this.activeTabSignal().set(ConfigureModelsTabId.DEFAULT_LLMS);
+        this.router.navigate(['/settings/default-llms']);
     }
 
     public onUpdateDefaults(): void {
@@ -258,13 +269,33 @@ export class QuickstartSectionComponent implements OnInit {
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 filter((result) => result === true),
+                tap(() => this.errorMessage.set(null)),
                 switchMap(() => this.quickstartService.applyQuickstart()),
                 tap((models) => {
                     this.defaultModelsStorageService.updateModelsInStorage(models);
                     this.quickstartStatus.set('synced');
                     this.toast.success('Models updated successfully.');
+                }),
+                catchError((error: HttpErrorResponse) => {
+                    console.error(error);
+                    this.showError(error, 'Failed to update default models.');
+                    return EMPTY;
                 })
             )
             .subscribe();
+    }
+
+    /**
+     * A refusal of the request (4xx) goes to the banner in the server's words; anything else keeps a generic toast.
+     * The quickstart endpoint answers its own refusals as `{detail: 'Error quickstart', error: <reason>}`, so the
+     * reason is read from `error` before the generic extraction, which would show only the `detail`.
+     */
+    private showError(error: HttpErrorResponse, fallback: string): void {
+        if (!isClientError(error)) {
+            this.toast.error(fallback);
+            return;
+        }
+        const reason: unknown = error.error?.error;
+        this.errorMessage.set(typeof reason === 'string' && reason ? reason : extractHttpErrorMessage(error, fallback));
     }
 }

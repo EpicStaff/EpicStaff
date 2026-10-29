@@ -1,7 +1,13 @@
 #!/bin/bash
 set -e
 
-# Flag file to indicate all table-level permissions have been granted
+# Wraps the pgvector entrypoint to create the services' restricted database roles
+# (manager, knowledge, realtime, sandbox) as soon as the database accepts connections.
+# The roles start with no table privileges: django_app grants them, from
+# src/django_app/tables/service_db_grants.py, right after its migrations have run
+# (`manage.py apply_service_grants`), when no migration can race the grants.
+
+# Flag file: the roles have been created, so crewdb reports healthy.
 USERS_CREATED_FLAG="/tmp/users_created"
 
 # HEALTH CHECK ENTRY POINT
@@ -16,9 +22,30 @@ if [[ "$1" = "healthcheck-users" ]]; then
     fi
 fi
 
+# Without ON_ERROR_STOP psql exits 0 after a failed statement, so a role that was
+# never created would still let setup finish and report healthy.
+setup_psql() {
+    psql -X -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" "$@"
+}
+
+# Role, schema and database names are spliced into the SQL below as both literals
+# and quoted identifiers, so only plain names are accepted. An empty value passes
+# here: an unset role is skipped, and any other empty name fails in its statement.
+require_plain_name() {
+    local variable_name="$1"
+    local value="${!variable_name:-}"
+    if [[ -n "$value" && ! "$value" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,62}$ ]]; then
+        echo "[setup] ERROR: ${variable_name} must be 1-63 letters, digits, '_', '.' or '-', starting with a letter or '_'" >&2
+        return 1
+    fi
+}
+
 # USER CREATION FUNCTIONS
 # These only create the DB roles — no table grants.
 # Safe to run as soon as postgres is up.
+# Passwords are read by psql (\getenv) and quoted by format(); the shell never splices
+# them into SQL. A failing statement may carry one, so its text is kept out of the
+# server log and psql prints only the error message.
 
 create_manager_user() {
     local manager_user="${MANAGER_DB_USER}"
@@ -30,17 +57,14 @@ create_manager_user() {
     fi
 
     echo "[manager] Creating role if not exists..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${manager_user}') THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${manager_user}', '${manager_password}');
-        RAISE NOTICE '[manager] Created user ${manager_user}';
-    ELSE
-        RAISE NOTICE '[manager] User ${manager_user} already exists, skipping';
-    END IF;
-END
-\$\$;
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password MANAGER_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${manager_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${manager_user}')
+\gexec
 
 GRANT USAGE ON SCHEMA public TO "${manager_user}";
 
@@ -60,17 +84,14 @@ create_knowledge_user() {
     fi
 
     echo "[knowledge] Creating role if not exists..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${knowledge_user}') THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${knowledge_user}', '${knowledge_password}');
-        RAISE NOTICE '[knowledge] Created user ${knowledge_user}';
-    ELSE
-        RAISE NOTICE '[knowledge] User ${knowledge_user} already exists, skipping';
-    END IF;
-END
-\$\$;
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password KNOWLEDGE_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${knowledge_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${knowledge_user}')
+\gexec
 
 GRANT USAGE ON SCHEMA public TO "${knowledge_user}";
 ALTER USER "${knowledge_user}" CREATEDB;
@@ -93,17 +114,14 @@ create_realtime_user() {
     fi
 
     echo "[realtime] Creating role if not exists..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${realtime_user}') THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${realtime_user}', '${realtime_password}');
-        RAISE NOTICE '[realtime] Created user ${realtime_user}';
-    ELSE
-        RAISE NOTICE '[realtime] User ${realtime_user} already exists, skipping';
-    END IF;
-END
-\$\$;
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password REALTIME_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${realtime_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${realtime_user}')
+\gexec
 
 GRANT USAGE ON SCHEMA public TO "${realtime_user}";
 
@@ -113,324 +131,74 @@ EOF
     echo "[realtime] Role ready: ${realtime_user}"
 }
 
-# TABLE PERMISSION GRANT FUNCTIONS
-# Called only after Django migrations have run.
-# Each function is safe to call multiple times.
+create_sandbox_user() {
+    local sandbox_user="${SANDBOX_DB_USER}"
+    local sandbox_password="${SANDBOX_DB_PASSWORD}"
+    local sandbox_schema="${SANDBOX_DB_SCHEMA}"
 
-grant_manager_permissions() {
-    local manager_user="${MANAGER_DB_USER}"
-    [[ -z "$manager_user" ]] && return 0
+    if [[ -z "$sandbox_user" || -z "$sandbox_password" ]]; then
+        echo "[sandbox] WARNING: SANDBOX_DB_USER or SANDBOX_DB_PASSWORD not set, skipping"
+        return 0
+    fi
 
-    echo "[manager] Granting table permissions..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = 'tables_session'
-    ) THEN
-        REVOKE ALL ON TABLE tables_session FROM "${manager_user}";
-        GRANT SELECT ON TABLE tables_session TO "${manager_user}";
-        RAISE NOTICE '[manager] Granted SELECT on tables_session';
-    ELSE
-        RAISE NOTICE '[manager] tables_session not found, skipping';
-    END IF;
+    echo "[sandbox] Creating role and owned schema if not exists..."
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password SANDBOX_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${sandbox_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${sandbox_user}')
+\gexec
 
-    IF EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = 'tables_scheduletriggernode'
-    ) THEN
-        REVOKE ALL ON TABLE tables_scheduletriggernode FROM "${manager_user}";
-        GRANT SELECT, UPDATE ON TABLE tables_scheduletriggernode TO "${manager_user}";
-        RAISE NOTICE '[manager] Granted SELECT, UPDATE on tables_scheduletriggernode';
-    ELSE
-        RAISE NOTICE '[manager] tables_scheduletriggernode not found, skipping';
-    END IF;
-END
-\$\$;
+-- The sandbox role owns its own schema and everything it creates there (its venv
+-- table and Piccolo's own migration table). Default the role's search_path to it so
+-- every sandbox connection and migration targets this namespace. No public grants.
+CREATE SCHEMA IF NOT EXISTS "${sandbox_schema}" AUTHORIZATION "${sandbox_user}";
+ALTER ROLE "${sandbox_user}" SET search_path = "${sandbox_schema}";
 EOF
-    echo "[manager] Permissions granted"
+    echo "[sandbox] Role and schema ready: ${sandbox_user} owns schema ${sandbox_schema}"
 }
 
-grant_knowledge_permissions() {
-    local knowledge_user="${KNOWLEDGE_DB_USER}"
-    [[ -z "$knowledge_user" ]] && return 0
-
-    echo "[knowledge] Granting table permissions..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-DECLARE
-    tbl  text;
-
-    -- Read-only tables
-    ro_tables text[] := ARRAY[
-        'tables_provider',
-        'tables_embeddingmodel',
-        'tables_embeddingconfig',
-        'tables_sourcecollection',
-        'tables_documentmetadata',
-        'tables_documentcontent',
-        'tables_baseragtype',
-        'tables_llmconfig',
-        'tables_llmmodel'
-    ];
-
-    -- Select + Update only
-    su_tables text[] := ARRAY[
-        'tables_naiverag',
-        'tables_naiveragdocumentconfig'
-    ];
-
-    -- Full CRUD
-    crud_tables text[] := ARRAY[
-        'tables_naiveragchunk',
-        'tables_naiveragpreviewchunk',
-        'tables_naiveragembedding',
-        'graph_rag',
-        'graph_rag_index_config',
-        'graph_rag_document'
-    ];
-
-    all_managed text[] := ARRAY[
-        'tables_provider','tables_embeddingmodel','tables_embeddingconfig',
-        'tables_sourcecollection','tables_documentmetadata',
-        'tables_documentcontent','tables_baseragtype',
-        'tables_naiverag','tables_naiveragdocumentconfig',
-        'tables_naiveragchunk','tables_naiveragpreviewchunk','tables_naiveragembedding'
-    ];
-
-BEGIN
-    -- Revoke stale permissions only on tables this function manages
-    FOREACH tbl IN ARRAY all_managed LOOP
-        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
-            EXECUTE format('REVOKE ALL ON TABLE %I FROM %I', tbl, '${knowledge_user}');
-        END IF;
-    END LOOP;
-
-    FOREACH tbl IN ARRAY ro_tables LOOP
-        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
-            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl, '${knowledge_user}');
-            RAISE NOTICE '[knowledge] SELECT granted on %', tbl;
-        ELSE
-            RAISE NOTICE '[knowledge] % not found, skipping', tbl;
-        END IF;
-    END LOOP;
-
-    FOREACH tbl IN ARRAY su_tables LOOP
-        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
-            EXECUTE format('GRANT SELECT, UPDATE ON TABLE %I TO %I', tbl, '${knowledge_user}');
-            RAISE NOTICE '[knowledge] SELECT,UPDATE granted on %', tbl;
-        ELSE
-            RAISE NOTICE '[knowledge] % not found, skipping', tbl;
-        END IF;
-    END LOOP;
-
-    FOREACH tbl IN ARRAY crud_tables LOOP
-        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
-            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl, '${knowledge_user}');
-            RAISE NOTICE '[knowledge] CRUD granted on %', tbl;
-        ELSE
-            RAISE NOTICE '[knowledge] % not found, skipping', tbl;
-        END IF;
-    END LOOP;
-
-    -- Sequence for naiveragchunk
-    IF EXISTS (SELECT FROM pg_sequences WHERE schemaname='public' AND sequencename='tables_naiveragchunk_chunk_id_seq') THEN
-        GRANT USAGE, SELECT, UPDATE ON SEQUENCE tables_naiveragchunk_chunk_id_seq TO "${knowledge_user}";
-        RAISE NOTICE '[knowledge] Sequence tables_naiveragchunk_chunk_id_seq granted';
-    END IF;
-END
-\$\$;
-EOF
-    echo "[knowledge] Permissions granted"
-}
-
-grant_realtime_permissions() {
-    local realtime_user="${REALTIME_DB_USER}"
-    [[ -z "$realtime_user" ]] && return 0
-
-    echo "[realtime] Granting table permissions..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = 'realtime_session_items'
-    ) THEN
-        REVOKE ALL ON TABLE realtime_session_items FROM "${realtime_user}";
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE realtime_session_items TO "${realtime_user}";
-        RAISE NOTICE '[realtime] CRUD granted on realtime_session_items';
-
-        IF EXISTS (SELECT FROM pg_sequences WHERE schemaname='public' AND sequencename='realtime_session_items_id_seq') THEN
-            GRANT USAGE ON SEQUENCE realtime_session_items_id_seq TO "${realtime_user}";
-            RAISE NOTICE '[realtime] Sequence realtime_session_items_id_seq granted';
-        END IF;
-    ELSE
-        RAISE NOTICE '[realtime] realtime_session_items not found, skipping';
-    END IF;
-END
-\$\$;
-EOF
-    echo "[realtime] Permissions granted"
-}
-
-# TABLE EXISTENCE CHECK
-# Returns 0 only when ALL required tables are present.
-
-REQUIRED_TABLES=(
-    # manager
-    "tables_session"
-    # knowledge
-    "tables_naiverag"
-    "tables_naiveragchunk"
-    "tables_naiveragembedding"
-    "tables_naiveragdocumentconfig"
-    "graph_rag"
-    "graph_rag_index_config"
-    "graph_rag_document"
-    # realtime
-    "realtime_session_items"
-    # django (memory database, owned by django_app, no dedicated crewdb role)
-    "tables_memorydatabase"
-)
-
-all_tables_exist() {
-    for tbl in "${REQUIRED_TABLES[@]}"; do
-        local count
-        count=$(psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" -tAc \
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='${tbl}'" 2>/dev/null || echo "0")
-        if [[ "$count" != "1" ]]; then
-            echo "[check] Table '${tbl}' not yet present"
-            return 1
-        fi
-    done
-    return 0
-}
-
-# EVENT TRIGGER SETUP
-# Creates PostgreSQL event triggers that auto-grant permissions when
-# Django migrations create tables/sequences. Eliminates the race condition
-# where Phase 2 polling could miss newly created objects.
-# Uses CREATE OR REPLACE so it is safe to call on every container start.
-
-install_event_triggers() {
-    local manager_user="${MANAGER_DB_USER}"
-    local knowledge_user="${KNOWLEDGE_DB_USER}"
-    local realtime_user="${REALTIME_DB_USER}"
-
-    echo "[triggers] Installing event triggers for auto-grant..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
--- Auto-grant table permissions on CREATE TABLE
-CREATE OR REPLACE FUNCTION auto_grant_table_permissions()
-RETURNS event_trigger
-LANGUAGE plpgsql
-AS \$func\$
-DECLARE
-    obj record;
-    tbl_name text;
-BEGIN
-    FOR obj IN SELECT * FROM pg_event_trigger_ddl_commands()
-                WHERE command_tag = 'CREATE TABLE'
-    LOOP
-        tbl_name := split_part(obj.object_identity, '.', 2);
-
-        -- manager: SELECT only
-        IF tbl_name = 'tables_session' THEN
-            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
-            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
-        END IF;
-
-        -- manager: SELECT + UPDATE for schedule trigger
-        IF tbl_name = 'tables_scheduletriggernode' THEN
-            EXECUTE format('GRANT SELECT, UPDATE ON TABLE %I TO %I', tbl_name, '${manager_user}');
-            RAISE NOTICE '[auto-grant] SELECT,UPDATE on % to ${manager_user}', tbl_name;
-        END IF;
-
-        -- knowledge: read-only tables
-        IF tbl_name IN ('tables_provider','tables_embeddingmodel','tables_embeddingconfig',
-                         'tables_sourcecollection','tables_documentmetadata',
-                         'tables_documentcontent','tables_baseragtype') THEN
-            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${knowledge_user}');
-            RAISE NOTICE '[auto-grant] SELECT on % to ${knowledge_user}', tbl_name;
-        END IF;
-
-        -- knowledge: SELECT + UPDATE
-        IF tbl_name IN ('tables_naiverag','tables_naiveragdocumentconfig') THEN
-            EXECUTE format('GRANT SELECT, UPDATE ON TABLE %I TO %I', tbl_name, '${knowledge_user}');
-            RAISE NOTICE '[auto-grant] SELECT,UPDATE on % to ${knowledge_user}', tbl_name;
-        END IF;
-
-        -- knowledge: full CRUD
-        IF tbl_name IN ('tables_naiveragchunk','tables_naiveragpreviewchunk','tables_naiveragembedding') THEN
-            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl_name, '${knowledge_user}');
-            RAISE NOTICE '[auto-grant] CRUD on % to ${knowledge_user}', tbl_name;
-        END IF;
-
-        -- realtime: full CRUD
-        IF tbl_name = 'realtime_session_items' THEN
-            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl_name, '${realtime_user}');
-            RAISE NOTICE '[auto-grant] CRUD on % to ${realtime_user}', tbl_name;
-        END IF;
-    END LOOP;
-END;
-\$func\$;
-
--- Auto-grant sequence permissions on CREATE SEQUENCE
-CREATE OR REPLACE FUNCTION auto_grant_sequence_permissions()
-RETURNS event_trigger
-LANGUAGE plpgsql
-AS \$func\$
-DECLARE
-    obj record;
-    seq_name text;
-BEGIN
-    FOR obj IN SELECT * FROM pg_event_trigger_ddl_commands()
-                WHERE command_tag = 'CREATE SEQUENCE'
-    LOOP
-        seq_name := split_part(obj.object_identity, '.', 2);
-
-        -- knowledge: naiveragchunk sequence
-        IF seq_name = 'tables_naiveragchunk_chunk_id_seq' THEN
-            EXECUTE format('GRANT USAGE, SELECT, UPDATE ON SEQUENCE %I TO %I', seq_name, '${knowledge_user}');
-            RAISE NOTICE '[auto-grant] USAGE,SELECT,UPDATE on % to ${knowledge_user}', seq_name;
-        END IF;
-
-        -- realtime: session_items sequence
-        IF seq_name = 'realtime_session_items_id_seq' THEN
-            EXECUTE format('GRANT USAGE ON SEQUENCE %I TO %I', seq_name, '${realtime_user}');
-            RAISE NOTICE '[auto-grant] USAGE on % to ${realtime_user}', seq_name;
-        END IF;
-    END LOOP;
-END;
-\$func\$;
-
--- Create or replace event triggers (DROP + CREATE since ALTER is not supported)
+# LEGACY CLEANUP
+# Removes the auto_grant_on_create_table and auto_grant_on_create_sequence event triggers
+# and their functions, auto_grant_table_permissions() and auto_grant_sequence_permissions().
+# Earlier releases installed them into the database itself, so they live on the data volume
+# and survive an image upgrade. Left in place, they would keep granting privileges on every
+# CREATE TABLE from a frozen copy of an old grant matrix: a second, hidden source of grants
+# next to src/django_app/tables/service_db_grants.py. They are dropped here because only
+# their owner or a superuser can drop them, and crewdb setup runs as the superuser that
+# created them.
+# Temporary: delete this function once every deployment has started at least once on a
+# release that contains it.
+drop_legacy_auto_grant_triggers() {
+    echo "[cleanup] Dropping legacy auto-grant event triggers, if any..."
+    setup_psql <<EOF
 DROP EVENT TRIGGER IF EXISTS auto_grant_on_create_table;
-CREATE EVENT TRIGGER auto_grant_on_create_table
-    ON ddl_command_end
-    WHEN TAG IN ('CREATE TABLE')
-    EXECUTE FUNCTION auto_grant_table_permissions();
-
 DROP EVENT TRIGGER IF EXISTS auto_grant_on_create_sequence;
-CREATE EVENT TRIGGER auto_grant_on_create_sequence
-    ON ddl_command_end
-    WHEN TAG IN ('CREATE SEQUENCE')
-    EXECUTE FUNCTION auto_grant_sequence_permissions();
+DROP FUNCTION IF EXISTS auto_grant_table_permissions();
+DROP FUNCTION IF EXISTS auto_grant_sequence_permissions();
 EOF
-    echo "[triggers] Event triggers installed"
 }
 
 # BACKGROUND WORKER
-# Phase 1: Wait for postgres → create roles + install event triggers.
-# Phase 2: Wait for tables (created by Django migrations) → grant permissions
-#           for tables that already exist (catch-up on restart).
-# Event triggers handle the race condition for newly created tables.
+# Waits for the target database, creates the roles, then writes the healthcheck flag.
+# Table privileges are not granted here: django_app grants them after its migrations.
 
 background_setup() {
     (
         export TARGET_DB="${POSTGRES_DB}"
 
-        echo "=== [setup] Phase 1: Waiting for PostgreSQL and target database to be ready ==="
+        # set -e ends setup on the first failure, before the healthcheck flag is
+        # written; -E lets this trap fire for failures inside the functions too.
+        set -E
+        trap 'echo "=== [setup] ERROR: setup stopped on the error above; crewdb will not report healthy ===" >&2' ERR
+
+        for name_variable in POSTGRES_DB MANAGER_DB_USER KNOWLEDGE_DB_USER REALTIME_DB_USER SANDBOX_DB_USER SANDBOX_DB_SCHEMA; do
+            require_plain_name "$name_variable"
+        done
+
+        echo "=== [setup] Waiting for PostgreSQL and target database to be ready ==="
         # pg_isready only checks if postgres accepts connections — it returns true
         # even during the initdb temp-server phase, before POSTGRES_DB is created.
         # We must wait until we can actually connect to the target database.
@@ -440,40 +208,23 @@ background_setup() {
         done
         echo "=== [setup] PostgreSQL is up and database '${TARGET_DB}' exists ==="
 
-        # Phase 1 — create roles (no tables needed)
         create_manager_user
         create_knowledge_user
         create_realtime_user
-        install_event_triggers
-        echo "=== [setup] Phase 1 complete: all roles created, event triggers installed ==="
+        create_sandbox_user
+        # Before the flag, so the triggers are gone before django_app starts migrating.
+        drop_legacy_auto_grant_triggers
 
-        # Phase 2 — wait for Django to run migrations, then grant permissions
-        echo "=== [setup] Phase 2: Waiting for Django to create tables via migrations ==="
-        local attempt=0
-        local max_attempts=120   # 120 × 10s = 20 minutes max
-
-        while [[ $attempt -lt $max_attempts ]]; do
-            if all_tables_exist; then
-                echo "=== [setup] All required tables found. Granting permissions... ==="
-                grant_manager_permissions
-                grant_knowledge_permissions
-                grant_realtime_permissions
-                touch "$USERS_CREATED_FLAG"
-                echo "=== [setup] Phase 2 complete: all permissions granted. crewdb is FULLY READY ==="
-                exit 0
-            fi
-            attempt=$(( attempt + 1 ))
-            echo "[setup] Attempt ${attempt}/${max_attempts} — tables not ready yet, retrying in 10s..."
-            sleep 10
-        done
-
-        echo "=== [setup] ERROR: Timed out waiting for Django migrations after $(( max_attempts * 10 ))s ==="
-        exit 1
+        touch "$USERS_CREATED_FLAG"
+        echo "=== [setup] All roles created. crewdb is ready; django_app grants table privileges after migrating ==="
     ) &
 }
 
 if [[ "$1" = 'postgres' ]] || [[ "$1" = 'docker-entrypoint.sh' && "$2" = 'postgres' ]]; then
     echo "=== Starting Custom PostgreSQL Entrypoint ==="
+    # /tmp survives a container restart; a flag left by the previous run would report
+    # healthy before this run's setup has succeeded.
+    rm -f "$USERS_CREATED_FLAG"
     background_setup
 fi
 

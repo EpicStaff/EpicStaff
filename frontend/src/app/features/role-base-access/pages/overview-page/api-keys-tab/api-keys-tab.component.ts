@@ -16,6 +16,7 @@ import {
     SelectItem,
     StopButtonComponent,
     TableRow,
+    UserAvatarComponent,
 } from '@shared/components';
 import { ActionCode, ApiKeyStatus, GetApiKeyWithOwnerResponse, ResourceCode } from '@shared/models';
 import { getRelativeTime } from '@shared/utils';
@@ -25,7 +26,6 @@ import { catchError, finalize } from 'rxjs/operators';
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../services/notifications';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
-import { UserAvatarComponent } from '../../../components/user-avatar/user-avatar.component';
 import { AdminApiKeysService } from '../../../services/admin/api-keys.service';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 import {
@@ -82,7 +82,8 @@ export class ApiKeysTabComponent {
     protected readonly isLoading = signal(true);
     protected readonly isBulkLoading = signal(false);
     protected readonly isBulkMenuOpen = signal(false);
-    protected readonly selectedItems = signal<TableRow[]>([]);
+    /** Only ids are kept: the selected rows are read from the latest list, so a reload never leaves a stale status behind. */
+    private readonly selectedIds = signal<ReadonlySet<number>>(new Set());
     protected readonly keys = signal<GetApiKeyWithOwnerResponse[]>([]);
 
     protected readonly searchTerm = signal('');
@@ -137,7 +138,6 @@ export class ApiKeysTabComponent {
             filterItems: STATUS_ITEMS,
             filterKind: 'single',
             filterServerSide: true,
-            align: 'center',
         },
         { key: 'actions', label: 'ACTIONS', width: '110px', align: 'end' },
     ]);
@@ -167,6 +167,11 @@ export class ApiKeysTabComponent {
             }))
             .sort((a, b) => API_KEY_STATUS_ORDER.get(a.status)! - API_KEY_STATUS_ORDER.get(b.status)!)
     );
+
+    protected readonly selectedItems = computed<TableRow[]>(() => {
+        const selectedIds = this.selectedIds();
+        return this.tableData().filter((row) => selectedIds.has(row['id'] as number));
+    });
 
     protected readonly isRowSelectable = (row: TableRow): boolean => this.canRetireRow(row);
 
@@ -238,7 +243,7 @@ export class ApiKeysTabComponent {
     }
 
     onSelectionChange(selected: TableRow[]): void {
-        this.selectedItems.set(selected);
+        this.selectedIds.set(new Set(selected.map((row) => row['id'] as number)));
     }
 
     toggleBulkMenu(): void {

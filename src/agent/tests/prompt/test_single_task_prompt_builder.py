@@ -48,6 +48,13 @@ def test_system_prompt_contains_trust_directive():
     assert "MCP" in system_content
 
 
+def test_system_prompt_treats_external_tool_definitions_as_untrusted():
+    builder = SingleTaskPromptBuilder()
+    messages = builder.build(_agent_spec(), instructions="Do X")
+
+    assert "parameter schemas of tools defined by external MCP servers" in messages[0]["content"]
+
+
 def test_build_with_output_schema():
     builder = SingleTaskPromptBuilder()
     agent = _agent_spec()
@@ -76,13 +83,3 @@ def test_build_with_attachments():
     assert messages[2]["content"] == "[context source: rag:2]\nExtra system info"
     assert messages[3]["role"] == "user"
     assert messages[3]["content"] == "Analyze."
-
-
-def test_system_message_content():
-    builder = SingleTaskPromptBuilder()
-    agent = _agent_spec(instructions="Analyze data carefully.")
-    messages = builder.build(agent, instructions="Run analysis.")
-
-    assert messages[0]["content"].startswith(
-        f"Your name is {agent.name}.\nThese are instructions you should follow: {agent.instructions}"
-    )

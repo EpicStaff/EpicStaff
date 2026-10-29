@@ -1,8 +1,10 @@
 import uuid
+from unittest.mock import patch
 
 import pytest
 
 from tests.fixtures import *  # noqa: F401,F403
+from tests.import_export_tests.venv_fakes import SANDBOX_CLIENT, FakeSandbox
 
 from tables.models import (
     Agent,
@@ -31,6 +33,13 @@ from agents.models import (
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.registry import entity_registry
+
+
+@pytest.fixture
+def sandbox():
+    fake = FakeSandbox()
+    with patch(SANDBOX_CLIENT, fake):
+        yield fake
 
 
 @pytest.fixture
@@ -108,7 +117,6 @@ def rich_seeded_db(
     code = PythonCode.objects.create(
         code="def main(arg1, arg2): return None",
         entrypoint="main",
-        libraries="",
     )
     custom_tool = PythonCodeTool.objects.create(
         name="custom_tool1",
@@ -202,15 +210,15 @@ def exportable_agent_definition(rich_seeded_db, default_org):
     stamping, import permissions): an AgentDefinition that pulls in an LLMConfig
     dependency and an owned Surface carrying an org-owned python tool."""
     definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="agent_def_1",
         description="description",
-        instructions="instructions",
+        instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
         llm_config=rich_seeded_db["llm_config"],
     )
 
     surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="owned_surface_1",
         instructions="owned surface instructions",
         owner_agent=definition,

@@ -4,6 +4,7 @@ from drf_spectacular.utils import (
 )
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.gates import HasOrgPermission
+from rbac.authorship import authorship_prefetches
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status, viewsets
@@ -14,6 +15,7 @@ from tables.exceptions import CollectionNotFoundException
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.serializers.knowledge_serializers import (
     CopySourceCollectionSerializer,
+    SourceCollectionBulkDeleteSerializer,
     SourceCollectionCreateSerializer,
     SourceCollectionDetailSerializer,
     SourceCollectionListSerializer,
@@ -22,6 +24,7 @@ from tables.serializers.knowledge_serializers import (
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
+from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
 from tables.swagger_schemas.knowledge_schemas.collection_management_schemas import (
     SOURCE_COLLECTION_AVAILABLE_RAGS_GET,
@@ -34,12 +37,14 @@ from tables.swagger_schemas.knowledge_schemas.collection_management_schemas impo
     SOURCE_COLLECTION_PUT,
     SOURCE_COLLECTIONS_GET,
 )
-from utils.logger import logger
+from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 
 redis_service = RedisService()
 
 
-class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
+class SourceCollectionViewSet(
+    OrgScopedResolverMixin, RecycleBinActionsMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for SourceCollection CRUD operations.
 
@@ -53,6 +58,9 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
     - DELETE /source-collections/{id}/ - Delete collection (cleans unreferenced content)
     - POST /source-collections/bulk-delete/ - Bulk delete source collections
     - GET /source-collections/{id}/available-rags/ - Get available RAG configurations for a collection
+    - GET /source-collections/recycle-bin/ - List the org's binned collections
+    - POST /source-collections/{id}/restore/ - Restore a binned collection
+    - DELETE /source-collections/{id}/purge/ - Delete a binned collection for good (superadmin only)
 
     """
 
@@ -62,17 +70,19 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
     rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "bulk_delete": Permission.DELETE,
         "copy": Permission.CREATE,
         "available_rags": Permission.READ,
     }
+    recycle_bin_resource_key = RecycleBinSource.COLLECTION
 
     def get_queryset(self):
         """Active-org collections only, optimized per action."""
         queryset = SourceCollection.objects.filter(org_id=self.get_active_org_id())
 
         if self.action == "list" or self.action == "retrieve":
-            queryset = queryset.prefetch_related("documents").annotate(
+            queryset = queryset.prefetch_related("documents", *authorship_prefetches()).annotate(
                 document_count=Count("documents")
             )
 
@@ -110,23 +120,18 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        try:
-            collection = CollectionManagementService.create_collection(
-                collection_name=serializer.validated_data.get("collection_name"),
-                description=serializer.validated_data.get("description", ""),
-                user_id=serializer.validated_data.get("user_id"),
-                collection_origin=serializer.validated_data.get("collection_origin"),
-                org_id=self.get_active_org_id(),
-            )
+        collection = CollectionManagementService.create_collection(
+            collection_name=serializer.validated_data.get("collection_name"),
+            description=serializer.validated_data.get("description", ""),
+            created_by=request.user,
+            collection_origin=serializer.validated_data.get("collection_origin"),
+            org_id=self.get_active_org_id(),
+        )
 
-            output_serializer = SourceCollectionDetailSerializer(collection)
-            return Response(output_serializer.data, status=status.HTTP_201_CREATED)
-
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to create collection: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        output_serializer = SourceCollectionDetailSerializer(
+            collection, context=self.get_serializer_context()
+        )
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED)
 
     @extend_schema(**SOURCE_COLLECTION_PUT)
     def update(self, request, *args, **kwargs):
@@ -143,18 +148,16 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
                 collection_id=instance.collection_id,
                 collection_name=serializer.validated_data.get("collection_name"),
                 description=serializer.validated_data.get("description"),
+                user=request.user,
             )
 
-            output_serializer = SourceCollectionDetailSerializer(updated_collection)
+            output_serializer = SourceCollectionDetailSerializer(
+                updated_collection, context=self.get_serializer_context()
+            )
             return Response(output_serializer.data)
 
         except CollectionNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to update collection: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**SOURCE_COLLECTION_DELETE)
     def destroy(self, request, *args, **kwargs):
@@ -162,7 +165,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
 
         try:
             result = CollectionManagementService.delete_collection(
-                collection_id=instance.collection_id
+                collection_id=instance.collection_id, deleted_by=request.user
             )
 
             return Response(
@@ -172,53 +175,33 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
 
         except CollectionNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to delete collection: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**SOURCE_COLLECTION_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
-        collection_ids = request.data.get("collection_ids", [])
-
-        if not collection_ids:
-            return Response(
-                {"error": "collection_ids is required and must be a non-empty list"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not isinstance(collection_ids, list):
-            return Response(
-                {"error": "collection_ids must be a list"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = SourceCollectionBulkDeleteSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"error": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
 
         # Narrow to ids the active org actually owns — ids in another org are
         # silently ignored (no cross-org delete, no existence leak).
         collection_ids = list(
             self.get_queryset()
-            .filter(collection_id__in=collection_ids)
+            .filter(collection_id__in=body.validated_data["collection_ids"])
             .values_list("collection_id", flat=True)
         )
 
-        try:
-            result = CollectionManagementService.bulk_delete_collections(collection_ids)
+        result = CollectionManagementService.bulk_delete_collections(
+            collection_ids, deleted_by=request.user
+        )
 
-            return Response(
-                {
-                    "message": f"Successfully deleted {result['deleted_count']} collection(s)",
-                    **result,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to delete collections: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        return Response(
+            {
+                "message": f"Successfully deleted {result['deleted_count']} collection(s)",
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(**SOURCE_COLLECTION_COPY_POST)
     @action(detail=True, methods=["post"])
@@ -233,9 +216,12 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
                 source_collection_id=collection.collection_id,
                 new_collection_name=serializer.validated_data.get("new_collection_name"),
                 org_id=self.get_active_org_id(),
+                user=request.user,
             )
 
-            output_serializer = SourceCollectionDetailSerializer(new_collection)
+            output_serializer = SourceCollectionDetailSerializer(
+                new_collection, context=self.get_serializer_context()
+            )
 
             return Response(
                 {
@@ -247,11 +233,6 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
 
         except CollectionNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to copy collection: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**SOURCE_COLLECTION_AVAILABLE_RAGS_GET)
     @action(detail=True, methods=["get"], url_path="available-rags")
@@ -290,9 +271,3 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
 
         except CollectionNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.error(f"Error fetching available RAGs for collection {pk}: {e!s}")
-            return Response(
-                {"error": f"Failed to fetch available RAGs: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )

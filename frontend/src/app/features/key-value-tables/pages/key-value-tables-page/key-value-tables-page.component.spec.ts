@@ -1,5 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
@@ -9,16 +10,38 @@ import { NEVER, Observable, of, Subject, throwError } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { KeyValueEntriesGridComponent } from '../../components/key-value-entries-grid/key-value-entries-grid.component';
 import { KeyValueTableDialogComponent } from '../../components/key-value-table-dialog/key-value-table-dialog.component';
+import { KeyValueTableListComponent } from '../../components/key-value-table-list/key-value-table-list.component';
 import { KeyValueTable, KeyValueTableUsage } from '../../models/key-value-table.model';
 import { KeyValueTablesApiService } from '../../services/key-value-tables-api.service';
 import { KeyValueTablesStorageService } from '../../services/key-value-tables-storage.service';
 import { KeyValueTablesPageComponent } from './key-value-tables-page.component';
 
 const TABLES: KeyValueTable[] = [
-    { id: 1, name: 'profiles', description: '', entry_count: 0, created_at: '', updated_at: '' },
-    { id: 2, name: 'orders', description: '', entry_count: 0, created_at: '', updated_at: '' },
+    {
+        id: 1,
+        name: 'profiles',
+        description: '',
+        entry_count: 0,
+        created_at: '',
+        updated_at: '',
+        created_by: null,
+        last_edited_by: null,
+        last_edited_at: null,
+    },
+    {
+        id: 2,
+        name: 'orders',
+        description: '',
+        entry_count: 0,
+        created_at: '',
+        updated_at: '',
+        created_by: null,
+        last_edited_by: null,
+        last_edited_at: null,
+    },
 ];
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
@@ -37,6 +60,7 @@ describe('KeyValueTablesPageComponent key search', () => {
             providers: [
                 provideRouter([]),
                 { provide: PermissionsService, useValue: { can: () => false } },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
                 {
                     provide: KeyValueTablesApiService,
                     useValue: {
@@ -78,6 +102,7 @@ describe('KeyValueTablesPageComponent create table', () => {
                     provide: PermissionsService,
                     useValue: { can: (_: string, action: ActionCode) => canCreate && action === ActionCode.Create },
                 },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
                 { provide: Dialog, useValue: { open: dialogOpen } },
                 {
                     provide: KeyValueTablesApiService,
@@ -134,12 +159,13 @@ describe('KeyValueTablesPageComponent delete table', () => {
         };
         const confirmation = {
             confirm: vi.fn<ConfirmationDialogService['confirm']>(() => of(confirmed)),
-            confirmDelete: vi.fn<ConfirmationDialogService['confirmDelete']>(() => of(confirmed)),
+            confirmMoveToRecycleBin: vi.fn<ConfirmationDialogService['confirmMoveToRecycleBin']>(() => of(confirmed)),
         };
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([]),
                 { provide: PermissionsService, useValue: { can: () => true } },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
                 { provide: KeyValueTablesApiService, useValue: api },
                 { provide: ConfirmationDialogService, useValue: confirmation },
             ],
@@ -149,13 +175,15 @@ describe('KeyValueTablesPageComponent delete table', () => {
         const triggerRefresh = vi.spyOn(TestBed.inject(KeyValueTablesStorageService), 'triggerRefresh');
         const toastSuccess = vi.spyOn(TestBed.inject(ToastService), 'success');
         const message = (): string => confirmation.confirm.mock.calls.at(-1)?.[0].message ?? '';
-        const trashButtons = (): HTMLButtonElement[] =>
+        const menuTriggers = (): HTMLButtonElement[] =>
             Array.from(
-                (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
-                    'app-icon-button[ariaLabel="Delete table"] button'
-                )
+                (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.table-list__hover-btn')
             );
-        return { fixture, api, confirmation, message, trashButtons, triggerRefresh, toastSuccess };
+        // What the row menu's Delete emits; the menu itself is covered by the list's own spec.
+        const list = fixture.debugElement.query(By.directive(KeyValueTableListComponent))
+            .componentInstance as KeyValueTableListComponent;
+        const requestDelete = (table: KeyValueTable): void => list.deleteRequested.emit(table);
+        return { fixture, api, confirmation, message, menuTriggers, requestDelete, triggerRefresh, toastSuccess };
     }
 
     function renderPage(usage: Observable<KeyValueTableUsage>, confirmed = true) {
@@ -174,8 +202,11 @@ describe('KeyValueTablesPageComponent delete table', () => {
             'This table is used by 1 Key-Value node in 1 flow. Deleting it removes the table from that node. ' +
                 'That node will need a new table before its flow can run.'
         );
+        expect(message()).toContain('It moves to the recycle bin, where you can restore it for 7 days.');
+        expect(message()).toContain("Restoring it won't add it back to those nodes.");
+        expect(message()).not.toContain('cannot be undone');
         expect(api.deleteTable).toHaveBeenCalledWith(1);
-        expect(toastSuccess).toHaveBeenCalledWith('Table "profiles" deleted');
+        expect(toastSuccess).toHaveBeenCalledWith('Moved 1 key-value table to the recycle bin.');
         expect(triggerRefresh).toHaveBeenCalledOnce();
     });
 
@@ -197,10 +228,10 @@ describe('KeyValueTablesPageComponent delete table', () => {
         );
     });
 
-    it('shows the normal delete confirmation when no node uses the table', () => {
+    it('says an unused table moves to the recycle bin', () => {
         const { api, confirmation } = renderPage(of({ node_count: 0, flow_count: 0 }));
 
-        expect(confirmation.confirmDelete).toHaveBeenCalledWith('profiles');
+        expect(confirmation.confirmMoveToRecycleBin).toHaveBeenCalledWith('profiles', 7);
         expect(confirmation.confirm).not.toHaveBeenCalled();
         expect(api.deleteTable).toHaveBeenCalledWith(1);
     });
@@ -224,17 +255,17 @@ describe('KeyValueTablesPageComponent delete table', () => {
         expect(api.deleteTable).not.toHaveBeenCalled();
     });
 
-    it('asks for usage, opens the dialog and deletes once on a double click', () => {
+    it('asks for usage, opens the dialog and deletes once when the delete is requested repeatedly', () => {
         const usage = new Subject<KeyValueTableUsage>();
-        const { fixture, api, confirmation, trashButtons } = setUpPage(usage);
-        expect(trashButtons()).toHaveLength(2);
+        const { fixture, api, confirmation, menuTriggers, requestDelete } = setUpPage(usage);
+        expect(menuTriggers()).toHaveLength(2);
 
-        trashButtons()[0].click();
+        requestDelete(TABLES[0]);
         // A held Enter repeats the request too.
         fixture.componentInstance.onDelete(TABLES[0]);
         fixture.detectChanges();
-        trashButtons()[0].click();
-        trashButtons()[1].click();
+        requestDelete(TABLES[0]);
+        requestDelete(TABLES[1]);
 
         expect(api.getUsage).toHaveBeenCalledOnce();
 

@@ -4,13 +4,16 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
+    BinnedSecretNoteComponent,
     ButtonComponent,
     CustomInputComponent,
+    ErrorBannerComponent,
     SelectComponent,
     SelectItem,
     ToggleSwitchComponent,
     WebhookTriggerFieldComponent,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { RealtimeChannel, TwilioChannel, WebhookTriggerModel, WebhookTriggerWrite } from '@shared/models';
 import {
     RealtimeChannelService,
@@ -18,7 +21,7 @@ import {
     TwilioPhoneNumber,
     WebhookTriggerService,
 } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractHttpErrorMessage, isClientError, trackPickedSecrets } from '@shared/utils';
 import { Observable, of, switchMap } from 'rxjs';
 
 import { AgentDefinition } from '../../../../agent-definitions/models/agent-definition.model';
@@ -34,12 +37,15 @@ export interface AddEditChannelDialogData {
     templateUrl: './add-edit-channel-dialog.component.html',
     styleUrls: ['./add-edit-channel-dialog.component.scss'],
     imports: [
+        BinnedSecretNoteComponent,
         ReactiveFormsModule,
         CustomInputComponent,
+        ErrorBannerComponent,
         SelectComponent,
         ButtonComponent,
         WebhookTriggerFieldComponent,
         ToggleSwitchComponent,
+        EnterSubmitDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -78,13 +84,9 @@ export class AddEditChannelDialogComponent implements OnInit {
             .map((d) => ({ name: d.name, value: d.id })),
     ]);
 
-    secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
-    );
+    /** Secret ids picked in this form: a picked secret in the recycle bin keeps its option. */
+    private readonly pickedSecretIds = signal<number[]>([]);
+    secretItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.pickedSecretIds()));
 
     phoneNumberItems = computed<SelectItem[]>(() => [
         { name: '— None —', value: null },
@@ -109,6 +111,7 @@ export class AddEditChannelDialogComponent implements OnInit {
             phone_number: [tw?.phone_number ?? ''],
             webhook_trigger: [(tw?.webhook_trigger?.id ?? null) as WebhookTriggerWrite | null],
         });
+        trackPickedSecrets(this.form, ['auth_token_secret_id'], this.pickedSecretIds, this.destroyRef);
 
         this.agentDefinitionsApi
             .getAgentDefinitions()
@@ -180,7 +183,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                         );
                     },
                     error: (err: HttpErrorResponse) => {
-                        this.errorMessage.set(this.formatBackendError(err) ?? 'Failed to create channel.');
+                        this.errorMessage.set(this.saveErrorMessage(err, 'Failed to create channel.'));
                         this.isSubmitting.set(false);
                     },
                 });
@@ -212,7 +215,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                         );
                     },
                     error: (err: HttpErrorResponse) => {
-                        this.errorMessage.set(this.formatBackendError(err) ?? 'Failed to update channel.');
+                        this.errorMessage.set(this.saveErrorMessage(err, 'Failed to update channel.'));
                         this.isSubmitting.set(false);
                     },
                 });
@@ -273,7 +276,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                 },
                 error: (err: HttpErrorResponse) => {
                     this.errorMessage.set(
-                        this.formatBackendError(err) ?? 'Channel saved but Twilio settings failed to save.'
+                        this.saveErrorMessage(err, 'Channel saved but Twilio settings failed to save.')
                     );
                     this.isSubmitting.set(false);
                 },
@@ -322,28 +325,19 @@ export class AddEditChannelDialogComponent implements OnInit {
                 next: () => this.dialogRef.close(true),
                 error: (err: HttpErrorResponse) => {
                     this.errorMessage.set(
-                        this.formatBackendError(err) ??
+                        this.saveErrorMessage(
+                            err,
                             'Channel saved but webhook configuration on Twilio failed. Check your tunnel.'
+                        )
                     );
                     this.isSubmitting.set(false);
                 },
             });
     }
 
-    private formatBackendError(err: HttpErrorResponse): string | null {
-        const body = err?.error;
-        if (!body) return null;
-        if (typeof body === 'string') return body;
-        if (typeof body.detail === 'string') return body.detail;
-        if (typeof body === 'object') {
-            const parts: string[] = [];
-            for (const [field, value] of Object.entries(body)) {
-                const text = Array.isArray(value) ? value.join(' ') : typeof value === 'string' ? value : null;
-                if (text) parts.push(field === 'non_field_errors' ? text : `${field}: ${text}`);
-            }
-            if (parts.length) return parts.join(' • ');
-        }
-        return null;
+    /** The server's words for a refusal of what was sent (4xx); the step's own message for anything else. */
+    private saveErrorMessage(err: HttpErrorResponse, fallback: string): string {
+        return isClientError(err) ? extractHttpErrorMessage(err, fallback) : fallback;
     }
 
     onPhoneSelectOpened(): void {

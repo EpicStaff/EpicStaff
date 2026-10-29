@@ -5,9 +5,9 @@ Wraps the LiteLLM provider API behind a single async streaming interface.
 ``AgentLoop`` depends only on this ABC; the concrete implementation (LiteLLM
 call, provider auth, retry logic) is a follow-up plan.
 
-Non-streaming requests must also return an ``AsyncIterator[LLMChunk]``
-containing exactly one item so the loop has a single codepath regardless of
-``stream`` mode.
+Non-streaming requests also return an ``AsyncIterator[LLMChunk]``, with the
+complete response split into the same chunk kinds, so the loop has a single
+codepath regardless of ``stream`` mode.
 """
 
 from __future__ import annotations
@@ -70,8 +70,9 @@ class LLMClient(ABC):
     ) -> AsyncIterator[LLMChunk]:
         """Return an async iterator of normalized ``LLMChunk`` objects.
 
-        When ``stream=False`` the iterator must yield exactly one chunk
-        containing the complete response so callers have a single codepath.
+        When ``stream=False`` the complete response is split into the same
+        chunk kinds (text, one fragment per tool call with full arguments,
+        usage, finish) so callers have a single codepath.
 
         Args:
             messages: conversation history in OpenAI chat format.

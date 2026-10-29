@@ -1,7 +1,11 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
+import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+    AuthorshipDetailsDialogService,
+    AuthorshipDetailsSource,
     ButtonComponent,
     ConfirmationDialogService,
     FetchErrorStateComponent,
@@ -12,28 +16,51 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode, WebhookTriggerModel } from '@shared/models';
 import { WebhookTriggerService } from '@shared/services';
+import { movedToRecycleBinMessage } from '@shared/utils';
+import { finalize } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { WebhookTriggerEditPermissionService } from '../../services/webhook-trigger-edit-permission.service';
 
 @Component({
     selector: 'app-webhook-triggers-section',
     templateUrl: './webhook-triggers-section.component.html',
     styleUrls: ['./webhook-triggers-section.component.scss'],
-    imports: [ButtonComponent, LoadingSpinnerComponent, HasPermissionDirective, FetchErrorStateComponent],
+    imports: [
+        ButtonComponent,
+        LoadingSpinnerComponent,
+        HasPermissionDirective,
+        FetchErrorStateComponent,
+        CdkMenuTrigger,
+        CdkMenu,
+        CdkMenuItem,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WebhookTriggersSectionComponent implements OnInit {
     private service = inject(WebhookTriggerService);
     private dialog = inject(Dialog);
     private confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private toastService = inject(ToastService);
+    private readonly editPermission = inject(WebhookTriggerEditPermissionService);
     private destroyRef = inject(DestroyRef);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
 
     status = signal<LoadingState>(LoadingState.IDLE);
     triggers = signal<WebhookTriggerModel[]>([]);
+    /** Set while a pressed Edit checks whether the trigger may be edited, so repeated presses start no second check. */
+    protected readonly isEditCheckPending = signal(false);
 
     displayedTriggers = computed(() => this.triggers().map((t) => ({ ...t, name: this.getTriggerName(t) })));
+
+    // Below the ⋮ button, right edges aligned; flips above when there is no room.
+    protected readonly menuPositions: ConnectedPosition[] = [
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+    ];
 
     private getTriggerName(t: WebhookTriggerModel): string | undefined {
         switch (t.provider_type) {
@@ -81,14 +108,30 @@ export class WebhookTriggersSectionComponent implements OnInit {
     }
 
     onEdit(trigger: WebhookTriggerModel): void {
-        this.openDialog(trigger);
+        if (this.isEditCheckPending()) return;
+        if (trigger.id == null) {
+            this.openDialog(trigger);
+            return;
+        }
+        this.isEditCheckPending.set(true);
+        this.editPermission
+            .decideEdit(trigger.id)
+            .pipe(
+                finalize(() => this.isEditCheckPending.set(false)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((decision) => {
+                if (decision === 'edit') this.openDialog(trigger);
+                else if (decision === 'view') this.openDialog(trigger, true);
+                else if (decision === 'gone') this.refresh();
+            });
     }
 
-    private openDialog(trigger: WebhookTriggerModel | null): void {
+    private openDialog(trigger: WebhookTriggerModel | null, readonly = false): void {
         this.dialog
             .open<WebhookTriggerModel | null, WebhookTriggerDialogData>(WebhookTriggerDialogComponent, {
                 disableClose: true,
-                data: { trigger },
+                data: { trigger, readonly },
             })
             .closed.pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((saved) => {
@@ -96,11 +139,35 @@ export class WebhookTriggersSectionComponent implements OnInit {
             });
     }
 
+    /**
+     * The menu item closes the menu itself once this returns, focusing its trigger; the details
+     * dialog has already recorded the focused menu item by then, so it is told to close back to
+     * the ⋮ button instead.
+     */
+    protected onViewDetails(trigger: WebhookTriggerModel, menuTriggerButton: HTMLElement): void {
+        this.authorshipDetailsDialog.open(
+            'Webhook Trigger Details',
+            this.toAuthorshipSource(trigger),
+            menuTriggerButton
+        );
+    }
+
+    /**
+     * Escape must close only the menu, not the Configure Models dialog under it: CdkMenu lets
+     * Escape bubble on to the overlay keyboard dispatcher after destroying the menu view, so the
+     * focused item intercepts it first and closes the menu the way CdkMenu would.
+     */
+    protected onMenuItemEscape(event: Event, menuTrigger: CdkMenuTrigger, menuTriggerButton: HTMLElement): void {
+        event.stopPropagation();
+        menuTrigger.close();
+        menuTriggerButton.focus();
+    }
+
     onDelete(trigger: WebhookTriggerModel): void {
         if (trigger.id == null) return;
         const id = trigger.id;
         this.confirmationDialogService
-            .confirmDelete(trigger.path)
+            .confirmMoveToRecycleBin(trigger.path, this.recycleBinSettings.retentionDays())
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result !== true) return;
@@ -110,7 +177,9 @@ export class WebhookTriggersSectionComponent implements OnInit {
                     .subscribe({
                         next: () => {
                             this.triggers.update((list) => list.filter((t) => t.id !== id));
-                            this.toastService.success(`Webhook trigger "${trigger.path}" deleted`);
+                            this.toastService.success(
+                                movedToRecycleBinMessage(1, 'webhook trigger', 'webhook triggers')
+                            );
                         },
                         error: () => this.toastService.error('Failed to delete webhook trigger'),
                     });
@@ -119,4 +188,15 @@ export class WebhookTriggersSectionComponent implements OnInit {
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+
+    // The model doubles as a form value, so its authorship fields are optional; a trigger loaded
+    // from the API always carries them. Any that are absent render as the dialog's "unknown".
+    private toAuthorshipSource(trigger: WebhookTriggerModel): AuthorshipDetailsSource {
+        return {
+            created_by: trigger.created_by ?? null,
+            created_at: trigger.created_at ?? null,
+            last_edited_by: trigger.last_edited_by ?? null,
+            last_edited_at: trigger.last_edited_at ?? null,
+        };
+    }
 }

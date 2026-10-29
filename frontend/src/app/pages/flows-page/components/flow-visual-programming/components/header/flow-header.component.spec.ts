@@ -3,8 +3,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
+import { ActionCode, ResourceCode } from '@shared/models';
 
-import { PermissionsService } from '../../../../../../services/auth/permissions.service';
+import { PermissionRequirement, PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../../../services/config';
 import { FlowHeaderComponent } from './flow-header.component';
@@ -29,11 +30,18 @@ describe('FlowHeaderComponent', () => {
                 provideRouter([]),
                 {
                     provide: PermissionsService,
-                    useValue: { can: () => true, canAny: () => true } as unknown as PermissionsService,
+                    useValue: {
+                        can: () => true,
+                        canAny: () => true,
+                        meets: () => true,
+                    } as unknown as PermissionsService,
                 },
                 {
                     provide: ProfileService,
-                    useValue: { currentUserSignal: signal(null) } as unknown as ProfileService,
+                    useValue: {
+                        currentUserSignal: signal(null),
+                        shortcutSettings: signal(null),
+                    } as unknown as ProfileService,
                 },
                 { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
             ],
@@ -85,5 +93,93 @@ describe('FlowHeaderComponent', () => {
         const label = fixture.nativeElement.querySelector('.get-curl-button .btn-label') as HTMLElement;
 
         expect(label.textContent?.trim()).toBe('Get cURL');
+    });
+});
+
+describe('FlowHeaderComponent Run and Get cURL buttons', () => {
+    beforeEach(() => {
+        // jsdom has no ResizeObserver; CollapseOnOverflowDirective needs one.
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe = vi.fn();
+                unobserve = vi.fn();
+                disconnect = vi.fn();
+            }
+        );
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    let fixture: ComponentFixture<FlowHeaderComponent>;
+
+    function render(granted: ActionCode[]): HTMLElement {
+        const can = (resource: ResourceCode, action: ActionCode): boolean =>
+            resource === ResourceCode.Flows && granted.includes(action);
+        TestBed.configureTestingModule({
+            imports: [FlowHeaderComponent],
+            providers: [
+                provideRouter([]),
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can,
+                        canAny: (resource: ResourceCode, actions: ActionCode[]) =>
+                            actions.some((action) => can(resource, action)),
+                        meets: (requirement: PermissionRequirement) =>
+                            requirement.anyOf.some((action) => can(requirement.resource, action)),
+                    } as unknown as PermissionsService,
+                },
+                {
+                    provide: ProfileService,
+                    useValue: {
+                        currentUserSignal: signal(null),
+                        shortcutSettings: signal(null),
+                    } as unknown as ProfileService,
+                },
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
+            ],
+        });
+        fixture = TestBed.createComponent(FlowHeaderComponent);
+        fixture.detectChanges();
+        return fixture.nativeElement as HTMLElement;
+    }
+
+    function tooltips(): string[] {
+        return fixture.debugElement
+            .queryAll(By.directive(MatTooltip))
+            .map((debugElement) => debugElement.injector.get(MatTooltip).message);
+    }
+
+    it('are shown to a user who can run flows, even without edit rights', () => {
+        const host = render([ActionCode.Read, ActionCode.Use]);
+
+        expect(host.querySelector('.run-button')).not.toBeNull();
+        expect(host.querySelector('.get-curl-button')).not.toBeNull();
+        expect(host.querySelector('.save-split-btn')).toBeNull();
+    });
+
+    it('name their keys in the tooltips, as do the other header buttons', () => {
+        render([ActionCode.Read, ActionCode.Update, ActionCode.Use]);
+
+        expect(tooltips()).toEqual(
+            expect.arrayContaining([
+                'Sessions (Alt + S)',
+                'Get cURL (Alt + K)',
+                'Open chat (Alt + C)',
+                'Save (Ctrl + S)',
+                'Run (Ctrl + Enter)',
+            ])
+        );
+    });
+
+    it('are hidden from a user who cannot run flows, while their edit controls stay', () => {
+        const host = render([ActionCode.Read, ActionCode.Update]);
+
+        expect(host.querySelector('.run-button')).toBeNull();
+        expect(host.querySelector('.get-curl-button')).toBeNull();
+        expect(host.querySelector('.save-split-btn')).not.toBeNull();
     });
 });

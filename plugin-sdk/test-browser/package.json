@@ -1,0 +1,21 @@
+{
+    "name": "epicstaff-plugin-sdk-browser-tests",
+    "version": "0.1.0",
+    "description": "Browser checks of plugin sign-in and the popup hand-off, against a running EpicStaff with the Weather sample (seeded with e2e:seed).",
+    "private": true,
+    "license": "SEE LICENSE IN ../../LICENSE.md",
+    "type": "module",
+    "engines": {
+        "node": ">=24.15.0"
+    },
+    "scripts": {
+        "e2e": "playwright test",
+        "e2e:seed": "node support/seed.ts",
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@playwright/test": "1.63.0",
+        "@types/node": "24.19.1",
+        "typescript": "6.0.3"
+    }
+}

@@ -105,9 +105,18 @@ class Permission(IntFlag):
     UPDATE = 4
     DELETE = 8
     EXPORT = 16  # 32 retired (was DOWNLOAD, folded into EXPORT)
-    USE = 64  # catalog action of `secrets` only; enforced by SecretReferenceGuard
+    USE = 64  # catalog action of `secrets`, `flows` and `chats`; see the table below
     LIST = 128  # reserved — not in the catalog, checked nowhere
 ```
+
+`USE` means something different on each resource that lists it in `applicable_actions`
+(`rbac/access/catalog.py`), and it is granted on no other:
+
+| Resource | What `use` allows | Enforced by |
+|---|---|---|
+| `secrets` | Attach a secret to a resource or change where it is sent (§5.6) | `SecretUseService` |
+| `flows` | Start and stop runs; write trigger nodes (§5.3) | `get_runnable_graph`, `get_accessible_session`, `trigger_node_access` |
+| `chats` | Operator support work: claim, release, reply, test conversation | the chat service, through the effective-permissions endpoint |
 
 ### 2.2 Built-in roles (declared in `rbac/access/builtin_roles.json`)
 
@@ -120,7 +129,7 @@ after `migrate`) makes the database match it exactly.
 "Member": {
   "description": "Builds and edits workspace resources; no organization administration.",
   "permissions": {
-    "flows": ["create", "read", "update"],
+    "flows": ["create", "read", "update", "use"],
     "knowledge_sources": ["read"]
   }
 }
@@ -130,7 +139,7 @@ after `migrate`) makes the database match it exactly.
   a resource missing from `permissions` is removed entirely. To take a permission away, delete
   it from the file.
 - **Only grantable actions are accepted.** Each action must be in that resource's
-  `applicable_actions` in `rbac/access/catalog.py`, so `use` on `flows`, `list` anywhere, or a
+  `applicable_actions` in `rbac/access/catalog.py`, so `use` on `agents`, `list` anywhere, or a
   platform action is refused. To grant a new kind of action, add it to the catalog and enforce
   it first. This keeps every stored bit one the code enforces and the matrix can show — the
   escalation ceiling compares these masks, so a dead bit can still refuse a legitimate
@@ -164,7 +173,7 @@ change applies on the first request after the container restarts.
 
 ## 3. Authentication layer
 
-Global defaults (`django_app/settings.py`):
+Global defaults (`django_app/settings/rest_framework.py`):
 
 ```python
 REST_FRAMEWORK = {
@@ -184,7 +193,8 @@ first-setup, login, refresh, password-reset request/confirm, swagger-token).
 
 Two authentication classes (`rbac/identity/authentication.py`), both global defaults:
 - `JwtAuthentication` — `Authorization: Bearer <jwt>` → simplejwt (HS256, access 15 min,
-  refresh 7 d, rotation + blacklist on). Custom claims: `email`, `is_superadmin`.
+  refresh 7 d, rotation + blacklist on). Custom claims: `email`, `is_superadmin`,
+  `hash_password` (`CHECK_REVOKE_TOKEN=True`: binds the token to the password hash).
 - `ApiKeyAuthentication` — `X-Api-Key: <key>` or `Authorization: ApiKey <key>` → delegates to
   `ApiKeyAuthenticator`, which resolves the raw key to an `ApiKey` row, then hands it to
   `PrincipalResolver` (`rbac/identity/api_keys/principals.py`): a `system`-type key
@@ -211,21 +221,35 @@ or `/api/auth/ws-ticket/` with JWT → 30 s single-use ticket consumed atomicall
 `GETDEL`, passed as `?ticket=` on the stream URL. Redis stores only
 `sha256(ticket)` as the key, so Redis read access yields no replayable ticket.
 
-Throttling (`tables/throttles.py`) — every anonymous credential-adjacent endpoint is covered:
+Throttling (`rbac/throttles.py`; `NotifyEmailThrottle` lives in `tables/throttles.py`) — every
+anonymous credential-adjacent endpoint is covered. Exceeding any bucket returns `429` with
+`Retry-After`; where a view lists two throttles, a request must pass both.
 
 | Throttle | Endpoint(s) | Bucket | Default rate |
 |---|---|---|---|
-| `LoginThrottle` | login, swagger-token, profile password-change request | `ip\|email` | 5/min |
+| `LoginThrottle` | login, swagger-token | `ip\|email` | 5/min |
+| `LoginThrottle` | profile password-change request | `ip` (the body has no `email`) | 5/min |
+| `LoginIpThrottle` | login, swagger-token | `ip` | 20/min |
 | `PasswordResetRequestThrottle` | password-reset request | `ip\|email` | 5/hour |
+| `PasswordResetRequestIpThrottle` | password-reset request | `ip` | 20/hour |
 | `PasswordResetConfirmThrottle` | password-reset confirm | `ip` | 10/hour |
 | `TokenRefreshThrottle` | token refresh | `ip` | 30/min |
 | `NotifyEmailThrottle` | notify/email | authenticated user id | 10/hour |
 
-The last two key on IP alone because their requests carry no identifier to compose with — the
-refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the
-token being guessed, so keying on it would give an attacker a fresh bucket per attempt. Both
-subclass DRF's `AnonRateThrottle`, which supplies the IP key; their views set
-`authentication_classes = []`, so every caller is anonymous and the throttle always applies.
+The `ip|email` buckets limit what one address can do to one account without one user's attempts
+using up the allowance of everyone behind the same NAT. They never stop an address that names a
+new email on each request, since every email is a fresh bucket; that is what `LoginIpThrottle` and
+`PasswordResetRequestIpThrottle` cap. `LoginThrottle` takes the email from the request body
+whatever the view, so on the password-change request, whose body carries only
+`current_password`, its key is the caller's IP alone, in the same `login` scope as logins that
+send no email. A caller who adds an `email` field there picks the bucket instead.
+
+`PasswordResetConfirmThrottle` and `TokenRefreshThrottle` key on IP alone because their requests
+carry no identifier to compose with — the refresh token arrives in an HttpOnly cookie, and on
+confirm the only caller-supplied value is the token being guessed, so keying on it would give an
+attacker a fresh bucket per attempt. All four IP-only throttles subclass DRF's `AnonRateThrottle`,
+which supplies the IP key and skips authenticated callers; their views set no authentication
+classes, so every caller is anonymous and the throttle always applies.
 
 HTTP first-setup (`POST /api/auth/first-setup/`) is itself gated by
 `settings.FIRST_SETUP_MODE` (default `cli_only`): it returns `403
@@ -306,14 +330,59 @@ assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.CREAT
 
 The quickstart endpoint (`tables/views/views.py`) is the reference example.
 
-### 5.3 Session / SSE surfaces — `assert_session_org_access`
+### 5.3 Session / SSE surfaces — `get_accessible_session`
 
 Sessions have no org column; they are children of their graph. Non-ViewSet session
 surfaces (SSE stream, get-updates, stop) authorize via
-`assert_session_org_access(user, session, action)`
+`get_accessible_session(user, session_id, action)`
 (`tables/services/session_access.py`): 404 when the session has no graph, then
 membership + FLOWS bit check against `session.graph.org_id`. SSE resolves the user from
-the single-use ticket first, then calls this.
+the single-use ticket first, then calls this. Reading a session (SSE, get-updates) needs
+`READ`; stopping one needs `USE`, as starting one does (`get_runnable_graph`).
+
+The graph co-editing WebSocket (`ws/graphs/<id>/edit/`, `tables/graph_collab/consumers.py`)
+follows the same pattern: the ticket carries only the user, so `connect()` calls
+`assert_graph_readable(user, graph_id)` from the same module, which takes the org from the
+graph row and needs FLOWS `READ` — the same bit that opens the graph over HTTP. A missing
+graph, a binned one and another org's graph all close with `4404`; a member without the bit
+closes with `4403`. The check runs before the socket joins the graph's group or presence,
+so a refused caller never sees the editors and is never announced to them. Access is
+checked at connect only: an open socket is not closed when the membership is revoked.
+
+`USE` on `flows` also gates writing a trigger node (webhook, Telegram, schedule), because one starts
+runs by itself. Which node types are triggers is declared once, by `starts_runs=True` on
+their `NodeTypeConfig` in `tables/services/graph_bulk_save_service/registry.py`
+(`TRIGGER_NODE_LIST_KEYS`, `TRIGGER_NODE_MODELS`); `tables/services/trigger_nodes.py`
+derives everything else from them:
+
+- Writing one trigger node — the bulk save and `TriggerNodeUsePermissionMixin`
+  (`tables/views/mixins.py`) — calls `trigger_node_access.assert_may_write`, which raises
+  `TriggerNodesRequireUsePermissionError` (403 `trigger_nodes_require_use_permission`).
+  `trigger_node_access` is the shared `TriggerNodeAccess` instance.
+  Updating a `WebhookTrigger` that a live trigger node is attached to
+  (`TriggerNodeInspector.has_any_attached_to_webhook_trigger`) goes through the same
+  check in `WebhookTriggerViewSet.update`, since re-keying, re-pathing or re-tunnelling
+  it can bring those nodes live. `GET /api/webhook-triggers/{id}/flows/`
+  (`flows_using_trigger`, webhooks READ) names those flows in advance, from
+  `TriggerNodeInspector.graphs_attached_to_webhook_trigger`; it lists their names only
+  when the caller also holds READ on flows, and always returns the count.
+- Recreating trigger nodes by copy, import, partial import or version create-graph /
+  restore raises `FlowWithTriggerNodesRequiresUsePermissionError`
+  (403 `flow_with_trigger_nodes_requires_use_permission`) through
+  `trigger_node_access.assert_user_may_recreate` (views) or `assert_may_recreate` (the
+  import services, with the `effective_permissions` the caller passes in). One "holds a
+  trigger node" decision per source shape, on `TriggerNodeInspector`:
+  `has_any_in_graph` (stored flow, copy), `has_any_in_export` (full import file),
+  `has_any_in_node_entries` (the nodes a partial import creates) and
+  `has_any_in_flow_entry` (version snapshot). The views check after the org-scoped
+  fetch, so another org's id stays a 404; the import services check before their
+  transaction opens.
+- `run-python-code` needs USE for code a trigger node owns, named by target
+  (`CodeRunTarget.owner_is_trigger_node`) or by `python_code_id`
+  (`trigger_node_owns_python_code`).
+
+A new trigger node type only needs the flag.
+See `roles_and_permissions.md` → "Running flows: `use` on `flows`" for the endpoint list.
 
 ### 5.4 Superadmin-only and global surfaces
 
@@ -388,45 +457,149 @@ invariant.
 
 ---
 
-### 5.6 Serializer-level guards — `secrets:USE` on secret references
+### 5.6 Write-point checks — `secrets:USE` on what a write does with secrets
 
-One check lives in neither the view nor the service: whether the caller may change
-**which Secret a resource references**. It is enforced in the serializer layer, and
-the reason is worth understanding before you move it.
+One check is neither a verb gate nor a structural invariant: whether this write changes
+**which secrets a resource uses, or where it sends them**. It needs `secrets:USE` on top of
+the endpoint's own permission.
 
-`SecretReferenceGuardMixin` (`tables/serializers/utils/secret_reference_guard_mixin.py`)
-declares the guarded fields and hooks `validate()`; the decision lives in
-`SecretReferenceGuard` (`tables/services/secrets/reference_guard.py`):
+**Serializers never check permissions.** They validate shape. The rule lives in
+`SecretUseService` (`tables/services/secrets/secret_use_service.py`), which knows nothing
+about requests or serializers, with one `check_<entity>_write(actor, instance, data)` per
+entity in `tables/services/secrets/secret_use_checks.py`. `instance` is the persisted row
+(`None` on create); `data` is `serializer.validated_data`, and a key absent from it means
+"unchanged". The write point calls the check **after** validation and **before** the write.
 
-```python
-class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
-    secret_reference_fields = ("auth_secret_id",)
-```
+**The four rules.** Each compares "after this write" with "persisted now", so a resend of the
+stored value is free — that is what makes `graph/{id}/save`, which resubmits the whole graph
+on every save, usable without `USE`.
 
-**The delta rule.** A secret reference is *state, not an operation*. Omitted from the
-payload → skip; present but equal to the persisted value → skip; different → require
-`secrets:USE`. This is what makes the guard usable from `graph/{id}/save`, which
-submits the whole graph on every save and would otherwise demand `USE` from anyone
-editing an unrelated node.
+1. **Reference change** — the set of secret ids a FK/M2M links to changes (including
+   clearing it, and any value on create). Binned secrets the row already links to count as
+   linked (`tables/services/secrets/linked_ids.py`).
+2. **New header marker** — an `extra_headers` dict gains an `epicstaff_secret(<name>)` name
+   it does not have now. Keeping or removing markers is free.
+3. **Destination change on a secret-bearing row** — the row, after the write, carries a
+   secret, and the place it sends requests changes:
+   - `LLMConfig`: its own `base_url` and its model's `base_url`. Switching `model` to one with
+     a different `base_url` counts; to one with the same `base_url` does not.
+     `LLMConfig.base_url` is not read at run time today and is gated anyway.
+   - `EmbeddingConfig`: its model's `base_url` (via a `model` switch).
+   - `OpenAIRealtimeConfig`: `base_url`, when either API-key secret is set.
+   - `McpTool`: `transport` (the URL the agent connects to, sending `auth_secret`), when
+     `auth_secret` is set. A PUT that resends the stored `transport` is not a change. A PUT
+     that omits `transport` never reaches the check: `McpToolViewSet.update` back-fills the
+     missing field with `None`, which the serializer rejects with a 400.
 
-`_assert_may_use` denies when there is no `request` in serializer context, because the
-active org cannot be resolved without one — fail-safe, not fail-open. Any service that
-drives these serializers must thread the request through (`GraphBulkSaveService` does).
+   "Carries a secret" means an API-key secret reference or any header marker.
+4. **Model `base_url` change while a secret-bearing config uses it** — `LLMModel` /
+   `EmbeddingModel` `base_url` changes while any config of that model carries a secret.
+   Not narrowed to the active org: a custom model belongs to one org, and counting more
+   configs can only deny more.
 
-**Diverging one request path.** `secret_reference_fields` is read through
-`get_secret_reference_fields()`, so a subclass may differ from the class its siblings
-share — e.g. a `*BulkSerializer` (graph save subclasses the node serializers) or an
-endpoint-specific variant:
+Only `base_url` and McpTool `transport` are destinations; provider, `deployment_id` and
+`api_version` cannot send a request to a host the caller picks. `None` and `""` are the same
+destination (both mean "the provider's default"), so a client sending `""` where `null` is
+stored is not denied.
 
-```python
-class McpToolBulkSerializer(McpToolSerializer):
-    def get_secret_reference_fields(self):
-        """Guard nothing on this path."""
-        return ()
-```
+No actor (no user to resolve), or an actor that is not a member of the org, is denied when a
+change needs `USE` — fail-safe, not fail-open.
 
-The coverage checks ask instances, not classes, so an override stays inside the
-guarantee.
+**Pinned-org principals (a plugin's service account).** On top of the rules above, a
+principal implementing `PinnedOrgPrincipal` is held to the rules in
+`tables/services/secrets/pinned_principal_rules.py`; people are never limited by them:
+
+- Every secret a row references *after* the write — changed or not, carried by the payload or
+  persisted — must pass `principal.may_reference_secrets` (`SecretUseService.check_references`),
+  and every header marker must name such a secret (`check_markers`, via
+  `may_reference_marker_names`; a name no secret has is refused). So a nested PythonCode is
+  checked on every write of it, even one that leaves `secret_ids` out. The denial is a
+  `SecretUseDeniedError` whose message names no secret.
+- It never sets or changes a model's endpoint fields (`base_url`, `deployment_id` /
+  `deployment`), on create or update: `ModelEndpointsGuardedViewSetMixin` (first in the LLM and
+  embedding model viewsets, so a built-in model answers 400, not its own 403) and the model
+  import strategies call `assert_endpoints_untouched`. Its `ModelEndpointNotSettableError` renders
+  as a 400 keyed by each field; the import strategies re-raise it as a `ValidationError`.
+- A run or indexing job it starts is refused with `409 secret_marker_not_referenceable` when a
+  marker it would resolve names a secret it may not reference (`assert_may_resolve_markers`,
+  called by the plugin run guard and `process-rag-indexing/`).
+- A request authenticated with a plugin credential whose user does not implement the protocol is
+  refused with 403 (`IncompletePluginCredentialError`, a Django `PermissionDenied`) by
+  `actor_from_request` (`pinned_principal_of_request`), never taken for a person.
+
+`actor_from_request` keeps one `SecretActor` per request, so `USE` is resolved at most once per
+request, however many nodes a bulk save checks.
+
+**Concurrent writes.** Rules 3 (model switch) and 4 read another row, so they lock the model
+row (`select_for_update`, two models in ascending pk order) and read `base_url` from the
+locked row; rule 4 locks before it counts configs. The LLM / embedding config and model
+viewsets set `secret_use_check_locks_rows = True`, which makes `SecretUseCheckedViewSetMixin` run the
+check and the save in one `transaction.atomic()`, so a concurrent model edit and config
+switch cannot both pass. Quickstart locks a reused org model the same way. Not covered: an
+admin adding a secret to a config while someone edits its (unchanged) model's `base_url` —
+the config write locks no model.
+
+**Write points.** Every place that saves a secret-bearing entity runs its check:
+
+| Write point | How |
+|---|---|
+| Model viewsets (LLM / embedding configs and models, realtime configs, Twilio channel, MCP tool, Python code tool, Python / webhook-trigger / Telegram-trigger node, webhook trigger) | `SecretUseCheckedViewSetMixin` (`tables/views/secret_use.py`) with `secret_use_check = check_<entity>_write`; place it **before** the `OrgScoped*` mixin, whose `perform_create` does not call `super()` |
+| Paths that bypass `perform_create` / `perform_update` (Twilio channel upsert in `create`, `WebhookTriggerViewSet`'s own overrides) | `self.run_secret_use_check(instance, data)` |
+| Graph bulk save | `NodeTypeConfig.secret_use_check` in `tables/services/graph_bulk_save_service/registry.py`; run per node after its serializer validates |
+| Classification decision table node | `ClassificationDecisionTableNodeService.create_or_update` calls `check_cdt_node_write` |
+| Quickstart | `QuickstartView.post` calls `check_quickstart` before `quickstart_service.quickstart` |
+| Config import | `BaseConfigStrategy` calls `check_config_import` with the strategy's `marker_fields`; actor from the importing user |
+
+PythonCode is always nested: each parent's check calls `check_python_code_write` with the
+attribute it nests it under.
+
+**Error shape.** A check raises the domain error `SecretUseDeniedError(field_path, message)`
+and the write point lets it propagate (rolling back any open transaction).
+`custom_exception_handler` (`utils/exception_handler.py`) renders it as a `ValidationError`
+of `denial.field_errors()`, nested along `field_path`: the usual 400 envelope with the field
+named in `message`, e.g. `("python_code", "secret_ids")` →
+`{"python_code": {"secret_ids": [...]}}`. Graph bulk save catches it and reports it per node, as
+`{"errors": {"<list_key>": [{"index", "errors": {...}}]}}`. The config import strategy also
+catches it and raises the same `ValidationError`, like every other rejection in that strategy
+(its callers and unit tests handle one kind of error). Because the check runs after
+validation, a shape error (an undeclared `get_secret`) wins over a `USE` denial.
+
+**Adding a secret-referencing field.**
+
+1. Add or extend the entity's `check_<entity>_write` in `secret_use_checks.py` (reference,
+   marker, and destination rules as they apply).
+2. Wire it at **every** write point that saves the entity — viewset `secret_use_check`, any
+   custom write path (`run_secret_use_check`), the bulk-save `NodeTypeConfig`, services.
+3. Map the serializer to the check in `SECRET_USE_CHECK_BY_SERIALIZER`
+   (`tests/services_tests/test_secret_reference_coverage.py`). That test discovers every
+   writable serializer field targeting `Secret` and fails on one whose serializer is not
+   mapped and not in `EXEMPT` (which needs a written reason). It proves the mapping, not the
+   wiring — add an API test for the write point too (`tests/api_tests/test_secret_use_*.py`).
+4. Add the field to `GUARDED_REFERENCES` in
+   `tests/plugins_tests/test_plugin_secret_references.py`, which proves every check refuses a
+   plugin's reference to a secret it did not create.
+
+**Deliberately ungated.**
+
+- **PythonCode content.** `USE` is needed only to *declare* secrets (`secret_ids`). Editing
+  the `code` or `venv_id` of a PythonCode that already declares secrets is free: the
+  declaration is what grants the access.
+- **Copy, graph-version restore, graph-import key re-link** reproduce an existing reference
+  inside one org rather than choosing a new one (pinned by `TestUngatedPathsStayUngated`
+  and `tests/graph_versioning_tests/test_secret_declarations.py`). An edit of the copy is
+  checked as usual.
+- **No user-chosen destination**: the Telegram bot key (always the Telegram Bot API), the
+  ElevenLabs and Gemini realtime configs (fixed provider hosts), the Twilio channel token
+  (only verifies inbound signatures). Only their reference rule applies.
+- **Quickstart** names no destination: it prefers the built-in catalog model, and refuses an
+  org's custom model of the same name that has its own `base_url`
+  (`QuickstartService._get_or_create_model`), so it never attaches the key to a URL the
+  caller chose.
+
+Kept links to binned secrets are not a permission rule: `KeptLinkPrimaryKeyRelatedField`
+reads "what the row links to now" from `tables/serializers/utils/persisted_links.py`
+(`current_linked_ids`, through the nested serializers' `parent_attribute` /
+`get_current_secret_reference` hooks).
 
 ---
 
@@ -584,7 +757,8 @@ References to it from other serializers: `OrgVisiblePrimaryKeyRelatedField`.
 `org` explicitly, and must state a *precedence* when both a built-in and an own-org row can
 match: `org_visible_queryset(...)` returns both, and `.first()` on it has no `ORDER BY`, so
 the result is whatever Postgres feels like returning. See
-`QuickstartService._get_or_create_llm_model` for the pattern (own-org wins), and
+`QuickstartService._get_or_create_model` for the pattern (the built-in wins; the org's own
+row is used only when it has no `base_url`, see §5.6), and
 `upload_models.py` for the built-ins-only form (`org__isnull=True`) — Django strips
 `__`-lookups from `get_or_create`/`update_or_create` create params, so that filter narrows
 the lookup without leaking into the created row.
@@ -609,7 +783,8 @@ service, and never trust ids in the payload without an org-scoped fetch.
 2. Your consumer/view consumes it (`sse_ticket_service.consume(ticket)`) → user or 401
    `invalid_sse_ticket`.
 3. Authorize against the org that owns the streamed object (for sessions:
-   `assert_session_org_access`). Never trust an org id supplied in the query string.
+   `get_accessible_session`; for a graph: `assert_graph_readable`). Never trust an org
+   id supplied in the query string. Authorize before joining any channel group.
 
 ### 8.6 Global (non-org) resource
 
@@ -673,7 +848,7 @@ path — the default org is only for bootstrap and data migrations.
 | API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys) | `rbac/governance/api_keys.py`, `rbac/views/api_keys_admin.py` |
 | Permission gate (ViewSet) | `rbac/access/gates.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
 | Permission gate (APIView) | `rbac/access/asserts.py` |
-| Session/SSE authorization | `tables/services/session_access.py`, `tables/views/sse_views.py` (stays in `tables` — sessions are children of the graph, not an RBAC concept) |
+| Session/SSE and graph co-editing WS authorization | `tables/services/session_access.py`, `tables/views/sse_views.py`, `tables/graph_collab/consumers.py` (stays in `tables` — sessions are children of the graph, not an RBAC concept) |
 | Org resolution | `rbac/access/org_context.py` |
 | Effective permissions + resolver | `rbac/access/effective.py`, `rbac/access/resolver.py` |
 | Action maps & catalog | `rbac/access/action_map.py`, `rbac/access/catalog.py` |

@@ -1,0 +1,7 @@
+@for (segment of segments(); track $index) {
+    @if (segment.isMatch) {
+        <mark class="audit-highlight">{{ segment.text }}</mark>
+    } @else {
+        <span>{{ segment.text }}</span>
+    }
+}

@@ -14,9 +14,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    AuthorshipDetailsDialogService,
+    AuthorshipDetailsSource,
+    BulkSelectDropdownComponent,
     ButtonComponent,
-    ConfirmationDialogData,
-    ConfirmationDialogService,
     EmbeddingModelConfigDialogComponent,
     FetchErrorStateComponent,
     LlmModelConfigDialogComponent,
@@ -26,41 +27,76 @@ import {
     SelectItem,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, LlmLibraryModel, LlmLibraryProviderGroup, ModelTypes, ResourceCode } from '@shared/models';
-import { EmbeddingConfigStorageService, LlmConfigStorageService, LLMLibraryService } from '@shared/services';
+import {
+    ActionCode,
+    BulkDeleteGroup,
+    BulkDeleteLabel,
+    BulkDeleteOutcome,
+    BulkDeleteTarget,
+    LlmLibraryModel,
+    LlmLibraryProviderGroup,
+    ModelTypes,
+    ResourceCode,
+} from '@shared/models';
+import {
+    BulkDeleteService,
+    EmbeddingConfigStorageService,
+    LlmConfigStorageService,
+    LLMLibraryService,
+} from '@shared/services';
 import { forkJoin, Observable, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { catchError, finalize, tap } from 'rxjs/operators';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
-import { ToastService } from '../../../../services/notifications';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
+import {
+    llmLibraryBulkDeleteGroups,
+    LlmLibraryBulkDeleteSource,
+    llmLibrarySelectionKey,
+    LlmLibrarySelectionKind,
+} from '../../utils/llm-library-bulk-delete.util';
 import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
-import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
+import {
+    LlmLibraryCardComponent,
+    LlmLibraryCardViewDetailsEvent,
+} from '../llm-library-card/llm-library-card.component';
 import {
     RealtimeConfigDialogComponent,
-    RealtimeProvider,
+    RealtimeConfigDialogData,
 } from '../realtime-config-dialog/realtime-config-dialog.component';
+import { RealtimeConfig, RealtimeProvider } from '../realtime-config-form/realtime-config-form.component';
 
-interface VoiceProviderConfig {
-    id: number;
-    custom_name: string;
-    model_name: string;
+/** Voice configs have no tags, temperature or deprecation, so the shared card shows only their names. */
+function toVoiceCardModel(config: RealtimeConfig): LlmLibraryModel {
+    return {
+        id: config.id,
+        customName: config.custom_name,
+        modelName: config.model_name,
+        tags: [],
+        temperature: null,
+        usedByCount: null,
+        configType: ModelTypes.REALTIME,
+        isDeprecated: false,
+    };
 }
 
 interface VoiceProvider {
     key: RealtimeProvider;
     label: string;
+    deleteLabel: BulkDeleteLabel;
     storage: {
-        configs: Signal<VoiceProviderConfig[]>;
+        configs: Signal<RealtimeConfig[]>;
         getAllConfigs(force?: boolean): Observable<unknown[]>;
-        deleteConfig(id: number): Observable<void>;
-    };
+    } & BulkDeleteTarget;
 }
 
 type SectionKey = 'llm' | 'embedding' | 'realtime' | 'transcription' | RealtimeProvider;
+
+const LLM_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'LLM config', plural: 'LLM configs' };
+const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding config', plural: 'embedding configs' };
 
 @Component({
     selector: 'app-llm-library-section',
@@ -72,6 +108,7 @@ type SectionKey = 'llm' | 'embedding' | 'realtime' | 'transcription' | RealtimeP
         SelectComponent,
         HasPermissionDirective,
         ButtonComponent,
+        BulkSelectDropdownComponent,
         SearchComponent,
         FetchErrorStateComponent,
     ],
@@ -86,16 +123,31 @@ export class LlmLibrarySectionComponent implements OnInit {
     private readonly openaiRealtimeStorage = inject(OpenAIRealtimeConfigStorageService);
     private readonly elevenLabsRealtimeStorage = inject(ElevenLabsRealtimeConfigStorageService);
     private readonly geminiRealtimeStorage = inject(GeminiRealtimeConfigStorageService);
-    private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly defaultModelsStorageService = inject(DefaultModelsStorageService);
+    private readonly bulkDeleteService = inject(BulkDeleteService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dialog = inject(Dialog);
-    private readonly toast = inject(ToastService);
 
     readonly voiceProviders: VoiceProvider[] = [
-        { key: 'openai', label: 'OpenAI Voice Configs', storage: this.openaiRealtimeStorage },
-        { key: 'elevenlabs', label: 'ElevenLabs Voice Configs', storage: this.elevenLabsRealtimeStorage },
-        { key: 'gemini', label: 'Gemini Voice Configs', storage: this.geminiRealtimeStorage },
+        {
+            key: 'openai',
+            label: 'OpenAI Voice Configs',
+            deleteLabel: { singular: 'OpenAI voice config', plural: 'OpenAI voice configs' },
+            storage: this.openaiRealtimeStorage,
+        },
+        {
+            key: 'elevenlabs',
+            label: 'ElevenLabs Voice Configs',
+            deleteLabel: { singular: 'ElevenLabs voice config', plural: 'ElevenLabs voice configs' },
+            storage: this.elevenLabsRealtimeStorage,
+        },
+        {
+            key: 'gemini',
+            label: 'Gemini Voice Configs',
+            deleteLabel: { singular: 'Gemini voice config', plural: 'Gemini voice configs' },
+            storage: this.geminiRealtimeStorage,
+        },
     ];
 
     public providerGroups = this.llmLibraryService.providerGroups;
@@ -111,6 +163,17 @@ export class LlmLibrarySectionComponent implements OnInit {
         openai: false,
         elevenlabs: false,
         gemini: false,
+    });
+
+    public readonly selectMode = signal(false);
+    public readonly selectedKeys = signal<ReadonlySet<string>>(new Set());
+    public readonly isDeleting = signal(false);
+    /** Count of items `deleteSelected` would actually send, i.e. ids that still resolve against
+     *  the same sources it uses — not the raw `selectedKeys` size, which can include stale keys
+     *  for items a preview already evicted (see F3). */
+    public readonly selectedCount = computed(() => {
+        const groups = llmLibraryBulkDeleteGroups(this.selectedKeys(), this.bulkDeleteSources());
+        return groups.reduce((sum, group) => sum + group.items.length, 0);
     });
 
     readonly configTypeSections: { type: ModelTypes; label: string; key: SectionKey }[] = [
@@ -144,18 +207,23 @@ export class LlmLibrarySectionComponent implements OnInit {
     filteredVoiceProviders = computed(() => {
         const query = this.searchQuery().toLowerCase();
         const errors = this.sectionErrors();
-        return this.voiceProviders.map((provider) => ({
-            ...provider,
-            hasError: errors[provider.key],
-            configs: provider.storage.configs().filter((c) => {
-                if (!query) return true;
-                return (
-                    c.custom_name.toLowerCase().includes(query) ||
-                    c.model_name.toLowerCase().includes(query) ||
-                    provider.label.toLowerCase().includes(query)
-                );
-            }),
-        }));
+        return this.voiceProviders
+            .map((provider) => ({
+                ...provider,
+                hasError: errors[provider.key],
+                cards: provider.storage
+                    .configs()
+                    .filter((c) => {
+                        if (!query) return true;
+                        return (
+                            c.custom_name.toLowerCase().includes(query) ||
+                            c.model_name.toLowerCase().includes(query) ||
+                            provider.label.toLowerCase().includes(query)
+                        );
+                    })
+                    .map((config) => ({ config, model: toVoiceCardModel(config) })),
+            }))
+            .filter((provider) => provider.hasError || provider.cards.length > 0);
     });
 
     groupedByType = computed(() => {
@@ -172,10 +240,58 @@ export class LlmLibrarySectionComponent implements OnInit {
             .filter((section) => section.hasError || section.groups.length > 0);
     });
 
+    hasNoConfigs = computed(() => this.groupedByType().length === 0 && this.filteredVoiceProviders().length === 0);
+
     public capabilities = computed<SelectItem[]>(() => [
         { name: 'All Capabilities', value: null },
         ...this.configs().flatMap((config) => config.tags.map((tag) => ({ name: tag.name, value: tag.name }))),
     ]);
+
+    /** Keys of every card currently rendered (not hidden behind a section/provider error). */
+    private readonly visibleSelectionKeys = computed<ReadonlySet<string>>(() => {
+        const keys = new Set<string>();
+        for (const section of this.groupedByType()) {
+            if (section.hasError) continue;
+            for (const group of section.groups) {
+                for (const model of group.models) {
+                    keys.add(llmLibrarySelectionKey(this.kindForModel(model), model.id));
+                }
+            }
+        }
+        for (const provider of this.filteredVoiceProviders()) {
+            if (provider.hasError) continue;
+            for (const card of provider.cards) {
+                keys.add(llmLibrarySelectionKey(provider.key, card.config.id));
+            }
+        }
+        return keys;
+    });
+
+    public readonly allVisibleSelected = computed(() => {
+        const visible = this.visibleSelectionKeys();
+        if (visible.size === 0) return false;
+        const selected = this.selectedKeys();
+        return [...visible].every((key) => selected.has(key));
+    });
+
+    private readonly bulkDeleteSources = computed<Record<LlmLibrarySelectionKind, LlmLibraryBulkDeleteSource>>(() => {
+        const sources: Record<LlmLibrarySelectionKind, LlmLibraryBulkDeleteSource> = {
+            llm: {
+                label: LLM_BULK_DELETE_LABEL,
+                target: this.llmConfigStorageService,
+                configs: this.llmConfigStorageService.configs(),
+            },
+            embedding: {
+                label: EMBEDDING_BULK_DELETE_LABEL,
+                target: this.embeddingConfigStorage,
+                configs: this.embeddingConfigStorage.configs(),
+            },
+            openai: this.voiceProviderSource('openai'),
+            elevenlabs: this.voiceProviderSource('elevenlabs'),
+            gemini: this.voiceProviderSource('gemini'),
+        };
+        return sources;
+    });
 
     ngOnInit() {
         this.loadAll();
@@ -242,31 +358,44 @@ export class LlmLibrarySectionComponent implements OnInit {
             });
     }
 
-    onAddConfig(provider: VoiceProvider): void {
+    onEditConfig(provider: VoiceProvider, config: RealtimeConfig): void {
+        const data: RealtimeConfigDialogData = { config: config, provider: provider.key };
         this.dialog.open(RealtimeConfigDialogComponent, {
+            height: '90vh',
+            width: '600px',
             disableClose: true,
-            data: { config: null, action: 'create', provider: provider.key },
+            data,
         });
     }
 
-    onEditConfig(provider: VoiceProvider, config: VoiceProviderConfig): void {
-        this.dialog.open(RealtimeConfigDialogComponent, {
-            disableClose: true,
-            data: { config, action: 'update', provider: provider.key },
-        });
+    /** Opens the same details the LLM and embedding cards show; the dialog closes back to `trigger`. */
+    onViewConfigDetails(config: RealtimeConfig, trigger: HTMLElement): void {
+        this.authorshipDetailsDialog.open('Configuration Details', config, trigger);
     }
 
-    onDeleteConfig(provider: VoiceProvider, config: VoiceProviderConfig): void {
-        this.confirmationDialogService
-            .confirmDelete(config.custom_name)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((result) => {
-                if (result !== true) return;
-                provider.storage.deleteConfig(config.id).subscribe({
-                    next: () => this.toast.success(`${provider.label} config deleted.`),
-                    error: () => this.toast.error('Failed to delete config.'),
-                });
-            });
+    onDeleteConfig(provider: VoiceProvider, config: RealtimeConfig): void {
+        const group: BulkDeleteGroup = {
+            target: provider.storage,
+            label: provider.deleteLabel,
+            items: [{ id: config.id, name: config.custom_name }],
+        };
+
+        this.bulkDeleteService
+            .run([group])
+            .pipe(
+                tap((outcomes) => this.applyDefaultModelsOutdated(outcomes)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
+    }
+
+    public isVoiceSelected(provider: VoiceProvider, config: RealtimeConfig): boolean {
+        return this.selectedKeys().has(llmLibrarySelectionKey(provider.key, config.id));
+    }
+
+    public onVoiceSelectedChange(provider: VoiceProvider, config: RealtimeConfig, selected: boolean): void {
+        if (this.isDeleting()) return;
+        this.setSelected(provider.key, config.id, selected);
     }
 
     public onSearchChange(value: string): void {
@@ -274,7 +403,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     }
 
     public onAddModel(): void {
-        this.dialog.open(AddConfigurationDialogComponent);
+        this.dialog.open(AddConfigurationDialogComponent, { autoFocus: false });
     }
 
     public onEdit(model: LlmLibraryModel): void {
@@ -291,33 +420,104 @@ export class LlmLibrarySectionComponent implements OnInit {
         });
     }
 
-    public onDelete(model: LlmLibraryModel): void {
-        const opts: ConfirmationDialogData = {
-            title: 'Delete the model?',
-            message: `Are you sure you want to delete the ${model.customName} model? This will delete it in all agents, tools and flows.`,
-            type: 'danger',
+    public onViewDetails({ model, trigger }: LlmLibraryCardViewDetailsEvent): void {
+        const findDetails: Partial<Record<ModelTypes, () => AuthorshipDetailsSource | undefined>> = {
+            [ModelTypes.LLM]: () => this.llmConfigStorageService.configs().find((config) => config.id === model.id),
+            [ModelTypes.EMBEDDING]: () =>
+                this.embeddingConfigStorage.configs().find((config) => config.id === model.id),
         };
+        const details = findDetails[model.configType]?.();
+        if (!details) return;
+        this.authorshipDetailsDialog.open('Configuration Details', details, trigger);
+    }
 
-        this.confirmationDialogService
-            .confirm(opts)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((result) => {
-                if (result !== true) return;
+    public onDelete(model: LlmLibraryModel): void {
+        this.bulkDeleteService
+            .run([this.buildModelGroup(model)])
+            .pipe(
+                tap((outcomes) => this.applyDefaultModelsOutdated(outcomes)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
+    }
 
-                const delete$: Partial<Record<ModelTypes, () => Observable<void>>> = {
-                    [ModelTypes.LLM]: () => this.llmConfigStorageService.deleteConfig(model.id),
-                    [ModelTypes.EMBEDDING]: () => this.embeddingConfigStorage.deleteConfig(model.id),
-                };
+    public enterSelectMode(): void {
+        this.selectMode.set(true);
+    }
 
-                delete$[model.configType]?.().subscribe({
-                    next: () => {
-                        this.toast.success('Configuration deleted.');
-                        this.defaultModelsStorageService.markDefaultModelsOutdated();
-                    },
-                });
-            });
+    public exitSelectMode(): void {
+        this.selectMode.set(false);
+        this.selectedKeys.set(new Set());
+    }
+
+    public toggleSelectAll(): void {
+        this.selectedKeys.set(this.allVisibleSelected() ? new Set() : new Set(this.visibleSelectionKeys()));
+    }
+
+    public isModelSelected(model: LlmLibraryModel): boolean {
+        return this.selectedKeys().has(llmLibrarySelectionKey(this.kindForModel(model), model.id));
+    }
+
+    public onCardSelectedChange(model: LlmLibraryModel, selected: boolean): void {
+        if (this.isDeleting()) return;
+        this.setSelected(this.kindForModel(model), model.id, selected);
+    }
+
+    public deleteSelected(): void {
+        const groups = llmLibraryBulkDeleteGroups(this.selectedKeys(), this.bulkDeleteSources());
+        if (groups.length === 0) return;
+
+        this.isDeleting.set(true);
+        this.bulkDeleteService
+            .run(groups)
+            .pipe(
+                tap((outcomes) => {
+                    this.applyDefaultModelsOutdated(outcomes);
+                    this.exitSelectMode();
+                }),
+                finalize(() => this.isDeleting.set(false)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
     }
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+
+    private kindForModel(model: LlmLibraryModel): LlmLibrarySelectionKind {
+        return model.configType === ModelTypes.EMBEDDING ? 'embedding' : 'llm';
+    }
+
+    private voiceProviderSource(key: RealtimeProvider): LlmLibraryBulkDeleteSource {
+        const provider = this.voiceProviders.find((candidate) => candidate.key === key)!;
+        return { label: provider.deleteLabel, target: provider.storage, configs: provider.storage.configs() };
+    }
+
+    private buildModelGroup(model: LlmLibraryModel): BulkDeleteGroup {
+        const source = this.bulkDeleteSources()[this.kindForModel(model)];
+        return { target: source.target, label: source.label, items: [{ id: model.id, name: model.customName }] };
+    }
+
+    private setSelected(kind: LlmLibrarySelectionKind, id: number, selected: boolean): void {
+        const key = llmLibrarySelectionKey(kind, id);
+        const next = new Set(this.selectedKeys());
+        if (selected) {
+            next.add(key);
+        } else {
+            next.delete(key);
+        }
+        this.selectedKeys.set(next);
+    }
+
+    private applyDefaultModelsOutdated(outcomes: BulkDeleteOutcome[]): void {
+        const hasDefaultModelChange = outcomes.some(
+            (outcome) =>
+                (outcome.group.target === this.llmConfigStorageService ||
+                    outcome.group.target === this.embeddingConfigStorage) &&
+                (outcome.response?.deleted_count ?? 0) > 0
+        );
+        if (hasDefaultModelChange) {
+            this.defaultModelsStorageService.markDefaultModelsOutdated();
+        }
+    }
 }

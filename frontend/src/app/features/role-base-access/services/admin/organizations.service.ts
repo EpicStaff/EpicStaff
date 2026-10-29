@@ -5,6 +5,8 @@ import {
     CreateOrganizationRequest,
     GetOrganizationResponse,
     OrganizationDeleteReport,
+    OrganizationRetention,
+    OrganizationRetentionUpdate,
     ResourceCode,
     UpdateOrganizationRequest,
 } from '@shared/models';
@@ -15,7 +17,7 @@ import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config';
 
 export interface ListOrganizationsParams {
-    is_active?: boolean;
+    is_active?: boolean[];
     search?: string;
     ordering?: string;
     page?: number;
@@ -40,7 +42,9 @@ export class AdminOrganizationsService {
     /** GET /api/admin/organizations/ — paginated + permission-aware. */
     list(params: ListOrganizationsParams = {}): Observable<ApiGetRequest<GetOrganizationResponse>> {
         let httpParams = new HttpParams();
-        if (params.is_active !== undefined) httpParams = httpParams.set('is_active', String(params.is_active));
+        if (params.is_active !== undefined && params.is_active.length === 1) {
+            httpParams = httpParams.set('is_active', String(params.is_active[0]));
+        }
         if (params.search) httpParams = httpParams.set('search', params.search);
         if (params.ordering) httpParams = httpParams.set('ordering', params.ordering);
         if (params.page !== undefined) httpParams = httpParams.set('page', String(params.page));
@@ -65,6 +69,15 @@ export class AdminOrganizationsService {
 
     reactivateOrganization(id: number): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}${id}/reactivate/`, {});
+    }
+
+    getRetention(id: number): Observable<OrganizationRetention> {
+        return this.http.get<OrganizationRetention>(`${this.apiUrl}${id}/retention/`);
+    }
+
+    /** Send only the changed types; an empty body is rejected with 400. */
+    updateRetention(id: number, data: OrganizationRetentionUpdate): Observable<OrganizationRetention> {
+        return this.http.patch<OrganizationRetention>(`${this.apiUrl}${id}/retention/`, data);
     }
 
     /** The verification phrase is sent as the request body only when given (the real delete). */

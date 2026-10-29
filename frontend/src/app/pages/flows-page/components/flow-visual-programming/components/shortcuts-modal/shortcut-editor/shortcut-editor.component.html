@@ -1,0 +1,100 @@
+@if (keyAction() === null) {
+    <app-shortcut-picker
+        #actionPicker
+        label="Action"
+        placeholder="Search actions"
+        listLabel="Actions"
+        emptyText="No matching actions"
+        [groups]="actionGroups()"
+        [startOpen]="shortcut() === null"
+        [selected]="action()"
+        (selectedChange)="onActionChange($event)"
+        (advance)="onActionAdvance()"
+    />
+
+    @if (needsFlow()) {
+        <app-shortcut-picker
+            #flowPicker
+            label="Flow"
+            placeholder="Search flows"
+            listLabel="Flows"
+            emptyText="No matching flows"
+            [groups]="flowGroups()"
+            [selected]="selectedFlowId()"
+            (selectedChange)="onFlowChange($event)"
+            (advance)="focusKeys()"
+        />
+    }
+}
+
+<div class="shortcut-editor__field">
+    <span
+        class="shortcut-editor__label"
+        [id]="idPrefix + '-keys-label'"
+        >Keys</span
+    >
+    <div class="shortcut-editor__keys">
+        <button
+            #recorder
+            type="button"
+            class="shortcut-editor__recorder"
+            [class.shortcut-editor__recorder--recording]="isRecording()"
+            [class.shortcut-editor__recorder--empty]="!isRecording() && chordText() === null"
+            [id]="idPrefix + '-keys'"
+            [attr.aria-labelledby]="idPrefix + '-keys-label ' + idPrefix + '-keys'"
+            [attr.aria-describedby]="feedback() ? idPrefix + '-feedback' : null"
+            [attr.aria-pressed]="isRecording()"
+            (focus)="onRecorderFocus()"
+            (click)="startRecording()"
+            (blur)="stopRecording()"
+            (keydown)="onRecorderKeydown($event)"
+        >
+            @if (isRecording()) {
+                Press keys…
+            } @else {
+                {{ chordText() ?? 'Click, then press keys' }}
+            }
+        </button>
+        @if (chordText() !== null && !isRecording()) {
+            <button
+                type="button"
+                class="shortcut-editor__clear"
+                aria-label="Clear keys"
+                (click)="clearKeys()"
+            >
+                Clear
+            </button>
+        }
+    </div>
+    <span
+        class="shortcut-editor__visually-hidden"
+        aria-live="polite"
+        >{{ announcement() }}</span
+    >
+    @if (feedback(); as message) {
+        <div
+            class="shortcut-editor__feedback"
+            [class.shortcut-editor__feedback--warning]="message.severity === 'warning'"
+            [id]="idPrefix + '-feedback'"
+            [attr.role]="message.severity === 'error' ? 'alert' : 'status'"
+        >
+            {{ message.text }}
+        </div>
+    }
+</div>
+
+<div class="shortcut-editor__actions">
+    <app-button
+        type="secondary"
+        mod="small"
+        (click)="closed.emit()"
+        >Cancel</app-button
+    >
+    <app-button
+        type="primary"
+        mod="small"
+        [disabled]="!canSave()"
+        (click)="save()"
+        >Save</app-button
+    >
+</div>

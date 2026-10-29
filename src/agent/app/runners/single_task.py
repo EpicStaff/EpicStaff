@@ -5,7 +5,8 @@ from loguru import logger
 from app.emitters.base import Emitter
 from app.enums import EmitterMode, RunType
 from app.exceptions import AgentServiceError
-from app.logging_utils import redact
+from app.logging_utils import format_exception_for_log, redact_messages, redact_value
+from app.loop.context import CancellationCheck
 from app.prompt.single_task import SingleTaskPromptBuilder
 from app.runners.base import Runner
 from app.runners.task_execution import (
@@ -14,6 +15,24 @@ from app.runners.task_execution import (
     run_task_through_loop,
 )
 from shared.models.agent_service import AgentRequest
+
+
+def _describe_output_schema(output_schema: object) -> list[str] | str:
+    """Name the schema's top-level properties for logging, without trusting its shape.
+
+    `output_schema` is unvalidated JSON off the wire, so `properties` may be absent,
+    null or anything else, and the schema itself may not be a dict. A log line must
+    never be what fails the request, so every unexpected shape degrades to a digest or
+    an empty list instead of raising.
+    """
+    if not isinstance(output_schema, dict):
+        return redact_value(output_schema)
+
+    properties = output_schema.get("properties")
+    if not isinstance(properties, dict):
+        return []
+
+    return sorted(properties)
 
 
 class SingleTaskRunner(Runner):
@@ -26,7 +45,13 @@ class SingleTaskRunner(Runner):
     emitter_mode = EmitterMode.TOOL_EVENTS
     _prompt_builder = SingleTaskPromptBuilder()
 
-    async def execute(self, request: AgentRequest, emitter: Emitter) -> None:
+    async def execute(
+        self,
+        request: AgentRequest,
+        emitter: Emitter,
+        *,
+        is_cancelled: CancellationCheck,
+    ) -> None:
         await emitter.on_start(request)
 
         try:
@@ -48,16 +73,21 @@ class SingleTaskRunner(Runner):
             )
 
             instructions, output_schema = self._parse_payload(request.payload)
-            logger.debug(
-                "task instructions={!r} has_output_schema={}",
-                instructions,
-                output_schema is not None,
+            logger.opt(lazy=True).debug(
+                "task instructions={} has_output_schema={}",
+                lambda: redact_value(instructions),
+                lambda: output_schema is not None,
             )
 
             if output_schema:
-                logger.opt(lazy=True).debug("output_schema={}", lambda: output_schema)
+                logger.opt(lazy=True).debug(
+                    "output_schema={}",
+                    lambda: _describe_output_schema(output_schema),
+                )
 
-            resolved = await self._deps.resolver.resolve(agent, request, knowledge_sink=emitter)
+            resolved = await self._deps.resolver.resolve(
+                agent, request, knowledge_sink=emitter, is_cancelled=is_cancelled
+            )
             logger.debug(
                 "resolved tools={} attachments={}",
                 [s.name for s in resolved.tools.tool_specs()],
@@ -74,7 +104,7 @@ class SingleTaskRunner(Runner):
             logger.opt(lazy=True).debug(
                 "prompt messages correlation_id={} messages={}",
                 lambda: _corr_id,
-                lambda: redact(messages),
+                lambda: redact_messages(messages),
             )
 
             for message in messages:
@@ -100,9 +130,9 @@ class SingleTaskRunner(Runner):
             )
             _corr_id_final = request.correlation_id
             logger.opt(lazy=True).debug(
-                "final_text correlation_id={} text={!r}",
+                "final_text correlation_id={} text={}",
                 lambda: _corr_id_final,
-                lambda: result.final_text,
+                lambda: redact_value(result.final_text),
             )
             await emitter.on_final(result)
 
@@ -110,12 +140,16 @@ class SingleTaskRunner(Runner):
             logger.error(
                 "single_task failed correlation_id={} error={}",
                 request.correlation_id,
-                error,
+                format_exception_for_log(error),
             )
             await emitter.on_error(error)  # expected domain failure → agent.error; do NOT re-raise
 
         except Exception as error:
-            logger.exception("single_task crashed correlation_id={}", request.correlation_id)
+            logger.error(
+                "single_task crashed correlation_id={} error={}",
+                request.correlation_id,
+                format_exception_for_log(error),
+            )
             await emitter.on_error(error)  # unexpected failure → agent.error; do NOT re-raise
 
     def _parse_payload(self, payload: dict) -> tuple[str, dict | None]:

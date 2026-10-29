@@ -8,6 +8,11 @@ concurrency:
   group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# Read-only by default; a job that needs more says so itself. The build job's reusable workflow
+# (compose-build.yml) asks for contents: read too.
+permissions:
+  contents: read
+
 jobs:
   # Path gating lives in this job rather than in a workflow-level `paths:` filter.
   # A workflow that `paths:` filters out never reports its checks at all, so a
@@ -22,10 +27,17 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       cla: ${{ steps.filter.outputs.cla }}
       sandbox: ${{ steps.filter.outputs.be_sandbox }}
+      chat: ${{ steps.filter.outputs.be_chat }}
+      plugins_db: ${{ steps.filter.outputs.plugins_db }}
+      plugins_js: ${{ steps.filter.outputs.plugins_js }}
+      nginx: ${{ steps.filter.outputs.nginx }}
+      nginx_plugin_labs: ${{ steps.filter.outputs.nginx_plugin_labs }}
+      plugin_node_lab: ${{ steps.filter.outputs.plugin_node_lab }}
       py_services: ${{ steps.filter.outputs.py_services }}
+      retention: ${{ steps.filter.outputs.retention }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # The three-dot diff below has to resolve the merge base, which is not
           # reachable from a shallow clone.
@@ -67,6 +79,28 @@ jobs:
 
           filter cla '^(CLA\.md$|\.github/scripts/check_cla_version\.py$|\.github/scripts/cla_version\.py$|\.github/scripts/test_check_cla_version\.py$|\.github/workflows/pr\.yml$)'
 
+          # The plugin author tooling: the JS SDK, the sample plugins, and the Python
+          # package whose CLI validates the samples. Also the login callback pages
+          # nginx serves on every plugin host: the JS SDK's tests run their script.
+          filter plugins_js '^(plugin-sdk/|plugin-samples/|src/plugin_sdk/|src/nginx/plugin-platform/|\.github/workflows/pr\.yml$)'
+
+          # nginx's templates, the start-up scripts that fill them in and the login
+          # callback pages a plugin host serves, checked by rendering them in the
+          # pinned nginx image (check_templates.sh), which also checks that the stack
+          # and the labs' compose files mount every start-up script and set every variable.
+          filter nginx '^(src/nginx/(templates|docker-entrypoint\.d|plugin-platform)/|src/nginx/tests/check_templates\.sh$|src/nginx/tests/(gateway|development)/compose\.yaml$|src/docker-compose\.yaml$|src/docker-compose\.plugins-dev\.yaml$|\.github/workflows/pr\.yml$)'
+
+          # The plugin host and API listener labs: the same templates and start-up scripts
+          # under the pinned nginx image, against stand-ins, with development mode off
+          # (gateway) and on (development).
+          filter nginx_plugin_labs '^(src/nginx/(templates|docker-entrypoint\.d|plugin-platform|tests)/|src/docker-compose\.yaml$|\.github/scripts/describe_docker_host\.sh$|\.github/workflows/pr\.yml$)'
+
+          # The plugin node lab: es_plugins as src/docker-compose.yaml defines it, built
+          # with the SDK and the shared modules it imports, backing up and restoring on the
+          # lab's plugins_db (its init script and pg_hba.conf), with an env file from
+          # scripts/envtool.py and src/env.yaml.
+          filter plugin_node_lab '^(src/es_plugins/|src/plugin_sdk/|src/plugins_db/|src/shared/models/plugin_nodes\.py$|src/shared/envtools\.py$|src/docker-compose\.yaml$|src/env\.yaml$|scripts/envtool\.py$|\.github/scripts/describe_docker_host\.sh$|\.github/workflows/pr\.yml$)'
+
           # Backend suites are gated per service, so a pull request touching one
           # service does not pay for the other three. Three inputs force every
           # suite to run whichever service directory changed:
@@ -77,14 +111,24 @@ jobs:
           #   this file    -- same self-testing rule as the filters above
           backend_wide='src/shared/|Makefile$|\.github/workflows/pr\.yml$'
 
-          # crew and agent need no database and nothing from the filesystem
-          # beyond an interpreter, so one matrix job covers them both and this
-          # picks its legs. `filter` leaves $result set, so the array is built
-          # from the same regex that writes each output rather than from a
-          # second copy of it.
+          # crew, agent, plugin_sdk, es_plugins and plugins_egress need no
+          # database and nothing from the filesystem beyond an interpreter, so
+          # one matrix job covers them all and this picks its legs. A new
+          # service of that kind is not picked up by itself: add it to this
+          # list. `filter` leaves $result set, so the array is built from the
+          # same regex that writes each output rather than from a second copy
+          # of it.
           nodb=''
-          for svc in crew agent; do
-            filter "be_$svc" "^(src/$svc/|$backend_wide)"
+          for svc in crew agent plugin_sdk es_plugins plugins_egress; do
+            # es_plugins installs src/plugin_sdk (package rules, signatures and
+            # the runtime file contract), so a change there runs its suite too,
+            # and its policy contract test runs the egress proxy's host helper
+            # on the policy it writes.
+            also=''
+            if [ "$svc" = es_plugins ]; then
+              also='src/plugin_sdk/|src/plugins_egress/plugin_host_acl\.py$|src/plugins_egress/private_ranges\.txt$|'
+            fi
+            filter "be_$svc" "^(${also}src/$svc/|$backend_wide)"
             if [ "$result" = true ]; then
               nodb="$nodb${nodb:+,}\"$svc\""
             fi
@@ -96,6 +140,24 @@ jobs:
           # instead of on the runner, so its steps cannot be a leg of the
           # matrix above.
           filter be_sandbox "^(src/sandbox/|$backend_wide)"
+
+          # chat imports src/shared/ like the other services, so it takes
+          # $backend_wide too, plus Django's copy of the session callback
+          # contract, which a chat test compares against its own.
+          filter be_chat "^(src/chat/|src/django_app/tests/contracts/|$backend_wide)"
+
+          # The plugin databases: the plugin node's provisioning and the SDK's
+          # database helpers with the Weather sample, against plugins_db as
+          # src/docker-compose.yaml defines it (image, init script, pg_hba.conf).
+          filter plugins_db "^(src/es_plugins/|src/plugins_db/|src/plugin_sdk/|plugin-samples/weather/database/|plugin-samples/weather/backend/|src/docker-compose\.yaml$|$backend_wide)"
+
+          # The manager suite and the contract between its session purge and the
+          # Django schema it deletes from: any app's models (a new foreign key to
+          # Session, a changed table), the callback statuses the contract test
+          # compares, the manager role's grant matrix it checks, Django's
+          # settings, dependencies and test set-up (the contract test loads them),
+          # and the env file the job generates.
+          filter retention "^(src/manager/|src/django_app/tables/service_db_grants\.py$|src/django_app/[^/]+/(models/|models\.py$)|src/django_app/tables/services/session_callbacks/|src/django_app/django_app/settings/|src/django_app/(pyproject\.toml|uv\.lock)$|src/django_app/tests/[^/]+\.py$|src/django_app/tests/model_tests/test_session_retention_contract\.py$|src/env\.yaml$|scripts/envtool\.py$|$backend_wide)"
 
   # Deliberately NOT gated on vars.CLA_ENFORCED, unlike check-cla below. That
   # toggle controls signature enforcement; this is repo hygiene. An edit to
@@ -111,14 +173,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # `git show BASE:CLA.md` and the three-dot diff both need the base
           # commit, which is not reachable from a shallow clone.
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.11'
 
@@ -133,15 +195,19 @@ jobs:
   # unsigned contributor or a pasted CDN link turns up.
   check-cla:
     runs-on: ubuntu-latest
+    # cla_check.py reads the head commit's statuses for the one cla.yml sets.
+    permissions:
+      contents: read
+      statuses: read
     steps:
       - name: Checkout
         # Toggle: set repo variable CLA_ENFORCED=true to enforce. Unset/anything else = gate skipped, build runs.
         if: vars.CLA_ENFORCED == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Python
         if: vars.CLA_ENFORCED == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.11'
 
@@ -161,7 +227,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check for runtime CDN / external URL references
         run: node scripts/check-external-urls.mjs
@@ -173,7 +239,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: No Jira ticket IDs in tracked files
         run: |
@@ -185,6 +251,22 @@ jobs:
             exit 1
           fi
 
+  # Compose variables must be required (`${VAR:?}`) and boolean flags parsed
+  # strictly (Env.bool in Python, env_bool in shell). The rules and what to do
+  # on a failure are in the docstring of check_env_conventions.py. Stdlib only,
+  # so no venv is needed; runs on every PR because it is cheap.
+  check-env-conventions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Test the checker
+        run: python3 .github/scripts/test_check_env_conventions.py
+
+      - name: Environment variable conventions
+        run: python3 .github/scripts/check_env_conventions.py
+
   # Backend half of the licence attribution guard: compares the uv.lock hashes
   # stamped in the notices header, so it needs neither venvs nor network.
   check-backend-notices:
@@ -193,7 +275,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check backend third-party notices are in sync
         run: python3 scripts/generate-python-notices.py --check
@@ -206,13 +288,16 @@ jobs:
   # and tables.swagger_schemas.common_schemas (a shared constants module with
   # no behaviour of its own). Anything else from tables is exactly the
   # coupling this job exists to catch before it comes back.
+  #
+  # The plugins app builds on rbac and tables and never the other way round,
+  # so both keep working with the plugin platform switched off.
   check-rbac-boundary:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: rbac must not import tables
         run: |
@@ -227,10 +312,17 @@ jobs:
             exit 1
           fi
 
-  # This is the repository's only required status check (ruleset "Main PR"). A job
-  # skipped by `if:` reports conclusion `skipped`, and required status checks treat
-  # `skipped` as passing -- a workflow-level `paths:` filter would instead leave the
-  # check pending and block the merge.
+      - name: rbac and tables must not import plugins
+        run: |
+          violations=$(grep -rnE "^[[:space:]]*(from|import)[[:space:]]+plugins([.[:space:]]|$)" \
+            src/django_app/rbac src/django_app/tables --include=*.py \
+            || true)
+          if [ -n "$violations" ]; then
+            echo "$violations"
+            echo "ERROR: rbac and tables must not import plugins"
+            exit 1
+          fi
+
   frontend-checks:
     needs: changes
     if: needs.changes.outputs.fe == 'true'
@@ -243,10 +335,10 @@ jobs:
       HUSKY: 0
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: frontend/.nvmrc
           cache: npm
@@ -290,11 +382,13 @@ jobs:
         if: needs.changes.outputs.fe_deps == 'true'
         run: npm audit --audit-level=high
 
-  # crew and agent: no database, no service containers, well under a minute for
-  # both. One matrix job whose legs are decided at runtime, so a pull request
-  # touching only src/agent/ runs one leg and a pull request touching neither
-  # service skips the job outright. sandbox was a third leg until it needed a
-  # container of its own; it has a separate job below.
+  # crew, agent, plugin_sdk, es_plugins and plugins_egress: no database, no
+  # service containers, well under a minute each. One matrix job whose legs are decided at runtime,
+  # so a pull request touching only src/agent/ runs one leg and a pull request
+  # touching none of them skips the job outright. sandbox was a leg until it
+  # needed a container of its own; it has a separate job below. es_plugins'
+  # tests that need root (the launcher switching to plugin UIDs) skip in the
+  # first run; the es_plugins leg then runs the suite again as root.
   #
   # An empty `py_services` array would make `fromJSON` produce a matrix with no
   # legs, which GitHub treats as a workflow error rather than a skip -- hence the
@@ -314,10 +408,10 @@ jobs:
       UV_PYTHON_DOWNLOADS: never
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           # Every service pins requires-python to exactly this version.
           python-version: '3.12.10'
@@ -326,7 +420,7 @@ jobs:
         run: python -m pip install --no-cache-dir uv==0.11.21
 
       - name: Cache uv downloads
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-${{ matrix.service }}-${{ hashFiles(format('src/{0}/uv.lock', matrix.service)) }}
@@ -348,6 +442,14 @@ jobs:
 
       - name: Unit tests
         run: make ${{ matrix.service }}-tests
+
+      # es_plugins' launcher switches to plugin UIDs and sets up directories owned by them;
+      # those tests are marked `root` and skip as the normal runner user. The ubuntu runner has
+      # passwordless sudo, so run the suite again as root to exercise the privilege boundary
+      # (fresh test databases are not involved; pytest's tmp dirs live under /tmp).
+      - name: Unit tests as root (es_plugins launcher boundary)
+        if: matrix.service == 'es_plugins'
+        run: sudo -E env "PATH=$PATH" make es_plugins-tests
 
   # Sandbox is the one suite that cares what the filesystem around it looks
   # like. Its tests build a real Landlock jail, and jail.py's read_exec
@@ -394,7 +496,7 @@ jobs:
       PYTHONUSERBASE: ${{ github.workspace }}/.py-user
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # No actions/setup-python step, unlike the jobs above: the image's own
       # interpreter is the entire point, and a second one from the tool cache
@@ -408,7 +510,7 @@ jobs:
           echo "$PYTHONUSERBASE/bin" >> "$GITHUB_PATH"
 
       - name: Cache uv downloads
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.UV_CACHE_DIR }}
           key: uv-${{ runner.os }}-sandbox-${{ hashFiles('src/sandbox/uv.lock') }}
@@ -430,6 +532,357 @@ jobs:
       - name: Unit tests
         run: make sandbox-tests
 
+  # chat needs a real Postgres: its integration tests run the alembic
+  # migrations and the repositories against one. tests/conftest.py supplies
+  # every other setting and creates its own <name>_test databases, so no
+  # src/.env is generated here.
+  chat-tests:
+    needs: changes
+    if: needs.changes.outputs.chat == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Same image as the chatdb compose service, pinned to its multi-arch index digest.
+        image: postgres:15@sha256:c961aa287d8698297cb26cdfadfbe9fd2cbaf77e53cfffe9636e8d8a1e4d842c
+        env:
+          POSTGRES_USER: chat
+          POSTGRES_PASSWORD: chat
+          POSTGRES_DB: chat
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U chat" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # Matches the service Dockerfiles: without this uv may fetch its own
+      # interpreter instead of the one set up below.
+      UV_PYTHON_DOWNLOADS: never
+      # Settings come from the process environment only, never from src/.env;
+      # the service container is on localhost.
+      RUN_IN_DOCKER: "1"
+      CHAT_DB_HOST: 127.0.0.1
+      CHAT_DB_PORT: "5432"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install uv
+        run: python -m pip install --no-cache-dir uv==0.11.21
+
+      - name: Cache uv downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-chat-${{ hashFiles('src/chat/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-chat-
+
+      # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
+      # rather than silently resolving to something the Docker build never saw.
+      - name: Install chat dependencies
+        run: make uv-sync svc=chat
+
+      - name: Unit tests
+        run: make chat-tests
+
+  # The manager suite, which runs nowhere else and needs neither a database nor Redis,
+  # and django_app's session retention contract. The manager's nightly purge deletes
+  # sessions with raw SQL, so Django's cascade never runs; the contract test fails when a
+  # new foreign key to Session is missing from src/shared/retention.py, or a table the
+  # purge touches is not granted to the manager role in
+  # src/django_app/tables/service_db_grants.py. Neither runs the purge SQL against a
+  # database. The contract test reads only model metadata and the grant matrix, so
+  # pytest-django creates no test database, but every django test clears the Redis cache
+  # first (the autouse clear_cache fixture in tests/fixtures.py), hence the redis service.
+  retention-purge-tests:
+    needs: changes
+    if: needs.changes.outputs.retention == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      redis:
+        # The stack runs the unpinned `redis` image with an ACL user, set on its command
+        # line, which a service container cannot override; this one runs without a
+        # password, and REDIS_USER and REDIS_PASSWORD are empty below to match.
+        image: redis:8.10.2@sha256:97ec88159e6d7cfb5ddef9015386087d58a912de80112f06ebdfa78fa5989901
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # Matches the service Dockerfiles: without this uv may fetch its own
+      # interpreter instead of the one set up below.
+      UV_PYTHON_DOWNLOADS: never
+      # Both settings modules read src/.env, but a variable already in the process
+      # environment wins (Env.read_env never overrides). These point django_app at the
+      # redis service container, which runs without a password.
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      REDIS_USER: ""
+      REDIS_PASSWORD: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install uv
+        run: python -m pip install --no-cache-dir uv==0.11.21
+
+      - name: Cache uv downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-retention-${{ hashFiles('src/manager/uv.lock', 'src/django_app/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-retention-
+
+      # Same reason as the matrix job: settings read src/.env at import time.
+      - name: Generate dev env from env.yaml
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/envtool.py --dev
+
+      # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
+      # rather than silently resolving to something the Docker build never saw.
+      - name: Install manager and django_app dependencies
+        run: |
+          make uv-sync svc=manager
+          make uv-sync svc=django_app
+
+      - name: Manager tests
+        run: make manager-tests
+
+      # Runs even when the manager tests failed, so one never hides the other.
+      - name: Session retention contract
+        if: ${{ !cancelled() }}
+        run: make django-tests ARGS="tests/model_tests/test_session_retention_contract.py"
+
+  # The tests marked `postgres` of es_plugins and plugin_sdk, which skip in
+  # backend-tests, against a throwaway plugins_db that src/plugins_db/lab/run.sh
+  # starts as src/docker-compose.yaml defines it, with the real init script and
+  # pg_hba.conf, then that lab's checks of the server's own roles and grants.
+  # Needs Docker and python3 with PyYAML (the lab writes its env file with
+  # scripts/envtool.py), both on the runner.
+  es-plugins-database-tests:
+    needs: changes
+    if: needs.changes.outputs.plugins_db == 'true'
+    runs-on: ubuntu-latest
+    env:
+      # Matches the service Dockerfiles: without this uv may fetch its own
+      # interpreter instead of the one set up below.
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install uv
+        run: python -m pip install --no-cache-dir uv==0.11.21
+
+      - name: Cache uv downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-plugins-db-${{ hashFiles('src/es_plugins/uv.lock', 'src/plugin_sdk/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-plugins-db-
+
+      # Same reason as the matrix job: settings read src/.env at import time.
+      # PyYAML also serves the lab's own envtool run.
+      - name: Generate dev env from env.yaml
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/envtool.py --dev
+
+      # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
+      # rather than silently resolving to something the Docker build never saw.
+      - name: Install es_plugins and plugin_sdk dependencies
+        run: |
+          make uv-sync svc=es_plugins
+          make uv-sync svc=plugin_sdk
+
+      - name: Plugin database lab
+        run: bash src/plugins_db/lab/run.sh
+
+  # The plugin author tooling end to end: the JS SDK's tests, the sample
+  # plugin's SPA build, the Python CLI validating the sample by the rules
+  # Django applies on upload, and packing it with its backend's wheels as an
+  # author would. The Python package's own unit tests run as a backend-tests
+  # leg.
+  plugin-sdk-checks:
+    needs: changes
+    if: needs.changes.outputs.plugins_js == 'true'
+    runs-on: ubuntu-latest
+    env:
+      # Matches the service Dockerfiles: without this uv may fetch its own
+      # interpreter instead of the one set up below.
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: |
+            plugin-sdk/package-lock.json
+            plugin-sdk/test-browser/package-lock.json
+            plugin-samples/weather/spa/package-lock.json
+
+      # --ignore-scripts, as in frontend-checks: no install-time lifecycle hooks.
+      - name: Install the JS SDK's dependencies
+        run: npm --prefix plugin-sdk ci --ignore-scripts
+
+      # Builds the SDK too, which the sample below takes from ../../../plugin-sdk.
+      - name: JS SDK tests
+        run: npm --prefix plugin-sdk test
+
+      # The browser suite runs against a whole stack (plugin-platform-stack.yml); here it is
+      # only type-checked, so a broken suite shows up on every pull request that touches it.
+      - name: Install the browser suite's dependencies
+        run: npm --prefix plugin-sdk/test-browser ci --ignore-scripts
+
+      - name: Type-check the browser suite
+        run: npm --prefix plugin-sdk/test-browser run typecheck
+
+      - name: Install the sample SPA's dependencies
+        run: npm --prefix plugin-samples/weather/spa ci --ignore-scripts
+
+      - name: Build the sample SPA
+        run: npm --prefix plugin-samples/weather/spa run build
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install uv
+        run: python -m pip install --no-cache-dir uv==0.11.21
+
+      - name: Cache uv downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-plugin_sdk-${{ hashFiles('src/plugin_sdk/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-plugin_sdk-
+
+      # --frozen, so a uv.lock that has drifted from pyproject.toml fails here.
+      - name: Install plugin_sdk dependencies
+        run: make uv-sync svc=plugin_sdk
+
+      # `uv run`, not .venv/bin/epicstaff-plugin: make uv-sync installs only the
+      # dependencies (--no-install-project), and the CLI's script appears once
+      # uv run has installed the package itself. The working directory stays
+      # the repository root.
+      - name: Validate the sample plugin
+        run: >-
+          uv run --frozen --project src/plugin_sdk
+          epicstaff-plugin validate plugin-samples/weather
+          --spa-dir plugin-samples/weather/spa/dist
+
+      # epicstaff-plugin is on no index yet: the packed lock pins this build of it.
+      - name: Build the SDK wheel
+        run: uv build --project src/plugin_sdk --wheel -o "$RUNNER_TEMP/epicstaff-plugin-dist"
+
+      # --download-wheels fetches every lock entry as a binary wheel for both
+      # Linux architectures (network; pip comes from the SDK's dev group).
+      - name: Pack the sample plugin with its backend's wheels
+        run: >-
+          uv run --frozen --project src/plugin_sdk
+          epicstaff-plugin pack plugin-samples/weather
+          --spa-dir plugin-samples/weather/spa/dist
+          --download-wheels
+          --local-wheel "$(ls "$RUNNER_TEMP"/epicstaff-plugin-dist/epicstaff_plugin-*.whl)"
+          --out "$RUNNER_TEMP/weather.esplugin"
+
+      - name: Validate the packed sample plugin
+        run: >-
+          uv run --frozen --project src/plugin_sdk
+          epicstaff-plugin validate "$RUNNER_TEMP/weather.esplugin"
+
+  # nginx's configuration as the epicstaff-nginx container renders it, in the
+  # image pinned in src/docker-compose.yaml: `nginx -t` on every combination of
+  # settings, the values the start-up scripts must refuse, and live checks
+  # inside the container, among them that only Django gets or sets EpicStaff's
+  # cookies. Needs Docker and openssl, both on the runner.
+  nginx-templates:
+    needs: changes
+    if: needs.changes.outputs.nginx == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Render and check the nginx templates
+        run: bash src/nginx/tests/check_templates.sh
+
+  # The plugin hosts and the API listeners, live: src/nginx/tests/gateway/run.sh (the gateway
+  # check, the published pages, the internal API listener, a short load run) and
+  # src/nginx/tests/development/run.sh (development mode on and off: the page decision, the
+  # development server's page proxy, the development API listener), each with stand-ins for
+  # django_app and the plugins in containers of their own. Needs Docker and curl, both on the
+  # runner. The development lab runs even when the gateway lab fails, so one never hides the other.
+  nginx-plugin-labs:
+    needs: changes
+    if: needs.changes.outputs.nginx_plugin_labs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Describe the Docker host
+        run: bash .github/scripts/describe_docker_host.sh
+
+      - name: Plugin gateway lab
+        run: bash src/nginx/tests/gateway/run.sh
+        env:
+          DURATION: 5s
+
+      - name: Plugin development lab
+        if: ${{ !cancelled() }}
+        run: bash src/nginx/tests/development/run.sh
+
+  # The plugin node, live: src/es_plugins/lab/run.sh runs the es_plugins service exactly as
+  # src/docker-compose.yaml defines it (its capabilities, the per-plugin connection limits, the
+  # cgroup refusal of bind(), seccomp) against a stand-in for django_app, installs probe plugins
+  # packed with real wheels, checks what a plugin process can and cannot do, and backs up and
+  # restores a database on the lab's plugins_db. Needs Docker on a cgroup v2 host whose kernel
+  # lets a container with CAP_BPF attach a cgroup program (Linux 5.8 or later), network access for
+  # the probe plugins' wheels, and python3 with PyYAML (the lab writes its env file with
+  # scripts/envtool.py).
+  plugin-node-lab:
+    needs: changes
+    if: needs.changes.outputs.plugin_node_lab == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install PyYAML
+        run: python -m pip install --quiet pyyaml
+
+      - name: Describe the Docker host
+        run: bash .github/scripts/describe_docker_host.sh
+
+      - name: Plugin node lab
+        run: bash src/es_plugins/lab/run.sh
+
   # There is deliberately no django-tests job here. The suite takes about twenty
   # minutes -- measured on 2026-09-18, and that is already with tests/api_tests
   # left out as too slow to run here -- and that is a wait every django_app pull
@@ -438,7 +891,8 @@ jobs:
   # 2026-09-21 three separate circular-import bugs reached main and left the
   # Django app unable to start, and the build job below stayed green through all
   # three, because it only builds the images and never imports the application.
-  # This is meant to be temporary.
+  # This is meant to be temporary. The one exception is the session retention
+  # contract file, which retention-purge-tests runs above.
 
   build:
     needs: [changes, check-cla, check-external-urls, check-rbac-boundary, check-backend-notices, frontend-checks]
@@ -452,3 +906,38 @@ jobs:
     with:
       compose-file: src/docker-compose.yaml
       max-parallel: 2
+
+  # The only required status check, and only for pull requests into main (ruleset
+  # "Main"); on developer it is informational while the service tests are being
+  # tuned. Every other job here is skipped when its paths are untouched, and a
+  # required check that is skipped counts as passing, so requiring them directly
+  # would let a backend-only pull request merge with backend-tests red. This job
+  # always runs and fails if any job it waits on failed or was cancelled;
+  # `skipped` stays a pass.
+  pr-checks:
+    needs:
+      - changes
+      - check-cla-version
+      - check-cla
+      - check-external-urls
+      - check-ticket-references
+      - check-env-conventions
+      - check-backend-notices
+      - check-rbac-boundary
+      - frontend-checks
+      - backend-tests
+      - sandbox-tests
+      - chat-tests
+      - retention-purge-tests
+      - es-plugins-database-tests
+      - plugin-sdk-checks
+      - nginx-templates
+      - nginx-plugin-labs
+      - plugin-node-lab
+      - build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any check failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

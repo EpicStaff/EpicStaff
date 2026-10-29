@@ -10,6 +10,7 @@ import { nudgePaths, RoutedPath } from './nudging';
 import { Rect, routingObstacles, WIRE_CLEARANCE } from './obstacles';
 import { fallbackRoutePoints } from './orthogonal-route-shapes';
 import { findRoute, RouteOptions, SegmentIndex } from './path-search';
+import { simplified, STUB } from './routing-constants';
 import { buildRoutingGrid } from './routing-grid';
 
 /**
@@ -23,7 +24,6 @@ import { buildRoutingGrid } from './routing-grid';
  * top/bottom ports, and stale ones (a node or port missing).
  */
 
-const STUB = 20;
 // Stacked nodes at least this far apart (unpadded boxes) get the return leg in the gap, the
 // one wire that fits there with WIRE_CLEARANCE on either side.
 const STACKED_GAP_THRESHOLD = 2 * WIRE_CLEARANCE;
@@ -118,10 +118,8 @@ export function routeAll(nodes: NodeModel[], connections: ConnectionModel[]): Ma
         const found =
             (constrained ? findRoute(grid, wire.start, wire.goal, occupied, ownPorts, wire.options) : null) ??
             findRoute(grid, wire.start, wire.goal, occupied, ownPorts);
-        const path = routedPath(
-            connection,
-            removeCollinear(found ? [wire.source, ...found, wire.target] : fallbackFor(wire))
-        );
+        const rawPoints = found ? [wire.source, ...found, wire.target] : fallbackFor(wire);
+        const path = routedPath(connection, simplified(rawPoints) ?? rawPoints);
         // The stubs are in already; the route between them (or the whole fallback) goes in now.
         occupied.add(found ? { ...path, points: found } : path);
         return path;
@@ -150,7 +148,7 @@ function routeOptions(ends: WireEnds, source: IPoint, target: IPoint, obstaclesB
     if (!isStacked(sourceBox, targetBox)) return { legsAbove: Math.min(sourceBox.top, targetBox.top) };
     const [upper, lower] =
         ends.sourceNode.position.y <= ends.targetNode.position.y ? [sourceBox, targetBox] : [targetBox, sourceBox];
-    // The obstacles pad every node by WIRE_CLEARANCE above and below (EDGE's fixed box aside).
+    // The obstacles pad every node by WIRE_CLEARANCE above and below.
     const top = upper.top + WIRE_CLEARANCE;
     const bottom = lower.bottom - WIRE_CLEARANCE;
     const gap = lower.top - upper.bottom + 2 * WIRE_CLEARANCE;
@@ -181,23 +179,6 @@ function routedPath(connection: ConnectionModel, points: IPoint[]): RoutedPath {
 
 function stubDistance(wire: PlannedWire): number {
     return Math.abs(wire.goal.x - wire.start.x) + Math.abs(wire.goal.y - wire.start.y);
-}
-
-// Drops points lying on the straight line between their neighbours (the stub ends of a straight run).
-function removeCollinear(points: IPoint[]): IPoint[] {
-    const result: IPoint[] = [];
-    for (const point of points) {
-        const previous = result[result.length - 1];
-        if (previous && previous.x === point.x && previous.y === point.y) continue;
-        if (result.length >= 2) {
-            const beforePrevious = result[result.length - 2];
-            const vertical = beforePrevious.x === previous.x && previous.x === point.x;
-            const horizontal = beforePrevious.y === previous.y && previous.y === point.y;
-            if (vertical || horizontal) result.pop();
-        }
-        result.push(point);
-    }
-    return result;
 }
 
 function compareIds(first: string, second: string): number {

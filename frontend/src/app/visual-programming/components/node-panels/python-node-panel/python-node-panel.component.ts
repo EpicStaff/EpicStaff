@@ -1,39 +1,58 @@
-import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import {
     ColumnResizeDividerComponent,
+    ConfirmationDialogService,
     createColumnWidthState,
     CustomInputComponent,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
+    SelectComponent,
+    SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { ResourceCode } from '@shared/models';
-import { SecretsStorageService } from '@shared/services';
-import { Subject, switchMap } from 'rxjs';
+import { ResourceCode, toSecretIds } from '@shared/models';
+import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
+import { merge, Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
+import { BUILDING_STATUSES, Venv } from '../../../../features/virtual-environments/models/venv.model';
+import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
+import { confirmBuildingVenv } from '../../../../features/virtual-environments/utils/confirm-building-venv';
+import { toVenvSelectItems } from '../../../../features/virtual-environments/utils/venv-select-items';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import {
-    PollEvent,
-    PythonCodeResult,
-    PythonCodeRunService,
-    RunPythonCodeRequest,
-} from '../../../services/python-code-run.service';
+import { PythonNode } from '../../../core/models/python-node.model';
+import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
+import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { parseTestInputValues, PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
-    createInputMapFromPairs,
-    getValidInputPairs,
-    initializeInputMap,
-    parseCommaSeparatedList,
-} from '../node-panel-form.utils';
-import { PythonTerminalComponent, TerminalStatus } from './python-terminal/python-terminal.component';
-import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-log.model';
+    NODE_SAVING_MESSAGE,
+    pythonCodeSignature,
+    resolveStoredCodeState,
+    SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
+    SAVE_NODE_BEFORE_CODE_RUN_MESSAGE,
+    SAVE_TO_RUN_LATEST_CODE_MESSAGE,
+    STORED_GRAPH_OUTDATED_MESSAGE,
+    StoredCodeState,
+} from '../shared/python-code-test-run/stored-python-code';
+import {
+    areValidParameterNames,
+    diffNames,
+    haveSameNames,
+    namedKeys,
+    parseMainParameters,
+    planInputListChanges,
+    rewriteMainParameters,
+} from './python-main-signature.util';
+import { PythonTerminalComponent } from './python-terminal/python-terminal.component';
 
 @Component({
     selector: 'app-python-node-panel',
@@ -47,6 +66,8 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
         ValidationErrorsComponent,
+        SelectComponent,
+        ExecutionTimeoutFieldComponent,
     ],
     templateUrl: './python-node-panel.component.html',
     styleUrls: ['./python-node-panel.component.scss'],
@@ -54,6 +75,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
 })
 export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly graphId = input<number | null>(null);
+    private readonly inputMap = viewChild(InputMapComponent);
     public readonly isFormCollapsed = signal<boolean>(false);
     public readonly useStorage = signal<boolean>(false);
     protected readonly leftColumnWidth = createColumnWidthState('python-node', 406);
@@ -75,6 +97,14 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             ? this.secretsStorageService.namesForIds(this.selectedSecretIds())
             : (this.node().data.secret_names ?? [])
     );
+    public readonly venvs = signal<Venv[]>([]);
+    public readonly loadingVenvs = signal<boolean>(false);
+    public readonly venvItems = computed<SelectItem[]>(() => [
+        // Outside the groups, so it stays the first row rather than sinking under a heading.
+        { name: 'No venv', value: null },
+        ...toVenvSelectItems(this.venvs()),
+    ]);
+
     public readonly inputMapKeys = computed(() => {
         this.formDirtyTick();
         if (!this.form) return [];
@@ -84,27 +114,29 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     });
 
     isOpenTestMode = signal(false);
-    testResult = signal<PythonCodeResult | null>(null);
-    testError = signal<string | null>(null);
-    testRunning = signal(false);
-    terminalLogs = signal<TerminalLogEntry[]>([]);
-    terminalHeight = signal<number>(150);
-
-    terminalStatus = computed<TerminalStatus>(() => {
-        if (this.testRunning()) return 'processing';
-        if (this.testError()) return 'error';
-        const r = this.testResult();
-        if (r) return r.status === 'completed' ? 'done' : 'error';
-        return 'idle';
-    });
+    /** The Test mode run of the stored code and its terminal. */
+    protected readonly codeTestRun = new PythonCodeTestRun();
 
     pythonCode: string = '';
     initialPythonCode: string = '';
+    protected executionTimeout!: ExecutionTimeoutFormField;
     private initialFormSignatureExceptTestValues: string = '';
     private initialTestInputValuesSignature: string = '';
     codeEditorHasError: boolean = false;
+    private readonly venvsApiService = inject(VenvsApiService);
+    private readonly confirmationDialog = inject(ConfirmationDialogService);
     private readonly pythonCodeChange$ = new Subject<string>();
+    /**
+     * The signature and Input List names last seen in step: each side applies to the other only how its own
+     * names moved away from these, so opening a node never syncs and an echo of a sync is a no-op.
+     */
+    private lastCodeParameterNames: string[] | null = null;
+    private lastInputListNames: string[] = [];
+    /** Set while a code edit rewrites the rows, so their change events do not rewrite the code back. */
+    private isApplyingCodeToInputList = false;
     private readonly formDirtyTick = signal(0);
+    /** The venv the user last settled on, to go back to when a warning is declined. */
+    private acceptedVenvId: number | null = null;
     public readonly testInputDirty = computed(() => {
         this.formDirtyTick();
         if (!this.form) return false;
@@ -122,15 +154,56 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     });
     public readonly isSaving = computed(() => this.sidePanelService.savingNodeId() === this.node().id);
     private wasSaving = false;
+    /** How the panel's code, secrets and storage flag relate to the ones the backend stores for the node. */
+    private readonly storedCodeState = computed<StoredCodeState>(() =>
+        resolveStoredCodeState(
+            this.flowService.hasSavedGraph(),
+            this.node().backendId,
+            this.flowService.savedPythonNode(this.node().backendId),
+            (savedNode) => this.differsFromSaved(savedNode)
+        )
+    );
+    /**
+     * Why the test Run cannot run now, or null. The backend runs the code and storage flag it stores for the
+     * node, not the panel's: an edit (e.g. toggling storage, whose autosave only reaches the flow) must be
+     * saved first, or the run would use the old one. A run in flight is reported by the input map itself.
+     */
+    protected readonly runTestBlocker = computed<string | null>(() => {
+        if (this.isSaving()) return NODE_SAVING_MESSAGE;
+        switch (this.storedCodeState()) {
+            case 'outdated':
+                return STORED_GRAPH_OUTDATED_MESSAGE;
+            case 'not-created':
+                return SAVE_NODE_BEFORE_CODE_RUN_MESSAGE;
+            case 'missing':
+                return SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE;
+            case 'changed':
+                return SAVE_TO_RUN_LATEST_CODE_MESSAGE;
+            case 'stored':
+                return null;
+        }
+    });
+    /**
+     * The node must be saved before its test can run although the panel may have no edit (a new node, or one
+     * reopened after an edit that only reached the flow): the panel shell then shows its Save button too.
+     * Save cannot help a `missing` or `outdated` node.
+     */
+    public readonly needsSave = computed(() => {
+        if (this.isReadOnly()) return false;
+        const state = this.storedCodeState();
+        return state === 'not-created' || state === 'changed';
+    });
 
-    constructor(
-        private readonly sidePanelService: SidePanelService,
-        private readonly pythonCodeRunService: PythonCodeRunService,
-        private readonly secretsStorageService: SecretsStorageService,
-        private readonly permissionsService: PermissionsService
-    ) {
+    private readonly sidePanelService = inject(SidePanelService);
+    private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly permissionsService = inject(PermissionsService);
+    private readonly flowService = inject(FlowService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
+
+    constructor() {
         super();
         this.pythonCodeChange$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => {
+            this.syncInputListFromCode();
             this.sidePanelService.triggerAutosave();
         });
         effect(() => {
@@ -151,6 +224,44 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             this.wasSaving = saving;
         });
         this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed()).subscribe(() => this.resetDirtyAfterGraphSave());
+
+        this.loadVenvs();
+    }
+
+    /** Reloaded when the picker opens: a build that finished since the panel was opened
+     *  must not still be shown as running. */
+    public onVenvDropdownOpened(): void {
+        this.loadVenvs();
+    }
+
+    public onVenvChanged(value: unknown): void {
+        const venv = this.venvs().find((item) => item.id === value);
+        if (!venv || !BUILDING_STATUSES.has(venv.status)) {
+            this.acceptedVenvId = (value as number | null) ?? null;
+            return;
+        }
+        confirmBuildingVenv(this.confirmationDialog, venv.name)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((confirmed) => {
+                // The picker has written the value already, so declining puts the previous
+                // one back rather than preventing anything.
+                if (confirmed) this.acceptedVenvId = venv.id;
+                else this.form.get('venv')!.setValue(this.acceptedVenvId);
+            });
+    }
+
+    private loadVenvs(): void {
+        this.loadingVenvs.set(true);
+        this.venvsApiService
+            .getVenvs()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (list) => {
+                    this.venvs.set(list);
+                    this.loadingVenvs.set(false);
+                },
+                error: () => this.loadingVenvs.set(false),
+            });
     }
 
     private resetDirtyAfterSave(): void {
@@ -176,6 +287,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             ...raw,
             test_input: testInput.map((p) => ({ key: p.key, value: '' })),
             secret_ids: [...this.selectedSecretIds()].sort(),
+            use_storage: this.useStorage(),
         };
         return JSON.stringify(stripped);
     }
@@ -222,6 +334,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     insertStorageCode(code: string): void {
         if (!this.pythonCode.includes('epicstaff_storage')) {
             this.pythonCode = code + '\n\n' + this.pythonCode;
+            this.formDirtyTick.update((v) => v + 1);
         }
         this.sidePanelService.triggerAutosave();
     }
@@ -230,21 +343,27 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         const prefix = code + '\n\n';
         if (this.pythonCode.startsWith(prefix)) {
             this.pythonCode = this.pythonCode.slice(prefix.length);
+            this.formDirtyTick.update((v) => v + 1);
             this.sidePanelService.triggerAutosave();
         }
     }
 
     initializeForm(): FormGroup {
-        this.terminalLogs.set([]);
+        this.codeTestRun.reset();
 
         this.useStorage.set(this.node().data.use_storage ?? false);
         this.selectedSecretIds.set(this.node().data.secret_ids ?? []);
 
+        this.executionTimeout = new ExecutionTimeoutFormField(
+            this.node().data.execution_timeout,
+            this.executionTimeoutLimits.limits()
+        );
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
-            libraries: [this.node().data.libraries?.join(', ') || ''],
+            venv: [this.node().data.venv_id ?? null],
+            execution_timeout: this.executionTimeout.control,
             test_input: this.fb.array([]),
         });
 
@@ -253,13 +372,22 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
         this.pythonCode = this.node().data.code || '';
         this.initialPythonCode = this.pythonCode;
+        this.acceptedVenvId = this.node().data.venv_id ?? null;
         this.form = form;
         this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
         this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();
+        // The values computed from the form (dirty state, stored-code state) were read without it.
+        this.formDirtyTick.update((v) => v + 1);
 
         form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.formDirtyTick.update((v) => v + 1);
         });
+
+        this.lastCodeParameterNames = parseMainParameters(this.pythonCode)?.names ?? null;
+        this.lastInputListNames = namedKeys(this.inputMapPairs.getRawValue());
+        merge(form.get('input_map')!.valueChanges, form.get('test_input')!.valueChanges)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.syncCodeFromInputList());
 
         return form;
     }
@@ -283,8 +411,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 }
             }
         }
-        const librariesArray = parseCommaSeparatedList(this.form.value.libraries);
-
         return {
             ...this.node(),
             node_name: this.form.value.node_name,
@@ -295,10 +421,11 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 name: this.form.value.node_name || 'Python Code',
                 code: this.pythonCode,
                 entrypoint: 'main',
-                libraries: librariesArray,
+                venv_id: this.form.value.venv ?? null,
                 use_storage: this.useStorage(),
                 secret_ids: this.selectedSecretIds(),
                 secret_names: this.secretNames(),
+                execution_timeout: this.executionTimeout.value,
             },
             test_input: opts?.manualSave ? this.getTestInputValue() : this.getTestInputValuePreservingSaved(),
         };
@@ -347,90 +474,75 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         initializeInputMap(form, this.node().input_map as Record<string, unknown> | null | undefined, this.fb);
     }
 
-    onTerminalHeightChange(height: number): void {
-        this.terminalHeight.set(height);
+    /** The keys of the rows the user edits now: the test values in Test mode, the Input List otherwise. */
+    private activeInputListNames(): string[] {
+        return namedKeys(
+            (this.form.get(this.isOpenTestMode() ? 'test_input' : 'input_map') as FormArray).getRawValue()
+        );
     }
 
-    onClearLogs(): void {
-        this.terminalLogs.set([]);
-    }
+    private syncInputListFromCode(): void {
+        const inputMap = this.inputMap();
+        if (!this.form || !inputMap || this.isReadOnly()) return;
+        const parameters = parseMainParameters(this.pythonCode);
+        if (parameters === null || haveSameNames(parameters.names, this.lastCodeParameterNames)) return;
+        const changes = planInputListChanges(this.lastCodeParameterNames, parameters);
+        this.lastCodeParameterNames = parameters.names;
 
-    private addLog(type: TerminalLogType, message: string): void {
-        this.terminalLogs.update((logs) => [...logs, { timestamp: new Date(), type, message }]);
-    }
-
-    private parseVariableValue(raw: string): unknown {
+        this.isApplyingCodeToInputList = true;
         try {
-            return JSON.parse(raw);
-        } catch {
-            return raw;
+            inputMap.applyKeyChanges(changes);
+        } finally {
+            this.isApplyingCodeToInputList = false;
         }
+        this.lastInputListNames = this.activeInputListNames();
+        this.formDirtyTick.update((v) => v + 1);
+    }
+
+    private syncCodeFromInputList(): void {
+        if (this.isApplyingCodeToInputList || this.isReadOnly()) return;
+        const names = this.activeInputListNames();
+        // A key still being typed (not a name yet, or another row's) waits, keeping the last names to diff from.
+        if (haveSameNames(names, this.lastInputListNames) || !areValidParameterNames(names)) return;
+        // A signature edit whose debounced sync has not run yet wins; that sync takes the rows as they are then.
+        const parameters = parseMainParameters(this.pythonCode);
+        if (parameters !== null && !haveSameNames(parameters.names, this.lastCodeParameterNames)) return;
+
+        const code = rewriteMainParameters(this.pythonCode, diffNames(this.lastInputListNames, names));
+        this.lastInputListNames = names;
+        if (code === null || code === this.pythonCode) return;
+        this.lastCodeParameterNames = parseMainParameters(code)?.names ?? null;
+        this.pythonCode = code;
+        this.formDirtyTick.update((v) => v + 1);
+        this.pythonCodeChange$.next(code);
     }
 
     onRunTest(variables: Record<string, string>): void {
-        this.testRunning.set(true);
-        this.testResult.set(null);
-        this.testError.set(null);
-        this.terminalLogs.set([]);
-
-        this.addLog('info', 'Starting function main()...');
-
-        const libraries = this.form.value.libraries
-            ? this.form.value.libraries
-                  .split(',')
-                  .map((lib: string) => lib.trim())
-                  .filter((lib: string) => lib.length > 0)
-            : [];
-
-        const parsedVariables = Object.fromEntries(
-            Object.entries(variables).map(([k, v]) => [k, this.parseVariableValue(v)])
-        );
-
-        const payload: RunPythonCodeRequest = {
-            python_code_id: this.node().python_code_id ?? null,
-            code: this.pythonCode,
-            entrypoint: 'main',
-            libraries,
-            variables: parsedVariables,
-        };
-
-        this.addLog('info', `Parameters: ${JSON.stringify(parsedVariables)}`);
-
-        this.pythonCodeRunService
-            .runPythonCode(payload)
-            .pipe(
-                switchMap(({ execution_id }) => this.pythonCodeRunService.pollResultWithEvents(execution_id)),
-                takeUntilDestroyed(this.destroyRef)
+        const backendId = this.node().backendId;
+        if (this.runTestBlocker() !== null || backendId == null) return;
+        this.codeTestRun.run(
+            {
+                target: { type: 'python_node', id: backendId },
+                variables: parseTestInputValues(variables),
+            },
+            this.executionTimeoutLimits.secondsToRun(
+                this.flowService.savedPythonNode(backendId)?.python_code.execution_timeout
             )
-            .subscribe({
-                next: (event: PollEvent) => {
-                    if (event.type === 'polling') {
-                        if (event.attempt === 1) {
-                            this.addLog('polling', 'Processing...');
-                        }
-                    } else if (event.type === 'result') {
-                        const result = event.data;
-                        this.testResult.set(result);
-                        this.testRunning.set(false);
+        );
+    }
 
-                        if (result.stdout) {
-                            this.addLog('stdout', result.stdout);
-                        }
-                        if (result.stderr) {
-                            this.addLog('stderr', result.stderr);
-                        }
-                        if (result.status === 'completed') {
-                            this.addLog('result', result.result_data || '(empty result)');
-                        } else {
-                            this.addLog('error', `Execution failed (return code: ${result.returncode})`);
-                        }
-                    }
-                },
-                error: (err: Error) => {
-                    this.testError.set(err.message || 'Unknown error');
-                    this.testRunning.set(false);
-                    this.addLog('error', `Error: ${err.message || 'Unknown error'}`);
-                },
-            });
+    /** The code, secrets, storage flag or execution timeout in the panel are not the ones the backend stores. */
+    private differsFromSaved(savedNode: PythonNode): boolean {
+        this.formDirtyTick();
+        if (!this.form) return true;
+        const savedCode = savedNode.python_code;
+        const saved = pythonCodeSignature(savedCode.code, toSecretIds(savedCode.secrets));
+        const current = pythonCodeSignature(this.pythonCode, this.selectedSecretIds());
+        return (
+            saved !== current ||
+            (savedNode.use_storage ?? false) !== this.useStorage() ||
+            this.executionTimeoutLimits.secondsToRun(savedCode.execution_timeout) !==
+                this.executionTimeoutLimits.secondsToRun(this.executionTimeout.value)
+        );
     }
 }

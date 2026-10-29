@@ -69,7 +69,7 @@ def tool_label_a(org_a):
 @pytest.fixture
 def python_tool_a(org_a, tool_label_a):
     code = PythonCode.objects.create(
-        code="def main(): return 1", entrypoint="main", libraries=""
+        code="def main(): return 1", entrypoint="main"
     )
     tool = PythonCodeTool.objects.create(
         name="PyToolA",
@@ -109,33 +109,192 @@ def mcp_tool_with_auth_a(org_a, tool_label_a):
     return tool
 
 
+@pytest.fixture
+def python_tool_a2(org_a, tool_label_a):
+    code = PythonCode.objects.create(
+        code="def main(): return 2", entrypoint="main"
+    )
+    tool = PythonCodeTool.objects.create(
+        name="PyToolA2",
+        description="desc2",
+        python_code=code,
+        org=org_a,
+    )
+    return tool
+
+
+@pytest.fixture
+def mcp_tool_a2(org_a):
+    return McpTool.objects.create(
+        name="McpToolA2",
+        transport="https://example.com/mcp2",
+        tool_name="do_other_thing",
+        org=org_a,
+    )
+
+
+@pytest.fixture
+def builtin_python_tool(db):
+    code = PythonCode.objects.create(
+        code="def main(): return 3", entrypoint="main"
+    )
+    return PythonCodeTool.objects.create(
+        name="BuiltInPyTool",
+        description="builtin",
+        python_code=code,
+        org=None,
+        built_in=True,
+    )
+
+
+@pytest.fixture
+def user_b(db, django_user_model, org_b, exporter_role_a):
+    # `exporter_role_a` is bound to org_a; org_b needs its own role instance
+    # with the same permission shape.
+    role_b = Role.objects.create(name="ToolExporterB", org=org_b, is_built_in=False)
+    RolePermission.objects.create(
+        role=role_b,
+        resource_type=ResourceType.TOOLS,
+        permissions=int(Permission.CREATE | Permission.READ | Permission.EXPORT),
+    )
+    user = django_user_model.objects.create_user(
+        email="exporter_b@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org_b, role=role_b)
+    return user
+
+
+@pytest.fixture
+def client_b(user_b, org_b):
+    c = APIClient()
+    c.force_authenticate(user=user_b)
+    c.credentials(HTTP_X_ORGANIZATION_ID=str(org_b.id))
+    return c
+
+
+@pytest.fixture
+def shared_built_in_tool_with_both_orgs_labels(org_a, org_b):
+    code = PythonCode.objects.create(
+        code="def main(): return 1", entrypoint="main"
+    )
+    tool = PythonCodeTool.objects.create(
+        name="SharedBuiltIn",
+        description="desc",
+        python_code=code,
+        org=None,
+        built_in=True,
+    )
+    label_a = Label.objects.create(name="OrgALabel", org=org_a, scope=Label.Scope.TOOL)
+    label_b = Label.objects.create(name="OrgBLabel", org=org_b, scope=Label.Scope.TOOL)
+    tool.labels.set([label_a, label_b])
+    return tool
+
+
+def _as_upload(content: bytes, filename: str):
+    from io import BytesIO
+
+    f = BytesIO(content)
+    f.name = filename
+    f.seek(0)
+    return f
+
+
+class ToolKind:
+    def __init__(self, name, url, export_key, model, fixture, second_fixture, make_foreign):
+        self.name, self.url, self.export_key, self.model = name, url, export_key, model
+        self.fixture, self.second_fixture, self.make_foreign = fixture, second_fixture, make_foreign
+
+    def __repr__(self):
+        return self.name
+
+    def export(self, client, tool):
+        return client.get(f"{self.url}{tool.id}/export/")
+
+    def bulk_export(self, client, ids):
+        return client.post(f"{self.url}bulk-export/", {"ids": ids}, format="json")
+
+    def import_(self, client, content, **fields):
+        return client.post(
+            f"{self.url}import/", {"file": _as_upload(content, "tool.json"), **fields}, format="multipart"
+        )
+
+
+def _foreign_python_tool(org):
+    code = PythonCode.objects.create(code="x", entrypoint="main")
+    return PythonCodeTool.objects.create(name="theirs", description="", python_code=code, org=org)
+
+
+TOOL_KINDS = [
+    ToolKind("python", "/api/python-code-tool/", "PythonCodeTool", PythonCodeTool, "python_tool_a", "python_tool_a2", _foreign_python_tool),
+    ToolKind("mcp", "/api/mcp-tools/", "MCPTool", McpTool, "mcp_tool_a", "mcp_tool_a2",
+             lambda org: McpTool.objects.create(name="theirs", transport="t", tool_name="x", org=org)),
+]
+EACH_KIND = pytest.mark.parametrize("kind", TOOL_KINDS, ids=repr)
+
+
 # ---- export ----
 
 
 @pytest.mark.django_db
-def test_pythoncodetool_export_includes_labels_no_favorite_key(client_a, python_tool_a):
-    resp = client_a.get(f"/api/python-code-tool/{python_tool_a.id}/export/")
-    assert resp.status_code == 200
+@EACH_KIND
+def test_export_includes_labels_and_no_favorite_key(request, client_a, kind):
+    tool = request.getfixturevalue(kind.fixture)
 
-    data = resp.json()
-    tool_data = data["PythonCodeTool"][0]
-    assert tool_data["labels"] == [
-        *python_tool_a.labels.values_list("id", flat=True)
-    ]
+    resp = kind.export(client_a, tool)
+
+    assert resp.status_code == 200
+    tool_data = resp.json()[kind.export_key][0]
+    assert tool_data["labels"] == [*tool.labels.values_list("id", flat=True)]
     assert "favorite" not in tool_data
     assert "is_favorite" not in tool_data
 
 
 @pytest.mark.django_db
-def test_mcptool_export_includes_labels_no_favorite_key(client_a, mcp_tool_a):
-    resp = client_a.get(f"/api/mcp-tools/{mcp_tool_a.id}/export/")
-    assert resp.status_code == 200
+@EACH_KIND
+def test_bulk_export_covers_all_ids(request, client_a, kind):
+    tools = [request.getfixturevalue(kind.fixture), request.getfixturevalue(kind.second_fixture)]
 
+    resp = kind.bulk_export(client_a, [tool.id for tool in tools])
+
+    assert resp.status_code == 200, resp.data
+    assert {row["id"] for row in resp.json()[kind.export_key]} == {tool.id for tool in tools}
+
+
+@pytest.mark.django_db
+@EACH_KIND
+@pytest.mark.parametrize("other", ["other-org", "missing"])
+def test_bulk_export_with_an_id_outside_the_org_is_400(request, client_a, org_b, kind, other):
+    tool = request.getfixturevalue(kind.fixture)
+    other_id = kind.make_foreign(org_b).id if other == "other-org" else tool.id + 999999
+
+    resp = kind.bulk_export(client_a, [tool.id, other_id])
+
+    assert resp.status_code == 400
+    assert resp.json()["message"] == "Some entity IDs do not exist"
+
+
+@pytest.mark.django_db
+@EACH_KIND
+def test_export_of_another_orgs_tool_is_404(client_a, org_b, kind):
+    assert kind.export(client_a, kind.make_foreign(org_b)).status_code == 404
+
+
+@pytest.mark.django_db
+def test_pythoncodetool_bulk_export_includes_builtin_tool(
+    client_a, python_tool_a, builtin_python_tool
+):
+    # Built-in tools (org=None) are globally visible, matching the single
+    # `export` action's get_object() behavior via global_visibility_q —
+    # they must not be rejected as "doesn't exist" during bulk export.
+    resp = client_a.post(
+        "/api/python-code-tool/bulk-export/",
+        {"ids": [python_tool_a.id, builtin_python_tool.id]},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
     data = resp.json()
-    tool_data = data["MCPTool"][0]
-    assert tool_data["labels"] == [*mcp_tool_a.labels.values_list("id", flat=True)]
-    assert "favorite" not in tool_data
-    assert "is_favorite" not in tool_data
+    exported_ids = {row["id"] for row in data["PythonCodeTool"]}
+    assert exported_ids == {python_tool_a.id, builtin_python_tool.id}
 
 
 @pytest.mark.django_db
@@ -193,395 +352,62 @@ def test_mcptool_import_after_export_does_not_carry_over_auth(
     assert new_tool.transport == mcp_tool_with_auth_a.transport
 
 
-@pytest.mark.django_db
-def test_pythoncodetool_import_ignores_stale_created_by_reference(
-    client_a, python_tool_a
-):
-    """An import payload with a `created_by` referencing a user id
-    that no longer exists must not blow up with a 400 ValidationError
-    ("Invalid pk ... - object does not exist"). `created_by` is
-    server-managed (excluded on `PythonCodeToolImportSerializer`) and must
-    be ignored on import, not validated against the DB.
-    """
-    export_resp = client_a.get(f"/api/python-code-tool/{python_tool_a.id}/export/")
-    assert export_resp.status_code == 200
-    payload = export_resp.json()
-    payload["PythonCodeTool"][0]["created_by"] = 999999999
-
-    file = _as_upload(json.dumps(payload).encode(), "python_tool.json")
-    resp = client_a.post(
-        "/api/python-code-tool/import/",
-        {"file": file, "import_labels": "false"},
-        format="multipart",
-    )
-    assert resp.status_code == 200, resp.data
-
-
-@pytest.mark.django_db
-def test_mcptool_import_ignores_stale_created_by_reference(client_a, mcp_tool_a):
-    """Same as the PythonCodeTool case: a stale `created_by` in an MCP tool
-    import payload is server-managed and must be ignored, not validated."""
-    export_resp = client_a.get(f"/api/mcp-tools/{mcp_tool_a.id}/export/")
-    assert export_resp.status_code == 200
-    payload = export_resp.json()
-    payload["MCPTool"][0]["created_by"] = 999999999
-
-    file = _as_upload(json.dumps(payload).encode(), "mcp_tool.json")
-    resp = client_a.post(
-        "/api/mcp-tools/import/",
-        {"file": file, "import_labels": "false"},
-        format="multipart",
-    )
-    assert resp.status_code == 200, resp.data
-
-
-# ---- bulk export ----
-
-
-@pytest.fixture
-def python_tool_a2(org_a, tool_label_a):
-    code = PythonCode.objects.create(
-        code="def main(): return 2", entrypoint="main", libraries=""
-    )
-    tool = PythonCodeTool.objects.create(
-        name="PyToolA2",
-        description="desc2",
-        python_code=code,
-        org=org_a,
-    )
-    return tool
-
-
-@pytest.fixture
-def mcp_tool_a2(org_a):
-    return McpTool.objects.create(
-        name="McpToolA2",
-        transport="https://example.com/mcp2",
-        tool_name="do_other_thing",
-        org=org_a,
-    )
-
-
-@pytest.fixture
-def builtin_python_tool(db):
-    code = PythonCode.objects.create(
-        code="def main(): return 3", entrypoint="main", libraries=""
-    )
-    return PythonCodeTool.objects.create(
-        name="BuiltInPyTool",
-        description="builtin",
-        python_code=code,
-        org=None,
-        built_in=True,
-    )
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_bulk_export_covers_all_ids(
-    client_a, python_tool_a, python_tool_a2
-):
-    resp = client_a.post(
-        "/api/python-code-tool/bulk-export/",
-        {"ids": [python_tool_a.id, python_tool_a2.id]},
-        format="json",
-    )
-    assert resp.status_code == 200, resp.data
-    data = resp.json()
-    exported_ids = {row["id"] for row in data["PythonCodeTool"]}
-    assert exported_ids == {python_tool_a.id, python_tool_a2.id}
-
-
-@pytest.mark.django_db
-def test_mcptool_bulk_export_covers_all_ids(client_a, mcp_tool_a, mcp_tool_a2):
-    resp = client_a.post(
-        "/api/mcp-tools/bulk-export/",
-        {"ids": [mcp_tool_a.id, mcp_tool_a2.id]},
-        format="json",
-    )
-    assert resp.status_code == 200, resp.data
-    data = resp.json()
-    exported_ids = {row["id"] for row in data["MCPTool"]}
-    assert exported_ids == {mcp_tool_a.id, mcp_tool_a2.id}
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_bulk_export_with_foreign_org_id_400(
-    client_a, python_tool_a, org_b
-):
-    other_code = PythonCode.objects.create(code="x", entrypoint="main", libraries="")
-    other_tool = PythonCodeTool.objects.create(
-        name="theirs", description="", python_code=other_code, org=org_b
-    )
-    resp = client_a.post(
-        "/api/python-code-tool/bulk-export/",
-        {"ids": [python_tool_a.id, other_tool.id]},
-        format="json",
-    )
-    assert resp.status_code == 400
-    assert resp.json()["message"] == "Some entity IDs do not exist"
-
-
-@pytest.mark.django_db
-def test_mcptool_bulk_export_with_foreign_org_id_400(client_a, mcp_tool_a, org_b):
-    other_tool = McpTool.objects.create(
-        name="theirs", transport="t", tool_name="x", org=org_b
-    )
-    resp = client_a.post(
-        "/api/mcp-tools/bulk-export/",
-        {"ids": [mcp_tool_a.id, other_tool.id]},
-        format="json",
-    )
-    assert resp.status_code == 400
-    assert resp.json()["message"] == "Some entity IDs do not exist"
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_bulk_export_with_nonexistent_id_400(client_a, python_tool_a):
-    resp = client_a.post(
-        "/api/python-code-tool/bulk-export/",
-        {"ids": [python_tool_a.id, python_tool_a.id + 999999]},
-        format="json",
-    )
-    assert resp.status_code == 400
-    assert resp.json()["message"] == "Some entity IDs do not exist"
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_bulk_export_includes_builtin_tool(
-    client_a, python_tool_a, builtin_python_tool
-):
-    # Built-in tools (org=None) are globally visible, matching the single
-    # `export` action's get_object() behavior via global_visibility_q —
-    # they must not be rejected as "doesn't exist" during bulk export.
-    resp = client_a.post(
-        "/api/python-code-tool/bulk-export/",
-        {"ids": [python_tool_a.id, builtin_python_tool.id]},
-        format="json",
-    )
-    assert resp.status_code == 200, resp.data
-    data = resp.json()
-    exported_ids = {row["id"] for row in data["PythonCodeTool"]}
-    assert exported_ids == {python_tool_a.id, builtin_python_tool.id}
-
-
 # ---- round-trip import ----
 
 
 @pytest.mark.django_db
-def test_pythoncodetool_import_recreates_tool_and_reattaches_labels(
-    client_a, python_tool_a, org_a
-):
-    export_resp = client_a.get(f"/api/python-code-tool/{python_tool_a.id}/export/")
-    assert export_resp.status_code == 200
+@EACH_KIND
+@pytest.mark.parametrize(
+    ("fields", "expected_labels"),
+    [({"import_labels": "true"}, {"Billing"}), ({}, {"Billing"}), ({"import_labels": "false"}, set())],
+    ids=["labels", "labels-by-default", "no-labels"],
+)
+def test_import_recreates_the_tool_with_its_labels_when_asked(request, client_a, org_a, kind, fields, expected_labels):
+    tool = request.getfixturevalue(kind.fixture)
+    exported = kind.export(client_a, tool).content
+    count_before = kind.model.objects.count()
 
-    file = _as_upload(export_resp.content, "python_tool.json")
-    count_before = PythonCodeTool.objects.count()
+    resp = kind.import_(client_a, exported, **fields)
 
-    resp = client_a.post(
-        "/api/python-code-tool/import/",
-        {"file": file, "import_labels": "true"},
-        format="multipart",
-    )
     assert resp.status_code == 200, resp.data
-    assert PythonCodeTool.objects.count() == count_before + 1
-
-    new_tool = (
-        PythonCodeTool.objects.filter(org=org_a)
-        .exclude(id=python_tool_a.id)
-        .latest("id")
-    )
-    assert new_tool.python_code.code == python_tool_a.python_code.code
-    label_names = set(
-        new_tool.labels.filter(scope=Label.Scope.TOOL).values_list("name", flat=True)
-    )
-    assert label_names == {"Billing"}
+    assert kind.model.objects.count() == count_before + 1
+    new_tool = kind.model.objects.filter(org=org_a).exclude(id=tool.id).latest("id")
+    assert set(new_tool.labels.filter(scope=Label.Scope.TOOL).values_list("name", flat=True)) == expected_labels
+    if kind.name == "python":
+        assert new_tool.python_code.code == tool.python_code.code
 
 
 @pytest.mark.django_db
-def test_mcptool_import_recreates_tool_and_reattaches_labels(
-    client_a, mcp_tool_a, org_a
-):
-    export_resp = client_a.get(f"/api/mcp-tools/{mcp_tool_a.id}/export/")
-    assert export_resp.status_code == 200
+@EACH_KIND
+def test_import_ignores_a_stale_created_by_reference(request, client_a, kind):
+    """`created_by` is server-managed: a payload naming a user that no longer exists
+    must be ignored on import, not validated into a 400 ("Invalid pk")."""
+    payload = kind.export(client_a, request.getfixturevalue(kind.fixture)).json()
+    payload[kind.export_key][0]["created_by"] = 999999999
 
-    file = _as_upload(export_resp.content, "mcp_tool.json")
-    count_before = McpTool.objects.count()
+    resp = kind.import_(client_a, json.dumps(payload).encode(), import_labels="false")
 
-    resp = client_a.post(
-        "/api/mcp-tools/import/",
-        {"file": file, "import_labels": "true"},
-        format="multipart",
-    )
     assert resp.status_code == 200, resp.data
-    assert McpTool.objects.count() == count_before + 1
-
-    new_tool = McpTool.objects.filter(org=org_a).exclude(id=mcp_tool_a.id).latest("id")
-    label_names = set(
-        new_tool.labels.filter(scope=Label.Scope.TOOL).values_list("name", flat=True)
-    )
-    assert label_names == {"Billing"}
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_import_labels_false_skips_labels(client_a, python_tool_a):
-    export_resp = client_a.get(f"/api/python-code-tool/{python_tool_a.id}/export/")
-    file = _as_upload(export_resp.content, "python_tool.json")
-
-    resp = client_a.post(
-        "/api/python-code-tool/import/",
-        {"file": file, "import_labels": "false"},
-        format="multipart",
-    )
-    assert resp.status_code == 200, resp.data
-
-    new_tool = PythonCodeTool.objects.exclude(id=python_tool_a.id).latest("id")
-    assert new_tool.labels.count() == 0
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_import_labels_omitted_defaults_to_attaching_labels(
-    client_a, python_tool_a
-):
-    export_resp = client_a.get(f"/api/python-code-tool/{python_tool_a.id}/export/")
-    file = _as_upload(export_resp.content, "python_tool.json")
-
-    resp = client_a.post(
-        "/api/python-code-tool/import/",
-        {"file": file},
-        format="multipart",
-    )
-    assert resp.status_code == 200, resp.data
-
-    new_tool = PythonCodeTool.objects.exclude(id=python_tool_a.id).latest("id")
-    label_names = set(
-        new_tool.labels.filter(scope=Label.Scope.TOOL).values_list("name", flat=True)
-    )
-    assert label_names == {"Billing"}
-
-
-@pytest.mark.django_db
-def test_mcptool_import_labels_false_skips_labels(client_a, mcp_tool_a):
-    export_resp = client_a.get(f"/api/mcp-tools/{mcp_tool_a.id}/export/")
-    file = _as_upload(export_resp.content, "mcp_tool.json")
-
-    resp = client_a.post(
-        "/api/mcp-tools/import/",
-        {"file": file, "import_labels": "false"},
-        format="multipart",
-    )
-    assert resp.status_code == 200, resp.data
-
-    new_tool = McpTool.objects.exclude(id=mcp_tool_a.id).latest("id")
-    assert new_tool.labels.count() == 0
 
 
 # ---- exporting a shared built-in tool must not leak other orgs' label names ----
 
 
-@pytest.fixture
-def user_b(db, django_user_model, org_b, exporter_role_a):
-    # `exporter_role_a` is bound to org_a; org_b needs its own role instance
-    # with the same permission shape.
-    role_b = Role.objects.create(name="ToolExporterB", org=org_b, is_built_in=False)
-    RolePermission.objects.create(
-        role=role_b,
-        resource_type=ResourceType.TOOLS,
-        permissions=int(Permission.CREATE | Permission.READ | Permission.EXPORT),
-    )
-    user = django_user_model.objects.create_user(
-        email="exporter_b@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=user, org=org_b, role=role_b)
-    return user
-
-
-@pytest.fixture
-def client_b(user_b, org_b):
-    c = APIClient()
-    c.force_authenticate(user=user_b)
-    c.credentials(HTTP_X_ORGANIZATION_ID=str(org_b.id))
-    return c
-
-
-@pytest.fixture
-def shared_built_in_tool_with_both_orgs_labels(org_a, org_b):
-    code = PythonCode.objects.create(
-        code="def main(): return 1", entrypoint="main", libraries=""
-    )
-    tool = PythonCodeTool.objects.create(
-        name="SharedBuiltIn",
-        description="desc",
-        python_code=code,
-        org=None,
-        built_in=True,
-    )
-    label_a = Label.objects.create(name="OrgALabel", org=org_a, scope=Label.Scope.TOOL)
-    label_b = Label.objects.create(name="OrgBLabel", org=org_b, scope=Label.Scope.TOOL)
-    tool.labels.set([label_a, label_b])
-    return tool
-
-
 @pytest.mark.django_db
-def test_pythoncodetool_export_as_org_b_does_not_leak_org_a_label(
-    client_b, org_b, shared_built_in_tool_with_both_orgs_labels
+@pytest.mark.parametrize("bulk", [False, True], ids=["export", "bulk-export"])
+def test_export_of_a_shared_built_in_tool_carries_only_the_callers_labels(
+    client_b, org_b, shared_built_in_tool_with_both_orgs_labels, bulk
 ):
-    resp = client_b.get(
-        f"/api/python-code-tool/{shared_built_in_tool_with_both_orgs_labels.id}/export/"
-    )
-    assert resp.status_code == 200, resp.data
+    tool = shared_built_in_tool_with_both_orgs_labels
+    kind = TOOL_KINDS[0]
 
-    data = resp.json()
-    tool_data = data["PythonCodeTool"][0]
-    assert tool_data["labels"] == [
-        *shared_built_in_tool_with_both_orgs_labels.labels.filter(
-            org_id=org_b.id
-        ).values_list("id", flat=True)
+    resp = kind.bulk_export(client_b, [tool.id]) if bulk else kind.export(client_b, tool)
+
+    assert resp.status_code == 200, resp.data
+    assert resp.json()["PythonCodeTool"][0]["labels"] == [
+        *tool.labels.filter(org_id=org_b.id).values_list("id", flat=True)
     ]
     assert "OrgALabel" not in resp.content.decode()
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_bulk_export_as_org_b_does_not_leak_org_a_label(
-    client_b, org_b, shared_built_in_tool_with_both_orgs_labels
-):
-    resp = client_b.post(
-        "/api/python-code-tool/bulk-export/",
-        {"ids": [shared_built_in_tool_with_both_orgs_labels.id]},
-        format="json",
-    )
-    assert resp.status_code == 200, resp.data
-    assert "OrgALabel" not in resp.content.decode()
-
-
-# ---- cross-org isolation ----
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_export_cross_org_404(client_a, org_b):
-    other_code = PythonCode.objects.create(code="x", entrypoint="main", libraries="")
-    other_tool = PythonCodeTool.objects.create(
-        name="theirs", description="", python_code=other_code, org=org_b
-    )
-    resp = client_a.get(f"/api/python-code-tool/{other_tool.id}/export/")
-    assert resp.status_code == 404
-
-
-@pytest.mark.django_db
-def test_mcptool_export_cross_org_404(client_a, org_b):
-    other_tool = McpTool.objects.create(
-        name="theirs", transport="t", tool_name="x", org=org_b
-    )
-    resp = client_a.get(f"/api/mcp-tools/{other_tool.id}/export/")
-    assert resp.status_code == 404
-
-
-def _as_upload(content: bytes, filename: str):
-    from io import BytesIO
-
-    f = BytesIO(content)
-    f.name = filename
-    f.seek(0)
-    return f
 
 
 # ---- built-in role coverage (migration 0210) ----
@@ -609,50 +435,85 @@ def builtin_role_client(db, org_a, builtin_role):
 
 
 @pytest.mark.django_db
+@EACH_KIND
 @pytest.mark.parametrize("builtin_role", ["Org Admin", "Member"], indirect=True)
-def test_builtin_role_can_export_python_code_tool(builtin_role_client, python_tool_a):
-    resp = builtin_role_client.get(f"/api/python-code-tool/{python_tool_a.id}/export/")
-    assert resp.status_code == 200
+def test_builtin_roles_can_export_and_import_tools(request, builtin_role_client, client_a, kind):
+    tool = request.getfixturevalue(kind.fixture)
+
+    exported = kind.export(builtin_role_client, tool)
+    imported = kind.import_(builtin_role_client, kind.export(client_a, tool).content, import_labels="true")
+
+    assert exported.status_code == 200
+    assert imported.status_code == 200, imported.data
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("builtin_role", ["Org Admin", "Member"], indirect=True)
-def test_builtin_role_can_export_mcp_tool(builtin_role_client, mcp_tool_a):
-    resp = builtin_role_client.get(f"/api/mcp-tools/{mcp_tool_a.id}/export/")
-    assert resp.status_code == 200
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("builtin_role", ["Org Admin", "Member"], indirect=True)
-def test_builtin_role_can_import_python_code_tool(
-    builtin_role_client, python_tool_a, client_a
-):
-    # Export with the (already-authorized) custom-role client to build the
-    # upload payload, then verify the built-in role can perform the import
-    # (import_entity requires Permission.CREATE, which both roles already
-    # had before this migration — this asserts no regression).
-    export_resp = client_a.get(f"/api/python-code-tool/{python_tool_a.id}/export/")
-    assert export_resp.status_code == 200
-    file = _as_upload(export_resp.content, "python_tool.json")
-
-    resp = builtin_role_client.post(
-        "/api/python-code-tool/import/",
-        {"file": file, "import_labels": "true"},
-        format="multipart",
-    )
-    assert resp.status_code == 200, resp.data
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("builtin_role", ["Org Admin", "Member"], indirect=True)
-def test_builtin_role_can_import_mcp_tool(builtin_role_client, mcp_tool_a, client_a):
+def test_mcptool_import_rejects_non_http_transport(client_a, mcp_tool_a, org_a):
     export_resp = client_a.get(f"/api/mcp-tools/{mcp_tool_a.id}/export/")
     assert export_resp.status_code == 200
-    file = _as_upload(export_resp.content, "mcp_tool.json")
+    payload = export_resp.json()
+    payload["MCPTool"][0]["transport"] = "/tmp/a.py"
+    tool_count_before_import = McpTool.objects.filter(org=org_a).count()
 
-    resp = builtin_role_client.post(
+    file = _as_upload(json.dumps(payload).encode(), "mcp_tool.json")
+    resp = client_a.post(
         "/api/mcp-tools/import/",
-        {"file": file, "import_labels": "true"},
+        {"file": file, "import_labels": "false"},
         format="multipart",
     )
+
+    assert resp.status_code == 400, resp.data
+    assert "transport" in resp.data["message"]
+    assert McpTool.objects.filter(org=org_a).count() == tool_count_before_import
+
+
+# ---- an imported python tool's description is cleaned like the API route cleans it ----
+
+
+def _import_python_tool_with_description(client, org, tool, description):
+    python_kind = TOOL_KINDS[0]
+    payload = python_kind.export(client, tool).json()
+    payload["PythonCodeTool"][0]["description"] = description
+
+    resp = python_kind.import_(client, json.dumps(payload).encode(), import_labels="false")
+
     assert resp.status_code == 200, resp.data
+    return PythonCodeTool.objects.filter(org=org).exclude(id=tool.id).latest("id")
+
+
+@pytest.mark.django_db
+def test_import_stores_a_python_tool_description_without_control_characters_and_capped(
+    client_a, org_a, python_tool_a
+):
+    imported = _import_python_tool_with_description(
+        client_a, org_a, python_tool_a, "Line one\x1b[31m\x07\n" + "x" * 2000
+    )
+
+    assert imported.description == "Line one[31m" + "x" * 1012
+
+
+@pytest.mark.django_db
+def test_a_description_of_only_control_characters_is_rejected_on_import_and_by_the_api(
+    client_a, org_a, python_tool_a
+):
+    python_kind = TOOL_KINDS[0]
+    payload = python_kind.export(client_a, python_tool_a).json()
+    payload["PythonCodeTool"][0]["description"] = "\x1b\x07"
+    tool_count_before = PythonCodeTool.objects.filter(org=org_a).count()
+
+    imported = python_kind.import_(client_a, json.dumps(payload).encode(), import_labels="false")
+    created = client_a.post(
+        "/api/python-code-tool/",
+        {
+            "name": "via-api",
+            "description": "\x1b\x07",
+            "python_code": {"code": "x", "entrypoint": "main", "libraries": []},
+        },
+        format="json",
+    )
+
+    assert imported.status_code == 400, imported.data
+    assert created.status_code == 400, created.data
+    assert "Description must contain visible text." in str(imported.data)
+    assert "Description must contain visible text." in str(created.data)
+    assert PythonCodeTool.objects.filter(org=org_a).count() == tool_count_before

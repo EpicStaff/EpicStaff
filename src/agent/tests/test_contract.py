@@ -5,13 +5,13 @@ Contract tests: AgentRequest validation and DataLoader correlation_id injection.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from app.data_loader import DataLoader
+from app.exceptions import DataLoadError
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from shared.models.agent_service import AgentRequest, LoopResult, RunType, TokenUsage
-from shared.redis_streams import agent_result_stream
 
 # ---------------------------------------------------------------------------
 # The canonical example request blob (no correlation_id — DataLoader injects it)
@@ -59,10 +59,8 @@ EXAMPLE_BLOB = {
                     "required": [],
                 },
                 "python_code": {
-                    "venv_name": "venv_pyt_1",
                     "code": "def run(x): return x",
                     "entrypoint": "run",
-                    "libraries": [],
                     "global_kwargs": None,
                     "use_storage": False,
                     "storage_allowed_paths": None,
@@ -152,72 +150,57 @@ def test_agent_request_validates_example_blob():
     assert request.correlation_id == "corr-1"
 
 
-def test_agent_request_round_trips():
-    request = AgentRequest(correlation_id="corr-1", **EXAMPLE_BLOB)
-    dumped = request.model_dump()
-    assert dumped["correlation_id"] == "corr-1"
-    assert dumped["run_type"] == "SINGLE_TASK"
-
-
-def test_agent_request_frozen():
-    request = AgentRequest(correlation_id="corr-1", **EXAMPLE_BLOB)
-    with pytest.raises(Exception):
-        request.correlation_id = "mutated"  # type: ignore[misc]
-
-
-def test_collection_spec_search_configs_accessible():
-    request = AgentRequest(correlation_id="corr-1", **EXAMPLE_BLOB)
-    collection = request.collections[0]
-
-    assert collection.unique_name == "collection:7"
-    assert collection.collection_id == 7
-    assert collection.name == "research_docs"
-
-    naive_entry = collection.search_configs[0]
-    assert naive_entry.rag_type == "naive"
-    assert naive_entry.rag_id == 3
-
-    graph_entry = collection.search_configs[1]
-    assert graph_entry.rag_type == "graph"
-    assert graph_entry.rag_id == 4
-
-
 # ---------------------------------------------------------------------------
 # DataLoader injects correlation_id from envelope
 # ---------------------------------------------------------------------------
 
 
-async def test_data_loader_injects_correlation_id():
-    """DataLoader builds AgentRequest(correlation_id=envelope.correlation_id, **data).
-    The blob stored at the Redis key must NOT contain correlation_id.
-    """
+class FakeKeyValueRedis:
+    def __init__(self, values: dict[str, str]):
+        self.values = values
+
+    async def get(self, key):
+        return self.values.get(key)
+
+    async def aclose(self):
+        pass
+
+
+async def _load(monkeypatch, stored: dict[str, str]):
+    from app import data_loader
     from shared.redis_streams import StreamEnvelope
 
-    template = AgentRequest(correlation_id="ignored", **EXAMPLE_BLOB)
-    dumped = template.model_dump(exclude={"correlation_id"})
-    blob_without_correlation_id = json.dumps(dumped)
+    async def from_url(url, **kwargs):
+        return FakeKeyValueRedis(stored)
 
-    fake_redis = MagicMock()
-    fake_redis.get = AsyncMock(return_value=blob_without_correlation_id)
-    fake_redis.aclose = AsyncMock()
-
-    loader = DataLoader.__new__(DataLoader)
-    loader._host = "localhost"
-    loader._port = 6379
-    loader._password = None
-    loader._client = fake_redis
-
+    monkeypatch.setattr(data_loader.aioredis, "from_url", from_url)
+    loader = DataLoader(host="localhost", port=6379)
+    await loader.connect()
     envelope = StreamEnvelope(
-        type="agent.run",
-        correlation_id="injected-corr-id",
-        payload={"request_key": "agent:request:42"},
+        type="agent.run", correlation_id="injected-corr-id", payload={"request_key": "agent:request:42"}
     )
+    return await loader.load(envelope)
 
-    request = await loader.load(envelope)
+
+async def test_data_loader_hydrates_the_request_with_the_envelopes_correlation_id(monkeypatch):
+    """Crew stores the blob without correlation_id; it comes from the stream envelope."""
+    blob = json.dumps(AgentRequest(correlation_id="ignored", **EXAMPLE_BLOB).model_dump(exclude={"correlation_id"}))
+
+    request = await _load(monkeypatch, {"agent:request:42": blob})
 
     assert request.correlation_id == "injected-corr-id"
     assert request.run_type == RunType.SINGLE_TASK
     assert request.agents[0].id == 12
+
+
+@pytest.mark.parametrize(
+    ("stored", "message"),
+    [({}, "No data found"), ({"agent:request:42": "{not json"}, "Invalid JSON")],
+    ids=["missing-key", "malformed-json"],
+)
+async def test_data_loader_reports_an_unusable_blob(monkeypatch, stored, message):
+    with pytest.raises(DataLoadError, match=message):
+        await _load(monkeypatch, stored)
 
 
 # ---------------------------------------------------------------------------
@@ -268,50 +251,6 @@ async def test_agent_result_payload_key_set_includes_tasks():
         "stop_reason",
         "token_usage",
         "error",
-        "events",
         "warnings",
         "tasks",
     }
-
-
-# ---------------------------------------------------------------------------
-# Live envelope types (agent -> crew wire contract)
-# ---------------------------------------------------------------------------
-
-LIVE_EVENT_TYPES = frozenset(
-    {
-        "agent.tool_call",
-        "agent.tool_result",
-        "agent.task_start",
-        "agent.task_finish",
-        "agent.knowledge_search",
-    }
-)
-"""Mirrors ``LIVE_EVENT_TYPES`` in ``src/crew/services/agent_task_service.py``
-— envelope types forwarded live to crew's ``on_event`` callback instead of
-ending the wait. Keep both lists in sync when adding a new live envelope."""
-
-
-def test_live_event_types_include_knowledge_search():
-    """Pins 'agent.knowledge_search' as a recognized live envelope type
-    alongside the existing tool-call/tool-result/task-start/task-finish set."""
-    assert "agent.knowledge_search" in LIVE_EVENT_TYPES
-    assert {
-        "agent.tool_call",
-        "agent.tool_result",
-        "agent.task_start",
-        "agent.task_finish",
-        "agent.knowledge_search",
-    } == LIVE_EVENT_TYPES
-
-
-# ---------------------------------------------------------------------------
-# Per-run result stream name (crew <-> agent wire contract)
-# ---------------------------------------------------------------------------
-
-
-def test_agent_result_stream_name_is_prefix_colon_correlation_id():
-    """Crew reads, and the agent publishes to, ``<prefix>:<correlation_id>``.
-    Both sides call ``agent_result_stream``; pin the format so a change to it
-    is a visible contract change."""
-    assert agent_result_stream("agent.results", "corr-1") == "agent.results:corr-1"

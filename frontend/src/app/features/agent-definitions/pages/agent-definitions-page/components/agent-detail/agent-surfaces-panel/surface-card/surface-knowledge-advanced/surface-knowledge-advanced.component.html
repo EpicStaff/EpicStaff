@@ -45,6 +45,12 @@
                     </div>
                 }
 
+                @if (invalidConfig()) {
+                    <p class="advanced__error">
+                        Some retrieval settings are invalid. Fix them to save this collection.
+                    </p>
+                }
+
                 @for (rtf of ragTabFormList(); track rtf) {
                     <app-rag-tab
                         [form]="rtf"

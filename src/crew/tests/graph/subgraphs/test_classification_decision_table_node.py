@@ -5,8 +5,9 @@ Sandbox (RunPythonCodeService.run_code) is patched to execute the generated code
 in-process so expression/manipulation logic is fully exercised.
 LLM calls (litellm.acompletion) are replaced with AsyncMock.
 
-NOTE: The CDT subgraph uses `src.crew.services.run_python_code_service.RunPythonCodeService`
-(absolute import). We must patch that exact class, not the bare `services.*` alias.
+NOTE: Patch `services.run_python_code_service.RunPythonCodeService`, the module path the
+CDT subgraph and every other caller import; a second import path would be a second
+class with its own singleton.
 """
 
 from __future__ import annotations
@@ -21,11 +22,10 @@ from langgraph.graph import END, StateGraph
 from models.state import State
 from services.graph.events import StopEvent
 
-# Import via the same absolute path the CDT uses so we patch the right object
 from src.crew.services.graph.subgraphs.classification_decision_table_node import (
     ClassificationDecisionTableNodeSubgraph,
 )
-from src.crew.services.run_python_code_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService
 from src.shared.models.graph_nodes import (
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
@@ -33,7 +33,7 @@ from src.shared.models.graph_nodes import (
 )
 from src.shared.models import PythonCodeData
 from src.shared.models.ai_providers import LLMConfigData, LLMData
-from src.crew.utils.singleton_meta import SingletonMeta
+from utils.singleton_meta import SingletonMeta
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +85,12 @@ def make_node_data(
     )
 
 
+def recording_redis_service() -> MagicMock:
+    redis_service = MagicMock()
+    redis_service.aadd_graph_message = AsyncMock()
+    return redis_service
+
+
 def make_subgraph(node_data: ClassificationDecisionTableNodeData) -> object:
     """Compile a ClassificationDecisionTableNodeSubgraph and return the compiled graph."""
     graph_builder = StateGraph(State)
@@ -93,7 +99,7 @@ def make_subgraph(node_data: ClassificationDecisionTableNodeData) -> object:
         node_data=node_data,
         graph_builder=graph_builder,
         stop_event=StopEvent(),
-        redis_service=MagicMock(),
+        redis_service=recording_redis_service(),
     )
     return builder.build()
 
@@ -116,7 +122,12 @@ from dotdict import DotDict, DotObject, DotList
 
 
 async def fake_run_code(
-    self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None
+    self,
+    python_code_data,
+    inputs,
+    stop_event=None,
+    additional_global_kwargs=None,
+    storage_credentials=None,
 ):
     ns: dict = {}
     exec(_SANDBOX_MODULE_PRELUDE + python_code_data.code, ns)  # noqa: S102
@@ -131,7 +142,12 @@ async def fake_run_code(
 
 
 async def fake_run_code_error(
-    self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None
+    self,
+    python_code_data,
+    inputs,
+    stop_event=None,
+    additional_global_kwargs=None,
+    storage_credentials=None,
 ):
     return {
         "returncode": 1,
@@ -159,429 +175,88 @@ def reset_singleton():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_first_matching_row_continue_false_routes_and_stops(monkeypatch):
-    """First matching row with continue=False routes to its next_node.
-    A later row's manipulation must NOT run (its variable stays unchanged)."""
-    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            expression="True",
-            manipulation="variables.row1_ran = True",
-            next_node="node_A",
-            continue_flag=False,
-            order=0,
-        ),
-        ClassificationConditionGroupData(
-            group_name="row2",
-            expression="True",
-            manipulation="variables.row2_ran = True",
-            next_node="node_B",
-            continue_flag=False,
-            order=1,
-        ),
-    ]
-    node_data = make_node_data(condition_groups=groups)
-    subgraph = make_subgraph(node_data)
-    state = make_state({"row1_ran": False, "row2_ran": False})
-
-    result = await subgraph.ainvoke(state)
-
-    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "node_A"
-    assert result["variables"]["row1_ran"] is True
-    assert result["variables"]["row2_ran"] is False
-
-
-@pytest.mark.asyncio
-async def test_non_matching_first_row_falls_through_to_second(monkeypatch):
-    """Non-matching first row is skipped; second matching row's next_node becomes result."""
-    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            expression="False",
-            next_node="node_A",
-            continue_flag=False,
-            order=0,
-        ),
-        ClassificationConditionGroupData(
-            group_name="row2",
-            expression="True",
-            next_node="node_B",
-            continue_flag=False,
-            order=1,
-        ),
-    ]
-    node_data = make_node_data(condition_groups=groups)
-    subgraph = make_subgraph(node_data)
-    state = make_state()
-
-    result = await subgraph.ainvoke(state)
-
-    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "node_B"
-
-
-@pytest.mark.asyncio
-async def test_explicit_route_is_terminal_continue_ignored(monkeypatch):
-    """An explicit next_node on a matched row is terminal regardless of continue_flag.
-
-    row1 has next_node='A' and continue_flag=True. Evaluation must stop after row1;
-    row2 must never execute. result_node == 'A'."""
-    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            expression="True",
-            manipulation="variables.row1_ran = True",
-            next_node="A",
-            continue_flag=True,
-            order=0,
-        ),
-        ClassificationConditionGroupData(
-            group_name="row2",
-            expression="True",
-            manipulation="variables.row2_ran = True",
-            next_node="B",
-            continue_flag=False,
-            order=1,
-        ),
-    ]
-    node_data = make_node_data(condition_groups=groups)
-    subgraph = make_subgraph(node_data)
-    state = make_state({"row1_ran": False, "row2_ran": False})
-
-    result = await subgraph.ainvoke(state)
-
-    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "A"
-    assert result["variables"]["row1_ran"] is True
-    assert result["variables"]["row2_ran"] is False
-
-
-@pytest.mark.asyncio
-async def test_continue_true_no_route_falls_through_then_routes(monkeypatch):
-    """continue_flag=True with no next_node falls through to the next condition.
-
-    row1 has no next_node and continue_flag=True — falls through.
-    row2 has next_node='B' — routes and stops.
-    Both manipulations run; result_node == 'B'."""
-    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            expression="True",
-            manipulation="variables.row1_ran = True",
-            next_node=None,
-            continue_flag=True,
-            order=0,
-        ),
-        ClassificationConditionGroupData(
-            group_name="row2",
-            expression="True",
-            manipulation="variables.row2_ran = True",
-            next_node="B",
-            continue_flag=False,
-            order=1,
-        ),
-    ]
-    node_data = make_node_data(condition_groups=groups)
-    subgraph = make_subgraph(node_data)
-    state = make_state({"row1_ran": False, "row2_ran": False})
-
-    result = await subgraph.ainvoke(state)
-
-    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "B"
-    assert result["variables"]["row1_ran"] is True
-    assert result["variables"]["row2_ran"] is True
-
-
-@pytest.mark.asyncio
-async def test_route_wins_over_continue_matches_qa_str(monkeypatch):
-    """QA repro: row1 expression='True', next_node='node_A', continue_flag=True.
-    row2 expression='True', no next_node, manipulation sets row2_ran.
-    Evaluation must stop at row1; row2 must never execute."""
-    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            expression="True",
-            next_node="node_A",
-            continue_flag=True,
-            order=0,
-        ),
-        ClassificationConditionGroupData(
-            group_name="row2",
-            expression="True",
-            manipulation="variables.row2_ran = True",
-            next_node=None,
-            continue_flag=False,
-            order=1,
-        ),
-    ]
-    node_data = make_node_data(condition_groups=groups)
-    subgraph = make_subgraph(node_data)
-    state = make_state({"row2_ran": False})
-
-    result = await subgraph.ainvoke(state)
-
-    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "node_A"
-    assert result["variables"]["row2_ran"] is False
-
-
-@pytest.mark.asyncio
-async def test_no_match_falls_back_to_default_next_node(monkeypatch):
-    """No row matches → result_node == default_next_node."""
-    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            expression="False",
-            next_node="node_A",
-            continue_flag=False,
-            order=0,
-        ),
-    ]
-    node_data = make_node_data(
-        condition_groups=groups, default_next_node="default_node"
-    )
-    subgraph = make_subgraph(node_data)
-    state = make_state()
-
-    result = await subgraph.ainvoke(state)
-
-    assert (
-        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "default_node"
+def row(order, expression=None, next_node=None, **fields):
+    return ClassificationConditionGroupData(
+        group_name=f"row{order}", order=order, expression=expression, next_node=next_node, **fields
     )
 
 
 @pytest.mark.asyncio
-async def test_no_match_no_default_falls_back_to_end(monkeypatch):
-    """No row matches and no default_next_node → result_node == END."""
-    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            expression="False",
-            next_node="node_A",
-            continue_flag=False,
-            order=0,
+@pytest.mark.parametrize(
+    ("groups", "variables", "node_overrides", "expected_route", "expected_variables"),
+    [
+        pytest.param(
+            [row(0, "True", "node_A", manipulation="variables.ran = 'row0'"),
+             row(1, "True", "node_B", manipulation="variables.ran = 'row1'")],
+            {"ran": None}, {}, "node_A", {"ran": "row0"},
+            id="first-match-routes-and-later-rows-never-run",
         ),
-    ]
-    node_data = make_node_data(condition_groups=groups, default_next_node=None)
-    subgraph = make_subgraph(node_data)
-    state = make_state()
-
-    result = await subgraph.ainvoke(state)
-
-    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == END
-
-
-@pytest.mark.asyncio
-async def test_dock_visible_false_row_is_skipped(monkeypatch):
-    """dock_visible=False row whose expression WOULD match is skipped entirely."""
-    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="hidden_row",
-            expression="True",
-            manipulation="variables.hidden_ran = True",
-            next_node="should_not_be_set",
-            dock_visible=False,
-            continue_flag=False,
-            order=0,
+        pytest.param(
+            [row(0, "False", "node_A"), row(1, "True", "node_B")],
+            {}, {}, "node_B", {},
+            id="non-matching-row-falls-through",
         ),
-        ClassificationConditionGroupData(
-            group_name="visible_row",
-            expression="True",
-            next_node="correct_node",
-            dock_visible=True,
-            continue_flag=False,
-            order=1,
+        pytest.param(
+            [row(0, "True", "node_A", continue_flag=True),
+             row(1, "True", manipulation="variables.ran = 'row1'")],
+            {"ran": None}, {}, "node_A", {"ran": None},
+            id="explicit-route-is-terminal-even-with-continue",
         ),
-    ]
-    node_data = make_node_data(condition_groups=groups)
-    subgraph = make_subgraph(node_data)
-    state = make_state({"hidden_ran": False})
-
-    result = await subgraph.ainvoke(state)
-
-    assert (
-        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "correct_node"
-    )
-    assert result["variables"]["hidden_ran"] is False
-
-
-@pytest.mark.asyncio
-async def test_expression_sandbox_error_routes_to_next_error_node(monkeypatch):
-    """Expression sandbox returncode!=0 → result_node == next_error_node."""
-    monkeypatch.setattr(
-        RunPythonCodeService, "run_code", fake_run_code_error, raising=True
-    )
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            expression="True",
-            next_node="node_A",
-            continue_flag=False,
-            order=0,
+        pytest.param(
+            [row(0, "True", continue_flag=True, manipulation="variables.ran = ['row0']"),
+             row(1, "True", "node_B", manipulation="variables.ran = variables.ran + ['row1']")],
+            {"ran": []}, {}, "node_B", {"ran": ["row0", "row1"]},
+            id="continue-without-route-runs-and-falls-through",
         ),
-    ]
-    node_data = make_node_data(condition_groups=groups, next_error_node="error_node")
-    subgraph = make_subgraph(node_data)
-    state = make_state()
-
-    result = await subgraph.ainvoke(state)
-
-    assert (
-        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
-    )
-
-
-@pytest.mark.asyncio
-async def test_expression_sandbox_error_no_error_node_routes_to_end(monkeypatch):
-    """Expression sandbox returncode!=0 with no next_error_node → result_node == END."""
-    monkeypatch.setattr(
-        RunPythonCodeService, "run_code", fake_run_code_error, raising=True
-    )
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            expression="True",
-            next_node="node_A",
-            continue_flag=False,
-            order=0,
+        pytest.param(
+            [row(0, "False", "node_A")],
+            {}, {"default_next_node": "default_node"}, "default_node", {},
+            id="no-match-uses-default",
         ),
-    ]
-    node_data = make_node_data(condition_groups=groups, next_error_node=None)
-    subgraph = make_subgraph(node_data)
-    state = make_state()
-
-    result = await subgraph.ainvoke(state)
-
-    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == END
-
-
-@pytest.mark.asyncio
-async def test_field_expressions_bare_value_and_operator_prefix(monkeypatch):
-    """field_expressions: bare value `'"start"'` matches when status=='start';
-    operator-prefix `'> 5'` matches when count > 5."""
-    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            field_expressions={
-                "status": '"start"',  # bare value → status == "start"
-                "count": "> 5",  # operator prefix → count > 5
-            },
-            next_node="matched_node",
-            continue_flag=False,
-            order=0,
+        pytest.param(
+            [row(0, "False", "node_A")], {}, {}, END, {},
+            id="no-match-no-default-ends",
         ),
-    ]
-    node_data = make_node_data(condition_groups=groups)
-    subgraph = make_subgraph(node_data)
-    state = make_state({"status": "start", "count": 10})
-
-    result = await subgraph.ainvoke(state)
-
-    assert (
-        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "matched_node"
-    )
-
-
-@pytest.mark.asyncio
-async def test_field_expressions_no_match_when_values_differ(monkeypatch):
-    """field_expressions do not match when state vars don't satisfy them."""
-    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            field_expressions={
-                "status": '"start"',
-                "count": "> 5",
-            },
-            next_node="matched_node",
-            continue_flag=False,
-            order=0,
+        pytest.param(
+            [row(0, "True", "hidden", dock_visible=False, manipulation="variables.ran = 'hidden'"),
+             row(1, "True", "visible")],
+            {"ran": None}, {}, "visible", {"ran": None},
+            id="hidden-row-is-skipped",
         ),
-    ]
-    node_data = make_node_data(condition_groups=groups, default_next_node="fallback")
-    subgraph = make_subgraph(node_data)
-    state = make_state({"status": "end", "count": 3})
-
-    result = await subgraph.ainvoke(state)
-
-    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "fallback"
-
-
-@pytest.mark.asyncio
-async def test_manipulation_writes_back_to_state_variables(monkeypatch):
-    """field_manipulations with a bare key write back to state['variables'].
-
-    The engine prefixes bare keys with `variables.` so `{"score": "score + 10"}`
-    generates `variables.score = score + 10`, which is captured by the write-back
-    path. The main manipulation also runs and updates its target variable.
-    """
-    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
-
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            expression="True",
-            field_manipulations={"score": "score + 10"},
-            manipulation="variables.label = 'updated'",
-            next_node="done",
-            continue_flag=False,
-            order=0,
+        pytest.param(
+            # A bare value means `field == value`; an operator prefix is applied to the field.
+            [row(0, next_node="matched", field_expressions={"status": '"start"', "count": "> 5"})],
+            {"status": "start", "count": 10}, {"default_next_node": "fallback"}, "matched", {},
+            id="field-expressions-match",
         ),
-    ]
-    node_data = make_node_data(condition_groups=groups)
-    subgraph = make_subgraph(node_data)
-    state = make_state({"score": 5, "label": "original"})
-
-    result = await subgraph.ainvoke(state)
-
-    assert result["variables"]["score"] == 15
-    assert result["variables"]["label"] == "updated"
-
-
-@pytest.mark.asyncio
-async def test_field_manipulations_already_prefixed_key_not_double_prefixed(
-    monkeypatch,
+        pytest.param(
+            [row(0, next_node="matched", field_expressions={"status": '"start"', "count": "> 5"})],
+            {"status": "end", "count": 3}, {"default_next_node": "fallback"}, "fallback", {},
+            id="field-expressions-do-not-match",
+        ),
+        pytest.param(
+            [row(0, "True", "done", field_manipulations={"score": "score + 10"},
+                 manipulation="variables.label = 'updated'")],
+            {"score": 5, "label": "original"}, {}, "done", {"score": 15, "label": "updated"},
+            id="field-and-main-manipulations-write-back",
+        ),
+        pytest.param(
+            [row(0, "True", "done", field_manipulations={"variables.score": "score + 1"})],
+            {"score": 10}, {}, "done", {"score": 11},
+            id="already-prefixed-field-manipulation",
+        ),
+    ],
+)
+async def test_routing(
+    monkeypatch, groups, variables, node_overrides, expected_route, expected_variables
 ):
-    """field_manipulations with an already-prefixed key (`variables.score`) must not
-    become `variables.variables.score` — the engine skips the prefix when already present."""
     monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+    subgraph = make_subgraph(make_node_data(condition_groups=groups, **node_overrides))
 
-    groups = [
-        ClassificationConditionGroupData(
-            group_name="row1",
-            expression="True",
-            field_manipulations={"variables.score": "score + 1"},
-            next_node="done",
-            continue_flag=False,
-            order=0,
-        ),
-    ]
-    node_data = make_node_data(condition_groups=groups)
-    subgraph = make_subgraph(node_data)
-    state = make_state({"score": 10})
+    result = await subgraph.ainvoke(make_state(variables))
 
-    result = await subgraph.ainvoke(state)
-
-    assert result["variables"]["score"] == 11
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == expected_route
+    assert {name: result["variables"][name] for name in expected_variables} == expected_variables
     assert "variables" not in result["variables"]
 
 
@@ -646,35 +321,138 @@ async def test_prompt_with_output_schema_calls_llm_and_stores_result(monkeypatch
     )
 
 
+async def run_prompt_row_and_capture_acompletion_kwargs(
+    monkeypatch, llm_config: LLMConfigData, provider: str = "openai"
+) -> dict:
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+    prompt_config = PromptConfigData(
+        prompt_text="Classify the following: {text}",
+        llm_data=LLMData(provider=provider, config=llm_config),
+        output_schema={
+            "type": "object",
+            "properties": {"label": {"type": "string"}},
+            "required": ["label"],
+        },
+        result_variable="classification_result",
+    )
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="prompt_row",
+            expression="True",
+            prompt_id="classify",
+            next_node="after_prompt",
+            continue_flag=False,
+            order=0,
+        ),
+    ]
+    subgraph = make_subgraph(
+        make_node_data(condition_groups=groups, prompts={"classify": prompt_config})
+    )
+
+    mock_response = MagicMock()
+    mock_response.usage.total_tokens = 1
+    mock_response.usage.prompt_tokens = 1
+    mock_response.usage.completion_tokens = 0
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = '{"label": "positive"}'
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+        mock_completion.return_value = mock_response
+        await subgraph.ainvoke(make_state({"text": "hello world"}))
+
+    assert mock_completion.call_count == 1
+    return mock_completion.call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_prompt_llm_call_forwards_reasoning_effort(monkeypatch):
+    call_kwargs = await run_prompt_row_and_capture_acompletion_kwargs(
+        monkeypatch,
+        LLMConfigData(model="gpt-5-mini", reasoning_effort="high", temperature=0.2),
+    )
+
+    assert call_kwargs["reasoning_effort"] == "high"
+    assert call_kwargs["temperature"] == 0.2
+    assert call_kwargs["model"] == "gpt-5-mini"
+
+
+@pytest.mark.asyncio
+async def test_prompt_llm_call_omits_unset_generation_params(monkeypatch):
+    call_kwargs = await run_prompt_row_and_capture_acompletion_kwargs(
+        monkeypatch, LLMConfigData(model="gpt-4o-mini")
+    )
+
+    for unset_param in (
+        "reasoning_effort",
+        "temperature",
+        "top_p",
+        "stop",
+        "max_tokens",
+        "presence_penalty",
+        "frequency_penalty",
+        "logit_bias",
+        "seed",
+        "timeout",
+    ):
+        assert unset_param not in call_kwargs
+    assert call_kwargs["stream"] is False
+    assert call_kwargs["response_format"]["type"] == "json_schema"
+
+
+@pytest.mark.asyncio
+async def test_prompt_llm_call_drops_sampling_params_anthropic_rejects_with_thinking(
+    monkeypatch,
+):
+    call_kwargs = await run_prompt_row_and_capture_acompletion_kwargs(
+        monkeypatch,
+        LLMConfigData(
+            model="claude-sonnet-4-6", temperature=0.5, top_p=0.9, reasoning_effort="high"
+        ),
+        provider="anthropic",
+    )
+
+    assert call_kwargs["model"] == "anthropic/claude-sonnet-4-6"
+    assert call_kwargs["reasoning_effort"] == "high"
+    assert "temperature" not in call_kwargs
+    assert "top_p" not in call_kwargs
+
+
 async def fake_run_code_raises(
-    self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None
+    self,
+    python_code_data,
+    inputs,
+    stop_event=None,
+    additional_global_kwargs=None,
+    storage_credentials=None,
 ):
     raise RuntimeError("sandbox unreachable")
 
 
 _FAILING_CODE = PythonCodeData(
-    venv_name="default", code="def main(): pass", entrypoint="main", libraries=[]
+    code="def main(): pass", entrypoint="main"
 )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "run_code, expression, node_data_overrides",
+    "run_code, expression, node_data_overrides, expected_route",
     [
-        (fake_run_code_error, "True", {}),
-        (fake_run_code_raises, "True", {}),
-        (fake_run_code_error, None, {"pre_python_code": _FAILING_CODE}),
-        (fake_run_code_error, None, {"post_python_code": _FAILING_CODE}),
+        (fake_run_code_error, "True", {}, "error_node"),
+        (fake_run_code_raises, "True", {}, "error_node"),
+        (fake_run_code_error, None, {"pre_python_code": _FAILING_CODE}, "error_node"),
+        (fake_run_code_error, None, {"post_python_code": _FAILING_CODE}, "error_node"),
+        (fake_run_code_error, "True", {"next_error_node": None}, END),
     ],
     ids=[
         "condition-error",
         "condition-unexpected-error",
         "pre-computation",
         "post-computation",
+        "no-error-node-ends",
     ],
 )
 async def test_error_route_emits_finish_after_error(
-    monkeypatch, run_code, expression, node_data_overrides
+    monkeypatch, run_code, expression, node_data_overrides, expected_route
 ):
     """Every error route closes the CDT run with a finish message, so the UI stops
     grouping the next node's messages under the CDT."""
@@ -688,7 +466,7 @@ async def test_error_route_emits_finish_after_error(
     node_data = make_node_data(
         condition_groups=groups, next_error_node="error_node"
     ).model_copy(update=node_data_overrides)
-    redis_service = MagicMock()
+    redis_service = recording_redis_service()
     subgraph = ClassificationDecisionTableNodeSubgraph(
         session_id=1,
         node_data=node_data,
@@ -699,18 +477,12 @@ async def test_error_route_emits_finish_after_error(
 
     result = await subgraph.ainvoke(make_state())
 
-    messages = [
-        published.args[1]["message_data"]
-        for published in redis_service.publish.call_args_list
-        if published.args[0] == "graph:messages"
-    ]
+    messages = published_messages(redis_service)
     message_types = [message["message_type"] for message in messages]
     assert message_types[0] == "start"
     assert message_types[-2:] == ["error", "finish"]
-    assert messages[-1]["output"] == "error_node"
-    assert (
-        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
-    )
+    assert messages[-1]["output"] == expected_route
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == expected_route
 
 
 # ---------------------------------------------------------------------------
@@ -723,7 +495,12 @@ def record_run_code(monkeypatch) -> list[dict]:
     calls: list[dict] = []
 
     async def recording_run_code(
-        self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None
+        self,
+        python_code_data,
+        inputs,
+        stop_event=None,
+        additional_global_kwargs=None,
+        storage_credentials=None,
     ):
         calls.append(inputs)
         return await fake_run_code(self, python_code_data, inputs, stop_event)
@@ -737,7 +514,7 @@ def expression_batch_calls(calls: list[dict]) -> list[dict]:
 
 
 def build_subgraph_with_redis(node_data: ClassificationDecisionTableNodeData):
-    redis_service = MagicMock()
+    redis_service = recording_redis_service()
     subgraph = ClassificationDecisionTableNodeSubgraph(
         session_id=1,
         node_data=node_data,
@@ -750,9 +527,8 @@ def build_subgraph_with_redis(node_data: ClassificationDecisionTableNodeData):
 
 def published_messages(redis_service: MagicMock) -> list[dict]:
     return [
-        published.args[1]["message_data"]
-        for published in redis_service.publish.call_args_list
-        if published.args[0] == "graph:messages"
+        json.loads(added.args[1])["message_data"]
+        for added in redis_service.aadd_graph_message.await_args_list
     ]
 
 
@@ -1023,6 +799,50 @@ async def test_exit_in_expression_is_reported_against_its_row(monkeypatch):
     )
 
 
+# ---------------------------------------------------------------------------
+# Path resolution safety
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_path_resolves_legitimate_dot_and_bracket_paths():
+    # Legitimate dot, direct lookup, and bracket paths stay working.
+    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
+    ctx = {
+        "variables": DotDict(
+            {
+                "chat_id": "abc",
+                "index": 1,
+                "messages": [DotDict({"text": "first"}), DotDict({"text": "second"})],
+            }
+        ),
+        "session_id": 42,
+    }
+
+    assert resolve("variables.chat_id", ctx) == "abc"
+    assert resolve("session_id", ctx) == 42
+    assert resolve("variables.messages[variables.index].text", ctx) == "second"
+
+
+def test_resolve_path_rejects_dunder_dot_token():
+    # A dunder dot token must not reach Python internals.
+    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
+    ctx = {"variables": DotDict({"chat_id": "abc"})}
+
+    with pytest.raises(KeyError):
+        resolve("variables.__class__", ctx)
+    with pytest.raises(KeyError):
+        resolve("variables.__class__.__init__.__globals__", ctx)
+
+
+def test_resolve_path_allows_bracket_access_to_underscore_domain_key():
+    # Bracket access is item lookup, not getattr — an underscore domain key
+    # must still resolve rather than be over-blocked.
+    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
+    ctx = {"variables": DotDict({"attr_name": "_secret", "_secret": "leak"})}
+
+    assert resolve("variables[variables.attr_name]", ctx) == "leak"
+
+
 @pytest.mark.asyncio
 async def test_batch_run_failure_names_the_row_range(monkeypatch):
     monkeypatch.setattr(
@@ -1056,4 +876,57 @@ async def test_batch_run_failure_names_the_row_range(monkeypatch):
     assert error_message["details"] == (
         "Error evaluating conditions from 'first' to 'last': "
         "Expression execution failed: boom"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Exception text sanitization
+# ---------------------------------------------------------------------------
+
+
+_SENSITIVE_EXCEPTION_TEXT = "sk-live-abcdef at https://internal-llm.epicstaff.local:8443"
+
+
+def first_error_message(redis_service: MagicMock) -> dict:
+    return next(
+        message
+        for message in published_messages(redis_service)
+        if message["message_type"] == "error"
+    )
+
+
+@pytest.mark.asyncio
+async def test_llm_failure_reports_the_prompt_without_provider_exception_text(monkeypatch):
+    """A provider failure names the prompt; the provider's own message, which can
+    quote the API key and endpoint, stays in the logs."""
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+    prompt_config = PromptConfigData(
+        prompt_text="Classify {text}",
+        llm_data=make_llm_data(),
+        result_variable="classification_result",
+    )
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="prompt_row",
+            expression="True",
+            prompt_id="classify",
+            next_node="after_prompt",
+            order=0,
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(
+            condition_groups=groups,
+            prompts={"classify": prompt_config},
+            next_error_node="error_node",
+        )
+    )
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+        mock_completion.side_effect = RuntimeError(_SENSITIVE_EXCEPTION_TEXT)
+        result = await subgraph.ainvoke(make_state({"text": "hello"}))
+
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    assert first_error_message(redis_service)["details"] == (
+        "Error in condition 'prompt_row': LLM call failed for prompt 'classify'"
     )

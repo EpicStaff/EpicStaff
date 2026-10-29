@@ -3,6 +3,7 @@ import { Observable, of } from 'rxjs';
 import { map, switchMap, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../services/notifications';
+import { IndexingEstimate } from '../../../../models/base-rag.model';
 import { CreateNaiveRag } from '../../../../models/naive-rag.model';
 import { CollectionsStorageService } from '../../../../services/collections-storage.service';
 import { KnowledgeSourcesPollingService } from '../../../../services/knowledge-sources-polling.service';
@@ -55,6 +56,10 @@ export class NaiveRagStrategy implements RagCreationStrategy {
         );
     }
 
+    getRagId(): number | null {
+        return this.naiveRagSignal()?.naive_rag_id ?? null;
+    }
+
     startIndexing(data?: { configIds: number[]; pendingDeleteIds?: number[] }): Observable<boolean> {
         const naiveRagId = this.naiveRagSignal()?.naive_rag_id;
         if (!naiveRagId) return of(false);
@@ -81,6 +86,20 @@ export class NaiveRagStrategy implements RagCreationStrategy {
                 this.collectionsStorage.markRagAsProcessing(naiveRagId);
             }),
             map(() => true)
+        );
+    }
+
+    estimateIndexing(configIds: number[]): Observable<IndexingEstimate | null> {
+        const naiveRagId = this.naiveRagSignal()?.naive_rag_id;
+        if (!naiveRagId || !configIds.length) return of(null);
+
+        return this.ragIndexingService.estimateIndexingOrNull(
+            {
+                rag_id: naiveRagId,
+                rag_type: 'naive',
+                document_config_ids: configIds,
+            },
+            this.documentsStorageService.buildPendingEstimateConfigs(configIds)
         );
     }
 

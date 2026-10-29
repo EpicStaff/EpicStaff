@@ -30,6 +30,24 @@
                     (click)="onToggle()"
                 />
             }
+            @if (actionIcon(); as icon) {
+                <!-- aria-disabled, not disabled: the button stays focusable, so its tooltip (also its
+                     aria-describedby description) tells keyboard and screen reader users why it cannot be used. -->
+                <button
+                    type="button"
+                    class="action-icon"
+                    [attr.aria-label]="actionLabel()"
+                    [attr.aria-disabled]="isActionDisabled()"
+                    [matTooltip]="actionTooltip()"
+                    matTooltipPosition="above"
+                    (click)="onAction()"
+                >
+                    <app-svg-icon
+                        [icon]="icon"
+                        size="1rem"
+                    />
+                </button>
+            }
             @if (allowCopy) {
                 <app-svg-icon
                     class="action-icon"
@@ -45,6 +63,9 @@
                     class="action-icon"
                     icon="editor-expand"
                     size="0.875rem"
+                    [attr.aria-label]="expandLabel()"
+                    [matTooltip]="expandLabel()"
+                    matTooltipPosition="above"
                     (click)="onExpand()"
                 />
             }
@@ -111,7 +132,7 @@
 </div>
 
 <!-- Resize Handle with the directive -->
-@if (!fullHeight) {
+@if (!fullHeight && resizable) {
     <div
         class="editor-resize-handle"
         appResizable

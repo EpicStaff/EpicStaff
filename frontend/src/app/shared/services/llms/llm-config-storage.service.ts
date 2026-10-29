@@ -1,5 +1,11 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { CreateLLMConfigRequest, GetLlmConfigRequest, UpdateLLMConfigRequest } from '@shared/models';
+import {
+    BulkDeleteResponse,
+    BulkDeleteTarget,
+    CreateLLMConfigRequest,
+    GetLlmConfigRequest,
+    UpdateLLMConfigRequest,
+} from '@shared/models';
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
@@ -9,7 +15,7 @@ import { LLMConfigService } from './llm-config.service';
 @Injectable({
     providedIn: 'root',
 })
-export class LlmConfigStorageService implements StorageService {
+export class LlmConfigStorageService implements StorageService, BulkDeleteTarget {
     private readonly llmConfigService = inject(LLMConfigService);
 
     private configsRequest$?: Observable<GetLlmConfigRequest[]>;
@@ -70,13 +76,20 @@ export class LlmConfigStorageService implements StorageService {
         );
     }
 
-    deleteConfig(id: number): Observable<void> {
-        return this.llmConfigService.deleteConfig(id).pipe(
-            tap(() => {
-                this.configsSignal.update((configs) => configs.filter((c) => c.id !== id));
-            }),
-            catchError((err) => throwError(() => err))
-        );
+    previewBulkDelete(ids: number[]): Observable<BulkDeleteResponse> {
+        return this.llmConfigService.bulkDelete(ids, { dryRun: true });
+    }
+
+    bulkDelete(ids: number[]): Observable<BulkDeleteResponse> {
+        return this.llmConfigService
+            .bulkDelete(ids)
+            .pipe(tap((response) => this.removeFromCache([...response.deleted_ids, ...response.not_found_ids])));
+    }
+
+    removeFromCache(ids: number[]): void {
+        if (ids.length === 0) return;
+        const idSet = new Set(ids);
+        this.configsSignal.update((configs) => configs.filter((c) => !idSet.has(c.id)));
     }
 
     markConfigsOutdated(): void {

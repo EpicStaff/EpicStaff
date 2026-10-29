@@ -1,6 +1,6 @@
 import { ConfirmationDialogData } from '@shared/components';
+import { recycleBinNotice } from '@shared/utils';
 
-import { AgentDefinition } from '../models/agent-definition.model';
 import { Surface } from '../models/surface.model';
 
 export interface DeleteUsageCounts {
@@ -51,7 +51,12 @@ function buildAccessPhrase(bundle: SurfaceBundleCounts): string {
     return `access to ${joinWithAnd(parts)}`;
 }
 
-function buildSurfaceDeleteCaution(usage: DeleteUsageCounts, bundle: SurfaceBundleCounts, shared: boolean): string {
+function buildSurfaceDeleteCaution(
+    usage: DeleteUsageCounts,
+    bundle: SurfaceBundleCounts,
+    shared: boolean,
+    retentionDays: number | null
+): string {
     const usageParts = buildUsageParts(usage);
     const access = buildAccessPhrase(bundle);
 
@@ -60,39 +65,51 @@ function buildSurfaceDeleteCaution(usage: DeleteUsageCounts, bundle: SurfaceBund
         if (usageParts.length) caution += ` (${joinWithAnd(usageParts)})`;
         if (access) caution += ` and ${access} will be lost.`;
         else caution += '.';
-        return caution;
+        // The links from those locations are removed for good; only the surface itself comes back.
+        return `${caution} ${recycleBinNotice(retentionDays)} Restoring it won't add it back to those locations.`;
     }
 
+    // An owned surface comes back with its agent, so it gets no "won't add it back" sentence.
     let caution = 'If you delete it now, this Surface will be removed';
     if (usageParts.length) caution += ` from ${joinWithAnd(usageParts)}`;
     if (access) {
-        caution += usageParts.length
-            ? `, and ${access} will be permanently lost.`
-            : ` and ${access} will be permanently lost.`;
+        caution += usageParts.length ? `, and ${access} will be lost.` : ` and ${access} will be lost.`;
     } else {
-        caution += usageParts.length ? '.' : ' permanently.';
+        caution += '.';
     }
-    return caution;
+    return `${caution} ${recycleBinNotice(retentionDays)}`;
 }
 
-function buildAgentDeleteCaution(usage: DeleteUsageCounts): string {
-    const usageParts = buildUsageParts(usage);
-    if (!usageParts.length) {
-        return 'If you delete now, this agent will be permanently removed and all agent settings and configurations will be lost.';
-    }
-    return `If you delete now, this agent will be permanently removed from all locations where it is used—including ${joinWithAnd(usageParts)}—and all agent settings and configurations will be lost.`;
+/** The agent's own surfaces are deleted with it, so they go to the recycle bin too. Empty when it owns none. */
+function ownedSurfacesNote(ownedSurfaceCount: number): string {
+    if (ownedSurfaceCount === 0) return '';
+    if (ownedSurfaceCount === 1) return ' This agent owns 1 surface; it moves to the recycle bin with the agent.';
+    return ` This agent owns ${ownedSurfaceCount} surfaces; they move to the recycle bin with it.`;
 }
 
-export function isAgentDeployed(agent: AgentDefinition, ownedSurfaceCount: number): boolean {
-    return agent.default_surfaces.length > 0 || ownedSurfaceCount > 0;
-}
-
-export function buildDeleteAgentDialog(
-    agent: AgentDefinition,
+function buildAgentDeleteCaution(
     usage: DeleteUsageCounts,
-    ownedSurfaceCount: number
+    ownedSurfaceCount: number,
+    retentionDays: number | null
+): string {
+    const usageParts = buildUsageParts(usage);
+    const notice = `${recycleBinNotice(retentionDays)}${ownedSurfacesNote(ownedSurfaceCount)}`;
+    if (!usageParts.length) {
+        return `If you delete now, this agent and its settings are removed. ${notice}`;
+    }
+    return `If you delete now, this agent is removed from all locations where it's used—including ${joinWithAnd(usageParts)}. ${notice} Restoring it won't add it back to those locations.`;
+}
+
+/**
+ * Only real usages (other agents, flows, chats) make the agent "deployed". The surfaces it owns are part of
+ * the agent, not places that use it.
+ */
+export function buildDeleteAgentDialog(
+    usage: DeleteUsageCounts,
+    ownedSurfaceCount: number,
+    retentionDays: number | null
 ): ConfirmationDialogData {
-    const deployed = isAgentDeployed(agent, ownedSurfaceCount) || usage.flows > 0 || usage.chats > 0;
+    const deployed = buildUsageParts(usage).length > 0;
     return {
         title: 'Delete Agent?',
         message: deployed
@@ -102,7 +119,7 @@ export function buildDeleteAgentDialog(
         cancelText: 'Cancel',
         type: 'danger',
         cautionTitle: 'Caution',
-        caution: buildAgentDeleteCaution(usage),
+        caution: buildAgentDeleteCaution(usage, ownedSurfaceCount, retentionDays),
         isShownBorder: true,
     };
 }
@@ -110,7 +127,8 @@ export function buildDeleteAgentDialog(
 export function buildDeleteSurfaceDialog(
     surface: Surface,
     usage: DeleteUsageCounts,
-    shared: boolean
+    shared: boolean,
+    retentionDays: number | null
 ): ConfirmationDialogData {
     const bundle = surfaceBundleCounts(surface);
     return {
@@ -122,7 +140,7 @@ export function buildDeleteSurfaceDialog(
         cancelText: 'Cancel',
         type: shared ? 'danger' : 'warning',
         cautionTitle: shared ? 'Caution' : 'Attention',
-        caution: buildSurfaceDeleteCaution(usage, bundle, shared),
+        caution: buildSurfaceDeleteCaution(usage, bundle, shared, retentionDays),
         isShownBorder: true,
     };
 }

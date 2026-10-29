@@ -65,9 +65,11 @@ ROLES_LIST_GET = {
         "(`results`, paginated) from every org the caller can read. Filter "
         "with ?org_ids=; omit for all readable orgs. Use "
         "?assignable_org_ids= instead to list only the roles the caller may "
-        "assign — the response shape is identical. Each role carries "
-        "`assigned_count` and an `assigned_by_org` breakdown, covering the "
-        "orgs in scope for this request."
+        "assign — the response shape is identical. ?search= narrows both "
+        "custom and built-in roles by name or description "
+        "(case-insensitive). Each role carries `assigned_count` and an "
+        "`assigned_by_org` breakdown, covering the orgs in scope for this "
+        "request."
     ),
     "parameters": [
         OpenApiParameter(
@@ -92,6 +94,16 @@ ROLES_LIST_GET = {
                 "Supersedes ?org_ids= when both are sent. Built-in roles are "
                 "included when assignable in at least one requested org, so "
                 "one org gives an exact answer and several give a superset."
+            ),
+        ),
+        OpenApiParameter(
+            name="search",
+            location=OpenApiParameter.QUERY,
+            type=OpenApiTypes.STR,
+            required=False,
+            description=(
+                "Case-insensitive text search on role name or description. "
+                "Applied to both custom and built-in roles."
             ),
         ),
         OpenApiParameter(
@@ -151,7 +163,7 @@ ROLES_CREATE_POST = {
                 "org_id": 10,
                 "name": "Billing Manager",
                 "description": "Manage billing secrets",
-                "permissions": [{"resource_type": "secrets", "actions": ["read", "update"]}],
+                "permissions": [{"resource_type": "secrets", "actions": ["read", "use"]}],
             },
             request_only=True,
         ),

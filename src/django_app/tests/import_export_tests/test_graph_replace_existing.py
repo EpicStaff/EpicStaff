@@ -31,20 +31,8 @@ from tables.models.graph_models import GraphNote
 from tables.models.label_models import Label
 from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
 from tables.services.secrets import secret_service
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
-
-
-@pytest.fixture(autouse=True)
-def soft_delete(request, settings):
-    """SOFT_DELETE is on unless a test parametrizes this fixture indirectly."""
-    settings.SOFT_DELETE = getattr(request, "param", True)
-    return settings.SOFT_DELETE
-
-
-both_delete_modes = pytest.mark.parametrize(
-    "soft_delete", [True, False], ids=["soft", "hard"], indirect=True
-)
 
 
 def _flow(org, name):
@@ -54,7 +42,11 @@ def _flow(org, name):
 
 
 def _export(graph):
-    return ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def _flow_edited_after_export(org, name="My Flow"):
@@ -96,7 +88,7 @@ def _note_contents(graph):
 def _flow_with_webhook(org, path):
     graph = _flow(org, "Hook Flow")
     trigger = WebhookTrigger.objects.create(path=path, org=org)
-    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main", libraries="")
+    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main")
     WebhookTriggerNode.objects.create(
         graph=graph, node_name="wt", webhook_trigger=trigger, python_code=code
     )
@@ -154,7 +146,6 @@ def _schedule_events(redis_client_mock):
 
 @pytest.mark.django_db
 class TestReplaceInPlace:
-    @both_delete_modes
     def test_replace_keeps_the_row_and_takes_the_file_content(self, client_as, admin_acme, acme):
         holder, export_data = _flow_edited_after_export(acme)
         original_uuid = holder.uuid
@@ -232,7 +223,6 @@ class TestReplaceInPlace:
         holder.refresh_from_db()
         assert holder.name == "Taken #2"
 
-    @both_delete_modes
     def test_parent_subgraph_node_keeps_pointing_at_the_replaced_flow(
         self, client_as, admin_acme, acme
     ):
@@ -247,7 +237,6 @@ class TestReplaceInPlace:
         parent_node.refresh_from_db()
         assert parent_node.subgraph_id == subflow.id
 
-    @both_delete_modes
     def test_replacing_parent_and_subflow_keeps_both_rows(self, client_as, admin_acme, acme):
         subflow = _flow(acme, "Sub")
         parent = _flow(acme, "Parent")
@@ -325,15 +314,20 @@ class TestReplaceInPlace:
     def test_file_cannot_soft_delete_the_replaced_flow(self, client_as, admin_acme, acme):
         holder, export_data = _flow_edited_after_export(acme)
         export_data[EntityType.GRAPH][0].update(
-            {"is_soft_deleted": True, "soft_deleted_at": "2026-01-01T00:00:00Z"}
+            {
+                "active": False,
+                "soft_deleted_at": "2026-01-01T00:00:00Z",
+                "soft_delete_batch": "11111111-1111-1111-1111-111111111111",
+            }
         )
 
         response = _import(client_as(admin_acme), acme, export_data, replace_existing=True)
 
         assert response.status_code == 200
         holder.refresh_from_db()
-        assert not holder.is_soft_deleted
+        assert holder.active
         assert holder.soft_deleted_at is None
+        assert holder.soft_delete_batch is None
         assert holder.description == "from file"
 
     def test_replace_keeps_the_original_author(self, client_as, admin_acme, member_only, acme):
@@ -346,6 +340,23 @@ class TestReplaceInPlace:
         assert response.status_code == 200
         holder.refresh_from_db()
         assert holder.created_by_id == member_only.id
+
+
+    def test_replace_of_unauthored_flow_leaves_it_unauthored_and_authors_new_nodes(
+        self, client_as, admin_acme, acme
+    ):
+        holder, export_data = _flow_edited_after_export(acme)
+        assert holder.created_by_id is None
+
+        response = _import(client_as(admin_acme), acme, export_data, replace_existing=True)
+
+        assert response.status_code == 200
+        holder.refresh_from_db()
+        assert holder.created_by_id is None
+        assert holder.description == "from file"
+        recreated_note = holder.graph_note_list.get()
+        assert recreated_note.content == "file note"
+        assert recreated_note.created_by_id == admin_acme.id
 
 
 @pytest.mark.django_db
@@ -376,16 +387,18 @@ class TestReplaceKeepsTriggerSetup:
     ):
         holder, triggers, bot_keys = _flow_with_telegram_bots(acme, ("Telegram Bot #7", "acme-bot"))
         trigger, bot_key = triggers["acme-bot"], bot_keys["Telegram Bot #7"]
+        export_data = _export(holder)
+        # A new name in the file proves the key follows the trigger, not the node name.
+        for node_data in export_data[EntityType.GRAPH][0]["nodes"]:
+            if node_data["node_type"] == NodeType.TELEGRAM_TRIGGER_NODE:
+                node_data["node_name"] = "Renamed bot"
 
         with django_capture_on_commit_callbacks(execute=True):
-            response = _import(
-                client_as(admin_acme), acme, _export(holder), replace_existing=True
-            )
+            response = _import(client_as(admin_acme), acme, export_data, replace_existing=True)
 
         assert response.status_code == 200
         node = holder.telegram_trigger_node_list.get()
-        # Recreated nodes are renumbered; the key follows the trigger, not the name.
-        assert node.node_name != "Telegram Bot #7"
+        assert node.node_name == "Renamed bot"
         assert node.webhook_trigger_id == trigger.id
         assert node.telegram_bot_api_key_secret_id == bot_key.id
         registered_nodes = [
@@ -545,7 +558,7 @@ class TestWithoutReplace:
 
         assert response.status_code == 200
         old.refresh_from_db()
-        assert not old.is_soft_deleted
+        assert old.active
         assert old.uuid == original_uuid
         copy = Graph.objects.get(org=acme, name="My Flow #2")
         assert copy.uuid != original_uuid
@@ -563,9 +576,9 @@ class TestWithoutReplace:
 
         assert response.status_code == 200
         live.refresh_from_db()
-        assert not live.is_soft_deleted
+        assert live.active
         rotated_holder = Graph.all_objects.get(id=holder.id)
-        assert rotated_holder.is_soft_deleted
+        assert not rotated_holder.active
         assert rotated_holder.uuid != holder.uuid
         imported = Graph.objects.get(uuid=holder.uuid)
         assert imported.id not in (live.id, holder.id)
@@ -574,7 +587,7 @@ class TestWithoutReplace:
     def test_file_cannot_create_an_already_deleted_flow(self, client_as, admin_acme, acme):
         export_data = _export(_flow(acme, "My Flow"))
         export_data[EntityType.GRAPH][0].update(
-            {"is_soft_deleted": True, "soft_deleted_at": "2026-01-01T00:00:00Z"}
+            {"active": False, "soft_deleted_at": "2026-01-01T00:00:00Z"}
         )
 
         response = _import(
@@ -583,7 +596,7 @@ class TestWithoutReplace:
 
         assert response.status_code == 200
         copy = Graph.all_objects.get(org=acme, name="My Flow #2")
-        assert not copy.is_soft_deleted
+        assert copy.active
         assert copy.soft_deleted_at is None
 
 
@@ -604,7 +617,7 @@ class TestReplaceExistingCrossOrg:
 
         assert response.status_code == 200
         beta_graph = Graph.all_objects.get(id=beta_graph.id)
-        assert not beta_graph.is_soft_deleted
+        assert beta_graph.active
         assert beta_graph.uuid == beta_uuid
         assert beta_graph.name == "Beta Flow"
         assert not GraphVersion.objects.filter(graph=beta_graph).exists()

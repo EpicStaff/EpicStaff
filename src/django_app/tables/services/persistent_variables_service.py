@@ -1,7 +1,9 @@
+import copy
 from dataclasses import dataclass, field
 
 from django.db import transaction
 from loguru import logger
+from rbac.access.principals import acting_person
 from rbac.models import OrganizationUser
 from rest_framework import serializers
 from tables.constants.variables_constants import (
@@ -92,25 +94,78 @@ class PersistentVariablesService:
             self._set_by_path(result, path, value)
         return result
 
-    def build_run_variables(self, graph, user, payload) -> RunVariablesResult:
+    def _start_node_variables(self, graph) -> dict:
+        start_node = StartNode.objects.filter(graph=graph).first()
+        return (start_node.variables or {}) if start_node else {}
+
+    def _without_paths(self, payload: dict, paths: list) -> dict:
+        """Return a copy of `payload` that cannot set any of `paths`.
+
+        deep_merge replaces a stored subtree with any non-dict payload value, so a
+        scalar or None at an ancestor of a path is dropped as well.
+        """
+        stripped = copy.deepcopy(payload)
+        for path in paths:
+            keys = path.split(".")
+            current = stripped
+            for depth, key in enumerate(keys[:-1], start=1):
+                if key not in current:
+                    break
+                if not isinstance(current[key], dict):
+                    self._drop_path(stripped, ".".join(keys[:depth]))
+                    break
+                current = current[key]
+            else:
+                self._drop_path(stripped, path)
+        return stripped
+
+    def build_run_variables(
+        self, graph, user, payload, *, allow_persistent_override: bool = False
+    ) -> RunVariablesResult:
+        """Merge the flow's stored org-persistent values under the run payload.
+
+        Whatever the run ends with at a declared org path is written back for every
+        later run (`persist_session_results`), so setting one rewrites shared memory.
+        Without `allow_persistent_override` a declared path holds its stored value,
+        or its raw Domain default when storage lacks it, so neither the payload nor
+        a Domain template resolved from the payload (`create_session`) can set it.
+        The caller's payload is never mutated.
+
+        Args:
+            allow_persistent_override: The caller may manage the flow's persistent
+                variables (FLOWS UPDATE), or the payload is server-built under a
+                key the flow editor chose.
+        """
         payload = payload or {}
         graph_user = self._resolve_graph_user(graph, user)
         if not graph.enable_persistent_variables:
             return RunVariablesResult(variables=payload, graph_user=graph_user)
         graph_org, _ = GraphOrganization.objects.get_or_create(graph=graph)
-        merged = self.deep_merge(graph_org.persistent_variables or {}, payload)
+        persistent = graph_org.persistent_variables or {}
+        if not allow_persistent_override:
+            start_variables = self._start_node_variables(graph)
+            payload = self._without_paths(payload, self._org_paths(start_variables))
+            persistent = self.deep_merge(
+                self.extract(start_variables, DOMAIN_ORGANIZATION_KEY), persistent
+            )
+        merged = self.deep_merge(persistent, payload)
         return RunVariablesResult(variables=merged, graph_user=graph_user)
 
     def persist_session_results(self, session, final_variables) -> None:
-        """Write tracked org values back at session END. Log-and-continue on error."""
+        """Write tracked org values back at session END. Log-and-continue on error.
+
+        Sessions of one flow ending together are serialized by the row lock, but each
+        writes its final value of every tracked path, not only of the paths its run
+        changed: the session that ends last overwrites what sessions ending before it
+        stored, even on a path it never touched.
+        """
         graph = session.graph
         if not graph.enable_persistent_variables:
             return
         if not final_variables:
             return
         try:
-            start_node = StartNode.objects.filter(graph=graph).first()
-            org_paths = self._org_paths(start_node.variables if start_node else {})
+            org_paths = self._org_paths(self._start_node_variables(graph))
             if not org_paths:
                 return
             with transaction.atomic():
@@ -179,15 +234,18 @@ class PersistentVariablesService:
     def _resolve_graph_user(self, graph, user):
         """The runner's per-flow row, get_or_create'd from their membership.
 
-        None for anonymous/trigger runs and for superadmin (no membership row).
-        No user-level variables flow through it in org-only scope; the row
-        exists so `Session.graph_user` is a correct FK.
+        The runner is the acting person: the user, or the person a plugin runs
+        the flow on behalf of. None for anonymous/trigger runs, for a plugin
+        running on its own and for superadmin (no membership row). No
+        user-level variables flow through it in org-only scope; the row exists
+        so `Session.graph_user` is a correct FK.
         """
         # TODO refactor to use user_variable for persistent variables
-        if user is None or getattr(user, "is_superadmin", False):
+        person = acting_person(user)
+        if person is None or person.is_superadmin:
             return None
         membership = OrganizationUser.objects.filter(
-            user=user, org_id=graph.org_id, org__is_active=True
+            user=person, org_id=graph.org_id, org__is_active=True
         ).first()
         if membership is None:
             return None

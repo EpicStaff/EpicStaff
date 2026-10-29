@@ -7,11 +7,14 @@ publish a payload containing a 'warnings' key.
 
 from __future__ import annotations
 
+import pytest
+
 import json
 from unittest.mock import MagicMock
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from shared.models.agent_service import LoopResult, TaskRunSummary, TokenUsage
+from tests.log_capture import log_line_starting_with, capture_logs_at
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -81,87 +84,33 @@ def _make_loop_result() -> LoopResult:
 
 
 # ---------------------------------------------------------------------------
-# on_warning buffering and deduplication
+# warnings reach the terminal payload, de-duplicated
 # ---------------------------------------------------------------------------
 
 
-async def test_on_warning_buffers_message():
-    emitter, _ = _make_emitter()
-    await emitter.on_warning("context near limit")
-    assert emitter._warnings == ["context near limit"]
-
-
-async def test_on_warning_deduplicates_identical_messages():
-    emitter, _ = _make_emitter()
-    await emitter.on_warning("same warning")
-    await emitter.on_warning("same warning")
-    await emitter.on_warning("same warning")
-    assert emitter._warnings == ["same warning"]
-
-
-async def test_on_warning_keeps_distinct_messages():
-    emitter, _ = _make_emitter()
-    await emitter.on_warning("warning A")
-    await emitter.on_warning("warning B")
-    assert emitter._warnings == ["warning A", "warning B"]
-
-
-# ---------------------------------------------------------------------------
-# on_final includes warnings in published payload
-# ---------------------------------------------------------------------------
-
-
-async def test_on_final_includes_warnings_key_when_no_warnings():
+@pytest.mark.parametrize("terminal", ["final", "error"])
+@pytest.mark.parametrize(
+    ("warnings", "expected"),
+    [
+        ([], []),
+        (["approaching limit"], ["approaching limit"]),
+        (["dup", "dup", "dup"], ["dup"]),
+        (["warning A", "warning B"], ["warning A", "warning B"]),
+    ],
+    ids=["none", "one", "duplicates", "distinct"],
+)
+async def test_terminal_payload_carries_each_warning_once(terminal, warnings, expected):
     emitter, published = _make_emitter()
-    await emitter.on_final(_make_loop_result())
+    for warning in warnings:
+        await emitter.on_warning(warning)
 
-    assert len(published) == 1
-    payload = _decode_payload(published[0])
-    assert "warnings" in payload
-    assert payload["warnings"] == []
+    if terminal == "final":
+        await emitter.on_final(_make_loop_result())
+    else:
+        await emitter.on_error(RuntimeError("boom"))
 
-
-async def test_on_final_includes_warnings_after_on_warning():
-    emitter, published = _make_emitter()
-    await emitter.on_warning("approaching limit")
-    await emitter.on_final(_make_loop_result())
-
-    payload = _decode_payload(published[0])
-    assert payload["warnings"] == ["approaching limit"]
-
-
-async def test_on_final_deduped_warnings_in_payload():
-    emitter, published = _make_emitter()
-    await emitter.on_warning("dup")
-    await emitter.on_warning("dup")
-    await emitter.on_final(_make_loop_result())
-
-    payload = _decode_payload(published[0])
-    assert payload["warnings"] == ["dup"]
-
-
-# ---------------------------------------------------------------------------
-# on_error includes warnings in published payload
-# ---------------------------------------------------------------------------
-
-
-async def test_on_error_includes_warnings_key_when_no_warnings():
-    emitter, published = _make_emitter()
-    await emitter.on_error(RuntimeError("boom"))
-
-    assert len(published) == 1
-    payload = _decode_payload(published[0])
-    assert "warnings" in payload
-    assert payload["warnings"] == []
-
-
-async def test_on_error_includes_warnings_after_on_warning():
-    emitter, published = _make_emitter()
-    await emitter.on_warning("context limit warning")
-    await emitter.on_error(RuntimeError("something failed"))
-
-    payload = _decode_payload(published[0])
-    assert payload["warnings"] == ["context limit warning"]
+    (payload,) = [_decode_payload(fields) for fields in published]
+    assert payload["warnings"] == expected
 
 
 # ---------------------------------------------------------------------------
@@ -322,3 +271,105 @@ async def test_on_error_publishes_to_per_run_stream_with_ttl():
     assert len(publish_calls) == 1
     assert publish_calls[0]["stream"] == "agent.results:run-a"
     assert publish_calls[0]["ttl_s"] == 3600
+
+
+# ---------------------------------------------------------------------------
+# Logging masks sensitive fields while published payload remains original
+# ---------------------------------------------------------------------------
+
+
+async def test_on_final_masks_sensitive_fields_in_logs_but_not_published_payload():
+    """Logs must not carry final_text/structured_output; the published envelope must."""
+    emitter, published = _make_emitter()
+
+    secret_text = "USER_SECRET_DATA"
+    secret_output = {"key": "SECRET_VALUE"}
+    task_secret_text = "TASK_SECRET"
+    task_secret_output = {"data": "TASK_DATA"}
+    task_name = "TASK_NAME_MARKER"
+
+    result = LoopResult(
+        final_text=secret_text,
+        structured_output=secret_output,
+        tool_invocations=0,
+        iterations=1,
+        stop_reason="completed",
+        token_usage=TokenUsage(),
+        tasks=[
+            TaskRunSummary(
+                name=task_name,
+                order=0,
+                final_text=task_secret_text,
+                structured_output=task_secret_output,
+                token_usage=TokenUsage(),
+                iterations=1,
+                tool_invocations=0,
+                stop_reason="completed",
+            ),
+        ],
+    )
+
+    with capture_logs_at("DEBUG") as logs:
+        await emitter.on_final(result)
+
+    result_line = log_line_starting_with(logs, "agent.result ")
+    assert "<redacted" in result_line
+
+    log_output = "\n".join(logs)
+    assert secret_text not in log_output
+    assert secret_output["key"] not in log_output
+    assert task_secret_text not in log_output
+    assert task_secret_output["data"] not in log_output
+    assert task_name in log_output
+
+    assert len(published) == 1
+    payload = _decode_payload(published[0])
+
+    assert payload["final_text"] == secret_text
+    assert payload["structured_output"] == secret_output
+    assert len(payload["tasks"]) == 1
+    task_payload = payload["tasks"][0]
+    assert task_payload["name"] == task_name
+    assert task_payload["final_text"] == task_secret_text
+    assert task_payload["structured_output"] == task_secret_output
+
+
+async def test_on_final_masks_error_text_in_logs_but_not_published_payload():
+    """result.error can echo prompt content through str(exception); logs must not carry it."""
+    emitter, published = _make_emitter()
+    error_marker = "ERROR_ECHOING_USER_PROMPT_314"
+    result = LoopResult(
+        final_text=None,
+        error=error_marker,
+        tool_invocations=0,
+        iterations=1,
+        stop_reason="llm_error",
+        token_usage=TokenUsage(),
+    )
+
+    with capture_logs_at("DEBUG") as logs:
+        await emitter.on_final(result)
+
+    result_line = log_line_starting_with(logs, "agent.result ")
+    assert error_marker not in result_line
+    assert "<redacted" in result_line
+    assert "llm_error" in result_line, "stop_reason must stay readable"
+
+    assert _decode_payload(published[0])["error"] == error_marker
+
+
+async def test_on_error_masks_error_text_in_logs_but_not_published_payload():
+    """str(exception) can echo prompt content; the ERROR line must not carry it."""
+    emitter, published = _make_emitter()
+    error_marker = "ERROR_ECHOING_USER_PROMPT_271"
+
+    with capture_logs_at("ERROR") as logs:
+        await emitter.on_error(RuntimeError(f"call failed: {error_marker}"))
+
+    error_line = log_line_starting_with(logs, "published agent.error ")
+    assert error_marker not in error_line
+    assert "correlation_id=test-corr" in error_line, "correlation_id must stay readable"
+    assert "RuntimeError" in error_line
+    assert "<redacted" in error_line
+
+    assert _decode_payload(published[0])["error"] == f"call failed: {error_marker}"

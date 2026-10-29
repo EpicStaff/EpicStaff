@@ -18,6 +18,15 @@
 
     <div class="storage-details-dialog__content">
         <div class="storage-details-dialog__section">
+            <app-authorship-details
+                [owner]="owner"
+                [createdAt]="createdAt"
+                [lastEditor]="lastEditor"
+                [lastEditedAt]="lastEditedAt"
+            />
+        </div>
+
+        <div class="storage-details-dialog__section">
             <div class="storage-details-dialog__section-title">DATA</div>
             <div class="storage-details-dialog__data-grid">
                 @if (data.type !== 'folder') {
@@ -57,7 +66,10 @@
             </div>
         </div>
 
-        <div class="storage-details-dialog__section">
+        <div
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Read]"
+            class="storage-details-dialog__section"
+        >
             <div class="storage-details-dialog__section-title">USED IN FLOWS</div>
             @if (usedInFlows.length) {
                 <div class="storage-details-dialog__chips">
@@ -65,7 +77,7 @@
                         <span class="storage-details-dialog__chip">
                             {{ flow.name }}
                             <button
-                                *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
+                                *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                                 class="storage-details-dialog__chip-remove"
                                 type="button"
                                 aria-label="Remove from flow"

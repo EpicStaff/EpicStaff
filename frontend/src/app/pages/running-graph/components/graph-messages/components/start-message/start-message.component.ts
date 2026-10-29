@@ -2,11 +2,18 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, ViewEn
 import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
+import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe';
 import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-button/view-nested-messages-button.component';
 
 @Component({
     selector: 'app-start-message',
-    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent, ViewNestedMessagesButtonComponent],
+    imports: [
+        JsonViewerComponent,
+        AppSvgIconComponent,
+        CopyButtonComponent,
+        ViewNestedMessagesButtonComponent,
+        RuntimeNodeLabelPipe,
+    ],
     encapsulation: ViewEncapsulation.Emulated,
     template: `
         <div class="start-container">
@@ -29,7 +36,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                     />
                 </div>
                 <h3>
-                    <span class="node-name">{{ message.name }}</span> started
+                    <span class="node-name">{{ message.name | runtimeNodeLabel }}</span> started
                 </h3>
 
                 @if (showViewNestedMessages) {
@@ -84,12 +91,14 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
     styles: [
         `
             .start-container {
+                --message-accent-color: var(--amber-400);
+
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
                 padding: var(--message-padding, 0.5rem 1rem);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                border-left: 4px solid #d29922;
+                box-shadow: 0 4px 12px var(--black-alpha-15);
+                border-left: 4px solid var(--message-accent-color);
             }
 
             .start-header {
@@ -108,7 +117,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                 flex-shrink: 0;
 
                 app-svg-icon {
-                    color: #d29922;
+                    color: var(--message-accent-color);
                 }
             }
 
@@ -116,7 +125,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                 width: 28px;
                 height: 28px;
                 border-radius: 50%;
-                background-color: #d29922;
+                background-color: var(--message-accent-color);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -137,7 +146,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             }
 
             .node-name {
-                color: #d29922;
+                color: var(--message-accent-color);
                 font-weight: 400;
             }
 
@@ -155,7 +164,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             }
 
             .start-content > :first-child {
-                margin-top: 1.25rem;
+                margin-top: 0.5rem;
             }
 
             /* Section styling */
@@ -173,7 +182,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
 
             .section-heading app-svg-icon {
                 margin-right: 8px;
-                color: #d29922;
+                color: var(--message-accent-color);
                 margin-left: -3px;
             }
 

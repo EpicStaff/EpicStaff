@@ -27,6 +27,7 @@
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
                         class="delete-btn"
                         [class.invisible]="selectedIds().size === 0"
+                        [disabled]="isDeleting()"
                         (click)="onBulkDelete()"
                     >
                         Delete Selected ({{ selectedIds().size }})
@@ -52,7 +53,7 @@
                 <app-flow-sessions-table
                     [sessions]="sessions()"
                     [showFlowName]="true"
-                    [showDuration]="true"
+                    [showDurationFilter]="true"
                     [sortable]="true"
                     [sortOrder]="sortOrder()"
                     [statusFilter]="statusFilter()"
@@ -61,6 +62,8 @@
                     (flowNameFilterChange)="onFlowFilterChange($event)"
                     [trigger]="triggerFilter()"
                     (triggerFilterChange)="onTriggerFilterChange($event)"
+                    [runTypeFilter]="runTypeFilter()"
+                    (runTypeFilterChange)="onRunTypeFilterChange($event)"
                     [durationFilter]="durationFilter()"
                     (durationFilterChange)="onDurationFilterChange($event)"
                     [showDateFilter]="true"
@@ -141,6 +144,8 @@
                     <div class="preview-header-actions">
                         @if (canStopSession(session.status)) {
                             <app-stop-button
+                                *appHasPermission="[ResourceCode.Flows, ActionCode.Use]"
+                                variant="stop"
                                 tooltip="Stop session"
                                 (triggered)="onStopSession(session.id)"
                             />

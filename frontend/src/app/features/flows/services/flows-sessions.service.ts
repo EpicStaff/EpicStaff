@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { DateRangeFilter, GraphSessionStatus } from '@shared/models';
-import { map, Observable, Subject } from 'rxjs';
+import { Observable, Subject, tap } from 'rxjs';
 
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { GraphMessage } from '../../../pages/running-graph/models/graph-session-message.model';
@@ -30,9 +30,14 @@ export interface SessionUpdates {
 
 export type TriggerType = 'manual' | 'schedule' | 'webhook' | 'telegram' | 'parent_flow';
 
+/** `test` = a test run started from a trigger node (`trigger.is_test_run`); `live` = everything else. */
+export type SessionRunType = 'live' | 'test';
+
 export interface SessionTrigger {
     trigger_type: TriggerType | string;
     trigger_id: number | null;
+    /** True for test runs started from a trigger node with a hand-written payload. */
+    is_test_run?: boolean;
 }
 
 export interface GraphSessionLight {
@@ -53,6 +58,12 @@ export interface DurationFilter {
 }
 
 export type DurationOperator = 'lessThan' | 'greaterThan' | 'equal' | 'between';
+
+export interface BulkDeleteSessionsResponse {
+    /** Sessions actually deleted: requested ids that were already gone, or belong to another organization, are not counted. */
+    deleted: number;
+    ids: number[];
+}
 
 @Injectable({
     providedIn: 'root',
@@ -94,10 +105,11 @@ export class GraphSessionService {
         offset?: number,
         status?: string[],
         nodeName?: string | null,
-        isErrorCause?: boolean,
+        idSearch?: string | null,
         durationFilter?: DurationFilter | null,
         triggerType?: TriggerType[],
-        dateFilter?: DateRangeFilter | null
+        dateFilter?: DateRangeFilter | null,
+        runType?: SessionRunType[]
     ): Observable<ApiGetRequest<GraphSessionLight>>;
 
     getSessionsByGraphId(
@@ -107,10 +119,11 @@ export class GraphSessionService {
         offset?: number,
         status?: string[],
         nodeName?: string | null,
-        isErrorCause?: boolean,
+        idSearch?: string | null,
         durationFilter?: DurationFilter | null,
         triggerType?: TriggerType[],
-        dateFilter?: DateRangeFilter | null
+        dateFilter?: DateRangeFilter | null,
+        runType?: SessionRunType[]
     ): Observable<ApiGetRequest<GraphSession | GraphSessionLight>> {
         let params = new HttpParams().set('graph_id', graphId.toString());
 
@@ -119,10 +132,11 @@ export class GraphSessionService {
         if (offset !== undefined) params = params.set('offset', offset.toString());
         if (status !== undefined && !status.includes('all')) params = params.set('status', status.join(','));
         if (nodeName) params = params.set('node_name', nodeName);
-        if (isErrorCause) params = params.set('is_error_cause', 'true');
+        if (idSearch) params = params.set('id_search', idSearch);
         if (durationFilter) params = this.applyDurationParams(params, durationFilter);
         if (triggerType && triggerType.length > 0) params = params.set('trigger_type', triggerType.join(','));
         if (dateFilter) params = this.applyDateParams(params, dateFilter);
+        if (runType) params = this.applyRunTypeParam(params, runType);
         if (detailed === false) {
             return this.http.get<ApiGetRequest<GraphSessionLight>>(this.apiUrl, {
                 params,
@@ -134,12 +148,10 @@ export class GraphSessionService {
         }
     }
 
-    bulkDeleteSessions(ids: number[]): Observable<void> {
-        return this.http.post<void>(`${this.apiUrl}bulk_delete/`, { ids }).pipe(
-            map(() => {
-                this._sessionsChanged$.next();
-            })
-        );
+    bulkDeleteSessions(ids: number[]): Observable<BulkDeleteSessionsResponse> {
+        return this.http
+            .post<BulkDeleteSessionsResponse>(`${this.apiUrl}bulk_delete/`, { ids })
+            .pipe(tap(() => this._sessionsChanged$.next()));
     }
 
     stopSessionById(sessionId: number): Observable<void> {
@@ -177,7 +189,8 @@ export class GraphSessionService {
         triggerType?: TriggerType[],
         isErrorCause?: boolean,
         durationFilter?: DurationFilter | null,
-        dateFilter?: DateRangeFilter | null
+        dateFilter?: DateRangeFilter | null,
+        runType?: SessionRunType[]
     ): Observable<ApiGetRequest<GraphSessionLight>> {
         let params = new HttpParams();
         params = params.set('detailed', 'false');
@@ -190,6 +203,7 @@ export class GraphSessionService {
         if (isErrorCause) params = params.set('is_error_cause', 'true');
         if (durationFilter) params = this.applyDurationParams(params, durationFilter);
         if (dateFilter) params = this.applyDateParams(params, dateFilter);
+        if (runType) params = this.applyRunTypeParam(params, runType);
 
         return this.http.get<ApiGetRequest<GraphSessionLight>>(this.apiUrl, { params });
     }
@@ -198,6 +212,14 @@ export class GraphSessionService {
         if (filter.after) params = params.set('created_at_after', filter.after);
         if (filter.before) params = params.set('created_at_before', filter.before);
         return params;
+    }
+
+    /** Exactly one run type narrows the list; none or both means no filter. */
+    private applyRunTypeParam(params: HttpParams, runType: SessionRunType[]): HttpParams {
+        const wantsTest = runType.includes('test');
+        const wantsLive = runType.includes('live');
+        if (wantsTest === wantsLive) return params;
+        return params.set('is_test_run', String(wantsTest));
     }
 
     private applyDurationParams(params: HttpParams, filter: DurationFilter): HttpParams {

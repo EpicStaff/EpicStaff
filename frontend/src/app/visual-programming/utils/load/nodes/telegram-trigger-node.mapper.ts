@@ -12,11 +12,12 @@ export function mapTelegramTriggerNodeToModel(tn: GetTelegramTriggerNodeRequest)
         backendId: tn.id,
         type: NodeType.TELEGRAM_TRIGGER,
         node_name: tn.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: tn.node_number ?? undefined,
         data: {
             telegram_bot_api_key_secret_id: tn.telegram_bot_api_key_secret_id,
             webhook_trigger: tn.webhook_trigger,
             fields: tn.fields,
+            test_payload: tn.test_payload ?? {},
         },
         position: ui.position,
         ports: null,

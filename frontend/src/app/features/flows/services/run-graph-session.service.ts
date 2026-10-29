@@ -3,10 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
-
-interface RunGraphResponse {
-    session_id: number;
-}
+import { RunGraphResponse, RunTestSessionRequest } from '../models/run-session.model';
 
 @Injectable({
     providedIn: 'root',
@@ -28,5 +25,9 @@ export class RunGraphService {
         formData.append('initial_state', JSON.stringify(initialState || {}));
 
         return this.http.post<RunGraphResponse>(url, formData);
+    }
+
+    runTestSession(request: RunTestSessionRequest): Observable<RunGraphResponse> {
+        return this.http.post<RunGraphResponse>(`${this.apiUrl}run-session/test/`, request);
     }
 }

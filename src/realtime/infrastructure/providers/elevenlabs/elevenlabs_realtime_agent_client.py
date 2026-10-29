@@ -10,7 +10,7 @@ from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
 from starlette.websockets import WebSocketDisconnect
-from utils.public_error import (
+from src.shared.public_error import (
     PublicErrorMessage,
     build_public_error_message,
     new_error_correlation_id,
@@ -52,7 +52,7 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
         rt_tools: list[RealtimeTool] | None = None,
         voice: str = "21m00Tcm4TlvDq8ikWAM",  # Rachel
         instructions: str = "You are a helpful assistant",
-        temperature: float = 0.8,
+        temperature: float | None = None,
         agent_id: str = "",
         agent_provisioner: ElevenLabsAgentProvisioner | None = None,
         llm_model: str = "",
@@ -126,6 +126,7 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
                 rt_tools=self.rt_tools,
                 llm_model=self.llm_model,
                 language=self.language,
+                temperature=self.temperature,
             )
 
         await self._do_connect(allow_reprovision=True)
@@ -162,6 +163,7 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
                     rt_tools=self.rt_tools,
                     llm_model=self.llm_model,
                     language=self.language,
+                    temperature=self.temperature,
                 )
                 await self._do_connect(allow_reprovision=False)
                 return

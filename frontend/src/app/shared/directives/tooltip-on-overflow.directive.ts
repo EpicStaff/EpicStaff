@@ -14,6 +14,7 @@ export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
     private resizeObserver: ResizeObserver | null = null;
     private mutationObserver: MutationObserver | null = null;
     private frameId: number | null = null;
+    private readonly onInput = (): void => this.schedule();
 
     ngAfterViewInit(): void {
         this.tooltip.disabled = true;
@@ -23,6 +24,8 @@ export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
             this.resizeObserver.observe(host);
             this.mutationObserver = new MutationObserver(() => this.schedule());
             this.mutationObserver.observe(host, { childList: true, subtree: true, characterData: true });
+            // Typing into an <input> changes its value, not the DOM, so neither observer above sees it.
+            host.addEventListener('input', this.onInput);
             this.schedule();
         });
     }
@@ -37,6 +40,7 @@ export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
     }
 
     ngOnDestroy(): void {
+        this.hostRef.nativeElement.removeEventListener('input', this.onInput);
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
         this.mutationObserver?.disconnect();
@@ -52,10 +56,19 @@ export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
         this.frameId = requestAnimationFrame(() => {
             this.frameId = null;
             const el = this.target();
-            const overflowing = el.scrollWidth > el.clientWidth + 1;
+            // Cut at the side (ellipsis), or at the bottom when the text is line-clamped. Only a clamp counts
+            // at the bottom: another host can have a fixed height its content outgrows without cutting the text.
+            const cutAtSide = el.scrollWidth > el.clientWidth + 1;
+            const cutAtBottom = isLineClamped(el) && el.scrollHeight > el.clientHeight + 1;
+            const overflowing = cutAtSide || cutAtBottom;
             if (this.tooltip.disabled === overflowing) {
                 this.ngZone.run(() => (this.tooltip.disabled = !overflowing));
             }
         });
     }
+}
+
+function isLineClamped(element: HTMLElement): boolean {
+    const clamp = getComputedStyle(element).getPropertyValue('-webkit-line-clamp');
+    return clamp !== '' && clamp !== 'none';
 }

@@ -1,10 +1,14 @@
+import { AuthorshipFields } from '@shared/models';
+
 import { GetGraphLightRequest, GraphDto } from '../../../../features/flows/models/graph.model';
 import {
     GraphVersionSnapshot,
     SnapshotNode,
+    SnapshotNodeAuthorship,
     SnapshotNodeType,
     SnapshotSecretDeclarations,
 } from '../../../../features/flows/models/graph-version-preview.model';
+import { usableNodeNumberOrNull } from '../../../core/helpers/node-number.util';
 import { FlowModel } from '../../../core/models/flow.model';
 import { buildFlowModelFromGraphDto } from '../build-flow-model-from-graph-dto';
 import {
@@ -46,11 +50,11 @@ export const SNAPSHOT_NODE_LIST_KEY = {
 
 type AssertNever<T extends never> = T;
 /**
- * Must stay `never`: a GraphDto node list that no snapshot type fills. `llm_node_list` is a
- * frontend-only leftover — no backend model or export produces it.
+ * Must stay `never`: every GraphDto node list has to be filled by some snapshot type. A new
+ * node list without a matching SNAPSHOT_NODE_LIST_KEY entry fails to compile here.
  */
 export type UnmappedGraphDtoNodeList = AssertNever<
-    Exclude<GraphDtoNodeListKey, (typeof SNAPSHOT_NODE_LIST_KEY)[SnapshotNodeType] | 'llm_node_list'>
+    Exclude<GraphDtoNodeListKey, (typeof SNAPSHOT_NODE_LIST_KEY)[SnapshotNodeType]>
 >;
 
 type SnapshotNodeOfType<TNodeType extends SnapshotNodeType> = Extract<SnapshotNode, { node_type: TNodeType }>;
@@ -61,11 +65,12 @@ interface AdapterContext {
     secretDeclarations: SnapshotSecretDeclarations | undefined;
 }
 
+/** Authorship is added to every node in `adaptNode`, so an adapter leaves it out. */
 type SnapshotNodeAdapters = {
     [TNodeType in SnapshotNodeType]: (
         node: SnapshotNodeOfType<TNodeType>,
         context: AdapterContext
-    ) => NodeListItem<(typeof SNAPSHOT_NODE_LIST_KEY)[TNodeType]>;
+    ) => Omit<NodeListItem<(typeof SNAPSHOT_NODE_LIST_KEY)[TNodeType]>, keyof AuthorshipFields>;
 };
 
 /**
@@ -75,13 +80,20 @@ type SnapshotNodeAdapters = {
  */
 const NOT_PERSISTED = { graph: 0, created_at: '', updated_at: '' } as const;
 
+/**
+ * The export carries no authorship (backend import/export serializers exclude it): author and last edit are unknown
+ * on the rows. The preview reads what the version recorded from the response's `node_authorship` instead
+ * ({@link mapNodeAuthorshipToCanvas}).
+ */
+const NO_AUTHORSHIP: AuthorshipFields = { created_by: null, last_edited_by: null, last_edited_at: null };
+
 const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
-    StartNode: (node) => ({ ...node, graph: 0 }),
-    EndNode: (node) => ({ ...node, graph: 0 }),
-    GraphNote: (node) => ({ ...node, graph: 0 }),
+    StartNode: (node) => ({ ...node, ...NOT_PERSISTED }),
+    EndNode: (node) => ({ ...node, ...NOT_PERSISTED }),
+    GraphNote: (node) => ({ ...node, ...NOT_PERSISTED }),
     PythonNode: (node, context) => ({
         ...node,
-        graph: 0,
+        ...NOT_PERSISTED,
         python_code: toLivePythonCode(node.python_code, declaredSecrets(node.id, 'python_code', context)),
     }),
     TaskNode: (node) => ({
@@ -91,23 +103,26 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     }),
     AgentNode: (node) => ({
         ...node,
-        graph: 0,
+        ...NOT_PERSISTED,
         inline_surface: toLiveInlineSurface(node.inline_surface),
     }),
-    FileExtractorNode: (node) => ({ ...node, graph: 0 }),
-    AudioTranscriptionNode: (node) => ({ ...node, graph: 0 }),
-    SubgraphNode: (node) => ({ ...node, graph: 0 }),
+    FileExtractorNode: (node) => ({ ...node, ...NOT_PERSISTED }),
+    AudioTranscriptionNode: (node) => ({ ...node, ...NOT_PERSISTED }),
+    SubgraphNode: (node) => ({ ...node, ...NOT_PERSISTED }),
     WebhookTriggerNode: (node, context) => ({
         ...node,
-        graph: 0,
+        ...NOT_PERSISTED,
         webhook_trigger_path: '',
         webhook_trigger: node.webhook_trigger,
+        test_payload: node.test_payload ?? {},
+        use_storage: node.use_storage ?? false,
         python_code: toLivePythonCode(node.python_code, declaredSecrets(node.id, 'python_code', context)),
     }),
     TelegramTriggerNode: (node, context) => ({
         ...node,
-        graph: 0,
+        ...NOT_PERSISTED,
         webhook_trigger: node.webhook_trigger,
+        test_payload: node.test_payload ?? {},
         telegram_bot_api_key_secret_id: resolveSecretIdByName(
             context.secretDeclarations?.telegram?.[String(node.id)],
             context.secretsByName
@@ -116,6 +131,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     ScheduleTriggerNode: (node) => ({
         id: node.id,
         node_name: node.node_name,
+        node_number: node.node_number,
         metadata: node.metadata,
         is_active: node.is_active,
         current_runs: node.current_runs ?? 0,
@@ -123,10 +139,10 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
         schedule: buildScheduleBlock(node),
         ...NOT_PERSISTED,
     }),
-    DecisionTableNode: (node) => ({ ...node, graph: 0 }),
+    DecisionTableNode: (node) => ({ ...node, ...NOT_PERSISTED }),
     ClassificationDecisionTableNode: (node, context) => ({
         ...node,
-        graph: 0,
+        ...NOT_PERSISTED,
         pre_python_code: toLiveClassificationPythonCode(
             node.pre_python_code,
             declaredSecrets(node.id, 'pre_python_code', context)
@@ -139,6 +155,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     KnowledgeNode: (node) => ({
         id: node.id,
         node_name: node.node_name,
+        node_number: node.node_number,
         metadata: node.metadata,
         input_map: node.input_map ?? {},
         output_variable_path: node.output_variable_path,
@@ -155,14 +172,15 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     // `key_value_table_name`, the stored name it re-bound from, is not part of the live shape.
     KeyValueNode: (node) => ({
         id: node.id,
-        graph: 0,
         node_name: node.node_name,
+        node_number: node.node_number,
         metadata: node.metadata,
         input_map: node.input_map,
         output_variable_path: node.output_variable_path,
         key_value_table: node.key_value_table,
         mode: node.mode,
         entries: node.entries,
+        ...NOT_PERSISTED,
     }),
 };
 
@@ -177,34 +195,26 @@ export function mapSnapshotToGraphDto(
 ): GraphDto {
     const context: AdapterContext = { secretsByName, secretDeclarations: snapshot.secret_declarations };
     const nodeLists = emptyNodeLists();
+    const knownNodes = (snapshot.nodes ?? []).filter((node) => Object.hasOwn(SNAPSHOT_NODE_ADAPTERS, node.node_type));
 
-    for (const node of snapshot.nodes ?? []) {
-        if (!Object.hasOwn(SNAPSHOT_NODE_ADAPTERS, node.node_type)) continue;
+    for (const node of knownNodes) {
         (nodeLists[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as unknown[]).push(adaptNode(node, context));
     }
 
     return {
+        // The snapshot is not a persisted graph: its identity and creation time are placeholders the
+        // loaders never read, and it is unattributed like its nodes.
         id: 0,
         uuid: '',
         name: '',
         description: '',
         save_version: 0,
+        node_number_seq: highestStoredNodeNumber(knownNodes),
+        created_at: '',
+        ...NO_AUTHORSHIP,
         metadata: (snapshot.metadata ?? {}) as unknown as FlowModel,
         ...nodeLists,
         edge_list: (snapshot.edge_list ?? []).map((edge) => ({ ...edge, graph: 0 })),
-        conditional_edge_list: (snapshot.conditional_edge_list ?? []).map((edge) => ({
-            ...edge,
-            graph: 0,
-            python_code: toLivePythonCode(
-                edge.python_code,
-                resolveDeclaredSecrets(
-                    snapshot.secret_declarations?.conditional_edges?.find(
-                        (declaration) => declaration.source_node_id === edge.source_node_id
-                    )?.names,
-                    secretsByName
-                )
-            ),
-        })),
     };
 }
 
@@ -232,9 +242,47 @@ export function buildPreviewFlowModel(
     };
 }
 
+/**
+ * The version's recorded node authorship (keyed by snapshot node id) re-keyed by canvas node id, for the preview's
+ * node details. Only the four authorship fields are kept; a node without a canvas counterpart (skipped while
+ * loading) is dropped.
+ */
+export function mapNodeAuthorshipToCanvas(
+    nodeAuthorship: Readonly<Record<string, SnapshotNodeAuthorship>>,
+    snapshotIdToNodeUuid: ReadonlyMap<number, string>
+): Map<string, SnapshotNodeAuthorship> {
+    const authorshipByNodeId = new Map<string, SnapshotNodeAuthorship>();
+    for (const [snapshotNodeId, authorship] of Object.entries(nodeAuthorship)) {
+        const nodeId = snapshotIdToNodeUuid.get(Number(snapshotNodeId));
+        if (nodeId === undefined) continue;
+        authorshipByNodeId.set(nodeId, {
+            created_by: authorship.created_by ?? null,
+            created_at: authorship.created_at ?? null,
+            last_edited_by: authorship.last_edited_by ?? null,
+            last_edited_at: authorship.last_edited_at ?? null,
+        });
+    }
+    return authorshipByNodeId;
+}
+
 function adaptNode(node: SnapshotNode, context: AdapterContext): unknown {
-    const adapter = SNAPSHOT_NODE_ADAPTERS[node.node_type] as (node: SnapshotNode, context: AdapterContext) => unknown;
-    return adapter(node, context);
+    const adapter = SNAPSHOT_NODE_ADAPTERS[node.node_type] as (node: SnapshotNode, context: AdapterContext) => object;
+    const adapted = { ...adapter(node, context), ...NO_AUTHORSHIP };
+    return 'node_number' in adapted
+        ? { ...adapted, node_number: usableNodeNumberOrNull(adapted.node_number) }
+        : adapted;
+}
+
+/**
+ * The preview's counter floor: the highest usable number the version stores. A restore keeps the usable
+ * stored numbers and never lowers the counter, so the live counter can only be higher.
+ */
+function highestStoredNodeNumber(nodes: readonly SnapshotNode[]): number {
+    const storedNumbers = nodes.flatMap((node) => {
+        const storedNumber = 'node_number' in node ? usableNodeNumberOrNull(node.node_number) : null;
+        return storedNumber === null ? [] : [storedNumber];
+    });
+    return Math.max(0, ...storedNumbers);
 }
 
 function emptyNodeLists(): { [TKey in GraphDtoNodeListKey]-?: NonNullable<GraphDto[TKey]> } {
@@ -245,7 +293,6 @@ function emptyNodeLists(): { [TKey in GraphDtoNodeListKey]-?: NonNullable<GraphD
         python_node_list: [],
         task_node_list: [],
         agent_node_list: [],
-        llm_node_list: [],
         file_extractor_node_list: [],
         audio_transcription_node_list: [],
         subgraph_node_list: [],

@@ -3,11 +3,19 @@
         [routerLink]="tab.routerLink"
         routerLinkActive="active"
         class="route-tab"
+        [attr.data-tour]="tab.tourAnchor ?? null"
     >
-        <app-svg-icon
-            size="18px"
-            [icon]="tab.icon"
-        />
+        @if (tab.icon) {
+            <app-svg-icon
+                size="18px"
+                [icon]="tab.icon"
+            />
+        } @else if (tab.iconClass) {
+            <i
+                [class]="'route-tab__icon-font ' + tab.iconClass"
+                aria-hidden="true"
+            ></i>
+        }
         {{ tab.label }}
     </a>
 }

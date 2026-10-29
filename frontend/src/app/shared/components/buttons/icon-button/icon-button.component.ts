@@ -51,7 +51,8 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
                 }
 
                 app-svg-icon {
-                    color: white;
+                    // Overridable from outside: set the custom property on the <app-icon-button> element.
+                    color: var(--icon-button-icon-color, var(--white));
                 }
             }
         `,

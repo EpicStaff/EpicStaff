@@ -1,5 +1,6 @@
 import { IPoint } from '@foblex/2d';
 
+import { forEachAxisSegment, LENGTH_TOLERANCE, MIN_INTERIOR_SEGMENT, rangeOverlap, STUB } from './routing-constants';
 import {
     firstIndexAbove,
     firstIndexAtOrAbove,
@@ -35,14 +36,7 @@ const SEARCH_MARGIN = 400;
 // without running one on top of the other.
 const PINNED_OVERLAP_COST = 400;
 const PINNED_SHARED_COST = 30;
-// The stub: the first/last STUB px of a wire, from the port to the search's start/goal.
-const STUB = 20;
-// An interior segment shorter than this reads as a kink. Ending one costs more than running
-// 400 px on top of another wire (which nudging separates), so the search avoids it wherever it can.
-const MIN_INTERIOR_SEGMENT = 10;
 const SHORT_SEGMENT_COST = 400;
-// The quality checker's sub-pixel tolerance: a 9.5-px segment is not short.
-const LENGTH_TOLERANCE = 0.5;
 
 /**
  * Optional limits on a search. `rows`: only grid rows within [top, bottom] may be used.
@@ -115,7 +109,7 @@ export class SegmentIndex {
         for (const wire of this.othersThan(ownPorts)) {
             forEachAxisSegment(wire.points, (segmentHorizontal, segmentLine, segmentLow, segmentHigh) => {
                 if (segmentHorizontal !== horizontal || segmentLine !== line) return;
-                shared += Math.max(0, Math.min(high, segmentHigh) - Math.max(low, segmentLow));
+                shared += Math.max(0, rangeOverlap(low, high, segmentLow, segmentHigh));
             });
         }
         return shared;
@@ -225,23 +219,6 @@ class GridPenalties {
             const stepCrossings = horizontal ? this.verticalStepCrossings : this.horizontalStepCrossings;
             for (let index = firstInside; index <= lastInside; index++) stepCrossings[cell(index, before)] += sign;
         });
-    }
-}
-
-/**
- * Calls `visit` for each axis-parallel piece of a polyline, with the index of the point pair it
- * belongs to; a diagonal pair (possible in hand-made waypoints) counts as horizontal-then-vertical.
- * Zero-length pieces are skipped.
- */
-function forEachAxisSegment(
-    points: IPoint[],
-    visit: (horizontal: boolean, line: number, low: number, high: number, pair: number) => void
-): void {
-    for (let index = 0; index < points.length - 1; index++) {
-        const start = points[index];
-        const end = points[index + 1];
-        if (start.x !== end.x) visit(true, start.y, Math.min(start.x, end.x), Math.max(start.x, end.x), index);
-        if (start.y !== end.y) visit(false, end.x, Math.min(start.y, end.y), Math.max(start.y, end.y), index);
     }
 }
 

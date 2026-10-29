@@ -1,507 +1,660 @@
-"""
-Tests for GeminiRealtimeAgentClient.
+"""GeminiRealtimeAgentClient: the adapter to the Gemini Live API.
 
-The Google Generative AI SDK (genai) is patched at module level via the
-`mock_genai` autouse fixture — no real API calls are made.
-Each test gets a pre-built client with a ready AsyncMock _session.
+The Gemini SDK is the external boundary. FakeGeminiLive stands in for
+`genai.Client().aio.live.connect()`: every connect opens a FakeSession that records
+its config and everything sent to it, and plays the server messages scripted for it
+the way google-genai 1.19 delivers them (see gemini_live_fakes).
 """
+
 import asyncio
-import base64
 import audioop
+import base64
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from google.genai import types
+from websockets.datastructures import Headers
+from websockets.exceptions import ConnectionClosedError, InvalidStatus
+from websockets.http11 import Response
 
-from infrastructure.providers.gemini.gemini_realtime_agent_client import (
-    GeminiRealtimeAgentClient,
-)
 from domain.models.realtime_tool import RealtimeTool
+from infrastructure.providers.gemini.gemini_realtime_agent_client import GeminiRealtimeAgentClient
 from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
+from tests.infrastructure.providers.gemini_live_fakes import (
+    HANG,
+    FakeSession,
+    SESSION_RECORD_PATCH,
+    patch_gemini_backoff,
+    patch_gemini_clock,
+    patched_gemini_live,
+    resumption_update,
+    server_close,
+    turn_complete,
+)
+
+pytestmark = pytest.mark.asyncio
+
+# Bounds every wait on the message loop, so a loop that keeps reopening sessions
+# fails the test instead of hanging the run.
+LOOP_TIMEOUT_SECONDS = 2
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+@pytest.fixture
+def live():
+    with patched_gemini_live() as fake:
+        yield fake
 
-def _make_rt_tool(name="echo", description="echo tool") -> RealtimeTool:
-    # description is a property backed by _description (not a Pydantic field),
-    # so it must be set explicitly after construction.
+
+@pytest.fixture(autouse=True)
+def backoff(monkeypatch):
+    """Connect retries record their backoff instead of waiting."""
+    return patch_gemini_backoff(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
+def session_record():
+    """The server handler records Gemini events in the DB; that write is not under test here."""
+    with patch(SESSION_RECORD_PATCH, new_callable=AsyncMock) as write:
+        yield write
+
+
+def _tool(name="echo", description="echo tool") -> RealtimeTool:
     tool = RealtimeTool(
         name=name,
-        parameters={
-            "type": "object",
-            "properties": {"text": {"type": "string"}},
-            "required": ["text"],
-        },
+        parameters={"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
     )
+    # description is a property backed by _description, not a Pydantic field.
     tool.description = description
     return tool
 
 
-def _make_server_msg(**overrides):
-    """Minimal Gemini LiveServerMessage-like mock."""
-    r = MagicMock()
-    r.setup_complete = None
-    r.server_content = None
-    r.tool_call = None
-    r.go_away = None
-    r.session_resumption_update = None
-    for k, v in overrides.items():
-        setattr(r, k, v)
-    return r
+def _client(live, **overrides) -> GeminiRealtimeAgentClient:
+    return GeminiRealtimeAgentClient(
+        **{
+            "api_key": "test_key",
+            "connection_key": "conn_1",
+            "on_server_event": AsyncMock(),
+            "tool_manager_service": AsyncMock(),
+            "instructions": "You are helpful.",
+            **overrides,
+        }
+    )
 
 
-async def _empty_receive():
-    """Async generator that ends immediately (simulates server-close)."""
-    return
-    yield  # pragma: no cover — makes this an async generator
+def _system_instruction(session: FakeSession) -> str:
+    return session.config.system_instruction.parts[0].text
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+def _resumption_handle(session: FakeSession) -> str | None:
+    return session.config.session_resumption.handle
 
-@pytest.fixture(autouse=True)
-def mock_genai():
-    """Prevent all real genai.Client construction."""
-    with patch(
-        "infrastructure.providers.gemini.gemini_realtime_agent_client.genai"
-    ) as mg:
-        mg.Client.return_value = MagicMock()
-        yield mg
+
+def _output_transcript(text: str) -> types.LiveServerMessage:
+    return types.LiveServerMessage(server_content=types.LiveServerContent(output_transcription=types.Transcription(text=text)))
+
+
+async def _reconnect(client) -> None:
+    await client.close()
+    await client.connect()
+
+
+async def _serve_until(live, client, session_count: int) -> list[FakeSession]:
+    """Run the message loop until `session_count` sessions were opened, then cancel it."""
+    task = asyncio.create_task(client.handle_messages())
+    try:
+        async with asyncio.timeout(LOOP_TIMEOUT_SECONDS):
+            while len(live.sessions) < session_count and not task.done():
+                await asyncio.sleep(0)
+    finally:
+        task.cancel()
+        await task
+    return live.sessions
 
 
 @pytest.fixture
-def client():
-    """GeminiRealtimeAgentClient with a ready mock session."""
-    c = GeminiRealtimeAgentClient(
-        api_key="test_key",
-        connection_key="conn_1",
-        on_server_event=AsyncMock(),
-        tool_manager_service=AsyncMock(),
+def clock(monkeypatch):
+    return patch_gemini_clock(monkeypatch)
+
+
+async def _caller_audio(client, pcm_24k: bytes) -> None:
+    await client.process_message({"type": "input_audio_buffer.append", "audio": base64.b64encode(pcm_24k).decode()})
+
+
+@pytest.mark.parametrize(("voice", "expected_voice"), [("Kore", "Kore"), ("bogus", "Puck")])
+async def test_connect_configures_voice_instructions_and_tools(live, voice, expected_voice):
+    client = _client(live, voice=voice, rt_tools=[_tool("search", "search the web"), _tool("b")])
+
+    await client.connect()
+
+    config = live.sessions[0].config
+    assert config.speech_config.voice_config.prebuilt_voice_config.voice_name == expected_voice
+    assert _system_instruction(live.sessions[0]) == "You are helpful."
+    # Resumption is enabled from the first session so Gemini starts sending handles.
+    assert config.session_resumption == types.SessionResumptionConfig(handle=None)
+    ((declarations,),) = [tool.values() for tool in config.tools]
+    assert [(declaration["name"], declaration["description"]) for declaration in declarations] == [
+        ("search", "search the web"),
+        ("b", "echo tool"),
+    ]
+    assert declarations[0]["parameters"] == {
+        "type": "OBJECT", "properties": {"text": {"type": "string"}}, "required": ["text"],
+    }
+
+
+@pytest.mark.parametrize("temperature", [0.0, 0.9, None], ids=["zero", "set", "unset"])
+async def test_connect_sends_the_configured_temperature(live, temperature):
+    client = _client(live, temperature=temperature)
+
+    await client.connect()
+
+    assert live.sessions[0].config.temperature == temperature
+
+
+async def test_constructing_the_client_does_not_connect(live):
+    _client(live)
+
+    assert live.sessions == []
+
+
+async def test_several_turns_are_received_on_one_session_without_reconnecting(live):
+    client = _client(live)
+    live.scripts = [[_output_transcript("Hi"), turn_complete(), _output_transcript("Again"), turn_complete()]]
+    live.refuse_after = 1  # so the loop stops once the server finally closes the session
+    await client.connect()
+
+    await asyncio.wait_for(client.handle_messages(), LOOP_TIMEOUT_SECONDS)
+
+    sent = [call.args[0] for call in client.on_server_event.await_args_list]
+    assert [event["transcript"] for event in sent if event["type"] == "response.audio_transcript.done"] == [
+        "Hi", "Again",
+    ]
+    assert len(live.sessions) == 1
+    assert live.sessions[0].closed
+
+
+async def test_a_server_close_continues_on_a_resumed_session(live, clock):
+    client = _client(live)
+    live.scripts = [
+        [resumption_update("h1", True), turn_complete(), server_close(1000, "go away elapsed")],
+        [_output_transcript("still here"), turn_complete(), HANG],
+    ]
+    await client.connect()
+    await _caller_audio(client, b"\x01\x00" * 48)
+    clock.now += 1  # the handle arrives after this audio, so Gemini already has it
+
+    loop = asyncio.create_task(client.handle_messages())
+    async with asyncio.timeout(LOOP_TIMEOUT_SECONDS):
+        while not any(
+            call.args[0].get("transcript") == "still here" for call in client.on_server_event.await_args_list
+        ):
+            await asyncio.sleep(0)
+
+    first, resumed = live.sessions
+    assert first.closed and not resumed.closed
+    assert _resumption_handle(resumed) == "h1"
+    assert _system_instruction(resumed) == "You are helpful."
+    assert resumed.turns == []
+    assert resumed.audio == []
+    # The task keeps running, so ConversationService's reconnect (on task end) stays idle.
+    assert not loop.done()
+    loop.cancel()
+    await loop
+
+
+async def test_a_resumed_session_gets_only_the_audio_buffered_after_its_handle(live, clock):
+    client = _client(live)
+    live.scripts = [[resumption_update("h1", True), _output_transcript("ok"), turn_complete(), HANG]]
+    await client.connect()
+    await _caller_audio(client, b"\x01\x00" * 48)
+    clock.now += 1
+    loop = asyncio.create_task(client.handle_messages())
+    async with asyncio.timeout(LOOP_TIMEOUT_SECONDS):
+        while not any(call.args[0].get("transcript") == "ok" for call in client.on_server_event.await_args_list):
+            await asyncio.sleep(0)
+    clock.now += 1
+    await _caller_audio(client, b"\x02\x00" * 48)
+
+    live.sessions[0].close()  # Gemini closes the connection
+    async with asyncio.timeout(LOOP_TIMEOUT_SECONDS):
+        while len(live.sessions) < 2:
+            await asyncio.sleep(0)
+    loop.cancel()
+    await loop
+
+    # 48 samples at 24 kHz become 32 at 16 kHz; only the chunk after the handle is new to Gemini.
+    assert [blob.data for blob in live.sessions[1].audio] == [b"\x02\x00" * 32]
+
+
+async def test_a_receive_error_stops_the_message_loop_without_reconnecting(live):
+    client = _client(live)
+    live.scripts = [[turn_complete(), RuntimeError("protocol error")]]
+    await client.connect()
+
+    await asyncio.wait_for(client.handle_messages(), LOOP_TIMEOUT_SECONDS)
+
+    assert len(live.sessions) == 1
+    assert live.sessions[0].closed
+
+
+@pytest.mark.parametrize(
+    ("scripts", "expected_sessions"),
+    [
+        # The first session plus three reconnects, all closed at once: the loop gives up.
+        ([[], [], [], [], []], 4),
+        # A session that delivers a message resets the count.
+        ([[], [], [], [turn_complete()], [], [], [], [], []], 8),
+    ],
+    ids=["gives-up-after-three-empty-reconnects", "a-message-resets-the-count"],
+)
+async def test_reconnects_stop_when_sessions_keep_closing_before_any_message(live, scripts, expected_sessions):
+    client = _client(live)
+    live.scripts = scripts
+    await client.connect()
+
+    await asyncio.wait_for(client.handle_messages(), LOOP_TIMEOUT_SECONDS)
+
+    assert len(live.sessions) == expected_sessions
+    assert all(session.closed for session in live.sessions)
+
+
+async def test_a_locally_closed_session_is_not_reopened(live):
+    client = _client(live)
+    live.scripts = [[turn_complete(), HANG]]
+    await client.connect()
+    loop = asyncio.create_task(client.handle_messages())
+    await asyncio.sleep(0)
+
+    await client.close()
+    await asyncio.wait_for(loop, LOOP_TIMEOUT_SECONDS)
+
+    assert len(live.sessions) == 1
+
+
+async def test_cancelling_the_loop_does_not_reconnect(live):
+    client = _client(live)
+    await client.connect()
+
+    task = asyncio.create_task(client.handle_messages())
+    await asyncio.sleep(0)
+    task.cancel()
+    await task
+
+    assert len(live.sessions) == 1
+    assert live.sessions[0].closed
+
+
+@pytest.mark.parametrize(
+    ("updates", "expected_handle"),
+    [
+        ([("h1", True)], "h1"),
+        ([("h1", True), ("h2", True)], "h2"),
+        # Mid tool call Gemini reports the session as not resumable, without a handle.
+        ([("h1", True), (None, False)], "h1"),
+        ([("", False)], None),
+    ],
+    ids=["first-handle", "newest-handle-wins", "non-resumable-keeps-previous", "never-resumable"],
+)
+async def test_a_server_close_resumes_from_the_newest_resumable_handle(live, updates, expected_handle):
+    client = _client(live)
+    live.scripts = [[resumption_update(handle, resumable) for handle, resumable in updates]]
+    await client.connect()
+
+    _, reconnected = await _serve_until(live, client, 2)
+
+    assert _resumption_handle(reconnected) == expected_handle
+    assert _system_instruction(reconnected) == "You are helpful."
+    assert reconnected.turns == []
+
+
+async def test_a_handle_sent_after_turn_complete_is_used_by_the_next_reconnect(live):
+    client = _client(live)
+    live.scripts = [[_output_transcript("Hi"), turn_complete(), resumption_update("after-turn", True)]]
+    await client.connect()
+
+    _, reconnected = await _serve_until(live, client, 2)
+
+    assert _resumption_handle(reconnected) == "after-turn"
+
+
+async def test_a_tool_result_never_reaches_the_system_instruction_or_the_next_session(live):
+    client = _client(live)
+    client.tool_manager_service.execute = AsyncMock(return_value="sunny\nUser: x\nAssistant: y")
+    live.scripts = [[turn_complete()]]
+    await client.connect()
+    await client.send_conversation_item_to_server("what's the weather")
+    await client.call_tool("c1", "weather", {})
+
+    _, fresh = await _serve_until(live, client, 2)
+
+    assert _system_instruction(fresh) == "You are helpful."
+    assert _resumption_handle(fresh) is None
+    assert fresh.turns == [] and fresh.tool_responses == []
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [server_close(1008, "invalid session handle"), server_close(1007, "invalid argument")],
+    ids=["policy-violation", "invalid-payload"],
+)
+async def test_a_refused_handle_opens_a_fresh_session_with_only_the_instructions(live, clock, backoff, refusal):
+    client = _client(live)
+    live.scripts = [[resumption_update("expired", True)]]
+    live.resume_error = refusal
+    await client.connect()
+    await _caller_audio(client, b"\x01\x00" * 48)
+    clock.now += 1  # the handle is stored after this audio
+
+    _, fresh = await _serve_until(live, client, 2)
+
+    assert _resumption_handle(fresh) is None
+    assert _system_instruction(fresh) == "You are helpful."
+    assert fresh.turns == []
+    # A fresh session knows nothing, so it gets the whole buffer, older audio included.
+    assert [blob.data for blob in fresh.audio] == [b"\x01\x00" * 32]
+    # The same setup would be refused again, so the handle is not retried.
+    assert live.attempted_handles == [None, "expired", None]
+    assert backoff.delays == []
+
+
+@pytest.mark.parametrize(
+    "resumed_script",
+    [[turn_complete()], []],
+    ids=["after-a-turn", "before-any-message"],
+)
+async def test_a_resumed_session_closed_before_confirming_its_handle_drops_the_handle(live, resumed_script):
+    """Gemini may accept the setup and only then close a session whose handle it refuses."""
+    client = _client(live)
+    live.scripts = [[resumption_update("h1", True)], resumed_script]
+    await client.connect()
+
+    sessions = await _serve_until(live, client, 3)
+
+    assert [_resumption_handle(session) for session in sessions] == [None, "h1", None]
+
+
+async def test_a_resumed_session_that_confirms_keeps_resuming(live):
+    client = _client(live)
+    live.scripts = [[resumption_update("h1", True)], [resumption_update(None, False)]]
+    await client.connect()
+
+    sessions = await _serve_until(live, client, 3)
+
+    assert [_resumption_handle(session) for session in sessions] == [None, "h1", "h1"]
+
+
+TRANSIENT_FAILURES = [
+    # Gemini's answer to the setup that carried the handle, from a failing server.
+    pytest.param("resume_error", ConnectionClosedError(None, None), id="dropped-during-setup"),
+    pytest.param("resume_error", server_close(1001, "going away"), id="going-away"),
+    pytest.param("resume_error", server_close(1011, "internal error"), id="internal-error"),
+    pytest.param("resume_error", server_close(1013, "try again later"), id="try-again-later"),
+    # The websocket upgrade fails before the handle is ever sent.
+    pytest.param("upgrade_error", InvalidStatus(Response(408, "Request Timeout", Headers())), id="upgrade-408"),
+    pytest.param("upgrade_error", InvalidStatus(Response(429, "Too Many Requests", Headers())), id="upgrade-429"),
+    pytest.param("upgrade_error", InvalidStatus(Response(503, "Service Unavailable", Headers())), id="upgrade-503"),
+    pytest.param("upgrade_error", OSError("network unreachable"), id="os-error"),
+]
+
+
+async def _resumable_session_then_failures(live, client, stage, error, errors_left):
+    """Serve a session that hands out h1 and closes; the reconnects then hit `error`."""
+    live.scripts = [[resumption_update("h1", True)]]
+    await client.connect()
+    live.attempted_handles.clear()
+    setattr(live, stage, error)
+    live.errors_left = errors_left
+
+
+@pytest.mark.parametrize(("stage", "transient"), TRANSIENT_FAILURES)
+async def test_a_transient_failure_is_retried_with_the_same_handle(live, backoff, stage, transient):
+    client = _client(live)
+    await _resumable_session_then_failures(live, client, stage, transient, errors_left=2)
+
+    _, resumed = await _serve_until(live, client, 2)
+
+    assert live.attempted_handles == ["h1", "h1", "h1"]
+    assert backoff.delays == [0.5, 1.5]
+    assert _resumption_handle(resumed) == "h1"
+
+
+@pytest.mark.parametrize(("stage", "transient"), TRANSIENT_FAILURES)
+async def test_resuming_that_keeps_failing_falls_back_to_a_fresh_session_with_the_whole_buffer(
+    live, backoff, clock, stage, transient
+):
+    client = _client(live)
+    await _resumable_session_then_failures(live, client, stage, transient, errors_left=3)
+    live.scripts.append([turn_complete()])  # the fresh session then closes too
+    await _caller_audio(client, b"\x01\x00" * 48)
+    clock.now += 1  # the handle is stored after this audio
+
+    _, fresh, after_fresh = await _serve_until(live, client, 3)
+
+    assert live.attempted_handles == ["h1", "h1", "h1", None, None]
+    assert backoff.delays == [0.5, 1.5]
+    assert _resumption_handle(fresh) is None
+    assert [blob.data for blob in fresh.audio] == [b"\x01\x00" * 32]
+    # The fresh session is a new conversation, so the old handle is not resumed later.
+    assert _resumption_handle(after_fresh) is None
+
+
+async def test_when_every_attempt_fails_the_loop_ends_and_the_handle_is_kept(live, backoff):
+    """The failures were the server's, so the handle may still restore the conversation
+    on the next connect (ConversationService's reconnect, for a browser caller)."""
+    client = _client(live)
+    await _resumable_session_then_failures(
+        live, client, "upgrade_error", InvalidStatus(Response(503, "Service Unavailable", Headers())), errors_left=None
     )
-    mock_session = AsyncMock()
-    mock_session_cm = AsyncMock()
-    mock_session_cm.__aexit__ = AsyncMock(return_value=False)
-    c._session = mock_session
-    c._session_cm = mock_session_cm
-    return c
+
+    await asyncio.wait_for(client.handle_messages(), LOOP_TIMEOUT_SECONDS)
+
+    assert live.attempted_handles == ["h1", "h1", "h1", None]
+    assert len(live.sessions) == 1 and live.sessions[0].closed
+    live.upgrade_error = None
+    await client.connect()
+    assert _resumption_handle(live.sessions[-1]) == "h1"
 
 
-# ---------------------------------------------------------------------------
-# Initialization
-# ---------------------------------------------------------------------------
+async def test_cancelling_during_the_backoff_stops_cleanly(live, backoff):
+    client = _client(live)
+    await _resumable_session_then_failures(
+        live, client, "resume_error", server_close(1011, "internal error"), errors_left=None
+    )
+    backoff.hold = True
+    loop = asyncio.create_task(client.handle_messages())
+    async with asyncio.timeout(LOOP_TIMEOUT_SECONDS):
+        while not backoff.delays:
+            await asyncio.sleep(0)
 
-def test_invalid_voice_falls_back_to_puck():
-    c = GeminiRealtimeAgentClient(api_key="k", connection_key="c", voice="bogus")
-    assert c.voice == "Puck"
+    loop.cancel()
+    await asyncio.wait_for(loop, LOOP_TIMEOUT_SECONDS)
 
-
-def test_valid_voice_kept():
-    for voice in ("Puck", "Charon", "Kore", "Fenrir", "Aoede"):
-        c = GeminiRealtimeAgentClient(api_key="k", connection_key="c", voice=voice)
-        assert c.voice == voice
-
-
-def test_session_version_starts_at_zero(client):
-    assert client._session_version == 0
-
-
-def test_session_is_none_before_connect():
-    c = GeminiRealtimeAgentClient(api_key="k", connection_key="c")
-    # __init__ should NOT open any connection
-    assert c._session is None
-    assert c._session_cm is None
+    assert live.attempted_handles == ["h1"]
+    assert len(live.sessions) == 1 and live.sessions[0].closed
+    live.resume_error = None
+    await client.connect()
+    assert _resumption_handle(live.sessions[-1]) == "h1"
 
 
-# ---------------------------------------------------------------------------
-# _build_tools
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "status",
+    [
+        pytest.param(400, id="bad-request"),
+        pytest.param(401, id="unauthorized"),
+        pytest.param(403, id="forbidden"),
+        pytest.param(404, id="unknown-model"),
+    ],
+)
+async def test_a_permanent_upgrade_rejection_ends_the_loop_at_once_and_keeps_the_handle(live, backoff, status):
+    """Retrying, or switching to a fresh session, would be rejected the same way."""
+    client = _client(live)
+    await _resumable_session_then_failures(
+        live, client, "upgrade_error", InvalidStatus(Response(status, "Rejected", Headers())), errors_left=None
+    )
 
-def test_build_tools_empty_returns_empty(client):
-    assert client._build_tools([]) == []
+    await asyncio.wait_for(client.handle_messages(), LOOP_TIMEOUT_SECONDS)
 
-
-def test_build_tools_single_tool(client):
-    tool = _make_rt_tool("search", "search the web")
-    result = client._build_tools([tool])
-    assert len(result) == 1
-    decl = result[0]["function_declarations"][0]
-    assert decl["name"] == "search"
-    assert decl["description"] == "search the web"
-    assert "text" in decl["parameters"]["properties"]
-
-
-def test_build_tools_multiple_tools(client):
-    tools = [_make_rt_tool("a"), _make_rt_tool("b"), _make_rt_tool("c")]
-    result = client._build_tools(tools)
-    names = [d["name"] for d in result[0]["function_declarations"]]
-    assert names == ["a", "b", "c"]
-
-
-# ---------------------------------------------------------------------------
-# _build_system_instruction
-# ---------------------------------------------------------------------------
-
-def test_system_instruction_no_history(client):
-    client.instructions = "You are helpful."
-    client._conversation_history = []
-    assert client._build_system_instruction() == "You are helpful."
+    assert live.attempted_handles == ["h1"]
+    assert backoff.delays == []
+    assert len(live.sessions) == 1 and live.sessions[0].closed
+    live.upgrade_error = None
+    await client.connect()
+    assert _resumption_handle(live.sessions[-1]) == "h1"
 
 
-def test_system_instruction_injects_user_turns(client):
-    client.instructions = "Base."
-    client._conversation_history = [{"role": "user", "text": "Hello"}]
-    result = client._build_system_instruction()
-    assert "User: Hello" in result
+@pytest.mark.parametrize(
+    "stall",
+    ["setup-reply-never-arrives", "backoff-runs-past-the-deadline"],
+)
+async def test_a_reconnect_past_the_deadline_ends_the_loop_and_keeps_the_handle(live, backoff, monkeypatch, stall):
+    monkeypatch.setattr(
+        "infrastructure.providers.gemini.gemini_realtime_agent_client._CONNECT_DEADLINE_SECONDS", 0.05
+    )
+    client = _client(live)
+    if stall == "setup-reply-never-arrives":
+        live.scripts = [[resumption_update("h1", True)]]
+        await client.connect()
+        live.attempted_handles.clear()
+        live.hang_connect = True
+    else:
+        await _resumable_session_then_failures(
+            live, client, "resume_error", server_close(1011, "internal error"), errors_left=None
+        )
+        backoff.hold = True
+
+    loop = asyncio.create_task(client.handle_messages())
+    # The loop must end on its own; wait_for would cancel it, and the loop
+    # swallows that, which would hide a connect that never times out.
+    finished, _ = await asyncio.wait({loop}, timeout=LOOP_TIMEOUT_SECONDS)
+    loop.cancel()
+    await loop
+
+    assert finished == {loop}
+    assert live.attempted_handles == ["h1"]
+    assert len(live.sessions) == 1 and live.sessions[0].closed
+    # The cancelled attempt left nothing behind for close() to exit.
+    await client.close()
+    assert live.exits_without_a_session == 0
+    live.hang_connect, live.resume_error, backoff.hold = False, None, False
+    await client.connect()
+    assert _resumption_handle(live.sessions[-1]) == "h1"
 
 
-def test_system_instruction_injects_model_turns(client):
-    client.instructions = "Base."
-    client._conversation_history = [{"role": "model", "text": "Hi!"}]
-    result = client._build_system_instruction()
-    assert "Assistant: Hi!" in result
+async def test_twilio_audio_is_sent_as_16k_pcm(live):
+    client = _client(live)
+    await client.connect()
+
+    await client.send_audio(base64.b64encode(audioop.lin2ulaw(b"\x00\x00" * 160, 2)).decode())
+
+    (blob,) = live.sessions[0].audio
+    assert blob.mime_type == "audio/pcm;rate=16000"
+    # 160 samples at 8 kHz are about 320 16-bit samples at 16 kHz (the resampler lags by one).
+    assert len(blob.data) // 2 == pytest.approx(320, abs=2)
 
 
-def test_system_instruction_preserves_base(client):
-    client.instructions = "My instructions."
-    client._conversation_history = [{"role": "user", "text": "x"}]
-    assert client._build_system_instruction().startswith("My instructions.")
+async def test_nothing_is_sent_while_no_session_is_open(live):
+    client = _client(live)
+    client.tool_manager_service.execute = AsyncMock(return_value="ok")
 
-
-# ---------------------------------------------------------------------------
-# send_audio
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_send_audio_drops_when_session_none(client):
-    client._session = None
-    b64 = base64.b64encode(b"\xff" * 100).decode()
-    await client.send_audio(b64)  # must not raise
-    # No session — nothing to assert on
-
-
-@pytest.mark.asyncio
-async def test_send_audio_calls_send_realtime_input(client):
-    ulaw = audioop.lin2ulaw(b"\x00\x00" * 80, 2)
-    b64 = base64.b64encode(ulaw).decode()
-    await client.send_audio(b64)
-    client._session.send_realtime_input.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_send_audio_resamples_8k_to_16k(client):
-    """Output blob must use the 16kHz PCM mime type."""
-    from google.genai import types as genai_types
-
-    ulaw = audioop.lin2ulaw(b"\x00\x00" * 160, 2)  # 160 samples @ 8k
-    b64 = base64.b64encode(ulaw).decode()
-    await client.send_audio(b64)
-
-    call_kwargs = client._session.send_realtime_input.call_args
-    blob = call_kwargs.kwargs.get("audio") or call_kwargs.args[0]
-    assert "rate=16000" in blob.mime_type
-
-
-# ---------------------------------------------------------------------------
-# send_conversation_item_to_server
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_send_conversation_item_drops_when_session_none(client):
-    client._session = None
-    await client.send_conversation_item_to_server("hello")  # must not raise
-
-
-@pytest.mark.asyncio
-async def test_send_conversation_item_calls_send_client_content(client):
+    await client.send_audio(base64.b64encode(b"\xff" * 10).decode())
     await client.send_conversation_item_to_server("hello")
-    client._session.send_client_content.assert_awaited_once()
+    await client.call_tool("c1", "echo", {})
+    await client.replay_audio_buffer()
+
+    assert live.sessions == []
 
 
-# ---------------------------------------------------------------------------
-# call_tool — happy path
-# ---------------------------------------------------------------------------
+async def test_typed_text_is_sent_as_a_complete_user_turn(live):
+    client = _client(live)
+    await client.connect()
 
-@pytest.mark.asyncio
-async def test_call_tool_sends_tool_response(client):
+    await client.send_conversation_item_to_server("hello")
+
+    ((content, turn_complete_flag),) = live.sessions[0].turns
+    assert (content.role, content.parts[0].text, turn_complete_flag) == ("user", "hello", True)
+
+
+async def test_tool_result_is_sent_back_for_its_call(live):
+    client = _client(live)
     client.tool_manager_service.execute = AsyncMock(return_value="ok")
+    await client.connect()
+
     await client.call_tool("c1", "echo", {"text": "hi"})
-    client._session.send_tool_response.assert_awaited_once()
+
+    client.tool_manager_service.execute.assert_awaited_once_with(
+        connection_key="conn_1", tool_name="echo", call_arguments={"text": "hi"}
+    )
+    (response,) = live.sessions[0].tool_responses
+    assert (response.id, response.name, response.response) == ("c1", "echo", {"result": "ok"})
 
 
-@pytest.mark.asyncio
-async def test_call_tool_saves_result_to_history(client):
-    client.tool_manager_service.execute = AsyncMock(return_value="result_value")
-    await client.call_tool("c1", "echo", {"text": "hi"})
-    text = " ".join(e.get("text", "") for e in client._conversation_history)
-    assert "echo" in text
-    assert "result_value" in text
+async def test_tool_result_is_dropped_when_the_session_was_replaced_meanwhile(live):
+    """Gemini would reject a response for a call it never made in the new session."""
+    client = _client(live)
+    reconnected = asyncio.Event()
 
-
-# ---------------------------------------------------------------------------
-# call_tool — guard conditions
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_call_tool_drops_when_session_none(client):
-    client.tool_manager_service.execute = AsyncMock(return_value="ok")
-    client._session = None
-    await client.call_tool("c1", "echo", {"text": "hi"})  # must not raise
-    # No session — send_tool_response cannot be called
-
-
-@pytest.mark.asyncio
-async def test_call_tool_drops_when_session_version_changed(client):
-    """Session replaced during execution → response must be discarded."""
-    async def execute_and_replace(*a, **kw):
-        client._session_version += 1  # simulate reconnect
+    async def slow_tool(**kwargs):
+        await reconnected.wait()
         return "result"
 
-    client.tool_manager_service.execute = execute_and_replace
-    await client.call_tool("c1", "echo", {"text": "hi"})
-    client._session.send_tool_response.assert_not_awaited()
+    client.tool_manager_service.execute = slow_tool
+    await client.connect()
+    tool_call = asyncio.create_task(client.call_tool("c1", "echo", {}))
+    await asyncio.sleep(0)
+
+    await _reconnect(client)
+    reconnected.set()
+    await tool_call
+
+    assert all(session.tool_responses == [] for session in live.sessions)
 
 
-@pytest.mark.asyncio
-async def test_call_tool_handles_send_failure_gracefully(client):
-    """send_tool_response failure must not propagate to caller."""
+async def test_a_failed_tool_response_send_is_not_raised(live):
+    client = _client(live)
     client.tool_manager_service.execute = AsyncMock(return_value="ok")
-    client._session.send_tool_response.side_effect = RuntimeError("ws closed")
-    await client.call_tool("c1", "echo", {"text": "hi"})  # must not raise
+    await client.connect()
+    live.sessions[0].fail_tool_response = True
+
+    await client.call_tool("c1", "echo", {})
 
 
-@pytest.mark.asyncio
-async def test_call_tool_handles_execute_failure_gracefully(client):
-    """Tool execution failure → error string sent, no exception raised."""
-    client.tool_manager_service.execute = AsyncMock(
-        side_effect=ValueError("tool broken")
-    )
-    await client.call_tool("c1", "echo", {"text": "hi"})  # must not raise
-    client._session.send_tool_response.assert_awaited_once()
-
-
-def _sent_tool_result(client) -> str:
-    function_responses = client._session.send_tool_response.await_args.kwargs[
-        "function_responses"
-    ]
-    assert len(function_responses) == 1
-    return function_responses[0].response["result"]
-
-
-@pytest.mark.asyncio
-async def test_call_tool_failure_sends_fixed_result_without_exception_text(client):
+async def test_tool_failure_reaches_gemini_without_the_exception_text(live, captured_log_messages):
+    client = _client(live)
     client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
+    await client.connect()
 
     await client.call_tool("c1", "echo", {"text": "hi"})
 
-    result = _sent_tool_result(client)
-    assert SECRET_SENTINEL not in result
-    assert result.startswith("Tool execution failed")
-    assert PUBLIC_ERROR_REFERENCE.search(result)
-    assert SECRET_SENTINEL not in str(client._session.send_tool_response.await_args)
+    (response,) = live.sessions[0].tool_responses
+    result = response.response["result"]
+    assert result.startswith("Tool execution failed") and SECRET_SENTINEL not in result
+    assert live.sessions[0].turns == []
+    correlation_id = PUBLIC_ERROR_REFERENCE.search(result).group(1)
+    (log,) = [message for message in captured_log_messages if correlation_id in message]
+    assert SECRET_SENTINEL in log
 
 
-@pytest.mark.asyncio
-async def test_call_tool_failure_keeps_exception_text_out_of_replayed_history(client):
-    """History is replayed into the system instruction after a reconnect."""
-    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
-
-    await client.call_tool("c1", "echo", {"text": "hi"})
-
-    assert SECRET_SENTINEL not in client._build_system_instruction()
-
-
-@pytest.mark.asyncio
-async def test_call_tool_failure_logs_detail_under_the_sent_correlation_id(
-    client, captured_log_messages
-):
-    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
-
-    await client.call_tool("c1", "echo", {"text": "hi"})
-
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(_sent_tool_result(client)).group(1)
-    matching_logs = [message for message in captured_log_messages if correlation_id in message]
-    assert len(matching_logs) == 1
-    assert SECRET_SENTINEL in matching_logs[0]
-
-
-# ---------------------------------------------------------------------------
-# close — idempotency and locking
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_close_clears_session_and_cm(client):
+async def test_close_is_idempotent_and_safe_to_race(live):
+    client = _client(live)
     await client.close()
-    assert client._session is None
-    assert client._session_cm is None
+    await client.connect()
+
+    results = await asyncio.gather(client.close(), client.close(), return_exceptions=True)
+
+    assert results == [None, None]
+    assert live.sessions[0].closed
 
 
-@pytest.mark.asyncio
-async def test_close_is_idempotent(client):
-    await client.close()
-    await client.close()  # second call: _session_cm is None → no-op
-
-
-@pytest.mark.asyncio
-async def test_concurrent_close_calls_do_not_raise(client):
-    results = await asyncio.gather(
-        client.close(),
-        client.close(),
-        return_exceptions=True,
-    )
-    assert all(r is None for r in results)
-
-
-@pytest.mark.asyncio
-async def test_close_with_no_session_cm_is_noop(client):
-    client._session_cm = None
-    client._session = None
-    await client.close()  # must not raise
-
-
-# ---------------------------------------------------------------------------
-# handle_messages — reconnect loop
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_handle_messages_reconnects_after_server_close(client):
-    """receive() ending normally → close() + connect() must be called."""
-    client._session.receive = _empty_receive
-
-    connect_calls = 0
-
-    async def mock_connect():
-        nonlocal connect_calls
-        connect_calls += 1
-        raise asyncio.CancelledError()  # abort loop after first reconnect
-
-    with patch.object(client, "close", new_callable=AsyncMock) as mock_close, \
-         patch.object(client, "connect", side_effect=mock_connect):
-        await client.handle_messages()
-
-    assert connect_calls == 1
-    assert mock_close.await_count >= 1
-
-
-@pytest.mark.asyncio
-async def test_handle_messages_increments_session_version_on_reconnect(client):
-    assert client._session_version == 0
-
-    client._session.receive = _empty_receive
-    reconnects = 0
-
-    async def mock_connect():
-        nonlocal reconnects
-        reconnects += 1
-        new_sess = AsyncMock()
-        new_sess.receive = _empty_receive
-        client._session = new_sess
-        if reconnects >= 2:
-            raise asyncio.CancelledError()
-
-    with patch.object(client, "close", new_callable=AsyncMock), \
-         patch.object(client, "connect", side_effect=mock_connect):
-        await client.handle_messages()
-
-    assert client._session_version == 1  # incremented only on successful reconnect
-
-
-@pytest.mark.asyncio
-async def test_handle_messages_exits_on_receive_exception(client):
-    """Exception from receive() triggers break, not infinite retry."""
-    async def broken_receive():
-        raise RuntimeError("network error")
-        yield  # pragma: no cover
-
-    client._session.receive = broken_receive
-
-    with patch.object(client, "close", new_callable=AsyncMock):
-        await client.handle_messages()  # must complete without raising
-
-
-@pytest.mark.asyncio
-async def test_handle_messages_cancel_stops_loop(client):
-    """Task cancellation exits the loop; connect() is not called."""
-    async def infinite_receive():
-        await asyncio.sleep(100)
-        yield  # pragma: no cover
-
-    client._session.receive = infinite_receive
-
-    with patch.object(client, "close", new_callable=AsyncMock), \
-         patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
-        task = asyncio.create_task(client.handle_messages())
-        await asyncio.sleep(0)  # let the task start
-        task.cancel()
-        await task  # CancelledError caught internally — task finishes normally
-
-    mock_connect.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# replay_audio_buffer
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_replay_audio_buffer_sends_all_chunks(client):
-    """All chunks in the rolling buffer must be sent to the new session."""
-    import time
-    now = time.monotonic()
-    client._audio_rolling_buffer.append((now, b"\x01" * 32))
-    client._audio_rolling_buffer.append((now, b"\x02" * 32))
+async def test_buffered_caller_audio_is_replayed_once_into_a_new_session(live):
+    client = _client(live)
+    await client.connect()
+    for chunk in (b"\x01\x00" * 48, b"\x02\x00" * 48):
+        await client.process_message({"type": "input_audio_buffer.append", "audio": base64.b64encode(chunk).decode()})
+    await _reconnect(client)
 
     await client.replay_audio_buffer()
-
-    assert client._session.send_realtime_input.await_count == 2
-
-
-@pytest.mark.asyncio
-async def test_replay_audio_buffer_clears_buffer_after_replay(client):
-    import time
-    now = time.monotonic()
-    client._audio_rolling_buffer.append((now, b"\x00" * 32))
-
     await client.replay_audio_buffer()
 
-    assert len(client._audio_rolling_buffer) == 0
+    # 48 samples at 24 kHz become 32 at 16 kHz.
+    assert [blob.data for blob in live.sessions[1].audio] == [b"\x01\x00" * 32, b"\x02\x00" * 32]
+    assert live.sessions[1].turns == []
 
-
-@pytest.mark.asyncio
-async def test_replay_audio_buffer_noop_when_buffer_empty(client):
-    await client.replay_audio_buffer()
-
-    client._session.send_realtime_input.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_replay_audio_buffer_noop_when_session_none(client):
-    import time
-    client._audio_rolling_buffer.append((time.monotonic(), b"\x00" * 32))
-    client._session = None
-
-    await client.replay_audio_buffer()  # must not raise
-
-
-@pytest.mark.asyncio
-async def test_handle_messages_processes_messages_before_reconnect(client):
-    """Messages received before server close must be dispatched."""
-    msg = _make_server_msg()
-    processed = []
-
-    async def receive_with_one_msg():
-        yield msg
-
-    client._session.receive = receive_with_one_msg
-
-    original_handler = client.server_event_handler.handle_event
-
-    async def capture_event(response):
-        processed.append(response)
-
-    client.server_event_handler.handle_event = capture_event
-
-    with patch.object(client, "close", new_callable=AsyncMock), \
-         patch.object(client, "connect", side_effect=asyncio.CancelledError):
-        await client.handle_messages()
-
-    assert msg in processed

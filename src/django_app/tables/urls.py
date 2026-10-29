@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from tables.views.default_config import (
     DefaultModelsAPIView,
 )
+from tables.views.execution_timeout_limits_views import ExecutionTimeoutLimitsAPIView
 from tables.views.flow_assistant_views import (
     FlowAssistantAuditView,
     FlowAssistantCancelView,
@@ -43,8 +44,8 @@ from tables.views.model_view_sets import (
     AgentNodeTaskViewSet,
     AgentNodeViewSet,
     AudioTranscriptionNodeViewSet,
+    AuditFilterPresetViewSet,
     ClassificationDecisionTableNodeModelViewSet,
-    ConditionalEdgeViewSet,
     ConversationRecordingViewSet,
     DecisionTableNodeModelViewSet,
     EdgeViewSet,
@@ -89,12 +90,15 @@ from tables.views.model_view_sets import (
     SubGraphNodeModelViewSet,
     TaskNodeViewSet,
     TelegramTriggerNodeViewSet,
+    FlowFilterPresetViewSet,
+    ToolFilterPresetViewSet,
     ToolLabelViewSet,
     TwilioChannelViewSet,
     TwilioConfigureWebhookView,
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
 )
+from tables.views.recycle_bin_views import RecycleBinEmptyView, RecycleBinSettingsView
 from tables.views.sse_views import (
     RunSessionSSEView,
     RunSessionSSEViewSwagger,
@@ -105,12 +109,14 @@ from tables.views.views import (
     GetUpdates,
     InitRealtimeAPIView,
     NotifyEmailView,
+    ProcessRagIndexingEstimateView,
     ProcessRagIndexingView,
     PythonNodeLastTestInputView,
     QuickstartApplyView,
     QuickstartView,
     RunPythonCodeAPIView,
     RunSession,
+    SessionTestRunView,
     SessionViewSet,
     StopSession,
     TelegramTriggerNodeAvailableFieldsView,
@@ -145,7 +151,6 @@ router.register(r"agentnodes", AgentNodeViewSet)
 router.register(r"agentnodetasks", AgentNodeTaskViewSet)
 
 router.register(r"edges", EdgeViewSet)
-router.register(r"conditionaledges", ConditionalEdgeViewSet)
 router.register(r"graph-session-messages", GraphSessionMessageReadOnlyViewSet)
 
 router.register(r"graph-light", GraphLightViewSet, basename="graphs-light")
@@ -181,6 +186,9 @@ router.register(r"graph-notes", GraphNoteViewSet)
 router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 
 router.register(r"labels", LabelViewSet)
+router.register(r"audit-filter-presets", AuditFilterPresetViewSet)
+router.register(r"flow-filter-presets", FlowFilterPresetViewSet)
+router.register(r"tool-filter-presets", ToolFilterPresetViewSet)
 router.register(r"tool-labels", ToolLabelViewSet, basename="tool-label")
 router.register(r"secrets", SecretViewSet)
 router.register(r"key-value-tables", KeyValueTableViewSet, basename="key-value-tables")
@@ -197,6 +205,7 @@ urlpatterns = [
     ),
     path("", include(router.urls)),
     path("run-session/", RunSession.as_view(), name="run-session"),
+    path("run-session/test/", SessionTestRunView.as_view(), name="run-session-test"),
     path(
         "sessions/<int:session_id>/get-updates/",
         GetUpdates.as_view(),
@@ -229,8 +238,19 @@ urlpatterns = [
         for operation in ("read", "write", "delete")
     ],
     path("default-models/", DefaultModelsAPIView.as_view(), name="default_models"),
+    path(
+        "execution-timeout-limits/",
+        ExecutionTimeoutLimitsAPIView.as_view(),
+        name="execution_timeout_limits",
+    ),
     path("quickstart/apply/", QuickstartApplyView.as_view(), name="quickstart_apply"),
     path("quickstart/", QuickstartView.as_view(), name="quickstart"),
+    path(
+        "recycle-bin/settings/",
+        RecycleBinSettingsView.as_view(),
+        name="recycle-bin-settings",
+    ),
+    path("recycle-bin/empty/", RecycleBinEmptyView.as_view(), name="recycle-bin-empty"),
     path(
         "run-session/subscribe/<int:session_id>/",
         RunSessionSSEView.as_view(),
@@ -273,6 +293,11 @@ urlpatterns = [
         name="process-rag-indexing",
     ),
     path(
+        "process-rag-indexing/estimate/",
+        ProcessRagIndexingEstimateView.as_view(),
+        name="process-rag-indexing-estimate",
+    ),
+    path(
         "process-rag-indexing/<str:rag_type>/<int:rag_id>/cancel/",
         CancelRagIndexingView.as_view(),
         name="cancel-rag-indexing",
@@ -281,6 +306,11 @@ urlpatterns = [
         "documents/source-collection/<str:collection_id>/upload/",
         DocumentManagementViewSet.as_view({"post": "upload_documents"}),
         name="document-upload",
+    ),
+    path(
+        "documents/source-collection/<str:collection_id>/from-storage/",
+        DocumentManagementViewSet.as_view({"post": "import_from_storage"}),
+        name="document-import-from-storage",
     ),
     path(
         "source-collections/<str:collection_id>/documents/",

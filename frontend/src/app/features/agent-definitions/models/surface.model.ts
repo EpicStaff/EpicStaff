@@ -1,4 +1,4 @@
-import { GraphDriftSearchConfig, GraphGlobalSearchConfig } from '@shared/models';
+import { AuthorshipFields, GraphDriftSearchConfig, GraphGlobalSearchConfig } from '@shared/models';
 
 export type ToolMode = 'allow' | 'deny';
 
@@ -60,14 +60,12 @@ export interface SurfaceKnowledge {
     graph_drift_search_config?: GraphDriftSearchConfig | null;
 }
 
-export interface Surface {
+export interface Surface extends AuthorshipFields {
     id: number;
-    organization: number;
+    org: number;
     name: string;
-    description: string;
     instructions: string;
     owner_agent: number | null;
-    allow_creation: boolean;
     python_tools: SurfacePythonTool[];
     mcp_tools: SurfaceMcpTool[];
     storage_items: SurfaceStorageItem[];
@@ -78,22 +76,18 @@ export interface Surface {
 
 export interface CreateSurfaceRequest {
     name: string;
-    description?: string;
     instructions?: string;
     owner_agent?: number | null;
-    allow_creation?: boolean;
     python_tools?: SurfacePythonTool[];
     mcp_tools?: SurfaceMcpTool[];
     storage_items?: SurfaceStorageItem[];
     knowledge?: SurfaceKnowledge[];
 }
 
-export type UpdateSurfaceRequest = CreateSurfaceRequest;
 export type PartialUpdateSurfaceRequest = Partial<CreateSurfaceRequest>;
 
 export interface CombinedSurface {
     instructions: string;
-    allow_creation: boolean;
     python_tools: SurfacePythonTool[];
     mcp_tools: SurfaceMcpTool[];
     storage_items: SurfaceStorageItem[];

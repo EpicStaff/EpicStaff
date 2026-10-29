@@ -1,9 +1,12 @@
+import { AuthorshipFields } from '@shared/models';
+
 import {
     SurfaceKnowledge,
     SurfaceMcpTool,
     SurfacePythonTool,
     SurfaceStorageItem,
 } from '../../../features/agent-definitions/models/surface.model';
+import { NumberedNodeDto } from './numbered-node-dto.model';
 
 /**
  * Write-shape entries used by `InlineSurface`'s tool/storage/knowledge lists.
@@ -25,7 +28,7 @@ export type InlineSurfaceKnowledge = SurfaceKnowledge;
  * field on a PATCH-style update leaves it untouched server-side; a full object replaces it.
  * `id`/`created_at`/`updated_at` are read-only (present on read, absent when creating).
  *
- * Field-for-field identical to `Surface` EXCEPT it has no `name`, `organization`, or
+ * Field-for-field identical to `Surface` EXCEPT it has no `name`, `org`, authorship or
  * `owner_agent` (per the backend `inline_surface` write serializer, which reuses the
  * regular `Surface` write serializers).
  */
@@ -40,7 +43,7 @@ export interface InlineSurface {
     updated_at?: string;
 }
 
-export interface TaskNode {
+export interface TaskNode extends AuthorshipFields, NumberedNodeDto {
     id: number;
     created_at: string;
     updated_at: string;

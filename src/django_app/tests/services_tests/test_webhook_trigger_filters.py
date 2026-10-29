@@ -45,6 +45,7 @@ Three related classes of the same underlying bug:
 """
 
 import pytest
+from src.shared.models import GraphData, SessionData
 
 from tables.models.graph_models import Graph, TelegramTriggerNode, WebhookTriggerNode
 from tables.models.python_models import PythonCode
@@ -62,20 +63,17 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
-class _FakeGraphDump:
-    def model_dump(self, mode=None):
-        return {}
-
-
-class _FakeSessionData:
-    graph = _FakeGraphDump()
+def _empty_session_data() -> SessionData:
+    """Real session data with an empty graph: only the session's own records are under
+    test, and a hand-made stand-in breaks as soon as production reads a new field."""
+    return SessionData(id=1, org_id=1, audit_retention_days=0, graph=GraphData(name="stub", entrypoint="__end__", end_node=None))
 
 
 def _stub_publish(monkeypatch):
     """Stub the run_session tail (SessionData build + Redis publish)."""
     sm = SessionManagerService()
     monkeypatch.setattr(
-        sm, "create_session_data", lambda session, **kwargs: _FakeSessionData()
+        sm, "create_session_data", lambda session, **kwargs: _empty_session_data()
     )
     monkeypatch.setattr(
         sm.redis_service, "publish_session_data", lambda session_data, **kwargs: 2
@@ -146,6 +144,7 @@ class TestGetTriggerFilters:
 
         assert filters == {
             "webhook_trigger__path": "valid_path",
+            "webhook_trigger__active": True,
             "webhook_trigger__provider_type": "ngrok",
             "webhook_trigger__org_id": default_org.id,
         }
@@ -185,6 +184,7 @@ class TestGetTriggerFilters:
 
         assert filters == {
             "webhook_trigger__path": "n1",
+            "webhook_trigger__active": True,
             "webhook_trigger__provider_type": "localhost",
             "webhook_trigger__org_id": default_org.id,
         }
@@ -215,7 +215,7 @@ class TestGetTriggerFilters:
             path="valid_path", config_id="bare-config-name"
         )
 
-        assert filters == {"webhook_trigger__path": "valid_path"}
+        assert filters == {"webhook_trigger__path": "valid_path", "webhook_trigger__active": True}
 
     def test_unknown_provider_prefix_fails_closed(self):
         """C3 hardening: a `config_id` that claims to identify a specific
@@ -236,7 +236,7 @@ class TestGetTriggerFilters:
 
         filters = service.get_trigger_filters(path="valid_path", config_id=None)
 
-        assert filters == {"webhook_trigger__path": "valid_path"}
+        assert filters == {"webhook_trigger__path": "valid_path", "webhook_trigger__active": True}
 
     def test_legacy_2part_config_id_with_known_provider_fails_closed(self):
         """C3: a `config_id` with a recognized provider prefix but missing

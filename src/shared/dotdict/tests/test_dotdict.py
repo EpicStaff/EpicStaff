@@ -1,446 +1,253 @@
 import json
+from types import MappingProxyType
+
 import pytest
+from pydantic import BaseModel
 
 from dotdict import DotDict, DotList, DotObject
 
 
-def test_dotdict_initialization():
-    data = {"a": 1, "b": {"c": 2}}
-    dotdict = DotDict(data)
-    assert dotdict.a == 1
-    assert dotdict.b.c == 2
+def test_nested_values_are_reachable_by_attribute_and_key():
+    d = DotDict({"a": 1, "x": {"y": [{"z": 10}, {"a": 33}]}})
 
-
-def test_dotdict_nested_access():
-    data = {"x": {"y": {"z": 10}}}
-    dotdict = DotDict(data)
-    assert dotdict.x.y.z == 10
-
-
-def test_dotdict_nested_list_access():
-    data = {"x": {"y": [{"z": 10}, {"a": 33}]}}
-    dotdict = DotDict(data)
-    assert dotdict.x.y[0].z == 10
-
-
-# def test_dotdict_property():
-#     data = {"a": 2}
-#     dotdict = DotDict(data)
-#     dotdict.add_property("double_a", "a * 2")
-#     assert dotdict.double_a == 4
-
-
-# def test_dotdict_setter():
-#     data = {"a": 10}
-#     dotdict = DotDict(data)
-#     dotdict.add_setter("a", "value * 2")
-#     dotdict.a = 5
-#     assert dotdict.a == 10  # Because the setter doubles the value
-
-
-# def test_dotdict_update():
-#     dotdict = DotDict({"a": 1})
-#     dotdict.update({"b": 2})
-#     assert dotdict.b == 2
-
-
-def test_dotdict_json_dumps():
-    import json
-
-    data = {"a": 1, "b": {"c": 2}}
-    dotdict = DotDict(data)
-    dumped = json.dumps(dotdict)
-    assert dumped == '{"a": 1, "b": {"c": 2}}'
-
-
-def test_dotdict_model_dump():
-    data = {"a": 1, "b": {"c": 2}}
-    dotdict = DotDict(data)
-    dumped = dotdict.model_dump()
-    assert dumped == data
-
-
-def test_dotobj_model_dump_tuple():
-    data = ("a", {"c": 2, "e": [1, 2, ("3", 4)]})
-    dotobject = DotObject(data)
-    dumped = dotobject.model_dump()
-
-    expected_data = ["a", {"c": 2, "e": [1, 2, ["3", 4]]}]
-    assert dumped == expected_data
-
-
-def test_dotobj_json_dump_tuple():
-    data = ("a", {"c": 2, "e": [1, 2, ("3", 4)]})
-    dotobject = DotObject(data)
-    json_dumped_and_loaded = json.loads(json.dumps(dotobject))
-    expected_data = ["a", {"c": 2, "e": [1, 2, ["3", 4]]}]
-    assert json_dumped_and_loaded == expected_data
-
-
-def test_dotobj_model_dump_list():
-    data = ["a", {"c": 2, "e": [1, 2, ("3", 4)]}]
-    dotobject = DotObject(data)
-    dumped = dotobject.model_dump()
-
-    expected_data = ["a", {"c": 2, "e": [1, 2, ["3", 4]]}]
-    assert dumped == expected_data
-
-
-def test_dotobj_json_dump_set():
-    data = {1, 2, "3"}
-    dotobject = DotObject(data)
-    json_dumped_and_loaded = json.loads(json.dumps(dotobject))
-
-    expected_data = [1, 2, "3"]
-    assert len(expected_data) == len(dotobject)
-    assert isinstance(json_dumped_and_loaded, list)
-    for val in expected_data:
-        assert val in json_dumped_and_loaded
-
-
-def test_dotdict_empty_init():
-    d = DotDict()
-    assert isinstance(d, DotDict)
-    assert len(d) == 0
-
-
-# def test_dotdict_init_with_properties_and_setters():
-#     d = DotDict({
-#         "a": 2,
-#         "__properties__": {"double": "a * 2"},
-#         "__setters__": {"a": "value + 10"}
-#     })
-#     assert d.double == 4
-#     d.a = 5
-#     # setter modifies before assignment, then property updates
-#     assert d.a == 15
-#     assert d.double == 30
-
-
-# def test_dotdict_setitem_triggers_property_update():
-#     d = DotDict({"a": 1})
-#     d.add_property("b", "a + 5")
-#     assert d.b == 6
-#     d.a = 10
-#     assert d.b == 15  # property updated automatically
-
-
-# def test_dotdict_nested_property_with_other_dotdicts():
-#     d = DotDict({"x": {"y": 2}})
-#     d.add_property("sum_y", "x.y + 3")
-#     assert d.sum_y == 5
-
-
-# def test_dotdict_add_property_invalid_expression():
-#     d = DotDict({"a": 1})
-#     with pytest.raises(ValueError):
-#         d.add_property("b", "a +")  # invalid syntax
-
-
-# def test_dotdict_add_setter_invalid_expression():
-#     d = DotDict()
-#     with pytest.raises(ValueError):
-#         d.add_setter("a", "value +")  # invalid syntax
-
-
-def test_dotdict_attr_error_on_missing():
-    d = DotDict({"x": 1})
+    assert (d.a, d.x.y[0].z, d.x.y[1].a) == (1, 10, 33)
+    d.b = 123
+    d["c"] = 456
+    assert (d["b"], d.c) == (123, 456)
+    assert len(DotDict()) == 0
+    rows = DotList([{"x": 1}])
+    rows[0] = {"y": 2}
+    assert rows[0].y == 2
     with pytest.raises(AttributeError):
-        _ = d.y
+        _ = d.missing
 
 
-def test_dotdict_set_attr_and_dict_consistency():
-    d = DotDict()
-    d.a = 123
-    assert d["a"] == 123
-    d["b"] = 456
-    assert d.b == 456
-
-
-# def test_dotdict_update_with_kwargs():
-#     d = DotDict({"x": 1})
-#     d.update(y=2, z=3)
-#     assert d.y == 2 and d.z == 3
-
-
-# def test_dotdict_nested_mutation_propagates():
-#     d = DotDict({"a": {"b": {"c": 5}}})
-#     d.a.b.c = 10
-#     assert d.a.b.c == 10
-
-
-# def test_dotlist_append_extend_insert_and_model_dump():
-#     l = DotList()
-#     l.append({"x": 1})
-#     assert isinstance(l[0], DotDict)
-#     l.extend([{"y": 2}, {"z": 3}])
-#     assert l[1].y == 2
-#     l.insert(0, {"a": 0})
-#     assert l[0].a == 0
-#     dumped = l.model_dump()
-#     assert dumped == [{"a": 0}, {"x": 1}, {"y": 2}, {"z": 3}]
-
-
-def test_dotlist_setitem_replaces_with_dotobject():
-    l = DotList([{"x": 1}])
-    l[0] = {"y": 2}
-    assert isinstance(l[0], DotDict)
-    assert l[0].y == 2
-
-
-def test_dotobject_non_iterable_pass_through():
-    obj = DotObject(123)
-    assert obj == 123
-
-
-@pytest.mark.xfail(
-    raises=ValueError,
-    strict=True,
-    reason=(
-        "computed properties are broken: add_property calls ast.literal_eval, "
-        "which takes a single argument and cannot resolve sibling keys. "
-        "Restoring eval() would execute user-authored flow expressions in the "
-        "unsandboxed crew process, so the feature stays disabled pending a "
-        "restricted AST evaluator."
-    ),
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ({"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 2}}),
+        ({"a": {"b": {"c": [1, 2, {"d": 3}]}}}, {"a": {"b": {"c": [1, 2, {"d": 3}]}}}),
+        (("a", {"c": 2, "e": [1, 2, ("3", 4)]}), ["a", {"c": 2, "e": [1, 2, ["3", 4]]}]),
+        (["a", {"c": 2, "e": [1, 2, ("3", 4)]}], ["a", {"c": 2, "e": [1, 2, ["3", 4]]}]),
+        ([1, {"x": 2}, [3, {"y": 4}]], [1, {"x": 2}, [3, {"y": 4}]]),
+        (123, 123),
+    ],
+    ids=["dict", "deep", "tuple", "list", "mixed-list", "scalar"],
 )
-def test_dotdict_property_expression_reflects_latest_value():
-    d = DotDict({"a": 2, "b": 3})
-    d.add_property("sum", "a + b")
-    assert d.sum == 5
-    d.a = 5
-    assert d.sum == 8
+def test_dump_and_json_give_plain_python_data(value, expected):
+    wrapped = DotObject(value)
+
+    assert json.loads(json.dumps(wrapped)) == expected
+    if isinstance(wrapped, (DotDict, DotList)):
+        assert wrapped.model_dump() == expected
+    else:
+        assert wrapped == expected
 
 
-def test_dotdict_json_roundtrip_complex():
-    import json
+def test_sets_serialize_as_lists():
+    loaded = json.loads(json.dumps(DotObject({"a": {"b": [1, {"c": 2}]}, "set": {4, 5, 6}})))
 
-    data = {"a": {"b": [1, {"c": 2}]}, "nums": (1, 2, 3), "set": {4, 5, 6}}
-    d = DotObject(data)
-    dumped = json.dumps(d)
-    loaded = json.loads(dumped)
-    assert isinstance(loaded, dict)
     assert loaded["a"]["b"][1]["c"] == 2
     assert sorted(loaded["set"]) == [4, 5, 6]
 
 
-def test_dotdict_model_dump_deep():
-    d = DotObject({"a": {"b": {"c": [1, 2, {"d": 3}]}}})
-    dumped = d.model_dump()
-    assert dumped == {"a": {"b": {"c": [1, 2, {"d": 3}]}}}
+class _WithDotDict(BaseModel):
+    model_config = {"arbitrary_types_allowed": True}
+    args: DotDict = None
 
 
-def test_dotlist_model_dump_mixed_types():
-    l = DotList([1, {"x": 2}, [3, {"y": 4}]])
-    dumped = l.model_dump()
-    assert dumped == [1, {"x": 2}, [3, {"y": 4}]]
+class _WithDotList(BaseModel):
+    model_config = {"arbitrary_types_allowed": True}
+    items: DotList = None
 
 
-def test_pydantic_serialize_none_dotdict_field_does_not_raise():
-    """Regression test: bare Optional DotDict field with value None must
-    serialize to None instead of crashing with AttributeError on
-    `None.deep_dump()` (smoke test bug)."""
-    from pydantic import BaseModel
-
-    class Model(BaseModel):
-        model_config = {"arbitrary_types_allowed": True}
-        args: DotDict = None
-
-    # Field left unset -> default (None) is used and, matching the real
-    # dynamically-built tool args_schema scenario, is NOT re-validated
-    # against dict_schema (validate_default defaults to False). This is
-    # exactly the shape that previously crashed on serialization.
-    m = Model()
-    dumped = m.model_dump()
-    assert dumped == {"args": None}
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        # An unset Optional field keeps its None default unvalidated (as in the
+        # dynamically built tool args_schema); serializing it must not crash.
+        (_WithDotDict(), {"args": None}),
+        (_WithDotList(), {"items": None}),
+        (_WithDotDict(args=DotDict({"a": 1, "b": {"c": 2}})), {"args": {"a": 1, "b": {"c": 2}}}),
+        (_WithDotList(items=DotList([1, {"x": 2}, [3, {"y": 4}]])), {"items": [1, {"x": 2}, [3, {"y": 4}]]}),
+    ],
+    ids=["unset-dotdict", "unset-dotlist", "dotdict", "dotlist"],
+)
+def test_pydantic_fields_serialize(model, expected):
+    assert model.model_dump() == expected
 
 
-def test_pydantic_serialize_none_dotlist_field_does_not_raise():
-    from pydantic import BaseModel
+@pytest.mark.parametrize(
+    "existing",
+    [DotDict({"c": 1}), DotList([1, 2, 3])],
+    ids=["dotdict", "dotlist"],
+)
+def test_an_already_built_container_is_reused_not_copied_on_construction(existing):
+    """Construction is the hot path; wrapping must not copy what is already wrapped."""
+    outer = DotDict({"nested": existing})
 
-    class Model(BaseModel):
-        model_config = {"arbitrary_types_allowed": True}
-        items: DotList = None
-
-    m = Model()
-    dumped = m.model_dump()
-    assert dumped == {"items": None}
-
-
-def test_pydantic_serialize_non_none_dotdict_field_unchanged():
-    """Ensure the None-guard does not alter existing deep_dump behavior
-    for a real (non-None) DotDict value."""
-    from pydantic import BaseModel
-
-    class Model(BaseModel):
-        model_config = {"arbitrary_types_allowed": True}
-        args: DotDict = None
-
-    m = Model(args=DotDict({"a": 1, "b": {"c": 2}}))
-    dumped = m.model_dump()
-    assert dumped == {"args": {"a": 1, "b": {"c": 2}}}
+    assert DotObject(existing) is existing
+    assert outer.nested is existing
+    assert DotList([existing])[0] is existing
 
 
-def test_pydantic_serialize_non_none_dotlist_field_unchanged():
-    from pydantic import BaseModel
-
-    class Model(BaseModel):
-        model_config = {"arbitrary_types_allowed": True}
-        items: DotList = None
-
-    m = Model(items=DotList([1, {"x": 2}, [3, {"y": 4}]]))
-    dumped = m.model_dump()
-    assert dumped == {"items": [1, {"x": 2}, [3, {"y": 4}]]}
-
-
-def test_dotobject_returns_same_instance_for_existing_dotdict():
-    """DotObject short-circuits on an already-constructed DotDict — no copy."""
-    nested = DotDict({"a": 1})
-    result = DotObject(nested)
-    assert result is nested
+ASSIGNMENTS = {
+    "attribute": lambda target, value: setattr(target, "nested", value),
+    "key": lambda target, value: target.__setitem__("nested", value),
+    "update": lambda target, value: target.update({"nested": value}),
+    "list-append": lambda target, value: target.rows.append(value),
+    "list-insert": lambda target, value: target.rows.insert(0, value),
+    "list-extend": lambda target, value: target.rows.extend([value]),
+    "list-setitem": lambda target, value: target.rows.__setitem__(0, value),
+}
 
 
-def test_dotobject_returns_same_instance_for_existing_dotlist():
-    """DotObject short-circuits on an already-constructed DotList — no copy."""
-    nested = DotList([1, 2, 3])
-    result = DotObject(nested)
-    assert result is nested
+def _assigned(target, operation):
+    if operation in ("list-append", "list-extend"):
+        return target.rows[-1]
+    return target.rows[0] if operation.startswith("list") else target.nested
 
 
-def test_nested_dotdict_identity_preserved_on_construction():
-    """Constructing an outer DotDict from data containing an already-built
-    nested DotDict aliases it instead of copying it."""
-    nested = DotDict({"c": 1})
-    outer = DotDict({"b": nested})
-    assert outer.b is nested
+@pytest.mark.parametrize("operation", list(ASSIGNMENTS))
+@pytest.mark.parametrize(
+    "source",
+    [lambda: DotDict({"value": 0}), lambda: DotList([DotDict({"value": 0})])],
+    ids=["dotdict", "dotlist"],
+)
+def test_assigning_a_container_copies_it(operation, source):
+    """Flow nodes assign one variable from another; a later change to either must
+    not show up in the other (and a row appended in a loop must not alias)."""
+    value = source()
+    target = DotDict({"rows": [None]})
+
+    ASSIGNMENTS[operation](target, value)
+    assigned = _assigned(target, operation)
+    (value if isinstance(value, DotDict) else value[0]).value = 1
+
+    assert assigned is not value
+    assert (assigned if isinstance(assigned, DotDict) else assigned[0]).value == 0
 
 
-def test_nested_dotdict_mutation_is_shared_not_copied():
-    nested = DotDict({"c": 1})
-    outer = DotDict({"b": nested})
-    nested.c = 2
-    assert outer.b.c == 2
-
-
-def test_nested_dotlist_identity_preserved_on_construction():
-    """Constructing a DotDict from data containing an already-built nested
-    DotList aliases it instead of copying it."""
-    nested = DotList([1, 2, 3])
-    outer = DotDict({"tags": nested})
-    assert outer.tags is nested
-
-
-def test_nested_dotlist_mutation_is_shared_not_copied():
-    nested = DotList([1, 2])
-    outer = DotDict({"tags": nested})
-    nested.append(3)
-    assert list(outer.tags) == [1, 2, 3]
-
-
-def test_self_assignment_no_cycle():
-    variables = DotDict({"a": 1, "b": {"c": 2}})
-    variables.snapshot = variables
-
-    assert variables.snapshot.b.c == 2
-    assert variables.snapshot is not variables
-    assert "snapshot" not in variables.snapshot
-
-    assert variables.deep_dump() == {
-        "a": 1,
-        "b": {"c": 2},
-        "snapshot": {"a": 1, "b": {"c": 2}},
-    }
-    assert json.loads(json.dumps(variables))["snapshot"]["b"]["c"] == 2
-
-
-def test_self_assignment_nested_in_plain_container_no_cycle():
-    variables = DotDict({"a": 1})
-    variables.history = [{"state": variables}]
-
-    assert variables.history[0].state.a == 1
-    assert variables.history[0].state is not variables
-    assert json.loads(json.dumps(variables))["history"][0]["state"] == {"a": 1}
-
-
-def test_mutation_after_assignment_isolated():
+def test_a_deeply_nested_assignment_is_copied_all_the_way_down():
     variables = DotDict({"b": {"k": 0, "nested": {"deep": 0}}})
     variables.a = variables.b
     variables.a.k = 1
     variables.a.nested.deep = 1
 
-    assert variables.b.k == 0
-    assert variables.b.nested.deep == 0
-    assert variables.a.k == 1
-    assert variables.a.nested.deep == 1
+    assert variables.b.deep_dump() == {"k": 0, "nested": {"deep": 0}}
 
 
-def test_setitem_copies_assigned_dotlist():
-    source = DotList([{"x": 1}])
-    target = DotDict()
-    target["rows"] = source
-    target.rows[0].x = 2
+def test_assigning_a_variable_into_itself_makes_a_snapshot_not_a_cycle():
+    variables = DotDict({"a": 1, "b": {"c": 2}})
+    variables.snapshot = variables
 
-    assert source[0].x == 1
-    assert target.rows is not source
-
-
-def test_append_in_loop_independent_copies():
-    variables = DotDict({"results": []})
-    row = DotDict({"value": None})
-
-    for index in range(3):
-        row.value = index
-        variables.results.append(row)
-
-    assert [item.value for item in variables.results] == [0, 1, 2]
-    assert len({id(item) for item in variables.results}) == 3
+    assert variables.snapshot is not variables
+    assert "snapshot" not in variables.snapshot
+    assert variables.deep_dump()["snapshot"] == {"a": 1, "b": {"c": 2}}
+    assert json.loads(json.dumps(variables))["snapshot"]["b"]["c"] == 2
 
 
-def test_insert_copies_assigned_dotdict():
-    row = DotDict({"value": 0})
-    items = DotList()
-    items.insert(0, row)
-    row.value = 1
+def test_assigning_a_variable_inside_a_plain_container_into_itself_is_not_a_cycle():
+    variables = DotDict({"a": 1})
+    variables.history = [{"state": variables}]
 
-    assert items[0].value == 0
-    assert items[0] is not row
+    assert variables.history[0].state is not variables
+    assert json.loads(json.dumps(variables))["history"][0]["state"] == {"a": 1}
 
 
-def test_extend_copies_assigned_dotdict():
-    row = DotDict({"value": 0})
-    items = DotList()
-    items.extend([row])
-    row.value = 1
-
-    assert items[0].value == 0
-
-
-def test_dotlist_setitem_copies_assigned_dotdict():
-    row = DotDict({"value": 0})
-    items = DotList([None])
-    items[0] = row
-    row.value = 1
-
-    assert items[0].value == 0
-
-
-def test_update_copies_assigned_dotdict():
-    source = DotDict({"k": 0})
-    target = DotDict()
-    target.update({"nested": source})
-    source.k = 1
-
-    assert target.nested.k == 0
-
-
-def test_setitem_preserves_identity_of_non_container_values():
-    class Sentinel:
-        pass
-
-    sentinel = Sentinel()
+def test_assigning_a_plain_object_keeps_its_identity():
+    sentinel = object()
     d = DotDict()
     d.obj = sentinel
     d.wrapper = {"inner": sentinel}
 
     assert d.obj is sentinel
     assert d.wrapper.inner is sentinel
+
+
+@pytest.mark.parametrize(
+    ("wrap_in_plain_container", "unwrap"),
+    [
+        (lambda variable: {"inner": variable}, lambda assigned: assigned.inner),
+        (lambda variable: [variable], lambda assigned: assigned[0]),
+        (lambda variable: (variable,), lambda assigned: assigned[0]),
+    ],
+    ids=["dict", "list", "tuple"],
+)
+def test_assigning_a_plain_container_holding_a_variable_copies_the_variable(
+    wrap_in_plain_container, unwrap
+):
+    variables = DotDict({"other": {"value": 0}})
+    variables["snapshot"] = wrap_in_plain_container(variables.other)
+    snapshot_of_other = unwrap(variables.snapshot)
+
+    variables.other.value = 1
+    snapshot_of_other.extra = 2
+
+    assert snapshot_of_other is not variables.other
+    assert snapshot_of_other.deep_dump() == {"value": 0, "extra": 2}
+    assert variables.other.deep_dump() == {"value": 1}
+
+
+def _stored_by_construction(value):
+    return DotDict({"nested": value}).nested
+
+
+def _stored_by_key_assignment(value):
+    variables = DotDict()
+    variables["nested"] = value
+    return variables.nested
+
+
+def _stored_by_list_append(value):
+    rows = DotList()
+    rows.append(value)
+    return rows[0]
+
+
+STORE_PATHS = pytest.mark.parametrize(
+    "store",
+    [_stored_by_construction, _stored_by_key_assignment, _stored_by_list_append],
+    ids=["construction", "key-assignment", "list-append"],
+)
+
+
+@STORE_PATHS
+def test_tuples_and_sets_become_dot_lists_and_keep_their_leaf_values(store):
+    leaf = object()
+
+    from_tuple = store((leaf, {"a": 1}))
+    from_set = store({"only"})
+
+    assert isinstance(from_tuple, DotList)
+    assert from_tuple[0] is leaf
+    assert from_tuple[1].a == 1
+    assert isinstance(from_set, DotList)
+    assert list(from_set) == ["only"]
+
+
+class _PlainDictSubclass(dict):
+    pass
+
+
+@pytest.mark.parametrize(
+    "mapping",
+    [_PlainDictSubclass({"a": {"b": 1}}), MappingProxyType({"a": {"b": 1}})],
+    ids=["dict-subclass", "read-only-mapping"],
+)
+@STORE_PATHS
+def test_other_mapping_types_are_wrapped_like_dicts(store, mapping):
+    wrapped = store(mapping)
+
+    assert isinstance(wrapped, DotDict)
+    assert wrapped.a.b == 1
+
+
+@pytest.mark.parametrize("reserved_key", ["__properties__", "__setters__"])
+@STORE_PATHS
+def test_reserved_keys_of_a_nested_plain_dict_are_consumed_not_stored(store, reserved_key):
+    """Crew compiles these keys (the chat API rejects them for that reason), so a nested
+    dict carrying one must keep being treated as a definition, not as data."""
+    assert dict(store({reserved_key: {}, "kept": 1})) == {"kept": 1}
+    with pytest.raises(ValueError, match="Invalid expression"):
+        store({"deeper": {reserved_key: {"name": "1 +"}}})

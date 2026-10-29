@@ -1,4 +1,5 @@
 import {
+    AuthorshipFields,
     GraphBasicSearchConfig,
     GraphDriftSearchConfig,
     GraphGlobalSearchConfig,
@@ -29,8 +30,8 @@ import { RestoreWarning } from './graph.model';
  * Shape of `GET /graph-versions/{id}/preview/` — the version's stored export snapshot
  * (backend `GraphStrategy.export_entity`, converted to the current import version and
  * filtered of missing dependencies). Node rows come from the per-node import serializers:
- * `graph`, `created_at` and `updated_at` are never present, nested python code has no `id`
- * and carries `libraries` as a space-separated string.
+ * `graph`, `created_at`, `updated_at` and the authorship fields are never present, nested
+ * python code has no `id` and carries `libraries` as a space-separated string.
  */
 
 /** Every `node_type` the backend export emits (backend `NODE_RELATIONS`). */
@@ -52,7 +53,7 @@ export type SnapshotNodeType =
     | 'KnowledgeNode'
     | 'KeyValueNode';
 
-type ExcludedExportFields = 'graph' | 'created_at' | 'updated_at';
+type ExcludedExportFields = 'graph' | 'created_at' | 'updated_at' | keyof AuthorshipFields;
 
 /** A node DTO as the export writes it: without the excluded fields, tagged with its `node_type`. */
 type SnapshotNodeOf<TNodeType extends SnapshotNodeType, TNodeDto> = Omit<TNodeDto, ExcludedExportFields> & {
@@ -64,14 +65,23 @@ interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> {
     node_type: TNodeType;
     node_name: string;
     metadata: Record<string, unknown>;
+    /** The node's number in the source graph; the numbers may have gaps. */
+    node_number: number | null;
 }
 
 export interface SnapshotPythonCode {
     code: string;
-    /** Space-separated library list, e.g. `"requests pandas"`. */
+    /**
+     * Space-separated library list, e.g. `"requests pandas"`, as older snapshots
+     * stored it. KNOWN BROKEN: libraries now live only on the venv and the export
+     * carries no venv, so nothing reads this any more and new snapshots have
+     * nothing to put in it. See `toLivePythonCode`.
+     */
     libraries: string;
     entrypoint: string;
     global_kwargs?: Record<string, unknown>;
+    /** Seconds; absent in versions saved before code had an execution timeout. */
+    execution_timeout?: number;
 }
 
 export type SnapshotStartNode = SnapshotNodeOf<'StartNode', StartNode>;
@@ -119,12 +129,18 @@ export interface SnapshotWebhookTriggerNode extends SnapshotNodeBase<'WebhookTri
     input_map: Record<string, unknown>;
     output_variable_path: string | null;
     python_code: SnapshotPythonCode;
+    /** Absent in versions saved before test payloads existed. */
+    test_payload?: Record<string, unknown>;
+    /** Absent in versions saved before webhook trigger code could use storage. */
+    use_storage?: boolean;
 }
 
 export interface SnapshotTelegramTriggerNode extends SnapshotNodeBase<'TelegramTriggerNode'> {
     /** The trigger's id (the live API nests the object); null when the backend nulled it. */
     webhook_trigger: number | null;
     fields: TelegramTriggerNodeField[];
+    /** Absent in versions saved before test payloads existed. */
+    test_payload?: Record<string, unknown>;
 }
 
 export interface SnapshotScheduleTriggerNode extends SnapshotNodeBase<'ScheduleTriggerNode'> {
@@ -206,25 +222,11 @@ export type SnapshotNode =
 
 export type SnapshotEdge = Omit<Edge, ExcludedExportFields>;
 
-export interface SnapshotConditionalEdge {
-    id: number;
-    source_node_id: number;
-    python_code: SnapshotPythonCode;
-    input_map: Record<string, unknown>;
-    metadata: Record<string, unknown>;
-}
-
 /** Secret names declared per node, keyed by the snapshot node id, then by the python-code field name. */
 export type SnapshotNodeSecretDeclarations = Record<string, Record<string, string[]>>;
 
-export interface SnapshotConditionalEdgeSecretDeclaration {
-    source_node_id: number;
-    names: string[];
-}
-
 export interface SnapshotSecretDeclarations {
     nodes?: SnapshotNodeSecretDeclarations;
-    conditional_edges?: SnapshotConditionalEdgeSecretDeclaration[];
     /** Telegram bot API key secret name, keyed by the snapshot node id. */
     telegram?: Record<string, string>;
 }
@@ -232,12 +234,24 @@ export interface SnapshotSecretDeclarations {
 export interface GraphVersionSnapshot {
     nodes: SnapshotNode[];
     edge_list?: SnapshotEdge[];
-    conditional_edge_list?: SnapshotConditionalEdge[];
     metadata?: Record<string, unknown>;
     secret_declarations?: SnapshotSecretDeclarations;
+}
+
+/**
+ * Who created one node and who last edited it, as recorded when the version was saved. A user is null when
+ * unknown or no longer a member of the flow's organization; the timestamps are kept either way.
+ */
+export interface SnapshotNodeAuthorship extends AuthorshipFields {
+    created_at: string | null;
 }
 
 export interface PreviewGraphVersionResponse {
     snapshot: GraphVersionSnapshot;
     warnings: RestoreWarning[];
+    /**
+     * Keyed by the snapshot node id (`SnapshotNode.id`, as a string). Empty for versions saved before snapshots
+     * recorded node authorship; a node missing from it has no recorded author or editor.
+     */
+    node_authorship: Record<string, SnapshotNodeAuthorship>;
 }

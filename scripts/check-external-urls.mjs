@@ -30,7 +30,7 @@ const DENY_PATTERNS = [
   /use\.fontawesome\.com/i,
   /use\.typekit\.net/i,
   /https?:\/\/cdn\./i, // generic cdn.* hosts
-  /\.pages\.dev/i, // Cloudflare Pages hosts (e.g. epicstaffchat.pages.dev)
+  /\.pages\.dev/i, // Cloudflare Pages hosts
 ];
 
 // frontend/src/index.html is fully vendored: there is NO
@@ -41,7 +41,7 @@ const DENY_PATTERNS = [
 const INDEX_HTML_FILE = 'frontend/src/index.html';
 const INDEX_HTML_EXTRA_PATTERNS = [
   // Absolute (https?://host) and protocol-relative (//host) externals both
-  // fail; root-relative single-slash paths (/epicchat-widget/...) are fine.
+  // fail; root-relative single-slash paths (/assets/...) are fine.
   /<script\b[^>]*\bsrc\s*=\s*["']?(?:https?:)?\/\//i,
   /<link\b[^>]*\bhref\s*=\s*["']?(?:https?:)?\/\//i,
 ];
@@ -58,21 +58,6 @@ function stripHtmlComments(content) {
 const SCAN_FILES = ['frontend/src/index.html', 'frontend/angular.json'];
 const SCAN_DIRS = ['frontend/src'];
 const SCAN_EXTENSIONS = new Set(['.scss', '.css', '.html', '.ts']);
-
-// Prebuilt widget files that can realistically (re)introduce a runtime CDN
-// dependency: embed.js injects <script>/<link> tags, styles.css can
-// @import / url() remote fonts. For these files ANY external https?:// URL
-// inside url(...) or @import is also a violation, not just the named CDN
-// domains. main.js / polyfills.js are deliberately NOT scanned — minified
-// bundles full of benign doc-comment domains.
-const WIDGET_FILES = [
-  'frontend/public/epicchat-widget/embed.js',
-  'frontend/public/epicchat-widget/styles.css',
-];
-const WIDGET_EXTRA_PATTERNS = [
-  /@import\s+(?:url\(\s*)?["']?https?:\/\//i,
-  /url\(\s*["']?https?:\/\//i,
-];
 
 // Prebuilt bundles and third-party trees are excluded — they may contain
 // benign doc-comment domains and are not authored source.
@@ -103,7 +88,6 @@ function collectFiles(dir, out) {
 
 const allowlist = loadAllowlist();
 const files = new Set();
-const widgetFiles = new Set();
 
 for (const rel of SCAN_FILES) {
   const full = join(repoRoot, rel);
@@ -113,13 +97,6 @@ for (const rel of SCAN_DIRS) {
   const full = join(repoRoot, rel);
   if (existsSync(full)) collectFiles(full, files);
 }
-for (const rel of WIDGET_FILES) {
-  const full = join(repoRoot, rel);
-  if (existsSync(full)) {
-    files.add(full);
-    widgetFiles.add(full);
-  }
-}
 
 const violations = [];
 
@@ -128,7 +105,6 @@ const indexHtmlFull = join(repoRoot, INDEX_HTML_FILE);
 for (const file of files) {
   const isIndexHtml = file === indexHtmlFull;
   let patterns = DENY_PATTERNS;
-  if (widgetFiles.has(file)) patterns = [...DENY_PATTERNS, ...WIDGET_EXTRA_PATTERNS];
   if (isIndexHtml) patterns = [...DENY_PATTERNS, ...INDEX_HTML_EXTRA_PATTERNS];
   let content = readFileSync(file, 'utf8');
   if (isIndexHtml) content = stripHtmlComments(content);

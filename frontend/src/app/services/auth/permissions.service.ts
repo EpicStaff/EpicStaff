@@ -13,6 +13,12 @@ import { Observable, of, tap } from 'rxjs';
 
 import { ConfigService } from '../config';
 
+/** Met when the user may do any one of these actions on the resource. */
+export interface PermissionRequirement {
+    readonly resource: ResourceCode;
+    readonly anyOf: readonly ActionCode[];
+}
+
 @Injectable({
     providedIn: 'root',
 })
@@ -27,6 +33,10 @@ export class PermissionsService implements StorageService {
     private readonly _active = signal<ActivePermissions | null>(null);
     readonly active = this._active.asReadonly();
 
+    /** `null` is a legitimate loaded value for `_active` (a user with zero memberships), so
+     *  "loaded" is tracked separately to tell it apart from "never loaded / cleared". */
+    private readonly _isActivePermissionsLoaded = signal(false);
+
     private readonly _isSuperadmin = signal(false);
 
     private readonly _catalog = signal<CatalogResponse | null>(null);
@@ -38,6 +48,19 @@ export class PermissionsService implements StorageService {
 
     setActivePermissions(p: ActivePermissions | null): void {
         this._active.set(p);
+        this._isActivePermissionsLoaded.set(true);
+    }
+
+    /** Whether the active-org permission set is known (loaded, possibly as `null`), as opposed to
+     *  never loaded or cleared. While false, a `false` from `can()` means "unknown", not "denied". */
+    isActivePermissionsLoaded(): boolean {
+        return this._isActivePermissionsLoaded();
+    }
+
+    /** Whether the cross-org capabilities from `/me/orgs/` are known. While false, a `false` from
+     *  `canInAnyOrg()` means "unknown", not "denied". */
+    isOrgPermissionsLoaded(): boolean {
+        return this._orgCaps() !== null;
     }
 
     setSuperadmin(value: boolean): void {
@@ -54,8 +77,12 @@ export class PermissionsService implements StorageService {
         return Array.isArray(actions) && actions.includes(action);
     }
 
-    canAny(resource: ResourceCode, actions: ActionCode[]): boolean {
+    canAny(resource: ResourceCode, actions: readonly ActionCode[]): boolean {
         return actions.some((action) => this.can(resource, action));
+    }
+
+    meets(requirement: PermissionRequirement): boolean {
+        return this.canAny(requirement.resource, requirement.anyOf);
     }
 
     /** Multi-org gate: can the current user do `action` on `resource` in org `orgId`?
@@ -103,12 +130,26 @@ export class PermissionsService implements StorageService {
         );
     }
 
+    /** Whether any Settings tab is open to the caller in the active org. */
     canOpenConfigureModelsDialog(): boolean {
         return (
             this.can(ResourceCode.LlmConfigs, ActionCode.Read) ||
             this.can(ResourceCode.Voice, ActionCode.Read) ||
             this.can(ResourceCode.Webhooks, ActionCode.Read) ||
-            this.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create])
+            this.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]) ||
+            this.canSeePluginActivity()
+        );
+    }
+
+    /** Plugin activity is audit data: whoever may read the org's audit trail sees what plugins do in it. */
+    canSeePluginActivity(): boolean {
+        return this.configService.isPluginsEnabled && this.can(ResourceCode.Audit, ActionCode.Read);
+    }
+
+    /** Quickstart creates LLM configs and then updates the defaults, so it needs both. */
+    canApplyQuickstart(): boolean {
+        return (
+            this.can(ResourceCode.LlmConfigs, ActionCode.Create) && this.can(ResourceCode.LlmConfigs, ActionCode.Update)
         );
     }
 
@@ -134,7 +175,7 @@ export class PermissionsService implements StorageService {
     loadActivePermissions(): Observable<ActivePermissions> {
         return this.http.get<ActivePermissions>(`${this.baseUrl}me/`).pipe(
             tap((permissions) => {
-                this._active.set(permissions);
+                this.setActivePermissions(permissions);
                 this.setSuperadmin(permissions.is_superadmin);
             })
         );
@@ -176,23 +217,24 @@ export class PermissionsService implements StorageService {
         if (this.can(ResourceCode.Agents, ActionCode.Read)) return '/agents';
         if (this.can(ResourceCode.Tools, ActionCode.Read)) return '/tools';
         if (this.can(ResourceCode.Flows, ActionCode.Read)) return '/flows/my';
-        const filesTab = this.resolveFilesTab();
-        if (filesTab) return filesTab;
+        const storageTab = this.resolveStorageTab();
+        if (storageTab) return storageTab;
 
         return '/profile';
     }
 
-    /** First `/files/*` tab the caller can read in the active org, or `null` if none.
-     *  Ordered like the tabs: knowledge-sources → storage → key-value-tables. */
-    resolveFilesTab(): string | null {
-        if (this.can(ResourceCode.KnowledgeSources, ActionCode.Read)) return '/files/knowledge-sources';
-        if (this.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
-        if (this.can(ResourceCode.KeyValueTables, ActionCode.Read)) return '/files/key-value-tables';
+    /** First `/storage/*` tab the caller can read in the active org, or `null` if none.
+     *  Ordered like the tabs: knowledge-sources → files → key-value-tables. */
+    resolveStorageTab(): string | null {
+        if (this.can(ResourceCode.KnowledgeSources, ActionCode.Read)) return '/storage/knowledge-sources';
+        if (this.can(ResourceCode.Files, ActionCode.Read)) return '/storage/files';
+        if (this.can(ResourceCode.KeyValueTables, ActionCode.Read)) return '/storage/key-value-tables';
         return null;
     }
 
     clear(): void {
         this._active.set(null);
+        this._isActivePermissionsLoaded.set(false);
         this._isSuperadmin.set(false);
         this._catalog.set(null);
         this._orgCaps.set(null);

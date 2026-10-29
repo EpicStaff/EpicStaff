@@ -1,4 +1,5 @@
 import math
+from typing import TYPE_CHECKING
 
 from rest_framework.exceptions import Throttled
 from utils.exceptions import CustomAPIExeption
@@ -6,6 +7,12 @@ from utils.exceptions import CustomAPIExeption
 from tables.constants.knowledge_constants import (
     ALLOWED_FILE_TYPES,
 )
+
+if TYPE_CHECKING:
+    # Only a type here: the import service imports this module.
+    from tables.services.knowledge_services.storage_document_import_service import (
+        SkippedStorageFile,
+    )
 
 __all__ = ["CustomAPIExeption"]
 
@@ -40,6 +47,46 @@ class ParentSessionNotFoundError(CustomAPIExeption):
     status_code = 400
     default_detail = "Parent session not found."
     default_code = "parent_session_not_found"
+
+
+class TriggerNodesRequireUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on flows would create or edit a trigger node.
+
+    Trigger nodes (webhook, Telegram, schedule) start flow runs by themselves, so
+    writing one is gated on the same permission as running the flow.
+    """
+
+    status_code = 403
+    default_detail = (
+        "Trigger nodes (webhook, Telegram, schedule) start flow runs, so creating or "
+        "editing them requires the Use permission on flows."
+    )
+    default_code = "trigger_nodes_require_use_permission"
+
+
+class FlowWithTriggerNodesRequiresUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on flows would copy, import or restore trigger nodes.
+
+    Distinct from TriggerNodesRequireUsePermissionError (editing one trigger node) so a
+    client can tell a refused copy/import/restore from a refused edit.
+    """
+
+    status_code = 403
+    default_detail = (
+        "This flow contains trigger nodes (webhook, Telegram, schedule). Copying, "
+        "importing or restoring it requires the Use permission on flows."
+    )
+    default_code = "flow_with_trigger_nodes_requires_use_permission"
+
+
+class CodeRunTargetNotFoundError(Exception):
+    """Raised for a test-run target that is missing, deleted, owned by another org,
+    or whose code slot is empty. The caller maps it to the same error as a missing
+    id, so none of these cases is distinguishable from outside."""
+
+    def __init__(self, target_id: int):
+        super().__init__(f"Code run target {target_id} does not exist.")
+        self.target_id = target_id
 
 
 class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
@@ -112,9 +159,110 @@ class BuiltInToolModificationError(CustomAPIExeption):
         super().__init__(detail=detail, code=code, status_code=400)
 
 
+class NotInRecycleBinError(CustomAPIExeption):
+    """The row isn't in the recycle bin (it's live, or was binned before batches existed)."""
+
+    status_code = 404
+    # The exception handler renders the class's default_code, not a per-instance code.
+    default_code = "not_in_recycle_bin"
+    default_detail = "Not found in the recycle bin."
+
+
+class RestoreConflictError(CustomAPIExeption):
+    """A restore picked a free name or number, and something else took it before the restore committed."""
+
+    status_code = 409
+    default_code = "restore_conflict"
+    default_detail = "Something else just took this item's name. Try the restore again."
+
+
+class CrossOrgCascadeError(CustomAPIExeption):
+    """A delete would change a row of another organization than the one it started in.
+
+    409, not 500: the request is valid and the caller did nothing wrong; the data
+    holds a link no API path creates, and the delete can't go ahead while it's there.
+    The message names neither the row nor its organization, so it can't be used to
+    learn what another organization holds; the server log has the details.
+    """
+
+    status_code = 409
+    default_code = "cross_org_cascade"
+    default_detail = (
+        "This item is linked to data it can't be deleted with. Nothing was deleted. "
+        "Contact an administrator."
+    )
+
+
+class StorageRestoreConflictError(CustomAPIExeption):
+    """An object nobody indexed already sits where a restored storage item would go."""
+
+    status_code = 409
+    default_code = "storage_restore_conflict"
+
+    def __init__(self, path: str):
+        super().__init__(
+            detail=f"Can't restore to '{path}': storage already holds a file there that isn't listed. "
+            "Ask an administrator to re-index storage, then try again."
+        )
+
+
 class RegisterTelegramTriggerError(CustomAPIExeption):
     status_code = 400
     default_detail = "Error occurred while registering Telegram trigger"
+    # Telegram's HTTP status when `setWebhook` itself failed with one; a safe int.
+    telegram_http_status: int | None = None
+
+
+class TelegramRegistrationPreconditionError(RegisterTelegramTriggerError):
+    """Raised when a node's configuration makes registration impossible.
+
+    Its detail is always a fixed or validator message, never a secret value,
+    so it is safe to log -- unlike other `RegisterTelegramTriggerError`s.
+    """
+
+
+class TelegramTunnelUnavailableError(CustomAPIExeption):
+    """Raised when an explicit registration cannot get the trigger's tunnel URL.
+
+    The detail is fixed on purpose: the underlying error text is not safe to show.
+    """
+
+    status_code = 503
+    default_detail = (
+        "The webhook tunnel is not available yet. Check the trigger's tunnel and try again."
+    )
+    default_code = "telegram_tunnel_unavailable"
+
+
+class TelegramBotKeyNotConfiguredError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "This Telegram trigger node has no bot key configured."
+    default_code = "telegram_bot_key_not_configured"
+
+
+class TelegramWebhookInfoUnavailableError(CustomAPIExeption):
+    """Raised when Telegram's getWebhookInfo cannot be read.
+
+    The detail is fixed on purpose: the underlying `requests` error message
+    contains the request URL, which embeds the bot token.
+    """
+
+    status_code = 502
+    default_detail = "Could not fetch webhook info from Telegram."
+    default_code = "telegram_webhook_info_unavailable"
+
+
+class TelegramBotKeyRejectedError(CustomAPIExeption):
+    """Raised when Telegram answers 401 or 404 for a node's bot key.
+
+    The detail is fixed on purpose: the underlying error text embeds the bot token.
+    """
+
+    status_code = 422
+    default_detail = (
+        "Telegram rejected this bot key. Check the secret selected as the bot key on this node."
+    )
+    default_code = "telegram_bot_key_rejected"
 
 
 class TelegramApiError(Exception):
@@ -123,7 +271,43 @@ class TelegramApiError(Exception):
     The message is built from safe facts only (failure kind, HTTP status,
     Telegram's numeric `error_code`) and never from the underlying exception
     text: the request URL embeds the bot token and the webhook `secret_token`.
+    `http_status` is Telegram's HTTP status when the failure had one.
     """
+
+    def __init__(self, message: str, http_status: int | None = None):
+        super().__init__(message)
+        self.http_status = http_status
+
+
+class TelegramRegistrationBlockedError(CustomAPIExeption):
+    """Raised when a node's configuration makes registering its webhook impossible.
+
+    The response also carries `registration_blocker: {code, message}`, the same
+    object the webhook-info endpoint reports.
+    """
+
+    status_code = 409
+    default_detail = "This node's configuration does not allow registering its webhook."
+    default_code = "telegram_registration_blocked"
+
+    def __init__(self, blocker_code: str, blocker_message: str):
+        super().__init__()
+        self.extra_response_data = {
+            "registration_blocker": {"code": blocker_code, "message": blocker_message}
+        }
+
+
+class TelegramRegistrationFailedError(CustomAPIExeption):
+    """Raised when an explicit webhook registration fails.
+
+    The detail is fixed on purpose: the underlying error can carry the bot token.
+    """
+
+    status_code = 502
+    default_detail = (
+        "Telegram could not register the webhook. Check the panel status and try again."
+    )
+    default_code = "telegram_registration_failed"
 
 
 class PythonCodeToolConfigSerializerError(CustomAPIExeption):
@@ -140,7 +324,24 @@ class PythonCodeToolConfigSerializerError(CustomAPIExeption):
 
 
 class DocumentUploadException(CustomAPIExeption):
-    """Base exception for document upload errors."""
+    """Base exception for document upload errors.
+
+    A 400 unless a subclass says otherwise: these describe what the client sent,
+    so one that reaches the exception handler must not render as a server error.
+    """
+
+    status_code = 400
+    default_detail = "The document upload was rejected."
+
+
+class UploadRejectedException(DocumentUploadException):
+    """Raised when files of an upload batch fail validation.
+
+    The message lists every problem: per-file size and type errors, and what
+    ``FileValidator`` rejected.
+    """
+
+    default_code = "upload_rejected"
 
 
 class FileSizeExceededException(DocumentUploadException):
@@ -184,6 +385,8 @@ class NoFilesProvidedException(DocumentUploadException):
 class DocumentNotFoundException(DocumentUploadException):
     """Raised when document is not found."""
 
+    status_code = 404
+
     def __init__(self, document_id):
         self.document_id = document_id
         super().__init__(f"Document with id {document_id} not found")
@@ -197,6 +400,40 @@ class InvalidCollectionIdException(DocumentUploadException):
         super().__init__(
             f"Invalid collection_id: '{collection_id_value}'. Must be a valid integer."
         )
+
+
+class StorageFilesNotFoundException(CustomAPIExeption):
+    """Raised when a requested storage file is missing, in another org, or a system file.
+
+    Deliberately carries no ids: naming the offending id would reveal which
+    ids exist in other organizations.
+    """
+
+    status_code = 404
+    default_detail = "Not found."
+    default_code = "not_found"
+
+
+class StorageImportLimitExceededException(DocumentUploadException):
+    """Raised when a storage import selects more files or bytes than one upload allows."""
+
+    default_code = "storage_import_limit_exceeded"
+
+
+class NothingToImportException(DocumentUploadException):
+    """Raised when every selected storage file was skipped.
+
+    The response also carries `skipped`: one `{storage_file_id, path, reason}`
+    per file, the same items a successful import lists.
+    """
+
+    default_detail = "None of the selected storage files can be imported"
+    default_code = "nothing_to_import"
+
+    def __init__(self, skipped: list["SkippedStorageFile"]):
+        super().__init__()
+        self.skipped = skipped
+        self.extra_response_data = {"skipped": [item.to_dict() for item in skipped]}
 
 
 class InvalidFieldType(CustomAPIExeption):
@@ -458,6 +695,45 @@ class LLMConfigInvalidError(CustomAPIExeption):
     default_code = "flow_assistant_llm_config_invalid"
 
 
+class ConfigProviderMissingError(CustomAPIExeption):
+    """Raised when an LLM or embedding config reaches a session without a usable provider.
+
+    The provider foreign keys are SET_NULL, so deleting a provider leaves the configs
+    that used it pointing at nothing. One class for both kinds: only the label in the
+    message differs.
+    """
+
+    status_code = 400
+    default_detail = "The config has no model or provider."
+    default_code = "config_provider_missing"
+
+    def __init__(self, config_kind: str, config_name: str):
+        self.config_kind = config_kind
+        self.config_name = config_name
+        super().__init__(
+            f"{config_kind} config '{config_name}' has no model or provider (it may have been deleted). "
+            "Choose a model with a provider and try again.",
+            code=self.default_code,
+        )
+
+
+class UnsupportedReasoningEffortError(CustomAPIExeption):
+    """Raised when an LLM config's reasoning effort is one its model cannot take.
+
+    The response carries `errors=[{"field", "value", "reason"}]` for the client to mark
+    the field. Deliberately not a ValidationError: DRF's Serializer.run_validation
+    re-raises a ValidationError from validate() as a new one, which drops `errors`.
+    """
+
+    status_code = 400
+    default_detail = "The reasoning effort is not supported."
+    default_code = "unsupported_reasoning_effort"
+
+    def __init__(self, reasoning_effort: str, reason: str):
+        self.errors = [{"field": "reasoning_effort", "value": reasoning_effort, "reason": reason}]
+        super().__init__(detail=reason)
+
+
 class ToolExecutionError(CustomAPIExeption):
     """Raised when a tool callable raises during execution."""
 
@@ -466,10 +742,20 @@ class ToolExecutionError(CustomAPIExeption):
     default_code = "flow_assistant_tool_execution_failed"
 
 
-class PromptNotFoundError(CustomAPIExeption):
-    """Raised when a prompt reference in a condition group doesn't resolve to one of THIS node's prompts."""
+class NodeChildValidationError(CustomAPIExeption):
+    """Base for a node's nested child row that is invalid but can only be detected
+    while the node's children are written.
+
+    Graph bulk save reports a subclass under the failing item's list key and index,
+    like any other item error; the single-node API returns it as a plain 400.
+    """
 
     status_code = 400
+
+
+class PromptNotFoundError(NodeChildValidationError):
+    """Raised when a prompt reference in a condition group doesn't resolve to one of THIS node's prompts."""
+
     default_code = "prompt_not_found"
 
     def __init__(self, value: int | str):
@@ -480,10 +766,9 @@ class PromptNotFoundError(CustomAPIExeption):
         )
 
 
-class SectionIdConflictError(CustomAPIExeption):
+class SectionIdConflictError(NodeChildValidationError):
     """Raised when a section id in the payload already belongs to a different CDT node."""
 
-    status_code = 400
     default_code = "section_id_conflict"
 
     def __init__(self, value: str):
@@ -494,10 +779,9 @@ class SectionIdConflictError(CustomAPIExeption):
         )
 
 
-class SectionNotFoundError(CustomAPIExeption):
+class SectionNotFoundError(NodeChildValidationError):
     """Raised when a condition group references a section id not present among this node's sections."""
 
-    status_code = 400
     default_code = "section_not_found"
 
     def __init__(self, value: str):
@@ -537,12 +821,51 @@ class CdtExplainLLMConfigNotFoundError(CustomAPIExeption):
         )
 
 
+class CdtExplainLLMConfigInvalidError(CustomAPIExeption):
+    """Raised when the explain endpoint's llm_config holds a value no client can send."""
+
+    status_code = 400
+    default_code = "cdt_explain_llm_config_invalid"
+
+
 class CdtExplainUpstreamError(CustomAPIExeption):
     """Raised when every batch of the explain request failed upstream."""
 
     status_code = 502
     default_detail = "The explanation could not be generated. Please try again."
     default_code = "cdt_explain_upstream_failed"
+
+
+class InUseRestrictedError(CustomAPIExeption):
+    """Raised by the single-object destroy path when the entity is referenced
+    from something the caller cannot see (BaseDeleteService.assert_deletable).
+    A fixed business rule on the row, not a change in the caller's own
+    permissions, so it carries its own code: the frontend must not treat it
+    as stale permissions."""
+
+    status_code = 403
+    default_detail = "This item is used somewhere you don't have access to, so it can't be deleted."
+    default_code = "in_use_restricted"
+
+
+class CdtExplainLLMConfigMissingKeyError(CustomAPIExeption):
+    """Raised instead of `CdtExplainUpstreamError` when the LLM config has no API key.
+
+    Decided after the calls, not before: keyless providers (Ollama, vLLM) are
+    legitimate, and nothing knows reliably which providers need a key — litellm
+    even reports a missing key as a different exception class per provider.
+    """
+
+    status_code = 422
+    default_code = "cdt_explain_llm_config_missing_key"
+
+    def __init__(self, llm_config_id):
+        self.llm_config_id = llm_config_id
+        super().__init__(
+            f"LLM config {llm_config_id} has no API key, and no explanation could be "
+            "generated with it. Add an API key to the config, or choose another one.",
+            code=self.default_code,
+        )
 
 
 class StorageQuotaExceeded(CustomAPIExeption):
@@ -694,3 +1017,14 @@ class KeyValueTableNotFoundError(CustomAPIExeption):
 
     def __init__(self, table_id: int):
         super().__init__(f"Key-value table {table_id} not found.", code=self.default_code)
+
+
+class InvalidTestRunPayloadError(CustomAPIExeption):
+    """A test-run payload does not fit the trigger node it targets; carries every problem found."""
+
+    status_code = 400
+    default_code = "test_run_payload_invalid"
+
+    def __init__(self, messages: list[str]):
+        self.errors = messages
+        super().__init__(detail={"payload": messages}, code=self.default_code)

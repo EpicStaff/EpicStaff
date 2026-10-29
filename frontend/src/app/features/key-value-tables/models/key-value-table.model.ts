@@ -1,4 +1,7 @@
-export interface KeyValueTable {
+import { AuthorshipFields } from '@shared/models';
+
+// The author and last edit are read-only: the request bodies below never carry them.
+export interface KeyValueTable extends AuthorshipFields {
     id: number;
     name: string;
     description: string;

@@ -1,12 +1,23 @@
 import { Injectable } from '@angular/core';
+import { downloadBlob } from '@shared/utils';
 
 import { CdtSection, normalizeCdtSectionColor } from '../../../core/models/cdt-section.model';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
+import { normalizeRouteCode } from './cdt-route-continue.util';
 
+/**
+ * KNOWN BROKEN: libraries live only on the venv now, and nothing here carries a
+ * venv. `libraries` below is kept so the file format still round-trips, but it is
+ * always empty on export and ignored on import, so a CDT moved between
+ * installations loses its environment. Fixing it means deciding how a venv
+ * travels in an exported flow.
+ */
 export interface CdtExportPythonCode {
     code: string;
     libraries: string[];
+    /** Seconds; null or absent when the code has none (the backend then applies its default). */
+    execution_timeout?: number | null;
 }
 
 export interface CdtExportConditionGroup {
@@ -95,11 +106,13 @@ export class CdtExportImportService {
             this.csvRow(['pre_output_variable_path', data.pre_output_variable_path ?? '']),
             this.csvRow(['pre_python_code_code', data.pre_python_code?.code ?? '']),
             this.csvRow(['pre_python_code_libraries', JSON.stringify(data.pre_python_code?.libraries ?? [])]),
+            this.csvRow(['pre_python_code_execution_timeout', String(data.pre_python_code?.execution_timeout ?? '')]),
             this.csvRow(['pre_use_storage', String(data.pre_use_storage ?? false)]),
             this.csvRow(['post_input_map', JSON.stringify(data.post_input_map ?? {})]),
             this.csvRow(['post_output_variable_path', data.post_output_variable_path ?? '']),
             this.csvRow(['post_python_code_code', data.post_python_code?.code ?? '']),
             this.csvRow(['post_python_code_libraries', JSON.stringify(data.post_python_code?.libraries ?? [])]),
+            this.csvRow(['post_python_code_execution_timeout', String(data.post_python_code?.execution_timeout ?? '')]),
             this.csvRow(['post_use_storage', String(data.post_use_storage ?? false)]),
             this.csvRow(['default_llm_config', data.default_llm_config == null ? '' : String(data.default_llm_config)]),
         ].join('\n');
@@ -149,15 +162,7 @@ export class CdtExportImportService {
     }
 
     public downloadFile(content: string, filename: string, mimeType: string): void {
-        const blob = new Blob([content], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = filename;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-        URL.revokeObjectURL(url);
+        downloadBlob(new Blob([content], { type: mimeType }), filename);
     }
 
     public parseJson(content: string): CdtParseResult {
@@ -227,6 +232,7 @@ export class CdtExportImportService {
                 pre_python_code: {
                     code: this.asString(preCode['code']),
                     libraries: this.asStringArray(preCode['libraries']),
+                    execution_timeout: this.asExecutionTimeout(preCode['execution_timeout']),
                 },
                 pre_input_map: this.asStringRecord(obj['pre_input_map']),
                 pre_output_variable_path: this.asNullableString(obj['pre_output_variable_path']),
@@ -234,6 +240,7 @@ export class CdtExportImportService {
                 post_python_code: {
                     code: this.asString(postCode['code']),
                     libraries: this.asStringArray(postCode['libraries']),
+                    execution_timeout: this.asExecutionTimeout(postCode['execution_timeout']),
                 },
                 post_input_map: this.asStringRecord(obj['post_input_map']),
                 post_output_variable_path: this.asNullableString(obj['post_output_variable_path']),
@@ -304,7 +311,7 @@ export class CdtExportImportService {
                 prompt_id: promptId,
                 manipulation: this.asNullableString(g['manipulation']),
                 continue_flag: g['continue_flag'] === true,
-                route_code: this.asNullableString(g['route_code']),
+                route_code: this.asRouteCode(g['route_code']),
                 dock_visible: g['dock_visible'] !== false,
                 field_expressions: this.asStringRecord(g['field_expressions']),
                 field_manipulations: this.asStringRecord(g['field_manipulations']),
@@ -319,6 +326,7 @@ export class CdtExportImportService {
                 libraries: this.asString(rawPreCode['libraries'])
                     .split('\n')
                     .filter((lib) => lib.trim().length > 0),
+                execution_timeout: this.asExecutionTimeout(rawPreCode['execution_timeout']),
             },
             pre_input_map: this.asStringRecord(node['pre_input_map']),
             pre_output_variable_path: this.asNullableString(node['pre_output_variable_path']),
@@ -328,6 +336,7 @@ export class CdtExportImportService {
                 libraries: this.asString(rawPostCode['libraries'])
                     .split('\n')
                     .filter((lib) => lib.trim().length > 0),
+                execution_timeout: this.asExecutionTimeout(rawPostCode['execution_timeout']),
             },
             post_input_map: this.asStringRecord(node['post_input_map']),
             post_output_variable_path: this.asNullableString(node['post_output_variable_path']),
@@ -343,11 +352,13 @@ export class CdtExportImportService {
         nodeName: string;
         preCode: string;
         preLibraries: string[];
+        preExecutionTimeout?: number;
         preInputMap: Record<string, string>;
         preOutputVariablePath: string | null;
         preUseStorage: boolean;
         postCode: string;
         postLibraries: string[];
+        postExecutionTimeout?: number;
         postInputMap: Record<string, string>;
         postOutputVariablePath: string | null;
         postUseStorage: boolean;
@@ -358,11 +369,19 @@ export class CdtExportImportService {
     }): CdtExportData {
         return {
             node_name: input.nodeName ?? '',
-            pre_python_code: { code: input.preCode ?? '', libraries: input.preLibraries ?? [] },
+            pre_python_code: {
+                code: input.preCode ?? '',
+                libraries: input.preLibraries ?? [],
+                execution_timeout: input.preExecutionTimeout,
+            },
             pre_input_map: input.preInputMap ?? {},
             pre_output_variable_path: input.preOutputVariablePath ?? null,
             pre_use_storage: input.preUseStorage ?? false,
-            post_python_code: { code: input.postCode ?? '', libraries: input.postLibraries ?? [] },
+            post_python_code: {
+                code: input.postCode ?? '',
+                libraries: input.postLibraries ?? [],
+                execution_timeout: input.postExecutionTimeout,
+            },
             post_input_map: input.postInputMap ?? {},
             post_output_variable_path: input.postOutputVariablePath ?? null,
             post_use_storage: input.postUseStorage ?? false,
@@ -458,7 +477,7 @@ export class CdtExportImportService {
             prompt_id: this.asNullableString(group['prompt_id']),
             manipulation: this.asNullableString(group['manipulation']),
             continue_flag: group['continue_flag'] === true,
-            route_code: this.asNullableString(group['route_code']),
+            route_code: this.asRouteCode(group['route_code']),
             dock_visible: group['dock_visible'] !== false,
             field_expressions: this.asStringRecord(group['field_expressions']),
             field_manipulations: this.asStringRecord(group['field_manipulations']),
@@ -498,6 +517,15 @@ export class CdtExportImportService {
         return null;
     }
 
+    /**
+     * Imported route codes follow the grid's input rule (`normalizeRouteCode`), so
+     * an import cannot bring back surrounding spaces the grid would strip. Empty
+     * stays null, as it was here before and as `payload.ts` saves it.
+     */
+    private asRouteCode(value: unknown): string | null {
+        return normalizeRouteCode(value) || null;
+    }
+
     private asBoolean(value: unknown): boolean {
         if (typeof value === 'boolean') return value;
         if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
@@ -511,6 +539,12 @@ export class CdtExportImportService {
             return Number.isFinite(parsed) ? parsed : null;
         }
         return null;
+    }
+
+    /** A positive whole number of seconds; anything else counts as no timeout, so the backend applies its default. */
+    private asExecutionTimeout(value: unknown): number | null {
+        const seconds = this.asNullableNumber(value);
+        return seconds !== null && Number.isInteger(seconds) && seconds > 0 ? seconds : null;
     }
 
     private asStringArray(value: unknown): string[] {

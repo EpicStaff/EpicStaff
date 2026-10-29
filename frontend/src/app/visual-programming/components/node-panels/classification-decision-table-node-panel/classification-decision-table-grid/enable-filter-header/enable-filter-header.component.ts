@@ -87,7 +87,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
             }
             .enable-label {
                 color: rgba(255, 255, 255, 0.9);
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 font-weight: 500;
             }
             .enable-filter-btn {
@@ -111,9 +111,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 border: 1px solid #2b2d30;
                 border-radius: 8px;
                 padding: 4px;
-                box-shadow:
-                    0 6px 10px 4px rgba(0, 0, 0, 0.15),
-                    0 2px 3px rgba(0, 0, 0, 0.3);
+                box-shadow: var(--shadow-raised);
                 min-width: 160px;
             }
             .ef-item {

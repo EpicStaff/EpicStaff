@@ -54,8 +54,11 @@ class KeyValueNode(BaseNode):
     key) to its entry's target path, in entry order, and rejects two entries whose targets
     are the same or nested (`variables.user` and `variables.user.name`); one key may feed
     several targets. A write rejects two entries with the same
-    rendered key; one source path may feed several keys. A write source's `|default` suffix
-    applies only when the path is missing, not when it holds null.
+    rendered key; one source path may feed several keys. A write source that exists in the
+    flow state is stored as it is, null included. A missing source is an error, so a typo
+    in the path cannot overwrite a stored value, unless it has a `|default` suffix: then the
+    default is stored, and `|null` stores null. A key placeholder must resolve to a string
+    or number, never null.
 
     After the table call succeeds, the node emits one `key_value` session message listing
     the entries that took effect (for a delete, each requested key with the value it held,
@@ -152,10 +155,17 @@ class KeyValueNode(BaseNode):
                 )
             value_path = entry["value"]
             value = self._resolve(value_path, variables)
-            if value is None:
+            # The resolver returns None for a missing path as well as for a stored null, so
+            # null is written only when the path itself holds it. A `|default` is the user's
+            # own answer for a missing path, `|null` included.
+            if (
+                value is None
+                and "|" not in value_path
+                and not self._holds_null(variables, value_path)
+            ):
                 raise KeyValueNodeError(
                     f"Key-Value node '{self.node_name}': value '{value_path}' is missing "
-                    "from the flow state or resolved to null."
+                    "from the flow state."
                 )
             written[key] = value
             source_by_key[key] = value_path
@@ -263,13 +273,7 @@ class KeyValueNode(BaseNode):
                 f"Key-Value node '{self.node_name}': read target '{path}' is where the stored "
                 "value goes, so it takes no '|default'. Use a path like 'variables.user.name'."
             )
-        segments = self._segments(path)
-        method = next((segment for segment in segments if segment in _DOTDICT_ATTRIBUTES), None)
-        if method:
-            raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}': read target '{path}' uses '{method}', "
-                "the name of a built-in method. Use a different variable name."
-            )
+        self._segments(path)
         return path
 
     def _segments(self, path: str) -> list[str]:
@@ -291,6 +295,15 @@ class KeyValueNode(BaseNode):
             raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': '{path}' has a segment starting with '_'. "
                 "Flow state paths cannot name internal attributes."
+            )
+        # The resolver reads with getattr, which finds the method before a stored key of the
+        # same name: `variables.values.total` would resolve to a miss, and so write null or
+        # the `|default` over the stored total.
+        method = next((segment for segment in segments if segment in _DOTDICT_ATTRIBUTES), None)
+        if method:
+            raise KeyValueNodeError(
+                f"Key-Value node '{self.node_name}': '{path}' uses '{method}', "
+                "the name of a built-in method. Use a different variable name."
             )
         return segments
 
@@ -318,6 +331,27 @@ class KeyValueNode(BaseNode):
                 container[slot] = DotDict()
             # Read back rather than keep the DotDict above: DotDict stores a converted copy.
             container = container[slot]
+
+    def _holds_null(self, variables: DotDict, path: str) -> bool:
+        """Whether `path` is present in the state and its value is null.
+
+        Looks keys up with `in`, not getattr: getattr on a DotDict falls through to its
+        methods and internals. False for a missing key, so a caller that disagrees with
+        another resolver fails closed instead of writing null.
+
+        Raises:
+            KeyValueNodeError: A segment cannot apply to its container, e.g. a name on a
+                list or on null (see `_slot`).
+        """
+        container: Any = variables
+        current_path = "variables"
+        for segment in _PATH_SEGMENT.findall(path)[1:]:
+            slot = self._slot(container, current_path, segment)
+            if isinstance(slot, str) and slot not in container:
+                return False
+            container = container[slot]
+            current_path += segment if segment.startswith("[") else f".{segment}"
+        return container is None
 
     def _slot(self, container: Any, path: str, segment: str) -> str | int:
         """Return the key or index `segment` names in `container`, which lives at `path`."""
@@ -364,7 +398,8 @@ class KeyValueNode(BaseNode):
                 "Use a flow state path such as 'variables.user.id' "
                 "(in a key: 'profile_{variables.user.id}')."
             ) from e
-        # getattr on a DotDict falls through to dict methods, e.g. `variables.cart.items`.
+        # `_segments` rejects DotDict method names; getattr still finds the methods of other
+        # values, e.g. `variables.name.upper` on a string.
         if callable(value):
             raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': '{path}' resolves to a built-in method, "

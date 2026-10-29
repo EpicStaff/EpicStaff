@@ -1,4 +1,7 @@
 .editor-wrapper {
+    // Read by the node side panel for its width and by the toolbar row to stay clear of it.
+    --node-panel-width: 440px;
+
     position: relative;
     width: 100%;
     height: 100%;
@@ -98,10 +101,17 @@
                 stroke: var(--db-primary-1) !important;
             }
 
-            .start-marker circle,
-            .end-marker path {
-                fill: var(--db-primary-1) !important;
+            .f-marker {
+                path,
+                circle {
+                    fill: var(--db-primary-1) !important;
+                }
             }
+        }
+
+        &.is-dimmed {
+            opacity: 0.25;
+            transition: opacity 0.15s ease;
         }
 
         &.f-snap-connection {
@@ -246,9 +256,33 @@
 
             .f-waypoint {
                 fill: transparent;
-                stroke: var(--fog-alpha-60);
+                stroke: transparent;
+                pointer-events: none;
             }
         }
+    }
+
+    // Declared before .is-dimmed so the hover dimming still wins on an unused node.
+    // Hover and selection bring back the normal look.
+    app-flow-base-node.is-unused:not(:hover, .f-selected) {
+        opacity: var(--vp-unused-node-opacity);
+        transition: opacity 0.15s ease;
+
+        .interactive-node-body {
+            border-style: dashed;
+        }
+
+        // Tables draw their outline as an inset box-shadow, which cannot be dashed.
+        .decision-table {
+            box-shadow: none;
+            outline: 2px dashed var(--color-divider-subtle);
+            outline-offset: -2px;
+        }
+    }
+
+    app-flow-base-node.is-dimmed {
+        opacity: 0.25;
+        transition: opacity 0.15s ease;
     }
 
     .f-selection-area {
@@ -264,6 +298,8 @@
 
         .f-minimap-node {
             fill: var(--vp-minimap-node-color);
+            // In canvas units: the minimap scales it down with the flow (about 2px on screen at its usual scale).
+            rx: var(--vp-minimap-node-radius);
 
             &.f-selected {
                 fill: var(--vp-minimap-selected-node-color);
@@ -284,17 +320,11 @@
             &.Tool-Node:not(.f-selected) {
                 fill: var(--tool-node-accent-color);
             }
-            &.LLM-Node:not(.f-selected) {
-                fill: var(--llm-node-accent-color);
-            }
             &.Project-Node:not(.f-selected) {
                 fill: var(--project-node-accent-color);
             }
             &.Python-Node:not(.f-selected) {
                 fill: var(--python-node-accent-color);
-            }
-            &.Edge-Node:not(.f-selected) {
-                fill: var(--edge-node-accent-color);
             }
             &.Start-Node:not(.f-selected) {
                 fill: var(--slate-215);
@@ -334,6 +364,15 @@
             }
             &.End:not(.f-selected) {
                 fill: var(--slate-215);
+            }
+            // Last, so it overrides the node-type colour above.
+            &.is-unused:not(.f-selected) {
+                fill: transparent;
+                stroke: var(--vp-unused-minimap-node-outline-color);
+                stroke-width: 1px;
+                stroke-dasharray: 3 2;
+                // The minimap scales the whole flow down; this keeps the outline 1px on screen.
+                vector-effect: non-scaling-stroke;
             }
         }
     }
@@ -398,6 +437,24 @@
     gap: 1rem;
     max-height: calc(100vh - 2rem);
     pointer-events: none;
+}
+
+// The side panel docks 1rem from the right edge; the toolbar ends 1rem before the panel.
+.editor-wrapper.panel-open .canvas-toolbar-row {
+    right: calc(var(--node-panel-width) + 2rem);
+}
+
+.unused-nodes-bar-slot {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+}
+
+// Centred on the part of the canvas the node side panel leaves visible.
+.editor-wrapper.panel-open .unused-nodes-bar-slot {
+    left: calc((100% - var(--node-panel-width)) / 2);
 }
 
 .top-left-actions {
@@ -489,15 +546,25 @@ app-nodes-search {
     }
 }
 
+// Takes all the width the left actions leave, so appHideOverflowingChildren sees every change of the
+// free space: a narrowed toolbar first collapses button labels to icons, then hides whole buttons,
+// and brings them back once they fit again.
 .top-right-controls {
-    flex-shrink: 0;
-    pointer-events: auto;
+    flex: 1 1 0;
+    min-width: 0;
+    pointer-events: none;
 }
 
 .top-right-actions {
     display: flex;
     align-items: flex-start;
+    justify-content: flex-end;
     gap: 1rem;
+    min-width: 0;
+
+    > * {
+        pointer-events: auto;
+    }
 }
 
 .show-inputs-btn {

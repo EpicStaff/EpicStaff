@@ -146,3 +146,73 @@ async def test_stop_closes_client():
     await client.stop()
 
     assert client._client is None
+
+
+async def test_search_sends_target_extra_headers():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"result": "answer"})
+
+    target = _graph_target().model_copy(
+        update={
+            "embedder_extra_headers": {"X-Emb": "emb-resolved"},
+            "llm_extra_headers": {"X-Llm": "llm-resolved"},
+        }
+    )
+    client = _client_with_handler(handler)
+    await client.search(target, "why", timeout=2.0)
+
+    assert captured["body"]["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
+    assert captured["body"]["llm_extra_headers"] == {"X-Llm": "llm-resolved"}
+
+    await client.stop()
+
+
+async def test_search_without_extra_headers_sends_empty_objects():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"result": []})
+
+    client = _client_with_handler(handler)
+    await client.search(_naive_target(), "hello", timeout=2.0)
+
+    assert captured["body"]["embedding_extra_headers"] == {}
+    assert captured["body"]["llm_extra_headers"] == {}
+
+    await client.stop()
+
+
+async def test_search_with_usage_returns_the_embedding_usage_knowledge_new_reports():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "result": [],
+                "usage": {"embedding_tokens": 15, "embedding_cost_usd": 0.0003},
+            },
+        )
+
+    client = _client_with_handler(handler)
+
+    outcome = await client.search_with_usage(_naive_target(), "q", timeout=5.0)
+
+    assert outcome.result == []
+    assert outcome.usage.embedding_tokens == 15
+    assert outcome.usage.embedding_cost_usd == 0.0003
+
+
+async def test_search_with_usage_defaults_to_no_usage_when_the_response_has_none():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"result": "an answer"})
+
+    client = _client_with_handler(handler)
+
+    outcome = await client.search_with_usage(_graph_target(), "q", timeout=5.0)
+
+    assert outcome.result == "an answer"
+    assert outcome.usage.embedding_tokens == 0
+    assert outcome.usage.to_token_usage() == {}

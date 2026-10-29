@@ -5,6 +5,7 @@ import {
     Component,
     computed,
     effect,
+    ElementRef,
     HostListener,
     inject,
     Injector,
@@ -15,6 +16,7 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import {
     AppSvgIconComponent,
+    AuthorshipDetailsDialogService,
     ButtonComponent,
     ConfirmationDialogService,
     UNSAVED_CHANGES_RESULT,
@@ -27,6 +29,7 @@ import { map } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
@@ -88,11 +91,13 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     protected readonly storageFacade: StorageTreeFacade = inject(StorageTreeFacade);
     private readonly unsavedChangesDialog: UnsavedChangesDialogService = inject(UnsavedChangesDialogService);
     private readonly confirmationDialog: ConfirmationDialogService = inject(ConfirmationDialogService);
+    private readonly recycleBinSettings: RecycleBinSettingsService = inject(RecycleBinSettingsService);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly injector: Injector = inject(Injector);
     private readonly route: ActivatedRoute = inject(ActivatedRoute);
     private readonly router: Router = inject(Router);
     private readonly permissions: PermissionsService = inject(PermissionsService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
@@ -125,12 +130,21 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         return false;
     });
 
+    /**
+     * Authorship is read-only, so anyone who can see the agent may view it — no permission gate.
+     * Only agents: a selected surface renders the surface view, whose card menu has its own entry.
+     */
+    protected readonly canViewSelectedDetails = computed<boolean>(() => this.store.selectedAgent() !== null);
+
     /** Kebab is worth showing only if at least one action is permitted. */
     protected readonly canOpenHeaderMenu = computed<boolean>(
-        () => this.canDuplicateSelected() || this.canDeleteSelected()
+        () => this.canDuplicateSelected() || this.canViewSelectedDetails() || this.canDeleteSelected()
     );
 
     private readonly explorer = viewChild(ExplorerComponent);
+    private readonly headerMenuTrigger = viewChild<string, ElementRef<HTMLButtonElement>>('headerMenuTrigger', {
+        read: ElementRef,
+    });
 
     private preselectApplied = false;
     private sawLoading = false;
@@ -170,14 +184,6 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     protected readonly agentCrumbs = computed<DetailCrumb[]>(() => {
         const agent = this.store.selectedAgent();
         if (agent) return [{ label: 'AGENTS' }, { label: agent.name }];
-        const surfacesAgent = this.store.surfacesOnlyAgent();
-        if (surfacesAgent) {
-            return [
-                { label: 'AGENTS' },
-                { label: surfacesAgent.name, navAgentId: surfacesAgent.id },
-                { label: 'Surfaces' },
-            ];
-        }
         const s = this.store.selectedSurface();
         if (s) return [{ label: 'SHARED SURFACES' }, { label: s.name }];
         return [];
@@ -191,6 +197,14 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             if (!file && this.store.selectedNode().kind === 'storage') {
                 this.store.clearSelection();
             }
+        });
+
+        // An opened instruction can disappear (deleted, list shortened, agent gone): fall back to its agent.
+        effect(() => {
+            const selection = this.store.selectedNode();
+            if (selection.kind !== 'agent-doc' || this.store.selectedAgentDoc()) return;
+            if (this.store.agents().some((agent) => agent.id === selection.id)) this.store.selectAgent(selection.id);
+            else this.store.clearSelection();
         });
 
         effect(() => {
@@ -244,12 +258,17 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 this.store.selectAgent(node.agentId);
             } else if (node.kind === 'agent-doc') {
                 this.storageFacade.selectedFile.set(null);
-                this.store.selectAgentDoc(node.agentId, node.docType);
+                this.openDocInEdit = false;
+                this.store.selectAgentDoc(node.agentId, node.instructionIndex);
             } else if (node.kind === 'group') {
-                const match = /^agent:(\d+):surfaces$/.exec(node.id);
-                if (match) {
+                const surfacesMatch = /^agent:(\d+):surfaces$/.exec(node.id);
+                const instructionsMatch = /^agent:(\d+):instructions$/.exec(node.id);
+                if (surfacesMatch) {
                     this.storageFacade.selectedFile.set(null);
-                    this.store.selectAgentSurfaces(Number(match[1]));
+                    this.store.selectAgentSurfaces(Number(surfacesMatch[1]));
+                } else if (instructionsMatch) {
+                    this.storageFacade.selectedFile.set(null);
+                    this.store.selectAgentInstructions(Number(instructionsMatch[1]));
                 }
             }
         });
@@ -303,23 +322,21 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     onSaveAgent(payload: AgentSavePayload): void {
         if (payload.id == null) {
-            this.openDocInEdit = !!payload.openBootDocInEdit;
+            this.openDocInEdit = !!payload.openFirstInstructionInEdit;
             this.store.saveNewAgent(
                 {
                     name: payload.name,
                     description: payload.description,
-                    instructions: payload.instructions,
+                    instruction_list: payload.instruction_list,
                     llm_config: payload.llm_config,
                     fcm_llm_config: payload.fcm_llm_config,
-                    metadata: { instructions_format: payload.bootIsDoc ? 'markdown' : 'text' },
                 },
-                !!payload.openBootDocInEdit
+                !!payload.openFirstInstructionInEdit
             );
         } else {
             this.store.updateAgent(payload.id, {
                 name: payload.name,
                 description: payload.description,
-                instructions: payload.instructions,
                 llm_config: payload.llm_config,
                 fcm_llm_config: payload.fcm_llm_config,
                 max_iter: payload.max_iter,
@@ -380,22 +397,11 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     openDocInEdit = false;
 
-    onBootDocChange(isDoc: boolean): void {
+    onOpenInstruction(request: { index: number; edit: boolean }): void {
         const id = this.store.selectedAgent()?.id;
         if (id == null) return;
-        if (isDoc) {
-            this.openDocInEdit = true;
-            this.store.createAndOpenBootDoc(id);
-        } else {
-            this.store.setBootDoc(id, false);
-        }
-    }
-
-    onOpenBootDoc(): void {
-        const id = this.store.selectedAgent()?.id;
-        if (id == null) return;
-        this.openDocInEdit = false;
-        this.store.selectAgentDoc(id, 'boot');
+        this.openDocInEdit = request.edit;
+        this.store.selectAgentDoc(id, request.index);
     }
 
     onDeleteAgent(agent: AgentDefinition): void {
@@ -454,12 +460,25 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         if (s) this.store.duplicateSurface(s.id);
     }
 
+    protected onHeaderViewDetails(): void {
+        const agent = this.store.selectedAgent();
+        this.closeHeaderMenu();
+        if (agent) {
+            this.authorshipDetailsDialog.open('Agent Details', agent, this.headerMenuTrigger()?.nativeElement);
+        }
+    }
+
     onHeaderDelete(): void {
         this.closeHeaderMenu();
         this.onDeleteSelected();
     }
 
     onExplorerTreeMenu(event: ExplorerTreeMenuEvent): void {
+        // Read-only: it neither changes the selection nor discards edits, so no unsaved-changes prompt.
+        if (event.action === 'view-details') {
+            this.openExplorerAgentDetails(event);
+            return;
+        }
         this.guardUnsaved(() => this.applyExplorerTreeMenu(event));
     }
 
@@ -510,12 +529,11 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     private confirmDeleteAgent(agentId: number): Observable<boolean> {
-        const agent = this.store.agents().find((a) => a.id === agentId);
-        if (!agent) return of(false);
+        if (!this.store.agents().some((a) => a.id === agentId)) return of(false);
 
         const ownedSurfaceCount = this.store.surfaces().filter((s) => s.owner_agent === agentId).length;
         const usage = { agents: 0, flows: 0, chats: 0 };
-        const dialog = buildDeleteAgentDialog(agent, usage, ownedSurfaceCount);
+        const dialog = buildDeleteAgentDialog(usage, ownedSurfaceCount, this.recycleBinSettings.retentionDays());
 
         return this.confirmationDialog
             .confirm(dialog, { width: DELETE_CONFIRM_DIALOG_WIDTH })
@@ -533,7 +551,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             flows: usageRaw.flows.length,
             chats: usageRaw.chats.length,
         };
-        const dialog = buildDeleteSurfaceDialog(surface, usage, shared);
+        const dialog = buildDeleteSurfaceDialog(surface, usage, shared, this.recycleBinSettings.retentionDays());
 
         return this.confirmationDialog
             .confirm(dialog, { width: DELETE_CONFIRM_DIALOG_WIDTH })
@@ -553,5 +571,11 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 onCancel?.();
             }
         });
+    }
+
+    private openExplorerAgentDetails({ node, trigger }: ExplorerTreeMenuEvent): void {
+        if (node.kind !== 'agent') return;
+        const agent = this.store.agents().find((candidate) => candidate.id === node.agentId);
+        if (agent) this.authorshipDetailsDialog.open('Agent Details', agent, trigger);
     }
 }

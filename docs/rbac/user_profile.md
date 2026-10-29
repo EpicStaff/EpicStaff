@@ -18,7 +18,7 @@ two-step password change.
 |---|---|---|
 | GET | `/api/profile/` | Read own profile (id, email, display name, avatar URL, memberships). |
 | PATCH | `/api/profile/` | Update mutable fields. Today: `display_name`. |
-| POST | `/api/profile/avatar/` | Upload or replace avatar (multipart). JPEG / PNG, ≤ 5 MB. |
+| POST | `/api/profile/avatar/` | Upload or replace avatar (multipart). JPEG / PNG, ≤ 10 MB (`DJANGO_AVATAR_MAX_SIZE`). |
 | DELETE | `/api/profile/avatar/` | Clear avatar. |
 | POST | `/api/profile/password-change/request/` | Step 1: verify current password, get a ticket. |
 | POST | `/api/profile/password-change/confirm/` | Step 2: consume ticket, set new password, get a fresh JWT pair. |
@@ -53,7 +53,7 @@ Validation errors come back as 400 with one of these `code` values:
 |---|---|---|
 | `invalid` | Field is missing | "Please choose a file." |
 | `invalid_avatar` | File is not a valid JPEG or PNG | "Only JPEG or PNG images are allowed." |
-| `avatar_too_large` | File exceeds `AVATAR_MAX_BYTES` | Echo the message — it includes the max in MB. |
+| `avatar_too_large` | File exceeds `DJANGO_AVATAR_MAX_SIZE` | Echo the message — it includes the max in MB. |
 
 Response on success: the full updated profile (`avatar_url` now non-null).
 
@@ -85,7 +85,7 @@ Errors:
 
 Errors and recovery:
 - `400 invalid_password_change_ticket` → the ticket is unknown, expired (default 5 min), already used, or doesn't belong to this user. UI: "Session timed out, please re-enter your current password." Drop the user back to step 1.
-- `400 invalid` with FieldError envelope → weak new password. Keep on step 2. Render messages from `errors[]`.
+- `400 invalid` with FieldError envelope → weak new password (including one too similar to the account's email). The ticket is not consumed: keep on step 2 and retry with it. Render messages from `errors[]`.
 
 Submitted password values are redacted (`"value": "***"`) in error responses.
 
@@ -178,7 +178,8 @@ No body.
 { "ticket": "k7Xq8...", "expires_in": 300 }
 ```
 
-Throttled by `LoginThrottle` (default 5/min, env `LOGIN_THROTTLE_RATE`).
+Throttled by `LoginThrottle` (default 5/min, env `DJANGO_LOGIN_THROTTLE_RATE`). The body carries no
+`email`, so the bucket is the caller's IP alone, shared with the login scope rather than per account.
 
 ### POST `/api/profile/password-change/confirm/`
 
@@ -192,7 +193,7 @@ Throttled by `LoginThrottle` (default 5/min, env `LOGIN_THROTTLE_RATE`).
 { "access": "...", "refresh": "..." }
 ```
 
-This pair is fresh. Every other refresh token for the user is now blacklisted; the previous access token continues working only until its own expiry (≤ `JWT_ACCESS_MINUTES`, default 15).
+This pair is fresh and bound to the new password. Every other access and refresh token for the user — including the caller's previous access token — stops working immediately, and every personal API key they own is revoked.
 
 ---
 
@@ -244,7 +245,7 @@ Or, for multi-field validation:
 | 400 | `invalid_current_password` | Step 1 received a wrong current password. |
 | 400 | `invalid_password_change_ticket` | Ticket is unknown, expired, already used, or does not belong to the calling user. |
 | 400 | `invalid_avatar` | Upload is not a valid JPEG or PNG. |
-| 400 | `avatar_too_large` | Upload exceeds `AVATAR_MAX_BYTES`. |
+| 400 | `avatar_too_large` | Upload exceeds `DJANGO_AVATAR_MAX_SIZE`. |
 | 401 | (default DRF) | Unauthenticated. |
 | 403 | — | Authenticated but lacks user context (e.g., env-seeded API key). |
 | 404 | — | URL not registered (defense against stale FE that still calls `/api/auth/me/`). |
@@ -255,10 +256,11 @@ Or, for multi-field validation:
 ## Deployment
 
 - `MEDIA_URL` must be served by the reverse proxy (nginx / Caddy) in production. Django serves `MEDIA_URL` only in DEBUG mode.
+- Avatars are visible only to logged-in users. They are stored in the `STORAGE_BUCKET` bucket under `system/avatars/`, and nginx serves them at `/media/avatars/` only with a valid signed URL, which django_app puts in authenticated API responses (`avatar_url`). The link expires at the end of the next UTC day (24–48 h after it is issued); an image first loaded after that fails until the data is refetched, and the UI falls back to initials. A missing or wrong signature is 403, an expired one 410. django_app and nginx share the signing key `AVATAR_URL_SIGNING_SECRET` (required). `storage-init` lets nginx read that prefix without credentials (`s3:GetObject` only); storage publishes no port, so only containers in the docker network can use that. Every upload gets a new key, stored with `Cache-Control: public, max-age=31536000, immutable`. A migration clears avatars uploaded before the move to object storage (and deletes their local files); those users upload again.
 - Env vars:
-  - `PASSWORD_CHANGE_TICKET_TTL_SECONDS` (default `300`)
-  - `AVATAR_MAX_BYTES` (default `5242880` = 5 MB)
-  - `AVATAR_ALLOWED_FORMATS` (default `JPEG,PNG`)
-  - `LOGIN_THROTTLE_RATE` (already in Story 2; reused for password-change request)
+  - `DJANGO_PASSWORD_CHANGE_TICKET_TTL` (default `5m`)
+  - `DJANGO_AVATAR_MAX_SIZE` (default `10mb`)
+  - `DJANGO_AVATAR_ALLOWED_FORMATS` (default `JPEG,PNG`)
+  - `DJANGO_LOGIN_THROTTLE_RATE` (shared with login; reused for password-change request)
 - Redis 6.2+ required (`GETDEL` for atomic ticket consume).
 - Pillow is already a Django `ImageField` dependency — no additional install.

@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="submitDisabled()"
+>
     <div class="header">
         <span class="title">{{ isEditMode ? 'Edit Organization' : 'Create New Organization' }}</span>
 
@@ -31,6 +35,83 @@
         </div>
 
         <app-validation-errors [control]="orgNameControl" />
+
+        @if (isEditMode) {
+            <div class="control">
+                <label class="label data-retention__label">Retention</label>
+
+                @if (isRetentionLoading()) {
+                    <app-loading-spinner
+                        class="data-retention-status"
+                        size="sm"
+                    />
+                } @else if (retention()) {
+                    <div
+                        class="data-retention"
+                        [appServerErrors]="retentionForm"
+                        [errorsRef]="retentionErrorsRef"
+                    >
+                        @for (column of retentionColumns(); track column.type) {
+                            <div class="data-retention__column">
+                                <span
+                                    class="data-retention__column-label text-body"
+                                    [id]="column.labelId"
+                                >
+                                    {{ column.label }}
+                                </span>
+                                <app-select
+                                    [items]="column.items"
+                                    [formControl]="column.control"
+                                    [ariaLabelledby]="column.labelId"
+                                    [showTipInTrigger]="true"
+                                />
+                                <app-validation-errors [control]="column.control" />
+                                @if (column.hint) {
+                                    <span class="data-retention__hint text-body-small">{{ column.hint }}</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                } @else {
+                    <span class="data-retention-status data-retention__hint text-body-small">
+                        Data retention could not be loaded.
+                    </span>
+                }
+            </div>
+        }
+
+        <div class="control">
+            <label
+                class="label retention__label"
+                [id]="auditVisibilityLabelId"
+            >
+                Audit visibility for members
+            </label>
+
+            <div class="retention">
+                <app-select
+                    class="retention__unit"
+                    [items]="retentionUnitItems"
+                    [ariaLabelledby]="auditVisibilityLabelId"
+                    [(selectedValue)]="retentionUnit"
+                />
+                @if (retentionUnit() !== 'unlimited') {
+                    <app-number-stepper
+                        class="retention__amount"
+                        ariaLabel="Audit visibility amount"
+                        [alwaysShowButtons]="true"
+                        [integer]="true"
+                        [min]="1"
+                        [max]="maxRetentionAmount()"
+                        [value]="clampedRetentionAmount()"
+                        (changed)="setRetentionAmount($event)"
+                    />
+                }
+            </div>
+            <span class="retention__hint text-body-small">
+                How far back members can see audit events. Doesn't change how long they are stored.
+            </span>
+        </div>
     </div>
 
     <app-org-members-editor

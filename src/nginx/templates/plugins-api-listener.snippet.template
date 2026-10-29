@@ -1,0 +1,63 @@
+# The routes and headers of nginx's two listeners for plugin credentials, included in both
+# servers: the internal API listener (8081, plugins-internal-api-true.snippet) and the development
+# API listener (8082, plugins-development-api-true.snippet). One file, so the two cannot drift.
+# Each server sets $plugin_development_listener before including it: empty on 8081 (nginx then
+# sends no X-Plugin-Development-Listener), 1 on 8082. Nothing else sets it, and never from a caller.
+#
+# Only /api/ is served, and not the parts no plugin and no node may call: logins and tokens, the
+# SuperAdmin's administration, and the gateway checks. Only the headers set here reach Django: no
+# cookie, no X-API-Key, nothing a caller would forge (the address is nginx's own view of the
+# caller). X-Plugin-Network-Secret tells Django a request came through one of these listeners:
+# plugin service-account and node keys authenticate only with it.
+
+client_max_body_size 50M;
+
+location ^~ /api/auth/ {
+    default_type application/json;
+    return 404 '{"status_code":404,"code":"not_found","message":"Not found."}';
+}
+
+location ^~ /api/admin/ {
+    default_type application/json;
+    return 404 '{"status_code":404,"code":"not_found","message":"Not found."}';
+}
+
+location ^~ /api/plugin-gateway/ {
+    default_type application/json;
+    return 404 '{"status_code":404,"code":"not_found","message":"Not found."}';
+}
+
+location ^~ /api/ {
+    proxy_pass http://backend_server;
+    include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+    proxy_pass_request_headers off;
+    # A name DJANGO_ALLOWED_HOSTS accepts (as for the chat service's calls); epicstaff-api
+    # need not be listed there.
+    proxy_set_header Host localhost;
+    proxy_set_header Authorization $http_authorization;
+    proxy_set_header X-Organization-Id $http_x_organization_id;
+    # The person a plugin backend acts for; Django checks they may use the plugin.
+    proxy_set_header X-EpicStaff-On-Behalf-Of $http_x_epicstaff_on_behalf_of;
+    # From the environment, never from the caller (proxy_pass_request_headers is off).
+    proxy_set_header X-Plugin-Network-Secret "${PLUGINS_GATEWAY_SECRET}";
+    # Which listener the request came through, set by the server: Django accepts a development
+    # key only with it, and any other plugin key only without it.
+    proxy_set_header X-Plugin-Development-Listener $plugin_development_listener;
+    # Needed to carry a request body and the node's conditional desired-state request.
+    proxy_set_header Content-Type $content_type;
+    proxy_set_header Accept $http_accept;
+    proxy_set_header If-None-Match $http_if_none_match;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    # nginx's own scheme, never a proxy's: only the plugins network (8081) or this machine (8082)
+    # reaches these listeners, so no load balancer is ever in front of them, and a caller here is a
+    # plugin backend, which must not tell Django it was reached over https.
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # Package downloads to the node are up to PLUGINS_MAX_PACKAGE_MB.
+    proxy_read_timeout 300s;
+}
+
+location / {
+    default_type application/json;
+    return 404 '{"status_code":404,"code":"not_found","message":"Not found."}';
+}

@@ -8,8 +8,9 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
 from rbac.models import Organization, OrganizationUser
-from rbac.models import Role
-from tables.services.storage_service.upload import admission
+from rbac.models import Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
+from tables.services.storage_service.upload import admission, archive_upload, file_upload
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.manager import StorageManager
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
@@ -111,3 +112,39 @@ def sample_tar():
 @pytest.fixture
 def api_client():
     return APIClient()
+
+
+@pytest.fixture
+def admin_client(client_as, admin_acme, acme):
+    """An Acme org admin with Acme as the active org.
+
+    Needs the cross-org fixtures (`from tests.rbac_cross_org_fixtures import *`)
+    in the test module.
+    """
+    client = client_as(admin_acme)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+    return client
+
+
+@pytest.fixture
+def stream_backend(monkeypatch, settings, backend):
+    """Send every streamed upload to the test's in-memory `backend`, with room for any size."""
+    settings.ORG_STORAGE_QUOTA = 10**9
+    settings.MAX_STREAM_UPLOAD_FILE_SIZE = None
+    monkeypatch.setattr(file_upload, "get_storage_backend", lambda **_: backend)
+    monkeypatch.setattr(archive_upload, "get_storage_backend", lambda **_: backend)
+    return backend
+
+
+@pytest.fixture
+def client_with_files_bits(client_as, django_user_model, acme):
+    def _make(bits: Permission) -> APIClient:
+        role = Role.objects.create(name=f"Files {int(bits)}", org=acme, is_built_in=False)
+        RolePermission.objects.create(role=role, resource_type=ResourceType.FILES.value, permissions=int(bits))
+        user = django_user_model.objects.create_user(email=f"files-{int(bits)}@example.com", password="StrongPass123!")
+        OrganizationUser.objects.create(user=user, org=acme, role=role)
+        client = client_as(user)
+        client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+        return client
+
+    return _make

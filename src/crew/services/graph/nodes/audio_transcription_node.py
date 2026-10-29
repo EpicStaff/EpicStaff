@@ -1,5 +1,6 @@
 from services.graph.nodes.python_node import PythonNode
 from src.shared.models import PythonCodeData
+from src.shared.models.storage_scope import StorageCredentials
 
 
 class AudioTranscriptionNode(PythonNode):
@@ -16,16 +17,20 @@ class AudioTranscriptionNode(PythonNode):
         storage_allowed_paths: list[str] | None = None,
         storage_org_prefix: str | None = None,
         org_id: int | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         if not input_map:
             raise ValueError("AudioTranscriptionNode input cannot be empty.")
 
         arg_names = input_map.keys()
+        # TODO: this code imports faster_whisper and pydub, and needs PyAV below 19
+        # (faster_whisper up to 1.2.1 calls av.open(metadata_errors=...), a keyword
+        # PyAV 19 removed). Libraries now come only from the venv, and this node
+        # declares none, so it runs in the sandbox's default venv and fails there
+        # until it is given its own.
         code_data = PythonCodeData(
-            venv_name="default",
             code=self._get_code(arg_names),
             entrypoint="main",
-            libraries=["faster_whisper", "pydub"],
             use_storage=True,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
@@ -41,6 +46,7 @@ class AudioTranscriptionNode(PythonNode):
             output_variable_path=output_variable_path,
             python_code_executor_service=python_code_executor_service,
             python_code_data=code_data,
+            storage_credentials=storage_credentials,
         )
 
     def _get_code(self, arg_names: list[str]):
@@ -70,7 +76,7 @@ def transcribe_audio(file_data_path: str):
         os.remove(input_path)
 
     try:
-        model = WhisperModel("medium", device="cpu", compute_type="int8")
+        model = WhisperModel("small", device="cpu", compute_type="int8")
 
         segments, info = model.transcribe(
             wav_path,

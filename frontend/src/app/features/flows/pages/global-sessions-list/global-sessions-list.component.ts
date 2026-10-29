@@ -23,7 +23,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
 import { downloadBlob } from '@shared/utils';
-import { catchError, EMPTY, finalize, interval, Observable, Subject, switchMap, takeUntil } from 'rxjs';
+import { catchError, EMPTY, filter, finalize, interval, Observable, Subject, switchMap, takeUntil } from 'rxjs';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { ExportFormat, ImportExportService } from '../../../../core/services/import-export.service';
@@ -35,8 +35,10 @@ import {
     DurationFilter,
     GraphSessionLight,
     GraphSessionService,
+    SessionRunType,
     TriggerType,
 } from '../../services/flows-sessions.service';
+import { SessionDeletionService } from '../../services/session-deletion.service';
 
 @Component({
     selector: 'app-global-sessions-list',
@@ -71,6 +73,7 @@ export class GlobalSessionsListComponent {
     public sortOrder = signal<'asc' | 'desc'>('desc');
     public flowFilter = signal<string[]>([]);
     public triggerFilter = signal<TriggerType[]>([]);
+    public runTypeFilter = signal<SessionRunType[]>([]);
     public isErrorCauseFilter = signal<boolean>(false);
     public durationFilter = signal<DurationFilter | null>(null);
     public dateFilter = signal<DateRangeFilter | null>(null);
@@ -90,6 +93,7 @@ export class GlobalSessionsListComponent {
     private cancelPolling$ = new Subject<void>();
     private static readonly POLL_INTERVAL_MS = 5000;
     private destroyRef = inject(DestroyRef);
+    private readonly sessionDeletionService = inject(SessionDeletionService);
 
     readonly exportItems: ActionDropdownItem[] = [
         { label: 'Export as JSON', value: 'json' },
@@ -113,6 +117,7 @@ export class GlobalSessionsListComponent {
             const isErrorCause = this.isErrorCauseFilter();
             const durationFilter = this.durationFilter();
             const dateFilter = this.dateFilter();
+            const runType = this.runTypeFilter();
             this.reloadTrigger();
             this.loadGlobalSessions(
                 size,
@@ -123,7 +128,8 @@ export class GlobalSessionsListComponent {
                 triggerName,
                 isErrorCause,
                 durationFilter,
-                dateFilter
+                dateFilter,
+                runType
             );
         });
 
@@ -198,8 +204,13 @@ export class GlobalSessionsListComponent {
         this.currentPage.set(1);
     }
 
+    public onRunTypeFilterChange(runTypes: SessionRunType[]): void {
+        this.runTypeFilter.set(runTypes);
+        this.currentPage.set(1);
+    }
+
     public onBulkDelete(): void {
-        this.onDeleteSelected(Array.from(this.selectedIds()));
+        this.deleteSessions(Array.from(this.selectedIds()));
     }
 
     public onStatusFilterChange(values: string[]): void {
@@ -250,39 +261,7 @@ export class GlobalSessionsListComponent {
     }
 
     public onDeleteSelected(ids: number[]): void {
-        if (ids.length === 0) return;
-
-        this.isDeleting.set(true);
-        this.graphSessionService
-            .bulkDeleteSessions(ids)
-            .pipe(
-                finalize(() => this.isDeleting.set(false)),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe({
-                next: () => {
-                    this.selectedIds.update((prev) => {
-                        const next = new Set(prev);
-                        ids.forEach((id) => next.delete(id));
-                        return next;
-                    });
-                    const previewedSession = this.previewSession();
-                    if (previewedSession && ids.includes(previewedSession.id)) {
-                        this.previewSession.set(null);
-                        this.isPanelOpen.set(false);
-                    }
-
-                    const remaining = this.sessions().filter((s) => !ids.includes(s.id));
-                    if (remaining.length === 0 && this.currentPage() > 1) {
-                        this.currentPage.set(this.currentPage() - 1);
-                    } else {
-                        this.reloadTrigger.update((val) => val + 1);
-                    }
-                },
-                error: (err) => {
-                    console.error('Failed to delete sessions', err);
-                },
-            });
+        this.deleteSessions(ids);
     }
 
     public onDurationFilterChange(filter: DurationFilter | null): void {
@@ -339,6 +318,41 @@ export class GlobalSessionsListComponent {
         this.onExport(item.value as ExportFormat);
     }
 
+    // isDeleting covers only the request: the open confirmation dialog already blocks the page
+    private deleteSessions(ids: number[]): void {
+        if (ids.length === 0 || this.isDeleting()) return;
+
+        this.sessionDeletionService
+            .confirmDeletion(ids)
+            .pipe(
+                filter((confirmed) => confirmed),
+                switchMap(() => {
+                    this.isDeleting.set(true);
+                    return this.sessionDeletionService.delete(ids).pipe(finalize(() => this.isDeleting.set(false)));
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => {
+                this.selectedIds.update((prev) => {
+                    const next = new Set(prev);
+                    ids.forEach((id) => next.delete(id));
+                    return next;
+                });
+                const previewedSession = this.previewSession();
+                if (previewedSession && ids.includes(previewedSession.id)) {
+                    this.previewSession.set(null);
+                    this.isPanelOpen.set(false);
+                }
+
+                const remaining = this.sessions().filter((s) => !ids.includes(s.id));
+                if (remaining.length === 0 && this.currentPage() > 1) {
+                    this.currentPage.set(this.currentPage() - 1);
+                } else {
+                    this.reloadTrigger.update((val) => val + 1);
+                }
+            });
+    }
+
     private loadGlobalSessions(
         limit: number,
         offset: number,
@@ -348,7 +362,8 @@ export class GlobalSessionsListComponent {
         triggerType?: TriggerType[],
         isErrorCause?: boolean,
         durationFilter?: DurationFilter | null,
-        dateFilter?: DateRangeFilter | null
+        dateFilter?: DateRangeFilter | null,
+        runType?: SessionRunType[]
     ): void {
         this.cancelLoad$.next();
         this.cancelPolling$.next();
@@ -364,7 +379,8 @@ export class GlobalSessionsListComponent {
                 triggerType,
                 isErrorCause,
                 durationFilter,
-                dateFilter
+                dateFilter,
+                runType
             )
             .pipe(takeUntil(this.cancelLoad$), takeUntilDestroyed(this.destroyRef))
             .subscribe({
@@ -400,7 +416,8 @@ export class GlobalSessionsListComponent {
                             this.triggerFilter(),
                             this.isErrorCauseFilter(),
                             this.durationFilter(),
-                            this.dateFilter()
+                            this.dateFilter(),
+                            this.runTypeFilter()
                         )
                         .pipe(catchError(() => EMPTY));
                 }),

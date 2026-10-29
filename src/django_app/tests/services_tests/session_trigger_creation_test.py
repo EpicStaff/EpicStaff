@@ -1,4 +1,5 @@
 import pytest
+from src.shared.models import GraphData, SessionData
 from django.db import IntegrityError
 
 from tables.models.graph_models import (
@@ -17,13 +18,10 @@ from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
-class _FakeGraphDump:
-    def model_dump(self, mode=None):
-        return {}
-
-
-class _FakeSessionData:
-    graph = _FakeGraphDump()
+def _empty_session_data() -> SessionData:
+    """Real session data with an empty graph: only the session's own records are under
+    test, and a hand-made stand-in breaks as soon as production reads a new field."""
+    return SessionData(id=1, org_id=1, audit_retention_days=0, graph=GraphData(name="stub", entrypoint="__end__", end_node=None))
 
 
 def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = None):
@@ -31,7 +29,7 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
     don't need a fully built graph or a live Redis connection."""
     sm = session_manager or SessionManagerService()
     monkeypatch.setattr(
-        sm, "create_session_data", lambda session, **kwargs: _FakeSessionData()
+        sm, "create_session_data", lambda session, **kwargs: _empty_session_data()
     )
     monkeypatch.setattr(
         sm.redis_service, "publish_session_data", lambda session_data, **kwargs: 2
@@ -42,7 +40,9 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
 @pytest.mark.django_db
 def test_schedule_trigger_creates_session_trigger_row(default_org, monkeypatch):
     graph = Graph.objects.create(name="sched", org=default_org)
-    node = ScheduleTriggerNode.objects.create(graph=graph, node_name="my_schedule")
+    node = ScheduleTriggerNode.objects.create(
+        graph=graph, node_name="my_schedule", node_number=3
+    )
 
     _stub_publish(monkeypatch)
 
@@ -53,8 +53,8 @@ def test_schedule_trigger_creates_session_trigger_row(default_org, monkeypatch):
 
     assert trigger.trigger_type == SessionTrigger.TriggerType.SCHEDULE
     assert trigger.schedule_trigger_node_id == node.id
-    assert trigger.node_name == "my_schedule"
-    assert session.entrypoint == f"my_schedule #{node.id}"
+    assert trigger.node_name == "my_schedule #3"
+    assert session.entrypoint == f"my_schedule #3 #{node.id}"
 
 
 @pytest.mark.django_db
@@ -65,6 +65,7 @@ def test_webhook_trigger_creates_session_trigger_row(default_org, monkeypatch):
     node = WebhookTriggerNode.objects.create(
         graph=graph,
         node_name="my_webhook",
+        node_number=4,
         webhook_trigger=webhook_trigger,
         python_code=python_code,
     )
@@ -78,9 +79,9 @@ def test_webhook_trigger_creates_session_trigger_row(default_org, monkeypatch):
 
     assert trigger.trigger_type == SessionTrigger.TriggerType.WEBHOOK
     assert trigger.webhook_trigger_node_id == node.id
-    assert trigger.node_name == "my_webhook"
+    assert trigger.node_name == "my_webhook #4"
     assert trigger.extra == {"path": "wpath", "config_id": None}
-    assert session.entrypoint == f"my_webhook #{node.id}"
+    assert session.entrypoint == f"my_webhook #4 #{node.id}"
 
 
 @pytest.mark.django_db
@@ -90,7 +91,7 @@ def test_telegram_trigger_creates_session_trigger_row_with_chat_id(
     graph = Graph.objects.create(name="tg", org=default_org)
     webhook_trigger = WebhookTrigger.objects.create(path="tgpath", org=default_org)
     node = TelegramTriggerNode.objects.create(
-        graph=graph, node_name="my_telegram", webhook_trigger=webhook_trigger
+        graph=graph, node_name="my_telegram", node_number=5, webhook_trigger=webhook_trigger
     )
 
     _stub_publish(monkeypatch)
@@ -103,9 +104,32 @@ def test_telegram_trigger_creates_session_trigger_row_with_chat_id(
 
     assert trigger.trigger_type == SessionTrigger.TriggerType.TELEGRAM
     assert trigger.telegram_trigger_node_id == node.id
-    assert trigger.node_name == "my_telegram"
+    assert trigger.node_name == "my_telegram #5"
     assert trigger.extra == {"chat_id": 555}
-    assert session.entrypoint == f"my_telegram #{node.id}"
+    assert session.entrypoint == f"my_telegram #5 #{node.id}"
+
+
+@pytest.mark.django_db
+def test_schedule_triggered_session_enters_the_graph_at_the_trigger_node(
+    default_org, monkeypatch
+):
+    graph = Graph.objects.create(name="sched-entry", org=default_org)
+    node = ScheduleTriggerNode.objects.create(graph=graph, node_name="nightly", node_number=7)
+    published = []
+    monkeypatch.setattr(
+        SessionManagerService().redis_service,
+        "publish_session_data",
+        lambda session_data, **kwargs: published.append(session_data) or 1,
+    )
+
+    ScheduleTriggerService()._start_session(node)
+
+    session = Session.objects.get(graph=graph)
+    [session_data] = published
+    [trigger_node_data] = session_data.graph.schedule_trigger_node_data_list
+    # The crew runtime enters the graph by this key, so it must name the trigger node.
+    assert session.entrypoint == f"nightly #7 #{node.id}"
+    assert session_data.graph.entrypoint == trigger_node_data.node_name == session.entrypoint
 
 
 @pytest.mark.django_db
@@ -187,7 +211,8 @@ def test_create_session_is_atomic_no_orphan_session_on_trigger_failure(
 
     with pytest.raises(IntegrityError):
         SessionManagerService().create_session(
-            graph_id=graph.id,
+            graph=graph,
+            start_node=None,
             variables={},
             trigger=TriggerSpec.schedule(
                 ScheduleTriggerNode.objects.create(graph=graph, node_name="n")

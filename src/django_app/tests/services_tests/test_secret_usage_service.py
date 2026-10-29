@@ -8,8 +8,6 @@ tests below are what hold the two dedup rules together.
 """
 
 import pytest
-from django.db import connection
-from django.test.utils import CaptureQueriesContext
 
 from tables.models import (
     EmbeddingConfig,
@@ -22,7 +20,6 @@ from tables.models import (
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     Graph,
     PythonNode,
     TelegramTriggerNode,
@@ -343,7 +340,7 @@ class TestSummary:
         pre_code.secrets.set([secret])
         post_code = PythonCode.objects.create(code=DECLARING_CODE)
         post_code.secrets.set([secret])
-        ClassificationDecisionTableNode.objects.create(
+        node = ClassificationDecisionTableNode.objects.create(
             graph=graph,
             node_name="classify",
             pre_python_code=pre_code,
@@ -355,13 +352,19 @@ class TestSummary:
 
         assert flows["key"] == "flows"
         assert len(flows["items"]) == 1
+        # Both entries carry the same node id: one node, two blocks. The client
+        # groups by id, so the pair must not be told apart by identity.
         assert flows["items"][0]["nodes"] == [
             {
+                "id": node.pk,
+                "node_number": node.node_number,
                 "name": "classify",
                 "node_type": "classification-decision-table",
                 "code_field": "post_python_code",
             },
             {
+                "id": node.pk,
+                "node_number": node.node_number,
                 "name": "classify",
                 "node_type": "classification-decision-table",
                 "code_field": "pre_python_code",
@@ -377,7 +380,7 @@ class TestSummary:
         graph = Graph.objects.create(name="CDT pre only", org=org)
         pre_code = PythonCode.objects.create(code=DECLARING_CODE)
         pre_code.secrets.set([secret])
-        ClassificationDecisionTableNode.objects.create(
+        node = ClassificationDecisionTableNode.objects.create(
             graph=graph,
             node_name="classify",
             pre_python_code=pre_code,
@@ -388,6 +391,8 @@ class TestSummary:
 
         assert summary["categories"][0]["items"][0]["nodes"] == [
             {
+                "id": node.pk,
+                "node_number": node.node_number,
                 "name": "classify",
                 "node_type": "classification-decision-table",
                 "code_field": "pre_python_code",
@@ -401,28 +406,40 @@ class TestSummary:
         graph = Graph.objects.create(name="Plain python flow", org=org)
         python_code = PythonCode.objects.create(code=DECLARING_CODE)
         python_code.secrets.set([secret])
-        PythonNode.objects.create(
+        node = PythonNode.objects.create(
             graph=graph, node_name="charge", python_code=python_code
         )
 
         summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         assert summary["categories"][0]["items"][0]["nodes"] == [
-            {"name": "charge", "node_type": "python", "code_field": "python_code"}
+            {
+                "id": node.pk,
+                "node_number": node.node_number,
+                "name": "charge",
+                "node_type": "python",
+                "code_field": "python_code",
+            }
         ]
 
     def test_an_fk_site_reports_a_null_code_field(self, org, secret):
         """A Telegram trigger node references the secret by FK, declaring nothing in
         code, so there is no block to name."""
         graph = Graph.objects.create(name="TG flow", org=org)
-        TelegramTriggerNode.objects.create(
+        node = TelegramTriggerNode.objects.create(
             graph=graph, node_name="tg", telegram_bot_api_key_secret=secret
         )
 
         summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         assert summary["categories"][0]["items"][0]["nodes"] == [
-            {"name": "tg", "node_type": "telegram-trigger", "code_field": None}
+            {
+                "id": node.pk,
+                "node_number": node.node_number,
+                "name": "tg",
+                "node_type": "telegram-trigger",
+                "code_field": None,
+            }
         ]
 
     def test_one_flow_with_several_nodes_is_one_item_with_several_nodes(
@@ -443,6 +460,34 @@ class TestSummary:
         assert items[0]["id"] == graph.pk
         assert items[0]["name"] == "Grouped flow"
         assert sorted(node["name"] for node in items[0]["nodes"]) == ["alpha", "beta"]
+        assert summary["readable_total"] == 1
+
+    def test_two_same_named_nodes_in_one_flow_are_reported_separately(
+        self, org, secret
+    ):
+        """Node names are not unique within a graph, so two nodes that share a
+        name, a type and the secret are still two places to fix before deleting
+        it. The flow itself still counts once."""
+        graph = Graph.objects.create(name="Twin nodes flow", org=org)
+        twins = []
+        for _ in range(2):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            twins.append(
+                PythonNode.objects.create(
+                    graph=graph, node_name="charge", python_code=python_code
+                )
+            )
+
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
+        items = summary["categories"][0]["items"]
+
+        assert len(items) == 1
+        assert [(node["id"], node["node_number"]) for node in items[0]["nodes"]] == [
+            (twins[0].pk, 1),
+            (twins[1].pk, 2),
+        ]
+        assert {node["name"] for node in items[0]["nodes"]} == {"charge"}
         assert summary["readable_total"] == 1
 
     def test_two_configs_of_one_type_sharing_a_name_dedupe(self, org, secret):
@@ -546,13 +591,12 @@ class TestSummary:
 class TestSummaryQueryCost:
     """summary() unions by column shape instead of querying each source in turn.
 
-    Twelve sources, three shapes (named / node / edge), so three queries — plus the
-    one extra resolve_node_names pass a conditional edge needs, which is why the
-    ceilings below differ.
+    Two shapes (named / node), so two union queries, plus the count_for() call
+    summary() makes for hidden_total.
     """
 
     def _used_everywhere(self, *, org, secret):
-        """One secret referenced in all three shapes at once."""
+        """One secret referenced in both shapes at once."""
         graph = Graph.objects.create(name="Shape flow", org=org)
         python_code = PythonCode.objects.create(code=DECLARING_CODE)
         python_code.secrets.set([secret])
@@ -568,24 +612,24 @@ class TestSummaryQueryCost:
         )
         return graph
 
-    def test_four_queries_when_no_conditional_edge_matches(
+    def test_three_queries_for_a_secret_used_in_both_shapes(
         self, org, secret, django_assert_num_queries
     ):
-        """The fourth query is the count_for() call summary() makes to get hidden_total."""
+        """The third query is the count_for() call summary() makes to get hidden_total."""
         self._used_everywhere(org=org, secret=secret)
 
-        with django_assert_num_queries(4):
+        with django_assert_num_queries(3):
             summary = secret_usage_service.summary(
                 secret=secret, effective=_all_readable()
             )
 
         assert summary["readable_total"] == 2
 
-    def test_four_queries_for_an_unused_secret(
+    def test_three_queries_for_an_unused_secret(
         self, org, secret, django_assert_num_queries
     ):
-        """The old per-source loop paid twelve even to answer "nothing", and the fourth of these four queries is still the count_for() call for hidden_total."""
-        with django_assert_num_queries(4):
+        """The old per-source loop paid twelve even to answer "nothing", and the third of these three queries is still the count_for() call for hidden_total."""
+        with django_assert_num_queries(3):
             assert secret_usage_service.summary(
                 secret=secret, effective=_all_readable()
             ) == {
@@ -593,36 +637,6 @@ class TestSummaryQueryCost:
                 "hidden_total": 0,
                 "categories": [],
             }
-
-    def test_a_matching_conditional_edge_adds_only_its_resolve_pass(
-        self, org, secret, django_assert_num_queries
-    ):
-        """resolve_node_names is one UNION plus one SELECT per node table, and it runs
-        only when an edge actually matches — it is no longer paid on every call."""
-        graph = Graph.objects.create(name="Edge shape flow", org=org)
-        router = PythonNode.objects.create(
-            graph=graph,
-            node_name="route",
-            python_code=PythonCode.objects.create(
-                code="def main(**kwargs):\n    return 1\n"
-            ),
-        )
-        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
-        edge_code.secrets.set([secret])
-        ConditionalEdge.objects.create(
-            graph=graph, source_node_id=router.pk, python_code=edge_code
-        )
-
-        with CaptureQueriesContext(connection) as captured:
-            summary = secret_usage_service.summary(
-                secret=secret, effective=_all_readable()
-            )
-
-        assert summary["categories"][0]["items"][0]["nodes"] == [
-            {"name": "route", "node_type": "edge", "code_field": "python_code"}
-        ]
-        # Three shape queries plus the resolve pass; nowhere near the old twelve.
-        assert 3 < len(captured) < 12, len(captured)
 
 
 @pytest.mark.django_db
@@ -702,6 +716,74 @@ class TestSummaryIsDeterministic:
 
         assert [node["name"] for node in nodes] == ["alpha", "mid", "zeta"]
 
+    def test_same_named_nodes_come_back_sorted_by_node_number(self, org, secret):
+        """Creation order and id order deliberately disagree with the numbers here,
+        so only a sort on node_number yields this order."""
+        graph = Graph.objects.create(name="Numbered twins flow", org=org)
+        for node_number in (7, 3):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            PythonNode.objects.create(
+                graph=graph,
+                node_name="twin",
+                python_code=python_code,
+                node_number=node_number,
+            )
+
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
+        nodes = summary["categories"][0]["items"][0]["nodes"]
+
+        assert [node["node_number"] for node in nodes] == [3, 7]
+
+    def test_a_node_without_a_number_sorts_after_numbered_namesakes(
+        self, org, secret
+    ):
+        """node_number is nullable; a missing one must not break the sort."""
+        graph = Graph.objects.create(name="Unnumbered twin flow", org=org)
+        created = []
+        for _ in range(2):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            created.append(
+                PythonNode.objects.create(
+                    graph=graph, node_name="twin", python_code=python_code
+                )
+            )
+        # The model always assigns a number on insert; only a raw update can clear it.
+        PythonNode.objects.filter(pk=created[0].pk).update(node_number=None)
+
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
+        nodes = summary["categories"][0]["items"][0]["nodes"]
+
+        assert [(node["id"], node["node_number"]) for node in nodes] == [
+            (created[1].pk, 2),
+            (created[0].pk, None),
+        ]
+
+    def test_unnumbered_namesakes_come_back_in_id_order(self, org, secret):
+        """With name, number, type and block all equal, only the id is left to
+        order by. Ids are assigned in descending order of creation so neither
+        creation nor insertion order can be what decides."""
+        graph = Graph.objects.create(name="Unnumbered namesakes flow", org=org)
+        created = []
+        for node_id in (900_000_003, 900_000_002, 900_000_001):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            created.append(
+                PythonNode.objects.create(
+                    id=node_id, graph=graph, node_name="twin", python_code=python_code
+                )
+            )
+        PythonNode.objects.filter(pk__in=[node.pk for node in created]).update(
+            node_number=None
+        )
+
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
+        nodes = summary["categories"][0]["items"][0]["nodes"]
+
+        assert [node["id"] for node in nodes] == [900_000_001, 900_000_002, 900_000_003]
+        assert {node["node_number"] for node in nodes} == {None}
+
 
 @pytest.mark.django_db
 class TestCountsQueryCost:
@@ -721,33 +803,6 @@ class TestCountsQueryCost:
         # One for the id set, one combined query for every reference.
         with django_assert_num_queries(2):
             secret_usage_service.counts(org_id=org.id, effective=_all_readable())
-
-    def test_two_queries_even_with_a_conditional_edge_in_play(
-        self, org, secret, django_assert_num_queries
-    ):
-        """The specific regression. A ConditionalEdge is the only source whose detail
-        path needs resolve_node_names, and that ran on the counts path too — so this
-        case was the expensive one and must now cost the same as any other."""
-        graph = Graph.objects.create(name="Edge cost flow", org=org)
-        router = PythonNode.objects.create(
-            graph=graph,
-            node_name="route",
-            python_code=PythonCode.objects.create(
-                code="def main(**kwargs):\n    return 1\n"
-            ),
-        )
-        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
-        edge_code.secrets.set([secret])
-        ConditionalEdge.objects.create(
-            graph=graph, source_node_id=router.pk, python_code=edge_code
-        )
-
-        with django_assert_num_queries(2):
-            counts = secret_usage_service.counts(
-                org_id=org.id, effective=_all_readable()
-            )
-
-        assert counts[secret.pk].readable == 1
 
     def test_an_empty_org_costs_one_query(self, db, django_assert_num_queries):
         """No secrets means nothing can reference them, so the union never runs."""
@@ -831,19 +886,17 @@ class TestCountsDedupInSql:
         )
 
     def test_two_different_sources_in_one_flow_count_once(self, org, secret):
-        """Cross-source, not just cross-row: a PythonNode and a ConditionalEdge are
-        separate registry entries and separate union branches, so collapsing them
-        relies on the key being the graph rather than the node."""
+        """Cross-source, not just cross-row: a PythonNode and a classification
+        decision table are separate registry entries and separate union branches, so
+        collapsing them relies on the key being the graph rather than the node."""
         graph = Graph.objects.create(name="Cross source flow", org=org)
         node_code = PythonCode.objects.create(code=DECLARING_CODE)
         node_code.secrets.set([secret])
-        router = PythonNode.objects.create(
-            graph=graph, node_name="route", python_code=node_code
-        )
-        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
-        edge_code.secrets.set([secret])
-        ConditionalEdge.objects.create(
-            graph=graph, source_node_id=router.pk, python_code=edge_code
+        PythonNode.objects.create(graph=graph, node_name="route", python_code=node_code)
+        table_code = PythonCode.objects.create(code=DECLARING_CODE)
+        table_code.secrets.set([secret])
+        ClassificationDecisionTableNode.objects.create(
+            graph=graph, node_name="classify", pre_python_code=table_code
         )
 
         assert (

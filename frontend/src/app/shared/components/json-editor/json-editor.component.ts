@@ -2,13 +2,16 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    computed,
     ElementRef,
     EventEmitter,
     HostBinding,
     Input,
+    input,
     OnChanges,
     OnDestroy,
     Output,
+    output,
     SimpleChanges,
     ViewChild,
 } from '@angular/core';
@@ -58,6 +61,8 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public jsonData: string = '{}';
     @Input() public editorHeight: number = 200;
     @Input() public fullHeight: boolean = false;
+    /** Shows the drag handle below the editor that changes its height. */
+    @Input() public resizable: boolean = true;
     @Input() public showHeader: boolean = true;
     @Input() public title: string = 'JSON Editor';
     @Input() public subtitle: string = '';
@@ -66,6 +71,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public allowCopy: boolean = false;
     @Input() public readonly: boolean = false;
     @Input() public allowExpand: boolean = false;
+    /** For an optional field: empty content stays empty (not `{}`) and counts as valid. */
+    public readonly allowEmpty = input(false);
+    /** Label and tooltip of the expand icon; a host whose expand does something else (e.g. swaps panes) names it. */
+    public readonly expandLabel = input('Expand editor');
     @Input() public jsonSchema?: object;
     @Input() public extraValidate?: (json: string) => { message: string; startOffset: number; endOffset: number }[];
     @Input() public exampleHint: string = '';
@@ -76,6 +85,18 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Output() public errorsChange = new EventEmitter<JsonError[]>();
     @Output() public editorReady = new EventEmitter<MonacoEditor.IStandaloneCodeEditor>();
     @Output() public expand = new EventEmitter<void>();
+    /**
+     * Opt-in extra header icon (a sprite icon name), placed before the copy icon and styled like it;
+     * null renders none. `actionLabel` is its aria-label and tooltip.
+     */
+    public readonly actionIcon = input<string | null>(null);
+    public readonly actionLabel = input('');
+    /** Why the action cannot be used right now (its tooltip then); null enables it. */
+    public readonly actionDisabledReason = input<string | null>(null);
+    public readonly action = output<void>();
+
+    protected readonly isActionDisabled = computed(() => this.actionDisabledReason() !== null);
+    protected readonly actionTooltip = computed(() => this.actionDisabledReason() ?? this.actionLabel());
 
     public editorLoaded = false;
     public jsonIsValid = true;
@@ -99,6 +120,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
 
     private get monacoGlobal(): typeof import('monaco-editor') | null {
         return (window as unknown as { monaco?: typeof import('monaco-editor') }).monaco ?? null;
+    }
+
+    private get emptyValue(): string {
+        return this.allowEmpty() ? '' : '{}';
     }
 
     private get schemaMode(): boolean {
@@ -138,7 +163,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
             this.cdr.markForCheck();
         } else if (!isFirst && this.monacoEditor && newValue !== this.lastExternalValue) {
             this.lastExternalValue = newValue;
-            this.setValueAndFormat(newValue || '{}');
+            this.setValueAndFormat(newValue || this.emptyValue);
             this.cdr.markForCheck();
         }
     }
@@ -151,7 +176,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
             ...this.editorOptions,
             readOnly: this.readonly || this.editorOptions.readOnly,
         });
-        this.setValueAndFormat(this.jsonData || '{}');
+        this.setValueAndFormat(this.jsonData || this.emptyValue);
         this.editorReady.emit(editor);
         if (this.usesMarkers) {
             if (this.schemaMode) {
@@ -180,7 +205,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         this.lastExternalValue = newValue;
 
         try {
-            JSON.parse(newValue);
+            if (!(this.allowEmpty() && !newValue.trim())) JSON.parse(newValue);
             this.jsonIsValid = true;
             if (!this.usesMarkers) {
                 this.errorsChange.emit([]);
@@ -246,6 +271,11 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
 
     public onExpand(): void {
         this.expand.emit();
+    }
+
+    protected onAction(): void {
+        if (this.isActionDisabled()) return;
+        this.action.emit();
     }
 
     public onResize(newHeight: number): void {

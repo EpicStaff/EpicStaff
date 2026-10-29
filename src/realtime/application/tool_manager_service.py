@@ -56,6 +56,8 @@ class ToolManagerService(metaclass=SingletonMeta):
                 knowledge_client=self.knowledge_client,
                 rag_embedder_api_key=realtime_agent_chat_data.rag_embedder_api_key,
                 rag_llm_api_key=realtime_agent_chat_data.rag_llm_api_key,
+                rag_embedder_extra_headers=realtime_agent_chat_data.rag_embedder_extra_headers,
+                rag_llm_extra_headers=realtime_agent_chat_data.rag_llm_extra_headers,
             )
             self.connection_tool_executors[connection_key].append(knowledge_tool_executor)
 
@@ -65,6 +67,7 @@ class ToolManagerService(metaclass=SingletonMeta):
                 tool_executor = PythonCodeToolExecutor(
                     python_code_tool_data=tool_data,
                     python_code_executor_service=self.python_code_executor_service,
+                    storage_credentials=realtime_agent_chat_data.storage_credentials,
                 )
             else:
                 logger.warning(

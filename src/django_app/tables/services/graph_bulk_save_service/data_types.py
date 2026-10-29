@@ -36,7 +36,8 @@ class NodeListValidationResult:
     errors: list = field(default_factory=list)
     node_saveables: list = field(default_factory=list)
     deferred_saveables: list = field(default_factory=list)
-    real_routing_node_ids: set[int] = field(default_factory=set)
+    # Real (non-temp) routing target ids, keyed by the index of the item that references them.
+    real_routing_node_ids_by_index: dict[int, set[int]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

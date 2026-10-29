@@ -1,0 +1,42 @@
+<app-audit-select
+    [options]="operatorOptions"
+    [value]="operator()"
+    (valueChange)="setOperator($event)"
+/>
+
+<div
+    class="date-filter__row"
+    [class.date-filter__row--range]="operator() === 'between'"
+>
+    @if (operator() !== 'before') {
+        <app-time-picker
+            class="date-filter__time"
+            [ngModel]="fromParts().time"
+            (ngModelChange)="setPart('from', 'time', $event)"
+        />
+        <app-date-picker
+            class="date-filter__date"
+            [allowPastDates]="true"
+            [dropdownMinWidth]="calendarMinWidth"
+            [ngModel]="fromParts().date"
+            (ngModelChange)="setPart('from', 'date', $event)"
+        />
+    }
+    @if (operator() === 'between') {
+        <span class="date-filter__separator">—</span>
+    }
+    @if (operator() !== 'after') {
+        <app-time-picker
+            class="date-filter__time"
+            [ngModel]="toParts().time"
+            (ngModelChange)="setPart('to', 'time', $event)"
+        />
+        <app-date-picker
+            class="date-filter__date"
+            [allowPastDates]="true"
+            [dropdownMinWidth]="calendarMinWidth"
+            [ngModel]="toParts().date"
+            (ngModelChange)="setPart('to', 'date', $event)"
+        />
+    }
+</div>

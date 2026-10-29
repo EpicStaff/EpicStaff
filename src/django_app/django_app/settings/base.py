@@ -1,5 +1,8 @@
+from django.core.exceptions import ImproperlyConfigured
 from rbac.identity.first_setup_mode import FirstSetupMode
 from src.shared import humanize
+from src.shared.envtools import Env
+from src.shared.retention import load_retention_policy
 
 from django_app.settings import BASE_DIR, env
 
@@ -21,6 +24,8 @@ INSTALLED_APPS = [
     "rbac",
     "tables",
     "agents",
+    "plugins",
+    "proxies",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -30,10 +35,12 @@ INSTALLED_APPS = [
     "django_redis",
     "channels",
     "channels_redis",
+    "storage_credentials",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "plugins.gateway.origin_policy_middleware.PluginOriginPolicyMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -41,6 +48,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "plugins.ownership.request_scope.PluginRequestScopeMiddleware",
 ]
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -78,6 +86,21 @@ TELEGRAM_TRIGGER_FIELDS_PATH = BASE_DIR / "tables/utils/data/telegram_fields.jso
 
 GRAPH_WS_TICKET_TTL = 30
 
+
+# Hosts a system-key caller may name in run-session `callback_url`. Anything else is
+# refused, which keeps the sender from being pointed at internal services.
+def parse_callback_hosts(values):
+    # `env.list` returns None for the project's `none` sentinel.
+    return [host.strip().lower() for host in (values or []) if host.strip()]
+
+
+SESSION_CALLBACK_ALLOWED_HOSTS = parse_callback_hosts(
+    env.list("DJANGO_SESSION_CALLBACK_ALLOWED_HOSTS")
+)
+# Shows the `chats` resource in the permission catalog; the chat service itself is a
+# separate container behind the same flag.
+CHAT_ENABLED = env.bool("CHAT_ENABLED")
+
 SSE_TICKET_TTL = 30
 
 PASSWORD_RESET_TOKEN_TTL = env.time("DJANGO_PASSWORD_RESET_TOKEN_TTL")
@@ -108,8 +131,30 @@ TUNNEL_URLS_HASH_KEY = "tunnel_urls"
 
 MALLOC_TRIM_INTERVAL = env.time("DJANGO_MALLOC_TRIM_INTERVAL")
 
-# Controls whether SoftDeleteMixin.delete() soft-deletes (mark inactive) or hard-deletes.
-SOFT_DELETE = env.bool("DJANGO_SOFT_DELETE", False)
+
+def read_recycle_bin_retention_days(environment: Env) -> int:
+    """Read DJANGO_RECYCLE_BIN_RETENTION_DAYS, the days an item stays in the recycle bin.
+
+    Only a whole number of at least 1 is accepted: 0 would make the nightly purge empty
+    every recycle bin on its next run, and `none` would leave the purge without a cutoff.
+    """
+    message = "DJANGO_RECYCLE_BIN_RETENTION_DAYS must be a whole number, at least 1."
+    try:
+        days = environment.int("DJANGO_RECYCLE_BIN_RETENTION_DAYS")
+    except ValueError as error:
+        raise ImproperlyConfigured(message) from error
+    if days is None or days < 1:
+        raise ImproperlyConfigured(message)
+    return days
+
+
+# Days a deleted item stays in the recycle bin before the purge job removes it for good.
+RECYCLE_BIN_RETENTION_DAYS = read_recycle_bin_retention_days(env)
+
+try:
+    RETENTION_POLICY = load_retention_policy(env)
+except ValueError as error:
+    raise ImproperlyConfigured(str(error)) from error
 
 REFRESH_COOKIE_SECURE = env.bool("DJANGO_REFRESH_COOKIE_SECURE")
 

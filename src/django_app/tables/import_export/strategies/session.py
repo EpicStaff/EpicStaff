@@ -12,7 +12,11 @@ class SessionStrategy(EntityImportExportStrategy):
     entity_type = EntityType.SESSION
 
     def get_instance(self, entity_id: int) -> Session:
-        return Session.objects.filter(id=entity_id).select_related("trigger", "principal").first()
+        return (
+            Session.objects.filter(id=entity_id)
+            .select_related("trigger", "principal__api_key", "graph")
+            .first()
+        )
 
     def get_preview_data(self, instance: Session) -> dict:
         return {"id": instance.id, "status": instance.status}
@@ -26,7 +30,7 @@ class SessionStrategy(EntityImportExportStrategy):
             "session": SessionExportSerializer(instance).data,
             "messages": list(
                 GraphSessionMessageExportSerializer(
-                    instance.graphsessionmessage_set.all().order_by("created_at"),
+                    instance.graphsessionmessage_set.all().order_by("created_at", "id"),
                     many=True,
                 ).data
             ),

@@ -12,6 +12,20 @@
                 (searchTermChange)="onSearchChange($event)"
             />
 
+            <!-- One condition for both modes: entering select mode must not recreate it (and close its menu). -->
+            @if (selectMode() || !hasNoConfigs()) {
+                <app-bulk-select-dropdown
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
+                    [selectMode]="selectMode()"
+                    [selectedCount]="selectedCount()"
+                    [allSelected]="allVisibleSelected()"
+                    [disabled]="isDeleting()"
+                    (selectModeEntered)="enterSelectMode()"
+                    (selectAllToggled)="toggleSelectAll()"
+                    (cleared)="exitSelectMode()"
+                />
+            }
+
             <div class="filter">
                 <app-select
                     [items]="capabilities()"
@@ -20,14 +34,26 @@
                 />
             </div>
 
-            <app-button
-                class="add-btn"
-                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
-                (click)="onAddModel()"
-                leftIcon="plus"
-            >
-                Add Configuration
-            </app-button>
+            @if (selectMode()) {
+                <app-button
+                    type="danger"
+                    leftIcon="trash"
+                    iconSize="14px"
+                    [disabled]="selectedCount() === 0 || isDeleting()"
+                    (click)="deleteSelected()"
+                >
+                    Delete
+                </app-button>
+            } @else {
+                <app-button
+                    class="add-btn"
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
+                    (click)="onAddModel()"
+                    leftIcon="plus"
+                >
+                    Add Configuration
+                </app-button>
+            }
         </div>
     </header>
 
@@ -61,8 +87,13 @@
                                 @for (model of group.models; track model.configType + '-' + model.id) {
                                     <app-llm-library-card
                                         [model]="model"
+                                        [selectMode]="selectMode()"
+                                        [selected]="isModelSelected(model)"
+                                        [isDeleting]="isDeleting()"
+                                        (selectedChange)="onCardSelectedChange(model, $event)"
                                         (editClick)="onEdit($event)"
                                         (deleteClick)="onDelete($event)"
+                                        (viewDetailsClick)="onViewDetails($event)"
                                     ></app-llm-library-card>
                                 }
                             </div>
@@ -72,12 +103,10 @@
             </div>
         }
 
-        <!--        TODO refactor to use app-llm-library-card-->
         @for (provider of filteredVoiceProviders(); track provider.key) {
             <div class="section">
-                <div class="section-header">
-                    <h4 class="section-title">{{ provider.label }}:</h4>
-                </div>
+                <h4 class="section-title">{{ provider.label }}:</h4>
+
                 @if (provider.hasError) {
                     <app-fetch-error-state
                         mod="small"
@@ -85,47 +114,27 @@
                         message="Check your connection and try again."
                         (retry)="retrySection(provider.key)"
                     />
-                } @else if (provider.configs.length === 0) {
-                    <p class="empty-hint">No {{ provider.label }} yet.</p>
                 } @else {
                     <div class="grid">
-                        @for (c of provider.configs; track c.id) {
-                            <article class="voice-card">
-                                <div class="top">
-                                    <span class="model">{{ c.model_name }}</span>
-                                    <div class="actions">
-                                        <button
-                                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
-                                            type="button"
-                                            class="action"
-                                            title="Edit"
-                                            (click)="onEditConfig(provider, c)"
-                                        >
-                                            <i
-                                                class="ti ti-pencil"
-                                                aria-hidden="true"
-                                            ></i>
-                                        </button>
-                                        <button
-                                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
-                                            type="button"
-                                            class="action delete"
-                                            title="Delete"
-                                            (click)="onDeleteConfig(provider, c)"
-                                        >
-                                            <i
-                                                class="ti ti-x"
-                                                aria-hidden="true"
-                                            ></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="name">{{ c.custom_name }}</div>
-                            </article>
+                        @for (card of provider.cards; track card.config.id) {
+                            <app-llm-library-card
+                                [model]="card.model"
+                                [selectMode]="selectMode()"
+                                [selected]="isVoiceSelected(provider, card.config)"
+                                [isDeleting]="isDeleting()"
+                                (selectedChange)="onVoiceSelectedChange(provider, card.config, $event)"
+                                (editClick)="onEditConfig(provider, card.config)"
+                                (deleteClick)="onDeleteConfig(provider, card.config)"
+                                (viewDetailsClick)="onViewConfigDetails(card.config, $event.trigger)"
+                            />
                         }
                     </div>
                 }
             </div>
+        }
+
+        @if (hasNoConfigs()) {
+            <p class="empty-hint">No configurations yet.</p>
         }
     }
 </section>

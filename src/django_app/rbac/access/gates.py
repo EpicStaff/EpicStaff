@@ -6,6 +6,7 @@ from rbac.access.cross_org_resolver import (
     CrossOrgPermissionResolver,
 )
 from rbac.access.org_context import OrgContextService
+from rbac.access.principals import is_plugin_credential
 from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 
@@ -106,8 +107,16 @@ class HasOrgPermission(BaseRbacPermission):
     _resolver = PermissionResolver()
 
     def _authorize(self, request, view, resource_type, required) -> bool:
-        org_id = self._org_context.resolve(request=request, view_kwargs=view.kwargs)
+        # Cached under the key the scoping mixins and serializer fields read, so the
+        # view does not run the membership query a second time.
+        if not hasattr(request, "_rbac_active_org_id"):
+            request._rbac_active_org_id = self._org_context.resolve(
+                request=request, view_kwargs=view.kwargs
+            )
+        org_id = request._rbac_active_org_id
         effective = self._resolver.resolve(user=request.user, org_id=org_id)
+        # Same key `resolve_request_permissions` reads, for serializers behind this gate.
+        request._rbac_effective_permissions = effective
 
         if not effective.can(resource_type, required):
             resource_str = resource_type if isinstance(resource_type, str) else resource_type.value
@@ -117,39 +126,21 @@ class HasOrgPermission(BaseRbacPermission):
         return True
 
 
-class IsApiKeyAuthenticated(BasePermission):
-    """Allows only requests authenticated via a valid ApiKey (system or user).
-
-    For internal-service lookup endpoints that intentionally bypass org-context
-    scoping (e.g. by-token webhook resolution for inbound Twilio calls, where
-    the caller structurally cannot supply an `X-Organization-Id` header). A
-    regular JWT session must not be able to use these org-bypass paths — pair
-    this alone in `permission_classes` (no `IsAuthenticated`/`HasOrgPermission`).
-
-    NOTE: this accepts BOTH `key_type=SYSTEM` and `key_type=USER` keys. Do not
-    use this on an endpoint that also skips org-scoping (like
-    `RealtimeChannelViewSet.lookup_by_token`) — any org member can self-issue
-    a USER key via `POST /api/profile/api-keys/`, so pairing org-bypass with
-    "any API key" lets a low-privilege user in one org read another org's
-    data. Use `IsSystemApiKeyAuthenticated` for those endpoints instead.
-    """
-
-    message = "This endpoint requires API key authentication."
-
-    def has_permission(self, request, view) -> bool:
-        return isinstance(request.auth, ApiKey)
-
-
 class IsSystemApiKeyAuthenticated(BasePermission):
     """Allows only requests authenticated via a `key_type=SYSTEM` ApiKey.
 
-    Stricter than `IsApiKeyAuthenticated`: a self-issued USER key is rejected.
-    Required for endpoints that ALSO bypass org-context scoping (the token
-    itself is the only authorization check performed), because a USER key
-    is scoped to its owner's own org's RBAC but this permission class runs
-    before, and instead of, any org check — e.g.
-    `RealtimeChannelViewSet.lookup_by_token`, restricted to the trusted
-    `realtime`/`voice_app` services.
+    For internal-service lookup endpoints that intentionally bypass
+    org-context scoping, where the token itself is the only authorization
+    check performed (e.g. `RealtimeChannelViewSet.lookup_by_token`, restricted
+    to the trusted `realtime` service). Pair it alone in
+    `permission_classes` (no `IsAuthenticated`/`HasOrgPermission`), so a
+    regular JWT session cannot use these org-bypass paths.
+
+    A `key_type=USER` key is rejected on purpose. Any org member can
+    self-issue one via `POST /api/profile/api-keys/`, and this class runs
+    before, and instead of, any org check — admitting "any API key" here would
+    let a low-privilege user in one org read another org's data. There is
+    deliberately no "any API key" variant of this gate.
     """
 
     message = "This endpoint requires system API key authentication."
@@ -158,17 +149,48 @@ class IsSystemApiKeyAuthenticated(BasePermission):
         return isinstance(request.auth, ApiKey) and request.auth.key_type == ApiKey.KeyType.SYSTEM
 
 
-class DenyApiKeyAuth(BasePermission):
-    """Blocks API-key-authenticated callers.
+class DenyPluginCredential(BasePermission):
+    """Blocks plugin credentials on person-only surfaces.
 
-    For JWT-only endpoints: key management (a possibly leaked credential
-    must not mint or destroy credentials) and destructive account
-    operations (reset-user, admin password reset). Pair AFTER IsAuthenticated.
+    For endpoints that act for a person and that no resource type governs,
+    so a plugin's declared access could not cap them (personal presets,
+    favorites, the flow assistant, realtime sessions, outgoing mail). People
+    and API keys pass untouched. Pair AFTER IsAuthenticated.
+    """
+
+    message = "Plugin service accounts cannot use this endpoint."
+
+    def has_permission(self, request, view):
+        return not is_plugin_credential(request)
+
+
+class DenyPersonalAndSystemApiKeys(BasePermission):
+    """Blocks USER and SYSTEM API keys; people and plugin credentials pass.
+
+    For an endpoint a plugin's declared access may open while personal and
+    system keys stay out (Secrets). Pair AFTER IsAuthenticated.
     """
 
     message = "API keys cannot be used on this endpoint. Authenticate with a user session (JWT)."
 
     def has_permission(self, request, view):
+        return not isinstance(request.auth, ApiKey)
+
+
+class DenyApiKeyAuth(BasePermission):
+    """Blocks every credential but a user session: API keys and plugin credentials.
+
+    For JWT-only endpoints: key management (a possibly leaked credential
+    must not mint or destroy credentials) and destructive account
+    operations (reset-user, admin password reset, purges). Pair AFTER IsAuthenticated.
+    """
+
+    message = DenyPersonalAndSystemApiKeys.message
+
+    def has_permission(self, request, view):
+        if is_plugin_credential(request):
+            self.message = DenyPluginCredential.message
+            return False
         return not isinstance(request.auth, ApiKey)
 
 
@@ -182,8 +204,9 @@ class RestrictApiKeyToUserKeyReads(BasePermission):
     rejected on reads too — its principal is superadmin-equivalent, so
     letting it in would hand every cross-org row to whoever holds
     `DJANGO_API_KEY`. Any key type other than USER is rejected, so a new
-    type is denied until someone decides otherwise. Safe in any position:
-    a non-key (or anonymous) request always passes.
+    type is denied until someone decides otherwise. A plugin credential is
+    rejected outright. Safe in any position: a user session (or an
+    anonymous request) always passes.
     """
 
     write_message = (
@@ -194,8 +217,12 @@ class RestrictApiKeyToUserKeyReads(BasePermission):
         "The system API key cannot be used on the admin surface. "
         "Authenticate with a user session (JWT)."
     )
+    plugin_credential_message = "Plugin service accounts cannot use the admin surface."
 
     def has_permission(self, request, view):
+        if is_plugin_credential(request):
+            self.message = self.plugin_credential_message
+            return False
         key = request.auth
         if not isinstance(key, ApiKey):
             return True

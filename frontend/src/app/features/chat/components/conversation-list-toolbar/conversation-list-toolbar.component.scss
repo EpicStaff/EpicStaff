@@ -1,0 +1,107 @@
+@use '../../../../../styles/breakpoints' as bp;
+@use '../../../../../styles/column-toggle';
+@use '../../../../../styles/touch';
+
+// Fills the column at any width: the field takes the row beside the column's toggle, the controls wrap below it.
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 12px 8px;
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.conversation-list-toolbar__search-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    :host(.conversation-list-toolbar--compact) & {
+        justify-content: center;
+    }
+}
+
+.conversation-list-toolbar__compact-toggle {
+    @include column-toggle.button;
+    position: relative;
+}
+
+.conversation-list-toolbar__filtered-dot {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--accent-color);
+    box-shadow: 0 0 0 2px var(--color-background-body);
+}
+
+.conversation-list-toolbar__error {
+    margin: 0;
+    color: var(--color-status-error);
+}
+
+.conversation-list-toolbar__controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+// Small ghost buttons; a pressed toggle takes the accent.
+.conversation-list-toolbar__button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
+    line-height: var(--text-body-small-large-line-height);
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+        color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+
+    &--pressed {
+        border-color: var(--accent-color);
+        background-color: var(--color-ghost-btn-active);
+        color: var(--color-text-primary);
+    }
+}
+
+// The sort sits at the row's end, away from the filter.
+.conversation-list-toolbar__sort {
+    margin-left: auto;
+}
+
+@include bp.phone {
+    // The shared search's small look is 28px tall with 12px text, which iOS would zoom into. Only here, on phones:
+    // `:host` outranks the search's own size classes; the font size must win over whatever they set.
+    :host .conversation-list-toolbar__search ::ng-deep {
+        .search {
+            height: touch.$target-size;
+        }
+
+        .search__input {
+            font-size: touch.$input-font-size !important;
+        }
+    }
+
+    .conversation-list-toolbar__button {
+        height: touch.$target-size;
+        padding: 0 12px;
+    }
+}

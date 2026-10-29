@@ -1,4 +1,5 @@
 <button
+    #button
     [appCollapseOnOverflow]="collapseEnabled"
     [collapseOnOverflowTarget]="'.btn-content'"
     [collapseOnOverflowClass]="'btn--only-icon'"
@@ -14,13 +15,17 @@
     ]"
     [disabled]="disabled()"
     [attr.aria-label]="ariaLabel"
+    [attr.aria-describedby]="ariaDescribedby()"
+    [attr.aria-disabled]="ariaDisabled() || null"
     type="button"
+    (click)="stopClickWhileAriaDisabled($event)"
 >
     @if (type === 'icon') {
         @if (leftIcon) {
             <app-svg-icon
                 [icon]="leftIcon!"
                 [size]="iconSize"
+                [width]="iconWidth"
                 class="btn-icon left"
                 [ngStyle]="leftIconColor ? { color: leftIconColor } : null"
             />
@@ -29,6 +34,7 @@
             <app-svg-icon
                 [icon]="rightIcon!"
                 [size]="iconSize"
+                [width]="iconWidth"
                 class="btn-icon right"
                 [ngStyle]="rightIconColor ? { color: rightIconColor } : null"
             />
@@ -38,6 +44,7 @@
             <app-svg-icon
                 [icon]="leftIcon!"
                 [size]="iconSize"
+                [width]="iconWidth"
                 class="btn-icon left"
                 [ngStyle]="leftIconColor ? { color: leftIconColor } : null"
             />
@@ -51,6 +58,7 @@
             <app-svg-icon
                 [icon]="rightIcon!"
                 [size]="iconSize"
+                [width]="iconWidth"
                 class="btn-icon right"
                 [ngStyle]="rightIconColor ? { color: rightIconColor } : null"
             />

@@ -11,6 +11,7 @@ class TablesConfig(AppConfig):
 
     def ready(self):
         # ruff: noqa: F401
+        from rbac.governance.authorship import register_snapshot_scrubber
         from rbac.governance.organization_deletion import register_participant
 
         import tables.import_export.version_conversions.convertions
@@ -23,9 +24,11 @@ class TablesConfig(AppConfig):
         import tables.signals.session_signals
         import tables.signals.telegram_signals
         import tables.signals.webhook_signals
+        from tables.graph_versioning.snapshot_authorship import VersionSnapshotAuthorshipScrubber
         from tables.import_export.registry import entity_registry
         from tables.import_export.strategies import (
             agent_definition,
+            audit_filter_preset,
             configs,
             graph,
             label,
@@ -35,6 +38,7 @@ class TablesConfig(AppConfig):
             session,
             surface,
             tags,
+            venv,
             webhook,
         )
         from tables.import_export.strategies.nodes import (
@@ -82,13 +86,17 @@ class TablesConfig(AppConfig):
 
             start_litellm_refresh_if_owner()
 
+            from tables.utils.recycle_bin_scheduler import start_recycle_bin_purge_if_owner
+
+            start_recycle_bin_purge_if_owner()
+
         redis_service = RedisService()
         converter_service = ConverterService()
         session_manager_service = SessionManagerService(
             redis_service=redis_service,
             converter_service=converter_service,
         )
-        RunPythonCodeService(redis_service=redis_service)
+        RunPythonCodeService()
         RealtimeService(redis_service=redis_service, converter_service=converter_service)
         webhook_trigger_service = WebhookTriggerService(
             session_manager_service=session_manager_service,
@@ -102,6 +110,7 @@ class TablesConfig(AppConfig):
         ScheduleTriggerService(session_manager_service=session_manager_service)
 
         register_participant(TablesOrganizationDeletion())
+        register_snapshot_scrubber(VersionSnapshotAuthorshipScrubber())
 
         # Register strategies for import/export entities
         entity_registry.register(llm_models.LLMModelStrategy())
@@ -115,6 +124,7 @@ class TablesConfig(AppConfig):
         entity_registry.register(configs.OpenAIRealtimeConfigStrategy())
         entity_registry.register(configs.ElevenLabsRealtimeConfigStrategy())
         entity_registry.register(configs.GeminiRealtimeConfigStrategy())
+        entity_registry.register(venv.VenvStrategy())
         entity_registry.register(python_tools.PythonCodeToolStrategy())
         entity_registry.register(mcp_tools.McpToolStrategy())
         entity_registry.register(surface.SurfaceStrategy())
@@ -122,6 +132,7 @@ class TablesConfig(AppConfig):
         entity_registry.register(graph.GraphStrategy())
         entity_registry.register(session.SessionStrategy())
         entity_registry.register(label.LabelStrategy())
+        entity_registry.register(audit_filter_preset.AuditFilterPresetStrategy())
         entity_registry.register(webhook.WebhookTriggerStrategy())
         entity_registry.register(tags.AgentTagStrategy())
         entity_registry.register(tags.GraphTagStrategy())

@@ -77,34 +77,44 @@ Before we start, make sure you have these two applications installed:
 * **[Download & Install Docker Desktop](https://www.docker.com/products/docker-desktop/)** (Required to run the app)
 
 ### Step 2: Download and Setup
-Choose your operating system below, open your **Terminal** (or PowerShell on Windows), and **paste the entire block of code**. This command will automatically download EpicStaff, create its configuration file, generate the required signing key, configure the database, and start the system.
+Choose your operating system below, open your **Terminal** (or PowerShell on Windows), and **paste the entire block of code**. This command will automatically download EpicStaff, generate its configuration file with development defaults, and start the system.
 
 #### 🪟 Windows (PowerShell)
 ```
-git clone https://github.com/EpicStaff/EpicStaff.git; cd EpicStaff/src; Copy-Item .env.example .env; $savefiles = "$HOME/savefiles"; $file = ".env"; $key = { $bytes = [byte[]]::new(48); [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); [Convert]::ToBase64String($bytes) -replace '[=+/]' }; (Get-Content $file) -replace "CREW_SAVEFILES_PATH=/c/savefiles", "CREW_SAVEFILES_PATH=$savefiles" -replace "^DJANGO_SECRET_KEY=.*", "DJANGO_SECRET_KEY=$(& $key)" | Set-Content $file; docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create media_data; docker network create mcp-network; docker compose up --build
+git clone https://github.com/EpicStaff/EpicStaff.git; cd EpicStaff; docker run --rm -it -v "${PWD}:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --root-user-action=ignore --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --setup --dev"; cd src; docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create media_data; docker volume create opensearch_data; docker network create mcp-network; docker compose up --build
 ```
 #### 🍎 macOS (Terminal)
 ```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i '' "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i '' "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker network create mcp-network && cd src && docker compose up --build
+git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --user --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --setup --dev" && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker volume create opensearch_data && docker network create mcp-network && cd src && docker compose up --build
 ```
 #### 🐧 Linux (Terminal)
 ```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker network create mcp-network && cd src && docker compose up --build
+git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --user --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --setup --dev" && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker volume create opensearch_data && docker network create mcp-network && cd src && docker compose up --build
 ```
 
-`DJANGO_SECRET_KEY` is required — the stack refuses to start without it.
-Generate it once and keep it: changing it signs out every user, and see
-[docs/signing-keys.md](docs/signing-keys.md) for the full details.
+These blocks build every image locally from the cloned source (`docker compose up --build`). The signature and SBOM checks under [How to verify a release](#how-to-verify-a-release) apply only to images pulled from `ghcr.io/epicstaff`, never to images built on your machine. To run the signed, digest-pinned images of a release instead, see [Running a verified release](#running-a-verified-release).
 
-Savefiles is deprecated and will be removed: use `epicstaff_storage` instead. Until then, on Linux,
-if the `CREW_SAVEFILES_PATH` folder is not owned by uid 1000, the sandbox makes uid 1000 its owner
-(the folder itself, not its contents). Files already in it keep their owner: if agent code must
-write into them, run `sudo chown -R 1000 <folder>` once.
+The blocks generate `src/.env` with `python scripts/envtool.py --setup --dev`, run inside a
+`python` container so only Docker is needed. It asks which optional features to turn on (chat,
+the audit trail and plugins) and fills in everything else. These are **development defaults, for trying
+EpicStaff on your own machine only**.
 
-The blocks above copy `src/.env.example` to `src/.env`. If you have Python,
-you can instead generate `src/.env` from the single source of truth
-(`src/env.yaml`) with `python scripts/envtool.py` (production defaults) or
-`python scripts/envtool.py --dev` (development defaults).
+**Before running EpicStaff in production, replace this development configuration.** On the
+server, from the cloned `EpicStaff` folder, run the same container with `--setup` and without
+`--dev`:
+
+```
+# Windows (PowerShell)
+docker run --rm -it -v "${PWD}:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --root-user-action=ignore --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --setup"
+# macOS / Linux
+docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --user --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --setup"
+```
+
+It asks for the public URL, how HTTPS is handled, which features to turn on and which release
+tag to pull, and generates every password and key into `src/.env` (keep that file private). It can
+also size the server and set the longest a code node may run. Run it again later to turn
+features on or off, tune those limits, add settings a newer release introduced, or start over; it
+keeps the existing credentials, because the databases were created with them.
 
 Once running, open http://localhost to start building.
 
@@ -120,6 +130,44 @@ EpicStaff can be configured and launched using alternative setup methods:
 
 **For more [details](https://github.com/EpicStaff/EpicStaff/wiki)**
 </details>
+
+---
+
+## 🔄 Updating
+
+An install from the Quick Start runs images it built from source. To move it to a newer
+release, check out that release and run its published images instead. Pick the version from
+the [Releases](https://github.com/EpicStaff/EpicStaff/releases) page:
+
+```bash
+cd EpicStaff
+git fetch --tags
+git checkout vX.Y.Z
+```
+
+In `src/.env`, set `IMAGE_TAG=vX.Y.Z` (the same release), and add any variable the new
+`src/.env.example` marks as required that your `src/.env` does not have yet — compose names a
+missing one and refuses to start. Then:
+
+```bash
+cd src
+docker compose pull
+docker compose up -d
+```
+
+`docker compose pull` fetches that release's `ghcr.io/epicstaff/*` images and `up -d`
+recreates the services from them; `django_app` applies database migrations as it starts.
+
+- **Always set `IMAGE_TAG` to an explicit release.** With the default `latest`, the pulled
+  images and the ones you built share the name `ghcr.io/epicstaff/<service>:latest`, so a pull
+  silently replaces your build with whatever `latest` points to at that moment.
+- **Do not add `--build` from now on** — it rebuilds from source under the same name and
+  replaces the images you pulled.
+- **Back up your volumes first.** Migrations change the database on start, and there is no
+  downgrade path.
+
+If you run a [verified release](#running-a-verified-release), update by repeating those steps
+with the new release's tag and files.
 
 ---
 
@@ -146,6 +194,31 @@ cosign verify-attestation \
   ghcr.io/epicstaff/django_app@sha256:<digest-from-compose-file> \
   | jq -r '.payload | @base64d | fromjson | .predicate' > django_app.spdx.json
 ```
+
+The release's `docker-compose.yaml` and `.env.example` are signed as well, because the compose file is what decides *which* digests you run: an altered copy could point at an older, genuinely signed EpicStaff image and every per-image check above would still pass. Each file ships with a Sigstore bundle (`<file>.sigstore.json`) produced by `cosign sign-blob` in `publish_release.yml`, so the certificate identity names that workflow rather than `build-and-push.yml`. Verify the files before using them:
+
+```bash
+cosign verify-blob \
+  --bundle docker-compose.yaml.sigstore.json \
+  --certificate-identity-regexp "^https://github.com/EpicStaff/EpicStaff/\.github/workflows/publish_release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/.+)$" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  docker-compose.yaml
+```
+
+Repeat with `.env.example` and `.env.example.sigstore.json`. A modified file, including one whose digests were swapped for another release's, fails this check.
+
+### Running a verified release
+
+The release's `docker-compose.yaml` is not a standalone install: it still mounts `nginx/templates` and `nginx/certs` from the checkout next to it. Use it as an overlay on a clone of the same tag, so `docker compose up` pulls the digest-pinned images you just verified instead of building from source:
+
+```bash
+git clone -b vX.Y.Z https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff
+# Download docker-compose.yaml and docker-compose.yaml.sigstore.json from the
+# vX.Y.Z release page into a separate folder, verify them as shown above, then:
+cp /path/to/downloaded/docker-compose.yaml src/docker-compose.yaml
+```
+
+Prepare a production `src/.env` with `envtool.py --setup` as described under the Quick Start, create the volumes and network as in the Quick Start block for your OS, and finish with `docker compose up` instead of `docker compose up --build`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the file, and the image checks above apply to exactly what runs.
 
 ---
 

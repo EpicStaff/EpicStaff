@@ -1,161 +1,101 @@
-# crewdb Custom Docker Entrypoint
+# crewdb roles and service table grants
 
 ## Overview
 
-`custom-docker-entrypoint.sh` is a wrapper around the default pgvector/PostgreSQL entrypoint.
-It creates least-privilege database roles for each microservice and grants per-table permissions
-before handing off to the standard `docker-entrypoint.sh`.
+The crewdb container hosts one PostgreSQL database shared by several services. django_app
+connects as the superuser and owns the schema; the other services connect with restricted
+roles of their own:
 
-The crewdb container hosts a single PostgreSQL database (`crew`) shared by three services,
-each connecting with its own restricted role:
+| Service   | Role (env var)       | Access                                                      |
+|-----------|----------------------|-------------------------------------------------------------|
+| manager   | `MANAGER_DB_USER`    | The tables its retention, schedule and cleanup jobs touch   |
+| knowledge | `KNOWLEDGE_DB_USER`  | RAG configuration (read), chunks and embeddings (read/write) |
+| realtime  | `REALTIME_DB_USER`   | Realtime session items                                      |
+| sandbox   | `SANDBOX_DB_USER`    | Its own schema (`SANDBOX_DB_SCHEMA`), nothing in `public`   |
 
-| Service   | Role (env var)       | Purpose                                      |
-|-----------|----------------------|----------------------------------------------|
-| manager   | `DB_MANAGER_USER`    | Read-only access to session data              |
-| knowledge | `DB_KNOWLEDGE_USER`  | Read/write access to RAG and embedding tables |
-| realtime  | `DB_REALTIME_USER`   | CRUD on realtime session items                |
+Two places set this up, each at the only moment it can be done safely:
 
-`tables_memorydatabase` still lives in this database, but it is created and owned
-by `django_app` (see `MemoryDatabase` model) — no crewdb service role connects to it.
+1. **crewdb creates the roles** (`src/crewdb/custom-docker-entrypoint.sh`), as soon as the
+   database accepts connections.
+2. **django_app grants their table privileges** (`manage.py apply_service_grants`, run by
+   `src/django_app/entrypoint.sh`) right after `migrate`.
 
-## How It Works
+Grants cannot run while migrations do: Postgres `GRANT` and `REVOKE` rewrite a table's catalog
+row without locking the table, so one that meets a migration altering the same table fails
+with `tuple concurrently updated`.
 
-The script runs a **background worker** (`background_setup`) alongside the normal PostgreSQL
-startup. The worker operates in two phases:
+## crewdb: roles
 
-### Phase 1 -- Role Creation + Event Triggers
+`custom-docker-entrypoint.sh` wraps the pgvector entrypoint and starts a background setup
+that:
 
-Runs as soon as PostgreSQL accepts connections on the target database.
+1. Waits until the target database accepts connections.
+2. Creates each role if missing (`create_<service>_user`): `USAGE ON SCHEMA public`, and
+   `ALTER DEFAULT PRIVILEGES ... REVOKE ALL ON TABLES` so a new table grants it nothing. The
+   knowledge role also gets `CREATEDB` and `CREATE` on the schema and database; the sandbox
+   role owns its own schema and has it as its `search_path`.
+3. Drops the legacy auto-grant event triggers (see below).
+4. Touches `/tmp/users_created`, which the healthcheck (`custom-docker-entrypoint.sh
+   healthcheck-users`) requires together with `pg_isready`.
 
-1. **Create roles** -- Each `create_<service>_user` function creates a role (if not exists),
-   grants `USAGE ON SCHEMA public`, and sets `ALTER DEFAULT PRIVILEGES ... REVOKE ALL ON TABLES`
-   so the role has zero table access by default.
+Role, schema and database names are spliced into SQL, so they must be plain names (letters,
+digits, `_`, `.`, `-`). Passwords are never spliced: psql reads them with `\getenv` and
+`format()` quotes them. Every statement runs with `ON_ERROR_STOP=1`; any failure stops setup
+with `[setup] ERROR` in the log before the flag is written, so crewdb never reports healthy
+with a role missing.
 
-2. **Install event triggers** -- Two PostgreSQL event triggers are registered:
-   - `auto_grant_on_create_table` (fires on `CREATE TABLE`)
-   - `auto_grant_on_create_sequence` (fires on `CREATE SEQUENCE`)
+### Legacy cleanup
 
-   These triggers fire inside the same transaction as the DDL, so permissions are granted
-   atomically the moment Django migrations create a table or sequence. This eliminates the
-   race condition where the grant script could run before a table exists.
+Earlier releases installed the event triggers `auto_grant_on_create_table` and
+`auto_grant_on_create_sequence` (functions `auto_grant_table_permissions()` and
+`auto_grant_sequence_permissions()`) into the database. They live on the data volume, so an
+image upgrade does not remove them, and they would keep granting privileges from a frozen copy
+of the old matrix on every `CREATE TABLE`. crewdb drops them on every start, as the superuser
+that created them. The cleanup is temporary: it can be deleted once every deployment has
+started at least once on a release that contains it.
 
-   The trigger functions contain per-table grant logic matching the permission matrix below.
-   Role names are interpolated from env vars at function-creation time via bash heredoc.
+## django_app: table grants
 
-### Phase 2 -- Catch-up Grants (Polling)
+The grant matrix lives in one place, [`src/django_app/tables/service_db_grants.py`](../../src/django_app/tables/service_db_grants.py):
+for each service, the env var holding its role name, the tables with their privileges (and
+column-level `UPDATE` where a role may change only some columns), and the sequences.
 
-Handles the case where tables already exist (container restart, no new migrations).
+`apply_service_grants` reads the role names from `MANAGER_DB_USER`, `KNOWLEDGE_DB_USER` and
+`REALTIME_DB_USER`, checks that the roles exist, then for every table and sequence in the
+matrix runs `REVOKE ALL` followed by the matrix's `GRANT`s. It runs:
 
-1. Polls `all_tables_exist()` every 10 seconds (up to 20 minutes) checking for a set of
-   required tables.
-2. Once all required tables are found, runs `grant_<service>_permissions` for each service.
-   Each function does a per-table `REVOKE` then `GRANT` to ensure a clean permission state.
-3. Touches `/tmp/users_created` flag file to signal the healthcheck.
+- **in one transaction**, so a connected service never sees a table between its `REVOKE`
+  and its `GRANT`, and a failure leaves the previous grants in place;
+- **on every start**, so an existing database converges on the matrix whenever it changes;
+- **strictly**: an unset role variable, a missing role, or a table or sequence that does not
+  exist fails the command, and with it django_app's startup.
 
-### Healthcheck
-
-Called by Docker's `healthcheck` directive (see `docker-compose.yaml`):
-
-```yaml
-healthcheck:
-  test: bash -c 'pg_isready ... && custom-docker-entrypoint.sh healthcheck-users'
-```
-
-Returns healthy only when:
-- PostgreSQL is accepting connections (`pg_isready`)
-- The `/tmp/users_created` flag exists (Phase 2 completed)
-
-Downstream services (`knowledge`, `realtime`, `manager`) use
-`depends_on: crewdb: condition: service_healthy` so they start only after all permissions
-are in place. `crew` no longer depends on `crewdb` at all — it has no database role and
-never connects to Postgres.
-
-`django_app` uses `depends_on: crewdb: condition: service_started` (not `service_healthy`)
-so it can begin running migrations immediately.
-
-## Permission Matrix
-
-### Tables
-
-| Table                            | manager | knowledge | realtime |
-|----------------------------------|---------|-----------|----------|
-| `tables_session`                 | SELECT  |           |          |
-| `tables_provider`                |         | SELECT    |          |
-| `tables_embeddingmodel`          |         | SELECT    |          |
-| `tables_embeddingconfig`         |         | SELECT    |          |
-| `tables_sourcecollection`        |         | SELECT    |          |
-| `tables_documentmetadata`        |         | SELECT    |          |
-| `tables_documentcontent`         |         | SELECT    |          |
-| `tables_baseragtype`             |         | SELECT    |          |
-| `tables_naiverag`                |         | SEL+UPD   |          |
-| `tables_naiveragdocumentconfig`  |         | SEL+UPD   |          |
-| `tables_naiveragchunk`           |         | CRUD      |          |
-| `tables_naiveragpreviewchunk`    |         | CRUD      |          |
-| `tables_naiveragembedding`       |         | CRUD      |          |
-| `realtime_session_items`         |         |           | CRUD     |
-
-`tables_memorydatabase` is created by django migrations and granted no crewdb-service
-role permissions — django_app connects with the Postgres superuser, not a per-service role.
-
-### Sequences
-
-| Sequence                              | Granted to | Privileges           |
-|---------------------------------------|------------|----------------------|
-| `tables_naiveragchunk_chunk_id_seq`   | knowledge  | USAGE, SELECT, UPDATE|
-| `realtime_session_items_id_seq`       | realtime   | USAGE                |
-
-## Required Environment Variables
-
-Set in `.env` and passed to crewdb via `docker-compose.yaml`:
+## Startup order
 
 ```
-POSTGRES_DB          -- Target database name (default: crew)
-POSTGRES_PASSWORD    -- Superuser password
-DB_PORT              -- PostgreSQL port (default: 5432)
-
-DB_MANAGER_USER      -- Manager service role name
-DB_MANAGER_PASSWORD
-DB_KNOWLEDGE_USER    -- Knowledge service role name
-DB_KNOWLEDGE_PASSWORD
-DB_REALTIME_USER     -- Realtime service role name
-DB_REALTIME_PASSWORD
+crewdb starts
+  +--> postgres up --> roles created --> legacy triggers dropped --> flag --> healthy
+                                                                               |
+sandbox_new (depends_on crewdb healthy) ---------------------------------------+
+  +--> piccolo migrations --> healthy                                          |
+                               |                                               |
+django_app (depends_on crewdb healthy, sandbox_new healthy) <------------------+
+  +--> migrate --> apply_service_grants --> ... --> gunicorn --> healthy (/ht/)
+                                                                   |
+manager, knowledge_new, realtime (depends_on django_app healthy) <-+
 ```
 
-## Startup Sequence Diagram
+The services that use the granted roles wait for django_app to be healthy, which it only
+becomes after `apply_service_grants` has succeeded.
 
-```
-crewdb container starts
-  |
-  +--> background_setup() &          (background process)
-  |      |
-  |      +--> wait for DB to accept connections
-  |      +--> Phase 1: create roles
-  |      +--> Phase 1: install event triggers
-  |      |      (triggers now auto-grant on CREATE TABLE / CREATE SEQUENCE)
-  |      +--> Phase 2: poll for tables every 10s
-  |      |      ...
-  |      +--> tables found -> catch-up grants -> touch flag -> healthy
-  |
-  +--> exec docker-entrypoint.sh postgres   (main process, immediate)
-         |
-         +--> PostgreSQL ready
-               |
-               +--> django_app connects (depends_on: service_started)
-               |      +--> runs migrations
-               |      |      +--> CREATE TABLE fires event trigger -> auto-grant
-               |      |      +--> CREATE SEQUENCE fires event trigger -> auto-grant
-               |      +--> migrations complete -> Django healthy
-               |
-               +--> knowledge, realtime, manager wait (depends_on: service_healthy)
-                      +--> start after crewdb flag is set
-                      (crew has no depends_on: crewdb -- it never connects to Postgres)
-```
+## Granting a service a new table
 
-## Adding Permissions for a New Table
+1. Add a `TableGrant` (and a `SequenceGrant` if the service inserts through a sequence it
+   does not own) to the service's entry in `src/django_app/tables/service_db_grants.py`,
+   with a comment saying why it needs that access.
+2. The table must be created by a Django migration: the command fails if it does not exist.
+3. Restart django_app. No crewdb rebuild is needed.
 
-1. Add the table name and grant level to `auto_grant_table_permissions()` in `install_event_triggers`.
-2. Add the same table to the appropriate `grant_<service>_permissions` catch-up function.
-3. If the table has a sequence that needs granting, add it to both
-   `auto_grant_sequence_permissions()` and the catch-up function.
-4. If the table should block startup until it exists, add it to the `REQUIRED_TABLES` array.
-5. Rebuild the crewdb image (`docker compose build crewdb`).
+For a new restricted role, create it in `custom-docker-entrypoint.sh`, add a
+`ServiceRoleGrants` to `SERVICE_ROLE_GRANTS`, and pass its role name variable to django_app
+in `src/docker-compose.yaml`.

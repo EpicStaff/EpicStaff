@@ -1,6 +1,8 @@
 from drf_spectacular.utils import extend_schema
 from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
+from rbac.models.api_key import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import (
     OrgScopedChildViewSetMixin,
@@ -30,16 +32,22 @@ from tables.serializers.knowledge_serializers import (
     DocumentListSerializer,
     DocumentMetadataSerializer,
     DocumentUploadSerializer,
+    ImportFromStorageSerializer,
 )
 from tables.services.knowledge_services.document_management_service import (
     DocumentManagementService,
 )
+from tables.services.knowledge_services.storage_document_import_service import (
+    StorageDocumentImportService,
+)
+from tables.services.storage_service import get_storage_manager
 from tables.swagger_schemas.knowledge_schemas.document_management_schemas import (
     COLLECTION_DOCUMENTS_LIST_GET,
     DOCUMENTS_BULK_DELETE_POST,
     DOCUMENTS_COPY_POST,
     DOCUMENTS_DESTROY_DELETE,
     DOCUMENTS_DOWNLOAD_GET,
+    DOCUMENTS_IMPORT_FROM_STORAGE_POST,
     DOCUMENTS_LIST_GET,
     DOCUMENTS_PREVIEW_GET,
     DOCUMENTS_RETRIEVE_GET,
@@ -54,12 +62,27 @@ from tables.utils.document_serving import (
 _DOCUMENT_ORG_PATH = "source_collection__org_id"
 
 
+def _audit_actor(request) -> str:
+    """Name the caller for an audit log line.
+
+    A SYSTEM API key authenticates as SystemServicePrincipal, which has no user
+    id, so the key itself is the attributable actor.
+    """
+    api_key = request.auth if isinstance(request.auth, ApiKey) else None
+    if api_key is None:
+        return f"user:{request.user.pk}"
+    if api_key.key_type == ApiKey.KeyType.SYSTEM:
+        return f"system api_key:{api_key.pk}"
+    return f"user:{request.user.pk} via api_key:{api_key.pk}"
+
+
 class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
     """
     ViewSet for document upload operations within a collection.
 
     Endpoints:
     - POST /source-collections/{collection_id}/documents/upload/ - Upload files
+    - POST /documents/source-collection/{collection_id}/from-storage/ - Import storage files
     - POST /documents/bulk-delete/ - Delete multiple documents
     """
 
@@ -68,12 +91,15 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
         "upload_documents": Permission.CREATE,
+        "import_from_storage": Permission.CREATE,
         "bulk_delete": Permission.DELETE,
     }
 
     def get_serializer_class(self):
         if self.action == "upload_documents":
             return DocumentUploadSerializer
+        elif self.action == "import_from_storage":
+            return ImportFromStorageSerializer
         elif self.action == "bulk_delete":
             return DocumentBulkDeleteSerializer
         return DocumentMetadataSerializer
@@ -102,7 +128,7 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
         try:
             # Use service to handle all business logic
             created_documents = DocumentManagementService.upload_files_batch(
-                collection_id=collection_id, uploaded_files=files
+                collection_id=collection_id, uploaded_files=files, user=request.user
             )
 
             # Serialize response
@@ -124,11 +150,60 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except DocumentUploadException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+
+    # NOTE: this ViewSet is not router-registered; the only URL is the explicit
+    # path() in tables/urls.py. url_path mirrors that route for readability.
+    @extend_schema(**DOCUMENTS_IMPORT_FROM_STORAGE_POST)
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="source-collection/(?P<collection_id>[^/.]+)/from-storage",
+    )
+    def import_from_storage(self, request, collection_id=None):
+        try:
+            collection_id = int(collection_id)
+        except (ValueError, TypeError) as e:
+            raise InvalidFieldType("collection_id", collection_id) from e
+
+        org_id = self.get_active_org_id()
+        # HasOrgPermission gates Knowledge Sources CREATE; reading the storage
+        # side is a second resource type. READ is enough: the copy stays inside
+        # the platform, nothing is taken out of it.
+        assert_org_permission(request.user, org_id, ResourceType.FILES, Permission.READ)
+        self.get_in_active_org_or_404(SourceCollection, collection_id)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Every other error propagates to the exception handler:
+        # StorageFilesNotFoundException as the same generic 404 as the
+        # collection, the DocumentUploadException family (nothing importable,
+        # a limit exceeded, files rejected by validation) as a 400.
+        try:
+            result = StorageDocumentImportService(get_storage_manager()).import_files(
+                actor=_audit_actor(request),
+                user=request.user,
+                org_id=org_id,
+                collection_id=collection_id,
+                storage_file_ids=serializer.validated_data["storage_file_ids"],
             )
+        except CollectionNotFoundException as e:
+            # Deleted after the org check above: the same generic 404 as that
+            # check, without the collection id this exception's message names.
+            raise NotFound() from e
+
+        message = f"Successfully imported {len(result.documents)} file(s)"
+        if result.skipped:
+            message += f", skipped {len(result.skipped)}"
+
+        return Response(
+            {
+                "message": message,
+                "documents": DocumentMetadataSerializer(result.documents, many=True).data,
+                "skipped": [skipped.to_dict() for skipped in result.skipped],
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     @extend_schema(**DOCUMENTS_BULK_DELETE_POST)
     @action(
@@ -151,7 +226,9 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
 
         try:
             # Use service to handle deletion
-            result = DocumentManagementService.delete_documents_batch(document_ids)
+            result = DocumentManagementService.delete_documents_batch(
+                document_ids, user=request.user
+            )
 
             return Response(
                 {
@@ -165,11 +242,6 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except DocumentUploadException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
 
 class DocumentViewSet(
@@ -248,7 +320,7 @@ class DocumentViewSet(
 
         try:
             # Use service for deletion
-            result = DocumentManagementService.delete_document(document_id)
+            result = DocumentManagementService.delete_document(document_id, user=request.user)
 
             return Response(
                 {
@@ -261,11 +333,6 @@ class DocumentViewSet(
 
         except DocumentNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**DOCUMENTS_DOWNLOAD_GET)
     @action(detail=False, methods=["get"], url_path="download")
@@ -304,6 +371,7 @@ class DocumentViewSet(
                     collection_id=serializer.validated_data["collection_id"],
                     document_ids=serializer.validated_data["document_ids"],
                     org_id=self.get_active_org_id(),
+                    user=request.user,
                 )
             )
 
@@ -324,11 +392,6 @@ class DocumentViewSet(
 
         except (CollectionNotFoundException, DocumentsNotFoundException) as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @staticmethod
     def _parse_document_ids(raw_value: str) -> list:

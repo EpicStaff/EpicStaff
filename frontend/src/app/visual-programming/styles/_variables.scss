@@ -10,19 +10,22 @@
     --vp-minimap-node-color: #384152;
     --vp-minimap-selected-node-color: #4d7cfe;
     --vp-minimap-view-color: rgba(255, 255, 255, 0.1);
+    --vp-minimap-node-radius: 24px;
 
     --vp-node-color: #242424;
     --vp-node-border-color: #333;
     --vp-node-selected-color: hsl(0, 0%, 57%);
 
+    // "Highlight unused nodes" flow setting
+    --vp-unused-node-opacity: 0.6;
+    --vp-unused-minimap-node-outline-color: var(--color-ks-transparent-text-60);
+
     // nodes
     --agent-node-accent-color: #8e5cd9;
     --task-node-accent-color: #30a46c;
     --tool-node-accent-color: #9f6a00;
-    --llm-node-accent-color: #e0575b;
     --project-node-accent-color: #5672cd;
     --python-node-accent-color: #ffcf3f;
-    --edge-node-accent-color: #8e5cd9;
     --default-node-accent-color: #9f6a00;
     --schedule-trigger-node-accent-color: var(--color-ks-status-processing);
 
@@ -68,10 +71,8 @@
         --agent-node-accent-color: #8e5cd9;
         --task-node-accent-color: #30a46c;
         --tool-node-accent-color: #9f6a00;
-        --llm-node-accent-color: #e0575b;
         --project-node-accent-color: #5672cd;
         --python-node-accent-color: #ffcf3f;
-        --edge-node-accent-color: #8e5cd9;
         --default-node-accent-color: #9f6a00;
         --schedule-trigger-node-accent-color: var(--color-ks-status-processing);
 

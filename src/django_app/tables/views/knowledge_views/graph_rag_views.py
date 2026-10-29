@@ -30,6 +30,7 @@ from tables.serializers.graph_rag_serializers import (
     GraphRagSerializer,
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
+from tables.swagger_schemas.common_schemas import INTERNAL_SERVER_ERROR_500_RESPONSE
 
 # ORM path from a GraphRag up to the owning collection's org.
 _GRAPH_RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
@@ -124,6 +125,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
                 collection_id=collection_id,
                 embedder_id=embedder_id,
                 llm_id=llm_id,
+                user=request.user,
             )
 
             response_serializer = GraphRagDetailSerializer(graph_rag)
@@ -144,11 +146,6 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @action(
         detail=False,
@@ -168,23 +165,16 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         self.get_in_active_org_or_404(SourceCollection, collection_id)
 
-        try:
-            graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(collection_id)
+        graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(collection_id)
 
-            if not graph_rag:
-                return Response(
-                    {"error": f"GraphRag not found for collection {collection_id}"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            serializer = GraphRagDetailSerializer(graph_rag)
-            return Response(serializer.data)
-
-        except Exception as e:
+        if not graph_rag:
             return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {"error": f"GraphRag not found for collection {collection_id}"},
+                status=status.HTTP_404_NOT_FOUND,
             )
+
+        serializer = GraphRagDetailSerializer(graph_rag)
+        return Response(serializer.data)
 
     def retrieve(self, request, pk=None):
         """
@@ -201,11 +191,6 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         except GraphRagNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     def destroy(self, request, pk=None):
         """
@@ -215,7 +200,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         """
         self._assert_graph_rag_in_active_org(pk)
         try:
-            result = GraphRagService.delete_graph_rag(int(pk))
+            result = GraphRagService.delete_graph_rag(int(pk), user=request.user)
 
             return Response(
                 {"message": "GraphRag deleted successfully", **result},
@@ -224,11 +209,6 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         except GraphRagNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @action(detail=True, methods=["put"], url_path="index-config")
     def update_index_config(self, request, pk=None):
@@ -257,6 +237,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             graph_rag = GraphRagService.update_index_config(
                 graph_rag_id=int(pk),
                 data=serializer.validated_data,
+                user=request.user,
             )
 
             response_serializer = GraphRagDetailSerializer(graph_rag)
@@ -275,11 +256,6 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @action(detail=True, methods=["post"], url_path="documents/bulk-delete")
     def remove_documents(self, request, pk=None):
@@ -303,6 +279,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             result = GraphRagService.remove_documents_from_graph_rag(
                 graph_rag_id=int(pk),
                 document_ids=document_ids,
+                user=request.user,
             )
 
             return Response(
@@ -317,11 +294,6 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @action(
         detail=True,
@@ -339,6 +311,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             result = GraphRagService.delete_document(
                 graph_rag_id=int(pk),
                 document_id=int(document_id),
+                user=request.user,
             )
 
             return Response(
@@ -353,11 +326,6 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except GraphRagDocumentNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @action(detail=True, methods=["get"], url_path="documents/list")
     def list_documents(self, request, pk=None):
@@ -379,18 +347,13 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             )
         except GraphRagNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(
         request=None,
         responses={
             200: OpenApiResponse(description="All documents initialized"),
             404: OpenApiResponse(description="GraphRag not found"),
-            500: OpenApiResponse(description="Internal server error"),
+            500: INTERNAL_SERVER_ERROR_500_RESPONSE,
         },
     )
     def initialize_documents(self, request, pk=None):
@@ -402,7 +365,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         """
         self._assert_graph_rag_in_active_org(pk)
         try:
-            result = GraphRagService.init_documents_from_collection(int(pk))
+            result = GraphRagService.init_documents_from_collection(int(pk), user=request.user)
 
             message = (
                 f"Initialized {result['added_count']} document(s)"
@@ -422,8 +385,3 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )

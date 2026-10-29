@@ -4,7 +4,7 @@ export enum ActionCode {
     Update = 'update',
     Delete = 'delete',
     Export = 'export',
-    Use = 'use', // for 'secrets' management only
+    Use = 'use', // secrets, flows (running, trigger nodes), and chat operator actions (claim, release, reply, test conversation)
     List = 'list', // unused for now
 }
 
@@ -21,9 +21,12 @@ export enum ResourceCode {
     LlmConfigs = 'llm_configs',
     ApiKeys = 'api_keys',
     Secrets = 'secrets',
+    Audit = 'audit',
     Voice = 'voice',
     Webhooks = 'webhooks',
     KeyValueTables = 'key_value_tables',
+    Venvs = 'venvs',
+    Chats = 'chats',
 }
 
 export interface ActivePermissions {
@@ -63,7 +66,8 @@ export interface CatalogResponse {
 
 export interface OrgCapability {
     org: { id: number; name: string };
-    role: { id: number; name: string };
+    /** `null` when the membership has no role assigned. */
+    role: { id: number; name: string } | null;
     permissions: Record<ResourceCode, ActionCode[]>;
 }
 

@@ -225,7 +225,7 @@ def test_update_verbs_are_not_exposed(client_a, org_a, verb):
     DRF's initial() before method dispatch: with no `update`/`partial_update`
     action routed, `view.action` is None, so the action map cannot resolve a
     required permission and the gate fails closed
-    (tables/services/rbac/permissions.py:80-83).
+    (rbac/access/gates.py:81-83).
     """
     secret = Secret.objects.create(name="IMMUTABLE", value="ciphertext", org=org_a)
 
@@ -266,13 +266,47 @@ def test_member_and_viewer_get_403_on_every_action(
 @pytest.mark.django_db
 def test_api_key_auth_cannot_access_secrets(admin_a, org_a, issue_api_key):
     # admin_a has full org-admin bits and would succeed via JWT (see client_a) —
-    # this proves DenyApiKeyAuth blocks the API-key path specifically, regardless
+    # this proves DenyPersonalAndSystemApiKeys blocks the API-key path specifically, regardless
     # of the underlying user's permissions.
     raw, _ = issue_api_key(user=admin_a)
     client = APIClient()
     client.credentials(HTTP_X_API_KEY=raw, HTTP_X_ORGANIZATION_ID=str(org_a.id))
     resp = client.get("/api/secrets/")
     assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_list_excludes_system_secrets(client_a, org_a):
+    Secret.objects.create(name="USER_SECRET", value="ciphertext-u", org=org_a)
+    Secret.objects.create(
+        name="system_minio_org_user", value="ciphertext-s", org=org_a, system=True
+    )
+    resp = client_a.get("/api/secrets/")
+    assert resp.status_code == 200
+    names = {s["name"] for s in _results(resp)}
+    assert "USER_SECRET" in names
+    assert "system_minio_org_user" not in names
+
+
+@pytest.mark.django_db
+def test_retrieve_system_secret_by_id_returns_404(client_a, org_a):
+    system_secret = Secret.objects.create(
+        name="system_minio_org_user", value="ciphertext-s", org=org_a, system=True
+    )
+    resp = client_a.get(f"/api/secrets/{system_secret.id}/")
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_posting_system_true_is_ignored_and_creates_a_non_system_secret(client_a):
+    resp = client_a.post(
+        "/api/secrets/",
+        {"name": "OPENAI_KEY", "value": "sk-live-abc123", "system": True},
+        format="json",
+    )
+    assert resp.status_code == 201
+    secret = Secret.objects.get(id=resp.data["id"])
+    assert secret.system is False
 
 
 @pytest.mark.django_db

@@ -38,19 +38,22 @@ export class ValidationErrorsComponent {
             return `Max length is ${x.requiredLength}. Current length is ${x.actualLength}.`;
         },
         pattern: () => 'The value does not match the required pattern.',
+        venvName: () => 'Use only letters, digits, spaces, - and _.',
         email: () => 'Invalid email address.',
         emailWhitespace: () => 'Email must not contain whitespace.',
         emailLength: () => 'Must be at most 254 characters, with at most 64 before the @.',
         emailCharacters: () => 'Use only letters, digits and . _ - + before the @.',
         emailEdges: () => 'The part before @ must start and end with a letter or digit.',
+        httpUrl: () => 'Must be an http:// or https:// URL.',
         numericOnly: () => 'Password cannot be entirely numeric.',
         whitespace: () => 'Value cannot be blank string.',
         uniqueName: () => 'A tool with this name already exists.',
-        notUnique: (e) => (e as { message?: string })?.message || 'Node name must be unique.',
         tasksRequired: () => 'Add at least one task.',
         taskNameRequired: () => 'Every task needs a name.',
         taskNameDuplicate: () => 'Task names must be unique.',
         taskInstructionsRequired: () => 'Every task needs instructions.',
+        invalidNumber: () => 'Enter a valid number. Use a dot as the decimal separator.',
+        pricePair: () => "Set both the input and output price, or leave both empty to use the provider's pricing.",
     };
 
     messagesList = computed<string[]>(() => {

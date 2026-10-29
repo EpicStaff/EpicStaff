@@ -1,6 +1,8 @@
-import { AgentSearchConfigs, GraphSearchMethod } from '@shared/models';
+import { AgentSearchConfigs, AuthorshipFields, GraphSearchMethod } from '@shared/models';
 
-export interface GetKnowledgeRetrieverNodeRequest {
+import { NumberedNodeDto } from './numbered-node-dto.model';
+
+export interface GetKnowledgeRetrieverNodeRequest extends AuthorshipFields, NumberedNodeDto {
     id: number;
     graph: number | null;
     source_collection: number | null;

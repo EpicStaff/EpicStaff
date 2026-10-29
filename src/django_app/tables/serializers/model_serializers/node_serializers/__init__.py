@@ -16,7 +16,6 @@ from .flow_control_serializers import (
     ClassificationConditionGroupSerializer,
     ClassificationDecisionTableNodeSerializer,
     ClassificationDecisionTablePromptSerializer,
-    ConditionalEdgeSerializer,
     ConditionGroupSerializer,
     ConditionSerializer,
     DecisionTableNodeSerializer,
@@ -29,6 +28,7 @@ from .trigger_serializers import (
     TelegramTriggerNodeFieldSerializer,
     TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
+    TelegramWebhookInfoSerializer,
     WebhookTriggerNodeReadSerializer,
     WebhookTriggerNodeSerializer,
 )
@@ -42,7 +42,6 @@ __all__ = [
     "ClassificationDecisionTablePromptSerializer",
     "ConditionGroupSerializer",
     "ConditionSerializer",
-    "ConditionalEdgeSerializer",
     "DecisionTableNodeSerializer",
     "EdgeSerializer",
     "EndNodeSerializer",
@@ -60,6 +59,7 @@ __all__ = [
     "TelegramTriggerNodeFieldSerializer",
     "TelegramTriggerNodeReadSerializer",
     "TelegramTriggerNodeSerializer",
+    "TelegramWebhookInfoSerializer",
     "WebhookTriggerNodeReadSerializer",
     "WebhookTriggerNodeSerializer",
 ]

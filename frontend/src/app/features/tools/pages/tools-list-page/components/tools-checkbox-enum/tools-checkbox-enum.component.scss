@@ -1,0 +1,82 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.checkbox-enum__search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    background-color: transparent;
+
+    &:focus-within {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+.checkbox-enum__search-icon {
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+}
+
+.checkbox-enum__search-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: none;
+    background: none;
+    outline: none;
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+
+    &::placeholder {
+        color: var(--color-input-text-placeholder);
+    }
+}
+
+.checkbox-enum__list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 6px;
+}
+
+.checkbox-enum__list--scrollable {
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.checkbox-enum__option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.checkbox-enum__icon {
+    flex-shrink: 0;
+}
+
+.checkbox-enum__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.checkbox-enum__empty {
+    margin: 4px 0;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+}

@@ -1,4 +1,4 @@
-import { BaseRagType, RagStatus, RagType } from './base-rag.model';
+import { BaseRagType, IndexingUsage, RagStatus, RagType } from './base-rag.model';
 
 export type GraphRagFileType = 'csv' | 'text' | 'json';
 export type GraphRagChunkStrategy = 'tokens' | 'sentence';
@@ -6,6 +6,8 @@ export type GraphRagChunkStrategy = 'tokens' | 'sentence';
 export interface CollectionDetailsGraphRag {
     embedder_id: string;
     embedder_name: string;
+    /** The LLM config's custom name; null when the RAG has no LLM. */
+    llm_name: string | null;
     is_ready_for_indexing: boolean;
     message: string | null;
     rag_id: number;
@@ -14,6 +16,7 @@ export interface CollectionDetailsGraphRag {
     reindex_reason: Record<string, string>;
     status: RagStatus;
     processing_document_ids: number[];
+    indexing_usage: IndexingUsage;
     created_at: string;
     updated_at: string;
 }

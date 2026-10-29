@@ -5,17 +5,64 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 
 import litellm
+from src.shared.litellm_model_names import litellm_call_model, litellm_routed_provider
+from src.shared.models import LLMConfigData
 from utils.logger import logger
 
 from .base import (
     BaseLLMClient,
     DoneEvent,
+    LLMProviderError,
     StreamEvent,
     TokenEvent,
     ToolCallEvent,
     ToolSpec,
     UnsupportedLLMProviderError,
 )
+
+# litellm reports json_schema support for these providers, but their APIs reject it
+# ("This response_format type is unavailable now") and only accept json_object.
+JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
+
+# These providers reject any response_format in a request that also carries tools: Groq
+# answers "json mode cannot be combined with tool/function calling" for models with native
+# structured outputs, and litellm refuses its tool-call emulation for the others. Gemini
+# answers "Function calling with a response mime type: 'application/json' is unsupported".
+NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS = {"groq", "gemini"}
+
+
+def _provider_error_from(exc: BaseException) -> tuple[str | None, str] | None:
+    """Find the provider's own error (code, message) in an exception and its causes.
+
+    litellm can fail while converting a provider error, e.g. Groq's `tool_use_failed`
+    chunk becomes a ValueError raised inside litellm's `except` block, so the original
+    error that carries the provider's `body` survives only in the exception chain.
+    """
+    pending: list[BaseException] = [exc]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop(0)
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        body = getattr(current, "body", None)
+        if isinstance(body, dict) and isinstance(body.get("error"), dict):
+            body = body["error"]
+        if isinstance(body, dict) and body.get("message"):
+            code = body.get("code")
+            # One line, so a provider message cannot forge extra log lines.
+            message = " ".join(str(body["message"]).split())
+            return (str(code) if code else None), message
+        pending.extend(
+            linked
+            for linked in (
+                getattr(current, "original_exception", None),
+                current.__cause__,
+                current.__context__,
+            )
+            if isinstance(linked, BaseException)
+        )
+    return None
 
 
 class LiteLLMClient(BaseLLMClient):
@@ -42,54 +89,34 @@ class LiteLLMClient(BaseLLMClient):
 
     def __init__(
         self,
-        llm_config,
+        config: LLMConfigData,
         *,
+        provider_name: str | None,
         api_key: str | None,
         output_schema: dict | None = None,
     ) -> None:
         super().__init__(output_schema=output_schema)
-        self._llm_config = llm_config
+        self._config = config
+        self._provider_name = (provider_name or "").lower().strip()
         # Resolved by the caller; this class must not touch the ORM (see get_llm_client).
         self._api_key = api_key
         # Validate and cache the model string eagerly so callers receive
         # UnsupportedLLMProviderError at construction time (fail-fast), not
         # lazily during the first stream_completion call.
         self._model = self._model_string()
+        self._routed_provider = litellm_routed_provider(self._model)
 
     def _model_string(self) -> str:
-        """Build the LiteLLM model string from llm_config.model.
+        """Build the LiteLLM model string from the config's model and provider.
 
-        Raises UnsupportedLLMProviderError when the provider or model name is
-        missing so callers receive a clear domain exception instead of a
-        cryptic AttributeError or litellm error.
+        Raises UnsupportedLLMProviderError when the model name is empty so callers
+        receive a clear domain exception instead of a cryptic litellm error.
         """
-        model = self._llm_config.model
-        if not model:
-            raise UnsupportedLLMProviderError("(no model configured)")
-
-        model_name = (model.name or "").strip()
+        model_name = (self._config.model or "").strip()
         if not model_name:
             raise UnsupportedLLMProviderError("(empty model name)")
 
-        provider_name = (
-            (model.llm_provider.name or "").lower().strip() if model.llm_provider else ""
-        )
-
-        if not provider_name or provider_name == "openai":
-            # Plain model name for OpenAI; litellm defaults to OpenAI for bare names.
-            return model_name
-
-        if provider_name in ("azure", "azure_openai"):
-            # Azure uses the deployment name, falling back to model name if not set.
-            deployment = (getattr(model, "deployment_id", None) or model_name).strip()
-            return f"azure/{deployment}"
-
-        # All other providers: "<provider>/<model>" — litellm understands this format
-        # for Anthropic, Gemini, Mistral, Cohere, Bedrock, Together, etc.
-        # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
-        if model_name.startswith(f"{provider_name}/"):
-            return model_name
-        return f"{provider_name}/{model_name}"
+        return litellm_call_model(self._provider_name, model_name, self._config.deployment_id)
 
     def _build_tools(self, tools: list[ToolSpec]) -> list[dict] | None:
         if not tools:
@@ -107,8 +134,7 @@ class LiteLLMClient(BaseLLMClient):
         ]
 
     def _build_kwargs(self, messages: list[dict], tools: list[ToolSpec]) -> dict:
-        cfg = self._llm_config
-        model = cfg.model
+        config = self._config
 
         kwargs: dict = {
             "model": self._model,
@@ -117,35 +143,41 @@ class LiteLLMClient(BaseLLMClient):
             "drop_params": True,
         }
 
+        # litellm sends OpenAI/Azure gpt-5.4+ calls that carry function tools to the
+        # Responses API, which stores every response at the provider by default (Chat
+        # Completions does not). Nothing here reuses stored responses, so opt out.
+        if self._routed_provider in ("openai", "azure"):
+            kwargs["store"] = False
+
         if self._api_key:
             kwargs["api_key"] = self._api_key
-        if model and model.base_url:
-            kwargs["base_url"] = model.base_url
-        if model and getattr(model, "api_version", None):
-            kwargs["api_version"] = model.api_version
-        if cfg.temperature is not None:
-            kwargs["temperature"] = cfg.temperature
-        if cfg.max_tokens is not None:
-            kwargs["max_tokens"] = cfg.max_tokens
-        if cfg.top_p is not None:
-            kwargs["top_p"] = cfg.top_p
-        if getattr(cfg, "presence_penalty", None) is not None:
-            kwargs["presence_penalty"] = cfg.presence_penalty
-        if getattr(cfg, "frequency_penalty", None) is not None:
-            kwargs["frequency_penalty"] = cfg.frequency_penalty
-        if getattr(cfg, "seed", None) is not None:
-            kwargs["seed"] = cfg.seed
-        if cfg.timeout is not None:
-            kwargs["timeout"] = cfg.timeout
+        if config.base_url:
+            kwargs["base_url"] = config.base_url
+        if config.api_version:
+            kwargs["api_version"] = config.api_version
+        # Flow Assistant and CDT Explain expect a structured JSON reply; stop sequences
+        # set on the config for agents could cut that reply short.
+        kwargs.update(config.to_litellm_kwargs(provider=self._routed_provider, exclude={"stop"}))
         # Structured-output requests pass an output_schema, which becomes the
-        # response_format sent to the model.
+        # response_format sent to the model. The provider litellm routes to decides
+        # the format: a google_ai row is called as gemini.
         if self._output_schema:
-            kwargs["response_format"] = {
-                "type": "json_schema",
-                "json_schema": self._output_schema,
-            }
-        if getattr(cfg, "extra_headers", None):
-            kwargs["extra_headers"] = cfg.extra_headers
+            if self._routed_provider in JSON_OBJECT_ONLY_PROVIDERS:
+                kwargs["response_format"] = {"type": "json_object"}
+                # json_object mode carries no schema, so the model only learns the
+                # expected shape from the prompt.
+                kwargs["messages"] = self._with_schema_instruction(messages)
+            elif self._routed_provider in NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS and tools:
+                # No response_format: the schema reaches the model only through the prompt,
+                # and the reply is parsed leniently by the caller.
+                kwargs["messages"] = self._with_schema_instruction(messages)
+            else:
+                kwargs["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": self._output_schema,
+                }
+        if config.extra_headers:
+            kwargs["extra_headers"] = config.extra_headers
 
         tool_list = self._build_tools(tools)
         if tool_list:
@@ -154,6 +186,39 @@ class LiteLLMClient(BaseLLMClient):
             kwargs["_skip_mcp_handler"] = True
 
         return kwargs
+
+    def _with_schema_instruction(self, messages: list[dict]) -> list[dict]:
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "Write your final reply directly as the message content: a JSON object "
+                    f"that matches this JSON schema: {json.dumps(self._output_schema['schema'])}. "
+                    "Never send it as a tool or function call."
+                ),
+            },
+            *messages,
+        ]
+
+    async def _provider_chunks(self, kwargs: dict) -> AsyncIterator:
+        """Yield litellm's stream chunks, turning a provider failure into LLMProviderError.
+
+        Only the call and the fetching of the next chunk sit inside the `try`, so the
+        caller's own chunk handling is never mistaken for a provider failure.
+        """
+        try:
+            response = await litellm.acompletion(**kwargs)
+            async for chunk in response:
+                yield chunk
+        except Exception as exc:
+            provider_error = _provider_error_from(exc)
+            if provider_error is None:
+                raise
+            raise LLMProviderError(
+                provider=self._routed_provider or self._provider_name,
+                code=provider_error[0],
+                message=provider_error[1],
+            ) from exc
 
     async def stream_completion(
         self,
@@ -173,10 +238,13 @@ class LiteLLMClient(BaseLLMClient):
         # during this turn. Reasoning models (gpt-oss, o1, claude-thinking,
         # DeepSeek-R1) populate this; non-reasoning models leave it absent.
         reasoning_observed = False
+        last_finish_reason: str | None = None
 
-        response = await litellm.acompletion(**kwargs)
+        async for chunk in self._provider_chunks(kwargs):
+            finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
+            if finish_reason:
+                last_finish_reason = finish_reason
 
-        async for chunk in response:
             delta = chunk.choices[0].delta if chunk.choices else None
             if delta is None:
                 continue
@@ -202,7 +270,6 @@ class LiteLLMClient(BaseLLMClient):
                     if tc.function and tc.function.arguments:
                         acc["args"] += tc.function.arguments
 
-            finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
             # Anthropic surfaces "tool_use" and "end_turn"; OpenAI uses "tool_calls"
             # and "stop".  LiteLLM normalises most of this, but we handle all known
             # variants defensively to stay robust across litellm version changes.
@@ -218,4 +285,4 @@ class LiteLLMClient(BaseLLMClient):
                     args = {"_raw": acc["args"]}
                 yield ToolCallEvent(id=acc["id"], name=acc["name"], args=args)
 
-        yield DoneEvent(reasoning_observed=reasoning_observed)
+        yield DoneEvent(reasoning_observed=reasoning_observed, finish_reason=last_finish_reason)

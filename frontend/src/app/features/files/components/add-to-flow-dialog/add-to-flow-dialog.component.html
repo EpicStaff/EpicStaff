@@ -1,4 +1,8 @@
-<div class="add-to-flow-dialog">
+<div
+    class="add-to-flow-dialog"
+    (appEnterSubmit)="onConfirm()"
+    [appEnterSubmitDisabled]="!hasChanges"
+>
     <div class="add-to-flow-dialog__header">
         <h2 class="add-to-flow-dialog__title">Add to Flow</h2>
         <button

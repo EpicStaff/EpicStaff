@@ -1,4 +1,8 @@
-<div class="create-model">
+<div
+    class="create-model"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="form.invalid || isSubmitting()"
+>
     <div class="create-model__header">
         <h3 class="create-model__title">{{ isEditMode ? 'Edit LLM Model' : 'Add LLM Model' }}</h3>
         <button
@@ -14,6 +18,11 @@
             />
         </button>
     </div>
+
+    <app-error-banner
+        class="create-model__error"
+        [message]="errorMessage()"
+    />
 
     <div
         class="create-model__content"

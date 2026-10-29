@@ -17,8 +17,10 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 export class CheckboxComponent implements ControlValueAccessor {
     indeterminate = input<boolean>(false);
     checked = model<boolean>(false);
-    color = input<'primary' | 'secondary'>('primary');
+    color = input<'primary' | 'secondary'>('secondary');
     disabled = input<boolean>(false);
+    /** The box's accessible name, where no visible label sits next to it (a table's row checkbox). */
+    ariaLabel = input<string | null>(null);
 
     changed = output<boolean>();
 
@@ -32,6 +34,9 @@ export class CheckboxComponent implements ControlValueAccessor {
         this.onChange(this.checked());
         this.onTouched();
         this.changed.emit(this.checked());
+        // A listener may set `checked` back (a "-" box that clears instead of ticking). The browser
+        // already ticked the box, and `[checked]` won't rewrite a value it last rendered, so match it here.
+        input.checked = this.checked();
     }
 
     writeValue(value: boolean): void {

@@ -1,34 +1,56 @@
-<article class="llm-card">
+<article
+    class="llm-card"
+    [class.llm-card--select-mode]="selectMode()"
+    [class.llm-card--selected]="selectMode() && selected()"
+    (click)="onCardClick()"
+>
     <div class="llm-card__top">
         <span class="llm-card__model">{{ model().customName }}</span>
-        <div class="llm-card__actions">
-            <button
-                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
-                type="button"
-                class="llm-card__action"
-                matTooltip="Edit"
-                matTooltipPosition="above"
-                (click)="onEdit()"
+        @if (selectMode()) {
+            <div
+                class="llm-card__checkbox"
+                (click)="$event.stopPropagation()"
             >
-                <i
-                    class="ti ti-pencil"
-                    aria-hidden="true"
-                ></i>
-            </button>
-            <button
-                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
-                type="button"
-                class="llm-card__action llm-card__action--delete"
-                matTooltip="Delete"
-                matTooltipPosition="above"
-                (click)="onDelete()"
-            >
-                <i
-                    class="ti ti-x"
-                    aria-hidden="true"
-                ></i>
-            </button>
-        </div>
+                <app-checkbox
+                    color="secondary"
+                    [checked]="selected()"
+                    [disabled]="isDeleting()"
+                    (changed)="onCardClick()"
+                ></app-checkbox>
+            </div>
+        } @else {
+            <div class="llm-card__actions">
+                <app-config-card-more-menu (viewDetailsClick)="onViewDetails($event)" />
+                <button
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
+                    type="button"
+                    class="llm-card__action"
+                    [attr.aria-label]="'Edit ' + model().customName"
+                    matTooltip="Edit"
+                    matTooltipPosition="above"
+                    (click)="onEdit()"
+                >
+                    <i
+                        class="ti ti-pencil"
+                        aria-hidden="true"
+                    ></i>
+                </button>
+                <button
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
+                    type="button"
+                    class="llm-card__action llm-card__action--delete"
+                    [attr.aria-label]="'Delete ' + model().customName"
+                    matTooltip="Delete"
+                    matTooltipPosition="above"
+                    (click)="onDelete()"
+                >
+                    <i
+                        class="ti ti-x"
+                        aria-hidden="true"
+                    ></i>
+                </button>
+            </div>
+        }
     </div>
 
     <div class="llm-card__name">{{ model().modelName }}</div>
@@ -41,24 +63,29 @@
         </div>
     }
 
-    <div class="llm-card__bottom">
-        <div class="llm-card__temp">
-            <i
-                class="ti ti-thermometer"
-                aria-hidden="true"
-            ></i>
-            {{ model().temperature }}°
-        </div>
+    @let temperature = model().temperature;
+    @if (temperature !== null || model().isDeprecated) {
+        <div class="llm-card__bottom">
+            @if (temperature !== null) {
+                <div class="llm-card__temp">
+                    <i
+                        class="ti ti-thermometer"
+                        aria-hidden="true"
+                    ></i>
+                    {{ temperature }}°
+                </div>
+            }
 
-        @if (model().isDeprecated) {
-            <div class="llm-card__deprecated">
-                <app-svg-icon
-                    icon="warning"
-                    size="12px"
-                    aria-hidden="true"
-                />
-                <span>Deprecated</span>
-            </div>
-        }
-    </div>
+            @if (model().isDeprecated) {
+                <div class="llm-card__deprecated">
+                    <app-svg-icon
+                        icon="warning"
+                        size="12px"
+                        aria-hidden="true"
+                    />
+                    <span>Deprecated</span>
+                </div>
+            }
+        </div>
+    }
 </article>

@@ -1,7 +1,8 @@
+import { AuthorshipFields, UserSummary } from '@shared/models';
+
 import { AgentNode } from '../../../visual-programming/core/models/agent-node.model';
 import { GetAudioToTextNodeRequest } from '../../../visual-programming/core/models/audio-to-text.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../visual-programming/core/models/classification-decision-table-node.model';
-import { ConditionalEdge } from '../../../visual-programming/core/models/conditional-edge.model';
 import { GetDecisionTableNodeRequest } from '../../../visual-programming/core/models/decision-table-node.model';
 import { Edge } from '../../../visual-programming/core/models/edge.model';
 import { EndNode } from '../../../visual-programming/core/models/end-node.model';
@@ -10,7 +11,6 @@ import { FlowModel } from '../../../visual-programming/core/models/flow.model';
 import { GraphNote } from '../../../visual-programming/core/models/graph-note.model';
 import { GetKeyValueNodeRequest } from '../../../visual-programming/core/models/key-value-node.model';
 import { GetKnowledgeRetrieverNodeRequest } from '../../../visual-programming/core/models/knowledge-retriever-node.model';
-import { GetLLMNodeRequest } from '../../../visual-programming/core/models/llm-node.model';
 import { PythonNode } from '../../../visual-programming/core/models/python-node.model';
 import {
     CreateScheduleTriggerNodeRequest,
@@ -30,15 +30,17 @@ export interface SubflowLightDto {
     label_ids?: number[];
     created_at?: string;
     updated_at?: string;
+    save_version?: number;
 }
 
-export interface GetGraphLightRequest {
+// Author and last-edit fields are optional like created_at/updated_at: light graphs are also
+// built client-side from SubflowLightDto (flow-card, flows-menu), which carries no authorship.
+export interface GetGraphLightRequest extends Partial<AuthorshipFields> {
     id: number;
     uuid: string;
     name: string;
     description: string;
     tags?: string[];
-    epicchat_enabled?: boolean;
     label_ids?: number[];
     created_at?: string;
     updated_at?: string;
@@ -46,15 +48,26 @@ export interface GetGraphLightRequest {
     save_version?: number;
 }
 
+// Every graph the API returns (`GraphSerializer`; also `GraphLightSerializer` for copy and graph-light)
+// carries the author, the last edit and a non-null `created_at`. The version preview also builds one
+// client-side (`mapSnapshotToGraphDto`): it has no authorship (null) and is never persisted, so its
+// `created_at` is a placeholder like its `id` and `uuid`.
 export interface GraphDto extends GetGraphLightRequest {
+    created_by: UserSummary | null;
+    created_at: string;
+    last_edited_by: UserSummary | null;
+    last_edited_at: string | null;
     save_version: number;
+    /**
+     * Read-only: the highest node number the graph has issued. Never lowered, so a deleted node's
+     * number is not given out again (only rebuilding the whole graph content restarts it).
+     */
+    node_number_seq: number;
     start_node_list: StartNode[];
     python_node_list: PythonNode[];
     task_node_list: TaskNode[];
     agent_node_list?: AgentNode[];
     edge_list: Edge[];
-    conditional_edge_list: ConditionalEdge[];
-    llm_node_list: GetLLMNodeRequest[];
     file_extractor_node_list: GetFileExtractorNodeRequest[];
     webhook_trigger_node_list: GetWebhookTriggerNodeRequest[];
     telegram_trigger_node_list: GetTelegramTriggerNodeRequest[];
@@ -70,6 +83,19 @@ export interface GraphDto extends GetGraphLightRequest {
     key_value_node_list: GetKeyValueNodeRequest[];
 }
 
+/** A graph's nodes and edges, in the shape `GET graphs/{id}/` returns them. */
+export type GraphContentDto = Pick<GraphDto, Extract<keyof GraphDto, `${string}_list`>>;
+
+/**
+ * `POST graphs/{id}/partial-import/`: the file's nodes and edges, NOT written to the graph. Every id in
+ * `content` (nodes, edges, nested rows) belongs to a row that was never committed, so all of it is new;
+ * only the dependency refs (LLM configs, agent definitions, webhook triggers...) are real.
+ */
+export interface PartialImportResponse {
+    content: GraphContentDto;
+    summary: Record<string, unknown>;
+}
+
 export interface CreateGraphDtoRequest {
     name: string;
 
@@ -79,8 +105,6 @@ export interface CreateGraphDtoRequest {
     start_node_list?: StartNode[];
     python_node_list?: PythonNode[];
     edge_list?: Edge[];
-    conditional_edge_list?: ConditionalEdge[];
-    llm_node_list?: GetLLMNodeRequest[];
     file_extractor_node_list?: GetFileExtractorNodeRequest[];
     webhook_trigger_node_list?: GetWebhookTriggerNodeRequest[];
     telegram_trigger_node_list?: GetTelegramTriggerNodeRequest[];
@@ -101,6 +125,12 @@ export interface UpdateGraphDtoRequest {
     tags?: string[];
     save_version?: number;
 }
+
+// Body of `PATCH /graphs/{id}/`: only the writable graph metadata the app patches. The read-only
+// author, timestamps and last edit of a loaded graph are never sent back.
+export type PatchGraphDtoRequest = Partial<
+    Pick<GraphDto, 'name' | 'description' | 'tags' | 'label_ids' | 'save_version'>
+>;
 
 export interface GraphVersionCreateRequest {
     graph_id: number;

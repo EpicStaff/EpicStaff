@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSave()"
+    [appEnterSubmitDisabled]="form.invalid || isSaving() || isLoading()"
+>
     <div class="header">
         <h2 class="title">
             {{ title() }}
@@ -12,6 +16,11 @@
         >
         </app-icon-button>
     </div>
+
+    <app-error-banner
+        class="error-banner"
+        [message]="errorMessage()"
+    />
 
     <div
         class="form"
@@ -39,6 +48,7 @@
                 [showSearch]="true"
                 searchPlaceholder="Search a secret..."
             />
+            <app-binned-secret-note [selected]="form.get('api_key_secret_id')?.value" />
             @if (!form.get('api_key_secret_id')?.value) {
                 <app-hint-message>
                     Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.

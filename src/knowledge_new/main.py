@@ -1,6 +1,7 @@
 import settings
 from bootstrap.di import get_dependencies
 from bootstrap.lifespans import get_lifespans
+from bootstrap.logging_setup import build_litestar_logging_config, configure_logging
 from litestar import Litestar
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import (
@@ -13,8 +14,11 @@ from presentation.rest.controllers.maintenances import MaintenanceController
 from presentation.rest.controllers.rag import RagController
 from presentation.rest.error_handlers import get_error_handlers
 
+configure_logging()
+
 app = Litestar(
     debug=settings.DEBUG,
+    logging_config=build_litestar_logging_config(),
     route_handlers=[
         MaintenanceController,
         RagController,

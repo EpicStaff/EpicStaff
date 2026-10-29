@@ -1,3 +1,9 @@
+"""SubGraphNode: runs a child flow on mapped input and writes its variables back.
+
+Every test runs a real compiled child graph through `SubGraphNode.run()`; Python
+nodes execute in-process through FakePythonCodeExecutorService.
+"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -7,26 +13,75 @@ from dotdict import DotDict
 from langgraph.graph import StateGraph
 
 from models.state import State
+from services.graph.events import StopEvent
+from services.graph.graph_builder import SessionGraphBuilder
 from services.graph.subgraphs.subgraph_node import SubGraphNode
+from src.shared.models import (
+    EdgeData,
+    GraphData,
+    KeyValueNodeData,
+    PythonCodeData,
+    PythonNodeData,
+    SubGraphData,
+)
 from src.shared.models.graph_nodes import SubGraphNodeData
+from tests.graph.test_graph_builder import FakePythonCodeExecutorService
+
+pytestmark = pytest.mark.asyncio
+
+CHILD_OUTPUT = {"a": {"b": "sub"}, "new_var": 42}
 
 
-def _make_subgraph_node(output_variable_path: str) -> SubGraphNode:
-    subgraph_node_data = SubGraphNodeData(
-        node_name="sub_node",
-        subgraph_id=1,
-        input_map={},
-        output_variable_path=output_variable_path,
+def _python_child(code: str, input_map: dict | None = None) -> GraphData:
+    return GraphData(
+        name="child",
+        entrypoint="produce",
+        end_node=None,
+        python_node_list=[
+            PythonNodeData(
+                node_name="produce",
+                python_code=PythonCodeData(
+                    code=code, entrypoint="main", global_kwargs={}
+                ),
+                input_map=input_map or {},
+                output_variable_path="variables",
+            )
+        ],
+        edge_list=[EdgeData(start_key="produce", end_key="__end__")],
+    )
+
+
+def _subgraph_node(
+    child: GraphData, output_variable_path: str, input_map=None, audit_retention_days=0, **services
+) -> SubGraphNode:
+    parent_builder = SimpleNamespace(
+        **{
+            "redis_service": None,
+            "python_code_executor_service": FakePythonCodeExecutorService(),
+            "knowledge_search_service": None,
+            "agent_task_service": None,
+            "key_value_client": None,
+            **services,
+        }
     )
     return SubGraphNode(
         session_id=1,
-        subgraph_node_data=subgraph_node_data,
-        unique_subgraph_list=[],
+        subgraph_node_data=SubGraphNodeData(
+            node_name="sub_node",
+            subgraph_id=7,
+            input_map=input_map or {},
+            output_variable_path=output_variable_path,
+        ),
+        unique_subgraph_list=[SubGraphData(id=7, data=child)],
         graph_builder=StateGraph(State),
+        org_id=1,
+        audit_retention_days=audit_retention_days,
+        session_graph_builder=parent_builder,
+        stop_event=StopEvent(),
     )
 
 
-def _make_parent_state() -> dict:
+def _parent_state() -> dict:
     return {
         "variables": DotDict(
             {
@@ -41,180 +96,156 @@ def _make_parent_state() -> dict:
     }
 
 
-def _make_result(variables: dict) -> dict:
-    return {"variables": DotDict(variables)}
-
-
-def test_create_subgraph_builder_does_not_raise_and_inherits_services():
-    """Regression test for the dead `crewai_output_channel` kwarg: the
-    parent test double below only exposes the services SessionGraphBuilder
-    actually accepts. If `_create_subgraph_builder` still reads or passes
-    `crewai_output_channel`, this raises AttributeError/TypeError."""
-    parent_builder = SimpleNamespace(
-        redis_service=SimpleNamespace(name="redis"),
-        python_code_executor_service=SimpleNamespace(name="python_code_executor"),
-        knowledge_search_service=SimpleNamespace(name="knowledge_search"),
-        agent_task_service=SimpleNamespace(name="agent_task"),
-        key_value_client=SimpleNamespace(name="key_value_client"),
-    )
-    node = _make_subgraph_node(output_variable_path="variables.result")
-    node.session_graph_builder = parent_builder
-
-    subgraph_builder = node._create_subgraph_builder()
-
-    assert subgraph_builder.redis_service is parent_builder.redis_service
-    assert (
-        subgraph_builder.python_code_executor_service
-        is parent_builder.python_code_executor_service
-    )
-    assert (
-        subgraph_builder.knowledge_search_service
-        is parent_builder.knowledge_search_service
-    )
-    assert subgraph_builder.agent_task_service is parent_builder.agent_task_service
-    assert subgraph_builder.key_value_client is parent_builder.key_value_client
-
-
-def test_nested_output_path_does_not_mutate_parent_variables():
-    node = _make_subgraph_node(output_variable_path="variables.a.b")
-    state = _make_parent_state()
-    snapshot = state["variables"].deep_dump()
-
-    updated = node._process_subgraph_result(
-        state, subgraph_input={}, result=_make_result({"out": "subgraph_value"})
-    )
-
-    assert state["variables"].deep_dump() == snapshot
-    assert state["variables"].a.b == "parent_value"
-    assert updated["variables"].a.b == {"out": "subgraph_value"}
-    assert updated["variables"].a.keep == "untouched"
-
-
-def test_existing_dict_output_path_merges_into_copy_not_parent():
-    node = _make_subgraph_node(output_variable_path="variables.a")
-    state = _make_parent_state()
-    snapshot = state["variables"].deep_dump()
-
-    updated = node._process_subgraph_result(
-        state, subgraph_input={}, result=_make_result({"b": "subgraph_value"})
-    )
-
-    assert state["variables"].deep_dump() == snapshot
-    assert updated["variables"].a.b == "subgraph_value"
-    assert updated["variables"].a.keep == "untouched"
-
-
-def test_parent_nested_containers_are_not_shared_with_result():
-    node = _make_subgraph_node(output_variable_path="variables.new_key")
-    state = _make_parent_state()
-    snapshot = state["variables"].deep_dump()
-
-    updated = node._process_subgraph_result(
-        state, subgraph_input={}, result=_make_result({"out": 1})
-    )
-
-    assert updated["variables"].a is not state["variables"].a
-    assert updated["variables"].records is not state["variables"].records
-    assert updated["variables"].records[0] is not state["variables"].records[0]
-
-    updated["variables"].a.b = "mutated"
-    updated["variables"].records[0].name = "mutated"
-    updated["variables"].records.append({"name": "third"})
-    updated["variables"].scalar = 99
-
-    assert state["variables"].deep_dump() == snapshot
-
-
-def test_state_history_variables_snapshot_is_detached_from_later_mutations():
-    node = _make_subgraph_node(output_variable_path="variables.a.b")
-    state = _make_parent_state()
-
-    updated = node._process_subgraph_result(
-        state, subgraph_input={}, result=_make_result({"out": "subgraph_value"})
-    )
-    history_variables = updated["state_history"][0]["variables"]
-
-    assert history_variables["a"]["b"] == {"out": "subgraph_value"}
-    assert history_variables["a"] is not state["variables"].a
-
-
-def test_whole_variables_output_path_deep_merges_into_parent():
-    """When output_variable_path='variables', subgraph output is deep-merged
-    into the parent variables — matching Python node behaviour."""
-    node = _make_subgraph_node(output_variable_path="variables")
-    state = _make_parent_state()
-    # Subgraph returns a.b (overwrites) but NOT a.keep or scalar
-    result = _make_result({"a": {"b": "sub_value"}, "new_var": 42})
-
-    updated = node._process_subgraph_result(state, subgraph_input={}, result=result)
-
-    # Subgraph value merged in
-    assert updated["variables"].a.b == "sub_value"
-    assert updated["variables"].new_var == 42
-    # Parent-only keys preserved (not wiped)
-    assert updated["variables"].a.keep == "untouched"
-    assert updated["variables"].scalar == 1
-    assert len(updated["variables"].records) == 2
-
-
-def test_whole_variables_output_path_does_not_alias_subgraph_containers():
-    """When output_variable_path='variables', returned containers should not alias the result."""
-    node = _make_subgraph_node(output_variable_path="variables")
-    state = _make_parent_state()
-    result = _make_result({"a": {"b": "sub"}})
-
-    updated = node._process_subgraph_result(state, subgraph_input={}, result=result)
-
-    # The nested dict should be a deep copy, not an alias
-    assert updated["variables"].a is not result["variables"].a
-
-    # Mutating the copy should not affect the original
-    updated["variables"].a["b"] = "mutated"
-    assert result["variables"].a["b"] == "sub"
-
-
-def test_whole_variables_output_path_keeps_state_history_immutable():
-    """State history should not be affected by mutations to returned variables when output_path is 'variables'."""
-    from utils.set_output_variables import set_output_variables
-
-    node = _make_subgraph_node(output_variable_path="variables")
-    state = _make_parent_state()
-    result = _make_result({"a": {"b": "sub"}})
-
-    updated = node._process_subgraph_result(state, subgraph_input={}, result=result)
-    history = updated["state_history"][0]
-
-    # After deep-merge, a.b is overwritten by subgraph output
-    assert history["variables"]["a"]["b"] == "sub"
-    # Parent-only key preserved by the merge
-    assert history["variables"]["a"]["keep"] == "untouched"
-    assert history["output"]["a"]["b"] == "sub"
-
-    # Mutate the returned variables
-    set_output_variables(updated, "variables.a.b", "later")
-
-    # The history should still have the original values
-    assert history["variables"]["a"]["b"] == "sub"
-    assert history["output"]["a"]["b"] == "sub"
+PARENT = {"a": {"b": "parent_value", "keep": "untouched"}, "records": [{"name": "first"}, {"name": "second"}], "scalar": 1}
 
 
 @pytest.mark.parametrize(
-    "output_path", ["variables", "variables.a", "variables.a.b", "variables.new_key"]
+    ("output_variable_path", "expected_variables"),
+    [
+        pytest.param(
+            "variables.new_key", {**PARENT, "new_key": CHILD_OUTPUT}, id="new-key",
+        ),
+        pytest.param(
+            "variables.a.b",
+            {**PARENT, "a": {"b": CHILD_OUTPUT, "keep": "untouched"}},
+            id="nested-path-replaced",
+        ),
+        pytest.param(
+            # An existing object at the path is merged into, not replaced.
+            "variables.a",
+            {**PARENT, "a": {"b": "parent_value", "keep": "untouched", **CHILD_OUTPUT}},
+            id="existing-object-merged",
+        ),
+        pytest.param(
+            # Like a Python node: deep-merged into the parent, parent-only keys kept.
+            "variables",
+            {**PARENT, "a": {"b": "sub", "keep": "untouched"}, "new_var": 42},
+            id="whole-variables-deep-merged",
+        ),
+    ],
 )
-def test_state_history_is_detached_from_returned_variables(output_path):
-    """State history variables should be deep-copied and not share references with returned
-    variables, regardless of which output_variable_path branch produced them."""
-    node = _make_subgraph_node(output_variable_path=output_path)
-    state = _make_parent_state()
-    # "a" and "records" mirror the parent state's own top-level keys so that every branch
-    # (whole-replace at "variables", or merge/overwrite via set_output_variables) ends up
-    # with both keys present at the top level.
-    result = _make_result({"a": {"b": "sub"}, "records": [{"name": "sub_record"}]})
+async def test_child_variables_are_written_back_at_the_output_path(output_variable_path, expected_variables):
+    node = _subgraph_node(_python_child(f"def main(): return {CHILD_OUTPUT!r}"), output_variable_path)
+    state = _parent_state()
 
-    updated = node._process_subgraph_result(state, subgraph_input={}, result=result)
-    history = updated["state_history"][0]
+    updated = await node.run(state, writer=lambda message: None)
 
-    assert "a" in history["variables"]
-    assert "records" in history["variables"]
-    assert history["variables"]["a"] is not updated["variables"].a
-    assert history["variables"]["records"] is not updated["variables"].records
+    assert updated["variables"].deep_dump() == expected_variables
+    # The parent's own state is never mutated in place.
+    assert state["variables"].deep_dump() == PARENT
+
+
+@pytest.mark.parametrize("output_variable_path", ["variables", "variables.a", "variables.new_key"])
+async def test_returned_variables_share_nothing_with_parent_state_or_history(output_variable_path):
+    node = _subgraph_node(_python_child(f"def main(): return {CHILD_OUTPUT!r}"), output_variable_path)
+    state = _parent_state()
+    updated = await node.run(state, writer=lambda message: None)
+    (history_item,) = updated["state_history"]
+    history_before = DotDict(history_item["output"]).deep_dump()
+
+    variables = updated["variables"]
+    variables.a.b = "mutated"
+    variables.records[0].name = "mutated"
+    variables.records.append({"name": "third"})
+    written = variables if output_variable_path == "variables" else variables[output_variable_path.split(".")[1]]
+    written.a = {"b": "mutated"}
+
+    assert state["variables"].deep_dump() == PARENT
+    assert DotDict(history_item["output"]).deep_dump() == history_before
+    # A history item travels with every later message; a variables snapshot would grow without bound.
+    assert "variables" not in history_item
+
+
+async def test_child_messages_are_tagged_with_the_subgraph_run():
+    node = _subgraph_node(_python_child("def main(): return {'done': True}"), "variables.result")
+    messages = []
+
+    await node.run(_parent_state(), writer=messages.append)
+
+    start, *inner, finish = messages
+    run_id = start.message_data.subgraph_execution_id
+    assert inner, "the child node's own messages must be forwarded"
+    assert all(message.message_data["subgraph_execution_ids"] == [run_id] for message in inner)
+
+
+async def test_start_and_finish_payloads_carry_the_subgraph_node_type():
+    node = _subgraph_node(_python_child("def main(): return {'done': True}"), "variables.result")
+    messages = []
+
+    await node.run(_parent_state(), writer=messages.append)
+
+    start, *inner, finish = messages
+    assert start.to_payload()["node_type"] == "SUBGRAPH"
+    assert finish.to_payload()["node_type"] == "SUBGRAPH"
+    # The child's own rows keep the child node's type, not the wrapping subflow's.
+    assert {message.to_payload()["node_type"] for message in inner} - {""} == {"PYTHON"}
+
+
+async def test_compiled_child_is_reused_across_runs_with_fresh_state(monkeypatch):
+    node = _subgraph_node(
+        _python_child("def main(x): return {'doubled': x * 2}", input_map={"x": "variables.x"}),
+        "variables.result",
+        input_map={"x": "variables.x"},
+    )
+    compile_calls = []
+    real_compile = SessionGraphBuilder.compile_from_schema
+
+    def counting_compile(builder, session_data):
+        compile_calls.append(session_data)
+        return real_compile(builder, session_data)
+
+    monkeypatch.setattr(SessionGraphBuilder, "compile_from_schema", counting_compile)
+    state = _parent_state()
+    state["variables"].x = 2
+
+    first = await node.run(state, writer=lambda message: None)
+    first["variables"].x = 5
+    second = await node.run(first, writer=lambda message: None)
+
+    assert len(compile_calls) == 1
+    assert second["variables"].result.doubled == 10
+    assert [item["output"]["doubled"] for item in second["state_history"]] == [4, 10]
+
+
+async def test_child_flow_is_built_with_the_parents_audit_retention(monkeypatch):
+    node = _subgraph_node(
+        _python_child("def main(): return {'done': True}"), "variables.result", audit_retention_days=90
+    )
+    compiled_session_data = []
+    real_compile = SessionGraphBuilder.compile_from_schema
+
+    def recording_compile(builder, session_data):
+        compiled_session_data.append(session_data)
+        return real_compile(builder, session_data)
+
+    monkeypatch.setattr(SessionGraphBuilder, "compile_from_schema", recording_compile)
+
+    await node.run(_parent_state(), writer=lambda message: None)
+
+    assert [session_data.audit_retention_days for session_data in compiled_session_data] == [90]
+
+
+class FakeKeyValueClient:
+    async def read(self, session_id, table_id, keys):
+        return {"values": {key: f"stored {key}" for key in keys}, "table_name": "Customers"}
+
+
+async def test_child_nodes_use_the_parents_services():
+    """A child flow with a Key-Value node only runs if the parent's client is passed down."""
+    child = GraphData(
+        name="child",
+        entrypoint="persist_1",
+        end_node=None,
+        key_value_node_list=[
+            KeyValueNodeData(
+                node_name="persist_1", key_value_table_id=3, mode="read",
+                entries=[{"key": "k", "value": "variables.out"}], input_map={},
+            )
+        ],
+        edge_list=[EdgeData(start_key="persist_1", end_key="__end__")],
+    )
+    node = _subgraph_node(child, "variables.result", key_value_client=FakeKeyValueClient())
+
+    updated = await node.run(_parent_state(), writer=lambda message: None)
+
+    assert updated["variables"].result.out == "stored k"

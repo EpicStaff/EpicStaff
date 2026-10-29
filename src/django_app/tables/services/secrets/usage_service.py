@@ -58,6 +58,21 @@ class SecretUsageService:
             for secret_id in secret_ids
         }
 
+    def totals(self, *, org_id: int, secret_ids: set[int]) -> dict[int, int]:
+        """secret_id -> how many distinct resources use it, whatever the caller may read.
+
+        A count, never names, so no permissions are involved: every usage is
+        counted once, as `counts()` would count readable plus hidden.
+        """
+        first, *rest = [
+            source.count_pairs(org_id=org_id, secret_ids=secret_ids, readability=READABLE_NEVER)
+            for source in USAGE_SOURCES
+        ]
+        usage_keys: dict[int, set] = defaultdict(set)
+        for secret_id, usage_key, _ in first.union(*rest):
+            usage_keys[secret_id].add(usage_key)
+        return {secret_id: len(usage_keys[secret_id]) for secret_id in secret_ids}
+
     def count_for(self, *, secret: Secret, effective) -> UsageCounts:
         """One secret's counts, in a single query."""
         return self.counts(org_id=secret.org_id, effective=effective, secret_ids={secret.pk})[
@@ -110,27 +125,42 @@ class SecretUsageService:
 
     @staticmethod
     def _flow_items(*, hits: list[UsageHit]) -> list[dict]:
-        """One item per flow, carrying its secret-using nodes."""
+        """One item per flow, carrying one entry per secret-using code block of each node.
+
+        A node declaring the secret in two blocks (a decision table's pre and post)
+        yields two entries sharing one `id`. No dedupe happens here: `_collect()`
+        combines the flow sources with a distinct UNION whose rows carry the node id
+        and code field, and the summary asks about one secret, so each
+        (node, code_field) pair already arrives exactly once.
+        """
         flows: dict[int, dict] = {}
         for hit in hits:
             flow = flows.setdefault(
                 hit.resource_id,
                 {"id": hit.resource_id, "name": hit.resource_name, "nodes": []},
             )
-            node = {
-                "name": hit.node_name,
-                "node_type": hit.node_type,
-                "code_field": hit.code_field,
-            }
-            if node not in flow["nodes"]:
-                flow["nodes"].append(node)
+            flow["nodes"].append(
+                {
+                    "id": hit.node_id,
+                    "node_number": hit.node_number,
+                    "name": hit.node_name,
+                    "node_type": hit.node_type,
+                    "code_field": hit.code_field,
+                }
+            )
 
         for flow in flows.values():
             flow["nodes"].sort(
                 key=lambda node: (
                     node["name"] or "",
+                    # node_number is nullable: unnumbered nodes sort after numbered ones.
+                    node["node_number"] is None,
+                    node["node_number"] or 0,
                     node["node_type"],
                     node["code_field"] or "",
+                    # Breaks ties between namesakes sharing a number (or both lacking
+                    # one), which UNION row order would otherwise decide.
+                    node["id"],
                 )
             )
         return sorted(flows.values(), key=lambda flow: (flow["name"] or "", flow["id"]))

@@ -2,6 +2,7 @@ import itertools
 
 from django.db.models import Count, F
 from loguru import logger
+from rbac.authorship import AuthorSummarySerializerMixin, LastEditFieldsSerializerMixin
 from rest_framework import serializers
 from tables.models.knowledge_models import (
     BaseRagType,
@@ -10,24 +11,31 @@ from tables.models.knowledge_models import (
     NaiveRag,
     SourceCollection,
 )
+from tables.models.knowledge_models.collection_models import clean_collection_description
+from tables.serializers.utils.bulk_ids import BulkIdListField, BulkIdListSerializer
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
+)
+from tables.services.knowledge_services.storage_document_import_service import (
+    SkipReason,
+    max_storage_selection,
 )
 
 COLLECTION_DESCRIPTION_MAX_LENGTH = 2000
 
 
 def validate_collection_description(value):
-    """Shared length validation for SourceCollection.description.
+    """Clean SourceCollection.description and check its length.
 
-    The value is injected verbatim into every knowledge tool description sent
-    to the LLM, so an unbounded length would bloat every prompt.
+    Appended to every knowledge tool description sent to the LLM, so the length
+    is capped. Measured on the value as SourceCollection.save() cleans it.
     """
-    if value and len(value) > COLLECTION_DESCRIPTION_MAX_LENGTH:
+    cleaned = clean_collection_description(value)
+    if len(cleaned) > COLLECTION_DESCRIPTION_MAX_LENGTH:
         raise serializers.ValidationError(
             f"Description must be {COLLECTION_DESCRIPTION_MAX_LENGTH} characters or less."
         )
-    return value
+    return cleaned
 
 
 class RagConfigurationSummarySerializer(serializers.Serializer):
@@ -84,6 +92,10 @@ class RagConfigurationSummarySerializer(serializers.Serializer):
         required=False,
         allow_null=True,
         help_text="Outdated reasons for this RAG configuration.",
+    )
+    indexing_usage = serializers.DictField(
+        required=False,
+        help_text="Token usage and cost of the last indexing run and the total across runs.",
     )
     created_at = serializers.DateTimeField(help_text="When this RAG configuration was created")
     updated_at = serializers.DateTimeField(help_text="When this RAG configuration was last updated")
@@ -174,6 +186,10 @@ class DocumentUploadSerializer(serializers.Serializer):
         return value
 
 
+class SourceCollectionBulkDeleteSerializer(BulkIdListSerializer):
+    collection_ids = BulkIdListField(help_text="IDs of the collections to delete")
+
+
 class DocumentBulkDeleteSerializer(serializers.Serializer):
     """
     Serializer for bulk deletion of documents.
@@ -217,6 +233,40 @@ class CopyDocumentsSerializer(serializers.Serializer):
         return list(dict.fromkeys(value))
 
 
+class ImportFromStorageSerializer(serializers.Serializer):
+    """Input for importing storage files into a collection."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Built per instance: the cap derives from settings, which a class
+        # attribute would freeze at import time.
+        self.fields["storage_file_ids"] = serializers.ListField(
+            child=serializers.IntegerField(min_value=1),
+            allow_empty=False,
+            max_length=max_storage_selection(),
+            help_text="Ids of storage files and/or folders; folders import every file beneath them",
+        )
+
+    def validate_storage_file_ids(self, value):
+        return list(dict.fromkeys(value))
+
+
+class ImportFromStorageSkippedSerializer(serializers.Serializer):
+    """Response shape of one storage file left out of an import (schema only)."""
+
+    storage_file_id = serializers.IntegerField()
+    path = serializers.CharField()
+    reason = serializers.ChoiceField(choices=[reason.value for reason in SkipReason])
+
+
+class ImportFromStorageResponseSerializer(serializers.Serializer):
+    """Response shape of a storage import (schema only)."""
+
+    message = serializers.CharField()
+    documents = DocumentMetadataSerializer(many=True)
+    skipped = ImportFromStorageSkippedSerializer(many=True)
+
+
 class DocumentDetailSerializer(serializers.ModelSerializer):
     """
     Detailed serializer for single document view.
@@ -239,7 +289,7 @@ class DocumentDetailSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class SourceCollectionListSerializer(serializers.ModelSerializer):
+class SourceCollectionListSerializer(LastEditFieldsSerializerMixin, serializers.ModelSerializer):
     """
     Serializer for listing collections.
     Shows basic collection info plus a compact view of available RAG
@@ -260,7 +310,7 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
             "collection_id",
             "collection_name",
             "description",
-            "user_id",
+            "created_by",
             "status",
             "document_count",
             "rag_configurations",
@@ -304,7 +354,7 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
             return []
 
 
-class SourceCollectionDetailSerializer(serializers.ModelSerializer):
+class SourceCollectionDetailSerializer(LastEditFieldsSerializerMixin, serializers.ModelSerializer):
     """
     Serializer for retrieving a single collection with all details.
     Includes RAG configurations to show what RAG types are available.
@@ -321,7 +371,7 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
             "collection_id",
             "collection_name",
             "description",
-            "user_id",
+            "created_by",
             "status",
             "document_count",
             "rag_configurations",
@@ -363,7 +413,7 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
             return []
 
 
-class SourceCollectionCreateSerializer(serializers.ModelSerializer):
+class SourceCollectionCreateSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
     """
     Serializer for creating a new empty collection.
     """
@@ -374,13 +424,14 @@ class SourceCollectionCreateSerializer(serializers.ModelSerializer):
             "collection_id",
             "collection_name",
             "description",
-            "user_id",
+            "created_by",
             "status",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "collection_id",
+            "created_by",
             "status",
             "created_at",
             "updated_at",
@@ -388,7 +439,6 @@ class SourceCollectionCreateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "collection_name": {"required": False, "allow_blank": True},
             "description": {"required": False, "allow_blank": True},
-            "user_id": {"required": False},
         }
         validators = []
 

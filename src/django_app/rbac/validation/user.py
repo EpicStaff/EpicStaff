@@ -1,8 +1,26 @@
+import re
+from collections.abc import Mapping
 from typing import Any
 
 from django.core.files.uploadedfile import UploadedFile
+from tables.models.user import (
+    SHORTCUTS_MAX_CUSTOM_ENTRIES,
+    SHORTCUTS_MAX_OVERRIDE_ENTRIES,
+    SHORTCUTS_MAX_PARAM_INTEGER,
+    SHORTCUTS_MAX_PARAMS,
+    SHORTCUTS_MAX_TEXT_LENGTH,
+    TOUR_KEY_MAX_LENGTH,
+)
 
 from rbac.validation.base import BaseRBACValidator, FieldError
+
+_CUSTOM_ENTRY_SHAPE_REASON = (
+    '"custom" must be a list of objects with exactly the keys "action" and "keys", '
+    'plus an optional "params".'
+)
+
+# Kebab case: "quick-start", "flows-v2". Used with fullmatch, so a trailing newline fails too.
+_TOUR_KEY = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
 class UserValidationService(BaseRBACValidator):
@@ -32,7 +50,7 @@ class UserValidationService(BaseRBACValidator):
 
         errors: list[FieldError] = []
         errors.extend(self._validate_new_account_email(email))
-        errors.extend(self._validate_password_field(password, user_hints={"email": email}))
+        errors.extend(self._validate_password_field(password, user=self._prospective_user(email)))
         display_name, display_name_errors = self._clean_display_name(data.get("display_name"))
         errors.extend(display_name_errors)
         if organization_id is not None:
@@ -185,16 +203,20 @@ class UserValidationService(BaseRBACValidator):
 
     # ---- Story 6: profile ----
 
-    def validate_profile_patch(self, data: dict) -> dict:
+    def validate_profile_patch(self, data: Any) -> dict:
         """`PATCH /api/profile/`.
 
         Returns a cleaned dict containing only the keys that were in
         `data` and that passed validation. Unknown keys are silently
         ignored — they cannot reach the service.
 
-        Now: display_name is the only mutable field. Future fields
-        land here as additional branches.
+        Mutable fields: display_name and custom_shortcuts. The view
+        writes nothing until this returns, so one invalid field rejects
+        the whole PATCH.
         """
+        if not isinstance(data, Mapping):
+            self._raise_if_any([FieldError("body", None, "Request body must be a JSON object.")])
+
         cleaned: dict = {}
         errors: list[FieldError] = []
 
@@ -206,8 +228,65 @@ class UserValidationService(BaseRBACValidator):
             if not display_name_errors:
                 cleaned["display_name"] = display_name
 
+        if "custom_shortcuts" in data:
+            custom_shortcuts_reason = self._custom_shortcuts_error(data["custom_shortcuts"])
+            if custom_shortcuts_reason is None:
+                cleaned["custom_shortcuts"] = data["custom_shortcuts"]
+            else:
+                errors.append(FieldError("custom_shortcuts", None, custom_shortcuts_reason))
+
         self._raise_if_any(errors)
         return cleaned
+
+    @staticmethod
+    def _custom_shortcuts_error(value: Any) -> str | None:
+        if not isinstance(value, dict) or value.keys() != {"custom", "overrides"}:
+            return 'Must be an object with exactly the keys "custom" and "overrides".'
+        custom = value["custom"]
+        overrides = value["overrides"]
+        if not isinstance(custom, list):
+            return _CUSTOM_ENTRY_SHAPE_REASON
+        if not isinstance(overrides, dict):
+            return '"overrides" must be an object mapping action ids to keys or null.'
+        if len(custom) > SHORTCUTS_MAX_CUSTOM_ENTRIES:
+            return f'"custom" must have {SHORTCUTS_MAX_CUSTOM_ENTRIES} entries or fewer.'
+        if len(overrides) > SHORTCUTS_MAX_OVERRIDE_ENTRIES:
+            return f'"overrides" must have {SHORTCUTS_MAX_OVERRIDE_ENTRIES} entries or fewer.'
+        if not all(_has_shortcut_entry_shape(entry) for entry in custom):
+            return _CUSTOM_ENTRY_SHAPE_REASON
+        params_list = [entry["params"] for entry in custom if "params" in entry]
+        if not all(
+            isinstance(params, dict) and 0 < len(params) <= SHORTCUTS_MAX_PARAMS
+            for params in params_list
+        ):
+            return f'"params" must be an object with 1 to {SHORTCUTS_MAX_PARAMS} entries.'
+        action_ids = [entry["action"] for entry in custom] + list(overrides)
+        if not all(_is_shortcut_text(action_id) for action_id in action_ids):
+            return (
+                "Action ids must be non-empty printable ASCII strings "
+                f"of {SHORTCUTS_MAX_TEXT_LENGTH} characters or fewer."
+            )
+        assigned_keys = [entry["keys"] for entry in custom if entry["keys"] is not None] + [
+            keys for keys in overrides.values() if keys is not None
+        ]
+        if not all(_is_shortcut_text(keys) for keys in assigned_keys):
+            return (
+                "Keys must be null or non-empty printable ASCII strings "
+                f"of {SHORTCUTS_MAX_TEXT_LENGTH} characters or fewer."
+            )
+        if not all(
+            _is_shortcut_text(name) and _is_shortcut_param_value(param_value)
+            for params in params_list
+            for name, param_value in params.items()
+        ):
+            return (
+                "Param names must be non-empty printable ASCII strings "
+                f"of {SHORTCUTS_MAX_TEXT_LENGTH} characters or fewer; each value must be "
+                f"such a string or an integer from 0 to {SHORTCUTS_MAX_PARAM_INTEGER}."
+            )
+        if len(set(assigned_keys)) != len(assigned_keys):
+            return 'Keys must not repeat across "custom" entries and "overrides".'
+        return None
 
     def validate_avatar_upload(self, data) -> UploadedFile:
         """`POST /api/profile/avatar/`.
@@ -225,6 +304,32 @@ class UserValidationService(BaseRBACValidator):
         self._raise_if_any(errors)
         return file
 
+    def validate_tour_key(self, tour_key: str) -> str:
+        """`POST /api/profile/tours/{tour_key}/complete/`.
+
+        Grammar only: lowercase ASCII letters and digits in words joined by
+        single hyphens, at most TOUR_KEY_MAX_LENGTH characters. Keys are not
+        checked against a list of tours, so the frontend can add a tour without
+        a backend change; the per-user limit is enforced by UserProfileService.
+        """
+        errors: list[FieldError] = []
+        if len(tour_key) > TOUR_KEY_MAX_LENGTH:
+            errors.append(
+                FieldError(
+                    "tour_key", tour_key, f"Must be {TOUR_KEY_MAX_LENGTH} characters or fewer."
+                )
+            )
+        elif not _TOUR_KEY.fullmatch(tour_key):
+            errors.append(
+                FieldError(
+                    "tour_key",
+                    tour_key,
+                    "Use lowercase letters and digits, in words joined by single hyphens.",
+                )
+            )
+        self._raise_if_any(errors)
+        return tour_key
+
     def validate_password_change_request(self, data: dict) -> dict:
         """`POST /api/profile/password-change/request/`. Body: current_password."""
         current_password = data.get("current_password")
@@ -239,6 +344,30 @@ class UserValidationService(BaseRBACValidator):
         new_password = data.get("new_password")
         errors: list[FieldError] = []
         errors.extend(self._require_nonblank_string("ticket", ticket))
-        errors.extend(self._validate_password_field(new_password, field_name="new_password"))
+        errors.extend(
+            self._validate_password_field(new_password, user=None, field_name="new_password")
+        )
         self._raise_if_any(errors)
         return {"ticket": ticket, "new_password": new_password}
+
+
+def _has_shortcut_entry_shape(entry: Any) -> bool:
+    return isinstance(entry, dict) and entry.keys() in (
+        {"action", "keys"},
+        {"action", "keys", "params"},
+    )
+
+
+def _is_shortcut_param_value(param_value: Any) -> bool:
+    if type(param_value) is int:
+        return 0 <= param_value <= SHORTCUTS_MAX_PARAM_INTEGER
+    return _is_shortcut_text(param_value)
+
+
+def _is_shortcut_text(text: Any) -> bool:
+    return (
+        isinstance(text, str)
+        and 0 < len(text) <= SHORTCUTS_MAX_TEXT_LENGTH
+        and text.isascii()
+        and text.isprintable()
+    )

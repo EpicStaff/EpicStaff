@@ -1,0 +1,6 @@
+@use './a11y-mixins';
+
+// Read by screen readers only: a label or description the layout shows without.
+.visually-hidden {
+    @include a11y-mixins.visually-hidden;
+}

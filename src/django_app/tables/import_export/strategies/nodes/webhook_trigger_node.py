@@ -1,3 +1,5 @@
+from rbac.authorship import resolve_author
+
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
@@ -5,6 +7,7 @@ from tables.import_export.serializers.webhook_trigger_node import (
     WebhookTriggerNodeImportSerializer,
 )
 from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.utils import python_code_venv_ids, remap_python_code_venv
 from tables.models import WebhookTrigger, WebhookTriggerNode
 
 
@@ -19,7 +22,17 @@ class WebhookTriggerNodeStrategy(EntityImportExportStrategy):
         return {"id": instance.id, "graph": instance.graph_id}
 
     def extract_dependencies_from_instance(self, instance: WebhookTriggerNode) -> dict:
-        deps = {EntityType.GRAPH: [instance.graph_id]}
+        return self._dependencies(instance, org_id=None)
+
+    def extract_org_scoped_dependencies(self, instance: WebhookTriggerNode, org_id: int) -> dict:
+        return self._dependencies(instance, org_id=org_id)
+
+    @staticmethod
+    def _dependencies(instance: WebhookTriggerNode, *, org_id: int | None) -> dict:
+        deps = {
+            EntityType.GRAPH: [instance.graph_id],
+            EntityType.VENV: python_code_venv_ids(instance.python_code, org_id=org_id),
+        }
         if instance.webhook_trigger_id:
             deps[EntityType.WEBHOOK_TRIGGER] = [instance.webhook_trigger_id]
         return deps
@@ -34,7 +47,9 @@ class WebhookTriggerNodeStrategy(EntityImportExportStrategy):
         new_trigger_id = id_mapper.get_or_none(EntityType.WEBHOOK_TRIGGER, old_trigger_id)
         webhook_trigger = WebhookTrigger.objects.filter(id=new_trigger_id).first()
 
-        python_code_serializer = PythonCodeImportSerializer(data=python_code_data)
+        python_code_serializer = PythonCodeImportSerializer(
+            data=remap_python_code_venv(python_code_data, id_mapper)
+        )
         python_code_serializer.is_valid(raise_exception=True)
         python_code = python_code_serializer.save()
 
@@ -47,4 +62,7 @@ class WebhookTriggerNodeStrategy(EntityImportExportStrategy):
             }
         )
         serializer.is_valid(raise_exception=True)
-        return serializer.save()
+        return serializer.save(
+            created_by=resolve_author(kwargs.get("user")),
+            node_number=kwargs.get("node_number"),
+        )

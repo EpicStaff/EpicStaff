@@ -1,9 +1,27 @@
-from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 from tables.models.base_models import CrewSessionMessage
 from tables.models.graph_models import GraphOrganizationUser
+
+
+class SessionQuerySet(models.QuerySet):
+    def visible(self) -> "SessionQuerySet":
+        """Sessions a user may see: their flow exists and is not in the recycle bin.
+
+        A session follows its flow (see `Session.soft_delete_kept_link_fields`), so a
+        session of a binned flow answers like a missing one until a restore brings it
+        back or a purge deletes it. Code that only records a running session's progress
+        uses the unfiltered manager instead, so a run whose flow is binned mid-way
+        can still record its status and messages. What it reaches through the binned
+        flow's nodes (a key-value table, a subflow) is gone with them.
+        """
+        return self.filter(graph__active=True)
+
+    def visible_in_org(self, org_id: int) -> "SessionQuerySet":
+        """Visible sessions (see `visible`) of the flows organization `org_id` owns."""
+        return self.visible().filter(graph__org_id=org_id)
 
 
 class Session(models.Model):
@@ -35,12 +53,21 @@ class Session(models.Model):
     status_data = models.JSONField(default=dict)
     variables = models.JSONField(default=dict)
     created_at = models.DateTimeField(default=timezone.now)
-    graph_schema = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
     graph_user = models.ForeignKey(
         GraphOrganizationUser, on_delete=models.SET_NULL, default=None, null=True
     )
     entrypoint = models.CharField(null=True, default=None)
     token_usage = models.JSONField(default=dict)
+
+    # Binning the flow leaves `graph` set, so a restore brings its sessions back
+    # and a purge deletes them (the FK's CASCADE). `graph_user` is binned with the
+    # flow, so it is kept too; a purge applies its SET_NULL.
+    # See tables/services/soft_delete.py.
+    soft_delete_kept_link_fields = ("graph", "graph_user")
+
+    # Not filtered: the runtime keeps updating sessions of a flow binned mid-run.
+    # User-facing reads go through `visible()` / `visible_in_org()`.
+    objects = SessionQuerySet.as_manager()
 
     def save(self, *args, **kwargs):
         now = timezone.now()
@@ -73,6 +100,16 @@ class Session(models.Model):
 
     class Meta:
         get_latest_by = ["id"]
+        indexes = [
+            # The retention job's pick: finished root sessions, by flow, oldest first. id
+            # completes its keyset order, so a batch is one index range with no sort.
+            # finished_at is set once, so status and token-usage updates stay HOT-eligible.
+            models.Index(
+                fields=["graph", "finished_at", "id"],
+                name="session_root_graph_finished",
+                condition=Q(parent_session__isnull=True, finished_at__isnull=False),
+            ),
+        ]
 
 
 class UserSessionMessage(CrewSessionMessage):
@@ -153,8 +190,20 @@ class SessionTrigger(models.Model):
         related_name="+",
     )
 
-    # non-relational bits: telegram chat_id, webhook path, ngrok config name
+    # non-relational bits: telegram chat_id, webhook path, ngrok config name, test-run flag
     extra = models.JSONField(default=dict)
+
+    # The trigger nodes and the GraphOrganizationUser are binned with their flow;
+    # keeping the links lets a restored session still name the node and the user that
+    # started it. See Session.soft_delete_kept_link_fields.
+    soft_delete_kept_link_fields = (
+        "schedule_trigger_node",
+        "webhook_trigger_node",
+        "telegram_trigger_node",
+        "triggered_by_user",
+    )
+
+    TEST_RUN_EXTRA_KEY = "test_run"
 
     _TRIGGER_ID_ATTNAME = {
         TriggerType.SCHEDULE: "schedule_trigger_node_id",
@@ -171,6 +220,11 @@ class SessionTrigger(models.Model):
             return None
         return getattr(self, attname, None)
 
+    @property
+    def is_test_run(self) -> bool:
+        """True when a designer started the session from the editor with a hand-written payload."""
+        return self.extra.get(self.TEST_RUN_EXTRA_KEY) is True
+
 
 class SessionPrincipal(models.Model):
     class ActionKind(models.TextChoices):
@@ -178,6 +232,7 @@ class SessionPrincipal(models.Model):
         API_KEY_USER = "api_key_user"
         API_KEY_SYSTEM = "api_key_system"
         TRIGGER = "trigger"
+        PLUGIN = "plugin"
         UNKNOWN = "unknown"
 
     session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name="principal")
@@ -199,3 +254,6 @@ class SessionPrincipal(models.Model):
         related_name="+",
     )
     email = models.CharField(max_length=256, default=None, blank=True, null=True)
+    # Set for PLUGIN runs only; `user` and `email` then name the person the plugin
+    # ran the flow on behalf of, or stay empty when it ran on its own.
+    plugin_identifier = models.CharField(max_length=32, default=None, blank=True, null=True)

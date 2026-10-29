@@ -6,6 +6,12 @@ import { authGuard } from './core/guards/auth.guard';
 import { bootstrapGuard } from './core/guards/bootstrap.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { onboardingGuard, resourceGuard, unassignedGuard } from './core/guards/resource.guard';
+import {
+    pluginActivityPermissionGuard,
+    secretsPermissionGuard,
+    settingsGuard,
+    settingsIndexGuard,
+} from './core/guards/settings.guard';
 import { UnsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 import {
     permissionGuard,
@@ -14,6 +20,13 @@ import {
     workspaceIndexGuard,
     workspacePermissionGuard,
 } from './core/guards/workspace.guard';
+import { HIDE_SIDENAV_ON_PHONE } from './core/services/app-navigation-drawer.service';
+import { auditTrailEnabledGuard } from './features/audit/guards/audit-trail-enabled.guard';
+import { chatEnabledGuard } from './features/chat/guards/chat-enabled.guard';
+import { FILES_TAB } from './features/files/constants/files-tabs';
+import { availablePluginGuard } from './features/plugins/guards/available-plugin.guard';
+import { pluginsEnabledGuard } from './features/plugins/guards/plugins-enabled.guard';
+import { pluginPageMatcher } from './features/plugins/pages/plugin-host-page/plugin-page.matcher';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
 import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
@@ -21,6 +34,7 @@ import { MainLayoutComponent } from './layouts/main-layout/main-layout.component
 import { RoutedAuthShellComponent } from './layouts/routed-auth-shell/routed-auth-shell.component';
 import { PermissionsService } from './services/auth/permissions.service';
 import { LastVisitedTabService } from './services/last-visited-tab.service';
+import { executionTimeoutLimitsResolver } from './visual-programming/services/execution-timeout-limits.resolver';
 
 export const routes: Routes = [
     {
@@ -52,6 +66,15 @@ export const routes: Routes = [
         canActivate: [guestGuard],
     },
     {
+        // A plugin page's sign-in, often inside the plugin's frame. No guestGuard: a person who is already signed in
+        // continues the sign-in at once instead of being sent into EpicStaff.
+        path: 'plugin-login',
+        loadComponent: () =>
+            import('./features/plugins/pages/plugin-login-continue-page/plugin-login-continue-page.component').then(
+                (m) => m.PluginLoginContinuePageComponent
+            ),
+    },
+    {
         path: '',
         component: RoutedAuthShellComponent,
         canActivate: [authGuard, bootstrapGuard],
@@ -71,6 +94,16 @@ export const routes: Routes = [
                         (m) => m.UnassignedUserPageComponent
                     ),
                 canActivate: [unassignedGuard],
+            },
+            {
+                // Which organization a plugin page signs in to; signed in, without EpicStaff's layout, often inside
+                // the plugin's frame.
+                path: 'plugin-choose-org',
+                loadComponent: () =>
+                    import('./features/plugins/pages/plugin-org-chooser-page/plugin-org-chooser-page.component').then(
+                        (m) => m.PluginOrgChooserPageComponent
+                    ),
+                canActivate: [pluginsEnabledGuard],
             },
             {
                 path: '',
@@ -190,6 +223,7 @@ export const routes: Routes = [
                             ),
                         canActivate: [permissionGuard],
                         data: { permission: [ResourceCode.Flows, ActionCode.Read] },
+                        resolve: { executionTimeoutLimits: executionTimeoutLimitsResolver },
                         canDeactivate: [UnsavedChangesGuard],
                     },
                     {
@@ -203,11 +237,11 @@ export const routes: Routes = [
                     },
                     {
                         path: 'knowledge-sources',
-                        redirectTo: 'files',
+                        redirectTo: 'storage',
                         pathMatch: 'full',
                     },
                     {
-                        path: 'files',
+                        path: 'storage',
                         loadComponent: () =>
                             import('./features/files/pages/files-list-page/files-list-page.component').then(
                                 (m) => m.FilesListPageComponent
@@ -217,49 +251,85 @@ export const routes: Routes = [
                                 path: '',
                                 canActivate: [
                                     () => {
-                                        const last = inject(LastVisitedTabService).get('/files');
+                                        const last = inject(LastVisitedTabService).get('/storage');
                                         const permissions = inject(PermissionsService);
                                         return inject(Router).parseUrl(
-                                            last ?? permissions.resolveFilesTab() ?? permissions.resolveDefaultRoute()
+                                            last ?? permissions.resolveStorageTab() ?? permissions.resolveDefaultRoute()
                                         );
                                     },
                                 ],
                                 children: [],
                             },
+                            // Component-less on purpose: FilesListPageComponent renders the tab pages
+                            // itself (lazily, via @defer) so the Storage page can outlive a tab switch
+                            // during a storage → knowledge drag. These routes own the URL and the guards.
                             {
-                                path: 'knowledge-sources',
-                                loadComponent: () =>
-                                    import('./features/knowledge-sources/pages/collections-list-page/collections-list-page.component').then(
-                                        (m) => m.CollectionsListPageComponent
-                                    ),
+                                path: FILES_TAB.KnowledgeSources,
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.KnowledgeSources, ActionCode.Read] },
+                                children: [],
                             },
                             {
-                                path: 'storage',
-                                loadComponent: () =>
-                                    import('./features/files/pages/files-list-page/components/storage-page/storage-page.component').then(
-                                        (m) => m.StoragePageComponent
-                                    ),
+                                path: FILES_TAB.Storage,
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.Files, ActionCode.Read] },
+                                children: [],
                             },
                             {
-                                path: 'key-value-tables',
-                                loadComponent: () =>
-                                    import('./features/key-value-tables/pages/key-value-tables-page/key-value-tables-page.component').then(
-                                        (m) => m.KeyValueTablesPageComponent
-                                    ),
+                                path: FILES_TAB.KeyValueTables,
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.KeyValueTables, ActionCode.Read] },
+                                children: [],
                             },
                         ],
+                    },
+                    {
+                        path: 'venvs',
+                        loadComponent: () =>
+                            import('./features/virtual-environments/pages/venvs-list-page/venvs-list-page.component').then(
+                                (m) => m.VenvsListPageComponent
+                            ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Venvs, ActionCode.Read] },
                     },
                     {
                         path: 'chats',
                         loadComponent: () =>
                             import('./pages/chats-page/chats-page.component').then((m) => m.ChatsPageComponent),
                     },
+                    {
+                        // Not under `/chat`: nginx sends every `/chat/<anything>` to the chat service.
+                        path: 'chat-bindings',
+                        canActivate: [chatEnabledGuard, permissionGuard],
+                        // On phones the chat area takes the whole width; its desk drawer opens the app navigation.
+                        data: { permission: [ResourceCode.Chats, ActionCode.Read], [HIDE_SIDENAV_ON_PHONE]: true },
+                        // The desk rail lives here, so moving between the pages below keeps it (and its focus).
+                        loadComponent: () =>
+                            import('./features/chat/pages/desks-shell/desks-shell.component').then(
+                                (m) => m.DesksShellComponent
+                            ),
+                        children: [
+                            // The desk rail lists every desk, so the bare path opens All desks.
+                            { path: '', redirectTo: 'all', pathMatch: 'full' },
+                            {
+                                // The inbox across every binding: the workspace without a binding.
+                                path: 'all',
+                                loadComponent: () =>
+                                    import('./features/chat/pages/chat-page/chat-page.component').then(
+                                        (m) => m.ChatPageComponent
+                                    ),
+                            },
+                            {
+                                path: ':bindingId',
+                                loadComponent: () =>
+                                    import('./features/chat/pages/chat-page/chat-page.component').then(
+                                        (m) => m.ChatPageComponent
+                                    ),
+                            },
+                        ],
+                    },
+                    // The page lived here before `/chat-bindings`; `/chat` itself still reaches the SPA.
+                    { path: 'chat', redirectTo: 'chat-bindings', pathMatch: 'full' },
                     {
                         path: 'sessions',
                         loadComponent: () =>
@@ -268,6 +338,108 @@ export const routes: Routes = [
                             ),
                         canActivate: [permissionGuard],
                         data: { permission: [ResourceCode.Flows, ActionCode.Read] },
+                    },
+                    {
+                        path: 'recycle-bin',
+                        loadChildren: () =>
+                            import('./features/recycle-bin/recycle-bin.routes').then((m) => m.RECYCLE_BIN_ROUTES),
+                    },
+                    {
+                        path: 'audit',
+                        loadComponent: () =>
+                            import('./features/audit/audit-sessions-browser.component').then(
+                                (m) => m.AuditSessionsBrowserComponent
+                            ),
+                        canActivate: [auditTrailEnabledGuard, permissionGuard],
+                        data: { permission: [ResourceCode.Audit, ActionCode.Read] },
+                    },
+                    {
+                        path: 'settings',
+                        loadComponent: () =>
+                            import('./features/configure-models/pages/settings-page/settings-page.component').then(
+                                (m) => m.SettingsPageComponent
+                            ),
+                        canActivate: [settingsGuard],
+                        children: [
+                            {
+                                path: '',
+                                pathMatch: 'full',
+                                canActivate: [settingsIndexGuard],
+                                children: [],
+                            },
+                            {
+                                path: 'quickstart',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/quickstart-section/quickstart-section.component').then(
+                                        (m) => m.QuickstartSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.LlmConfigs, ActionCode.Create] },
+                            },
+                            {
+                                path: 'default-llms',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/default-llms-section/default-llms-section.component').then(
+                                        (m) => m.DefaultLlmsSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.LlmConfigs, ActionCode.Read] },
+                            },
+                            {
+                                path: 'llm-library',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/llm-library-section/llm-library-section.component').then(
+                                        (m) => m.LlmLibrarySectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.LlmConfigs, ActionCode.Read] },
+                            },
+                            {
+                                path: 'webhook-triggers',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/webhook-triggers-section/webhook-triggers-section.component').then(
+                                        (m) => m.WebhookTriggersSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.Webhooks, ActionCode.Read] },
+                            },
+                            {
+                                path: 'voice',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/voice-settings-section/voice-settings-section.component').then(
+                                        (m) => m.VoiceSettingsSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.Voice, ActionCode.Read] },
+                            },
+                            {
+                                path: 'secrets',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/secrets-section/secrets-section.component').then(
+                                        (m) => m.SecretsSectionComponent
+                                    ),
+                                canActivate: [secretsPermissionGuard],
+                            },
+                            {
+                                // What plugins do in the active organization, for whoever may read its audit trail.
+                                path: 'plugin-activity',
+                                loadComponent: () =>
+                                    import('./features/plugins/pages/plugin-activity-settings-page/plugin-activity-settings-page.component').then(
+                                        (m) => m.PluginActivitySettingsPageComponent
+                                    ),
+                                canActivate: [pluginActivityPermissionGuard],
+                            },
+                        ],
+                    },
+                    {
+                        // A plugin's own page, framed from the plugin's origin; everything below the identifier is
+                        // the page's path. Only a plugin the caller may open in the active organization.
+                        matcher: pluginPageMatcher,
+                        canActivate: [availablePluginGuard],
+                        loadComponent: () =>
+                            import('./features/plugins/pages/plugin-host-page/plugin-host-page.component').then(
+                                (m) => m.PluginHostPageComponent
+                            ),
                     },
                     {
                         path: 'workspace',
@@ -326,6 +498,26 @@ export const routes: Routes = [
                                     ),
                                 canActivate: [workspacePermissionGuard],
                                 data: { permission: [ResourceCode.ApiKeys, ActionCode.Read] },
+                            },
+                            {
+                                path: 'plugins',
+                                canActivate: [pluginsEnabledGuard, superAdminGuard],
+                                children: [
+                                    {
+                                        path: '',
+                                        loadComponent: () =>
+                                            import('./features/plugins/pages/plugins-admin-page/plugins-admin-page.component').then(
+                                                (m) => m.PluginsAdminPageComponent
+                                            ),
+                                    },
+                                    {
+                                        path: ':identifier',
+                                        loadComponent: () =>
+                                            import('./features/plugins/pages/plugin-admin-detail-page/plugin-admin-detail-page.component').then(
+                                                (m) => m.PluginAdminDetailPageComponent
+                                            ),
+                                    },
+                                ],
                             },
                         ],
                     },

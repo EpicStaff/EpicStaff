@@ -1,0 +1,22 @@
+@if (entries().length > 0) {
+    <table class="access-table text-body">
+        <thead>
+            <tr>
+                <th scope="col">Resource</th>
+                <th scope="col">Actions</th>
+                <th scope="col">Reason</th>
+            </tr>
+        </thead>
+        <tbody>
+            @for (entry of entries(); track entry.resource_type) {
+                <tr>
+                    <td>{{ entry.resource_label }}</td>
+                    <td>{{ entry.actionLabels }}</td>
+                    <td>{{ entry.reason }}</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+} @else {
+    <p class="access-table__none text-body">None. The plugin cannot read or change anything in EpicStaff.</p>
+}

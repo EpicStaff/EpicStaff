@@ -1,3 +1,62 @@
+<ng-template #headerActionsTpl>
+    <!-- Hidden without Flows:Update or Flows:Use, and in a version preview: a test run needs both and runs the live graph. -->
+    @if (canRunNode()) {
+        <app-run-test-payload-button
+            [labelled]="isExpanded()"
+            [disabledReason]="testPayload.runBlocker()"
+            [isStarting]="testPayload.isStarting()"
+            (run)="testPayload.run()"
+        />
+    }
+</ng-template>
+
+<ng-template #codeEditorCard>
+    <div class="code-card-group">
+        <app-code-editor
+            class="code-editor-card"
+            [class.code-editor-card--with-terminal]="showCodeTerminal()"
+            [pythonCode]="pythonCode"
+            [secretNames]="secretNames()"
+            [readOnly]="isReadOnly()"
+            [editorHeight]="smallEditorHeight"
+            [allowExpand]="true"
+            [compactHeader]="true"
+            [actionIcon]="runPythonCodeIcon()"
+            [actionLabel]="runPythonCodeLabel"
+            [actionDisabledReason]="runCodeBlocker()"
+            (pythonCodeChange)="onPythonCodeChange($event)"
+            (errorChange)="onCodeErrorChange($event)"
+            (expand)="expandPane('code')"
+            (action)="runPythonCode()"
+        ></app-code-editor>
+        @if (showCodeTerminal()) {
+            <ng-container [ngTemplateOutlet]="codeTerminal" />
+        }
+    </div>
+</ng-template>
+
+<ng-template #codeTerminal>
+    <app-python-terminal
+        [logs]="codeTestRun.logs()"
+        [terminalHeight]="codeTestRun.terminalHeight()"
+        [status]="codeTestRun.status()"
+        (heightChange)="codeTestRun.setTerminalHeight($event)"
+        (clearLogs)="codeTestRun.clearLogs()"
+    />
+</ng-template>
+
+<ng-template #testPayloadCard>
+    <app-test-payload-section
+        [text]="testPayload.text()"
+        [check]="testPayload.check()"
+        [readonly]="isReadOnly()"
+        [serverErrors]="testPayload.serverErrors()"
+        [editorHeight]="smallEditorHeight"
+        (textChange)="onTestPayloadTextChange($event)"
+        (expand)="expandPane('payload')"
+    />
+</ng-template>
+
 <div class="panel-container">
     <div
         class="panel-content"
@@ -21,7 +80,7 @@
                     <div class="field-isolated">
                         <app-custom-input
                             label="Node Name"
-                            tooltipText="The unique identifier used to reference this Webhook Trigger node. This name must be unique within the flow."
+                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"
@@ -73,14 +132,27 @@
                         (valueChange)="onSecretsChange($event)"
                     />
 
-                    <app-custom-input
-                        label="Libraries"
-                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                        formControlName="libraries"
-                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                        [activeColor]="activeColor"
+                    <app-execution-timeout-field
+                        [field]="executionTimeout"
                         [readonly]="isReadOnly()"
-                    ></app-custom-input>
+                    />
+
+                    <app-node-storage-section
+                        [readonly]="isReadOnly()"
+                        [useStorage]="useStorage()"
+                        (onToggleChange)="onStorageToggle($event)"
+                        (onInsertCode)="insertStorageCode($event)"
+                        (onRemoveCode)="removeStorageCode($event)"
+                    ></app-node-storage-section>
+
+                    <!-- Expanded: the editor not shown in the big pane sits at the bottom of this column. -->
+                    @if (isExpanded()) {
+                        @if (expandedPane() === 'payload') {
+                            <ng-container [ngTemplateOutlet]="codeEditorCard" />
+                        } @else {
+                            <ng-container [ngTemplateOutlet]="testPayloadCard" />
+                        }
+                    }
                 </div>
                 @if (isExpanded()) {
                     <app-column-resize-divider
@@ -99,14 +171,47 @@
                     #editorColumn
                     class="code-editor-wrapper"
                 >
-                    <app-code-editor
-                        class="code-editor-section"
-                        [pythonCode]="pythonCode"
-                        [secretNames]="secretNames()"
-                        [readOnly]="isReadOnly()"
-                        (pythonCodeChange)="onPythonCodeChange($event)"
-                        (errorChange)="onCodeErrorChange($event)"
-                    ></app-code-editor>
+                    <!-- Separate branches: the editors do not react to a changed height mode. -->
+                    @if (!isExpanded()) {
+                        <ng-container [ngTemplateOutlet]="codeEditorCard" />
+                        <ng-container [ngTemplateOutlet]="testPayloadCard" />
+                    } @else if (expandedPane() === 'code') {
+                        <div class="code-editor-column">
+                            <app-code-editor
+                                class="code-editor-section"
+                                [class.code-editor-section--with-terminal]="showCodeTerminal()"
+                                [pythonCode]="pythonCode"
+                                [secretNames]="secretNames()"
+                                [readOnly]="isReadOnly()"
+                                [allowExpand]="true"
+                                [compactHeader]="true"
+                                expandLabel="Swap with test payload"
+                                [actionIcon]="runPythonCodeIcon()"
+                                [actionLabel]="runPythonCodeLabel"
+                                [actionDisabledReason]="runCodeBlocker()"
+                                (pythonCodeChange)="onPythonCodeChange($event)"
+                                (errorChange)="onCodeErrorChange($event)"
+                                (expand)="expandPane('payload')"
+                                (action)="runPythonCode()"
+                            ></app-code-editor>
+                            @if (showCodeTerminal()) {
+                                <ng-container [ngTemplateOutlet]="codeTerminal" />
+                            }
+                        </div>
+                    } @else {
+                        <app-test-payload-section
+                            class="payload-pane"
+                            [text]="testPayload.text()"
+                            [check]="testPayload.check()"
+                            [readonly]="isReadOnly()"
+                            [serverErrors]="testPayload.serverErrors()"
+                            [collapsible]="false"
+                            [fullHeight]="true"
+                            expandLabel="Swap with code"
+                            (textChange)="onTestPayloadTextChange($event)"
+                            (expand)="expandPane('code')"
+                        />
+                    }
                 </div>
             </div>
         </form>

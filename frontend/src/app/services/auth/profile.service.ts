@@ -5,11 +5,13 @@ import {
     AccessToken,
     CreateApiKeyRequest,
     CreateApiKeyResponse,
+    EMPTY_SHORTCUT_SETTINGS,
     GetMeResponse,
     GetMyApiKeyResponse,
     PasswordChangeConfirmRequest,
     PasswordChangeVerifyRequest,
     PasswordChangeVerifyResponse,
+    ShortcutSettings,
     UpdateMeRequest,
     UserRole,
 } from '@shared/models';
@@ -39,6 +41,10 @@ export class ProfileService {
     currentUserSignal = this.currentUser.asReadonly();
 
     isMeSuperAdmin = computed(() => this.currentUser()?.is_superadmin ?? false);
+
+    readonly shortcutSettings = computed<ShortcutSettings>(
+        () => this.currentUser()?.custom_shortcuts ?? EMPTY_SHORTCUT_SETTINGS
+    );
 
     systemRole = computed(() => {
         const user = this.currentUser();
@@ -94,6 +100,13 @@ export class ProfileService {
         return this.http.patch<GetMeResponse>(this.baseUrl, dto).pipe(tap((user) => this.setUser(user)));
     }
 
+    updateShortcutSettings(settings: ShortcutSettings): Observable<ShortcutSettings> {
+        return this.http.patch<GetMeResponse>(this.baseUrl, { custom_shortcuts: settings }).pipe(
+            map((user) => user.custom_shortcuts),
+            tap((saved) => this.updateUser({ custom_shortcuts: saved }))
+        );
+    }
+
     updateAvatar(avatar: FormData): Observable<GetMeResponse> {
         return this.http
             .post<GetMeResponse>(`${this.baseUrl}avatar/`, avatar)
@@ -102,6 +115,21 @@ export class ProfileService {
 
     deleteAvatar(): Observable<void> {
         return this.http.delete<void>(`${this.baseUrl}avatar/`).pipe(tap(() => this.updateUser({ avatar_url: null })));
+    }
+
+    /**
+     * Saves the tour `tourKey` as finished or skipped by the signed-in user; saving it again is harmless. Emits the
+     * tours that user has completed, `tourKey` included. The cached user takes them only while that user is still
+     * signed in: the response may land after sign-out or after another user signed in, and must not bring back or
+     * change a profile.
+     */
+    markTourCompleted(tourKey: string): Observable<readonly string[]> {
+        return this.http
+            .post<GetMeResponse>(`${this.baseUrl}tours/${encodeURIComponent(tourKey)}/complete/`, null)
+            .pipe(
+                tap((user) => this.updateUserIfStillSignedIn(user.id, { completed_tours: user.completed_tours })),
+                map((user) => user.completed_tours)
+            );
     }
 
     requestPasswordChange(dto: PasswordChangeVerifyRequest): Observable<PasswordChangeVerifyResponse> {
@@ -153,5 +181,11 @@ export class ProfileService {
         const current = this.currentUser();
         if (!current) return;
         this.currentUser.set({ ...current, ...partial });
+    }
+
+    private updateUserIfStillSignedIn(userId: number, partial: Partial<GetMeResponse>): void {
+        if (this.currentUser()?.id === userId) {
+            this.updateUser(partial);
+        }
     }
 }

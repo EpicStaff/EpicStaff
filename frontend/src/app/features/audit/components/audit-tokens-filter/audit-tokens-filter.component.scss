@@ -1,0 +1,9 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tokens-filter__stepper {
+    width: 160px;
+}

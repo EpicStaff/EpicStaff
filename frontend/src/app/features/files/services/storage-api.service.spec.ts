@@ -51,7 +51,13 @@ describe('StorageApiService', () => {
     }
 
     function succeed(request: TestRequest): void {
-        request.flush({ status: 'DONE', path: (request.request.body as File).name, size: 7 });
+        const response: StorageStreamUploadResponse = {
+            status: 'DONE',
+            path: (request.request.body as File).name,
+            size: 7,
+            recycle_bin_purged: [],
+        };
+        request.flush(response);
     }
 
     /** Starts one upload and records how it ended. */
@@ -67,6 +73,33 @@ describe('StorageApiService', () => {
         });
         return { response: () => response, error: () => error };
     }
+
+    describe('reading file bytes', () => {
+        const cases = [
+            { method: 'previewBlob', url: '/api/storage/preview/' },
+            { method: 'downloadBlob', url: '/api/storage/download/' },
+        ] as const;
+
+        for (const { method, url } of cases) {
+            it(`${method} requests ${url} with the path and no Range header by default`, () => {
+                service[method]('docs/a.txt').subscribe();
+
+                const request = httpMock.expectOne((req) => req.url === url);
+                expect(request.request.params.get('path')).toBe('docs/a.txt');
+                expect(request.request.responseType).toBe('blob');
+                expect(request.request.headers.has('Range')).toBe(false);
+                request.flush(new Blob(['x']));
+            });
+
+            it(`${method} asks for the first maxBytes bytes via Range`, () => {
+                service[method]('docs/a.txt', 100).subscribe();
+
+                const request = httpMock.expectOne((req) => req.url === url);
+                expect(request.request.headers.get('Range')).toBe('bytes=0-99');
+                request.flush(new Blob(['x']));
+            });
+        }
+    });
 
     describe('getUploadLimits', () => {
         it('returns the limits response', () => {

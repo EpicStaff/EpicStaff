@@ -8,7 +8,9 @@ runner's orchestration logic is tested in isolation from I/O.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, patch
+
+import pytest
+import settings
 
 from app.emitters.base import Emitter
 from app.exceptions import AgentServiceError, SchemaValidationError
@@ -16,7 +18,6 @@ from app.llm.client import LLMChunk
 from app.loop.agent_loop import AgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
-from app.output.enforcer import EnforcementResult
 from app.resources.resolver import ResolvedAgent
 from app.runners.deps import RunnerDependencies
 from app.runners.single_task import SingleTaskRunner
@@ -31,6 +32,8 @@ from shared.models.agent_service import (
     ToolResult,
 )
 from shared.models.ai_providers import LLMConfigData, LLMData
+from tests.cancellation import never_cancelled
+from tests.log_capture import log_line_starting_with, capture_logs_at
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -151,12 +154,13 @@ class FakeResolver:
     """Returns a ResolvedAgent with a real AgentContext and empty ToolRegistry."""
 
     async def resolve(
-        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None
+        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None, *, is_cancelled
     ) -> ResolvedAgent:
         context = AgentContext(
             agent=agent,
             attachments=[],
             correlation_id=request.correlation_id,
+            is_cancelled=is_cancelled,
         )
         return ResolvedAgent(
             agent_id=agent.id,
@@ -170,12 +174,13 @@ class FakeResolverWithTools:
     """Returns a ResolvedAgent with one registered tool so has_tools=True."""
 
     async def resolve(
-        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None
+        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None, *, is_cancelled
     ) -> ResolvedAgent:
         context = AgentContext(
             agent=agent,
             attachments=[],
             correlation_id=request.correlation_id,
+            is_cancelled=is_cancelled,
         )
         registry = ToolRegistry()
         registry.register(
@@ -193,10 +198,18 @@ class FakeResolverWithTools:
 class RaisingResolver:
     """Raises on resolve to simulate resolver failure."""
 
+    def __init__(
+        self,
+        message: str = "resolver exploded",
+        error_type: type[Exception] = RuntimeError,
+    ) -> None:
+        self._message = message
+        self._error_type = error_type
+
     async def resolve(
-        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None
+        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None, *, is_cancelled
     ) -> ResolvedAgent:
-        raise RuntimeError("resolver exploded")
+        raise self._error_type(self._message)
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +237,11 @@ def _request(payload: dict, agents: list[AgentSpec] | None = None) -> AgentReque
     )
 
 
+@pytest.fixture(autouse=True)
+def service_schema_max_retries(monkeypatch):
+    monkeypatch.setattr(settings, "AGENT_SCHEMA_MAX_RETRIES", 2)
+
+
 def _runner(resolver=None, loop=None) -> SingleTaskRunner:
     resolver = resolver or FakeResolver()
     loop = loop or FakeLoop()
@@ -242,7 +260,7 @@ async def test_happy_path_single_agent():
     runner = _runner(loop=fake_loop)
     request = _request({"task_instructions": "Do X"})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert len(emitter.started) == 1
     assert emitter.finals == [CANNED_RESULT]
@@ -264,7 +282,7 @@ async def test_payload_uses_prompt_fallback_key():
     runner = _runner(loop=fake_loop)
     request = _request({"prompt": "Summarize."})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     messages = fake_loop.received_messages[0]
     user_message = next(m for m in messages if m["role"] == "user")
@@ -277,7 +295,7 @@ async def test_missing_task_instructions_calls_on_error():
     runner = _runner()
     request = _request({"output_schema": {"type": "object"}})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert len(emitter.errors) == 1
     assert isinstance(emitter.errors[0], AgentServiceError)
@@ -289,7 +307,7 @@ async def test_resolver_raises_calls_on_error():
     runner = _runner(resolver=RaisingResolver())
     request = _request({"task_instructions": "Do something."})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert len(emitter.errors) == 1
     assert isinstance(emitter.errors[0], RuntimeError)
@@ -302,7 +320,7 @@ async def test_on_start_called_once_before_loop():
     runner = _runner(loop=fake_loop)
     request = _request({"task_instructions": "Check this."})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert len(emitter.started) == 1
     assert emitter.started[0] is request
@@ -326,8 +344,7 @@ async def test_output_schema_no_tools_skips_plain_loop():
     runner = _runner(loop=answer_loop)
     request = _request({"task_instructions": "Do X", "output_schema": schema})
 
-    with patch("app.runners.single_task._schema_max_retries", return_value=2):
-        await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert emitter.errors == []
     assert len(emitter.finals) == 1
@@ -363,8 +380,7 @@ async def test_output_schema_with_tools_runs_loop_then_enforces():
     runner = _runner(resolver=FakeResolverWithTools(), loop=answer_loop)
     request = _request({"task_instructions": "Do Y", "output_schema": schema})
 
-    with patch("app.runners.single_task._schema_max_retries", return_value=2):
-        await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert emitter.errors == []
     assert len(emitter.finals) == 1
@@ -402,8 +418,7 @@ async def test_schema_validation_error_calls_on_error():
     runner = _runner(loop=answer_loop)
     request = _request({"task_instructions": "Do Z", "output_schema": schema})
 
-    with patch("app.runners.single_task._schema_max_retries", return_value=2):
-        await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert len(emitter.errors) == 1
     assert isinstance(emitter.errors[0], SchemaValidationError)
@@ -417,7 +432,7 @@ async def test_no_output_schema_uses_single_plain_loop():
     runner = _runner(loop=fake_loop)
     request = _request({"task_instructions": "Plain task"})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert emitter.errors == []
     assert emitter.finals == [CANNED_RESULT]
@@ -456,44 +471,19 @@ class FailureLoop(AgentLoop):
         )
 
 
-async def test_with_tools_and_schema_main_loop_failure_skips_enforcer():
-    """With tools + output_schema: main loop llm_error → on_error called, enforcer never invoked, on_final not called."""
+@pytest.mark.parametrize(
+    ("stop_reason", "error"),
+    [("llm_error", "rate limited"), ("timeout", "execution exceeded 60s")],
+)
+async def test_failed_main_loop_is_reported_without_enforcing_the_schema(stop_reason, error):
     emitter = FakeEmitter()
-    schema = {
-        "type": "object",
-        "properties": {"x": {"type": "string"}},
-        "required": ["x"],
-    }
-    loop = FailureLoop(stop_reason="llm_error", error="rate limited")
+    schema = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
+    loop = FailureLoop(stop_reason=stop_reason, error=error)
     runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
-    request = _request({"task_instructions": "Do X", "output_schema": schema})
 
-    with patch("app.runners.single_task._schema_max_retries", return_value=2):
-        await runner.execute(request, emitter)
+    await runner.execute(_request({"task_instructions": "Do X", "output_schema": schema}), emitter, is_cancelled=never_cancelled)
 
-    assert len(emitter.errors) == 1
-    assert "rate limited" in str(emitter.errors[0])
-    assert emitter.finals == []
-    assert loop.call_count == 1
-
-
-async def test_with_tools_and_schema_timeout_skips_enforcer():
-    """With tools + output_schema: main loop timeout → on_error called, enforcer never invoked."""
-    emitter = FakeEmitter()
-    schema = {
-        "type": "object",
-        "properties": {"x": {"type": "string"}},
-        "required": ["x"],
-    }
-    loop = FailureLoop(stop_reason="timeout", error="execution exceeded 60s")
-    runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
-    request = _request({"task_instructions": "Do X", "output_schema": schema})
-
-    with patch("app.runners.single_task._schema_max_retries", return_value=2):
-        await runner.execute(request, emitter)
-
-    assert len(emitter.errors) == 1
-    assert "execution exceeded 60s" in str(emitter.errors[0])
+    assert [str(raised) for raised in emitter.errors] == [error]
     assert emitter.finals == []
     assert loop.call_count == 1
 
@@ -503,65 +493,272 @@ async def test_with_tools_and_schema_timeout_skips_enforcer():
 # ---------------------------------------------------------------------------
 
 
-async def test_agent_schema_max_retries_zero_overrides_settings_default():
-    """agent.schema_max_retries=0 → enforcer built with 0, settings fn not used."""
+@pytest.mark.parametrize(
+    ("agent_schema_max_retries", "expected_attempts"),
+    [(0, 1), (None, 3)],
+    ids=["agent-setting-wins-even-when-zero", "falls-back-to-service-setting"],
+)
+async def test_schema_retries_come_from_the_agent_then_the_service_setting(
+    agent_schema_max_retries, expected_attempts
+):
     emitter = FakeEmitter()
+    schema = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
+    # The LLM never calls the answer tool, so every allowed attempt is used.
+    answer_loop = AnswerToolLoop([(None, TokenUsage())] * 5)
+    runner = _runner(loop=answer_loop)
+    agent = _agent_spec(schema_max_retries=agent_schema_max_retries)
+
+    await runner.execute(_request({"task_instructions": "Do X", "output_schema": schema}, agents=[agent]), emitter, is_cancelled=never_cancelled)
+
+    assert answer_loop.call_count == expected_attempts
+    assert isinstance(emitter.errors[0], SchemaValidationError)
+
+
+# ---------------------------------------------------------------------------
+# Tests: tools + output_schema when the main loop's final text already matches
+# ---------------------------------------------------------------------------
+
+
+class FinalTextThenAnswerLoop(AgentLoop):
+    """First run() returns ``final_text``; later runs answer via ANSWER_TOOL."""
+
+    def __init__(
+        self, final_text: str | None, answer_args: dict, stop_reason: str = "completed"
+    ) -> None:
+        self._final_text = final_text
+        self._answer_args = answer_args
+        self._stop_reason = stop_reason
+        self.call_count = 0
+
+    async def run(self, context, tools, emitter, stop) -> LoopResult:
+        self.call_count += 1
+        if self.call_count == 1:
+            return LoopResult(
+                final_text=self._final_text,
+                tool_invocations=1,
+                iterations=2,
+                stop_reason=self._stop_reason,
+                token_usage=TokenUsage(prompt_tokens=5, completion_tokens=2, total_tokens=7),
+            )
+        await tools.execute(ANSWER_TOOL, self._answer_args)
+        return LoopResult(
+            final_text=None,
+            tool_invocations=1,
+            iterations=1,
+            stop_reason="completed",
+            token_usage=TokenUsage(prompt_tokens=3, completion_tokens=1, total_tokens=4),
+        )
+
+
+Y_SCHEMA = {"type": "object", "properties": {"y": {"type": "integer"}}, "required": ["y"]}
+
+
+@pytest.mark.parametrize(
+    ("schema", "final_text", "expected"),
+    [
+        (Y_SCHEMA, '{"y": 42}', {"y": 42}),
+        ({"type": "array", "items": {"type": "string"}}, '["a", "b"]', ["a", "b"]),
+    ],
+    ids=["object", "non-object-schema"],
+)
+async def test_final_text_already_matching_the_schema_skips_enforcement(schema, final_text, expected):
+    emitter = FakeEmitter()
+    loop = FinalTextThenAnswerLoop(final_text, answer_args={"y": 7})
+    runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
+
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": schema}), emitter, is_cancelled=never_cancelled)
+
+    assert emitter.errors == []
+    final = emitter.finals[0]
+    assert loop.call_count == 1
+    assert final.structured_output == expected
+    assert json.loads(final.final_text) == expected
+    assert final.stop_reason == "schema_satisfied"
+    assert (final.iterations, final.tool_invocations, final.token_usage.total_tokens) == (2, 1, 7)
+
+
+@pytest.mark.parametrize(
+    "final_text",
+    [None, "", "The answer is 42.", '```json\n{"y": 42}\n```', '{"y": "forty-two"}', "{}"],
+    ids=["none", "empty", "prose", "fenced-json", "wrong-type", "missing-required"],
+)
+async def test_final_text_not_matching_the_schema_is_enforced(final_text):
+    emitter = FakeEmitter()
+    loop = FinalTextThenAnswerLoop(final_text, answer_args={"y": 7})
+    runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
+
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": Y_SCHEMA}), emitter, is_cancelled=never_cancelled)
+
+    assert emitter.errors == []
+    final = emitter.finals[0]
+    assert loop.call_count == 2
+    assert final.structured_output == {"y": 7}
+    assert (final.iterations, final.tool_invocations, final.token_usage.total_tokens) == (3, 2, 11)
+
+
+async def test_final_text_left_over_from_an_unfinished_tool_loop_is_enforced():
+    emitter = FakeEmitter()
+    loop = FinalTextThenAnswerLoop('{"y": 42}', answer_args={"y": 7}, stop_reason="max_iter_reached")
+    runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
+
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": Y_SCHEMA}), emitter, is_cancelled=never_cancelled)
+
+    assert emitter.errors == []
+    assert loop.call_count == 2
+    assert emitter.finals[0].structured_output == {"y": 7}
+
+
+# ---------------------------------------------------------------------------
+# Tests: logging redaction
+# ---------------------------------------------------------------------------
+
+
+async def test_instructions_and_messages_redaction_in_logs():
+    secret_marker = "SUPER_SECRET_API_KEY_12345"
+    emitter = FakeEmitter()
+    runner = _runner()
+    request = _request({"task_instructions": f"Process this: {secret_marker}"})
+
+    with capture_logs_at("DEBUG") as logs:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    instructions_line = log_line_starting_with(logs, "task instructions=")
+    assert secret_marker not in instructions_line
+    assert "<redacted" in instructions_line
+
+    messages_line = log_line_starting_with(logs, "prompt messages")
+    assert secret_marker not in messages_line
+    assert "<redacted" in messages_line
+
+
+async def test_unexpected_crash_logs_the_exception_class_without_its_message():
+    secret_marker = "CRASH_SECRET_55555"
+    raw_error_text = f"resolver exploded on sk-live-{secret_marker}"
+    emitter = FakeEmitter()
+    runner = _runner(resolver=RaisingResolver(raw_error_text))
+    request = _request({"task_instructions": "Do something."})
+
+    with capture_logs_at("DEBUG") as logs:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    crash_line = log_line_starting_with(logs, "single_task crashed")
+    assert "correlation_id=test-corr" in crash_line
+    assert "RuntimeError" in crash_line
+    assert "<redacted" in crash_line
+    assert secret_marker not in "".join(logs)
+    assert str(emitter.errors[0]) == raw_error_text
+
+
+async def test_domain_failure_logs_the_exception_class_without_its_message():
+    secret_marker = "DOMAIN_FAILURE_SECRET_77777"
+    raw_error_text = f"knowledge source unreachable: {secret_marker}"
+    emitter = FakeEmitter()
+    runner = _runner(
+        resolver=RaisingResolver(raw_error_text, error_type=AgentServiceError)
+    )
+    request = _request({"task_instructions": "Do something."})
+
+    with capture_logs_at("DEBUG") as logs:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    failed_line = log_line_starting_with(logs, "single_task failed")
+    assert "correlation_id=test-corr" in failed_line
+    assert "AgentServiceError" in failed_line
+    assert "<redacted" in failed_line
+    assert secret_marker not in "".join(logs)
+    assert str(emitter.errors[0]) == raw_error_text
+
+
+async def test_final_text_redaction_in_logs():
+    secret_output = "SENSITIVE_ANSWER_OUTPUT_789"
+    emitter = FakeEmitter()
+
+    class SecretResultLoop(AgentLoop):
+        async def run(self, context, tools, emitter, stop) -> LoopResult:
+            return LoopResult(
+                final_text=secret_output,
+                tool_invocations=0,
+                iterations=1,
+                stop_reason="completed",
+            )
+
+    runner = _runner(loop=SecretResultLoop())
+    request = _request({"task_instructions": "Do something"})
+
+    with capture_logs_at("DEBUG") as logs:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    log_text = "\n".join(logs)
+    assert secret_output not in log_text
+    assert "final_text" in log_text
+    assert "<redacted" in log_text
+
+
+# ---------------------------------------------------------------------------
+# Tests: output_schema logging
+# ---------------------------------------------------------------------------
+
+
+async def test_single_task_redacts_output_schema_descriptions():
+    """Only the schema's property names may be logged; descriptions can carry PII."""
     schema = {
         "type": "object",
-        "properties": {"x": {"type": "string"}},
-        "required": ["x"],
+        "properties": {
+            "name": {"type": "string", "description": "User's full name — PII"},
+            "age": {"type": "integer", "description": "SENSITIVE_MARKER_12345"},
+        },
+        "required": ["name", "age"],
     }
-    usage = TokenUsage(prompt_tokens=3, completion_tokens=1, total_tokens=4)
-    answer_loop = AnswerToolLoop([({"x": "result"}, usage)])
-    runner = _runner(loop=answer_loop)
-    agent = _agent_spec(schema_max_retries=0)
-    request = _request({"task_instructions": "Do X", "output_schema": schema}, agents=[agent])
 
-    with (
-        patch("app.runners.single_task._schema_max_retries") as settings_fn,
-        patch("app.runners.task_execution.StructuredOutputEnforcer") as enforcer_class,
-    ):
-        enforcer_class.return_value.enforce = AsyncMock(
-            return_value=EnforcementResult(
-                parsed={"x": "result"},
-                token_usage=usage,
-                iterations=1,
-                tool_invocations=1,
-            )
-        )
-        await runner.execute(request, emitter)
-
-    settings_fn.assert_not_called()
-    enforcer_class.assert_called_once_with(runner._deps.loop, 0)
-
-
-async def test_agent_schema_max_retries_none_falls_back_to_settings():
-    """agent.schema_max_retries=None → settings fn value used for enforcer retries."""
     emitter = FakeEmitter()
-    schema = {
-        "type": "object",
-        "properties": {"x": {"type": "string"}},
-        "required": ["x"],
-    }
-    usage = TokenUsage(prompt_tokens=3, completion_tokens=1, total_tokens=4)
-    answer_loop = AnswerToolLoop([({"x": "result"}, usage)])
-    runner = _runner(loop=answer_loop)
-    agent = _agent_spec(schema_max_retries=None)
-    request = _request({"task_instructions": "Do X", "output_schema": schema}, agents=[agent])
+    runner = _runner()
+    request = _request({"task_instructions": "Extract data", "output_schema": schema})
 
-    with (
-        patch("app.runners.single_task._schema_max_retries", return_value=7) as settings_fn,
-        patch("app.runners.task_execution.StructuredOutputEnforcer") as enforcer_class,
-    ):
-        enforcer_class.return_value.enforce = AsyncMock(
-            return_value=EnforcementResult(
-                parsed={"x": "result"},
-                token_usage=usage,
-                iterations=1,
-                tool_invocations=1,
-            )
-        )
-        await runner.execute(request, emitter)
+    with capture_logs_at("DEBUG") as messages:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
-    settings_fn.assert_called_once()
-    enforcer_class.assert_called_once_with(runner._deps.loop, 7)
+    log_output = "".join(messages)
+    assert "SENSITIVE_MARKER_12345" not in log_output
+    assert "PII" not in log_output
+
+    output_schema_line = log_line_starting_with(messages, "output_schema=")
+    assert "age" in output_schema_line
+    assert "name" in output_schema_line
+
+
+@pytest.mark.parametrize(
+    ("output_schema", "expected_line"),
+    [
+        ({"type": "object", "properties": None}, "output_schema=[]"),
+        ({"type": "object"}, "output_schema=[]"),
+        ({"type": "object", "properties": "not-a-mapping"}, "output_schema=[]"),
+    ],
+    ids=["properties_is_null", "properties_missing", "properties_not_a_mapping"],
+)
+async def test_output_schema_log_survives_a_schema_without_usable_properties(
+    output_schema, expected_line
+):
+    """output_schema is unvalidated JSON; logging it must never fail the request."""
+    emitter = FakeEmitter()
+    runner = _runner()
+    request = _request({"task_instructions": "Extract data", "output_schema": output_schema})
+
+    with capture_logs_at("DEBUG") as messages:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    assert log_line_starting_with(messages, "output_schema=") == expected_line
+
+
+async def test_output_schema_log_digests_a_schema_that_is_not_a_dict():
+    """A non-dict output_schema is digested instead of crashing the log call."""
+    secret_marker = "SCHEMA_AS_STRING_SECRET_42"
+    emitter = FakeEmitter()
+    runner = _runner()
+    request = _request({"task_instructions": "Extract data", "output_schema": secret_marker})
+
+    with capture_logs_at("DEBUG") as messages:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    output_schema_line = log_line_starting_with(messages, "output_schema=")
+    assert "<redacted" in output_schema_line
+    assert secret_marker not in output_schema_line

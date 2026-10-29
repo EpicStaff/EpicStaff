@@ -6,6 +6,7 @@
         [graph]="graph"
         [isSaving]="isSaving()"
         [isRunning]="isRunning()"
+        [runStatus]="activeRunStatus()"
         [isPreviewMode]="isPreviewing()"
         [hasUnsavedChanges]="hasUnsavedChangesSignal()"
         (save)="onHeaderSave()"
@@ -55,14 +56,12 @@
                 [availableFlows]="availableFlowLights()"
                 [flowName]="graph.name"
                 [initialNodeId]="initialNodeId"
-                [initialNodeExpand]="initialNodeExpand"
                 [initialViewport]="savedViewport()"
                 [isSaving]="isSaving()"
                 [hasUnsavedChanges]="hasUnsavedChanges()"
                 (save)="onGraphSave($event)"
                 (openShortcuts)="openShortcutsModal($event)"
                 (requestReload)="refreshCurrentFlow()"
-                (importComplete)="handlePartialImportComplete()"
                 (extractToSubflow)="onExtractToSubflow($event)"
                 (unpackSubflow)="onUnpackSubflow($event)"
             ></app-flow-graph>
@@ -70,9 +69,10 @@
         <app-shortcuts-modal
             [open]="isShortcutsOpen()"
             [pos]="shortcutsPos()"
-            title="Command & Shortcuts"
+            heading="Command & Shortcuts"
             icon="shortcut"
-            [sections]="shortcutSections"
+            [flows]="availableFlowLights()"
+            [currentFlowId]="currentFlowId()"
             (closed)="closeShortcutsModal()"
         ></app-shortcuts-modal>
         <div

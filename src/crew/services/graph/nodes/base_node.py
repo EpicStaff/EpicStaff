@@ -2,9 +2,12 @@ from abc import ABC, abstractmethod
 from typing import Any, Literal
 
 from langgraph.types import StreamWriter
+from loguru import logger
 from models.state import State
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
+from services.graph.exceptions import ReturnCodeError, StopSession
+from src.shared.bench_log import BENCH_LEVEL
 from utils import map_variables_to_input, set_output_variables
 
 
@@ -65,6 +68,7 @@ class BaseNode(ABC):
             input_=input_,
             writer=writer,
             execution_order=execution_order,
+            node_type=self.TYPE,
         )
 
     def add_finish_message(
@@ -97,22 +101,31 @@ class BaseNode(ABC):
             output=output,
             execution_order=execution_order,
             state=state,
+            node_type=self.TYPE,
             **kwargs,
         )
 
-    def add_error_message(self, writer: StreamWriter, error: Exception, execution_order: int):
+    def add_error_message(
+        self,
+        writer: StreamWriter,
+        error: Exception | str,
+        execution_order: int,
+        *,
+        public_details: str | None = None,
+    ):
         """
         Add an error message to the graph.
 
+        The raw error text is logged, not streamed: the client receives a
+        generic message carrying a correlation id, unless the caller supplies
+        already-safe text in `public_details`.
+
         Args:
             writer (StreamWriter): A stream writer to write the message to.
-            error (Exception): The exception that was raised.
+            error (Exception | str): The exception or error text that was raised.
             execution_order (int): The order of execution of the node.
-
-        This function creates an error message containing details about the
-        exception that occurred. It includes the session ID, node name, execution
-        order, and a timestamp. The message is then written using the provided
-        stream writer.
+            public_details (str | None): Safe text to stream instead of the
+                generic message.
         """
         self.custom_session_message_writer.add_error_message(
             session_id=self.session_id,
@@ -120,6 +133,8 @@ class BaseNode(ABC):
             writer=writer,
             error=error,
             execution_order=execution_order,
+            node_type=self.TYPE,
+            public_details=public_details,
         )
 
     @abstractmethod
@@ -150,6 +165,14 @@ class BaseNode(ABC):
             Exception: If there was an exception during the execution of the node.
         """
         execution_order = 0
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="node_start",
+            session_id=self.session_id,
+            node_name=self.node_name,
+            node_type=type(self).__name__,
+        )
         try:
             sysvars = state.get("system_variables") or {}
             execution_order = sysvars.get("execution_order", 0)
@@ -184,10 +207,36 @@ class BaseNode(ABC):
                 state=state,
             )
 
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="node_end",
+                session_id=self.session_id,
+                node_name=self.node_name,
+                node_type=type(self).__name__,
+                ok=True,
+            )
             return state
 
         except Exception as e:
-            self.add_error_message(writer=writer, error=e, execution_order=execution_order)
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="node_end",
+                session_id=self.session_id,
+                node_name=self.node_name,
+                node_type=type(self).__name__,
+                ok=False,
+            )
+            # ReturnCodeError and StopSession carry text
+            # that's already safe to show as-is.
+            public_details = str(e) if isinstance(e, (ReturnCodeError, StopSession)) else None
+            self.add_error_message(
+                writer=writer,
+                error=e,
+                execution_order=execution_order,
+                public_details=public_details,
+            )
             raise
 
     def get_input(self, state: State):

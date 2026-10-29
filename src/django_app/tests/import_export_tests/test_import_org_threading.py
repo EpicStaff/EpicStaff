@@ -6,6 +6,7 @@ from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.schemas import ImportSettings
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 @pytest.mark.django_db
@@ -14,7 +15,9 @@ class TestImportOrgThreading:
         self, rich_seeded_db, export_service, default_org
     ):
         graph = rich_seeded_db["graph"]
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         service = ImportService(entity_registry)
         id_mapper, _ = service.import_data(
@@ -31,8 +34,10 @@ class TestImportOrgThreading:
         self, exportable_agent_definition, export_service, default_org
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [exportable_agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         service = ImportService(entity_registry)
         id_mapper, _ = service.import_data(
@@ -44,6 +49,6 @@ class TestImportOrgThreading:
 
         new_definition_id = id_mapper.get_created_ids(EntityType.AGENT_DEFINITION)[0]
         assert (
-            AgentDefinition.objects.get(id=new_definition_id).organization_id
+            AgentDefinition.objects.get(id=new_definition_id).org_id
             == default_org.id
         )

@@ -20,22 +20,8 @@
         }
     }
 
-    .error-message {
-        background-color: var(--red-450-alpha-10);
-        color: var(--color-error, #ff4d4f);
-        padding: 0.75rem 1rem;
+    .error-banner {
         margin: 1rem 1.5rem 0;
-        border-radius: 4px;
-
-        p {
-            margin: 0;
-            font-size: 0.875rem;
-            text-transform: lowercase;
-
-            &::first-letter {
-                text-transform: uppercase;
-            }
-        }
     }
 
     .form {
@@ -73,4 +59,10 @@
         gap: 0.75rem;
         border-top: 1px solid var(--color-divider-subtle);
     }
+}
+
+// A lone stepper in a small dialog takes at most half its width
+app-input-number {
+    display: block;
+    max-width: 50%;
 }

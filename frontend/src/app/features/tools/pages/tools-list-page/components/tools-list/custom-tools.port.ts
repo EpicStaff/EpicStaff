@@ -31,6 +31,14 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
         searchableTextOf: (t) => [t.name, t.description],
         updatedAtOf: (t) => t.updated_at,
         builtInOf: (t) => t.built_in,
+        fieldTextsOf: (t, labelById) => ({
+            name: [t.name],
+            description: [t.description],
+            label: (t.labels ?? [])
+                .map((id) => labelById.get(id))
+                .filter(Boolean)
+                .flatMap((l) => [l!.name, l!.full_path]),
+        }),
     };
 
     public readonly createdEvent$: Observable<GetPythonCodeToolRequest> = this.events.customToolCreated$;
@@ -91,6 +99,7 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
     public openConfigureDialog(dialog: Dialog, tool: GetPythonCodeToolRequest): DialogRef<GetPythonCodeToolRequest> {
         return dialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent, {
             data: { selectedTool: tool },
+            autoFocus: false,
         });
     }
 

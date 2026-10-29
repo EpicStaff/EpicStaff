@@ -1,9 +1,15 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
-from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
+from tables.models.base_models import (
+    AbstractDefaultFillableModel,
+    DefaultBaseModel,
+    SoftDeleteFields,
+    soft_delete_consistency_constraint,
+)
 
 
 class AudioFormatChoices(models.TextChoices):
@@ -17,7 +23,7 @@ class AudioFormatChoices(models.TextChoices):
 # ---------------------------------------------------------------------------
 
 
-class OpenAIRealtimeConfig(OrgScopedModel, models.Model):
+class OpenAIRealtimeConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "openai_realtime_config"
@@ -44,11 +50,15 @@ class OpenAIRealtimeConfig(OrgScopedModel, models.Model):
     )
     voice_recognition_prompt = models.TextField(null=True, blank=True)
 
+    # Nullable because configs created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+
     def __str__(self):
         return self.custom_name
 
 
-class ElevenLabsRealtimeConfig(OrgScopedModel, models.Model):
+class ElevenLabsRealtimeConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "elevenlabs_realtime_config"
@@ -69,11 +79,15 @@ class ElevenLabsRealtimeConfig(OrgScopedModel, models.Model):
         help_text="ISO-639-1 language code, e.g. 'en'",
     )
 
+    # Nullable because configs created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+
     def __str__(self):
         return self.custom_name
 
 
-class GeminiRealtimeConfig(OrgScopedModel, models.Model):
+class GeminiRealtimeConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "gemini_realtime_config"
@@ -88,6 +102,10 @@ class GeminiRealtimeConfig(OrgScopedModel, models.Model):
     )
     model_name = models.CharField(max_length=250, default="gemini-3.1-flash-live-preview")
     voice_recognition_prompt = models.TextField(null=True, blank=True)
+
+    # Nullable because configs created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     def __str__(self):
         return self.custom_name
@@ -183,9 +201,12 @@ class RealtimeAgent(AbstractDefaultFillableModel):
 # ---------------------------------------------------------------------------
 # RealtimeAgentChat  (session snapshot)
 # ---------------------------------------------------------------------------
-class RealtimeAgentDefinition(AbstractDefaultFillableModel):
+class RealtimeAgentDefinition(AbstractDefaultFillableModel, SoftDeleteFields):
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         db_table = "realtime_agent_definition"
+        constraints = [soft_delete_consistency_constraint()]
 
     agent_definition = models.OneToOneField(
         "agents.AgentDefinition",

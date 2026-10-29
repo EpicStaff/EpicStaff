@@ -1,45 +1,38 @@
+@use '../../../../../styles/status-chip';
+
 .status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    border-radius: 5px;
-    font-size: 0.85em;
-    font-weight: 400;
-    color: var(--white);
-    white-space: nowrap;
-    letter-spacing: 0.01em;
-    transition: background 0.18s;
+    @include status-chip.chip;
 }
 .status-running {
-    background: var(--blue-alpha-18);
-    color: var(--blue-400);
+    @include status-chip.running;
 }
 .status-error {
-    background: var(--red-580-alpha-18);
-    color: var(--red-580);
+    @include status-chip.error;
 }
 .status-stop {
-    background: var(--umber-950-alpha-18);
-    color: var(--rose-450);
+    @include status-chip.stopped;
+}
+// Drawn instead of an icon glyph, so it takes the glyph's 14px box.
+.status-stop-square {
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    margin: 2px;
+    border-radius: 1px;
+    background: currentColor;
 }
 .status-completed {
-    background: var(--mint-500-alpha-18);
-    color: var(--green-460);
+    @include status-chip.completed;
 }
 .status-waiting {
-    background: var(--gold-460-alpha-18);
-    color: var(--gold-460);
+    @include status-chip.waiting;
 }
 .status-pending {
-    background: var(--slate-400-alpha-18);
-    color: var(--slate-400);
+    @include status-chip.pending;
 }
 .status-expired {
-    background: var(--gray-540-alpha-18);
-    color: var(--gray-540);
+    @include status-chip.expired;
 }
 .status-unknown {
-    background: var(--slate-700-alpha-18);
-    color: var(--slate-400);
+    @include status-chip.unknown;
 }

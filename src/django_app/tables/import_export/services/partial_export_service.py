@@ -2,6 +2,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from tables.import_export.enums import EntityType
+from tables.import_export.export_exclusions import ExcludedEntity, ExcludedEntityRecorder
+from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.serializers.graph import EdgeImportSerializer
 from tables.models.graph_models import Edge
@@ -37,6 +39,7 @@ class NodeRef:
 class PartialExportResult:
     data: dict = field(default_factory=dict)
     errors: list[dict] = field(default_factory=list)
+    excluded: list[ExcludedEntity] = field(default_factory=list)
 
     @property
     def has_errors(self) -> bool:
@@ -68,8 +71,10 @@ class GraphPartialExportService:
         *,
         org_id: int,
         edge_ids: list[int] | None = None,
+        policy: ExportAccessPolicy,
     ) -> PartialExportResult:
         result = PartialExportResult()
+        exclusions = ExcludedEntityRecorder(self.registry, policy, org_id)
 
         if not node_refs:
             result.errors.append({"error": "No nodes provided for export."})
@@ -108,8 +113,11 @@ class GraphPartialExportService:
                 entity_type=entity_type,
                 entity_id=instance.id,
                 collected=collected,
+                org_id=org_id,
+                exclusions=exclusions,
                 exclude_graphs=True,
             )
+        result.excluded = exclusions.excluded
 
         # Pass 3: include explicitly requested edges
         if edge_ids:
@@ -121,7 +129,7 @@ class GraphPartialExportService:
                 collected["edge_list"] = {e.id: e for e in edges}
 
         # Pass 4: serialize everything
-        result.data = self._serialize(collected)
+        result.data = self._serialize(collected, org_id)
         return result
 
     def _collect(
@@ -129,6 +137,8 @@ class GraphPartialExportService:
         entity_type: str,
         entity_id: int,
         collected: dict,
+        org_id: int,
+        exclusions: ExcludedEntityRecorder,
         exclude_graphs: bool = False,
     ) -> None:
         """Recursively collect entity and its dependencies."""
@@ -142,22 +152,41 @@ class GraphPartialExportService:
 
         collected[entity_type][entity_id] = instance
 
-        dependencies = strategy.extract_dependencies_from_instance(instance)
+        dependencies = self._extract_dependencies(strategy, instance, org_id)
 
         for dep_type, dep_ids in dependencies.items():
             if exclude_graphs and dep_type == EntityType.GRAPH:
                 continue
             for dep_id in dep_ids:
-                if dep_id is None:
+                if not exclusions.admits(dep_type, dep_id):
                     continue
                 self._collect(
                     entity_type=dep_type,
                     entity_id=dep_id,
                     collected=collected,
+                    org_id=org_id,
+                    exclusions=exclusions,
                     exclude_graphs=exclude_graphs,
                 )
 
-    def _serialize(self, collected: dict) -> dict:
+    # Dependencies reached from an org-owned node can be shared rows (built-in
+    # tools) that carry other organisations' data, so strategies with an
+    # org-scoped variant get the caller's org, as in DependencyCollector.
+    @staticmethod
+    def _extract_dependencies(strategy, instance, org_id: int) -> dict[str, list[int]]:
+        extractor = getattr(strategy, "extract_org_scoped_dependencies", None)
+        if extractor is not None:
+            return extractor(instance, org_id)
+        return strategy.extract_dependencies_from_instance(instance)
+
+    @staticmethod
+    def _export_entity(strategy, instance, org_id: int) -> dict:
+        exporter = getattr(strategy, "export_entity_org_scoped", None)
+        if exporter is not None:
+            return exporter(instance, org_id)
+        return strategy.export_entity(instance)
+
+    def _serialize(self, collected: dict, org_id: int) -> dict:
         """Serialize all collected instances to exportable dicts."""
         result = {}
 
@@ -169,7 +198,7 @@ class GraphPartialExportService:
 
             strategy = self.registry.get_strategy(entity_type)
             result[entity_type] = [
-                strategy.export_entity(instance) for instance in instances.values()
+                self._export_entity(strategy, instance, org_id) for instance in instances.values()
             ]
 
         return result

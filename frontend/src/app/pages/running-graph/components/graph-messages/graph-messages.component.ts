@@ -21,10 +21,10 @@ import {
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
+import { runtimeNodeNameToLabel } from '@shared/utils';
 import { Subject } from 'rxjs';
-import { exhaustMap, takeUntil } from 'rxjs/operators';
+import { exhaustMap, map, takeUntil } from 'rxjs/operators';
 
-import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import {
     GraphSession,
@@ -233,10 +233,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private messageContexts: MessageContext[] = [];
     private messageContextByKey = new Map<string, MessageContext>();
     private messageByKey = new Map<string, GraphMessage>();
-    private messageGraphIdByKey = new Map<string, number>();
-    private graphCache = new Map<number, GraphDto>();
     private graphNameById = new Map<number, string>();
-    private graphLoadInFlight = new Set<number>();
 
     private destroy$ = new Subject<void>();
 
@@ -495,10 +492,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.messageContexts = [];
             this.messageContextByKey.clear();
             this.messageByKey.clear();
-            this.messageGraphIdByKey.clear();
-            this.graphCache.clear();
             this.graphNameById.clear();
-            this.graphLoadInFlight.clear();
             this.cdr.markForCheck();
 
             if (this.sessionId) {
@@ -549,20 +543,14 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             .getGraphById(graphId)
             .pipe(
                 takeUntil(this.destroy$),
-                exhaustMap((graph) => {
-                    this.graphCache.set(graph.id, graph);
-                    return this.flowService.getGraphsLight();
-                })
+                exhaustMap((rootGraph) =>
+                    this.flowService.getGraphsLight().pipe(map((graphsLight) => ({ rootGraph, graphsLight })))
+                )
             )
             .subscribe({
-                next: (graphsLight) => {
+                next: ({ rootGraph, graphsLight }) => {
                     this.graphNameById = new Map(graphsLight.map((graph) => [graph.id, graph.name]));
-                    if (this.graphId && this.graphCache.has(this.graphId)) {
-                        const rootGraph = this.graphCache.get(this.graphId);
-                        if (rootGraph) {
-                            this.graphNameById.set(rootGraph.id, rootGraph.name);
-                        }
-                    }
+                    this.graphNameById.set(rootGraph.id, rootGraph.name);
                     this.rebuildMessageState(this.messages);
                     this.isLoading = false;
                     this.cdr.markForCheck();
@@ -575,68 +563,12 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             });
     }
 
+    /** The flow a subgraph start message ran, by the id the message carries; null when it is not loaded. */
     public getSubgraphName(message: GraphMessage): string | null {
-        const key = this.getMessageKey(message);
-        const parentGraphId = this.messageGraphIdByKey.get(key);
-        if (!parentGraphId) return null;
-        const subgraphId = this.getSubgraphIdForNode(parentGraphId, message.name);
-        if (!subgraphId) return null;
+        if (!isMessageType(message, MessageType.SUBGRAPH_START)) return null;
+        const { subgraph_id: subgraphId } = message.message_data as StartSubflowMessageData;
+        if (subgraphId == null) return null;
         return this.graphNameById.get(subgraphId) ?? null;
-    }
-
-    private buildMessageGraphContexts(messages: GraphMessage[]): void {
-        this.messageGraphIdByKey.clear();
-        const graphId = this.graphId;
-        if (graphId == null || !isFinite(graphId)) return;
-        const graphStack: number[] = [graphId];
-
-        messages.forEach((message) => {
-            const key = this.getMessageKey(message);
-            const currentGraphId = graphStack[graphStack.length - 1];
-            this.messageGraphIdByKey.set(key, currentGraphId);
-
-            const isSubgraphStart = isMessageType(message, MessageType.SUBGRAPH_START);
-            const isSubgraphFinish = isMessageType(message, MessageType.SUBGRAPH_FINISH);
-
-            if (isSubgraphStart) {
-                const subgraphId = this.getSubgraphIdForNode(currentGraphId, message.name);
-                if (subgraphId) {
-                    this.ensureGraphLoaded(subgraphId);
-                    graphStack.push(subgraphId);
-                }
-            } else if (isSubgraphFinish && graphStack.length > 1) {
-                graphStack.pop();
-            }
-        });
-    }
-
-    private getSubgraphIdForNode(graphId: number, nodeName: string): number | null {
-        const graph = this.graphCache.get(graphId);
-        if (!graph?.subgraph_node_list?.length) return null;
-        const match = graph.subgraph_node_list.find((node) => node.node_name === nodeName);
-        return match?.subgraph ?? null;
-    }
-
-    private ensureGraphLoaded(graphId: number): void {
-        if (this.graphCache.has(graphId) || this.graphLoadInFlight.has(graphId)) {
-            return;
-        }
-        this.graphLoadInFlight.add(graphId);
-        this.flowService
-            .getGraphById(graphId)
-            .pipe(takeUntil(this.destroy$))
-            .subscribe({
-                next: (graph) => {
-                    this.graphCache.set(graph.id, graph);
-                    this.graphLoadInFlight.delete(graphId);
-                    this.rebuildMessageState(this.messages);
-                    this.cdr.markForCheck();
-                },
-                error: (err) => {
-                    console.error('Failed to load subgraph:', err);
-                    this.graphLoadInFlight.delete(graphId);
-                },
-            });
     }
 
     // Stop session only after message with type 'graph_end'
@@ -945,7 +877,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     public getBreadcrumbLabel(key: string): string {
         const message = this.messageByKey.get(key);
-        return message?.name || 'Subgraph';
+        return message?.name ? runtimeNodeNameToLabel(message.name) : 'Subgraph';
     }
 
     private mergeMessages(incoming: GraphMessage[]): void {
@@ -1162,8 +1094,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 pendingGroup = null;
             }
         });
-
-        this.buildMessageGraphContexts(messages);
     }
 
     private syncDrillPaths(messages: GraphMessage[]): void {

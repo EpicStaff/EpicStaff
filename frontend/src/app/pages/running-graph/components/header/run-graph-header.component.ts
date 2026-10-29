@@ -16,12 +16,15 @@ import { MatButtonModule } from '@angular/material/button';
 import { Router, RouterModule } from '@angular/router';
 import { AppSvgIconComponent, StatusBadgeComponent } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
-import { GraphSessionStatus, isTerminalSessionStatus } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
 import { Subject, takeUntil } from 'rxjs';
 
 import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';
 import {
+    getSessionRunType,
     getTriggerDisplay,
+    SESSION_RUN_TYPE_LABELS,
     TriggerDisplay,
 } from '../../../../features/flows/components/flow-sessions-dialog/trigger-display.constants';
 import { GraphDto } from '../../../../features/flows/models/graph.model';
@@ -46,6 +49,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
         SessionFilesButtonComponent,
         StopButtonComponent,
         SessionIdSwitcherComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './run-graph-header.component.html',
     styleUrls: ['./run-graph-header.component.scss'],
@@ -60,6 +64,8 @@ export class RunningGraphHeaderComponent implements OnChanges, OnDestroy {
     @Output() stopSession = new EventEmitter<void>();
 
     public readonly DATE_TIME_FORMAT_24H = DATE_TIME_FORMAT_24H;
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 
     public showMemoriesSidebar = false;
     public sessions: GraphSessionLight[] = [];
@@ -78,6 +84,12 @@ export class RunningGraphHeaderComponent implements OnChanges, OnDestroy {
         const trigger = this.currentSession?.trigger;
         if (!trigger) return { label: 'Unknown', icon: null, color: null };
         return getTriggerDisplay(trigger.trigger_type);
+    }
+
+    /** Empty until the current session is loaded, so the row does not flash "Live" for a test run. */
+    get runTypeLabel(): string {
+        const session = this.currentSession;
+        return session ? SESSION_RUN_TYPE_LABELS[getSessionRunType(session.trigger)] : '';
     }
 
     constructor(

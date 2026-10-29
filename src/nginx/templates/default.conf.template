@@ -3,22 +3,64 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# The scheme every upstream is told in X-Forwarded-Proto, and Django builds its absolute URLs from
+# (avatars, the flow assistant's stream). nginx's own, unless the connection comes from a proxy in
+# NGINX_TRUSTED_PROXIES (18-check-trusted-proxies.envsh renders the entries), such as a load
+# balancer that ends TLS in front of nginx, and that proxy says http or https (in any case; two
+# values, or anything else, count as not said). A client that reaches nginx directly cannot change
+# it. A client that comes through a trusted proxy can, unless the proxy sets X-Forwarded-Proto on
+# every request: $http_x_forwarded_proto also matches the underscore spellings (X_Forwarded_Proto,
+# underscores_in_headers is on), so a proxy that only deletes the dash spelling lets a client's
+# X_Forwarded_Proto through as the value (docs/setup/ssl.md). Keyed on $realip_remote_addr, the
+# address the connection comes from: an operator's set_real_ip_from
+# (docs/plugins/operator/enable-plugins.md) turns $remote_addr into the client's, which would stop
+# the load balancer being recognised. Every location sends $forwarded_proto, never $scheme, except
+# the plugin listeners' (plugins-api-listener.snippet), which no proxy is ever in front of
+# (tests/check_templates.sh checks it).
+geo $realip_remote_addr $trusted_proxy {
+    default 0;
+${NGINX_TRUSTED_PROXY_GEO_ENTRIES}}
+
+map "$trusted_proxy:$http_x_forwarded_proto" $forwarded_proto {
+    "1:http"  http;
+    "1:https" https;
+    default   $scheme;
+}
+
 upstream backend_server {
-    server ${DJANGO_HOST}:${DJANGO_PORT};
+    zone backend_server 64k;
+    server ${DJANGO_HOST}:${DJANGO_PORT} resolve;
 }
 
 upstream frontend_server {
-    server ${FRONTEND_HOST}:${FRONTEND_PORT};
+    zone frontend_server 64k;
+    server ${FRONTEND_HOST}:${FRONTEND_PORT} resolve;
 }
 
 upstream realtime_server {
-    server ${REALTIME_HOST}:${REALTIME_PORT};
+    zone realtime_server 64k;
+    server ${REALTIME_HOST}:${REALTIME_PORT} resolve;
 }
 
 upstream webhook_server {
-    server ${WEBHOOK_HOST}:${WEBHOOK_PORT};
+    zone webhook_server 64k;
+    server ${WEBHOOK_HOST}:${WEBHOOK_PORT} resolve;
 }
 
+upstream storage_server {
+    zone storage_server 64k;
+    server ${STORAGE_HOST}:${STORAGE_PORT} resolve;
+}
+
+# Docker's embedded DNS. The upstreams above re-resolve through it (`resolve`), so a
+# recreated container's new IP is picked up without restarting nginx; the
+# /auditor/ location also resolves the auditor through it at request time.
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+# Every location that proxies must include strip-underscore-forwarding-headers.snippet:
+# with this on, clients could otherwise forge the address Django throttles on. Every one that
+# passes the caller's headers on to Django also includes strip-plugin-internal-headers.snippet
+# (tests/check_templates.sh checks it).
 underscores_in_headers on;
 
 server {
@@ -42,24 +84,41 @@ server {
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
 
+    # Strict-Transport-Security is decided separately from NGINX_SSL_MODE: a load
+    # balancer in front of nginx can terminate TLS while nginx serves plain HTTP.
+    include /etc/nginx/conf.d/hsts-${NGINX_HSTS_ENABLED}.snippet;
+
     # Report-only: the SPA is built from a separate repository, so this policy
     # has not been verified against it. Violations surface in the browser
     # console; there is no report collector in this stack. Promote to
     # Content-Security-Policy once the console is clean.
-    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'" always;
+    # PLUGINS_FRAME_SRC (16-normalize-plugins-enabled.envsh) is the plugin
+    # hosts' wildcard when plugins are on and empty when they are off.
+    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; frame-src 'self' ${PLUGINS_FRAME_SRC}; frame-ancestors 'self'; base-uri 'self'" always;
+
+    # ---- Cookies ----------------------------------------------------------
+    # Only Django reads and sets cookies. Every location that proxies anywhere but backend_server
+    # includes cookie-free-upstream.snippet (no Cookie to the upstream, no Set-Cookie from it),
+    # and a new one must too: tests/check_templates.sh fails otherwise. It has to be included in
+    # each location: a location that sets any proxy_set_header or proxy_hide_header of its own
+    # inherits none of the server's.
 
     location / {
         proxy_pass http://frontend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
     location ^~ /api/run-session/subscribe/ {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         
         proxy_buffering off;
         proxy_cache off;
@@ -74,22 +133,27 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location ~ ^/ws/ {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_read_timeout 86400;
     }
 
     location = /api/storage/upload/stream {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_http_version 1.1;
         proxy_request_buffering off;
         proxy_buffering off;
@@ -106,38 +170,44 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location ~ ^/(api|admin|ht|swagger)(/|$) {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header X-API-Key $http_x_api_key;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location ^~ /webhooks/ {
         proxy_pass http://webhook_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header X-Forwarded-Host $host;
     }
 
     location ^~ /voice/ {
         proxy_pass http://realtime_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header X-Forwarded-Host $host;
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
@@ -145,13 +215,15 @@ server {
 
     location /voice/stream {
         proxy_pass http://realtime_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header X-Forwarded-Host $host;
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
@@ -159,24 +231,104 @@ server {
 
     location /realtime/ {
         proxy_pass http://realtime_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    }
+
+    include /etc/nginx/conf.d/chat-${CHAT_ENABLED}.snippet;
+
+    include /etc/nginx/conf.d/plugins-main-${PLUGINS_ENABLED}.snippet;
+
+    location ~ ^/auditor/api/audit/[^/]+/events/?$ {
+        return 404;
+    }
+
+    location /auditor/ {
+        # The auditor runs only under the auditor compose profile and exits on
+        # startup when AUDIT_TRAIL_ENABLED is not true, so its hostname may not exist. A static upstream would be resolved when
+        # nginx starts and a missing host stops nginx entirely; proxying to a
+        # variable resolves only when a request arrives, so /auditor/ returns
+        # 502 while the auditor is disabled and nothing else is affected.
+        set $auditor_upstream http://${AUDITOR_HOST}:${AUDITOR_PORT};
+        rewrite ^/auditor/(.*)$ /$1 break;
+        proxy_pass $auditor_upstream;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
+        proxy_http_version 1.1;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location /static/ {
         proxy_pass http://backend_server/static/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    }
+
+    # Only a URL signed by django_app (AvatarStorage.url) gets through: no or a wrong
+    # signature is 403, an expired one 410. The bucket policy storage-init sets lets nginx
+    # read <bucket>/system/avatars/ without credentials inside the docker network.
+    # Query arguments are dropped after the check: S3 reads them as subresources and
+    # header overrides.
+    location /media/avatars/ {
+        secure_link $arg_s,$arg_e;
+        secure_link_md5 "$secure_link_expires$uri ${AVATAR_URL_SIGNING_SECRET}";
+        if ($secure_link = "") {
+            return 403;
+        }
+        if ($secure_link = "0") {
+            return 410;
+        }
+        set $args "";
+        proxy_pass http://storage_server/${STORAGE_BUCKET}/system/avatars/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
+        proxy_set_header Authorization "";
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location /media/ {
         proxy_pass http://backend_server/media/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    }
+}
+
+# The plugin hosts' server. It must stay after the server above: the first server on a port is
+# the default one, so a host name that is not a valid plugin host still reaches EpicStaff.
+include /etc/nginx/conf.d/plugins-server-${PLUGINS_ENABLED}.snippet;
+
+# EpicStaff's API for the plugin node and plugin backends, on port 8081 of plugins-network.
+include /etc/nginx/conf.d/plugins-internal-api-${PLUGINS_ENABLED}.snippet;
+
+# Liveness for the compose healthcheck only: bound to the container's loopback and
+# never published, it answers without proxying, so it reports nginx itself and not
+# the backends, and it is outside the TLS server's http->https redirect. Port 8081 on the
+# container's other addresses is the plugin internal API listener (plugins-internal-api-*.snippet):
+# nginx picks the server by the address a connection arrived on.
+server {
+    listen 127.0.0.1:8081;
+
+    location = /nginx-health {
+        access_log off;
+        return 204;
+    }
+
+    location / {
+        return 404;
     }
 }

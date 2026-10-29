@@ -4,6 +4,7 @@
         tooltipText="Reuse an existing webhook trigger, or create a new one inline."
         [items]="modeItems"
         [selectedValue]="mode()"
+        [readonly]="readonly()"
         (changed)="onModeChanged($event)"
     />
 }
@@ -14,6 +15,7 @@
         placeholder="Select a trigger"
         [items]="existingItems()"
         [selectedValue]="selectedExistingId()"
+        [readonly]="readonly()"
         (opened)="onExistingOpened()"
         (changed)="onExistingChanged($event)"
     />
@@ -31,6 +33,7 @@
             placeholder="e.g. my-webhook"
             [required]="true"
             [activeColor]="activeColor()"
+            [readonly]="readonly()"
         ></app-custom-input>
 
         <app-select
@@ -39,6 +42,7 @@
             formControlName="provider_type"
             [required]="true"
             [items]="providerItems()"
+            [readonly]="readonly()"
         />
 
         @if (providerType() === 'ngrok') {
@@ -48,6 +52,7 @@
                 placeholder="e.g. my-tunnel"
                 [required]="true"
                 [activeColor]="activeColor()"
+                [readonly]="readonly()"
             ></app-custom-input>
             <app-select
                 formControlName="ngrok_auth_token_secret_id"
@@ -59,17 +64,24 @@
                 [items]="secretItems()"
                 [showSearch]="true"
                 searchPlaceholder="Search a secret..."
+                [readonly]="readonly()"
+            />
+            <app-binned-secret-note
+                [selected]="form.get('ngrok_auth_token_secret_id')?.value"
+                [readonly]="readonly()"
             />
             <app-custom-input
                 label="Custom Domain"
                 formControlName="ngrok_domain"
                 placeholder="(optional) myapp.ngrok.io"
                 [activeColor]="activeColor()"
+                [readonly]="readonly()"
             ></app-custom-input>
             <app-select
                 label="Region"
                 formControlName="ngrok_region"
                 [items]="regionItems"
+                [readonly]="readonly()"
             />
         }
 
@@ -80,29 +92,26 @@
                 placeholder="e.g. local"
                 [required]="true"
                 [activeColor]="activeColor()"
+                [readonly]="readonly()"
             ></app-custom-input>
         }
 
         @if (showAuth()) {
-            @if (existingAuth(); as auth) {
-                <p class="wt-hint">
-                    Currently configured: {{ authKindLabel(auth.kind) }}
-                    @if (auth.secret_tail) {
-                        (secret ending in ****{{ auth.secret_tail }})
-                    } @else {
-                        — no secret set yet
-                    }
-                    . Leaving the fields below untouched will keep this configuration as-is.
-                </p>
-            }
-
             <app-select
                 label="Auth Strategy"
                 [required]="true"
                 tooltipText="Fixed authentication strategy for inbound requests to this trigger: Webhook Node sends the EPICSTAFF_API_KEY header, Telegram Node sends the X-Telegram-Bot-Api-Secret-Token header, and Twilio is verified via its own X-Twilio-Signature header."
                 formControlName="auth_kind"
                 [items]="authKindItems()"
+                [disabled]="authKindLocked()"
+                [invalid]="authKindProviderConflict()"
+                [readonly]="readonly()"
             />
+            @if (authKindProviderConflict()) {
+                <p class="wt-error">Telegram and Twilio triggers cannot use the Localhost provider.</p>
+            } @else if (authKindLocked() && !readonly()) {
+                <p class="wt-hint">The auth strategy of an existing trigger cannot be changed.</p>
+            }
 
             @if (authKindValue() === 'webhook' || authKindValue() === 'telegram') {
                 <app-select
@@ -110,11 +119,35 @@
                     label="Auth Secret"
                     variant="boxed"
                     tooltipText="The stored secret used to authenticate inbound requests to this trigger."
-                    placeholder="Select a secret"
-                    [items]="secretItems()"
+                    [placeholder]="authSecretPlaceholder()"
+                    [items]="authSecretItems()"
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
+                    [readonly]="readonly()"
                 />
+                <app-binned-secret-note
+                    [selected]="form.get('auth_secret_id')?.value"
+                    [readonly]="readonly()"
+                />
+                @if (existingAuth()) {
+                    <p class="wt-hint">
+                        @if (existingSecretMask(); as mask) {
+                            Current secret: {{ mask }} (its value is never shown).
+                            @if (!readonly()) {
+                                @if (authSecretIdValue() == null) {
+                                    Leave Auth Secret empty to keep it, or choose a secret to replace it.
+                                } @else {
+                                    Choose a different secret only to replace it.
+                                }
+                            }
+                        } @else {
+                            No secret is set for this trigger yet.
+                            @if (!readonly()) {
+                                Choose one to set it.
+                            }
+                        }
+                    </p>
+                }
             } @else if (authKindValue() === 'twilio') {
                 <p class="wt-hint">
                     No secret needed — this reserves the trigger for a Twilio channel; its auth token is filled in

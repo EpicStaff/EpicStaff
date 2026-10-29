@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from shared.knowledge.target import KnowledgeSearchTarget
-from shared.models.knowledge_new import FoundChunk
+from shared.models.knowledge_new import FoundChunk, SearchUsage
 
 
 class KnowledgeEventSink(Protocol):
@@ -26,4 +26,5 @@ class KnowledgeEventSink(Protocol):
         query: str,
         result: list[FoundChunk] | str,
         error: str | None = None,
+        usage: SearchUsage | None = None,
     ) -> None: ...

@@ -13,26 +13,36 @@ import {
     viewChild,
     viewChildren,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import {
-    ConfirmationDialogService,
-    ConfirmationResult,
+    AuthorshipDetailsDialogService,
+    AuthorshipDetailsSource,
     FetchErrorStateComponent,
     LoadingSpinnerComponent,
 } from '@shared/components';
 import { DragScrollDirective } from '@shared/directives';
-import { LABELS_STORE } from '@shared/services';
+import { BulkDeleteService, LABELS_STORE } from '@shared/services';
+import { showExportExclusionWarning } from '@shared/utils';
+import { filter, switchMap } from 'rxjs/operators';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications';
-import { FlowCardAction, FlowCardComponent } from '../../../../components/flow-card/flow-card.component';
+import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
+import {
+    FlowCardAction,
+    FlowCardComponent,
+    FlowLabelDropEvent,
+} from '../../../../components/flow-card/flow-card.component';
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
 import { FlowSessionsListComponent } from '../../../../components/flow-sessions-dialog/flow-sessions-list.component';
 import { GetGraphLightRequest, GraphDto } from '../../../../models/graph.model';
+import { FlowCopyImportFacadeService } from '../../../../services/flow-copy-import-facade.service';
 import { FlowsApiService } from '../../../../services/flows-api.service';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
 import { RunGraphService } from '../../../../services/run-graph-session.service';
+import { flowsBulkDeleteGroup } from '../../../../utils/flows-bulk-delete.util';
 
 @Component({
     selector: 'app-my-flows',
@@ -50,13 +60,16 @@ import { RunGraphService } from '../../../../services/run-graph-session.service'
 })
 export class MyFlowsComponent implements AfterViewChecked {
     private readonly flowsService = inject(FlowsStorageService);
+    private readonly flowCopyImport = inject(FlowCopyImportFacadeService);
     private readonly runGraphService = inject(RunGraphService);
     private readonly router = inject(Router);
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
-    private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly bulkDeleteService = inject(BulkDeleteService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly importExportService = inject(ImportExportService);
     private readonly labelsStorage = inject(LabelsStorageService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly destroyRef = inject(DestroyRef);
 
     private readonly recentSection = viewChild<ElementRef<HTMLElement>>('recentSection');
@@ -72,6 +85,7 @@ export class MyFlowsComponent implements AfterViewChecked {
     public readonly isFlowsLoaded = this.flowsService.isFlowsLoaded;
     public readonly selectMode = this.flowsService.selectMode;
     public readonly selectedFlowIds = this.flowsService.selectedFlowIds;
+    public readonly isDeleting = this.flowsService.isDeleting;
     public readonly isMeasuring = signal(true);
     public readonly visibleCount = signal<number>(Infinity);
 
@@ -219,26 +233,38 @@ export class MyFlowsComponent implements AfterViewChecked {
                 this.exportFlow(flow);
                 break;
 
+            case 'viewDetails':
+                this.openFlowDetails(flow, event.trigger);
+                break;
+
             default:
                 console.warn(`Action '${action}' not implemented for flow:`, flow.id);
         }
     }
 
-    private confirmAndDeleteFlow(flow: GetGraphLightRequest): void {
-        this.confirmationDialogService
-            .confirmDeleteWithTruncation(flow.name, 50)
-            .subscribe((result: ConfirmationResult) => {
-                if (result === true) {
-                    this.flowsService.deleteFlow(flow.id).subscribe({
-                        next: () => {
-                            this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()).subscribe();
-                        },
-                        error: (err) => {
-                            console.error(`Error deleting flow ${flow.id} - ${flow.name}`, err);
-                        },
-                    });
-                }
+    public onLabelDrop(event: FlowLabelDropEvent): void {
+        this.flowsService
+            .updateFlowLabels(event.flow.id, event.labelIds, event.flow.save_version)
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                switchMap(() => this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()))
+            )
+            .subscribe({
+                error: () => {
+                    this.toastService.error(`Failed to update labels for "${event.flow.name}".`);
+                },
             });
+    }
+
+    private confirmAndDeleteFlow(flow: GetGraphLightRequest): void {
+        this.bulkDeleteService
+            .run([flowsBulkDeleteGroup(this.flowsService, [flow], this.recycleBinSettings.retentionDays())])
+            .pipe(
+                filter((outcomes) => outcomes.some((outcome) => (outcome.response?.deleted_count ?? 0) > 0)),
+                switchMap(() => this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter())),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
     }
 
     private openRenameDialog(flow: GetGraphLightRequest): void {
@@ -272,7 +298,7 @@ export class MyFlowsComponent implements AfterViewChecked {
 
         dialogRef.closed.subscribe((newName) => {
             if (newName && newName.trim().length > 0) {
-                this.flowsService.copyFlow(flow.id, newName.trim()).subscribe({
+                this.flowCopyImport.copyFlow(flow.id, newName.trim()).subscribe({
                     next: (graph) => {
                         this.toastService.success(`Flow copied and saved as "${graph.name}"`);
                         this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()).subscribe();
@@ -316,9 +342,43 @@ export class MyFlowsComponent implements AfterViewChecked {
         });
     }
 
+    /**
+     * A subflow row builds its light graph client-side, without authorship, so the flow is resolved by
+     * id: the loaded list entry carries the author and last edit, and a subflow the label filter hides
+     * is fetched from graph-light.
+     */
+    private openFlowDetails(flow: GetGraphLightRequest, trigger: HTMLElement | undefined): void {
+        const listedFlow = this.flowsService.flows().find((candidate) => candidate.id === flow.id);
+        if (listedFlow) {
+            this.showFlowDetails(listedFlow, trigger);
+            return;
+        }
+        this.flowApiService
+            .getGraphLightById(flow.id)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (fetchedFlow) => this.showFlowDetails(fetchedFlow, trigger),
+                error: () => this.toastService.error(`Failed to load details of flow "${flow.name}"`),
+            });
+    }
+
+    private showFlowDetails(flow: GetGraphLightRequest, trigger: HTMLElement | undefined): void {
+        this.authorshipDetailsDialog.open('Flow Details', this.toAuthorshipSource(flow), trigger);
+    }
+
+    // The list's light graphs leave authorship optional; any field absent renders as the dialog's "unknown".
+    private toAuthorshipSource(flow: GetGraphLightRequest): AuthorshipDetailsSource {
+        return {
+            created_by: flow.created_by ?? null,
+            created_at: flow.created_at ?? null,
+            last_edited_by: flow.last_edited_by ?? null,
+            last_edited_at: flow.last_edited_at ?? null,
+        };
+    }
+
     private exportFlow(flow: GetGraphLightRequest): void {
         this.importExportService.exportFlow(flow.id.toString()).subscribe({
-            next: (blob) => {
+            next: ({ blob, excluded }) => {
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -327,6 +387,8 @@ export class MyFlowsComponent implements AfterViewChecked {
                 window.URL.revokeObjectURL(url);
 
                 this.toastService.success(`Flow "${flow.name}" exported successfully`);
+
+                showExportExclusionWarning(this.toastService, excluded);
             },
             error: (error) => {
                 console.error('Export failed:', error);

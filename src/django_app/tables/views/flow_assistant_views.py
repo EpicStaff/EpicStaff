@@ -5,6 +5,9 @@ Views for the Flow Assistant feature.
 
 Non-streaming endpoints: DRF APIView.
 Streaming endpoint: SSEMixin (Django View) with ticket auth.
+
+Every DRF view refuses plugin credentials: conversations belong to a person's
+membership, and the stream's ticket is issued only by these views.
 """
 
 import contextlib
@@ -14,12 +17,12 @@ from django.db.models import Count
 from django.http import Http404
 from django.utils import timezone
 from rbac.access.asserts import assert_org_permission
-from rbac.access.gates import IsSuperadmin
+from rbac.access.gates import DenyPluginCredential, IsSuperadmin
 from rbac.access.org_context import OrgContextService
 from rbac.identity.tickets import sse_ticket_service
 from rbac.models.enums import Permission, ResourceType
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -39,9 +42,15 @@ from tables.services.flow_assistant import (
     FlowAssistantService,
     build_node_index,
 )
+from tables.services.flow_assistant.conversation_access import get_streamable_conversation
 from tables.services.flow_assistant.helpers import request_cancel
 from tables.services.flow_assistant.organization_resolution import resolve_organization_user
 from tables.services.flow_assistant.stream_serializer import serialize_stream_event
+from tables.services.llm_clients import (
+    TOOL_USE_FAILED_CODE,
+    USER_VISIBLE_PROVIDER_ERROR_CODES,
+    LLMProviderError,
+)
 from tables.services.secrets import SecretResolutionError
 from tables.utils.mixins import SSEMixin
 from utils.logger import logger
@@ -98,7 +107,7 @@ class FlowAssistantConfigView(APIView):
     PATCH /api/flow-assistants/<graph_id>/   — update llm_config
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
     _org_service = OrgContextService()
 
     def get(self, request, graph_id: int):
@@ -148,7 +157,7 @@ class FlowAssistantConversationsView(APIView):
     POST /api/flow-assistants/<graph_id>/conversations/ — start a new conversation
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
 
     def get(self, request, graph_id: int):
         organization_user = resolve_organization_user(request)
@@ -204,7 +213,7 @@ class FlowAssistantConversationView(APIView):
     DELETE /api/flow-assistants/<graph_id>/conversations/<conversation_id>/
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
 
     def get(self, request, graph_id: int, conversation_id: int):
         organization_user = resolve_organization_user(request)
@@ -240,7 +249,7 @@ class FlowAssistantConversationView(APIView):
 class FlowAssistantSendMessageView(APIView):
     """POST /api/flow-assistants/<graph_id>/conversations/<conversation_id>/messages/"""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
 
     def post(self, request, graph_id: int, conversation_id: int):
         organization_user = resolve_organization_user(request)
@@ -272,6 +281,18 @@ class FlowAssistantSendMessageView(APIView):
 # ── SSE streaming endpoint ────────────────────────────────────────────────────
 
 
+def _provider_error_detail(error: LLMProviderError) -> str:
+    source = f"{error.provider}: {error.code}" if error.code else error.provider
+    if error.code not in USER_VISIBLE_PROVIDER_ERROR_CODES:
+        return (
+            f"The model provider rejected the request ({source}). "
+            "Check the LLM configuration or contact an admin."
+        )
+    detail = f"The model provider returned an error ({source}): {error.message}"
+    # Only this provider failure is random; retrying anything else repeats it.
+    return f"{detail} Try again." if error.code == TOOL_USE_FAILED_CODE else detail
+
+
 class FlowAssistantStreamView(SSEMixin):
     """
     GET /api/flow-assistants/<graph_id>/conversations/<conversation_id>/stream/?ticket=...
@@ -279,6 +300,21 @@ class FlowAssistantStreamView(SSEMixin):
     Streams LLM events for the last user message in the conversation.
     Authentication is via a one-shot SSE ticket (consumed on first use).
     """
+
+    async def authorize(self, request, *args, **kwargs):
+        """Refuse unless the ticket user owns the conversation and holds FLOWS READ in its org.
+
+        Runs before the stream opens, so a refused caller never starts an LLM reply.
+        Keeps the conversation in ``self.conversation`` for `get_live_updates()`.
+        Returns a JSON error response on denial, else None.
+        """
+        try:
+            self.conversation = await sync_to_async(get_streamable_conversation)(
+                self.user, self.kwargs["graph_id"], self.kwargs["conversation_id"]
+            )
+        except APIException as exc:
+            return self.refuse(exc)
+        return None
 
     async def get_initial_data(self):
         # No initial data — the stream starts with the LLM reply
@@ -291,41 +327,7 @@ class FlowAssistantStreamView(SSEMixin):
         The pubsub parameter is ignored (we use an in-process async iterator).
         """
         graph_id = self.kwargs["graph_id"]
-        conversation_id = self.kwargs["conversation_id"]
-        user = self.user  # set by SSEMixin.get() after ticket validation
-
-        # Load conversation — scope check uses organization_user
-        try:
-            conversation = await sync_to_async(
-                lambda: FlowAssistantConversation.objects.select_related(
-                    "flow_assistant__graph",
-                    "flow_assistant__llm_config__model__llm_provider",
-                    "organization_user__user",
-                ).get(
-                    pk=conversation_id,
-                    flow_assistant__graph_id=graph_id,
-                )
-            )()
-        except FlowAssistantConversation.DoesNotExist:
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": "Conversation not found."},
-            }
-            return
-
-        # The conversation must belong to the ticket-holder user.
-        # We compare by user_id (not org membership pk) since the ticket is
-        # issued per-user and the SSE flow is stateless w.r.t. org context.
-        if conversation.organization_user.user_id != user.pk:
-            yield {"event": "error", "data": {"type": "error", "detail": "Forbidden."}}
-            return
-
-        if conversation.deleted_at is not None:
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": "Conversation not found."},
-            }
-            return
+        conversation = self.conversation
 
         # Find the last user message to use as the prompt for this turn.
         last_user_row = await sync_to_async(
@@ -334,6 +336,7 @@ class FlowAssistantStreamView(SSEMixin):
         last_user_message = last_user_row.content if last_user_row else ""
 
         if not last_user_message:
+            await self.release_database_connection_before_error()
             yield {
                 "event": "error",
                 "data": {"type": "error", "detail": "No pending user message found."},
@@ -361,33 +364,19 @@ class FlowAssistantStreamView(SSEMixin):
                 if terminate:
                     return
 
-        except LLMConfigMissingError as exc:
-            logger.warning("FlowAssistant stream error (LLMConfigMissingError): {}", exc)
-            yield {
-                "event": "error",
-                "data": {
-                    "type": "error",
-                    "detail": str(exc),
-                },
-            }
-        except LLMConfigInvalidError as exc:
-            logger.warning("FlowAssistant stream error (LLMConfigInvalidError): {}", exc)
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": str(exc)},
-            }
-        except SecretResolutionError as exc:
-            logger.warning("FlowAssistant stream error (SecretResolutionError): {}", exc)
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": str(exc)},
-            }
+        except (LLMConfigMissingError, LLMConfigInvalidError, SecretResolutionError) as exc:
+            logger.warning("FlowAssistant stream error ({}): {}", type(exc).__name__, exc)
+            error_detail = str(exc)
+        except LLMProviderError as exc:
+            logger.warning("FlowAssistant stream provider error: {}", exc)
+            error_detail = _provider_error_detail(exc)
         except Exception as exc:
             logger.exception("Unexpected error in FlowAssistantStreamView: {}", exc)
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": "Unexpected error."},
-            }
+            error_detail = "Unexpected error."
+        else:
+            return
+        await self.release_database_connection_before_error()
+        yield {"event": "error", "data": {"type": "error", "detail": error_detail}}
 
 
 # ── Audit endpoint ────────────────────────────────────────────────────────────
@@ -407,7 +396,7 @@ class FlowAssistantAuditView(APIView):
       include_deleted       bool  — include soft-deleted rows (default false)
     """
 
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+    permission_classes = [IsAuthenticated, DenyPluginCredential, IsSuperadmin]
     pagination_class = LimitOffsetPagination
 
     def get(self, request):
@@ -467,7 +456,7 @@ class FlowAssistantCancelView(APIView):
     assistant content, and return a done event with interrupted=True.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
 
     def post(self, request, graph_id: int, conversation_id: int):
         organization_user = resolve_organization_user(request)

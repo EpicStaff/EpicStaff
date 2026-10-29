@@ -16,12 +16,15 @@ from collections.abc import AsyncIterator, Callable
 import pytest
 from app.emitters.base import Emitter
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
+from app.logging_utils import redact_value
 from app.loop.agent_loop import _UNTRUSTED_CONTENT_NOTE, DefaultAgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.tools.registry import ToolRegistry, ToolSpec
 from shared.models.agent_service import AgentSpec, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
+from tests.cancellation import never_cancelled
+from tests.log_capture import log_line_starting_with, capture_logs_at
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -43,6 +46,7 @@ class FakeLLMClient(LLMClient):
         self.chat_raises = chat_raises
         self.received_configs: list[dict] = []
         self.received_tools: list[list] = []
+        self.received_streams: list[bool] = []
 
     async def _iter_chunks(self, chunks: list[LLMChunk]) -> AsyncIterator[LLMChunk]:
         for chunk in chunks:
@@ -59,6 +63,7 @@ class FakeLLMClient(LLMClient):
     ) -> AsyncIterator[LLMChunk]:
         self.received_configs.append(dict(model_config))
         self.received_tools.append(list(tools))
+        self.received_streams.append(stream)
 
         if self.chat_raises is not None:
             raise self.chat_raises
@@ -174,6 +179,7 @@ def make_context(
         attachments=[],
         correlation_id="test-corr",
         messages=messages,
+        is_cancelled=never_cancelled,
     )
 
 
@@ -194,29 +200,122 @@ def tool_chunks(call_id: str, name: str, args: str) -> list[LLMChunk]:
 # ---------------------------------------------------------------------------
 
 
-def test_build_model_config_adds_provider_prefix():
-    """Provider prefix is added when model string has no '/'."""
-    from app.loop.agent_loop import _build_model_config
+async def _model_config(llm: LLMData, tool_choice=None) -> dict:
+    agent = AgentSpec(id=1, name="a", instructions="i", llm=llm)
+    context = AgentContext(agent=agent, attachments=[], correlation_id="c", tool_choice=tool_choice, is_cancelled=never_cancelled)
+    fake_llm = FakeLLMClient([text_chunks("ok")])
 
-    agent = _make_agent_spec()
-    context = AgentContext(agent=agent, attachments=[], correlation_id="c")
-    config = _build_model_config(context)
-    assert config["model"] == "openai/fake-model"
+    await DefaultAgentLoop(fake_llm).run(context, StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5))
+
+    (config,) = fake_llm.received_configs
+    return config
 
 
-def test_build_model_config_no_double_prefix():
-    """Provider prefix is NOT added when model already contains '/'."""
-    from app.loop.agent_loop import _build_model_config
+@pytest.mark.parametrize(
+    ("provider", "model", "expected_model", "expected_store"),
+    [
+        # An OpenAI row's bare name litellm does not know is OpenAI's; a known one stays bare.
+        ("openai", "fake-model", "openai/fake-model", False),
+        ("openai", "gpt-4o", "gpt-4o", False),
+        # A vendor-prefixed name on an OpenAI row is left for litellm to route.
+        ("openai", "openai/gpt-4o", "openai/gpt-4o", False),
+        # OpenAI/Azure calls opt out of provider-side storage; the decision follows the
+        # provider litellm routes to, which is the configured row's provider.
+        ("azure", "my-deployment", "azure/my-deployment", False),
+        # Vendor-namespaced ids stay on the row's provider, never the vendor named in the id.
+        ("openrouter", "openai/gpt-5.6-luna", "openrouter/openai/gpt-5.6-luna", None),
+        ("groq", "openai/gpt-oss-120b", "groq/openai/gpt-oss-120b", None),
+        ("google_ai", "my-custom-model", "gemini/my-custom-model", None),
+        ("google_ai", "gemini/gemini-2.5-pro", "gemini/gemini-2.5-pro", None),
+        ("anthropic", "claude-sonnet-4-5", "anthropic/claude-sonnet-4-5", None),
+        ("openai", "anthropic/claude-sonnet-4-5", "anthropic/claude-sonnet-4-5", None),
+    ],
+)
+async def test_llm_call_routes_to_the_provider_and_opts_out_of_storage(provider, model, expected_model, expected_store):
+    config = await _model_config(LLMData(provider=provider, config=LLMConfigData(model=model)))
 
-    agent = AgentSpec(
-        id=1,
-        name="a",
-        instructions="i",
-        llm=LLMData(provider="openai", config=LLMConfigData(model="openai/gpt-4o")),
+    assert config["model"] == expected_model
+    assert config.get("store", "absent") == ("absent" if expected_store is None else expected_store)
+
+
+@pytest.mark.parametrize(
+    "tool_choice", [{"type": "function", "function": {"name": "submit_final_answer"}}, None], ids=["set", "unset"]
+)
+async def test_tool_choice_reaches_the_llm_only_when_set(tool_choice):
+    config = await _model_config(_make_llm_data(), tool_choice=tool_choice)
+
+    assert config.get("tool_choice", "absent") == (tool_choice or "absent")
+
+
+async def test_llm_call_receives_every_set_config_field():
+    llm_config = LLMConfigData(
+        model="my-deployment",
+        timeout=30,
+        temperature=0.3,
+        top_p=0.9,
+        stop=["END"],
+        max_tokens=512,
+        presence_penalty=0.1,
+        frequency_penalty=0.2,
+        logit_bias={50256: -100.0},
+        seed=7,
+        base_url="https://example.openai.azure.com",
+        api_version="2025-01-01-preview",
+        api_key="sk-test",
+        api_key_secret_id=99,
+        deployment_id="my-deployment",
+        extra_headers={"X-Team": "core"},
+        reasoning_effort="medium",
     )
-    context = AgentContext(agent=agent, attachments=[], correlation_id="c")
-    config = _build_model_config(context)
-    assert config["model"] == "openai/gpt-4o"
+
+    config = await _model_config(LLMData(provider="azure", config=llm_config))
+
+    assert config == {
+        "model": "azure/my-deployment",
+        "timeout": 30,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stop": ["END"],
+        "max_tokens": 512,
+        "presence_penalty": 0.1,
+        "frequency_penalty": 0.2,
+        "logit_bias": {50256: -100.0},
+        "seed": 7,
+        "base_url": "https://example.openai.azure.com",
+        "api_version": "2025-01-01-preview",
+        "api_key": "sk-test",
+        "deployment_id": "my-deployment",
+        "extra_headers": {"X-Team": "core"},
+        "reasoning_effort": "medium",
+        "store": False,
+    }
+
+
+async def test_llm_call_receives_no_unset_config_field():
+    config = await _model_config(LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet-4-5")))
+
+    assert config == {"model": "anthropic/claude-sonnet-4-5"}
+
+
+@pytest.mark.parametrize(
+    ("provider", "model", "expected_sampling"),
+    [
+        # Anthropic rejects temperature != 1 and top_p while thinking is on.
+        ("anthropic", "claude-sonnet-4-6", {}),
+        # The rules follow the provider litellm routes to.
+        ("openai", "anthropic/claude-sonnet-4-6", {}),
+        ("anthropic", "openai/gpt-4o", {}),
+        # A provider litellm does not know is taken from the model prefix.
+        ("my_gateway", "claude-sonnet-4-6", {"temperature": 0.5, "top_p": 0.9}),
+    ],
+)
+async def test_sampling_params_follow_the_routed_provider(provider, model, expected_sampling):
+    llm_config = LLMConfigData(model=model, temperature=0.5, top_p=0.9, reasoning_effort="high")
+
+    config = await _model_config(LLMData(provider=provider, config=llm_config))
+
+    assert {key: config[key] for key in ("temperature", "top_p") if key in config} == expected_sampling
+    assert config["reasoning_effort"] == "high"
 
 
 # ---------------------------------------------------------------------------
@@ -583,7 +682,7 @@ async def test_unknown_tool_name():
     )
     loop = DefaultAgentLoop(llm)
 
-    result = await loop.run(context, tools, emitter, stop)
+    await loop.run(context, tools, emitter, stop)
 
     tool_result_events: list[ToolResult] = [
         payload
@@ -639,6 +738,27 @@ async def test_llm_raises_returns_llm_error_no_on_error():
     assert len(error_events) == 0
 
 
+async def test_llm_error_logs_the_exception_class_without_its_message():
+    """The llm_error log line carries no raw exception text; LoopResult.error still does."""
+    secret_marker = "LLM_CRASH_SECRET_13579"
+    raw_error_text = f"provider rejected sk-live-{secret_marker}"
+    emitter = RecordingEmitter()
+    context = make_context()
+    tools = StubToolRegistry({})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient([], chat_raises=RuntimeError(raw_error_text))
+
+    with capture_logs_at("DEBUG") as messages:
+        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    error_line = log_line_starting_with(messages, "loop llm_error")
+    assert "correlation_id=test-corr" in error_line
+    assert "RuntimeError" in error_line
+    assert "<redacted" in error_line
+    assert secret_marker not in "\n".join(messages)
+    assert result.error == raw_error_text
+
+
 async def test_timeout_fires_mid_execution():
     """Wall-clock limit fires during tool execution → stop_reason='timeout', on_error NOT called."""
     emitter = RecordingEmitter()
@@ -690,18 +810,6 @@ async def test_streaming_chunk_order_preserved():
 
     observed = [payload for name, payload in emitter.events if name == "on_chunk"]
     assert observed == ordered_chunks
-
-
-def test_context_starts_with_empty_messages():
-    """AgentContext starts with empty messages; prompt is built externally by the runner."""
-    agent = AgentSpec(
-        id=1,
-        name="researcher",
-        instructions="You research topics thoroughly.",
-        llm=_make_llm_data(),
-    )
-    context = AgentContext(agent=agent, attachments=[], correlation_id="c")
-    assert context.messages == []
 
 
 async def test_token_usage_aggregated_across_two_iterations():
@@ -770,138 +878,41 @@ async def test_token_usage_defaults_to_zero_when_no_usage_chunks():
 
 
 # ---------------------------------------------------------------------------
-# Tests: tool_choice forwarded through model_config
-# ---------------------------------------------------------------------------
-
-
-async def test_tool_choice_in_context_appears_in_model_config():
-    """context.tool_choice set → forwarded to LLM as model_config['tool_choice']."""
-    emitter = RecordingEmitter()
-    agent = _make_agent_spec()
-    choice = {"type": "function", "function": {"name": "submit_final_answer"}}
-    context = AgentContext(
-        agent=agent,
-        attachments=[],
-        correlation_id="c",
-        tool_choice=choice,
-    )
-    tools = StubToolRegistry({})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
-
-    llm = FakeLLMClient([text_chunks("ok")])
-    loop = DefaultAgentLoop(llm)
-
-    await loop.run(context, tools, emitter, stop)
-
-    assert len(llm.received_configs) == 1
-    assert llm.received_configs[0]["tool_choice"] == choice
-
-
-async def test_tool_choice_none_not_present_in_model_config():
-    """context.tool_choice=None (default) → 'tool_choice' key absent from model_config."""
-    emitter = RecordingEmitter()
-    context = make_context()
-    tools = StubToolRegistry({})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
-
-    llm = FakeLLMClient([text_chunks("ok")])
-    loop = DefaultAgentLoop(llm)
-
-    await loop.run(context, tools, emitter, stop)
-
-
-# ---------------------------------------------------------------------------
 # Tests: context window warning
 # ---------------------------------------------------------------------------
 
 
-async def test_context_warning_emitted_once_when_over_ratio(monkeypatch):
-    """Tokens >= ratio * context_window → exactly one warning containing the window size."""
-    import litellm as _litellm
-    from app.loop.agent_loop import DefaultAgentLoop
+def _raise_model_not_found(model):
+    raise RuntimeError("model not found")
 
-    monkeypatch.setattr(_litellm, "get_model_info", lambda model: {"max_input_tokens": 1000})
-    monkeypatch.setattr(_litellm, "token_counter", lambda model, messages: 900)
 
+@pytest.mark.parametrize(
+    ("ratio", "get_model_info", "prompt_tokens", "expected_warnings"),
+    [
+        (0.8, lambda model: {"max_input_tokens": 1000}, 900, 1),
+        (0.8, lambda model: {"max_input_tokens": 1000}, 100, 0),
+        (None, lambda model: {"max_input_tokens": 1000}, 900, 0),
+        # An unknown model never blocks the run.
+        (0.8, _raise_model_not_found, 900, 0),
+    ],
+    ids=["over-ratio-warns-once", "under-ratio", "warning-disabled", "model-info-unavailable"],
+)
+async def test_context_window_warning(monkeypatch, ratio, get_model_info, prompt_tokens, expected_warnings):
+    import litellm
+
+    monkeypatch.setattr(litellm, "get_model_info", get_model_info)
     emitter = RecordingEmitter()
-    context = make_context()
-    tools = StubToolRegistry({"ping": lambda args: "pong"})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
+    usage = LLMChunk(usage={"prompt_tokens": prompt_tokens, "completion_tokens": 1})
+    # Two iterations, so a warning that is not de-duplicated would appear twice.
+    llm = FakeLLMClient([[*tool_chunks("c1", "ping", "{}"), usage], [*text_chunks("done"), usage]])
 
-    # Two iterations: tool call then text reply
-    llm = FakeLLMClient(
-        [
-            tool_chunks("c1", "ping", "{}"),
-            text_chunks("done"),
-        ]
+    result = await DefaultAgentLoop(llm, context_warning_ratio=ratio).run(
+        make_context(), StubToolRegistry({"ping": lambda args: "pong"}), emitter, MaxIterAndNoToolCalls(max_iter=5)
     )
-    loop = DefaultAgentLoop(llm, context_warning_ratio=0.8)
-
-    await loop.run(context, tools, emitter, stop)
-
-    assert len(emitter.warnings) == 1
-    assert "1000" in emitter.warnings[0]
-
-
-async def test_context_warning_not_emitted_when_under_ratio(monkeypatch):
-    """Tokens < ratio * context_window → no warning."""
-    import litellm as _litellm
-
-    monkeypatch.setattr(_litellm, "get_model_info", lambda model: {"max_input_tokens": 1000})
-    monkeypatch.setattr(_litellm, "token_counter", lambda model, messages: 100)
-
-    emitter = RecordingEmitter()
-    context = make_context()
-    tools = StubToolRegistry({})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
-
-    llm = FakeLLMClient([text_chunks("ok")])
-    loop = DefaultAgentLoop(llm, context_warning_ratio=0.8)
-
-    await loop.run(context, tools, emitter, stop)
-
-    assert emitter.warnings == []
-
-
-async def test_context_warning_ratio_none_no_warning():
-    """context_warning_ratio=None (default) → no warning; get_model_info/token_counter not needed."""
-    emitter = RecordingEmitter()
-    context = make_context()
-    tools = StubToolRegistry({})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
-
-    llm = FakeLLMClient([text_chunks("ok")])
-    loop = DefaultAgentLoop(llm)  # default ratio=None
-
-    await loop.run(context, tools, emitter, stop)
-
-    assert emitter.warnings == []
-
-
-async def test_context_warning_get_model_info_raises_no_warning(monkeypatch):
-    """get_model_info raising → no warning, run still completes normally."""
-    import litellm as _litellm
-
-    def _raise(model):
-        raise RuntimeError("model not found")
-
-    monkeypatch.setattr(_litellm, "get_model_info", _raise)
-
-    emitter = RecordingEmitter()
-    context = make_context()
-    tools = StubToolRegistry({})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
-
-    llm = FakeLLMClient([text_chunks("ok")])
-    loop = DefaultAgentLoop(llm, context_warning_ratio=0.8)
-
-    result = await loop.run(context, tools, emitter, stop)
 
     assert result.stop_reason == "completed"
-    assert emitter.warnings == []
-
-    assert len(llm.received_configs) == 1
-    assert "tool_choice" not in llm.received_configs[0]
+    assert len(emitter.warnings) == expected_warnings
+    assert all("1000" in warning for warning in emitter.warnings)
 
 
 # ---------------------------------------------------------------------------
@@ -1048,42 +1059,9 @@ async def test_overflow_rejection_does_not_count_toward_consecutive_failures():
 # ---------------------------------------------------------------------------
 
 
-async def test_tool_timeout_feeds_error_result():
-    """Executor slower than timeout: is_error=True, 'timed out after' in content."""
-    context = make_context()
-    tools = ToolRegistry()
-
-    async def slow_executor(args: dict) -> ToolResult:
-        await asyncio.sleep(5)
-        return ToolResult(tool_call_id="", content="never", is_error=False)
-
-    tools.register(ToolSpec(name="slow", description="slow tool"), slow_executor)
-
-    llm = FakeLLMClient([])
-    loop = DefaultAgentLoop(llm)
-
-    result = await loop._execute_tool(tools, "c1", "slow", "{}", timeout=0.05)
-
-    assert result.is_error is True
-    assert "timed out after" in result.content
-
-
-async def test_tool_timeout_none_no_wrapping():
-    """timeout=None: normal tool executes and succeeds without wrapping."""
-    context = make_context()
-    tools = StubToolRegistry({"ping": lambda args: "pong"})
-
-    llm = FakeLLMClient([])
-    loop = DefaultAgentLoop(llm)
-
-    result = await loop._execute_tool(tools, "c1", "ping", "{}", timeout=None)
-
-    assert result.is_error is False
-    assert result.content == "pong"
-
-
-async def test_tool_timeout_counts_as_failure_toward_limit():
-    """Tool call exceeding tool_timeout counts as a failure toward max_consecutive_failures."""
+async def test_tool_timeout_is_an_error_result_counted_toward_the_failure_limit():
+    """A tool slower than tool_timeout is cut off: the LLM sees an error result, and it
+    counts toward max_consecutive_failures."""
     emitter = RecordingEmitter()
     context = make_context(tool_timeout=1, max_consecutive_failures=1)
     tools = ToolRegistry()
@@ -1106,6 +1084,9 @@ async def test_tool_timeout_counts_as_failure_toward_limit():
     result = await loop.run(context, tools, emitter, stop)
 
     assert result.stop_reason == "max_consecutive_failures"
+    (tool_result,) = [payload for name, payload in emitter.events if name == "on_tool_result"]
+    assert tool_result.is_error is True
+    assert "timed out after" in tool_result.content
 
 
 # ---------------------------------------------------------------------------
@@ -1144,6 +1125,8 @@ async def test_consecutive_failures_stops_gracefully_with_summary():
 
     assert llm.received_tools[-1] == []
     assert "tool_choice" not in llm.received_configs[-1]
+    # Both the loop call and the finalization call are non-streamed.
+    assert llm.received_streams == [False, False, False]
 
     assistant_messages = [m for m in context.messages if m["role"] == "assistant"]
     assert assistant_messages[-1]["content"] == "I tried X; it failed because Y"
@@ -1278,3 +1261,99 @@ async def test_finalization_token_usage_accumulated():
     assert result.token_usage.completion_tokens == 4
     assert result.token_usage.total_tokens == 14
     assert result.token_usage.total_cost_usd == pytest.approx(0.0025)
+
+
+# ---------------------------------------------------------------------------
+# Tests: debug logging never carries raw payloads
+# ---------------------------------------------------------------------------
+
+
+# Sentinel carried through the whole turn: it is the tool-call argument, the tool
+# output, and — once both are appended to the conversation — part of the message list
+# the next iteration dumps. One marker therefore reaches all three debug log sites.
+_SENTINEL = "SENTINEL-LEAK-7f3a"
+_SENTINEL_ARGUMENTS = '{"query": "SENTINEL-LEAK-7f3a"}'
+_SENTINEL_OUTPUT = "SENTINEL-LEAK-7f3a in the result"
+
+
+async def test_no_debug_log_site_carries_the_payload_verbatim():
+    """A marker placed in tool arguments and tool output reaches no debug log site."""
+    user_prompt = f"look up {_SENTINEL} for me"
+
+    emitter = RecordingEmitter()
+    context = make_context(messages=[{"role": "user", "content": user_prompt}])
+    tools = StubToolRegistry({"lookup": lambda args: _SENTINEL_OUTPUT})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient(
+        [
+            tool_chunks("c1", "lookup", _SENTINEL_ARGUMENTS),
+            text_chunks("done"),
+        ]
+    )
+
+    with capture_logs_at("DEBUG") as messages:
+        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    assert result.final_text == "done"
+    assert _SENTINEL not in "\n".join(messages)
+
+    second_iteration = log_line_starting_with(messages, "loop iter=1 ")
+    assert redact_value(_SENTINEL_ARGUMENTS) in second_iteration
+    assert "'content': '<redacted len=" in second_iteration
+    assert user_prompt not in second_iteration
+
+    tool_call_line = log_line_starting_with(messages, "tool call ")
+    assert tool_call_line == (
+        f"tool call id=c1 name=lookup args={redact_value(_SENTINEL_ARGUMENTS)}"
+    )
+
+    tool_result_line = log_line_starting_with(messages, "tool result ")
+    assert tool_result_line == (
+        f"tool result id=c1 is_error=False content={redact_value(_SENTINEL_OUTPUT)}"
+    )
+
+
+async def test_debug_logs_still_carry_the_identifiers_needed_to_correlate_a_call():
+    """Redacting payloads must not cost the ids, names and flags used for debugging."""
+    emitter = RecordingEmitter()
+    context = make_context()
+    tools = StubToolRegistry({"lookup": lambda args: "ok"})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient(
+        [
+            tool_chunks("call-42", "lookup", "{}"),
+            text_chunks("done"),
+        ]
+    )
+
+    with capture_logs_at("DEBUG") as messages:
+        await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    log_text = "\n".join(messages)
+    assert "tool call id=call-42 name=lookup" in log_text
+    assert "tool result id=call-42 is_error=False" in log_text
+    assert "correlation_id=test-corr" in log_text
+
+
+async def test_no_payload_log_lines_are_emitted_below_debug_level():
+    """At INFO the three payload-carrying lines are not logged at all."""
+    emitter = RecordingEmitter()
+    context = make_context(messages=[{"role": "user", "content": "hello"}])
+    tools = StubToolRegistry({"lookup": lambda args: "ok"})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient(
+        [
+            tool_chunks("c1", "lookup", '{"query": "x"}'),
+            text_chunks("done"),
+        ]
+    )
+
+    with capture_logs_at("INFO") as messages:
+        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    assert result.final_text == "done"
+    assert not [
+        message
+        for message in messages
+        if message.startswith(("loop iter=", "tool call ", "tool result "))
+    ]

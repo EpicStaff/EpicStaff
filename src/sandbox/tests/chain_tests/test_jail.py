@@ -1,6 +1,5 @@
 """Unit coverage for build_jail(): a pure allowlist builder, no chain, no Redis."""
 
-import dataclasses
 import os
 from pathlib import Path
 
@@ -18,7 +17,6 @@ def _jail() -> Jail:
     return build_jail(
         exec_dir=Path("/app/src/sandbox/executions/exec-1"),
         venv_path=Path("/app/src/sandbox/venvs/somehash"),
-        savefiles_root=Path("/app/src/sandbox/savefiles"),
     )
 
 
@@ -31,18 +29,14 @@ class TestBuildJail:
             assert Path(path).is_absolute(), path
 
     @_posix_only
-    def test_exec_dir_and_its_subdirs_are_read_write(self):
+    def test_only_the_runs_own_exec_dir_and_its_subdirs_are_read_write(self):
         jail = _jail()
 
-        assert "/app/src/sandbox/executions/exec-1" in jail.read_write
-        assert "/app/src/sandbox/executions/exec-1/home" in jail.read_write
-        assert "/app/src/sandbox/executions/exec-1/tmp" in jail.read_write
-
-    @_posix_only
-    def test_savefiles_root_is_read_write(self):
-        jail = _jail()
-
-        assert "/app/src/sandbox/savefiles" in jail.read_write
+        assert jail.read_write == (
+            "/app/src/sandbox/executions/exec-1",
+            "/app/src/sandbox/executions/exec-1/home",
+            "/app/src/sandbox/executions/exec-1/tmp",
+        )
 
     @_posix_only
     def test_venv_path_is_read_exec_and_not_read_write(self):
@@ -67,7 +61,6 @@ class TestBuildJail:
         allowed_subpaths = {
             Path("/app/src/sandbox/executions/exec-1"),
             Path("/app/src/sandbox/venvs/somehash"),
-            Path("/app/src/sandbox/savefiles"),
         }
 
         for path in (*jail.read_write, *jail.read_only, *jail.read_exec):
@@ -78,9 +71,3 @@ class TestBuildJail:
                     allowed in entry.parents or entry == allowed
                     for allowed in allowed_subpaths
                 )
-
-    def test_jail_is_frozen(self):
-        jail = _jail()
-
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            jail.read_write = ()

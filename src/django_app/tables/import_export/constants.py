@@ -1,12 +1,32 @@
+import re
+
 from tables.import_export.enums import EntityType
 
-IMPORT_VERSION = 3
+IMPORT_VERSION = 5
+
+# The sandbox's rule for a venv name, mirrored: `Venv.name` in
+# src/sandbox_new/manager/domain/models.py and its varchar column. Change both together.
+VENV_NAME_PATTERN = re.compile(r"^[A-Za-z0-9 _-]+\Z")
+VENV_NAME_REFUSED_CHARACTERS = re.compile(r"[^A-Za-z0-9 _-]+")
+VENV_NAME_MAX_LENGTH = 255
 
 MAIN_ENTITY_KEY = "main_entity"
 NODE_MAPPING_KEY = "node"
 
+# Most rows a reuse lookup loads per file entry: the exact name first, then
+# renamed copies newest first. Bounds what rows seeded under one name can cost.
+# A match past the bound is missed and the import creates one copy; being the
+# newest, that copy is inside the window on the next import. Never a wrong reuse.
+MAX_REUSE_CANDIDATES = 50
+
+# Import-time only, never written to a file: the Surface entries an
+# AgentDefinition entry owns, attached by nest_owned_surface_entries.
+OWNED_SURFACE_ENTRIES_KEY = "owned_surface_entries"
+
 # Entities will be imported from top to bottom based on this list
 DEPENDENCY_ORDER = (
+    # First: the code entities below carry a venv id that must already be mapped.
+    EntityType.VENV,
     EntityType.LABEL,
     EntityType.AGENT_TAG,
     EntityType.CREW_TAG,
@@ -29,6 +49,7 @@ DEPENDENCY_ORDER = (
     EntityType.MCP_TOOL,
     EntityType.SURFACE,
     EntityType.LABEL,
+    EntityType.AUDIT_FILTER_PRESET,
     EntityType.AGENT,
     EntityType.AGENT_DEFINITION,
     EntityType.CREW,

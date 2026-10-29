@@ -1,0 +1,47 @@
+<div
+    class="filter-menu"
+    role="menu"
+    (click)="$event.stopPropagation()"
+>
+    <div class="filter-menu__list">
+        <div class="filter-menu__group-header">
+            <label class="filter-menu__group-label">Status</label>
+        </div>
+        <div
+            class="filter-menu__item"
+            [class.filter-menu__item--selected]="draftFavoritesOnly()"
+            (click)="onToggleFavoritesOnly()"
+        >
+            <app-checkbox
+                color="secondary"
+                [checked]="draftFavoritesOnly()"
+            />
+            <span class="filter-menu__item-name">Favorite</span>
+        </div>
+    </div>
+
+    <div class="filter-menu__footer">
+        <app-button
+            type="outline-primary"
+            (click)="onClear()"
+        >
+            Clear Filter
+        </app-button>
+
+        <div class="filter-menu__footer-actions">
+            <app-button
+                type="outline-primary"
+                (click)="onCancel()"
+            >
+                Cancel
+            </app-button>
+
+            <app-button
+                type="primary"
+                (click)="onSave()"
+            >
+                Save Changes
+            </app-button>
+        </div>
+    </div>
+</div>

@@ -1,9 +1,10 @@
 <div
     class="editor-wrapper"
-    [class.panel-open]="!!sidePanelService.selectedNode()"
+    [class.panel-open]="isNodePanelShown()"
     [class.readonly]="flowReadOnly.isReadOnly()"
 >
     <f-flow
+        #flowHost
         appMouseTracker
         (mousePosition)="updateMouseTrackerPosition($event)"
         (contextmenu)="onContextMenu($event)"
@@ -12,8 +13,8 @@
         (mousedown)="onFlowMouseDown($event)"
         (pointerup)="onFlowPointerUp($event)"
         fDraggable
-        [fMultiSelectTrigger]="multiSelectTrigger"
-        [fCanvasMoveTrigger]="canvasMoveTrigger"
+        [fMultiSelectTrigger]="selectionManager.multiSelectTrigger"
+        [fCanvasMoveTrigger]="selectionManager.canvasMoveTrigger"
         [fNodeMoveTrigger]="editGestureTrigger"
         [fNodeResizeTrigger]="editGestureTrigger"
         [fNodeRotateTrigger]="editGestureTrigger"
@@ -25,13 +26,6 @@
         [hCellSize]="GRID_CELL_SIZE"
         [fCellSizeWhileDragging]="false"
         class="visual-programming-flow"
-        appShortcutListener
-        (delete)="onDelete()"
-        (escape)="onEscapeKey()"
-        (undo)="onUndo()"
-        (redo)="onRedo()"
-        (copy)="onCopy()"
-        (paste)="onPaste()"
         (fLoaded)="onInitialized()"
         (fSelectionChange)="onSelectionChange($event)"
         (fDragStarted)="onDragStarted($event)"
@@ -44,10 +38,15 @@
             <f-circle-pattern></f-circle-pattern>
         </f-background>
         <f-magnetic-lines></f-magnetic-lines>
+        <!-- Dragging a node or a wire near an edge scrolls the canvas. -->
+        <f-auto-pan
+            fEdgeThreshold="40"
+            fAcceleration
+        ></f-auto-pan>
         <f-canvas fZoom>
             <f-snap-connection
                 fBehavior="fixed"
-                fType="segment"
+                [fType]="flowSettings.edgeStyle()"
                 [fSnapThreshold]="100"
             >
                 <svg
@@ -120,18 +119,20 @@
             @for (node of flowService.nodes(); track node.id) {
                 <app-flow-base-node
                     [node]="node"
-                    [multiSelectActive]="multiSelectActive()"
-                    [fMinimapClass]="getMinimapClassForNode(node)"
+                    [multiSelectActive]="selectionManager.multiSelectActive()"
+                    [fMinimapClass]="getMinimapClasses(node)"
                     fNode
                     fDragHandle
                     [fNodeId]="node.id"
                     [fNodeSize]="node.size"
                     [fNodePosition]="node.position"
-                    [fNodeDraggingDisabled]="flowReadOnly.isReadOnly()"
+                    [fNodeDraggingDisabled]="isNodeReadOnly(node)"
                     [style.z-index]="getNodeZIndex(node)"
                     (mouseenter)="hoveredNodeId.set(node.id)"
                     (mouseleave)="hoveredNodeId.set(null)"
                     (portMouseenter)="hoveredNodeId.set(node.id)"
+                    [class.is-dimmed]="hoverContext() !== null && !hoverContext()!.nodeIds.has(node.id)"
+                    [class.is-unused]="unusedNodeIds().has(node.id)"
                     (fNodePositionChange)="onNodePositionChanged($event, node)"
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"
@@ -143,23 +144,26 @@
 
             @for (
                 connection of sortedConnections();
-                track connection.id + '-' + (connectionRenderVersions()[connection.id] ?? 0)
+                track connection.id + '-' + (routingOrchestrator.connectionRenderVersions()[connection.id] ?? 0)
             ) {
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
-                    fType="orthogonal"
+                    [fType]="flowSettings.edgeStyle()"
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
+                    (mouseenter)="hoveredConnectionId.set(connection.id)"
+                    (mouseleave)="hoveredConnectionId.set(null)"
                     [fReassignableStart]="true"
                     [fReassignDisabled]="
-                        flowReadOnly.isReadOnly() || reassignSuppressedConnectionIds().has(connection.id)
+                        flowReadOnly.isReadOnly() || reassignHandler.suppressedConnectionIds().has(connection.id)
                     "
                     [fSelectionDisabled]="flowReadOnly.isReadOnly()"
                     [class.dashed-connection]="connection.category === 'virtual'"
-                    [class.is-backward]="backwardConnectionIds().has(connection.id)"
-                    [class.is-reassign-follower]="reassignFollowerIds().has(connection.id)"
-                    [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
+                    [class.is-backward]="routingOrchestrator.backwardConnectionIds().has(connection.id)"
+                    [class.is-reassign-follower]="reassignHandler.followerIds().has(connection.id)"
+                    [class.is-dimmed]="hoverContext() !== null && !hoverContext()!.connectionIds.has(connection.id)"
+                    [style.z-index]="routingOrchestrator.backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()
                             ? nodeColorMap().get(connection.sourceNodeId) || '#555'
@@ -196,11 +200,6 @@
                         <path
                             d="M0,0 L6,3 0,6Z"
                             stroke="none"
-                            [attr.fill]="
-                                flowSettings.arrowColorsEnabled()
-                                    ? nodeColorMap().get(connection.targetNodeId) || '#555'
-                                    : connection.endColor || '#555'
-                            "
                         ></path>
                     </svg>
 
@@ -242,13 +241,13 @@
                         [waypoints]="connection.waypoints ?? []"
                         (waypointsChange)="onWaypointsChanged(connection.id, $event)"
                         [radius]="5"
-                        [visibility]="true"
+                        [visibility]="flowSettings.edgeStyle() === 'orthogonal'"
                     ></f-connection-waypoints>
                 </f-connection>
             }
         </f-canvas>
 
-        <f-selection-area [fTrigger]="selectionAreaTrigger"></f-selection-area>
+        <f-selection-area [fTrigger]="selectionManager.selectionAreaTrigger"></f-selection-area>
         <f-minimap [fMinSize]="1000"></f-minimap>
     </f-flow>
 
@@ -274,7 +273,7 @@
             <div class="top-left-actions__column">
                 <button
                     class="domain-button"
-                    matTooltip="Configure domain"
+                    [matTooltip]="keymap.withShortcut('Configure domain', 'flow.domain')"
                     matTooltipPosition="right"
                     (click)="onDomainClick()"
                 >
@@ -283,23 +282,22 @@
 
                 <app-flow-shortcuts-button
                     icon="multi-select"
-                    label="S"
-                    iconSize="14px"
-                    [textEnd]="true"
-                    [active]="multiSelectActive()"
-                    matTooltip="Multi-select"
-                    matTooltipPosition="right"
+                    iconSize="16px"
+                    iconOffsetY="-2px"
+                    ariaLabel="Multi-select"
+                    tooltip="Multi-select"
+                    [active]="selectionManager.multiSelectActive()"
                     (clicked)="onToggleMultiSelect()"
                 ></app-flow-shortcuts-button>
 
                 <div
                     #shortcutsAnchor
                     #shortcutsButton
-                    appShortcutListener
-                    (openShortcuts)="onOpenShortcuts(shortcutsAnchor)"
                 >
-                    <app-flow-shortcuts-button (clicked)="onOpenShortcuts(shortcutsAnchor)">
-                    </app-flow-shortcuts-button>
+                    <app-flow-shortcuts-button
+                        [tooltip]="keymap.withShortcut('Keyboard shortcuts', 'navigating.shortcuts')"
+                        (clicked)="onOpenShortcuts(shortcutsAnchor)"
+                    ></app-flow-shortcuts-button>
                 </div>
             </div>
 
@@ -311,11 +309,15 @@
         </div>
 
         <div class="top-right-controls">
-            <div class="top-right-actions">
-                @if (selectedNodeCount() > 0 && !isPreview) {
+            <div
+                class="top-right-actions"
+                appHideOverflowingChildren
+            >
+                @if (selectionManager.selectedNodeCount() > 0 && !isPreview) {
                     <button
                         class="arrange-btn extract-subflow-btn"
-                        matTooltip="Extract to Subflow"
+                        data-hide-on-overflow
+                        [matTooltip]="keymap.withShortcut('Extract to Subflow', 'flow.extract-subflow')"
                         matTooltipPosition="below"
                         (click)="onExtractToSubflow()"
                     >
@@ -324,29 +326,30 @@
                 }
                 @if (!isPreview) {
                     <app-flow-export-import-button
-                        [selectedCount]="selectedNodeCount()"
-                        [allSelectedAreCdt]="allSelectedAreCdt()"
+                        data-hide-on-overflow
+                        [selectedCount]="selectionManager.selectedNodeCount()"
+                        [allSelectedAreCdt]="selectionManager.allSelectedAreCdt()"
                         (exportSelectedJson)="onExportSelectedAsJson()"
                         (exportSelectedCsv)="onExportSelectedAsCsv()"
                         (exportJson)="onExportAllAsJson()"
                         (import)="onImportNodes()"
                     ></app-flow-export-import-button>
                 }
-                @if (currentFlowId && !isPreview) {
+                @if (currentFlowId && !isPreview && canReadFiles()) {
                     <app-flow-files-button
-                        *appHasPermission="[ResourceCode.Files, ActionCode.Read]"
+                        data-hide-on-overflow
                         [flowId]="currentFlowId"
                         [flowName]="flowName"
                     ></app-flow-files-button>
                 }
                 @if (!flowReadOnly.isReadOnly()) {
                     <button
-                        #arrangeBtnRef
                         class="arrange-btn"
-                        title="Auto arrange"
-                        matTooltip="Auto arrange"
+                        data-hide-on-overflow
+                        aria-label="Auto arrange"
+                        [matTooltip]="keymap.withShortcut('Auto arrange', 'flow.auto-arrange')"
                         matTooltipPosition="below"
-                        [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
+                        [disabled]="isAutoArrangeDisabled()"
                         (click)="onAutoArrange()"
                     >
                         <app-svg-icon
@@ -357,9 +360,10 @@
                 }
                 <button
                     class="arrange-btn settings-icon-btn"
+                    data-hide-on-overflow
                     (click)="openSettings()"
-                    title="Flow Settings"
-                    matTooltip="Flow settings"
+                    aria-label="Flow settings"
+                    [matTooltip]="keymap.withShortcut('Flow settings', 'flow.settings')"
                     matTooltipPosition="below"
                 >
                     <i class="ti ti-settings"></i>
@@ -370,6 +374,14 @@
 
     @if (!flowReadOnly.isReadOnly()) {
         <app-flow-action-panel (undoRedoPerformed)="onUndoRedoPerformed()"></app-flow-action-panel>
+    }
+
+    @if (flowSettings.highlightUnusedNodes()) {
+        <app-unused-nodes-bar
+            class="unused-nodes-bar-slot"
+            [nodes]="unusedNodesInCanvasOrder()"
+            (nodeFocus)="onZoomInNode($event)"
+        />
     }
 
     @if (showContextMenu()) {

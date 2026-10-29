@@ -3,7 +3,9 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    DestroyRef,
     effect,
+    ElementRef,
     inject,
     input,
     output,
@@ -13,49 +15,70 @@ import {
     viewChild,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/components';
 import { NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
-import { ShortcutListenerDirective } from '../../../core/directives/shortcut-listener.directive';
-import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
+import { COMPACT_HEADER_NODE_TYPES, PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
+import { hasNodeDetails } from '../../../core/helpers/node-details.util';
+import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
+import { KeymapService } from '../../../services/keymap.service';
+import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
+
+const INVALID_FIELDS_NOT_SAVED_MESSAGE = "Changes weren't saved — this node has invalid fields.";
+
+/** What the shell reads from the open panel (the component the outlet rendered). */
+interface PanelInstanceView {
+    /** The node the panel edits. */
+    node?: Signal<NodeModel>;
+    isDirty?: Signal<boolean>;
+    /** Opt-in: the node must be saved to the backend although the panel has no edit (Save shows then too). */
+    needsSave?: Signal<boolean>;
+    isSaving?: Signal<boolean>;
+    form?: { invalid: boolean };
+    onSaveClick?: () => void;
+    headerActionsTemplate?: () => TemplateRef<unknown> | undefined;
+}
 
 @Component({
     selector: 'app-node-panel-shell',
     imports: [NgComponentOutlet, NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule],
-    hostDirectives: [
-        {
-            directive: ShortcutListenerDirective,
-            outputs: ['escape: escape', 'save: saveShortcut'],
-        },
-    ],
-    host: {
-        '(escape)': 'onEscape()',
-        '(saveShortcut)': 'onShortcutSave()',
-    },
     template: `
         @if (node() && panelComponent()) {
             <aside
+                #panel
                 class="node-panel"
                 [class.shake-attention]="isShaking()"
                 [class.expanded]="isExpanded()"
             >
-                <header class="dialog-header">
+                <header
+                    class="dialog-header"
+                    [class.dialog-header--compact]="isCompactHeader()"
+                >
                     <div class="icon-and-title">
                         <i
                             [class]="node()!.icon"
                             [style.color]="node()!.color || '#685fff'"
                         ></i>
-                        <span class="title">{{ nodeNameToDisplay() }}</span>
+                        <span class="title-with-number">
+                            <span class="title">{{ nodeNameToDisplay() }}</span>
+                            @if (nodeNumberToDisplay(); as nodeNumber) {
+                                <span class="node-number">#{{ nodeNumber }}</span>
+                            }
+                        </span>
                     </div>
                     <div class="header-actions">
-                        @if (panelInstanceSig()?.exportButtonTemplate?.()) {
+                        <!-- The compact header shows the details button first, before the panel's own actions. -->
+                        @if (isCompactHeader()) {
+                            <ng-container [ngTemplateOutlet]="detailsButtonTpl"></ng-container>
+                        }
+                        @if (panelInstanceSig()?.headerActionsTemplate?.()) {
                             <ng-container
-                                [ngTemplateOutlet]="panelInstanceSig()!.exportButtonTemplate!()!"
+                                [ngTemplateOutlet]="panelInstanceSig()!.headerActionsTemplate!()!"
                             ></ng-container>
                         }
                         @if (showSaveButton()) {
@@ -74,6 +97,9 @@ import { SidePanelService } from '../../../services/side-panel.service';
                                 ></app-svg-icon>
                                 <span class="btn-label">Save</span>
                             </button>
+                        }
+                        @if (!isCompactHeader()) {
+                            <ng-container [ngTemplateOutlet]="detailsButtonTpl"></ng-container>
                         }
                         @if (shouldShowExpandButton()) {
                             <button
@@ -98,11 +124,33 @@ import { SidePanelService } from '../../../services/side-panel.service';
                                 matTooltipPosition="below"
                                 (click)="onCloseClick()"
                             >
-                                <app-svg-icon icon="x"></app-svg-icon>
+                                <app-svg-icon
+                                    icon="x"
+                                    [size]="isCompactHeader() ? '1.25rem' : '24px'"
+                                ></app-svg-icon>
                             </button>
                         </div>
                     </div>
                 </header>
+
+                <ng-template #detailsButtonTpl>
+                    @if (showDetailsButton()) {
+                        <button
+                            #detailsButton
+                            class="details-btn"
+                            type="button"
+                            aria-label="Node details"
+                            matTooltip="Node details"
+                            matTooltipPosition="below"
+                            (click)="openNodeDetails(detailsButton)"
+                        >
+                            <app-svg-icon
+                                icon="alert-circle"
+                                [size]="isCompactHeader() ? '1rem' : '1.25rem'"
+                            ></app-svg-icon>
+                        </button>
+                    }
+                </ng-template>
 
                 <main>
                     <ng-container
@@ -135,7 +183,14 @@ export class NodePanelShellComponent {
         if (!n) return '';
         if (n.node_name === '__start__') return 'Start';
         if (n.type === 'end' || n.node_name === '__end_node__') return 'End';
-        return n.node_name;
+        return n.node_name ?? '';
+    });
+
+    /** The #N shown next to the name, styled like the number under a canvas node's name; none while the node has no name. */
+    protected readonly nodeNumberToDisplay = computed(() => {
+        const n = this.node();
+        if (!n || !this.nodeNameToDisplay() || !showsNodeNumber(n)) return null;
+        return n.nodeNumber;
     });
 
     public readonly shouldShowExpandButton = computed(() => {
@@ -149,7 +204,20 @@ export class NodePanelShellComponent {
         );
     });
 
+    /** The open panel's header content is a 28px row (see COMPACT_HEADER_NODE_TYPES). */
+    protected readonly isCompactHeader = computed(() => {
+        const node = this.node();
+        return !!node && COMPACT_HEADER_NODE_TYPES.has(node.type);
+    });
+
+    /** Viewing details needs only flow read access, so read-only and preview modes show it too. */
+    protected readonly showDetailsButton = computed(() => {
+        const node = this.node();
+        return !!node && hasNodeDetails(node.type);
+    });
+
     protected readonly outlet = viewChild(NgComponentOutlet);
+    private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
     protected readonly componentInputs = computed(() => {
         const node = this.node();
 
@@ -167,19 +235,27 @@ export class NodePanelShellComponent {
         | (NodePanel & {
               onSaveSilently?: () => NodeModel | null;
               captureForValidation?: () => NodeModel | null;
+              hasEditsLeftOut?: () => boolean;
           })
         | null = null;
-    protected readonly panelInstanceSig = signal<{
-        isDirty?: Signal<boolean>;
-        isSaving?: Signal<boolean>;
-        form?: { invalid: boolean };
-        onSaveClick?: () => void;
-        exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
-    } | null>(null);
+    protected readonly panelInstanceSig = signal<PanelInstanceView | null>(null);
+    /**
+     * The type of the node the open panel edits. Not always `node()`: on a switch to another node, `node()`
+     * is already the next one while the panel (autosaved then) still holds the previous one.
+     */
+    private readonly panelNodeType = computed<NodeType | null>(
+        () => this.panelInstanceSig()?.node?.().type ?? this.node()?.type ?? null
+    );
+    /** The open panel's node may not be changed: a read-only editor, or a trigger node without Flows:Use. */
+    public readonly isNodeReadOnly = computed(() => {
+        const nodeType = this.panelNodeType();
+        return nodeType ? this.flowReadOnly.isNodeTypeReadOnly(nodeType) : this.flowReadOnly.isReadOnly();
+    });
     protected readonly showSaveButton = computed(() => {
-        if (this.flowReadOnly.isReadOnly()) return false;
+        if (this.isNodeReadOnly()) return false;
         const panel = this.panelInstanceSig();
-        return (panel?.isDirty?.() ?? false) && !!panel?.onSaveClick;
+        const hasSomethingToSave = (panel?.isDirty?.() ?? false) || (panel?.needsSave?.() ?? false);
+        return hasSomethingToSave && !!panel?.onSaveClick;
     });
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
@@ -189,8 +265,18 @@ export class NodePanelShellComponent {
     private readonly sidePanelService = inject(SidePanelService);
     private readonly toastService = inject(ToastService);
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
+    private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
+    private readonly keymap = inject(KeymapService);
+    private readonly destroyRef = inject(DestroyRef);
 
     constructor() {
+        this.keymap.register('editing.escape', () => this.onEscape(), {
+            allowInEditable: true,
+            destroyRef: this.destroyRef,
+        });
+        this.keymap.register('editing.save', () => this.onShortcutSave(), { destroyRef: this.destroyRef });
+
         effect(() => {
             const trigger = this.sidePanelService.autosaveTrigger();
             this.tryAutosave(trigger);
@@ -225,15 +311,7 @@ export class NodePanelShellComponent {
                         this.panelInstance = outletRef.componentInstance as NodePanel & {
                             onSaveSilently?: () => NodeModel | null;
                         };
-                        this.panelInstanceSig.set(
-                            outletRef.componentInstance as {
-                                isDirty?: Signal<boolean>;
-                                isSaving?: Signal<boolean>;
-                                form?: { invalid: boolean };
-                                onSaveClick?: () => void;
-                                exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
-                            }
-                        );
+                        this.panelInstanceSig.set(outletRef.componentInstance as PanelInstanceView);
                         this.previousNodeId = node.id;
                         this.isUpdatingNode = false;
                     }
@@ -261,6 +339,13 @@ export class NodePanelShellComponent {
         this.panelInstanceSig()?.onSaveClick?.();
     }
 
+    protected openNodeDetails(trigger: HTMLElement): void {
+        const node = this.node();
+        if (!node) return;
+        // Read at click time, so the dialog shows what the latest graph response said.
+        this.authorshipDetailsDialog.open('Node Details', this.nodeAuthorshipStore.authorshipOf(node), trigger);
+    }
+
     protected onCloseClick(): void {
         this.saveSidePanel();
     }
@@ -274,8 +359,13 @@ export class NodePanelShellComponent {
     }
 
     protected onShortcutSave(): void {
-        if (this.flowReadOnly.isReadOnly()) {
-            this.flowReadOnly.notifyBlocked();
+        const nodeType = this.panelNodeType();
+        if (this.isNodeReadOnly()) {
+            if (nodeType) {
+                this.flowReadOnly.notifyNodeTypeBlocked(nodeType);
+            } else {
+                this.flowReadOnly.notifyBlocked();
+            }
             return;
         }
         if (!this.panelInstance || typeof this.panelInstance.onSaveSilently !== 'function') {
@@ -294,7 +384,7 @@ export class NodePanelShellComponent {
     }
 
     private saveSidePanel(): void {
-        if (this.flowReadOnly.isReadOnly()) {
+        if (this.isNodeReadOnly()) {
             this.sidePanelService.clearSelection();
             return;
         }
@@ -308,13 +398,22 @@ export class NodePanelShellComponent {
                 this.save.emit(updatedNode);
                 return;
             }
-            this.toastService.error("Changes weren't saved — this node has invalid fields.");
+            // An invalid test payload is the user's to fix and the last saved one is kept: a warning, not a failure.
+            if (this.panelInstance.hasEditsLeftOut?.()) {
+                this.toastService.warning(INVALID_FIELDS_NOT_SAVED_MESSAGE);
+            } else {
+                this.toastService.error(INVALID_FIELDS_NOT_SAVED_MESSAGE);
+            }
         }
         this.sidePanelService.clearSelection();
     }
 
     private tryAutosave(trigger: number): void {
-        if (this.flowReadOnly.isReadOnly() || trigger === this.lastHandledAutosaveTrigger || !this.panelInstance) {
+        if (trigger === this.lastHandledAutosaveTrigger || !this.panelInstance) {
+            return;
+        }
+        if (this.isNodeReadOnly()) {
+            this.lastHandledAutosaveTrigger = trigger;
             return;
         }
         if (this.isAutosaving) {
@@ -335,7 +434,7 @@ export class NodePanelShellComponent {
     }
 
     private performAutosave(): void {
-        if (this.flowReadOnly.isReadOnly()) return;
+        if (this.isNodeReadOnly()) return;
         if (
             this.panelInstance &&
             typeof this.panelInstance.onSave === 'function' &&
@@ -366,6 +465,11 @@ export class NodePanelShellComponent {
             console.error('Failed to capture node panel state via onSave', error);
             return null;
         }
+    }
+
+    /** Where the open panel starts on screen (viewport x), or null while it is closed; the canvas left of it stays visible. */
+    public panelLeftEdge(): number | null {
+        return this.panel()?.nativeElement.getBoundingClientRect().left ?? null;
     }
 
     public hasPanelInstance(): boolean {

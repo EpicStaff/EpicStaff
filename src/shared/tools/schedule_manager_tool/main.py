@@ -19,7 +19,11 @@
 # never accepted from the agent. Every action is scoped to that one graph:
 #   - 'list' always filters `?graph=<graph_id>`.
 #   - 'create' always sends `graph=<graph_id>` and never lets the agent
-#     choose a different target graph.
+#     choose a different target graph. It is idempotent by node_name: the
+#     endpoint always creates on POST (node names may repeat), so this tool
+#     first lists the graph's triggers and, when exactly one already has the
+#     requested name, updates it (PUT, full payload) instead of creating a
+#     duplicate. Two or more same-named triggers are never guessed between.
 #   - 'update'/'delete' first GET the schedule by id and refuse to proceed
 #     if its `graph` field does not match the configured graph_id, so this
 #     tool instance can never read/modify/delete another graph's (and, by
@@ -59,10 +63,14 @@ DEFAULT_API_BASE_URL = "http://djangoapp:8000/api"
 HTTP_TIMEOUT_S = 15.0
 DEFAULT_JITTER_SECONDS_MAX = 45
 LIST_RESULT_CAP = 100
+NAME_LOOKUP_PAGE_SIZE = 100
 VALID_ACTIONS = {"create", "list", "update", "delete"}
 VALID_RUN_MODES = {"once", "repeat"}
 VALID_UNITS = {"seconds", "minutes", "hours", "days", "weeks", "months"}
 VALID_END_TYPES = {"never", "on_date", "after_n_runs"}
+# The API renders these as principal objects (display name + avatar URL);
+# stripped so the agent cannot relay colleagues' identities to chat users.
+AUTHORSHIP_KEYS = frozenset({"created_by", "last_edited_by", "last_edited_at"})
 
 
 def _api_base_url() -> str:
@@ -135,6 +143,12 @@ def _maybe_jitter_start(start_date_time, apply_jitter: bool, jitter_max: int):
     offset = random.randint(1, jitter_max - 1)
     jittered = dt + timedelta(seconds=offset)
     return jittered.isoformat(), offset
+
+
+def _without_authorship(schedule):
+    if not isinstance(schedule, dict):
+        return schedule
+    return {key: value for key, value in schedule.items() if key not in AUTHORSHIP_KEYS}
 
 
 def _fetch_node(client, base_url: str, headers: dict, schedule_id):
@@ -233,6 +247,43 @@ def _build_schedule_block(baseline: dict, args: dict, apply_jitter: bool, jitter
     return schedule_block, jitter_offset, None
 
 
+def _find_schedules_by_name(client, base_url, headers, graph_id, node_name):
+    """Return (ids_of_this_graphs_schedules_named_node_name, error|None).
+
+    Walks every page of the graph-filtered list: the endpoint is paginated, so
+    a same-named trigger could otherwise hide on a later page.
+    """
+    matching_ids = []
+    offset = 0
+    while True:
+        response = client.get(
+            f"{base_url}/schedule-trigger-nodes/",
+            params={
+                "graph": graph_id,
+                "limit": NAME_LOOKUP_PAGE_SIZE,
+                "offset": offset,
+            },
+            headers=headers,
+        )
+        if response.status_code != 200:
+            return None, (
+                f"Error: failed to look up existing schedules (graph_id={graph_id}), "
+                f"status {response.status_code}: {response.text[:300]}"
+            )
+
+        body = response.json()
+        results = body.get("results") if isinstance(body, dict) else body
+        results = results or []
+        matching_ids.extend(
+            schedule["id"] for schedule in results if schedule.get("node_name") == node_name
+        )
+
+        has_next_page = isinstance(body, dict) and body.get("next")
+        if not results or not has_next_page:
+            return matching_ids, None
+        offset += len(results)
+
+
 def _do_create(client, base_url, headers, graph_id, args):
     schedule_block, jitter_offset, error = _build_schedule_block(
         {},
@@ -243,7 +294,8 @@ def _do_create(client, base_url, headers, graph_id, args):
     if error:
         return error
 
-    node_name = args.get("node_name") or f"agent_schedule_{secrets.token_hex(4)}"
+    requested_name = (args.get("node_name") or "").strip()
+    node_name = requested_name or f"agent_schedule_{secrets.token_hex(4)}"
     is_active = args.get("is_active", True)
 
     payload = {
@@ -253,16 +305,41 @@ def _do_create(client, base_url, headers, graph_id, args):
         "schedule": schedule_block,
     }
 
-    response = client.post(
-        f"{base_url}/schedule-trigger-nodes/", json=payload, headers=headers
-    )
+    existing_id = None
+    if requested_name:
+        matching_ids, error = _find_schedules_by_name(
+            client, base_url, headers, graph_id, requested_name
+        )
+        if error:
+            return error
+        if len(matching_ids) > 1:
+            return (
+                f"Error: {len(matching_ids)} schedules in this graph are already named "
+                f"{requested_name!r} (ids: {sorted(matching_ids)}), so it is unclear "
+                "which one to reuse and nothing was created. Use action='update' "
+                "with the explicit 'schedule_id' of the schedule you mean, or "
+                "choose a different 'node_name'."
+            )
+        if matching_ids:
+            existing_id = matching_ids[0]
+
+    if existing_id is None:
+        response = client.post(
+            f"{base_url}/schedule-trigger-nodes/", json=payload, headers=headers
+        )
+    else:
+        response = client.put(
+            f"{base_url}/schedule-trigger-nodes/{existing_id}/",
+            json=payload,
+            headers=headers,
+        )
     if response.status_code not in (200, 201):
         return (
             f"Error: failed to create schedule (graph_id={graph_id}), status "
             f"{response.status_code}: {response.text[:300]}"
         )
 
-    result = response.json()
+    result = _without_authorship(response.json())
     note = (
         f" (start_date_time jittered by +{jitter_offset}s to avoid herding)"
         if jitter_offset
@@ -298,7 +375,7 @@ def _do_list(client, base_url, headers, graph_id, args):
             "graph_id": graph_id,
             "count_returned": len(results),
             "truncated": truncated,
-            "schedules": results,
+            "schedules": [_without_authorship(schedule) for schedule in results],
         }
     )
 
@@ -365,7 +442,7 @@ def _do_update(client, base_url, headers, graph_id, args):
             f"{response.status_code}: {response.text[:300]}"
         )
 
-    result = response.json()
+    result = _without_authorship(response.json())
     note = (
         f" (start_date_time jittered by +{jitter_offset}s to avoid herding)"
         if jitter_offset

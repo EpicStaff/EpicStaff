@@ -1,0 +1,229 @@
+@if (runtime()) {
+    <div class="runtime">
+        @if (loadError(); as failure) {
+            <div
+                class="runtime__callout text-body-small"
+                role="status"
+            >
+                Couldn't refresh: {{ failure.message }} Showing the last known state.
+            </div>
+        }
+
+        <section class="runtime__section">
+            <h3 class="runtime__title text-h4">Node</h3>
+            @if (node(); as runtimeNode) {
+                <dl class="runtime__facts text-body">
+                    <dt>Name</dt>
+                    <dd class="runtime__inline">
+                        <code>{{ runtimeNode.name }}</code>
+                        <app-plugin-badge
+                            [label]="runtimeNode.online ? 'Online' : 'Offline'"
+                            [tone]="runtimeNode.online ? 'success' : 'danger'"
+                        />
+                    </dd>
+                    <dt>Last seen</dt>
+                    <dd>{{ (runtimeNode.last_seen_at | date: 'medium') ?? 'Never' }}</dd>
+                    <dt>Agent version</dt>
+                    <dd>{{ runtimeNode.agent_version ?? '—' }}</dd>
+                </dl>
+            } @else {
+                <p class="runtime__muted text-body">
+                    No plugin node is registered, so plugins with a backend cannot run. Set PLUGINS_NODE_KEY and restart
+                    EpicStaff.
+                </p>
+            }
+        </section>
+
+        <section class="runtime__section">
+            <div class="runtime__heading">
+                <h3 class="runtime__title text-h4">Process</h3>
+                <app-button
+                    type="outline-primary"
+                    mod="small"
+                    [disabled]="isRestarting() || !placement()"
+                    (click)="restart()"
+                >
+                    Restart
+                </app-button>
+            </div>
+            @if (upgradeText(); as upgrade) {
+                <p class="runtime__upgrade text-body-medium">{{ upgrade }}</p>
+            }
+            @if (developmentText(); as development) {
+                <p
+                    class="runtime__callout runtime__development text-body"
+                    role="status"
+                >
+                    {{ development }}
+                </p>
+            }
+            @if (placement(); as current) {
+                @if (blockedMessage(); as message) {
+                    <div
+                        class="runtime__callout text-body"
+                        role="status"
+                    >
+                        {{ message }}
+                    </div>
+                }
+                <dl class="runtime__facts text-body">
+                    <dt>Port</dt>
+                    <dd>{{ current.port }}</dd>
+                    <dt>UID</dt>
+                    <dd>{{ current.unix_uid }}</dd>
+                    <dt>Desired state</dt>
+                    <dd>{{ desiredLabel() }}</dd>
+                    <dt>Observed state</dt>
+                    <dd>
+                        <app-plugin-badge
+                            [label]="observedLabel()"
+                            [tone]="observedTone()"
+                        />
+                    </dd>
+                    <dt>Health</dt>
+                    <dd>
+                        <app-plugin-badge
+                            [label]="healthLabel()"
+                            [tone]="healthTone()"
+                        />
+                    </dd>
+                    <dt>Version</dt>
+                    <dd>{{ current.observed_version ?? '—' }}</dd>
+                    <dt>PID</dt>
+                    <dd>{{ current.pid ?? '—' }}</dd>
+                    <dt>Restarts</dt>
+                    <dd>{{ current.restarts }}</dd>
+                    <dt>Memory</dt>
+                    <dd>
+                        @if (current.rss_mb !== null) {
+                            {{ current.rss_mb | number: '1.0-1' }} MB
+                        } @else {
+                            —
+                        }
+                    </dd>
+                    <dt>Last report</dt>
+                    <dd>{{ (current.last_report_at | date: 'medium') ?? 'None yet' }}</dd>
+                </dl>
+
+                @if (current.last_error; as lastError) {
+                    <h4 class="runtime__subtitle text-body-medium">Last error</h4>
+                    <pre class="runtime__code runtime__error">{{ lastError }}</pre>
+                }
+                @if (current.log_tail.length > 0) {
+                    <h4 class="runtime__subtitle text-body-medium">Last log lines</h4>
+                    <pre
+                        class="runtime__code runtime__log"
+                        tabindex="0"
+                        aria-label="Last log lines"
+                        >{{ logText() }}</pre
+                    >
+                }
+            } @else {
+                <p class="runtime__muted text-body">
+                    The plugin has no process yet. It gets one when a version with a backend is approved.
+                </p>
+            }
+        </section>
+
+        @if (database(); as pluginDatabase) {
+            <section class="runtime__section">
+                <div class="runtime__heading runtime__heading--start">
+                    <h3 class="runtime__title text-h4">Database</h3>
+                    <app-plugin-badge
+                        [label]="pluginDatabase.stateLabel"
+                        [tone]="pluginDatabase.stateTone"
+                    />
+                </div>
+                <dl class="runtime__facts text-body">
+                    <dt>Server</dt>
+                    <dd>
+                        <code>{{ pluginDatabase.serverLabel }}</code>
+                    </dd>
+                    <dt>Database</dt>
+                    <dd>
+                        <code>{{ pluginDatabase.database_name }}</code>
+                    </dd>
+                    <dt>Owner role</dt>
+                    <dd>
+                        <code>{{ pluginDatabase.roles.owner }}</code>
+                    </dd>
+                    <dt>App role</dt>
+                    <dd>
+                        <code>{{ pluginDatabase.roles.app }}</code>
+                    </dd>
+                    <dt>Job role</dt>
+                    <dd>
+                        <code>{{ pluginDatabase.roles.job }}</code>
+                    </dd>
+                    <dt>Migrations</dt>
+                    <dd>
+                        {{ pluginDatabase.migrationsCount }}
+                        @if (pluginDatabase.migrations.applied.length > 0) {
+                            <details class="runtime__disclosure">
+                                <summary class="text-body-small">Applied migrations</summary>
+                                <ol class="runtime__migrations text-body-small">
+                                    @for (name of pluginDatabase.migrations.applied; track name) {
+                                        <li>
+                                            <code>{{ name }}</code>
+                                        </li>
+                                    }
+                                </ol>
+                            </details>
+                        }
+                    </dd>
+                    <dt>Connection limit</dt>
+                    <dd>{{ pluginDatabase.connection_limit }}</dd>
+                    <dt>Statement timeout</dt>
+                    <dd>{{ pluginDatabase.statement_timeout_seconds }} s</dd>
+                    <dt>Size</dt>
+                    <dd>{{ pluginDatabase.size ?? '—' }}</dd>
+                </dl>
+                @if (pluginDatabase.limits_restored_at; as restoredAt) {
+                    <p class="runtime__callout text-body">
+                        Timeout restored at {{ restoredAt | date: 'medium' }}: the plugin changed its own default, and
+                        EpicStaff set it back.
+                    </p>
+                }
+                @if (pluginDatabase.last_error; as lastError) {
+                    <h4 class="runtime__subtitle text-body-medium">Last error</h4>
+                    <pre class="runtime__code runtime__error">{{ lastError }}</pre>
+                }
+            </section>
+            <app-plugin-backups
+                [identifier]="identifier()"
+                [pluginName]="pluginName()"
+                [databaseName]="pluginDatabase.database_name"
+                [refreshKey]="backupsRefreshKey()"
+                [revealed]="revealBackups()"
+                (restoreRequested)="runtimeChanged.emit()"
+            />
+        }
+
+        @if (egress(); as access) {
+            <section class="runtime__section">
+                <h3 class="runtime__title text-h4">Outbound access</h3>
+                @if (access.hosts.length > 0) {
+                    <ul class="runtime__hosts text-body">
+                        @for (outboundHost of access.hosts; track outboundHost.host) {
+                            <li>
+                                <code>{{ outboundHost.host }}</code>
+                                <span class="runtime__muted">{{ outboundHost.reason }}</span>
+                            </li>
+                        }
+                    </ul>
+                } @else {
+                    <p class="runtime__muted text-body">None: the backend cannot reach the internet.</p>
+                }
+            </section>
+        }
+    </div>
+} @else if (loadError(); as failure) {
+    <div
+        class="runtime__callout text-body"
+        role="alert"
+    >
+        {{ failure.message }} Trying again every few seconds.
+    </div>
+} @else if (isLoading()) {
+    <app-loading-spinner />
+}

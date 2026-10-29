@@ -1,4 +1,5 @@
 import pytest
+from proxies.sandbox.models import SandboxVenvBinding
 from rest_framework.test import APIRequestFactory
 
 from tables.exceptions import PythonCodeToolConfigSerializerError
@@ -20,26 +21,31 @@ def _org_request(org_id: int):
 
 
 @pytest.mark.django_db
-def test_python_code_serializer_basic():
-    code = PythonCode.objects.create(code="print('Hello')", libraries="requests numpy")
+def test_python_code_serializer_basic(default_org):
+    venv = SandboxVenvBinding.objects.create(org_id=default_org.id, resource_id="4711")
+    code = PythonCode.objects.create(code="print('Hello')", venv=venv)
     serializer = PythonCodeSerializer(code)
     data = serializer.data
-    assert "libraries" in data
-    assert data["libraries"] == ["requests", "numpy"]
+    assert data["code"] == "print('Hello')"
+    # The venv is the only thing that decides what the code can import. The API
+    # names it by its binding, never by the id the sandbox knows it under.
+    assert data["venv_id"] == venv.pk
 
 
 @pytest.mark.django_db
 def test_python_code_serializer_to_internal_value():
-    data = {"code": "print('ok')", "libraries": ["pandas", "pytest"]}
+    data = {"code": "print('ok')"}
     serializer = PythonCodeSerializer(data=data)
     serializer.is_valid(raise_exception=True)
     obj = serializer.save()
-    assert obj.libraries == "pandas pytest"
+    assert obj.code == "print('ok')"
+    # No venv given means the sandbox's default one.
+    assert obj.venv_id is None
 
 
 @pytest.mark.django_db
 def test_python_code_tool_serializer_create_and_update():
-    code = PythonCode.objects.create(code="def main(): pass", libraries="requests")
+    code = PythonCode.objects.create(code="def main(): pass")
     tool_data = {
         "name": "MyTool",
         "description": "test tool",
@@ -47,7 +53,6 @@ def test_python_code_tool_serializer_create_and_update():
         "python_code": {
             "code": code.code,
             "entrypoint": code.entrypoint,
-            "libraries": ["requests"],
             "global_kwargs": {},
         },
     }
@@ -103,7 +108,6 @@ def test_python_code_tool_serializer_strips_control_chars_from_description():
         "python_code": {
             "code": code.code,
             "entrypoint": code.entrypoint,
-            "libraries": [],
             "global_kwargs": {},
         },
     }
@@ -127,7 +131,6 @@ def test_python_code_tool_serializer_rejects_nul_byte_in_description():
         "python_code": {
             "code": code.code,
             "entrypoint": code.entrypoint,
-            "libraries": [],
             "global_kwargs": {},
         },
     }
@@ -148,7 +151,6 @@ def test_python_code_tool_serializer_truncates_long_description():
         "python_code": {
             "code": code.code,
             "entrypoint": code.entrypoint,
-            "libraries": [],
             "global_kwargs": {},
         },
     }

@@ -1,3 +1,5 @@
+@use '../../../../../styles/a11y-mixins' as a11y;
+
 :host {
     display: inline-flex;
     min-width: 0;
@@ -27,7 +29,8 @@
     &:hover {
         background: var(--accent-color-hover);
     }
-    &:active {
+    // A disabled button is never pressed; an aria-disabled one must not look pressed either.
+    &:active:not(:is(:disabled, [aria-disabled='true'])) {
         background: var(--accent-color-active);
     }
 }
@@ -57,7 +60,7 @@
     &:hover {
         background: var(--color-ghost-btn-hover);
     }
-    &:active {
+    &:active:not(:is(:disabled, [aria-disabled='true'])) {
         background: var(--color-ghost-btn-active);
     }
 }
@@ -73,10 +76,41 @@
         color: var(--accent-color-hover);
     }
 
-    &:disabled {
+    &:is(:disabled, [aria-disabled='true']) {
         opacity: 1;
         color: var(--inactive-purple);
         border-color: var(--inactive-purple);
+    }
+}
+
+// Same shape as .btn-outline-primary, in the red of the app's delete buttons (delete-button component).
+.btn-outline-danger {
+    font-weight: 400;
+    background: transparent;
+    color: var(--color-error);
+    border: 1px solid var(--color-error);
+
+    &:hover:not(:is(:disabled, [aria-disabled='true'])) {
+        background: var(--transparent-white-8);
+    }
+
+    &:is(:disabled, [aria-disabled='true']) {
+        opacity: 0.4;
+    }
+}
+
+// Filled red of a destructive action (bulk delete). No hover/active tokens exist for the error red,
+// so both darken it, as .btn-primary's hover and active steps darken the accent.
+.btn-danger {
+    background: var(--color-error);
+    border: 1px solid transparent;
+
+    &:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--color-error) 92%, black);
+    }
+
+    &:active:not(:disabled) {
+        background: color-mix(in srgb, var(--color-error) 84%, black);
     }
 }
 
@@ -102,7 +136,8 @@
     &--mod-small {
         border-radius: 4px;
         height: 28px;
-        font-weight: var(--text-body-small-weight);
+        // Overridable from outside: set the custom property on the <app-button> element.
+        font-weight: var(--button-small-font-weight, var(--text-body-small-weight));
         font-size: var(--text-body-small-size);
         padding: 0.25rem 0.5rem;
 
@@ -118,7 +153,8 @@
         }
 
         &-small {
-            padding-left: 2rem;
+            // Overridable like the font weight above: where the label starts, after the icon.
+            padding-left: var(--button-small-icon-left-padding, 2rem);
             padding-right: 0.75rem;
         }
     }
@@ -168,7 +204,7 @@
     pointer-events: none;
 }
 
-button:disabled {
+button:is(:disabled, [aria-disabled='true']) {
     opacity: 0.6;
     cursor: default;
 }
@@ -191,8 +227,9 @@ button:disabled {
     padding-left: 0.6rem !important;
     padding-right: 0.6rem !important;
 
+    // Hidden from view only: the label stays the button's accessible name once just the icon shows.
     .btn-content {
-        display: none;
+        @include a11y.visually-hidden;
     }
 
     .btn-icon.left,

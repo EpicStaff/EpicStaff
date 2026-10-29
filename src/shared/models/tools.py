@@ -3,6 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .ai_providers import EmbedderData, LLMData
+from .storage_scope import StorageCredentials, StorageScopedData
 
 
 class ToolConfigData(BaseModel):
@@ -48,17 +49,16 @@ class McpToolData(BaseModel):
     )
 
 
-class PythonCodeData(BaseModel):
-    venv_name: str
+class PythonCodeData(StorageScopedData):
     code: str
     entrypoint: str
-    libraries: list[str]
+    # The venv this code runs in; None means the sandbox's default venv. The venv
+    # is the only place libraries come from, so there is nothing else to declare.
+    venv_id: int | None = None
     global_kwargs: dict[str, Any] | None = None
-    use_storage: bool = False
-    storage_allowed_paths: list[str] | None = None
-    storage_org_prefix: str | None = None
-    session_id: int | None = None
-    org_id: int | None = None
+    execution_timeout: int | None = None
+    """Seconds a single run of this code may take. None makes the sandbox apply
+    SANDBOX_DEFAULT_EXECUTION_TIMEOUT."""
 
     secret_names: list[str] = Field(default_factory=list, exclude=True)
     """Names this code is *allowed* to read — its declared allow-list.
@@ -69,9 +69,9 @@ class PythonCodeData(BaseModel):
     or not, which is what lets a computed name like get_secret(f"KEY_{env}")
     resolve.
 
-    Excluded because this model is nested in GraphData, which becomes
-    Session.graph_schema. The names are not credentials, but they are the
-    caller's data and nothing downstream of Redis needs them.
+    Excluded from every dump, so the names never reach the Redis payload or
+    anything persisted from this model. They are not credentials, but they are
+    the caller's data and nothing downstream of Redis needs them.
     """
 
     secrets: dict[str, str] = Field(default_factory=dict)
@@ -83,11 +83,11 @@ class PythonCodeData(BaseModel):
 
     This is safe because resolution happens only on the deep copy that
     SecretResolver.resolve_payload() returns, never on the caller's object.
-    `Session.graph_schema` is built from that original, unresolved object
-    (see session_manager_service.py), so its `secrets` is always the empty
-    default here — never plaintext. Nothing prevents future code from
-    resolving in place instead of on a copy; that discipline, not a Field
-    flag, is what keeps this field's value out of persisted storage.
+    The caller's object stays unresolved (see redis_service.publish_session_data),
+    so its `secrets` is always the empty default — never plaintext; only the
+    published copy carries values. Nothing prevents future code from resolving
+    in place instead of on a copy; that discipline, not a Field flag, is what
+    keeps plaintext off the caller's object and out of anything persisted from it.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -157,23 +157,56 @@ class CodeResultData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class CodeTaskData(BaseModel):
-    venv_name: str
-    libraries: list[str]
+class CodeTaskData(StorageScopedData):
+    # The venv this code runs in; None means the sandbox's default venv.
+    venv_id: int | None = None
     code: str
     execution_id: str
     entrypoint: str
     func_kwargs: dict | None = None
     global_kwargs: dict[str, Any] | None = None
-    use_storage: bool = False
-    storage_allowed_paths: list[str] | None = None
-    storage_org_prefix: str | None = None
-    session_id: int | None = None
-    org_id: int | None = None
+    execution_timeout: float | None = Field(default=None, gt=0)
+    """Requested execution timeout in seconds. Untrusted: the sandbox caps it at
+    SANDBOX_MAX_EXECUTION_TIMEOUT. None makes the sandbox apply
+    SANDBOX_DEFAULT_EXECUTION_TIMEOUT."""
+
+    storage_credentials: StorageCredentials | None = None
+    """Ephemeral temporary storage credentials for sandbox execution.
+
+    Injected by crew/django at task publication time if use_storage=True.
+    Never persisted — payload-only field, set only on the copy published to
+    Redis and never part of any stored state.
+    """
 
     secrets: dict[str, str] = {}
     """{name: plaintext} for the sandbox. NOT excluded: this message is never
     persisted, and excluding it would silently deliver no secrets."""
+
+    reply_to_crew_channel: bool = False
+    """Publish the result to `crew_code_result_channel(CODE_RESULT_CHANNEL)`
+    instead of the shared `CODE_RESULT_CHANNEL`. Only crew sets it; every other
+    caller keeps listening on the shared channel."""
+
+    @model_validator(mode="after")
+    def _validate_storage_scope(self) -> "CodeTaskData":
+        """Second echelon of defense (fail-closed):
+        a task that asks for storage access must already carry:
+        1. The trusted scope a publisher is responsible for filling in (org_id, storage_org_prefix)
+        2. The temporary credentials (storage_credentials) injected by crew/agent at publication time
+
+        Without both, sandbox cannot execute the task safely.
+        """
+        if self.use_storage:
+            if not self.org_id or not self.storage_org_prefix:
+                raise ValueError(
+                    "use_storage=True requires both org_id and storage_org_prefix "
+                    "to be set on CodeTaskData."
+                )
+            if self.storage_credentials is None:
+                raise ValueError(
+                    "use_storage=True requires storage_credentials to be set on CodeTaskData."
+                )
+        return self
 
     def log_summary(self) -> str:
         """A log-safe description of this task.
@@ -181,12 +214,15 @@ class CodeTaskData(BaseModel):
         `secrets` holds resolved plaintext, so neither its values nor its keys
         are rendered — only its size, which is what actually helps when
         debugging ("did the node receive its declarations?"). Callers must log
-        this instead of the message body.
+        this instead of the message body. `storage_credentials.secret_key` is
+        also never rendered.
         """
+        creds_summary = "present" if self.storage_credentials else "none"
         return (
-            f"execution_id={self.execution_id} venv={self.venv_name} "
-            f"entrypoint={self.entrypoint} libraries={len(self.libraries)} "
-            f"secrets={len(self.secrets)}"
+            f"execution_id={self.execution_id} venv_id={self.venv_id} "
+            f"entrypoint={self.entrypoint} "
+            f"execution_timeout={self.execution_timeout} "
+            f"secrets={len(self.secrets)} storage_credentials={creds_summary}"
         )
 
     model_config = ConfigDict(from_attributes=True)

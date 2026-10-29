@@ -6,12 +6,15 @@ from loguru import logger
 
 from app.constants import FAILURE_STOP_REASONS
 from app.exceptions import AgentServiceError, SchemaValidationError
+from app.logging_utils import redact_value
 from app.loop.agent_loop import AgentLoop
 from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.output.schema import ValidationOutcome, add_usage, validate_output
 from app.tools.registry import ToolRegistry
 from app.tools.system_tools.structured_output import ANSWER_TOOL, build_answer_tool
 from shared.models.agent_service import TokenUsage
+
+_MISSING = object()
 
 
 @dataclass(frozen=True)
@@ -73,7 +76,15 @@ class StructuredOutputEnforcer:
                 corrective = "You must call submit_final_answer. " + corrective
                 continue
 
-            candidate = capture.args["result"] if wrapped else capture.args
+            candidate = (
+                (
+                    capture.args.get("result", _MISSING)
+                    if isinstance(capture.args, dict)
+                    else _MISSING
+                )
+                if wrapped
+                else capture.args
+            )
             outcome: ValidationOutcome = validate_output(candidate, output_schema)
 
             if outcome.ok:
@@ -90,11 +101,11 @@ class StructuredOutputEnforcer:
                     tool_invocations=tool_invocations,
                 )
 
-            logger.debug(
+            logger.opt(lazy=True).debug(
                 "schema_enforce attempt={} correlation_id={} ok=False error={}",
-                attempt,
-                context.correlation_id,
-                outcome.error,
+                lambda: attempt,
+                lambda: context.correlation_id,
+                lambda: redact_value(outcome.error),
             )
             corrective = (
                 f"Your answer did not match the schema: {outcome.error}. "

@@ -73,7 +73,7 @@
         }
 
         &--transparent {
-            background-color: transparent;
+            background-color: var(--color-input-transparent);
         }
 
         &:disabled {
@@ -143,12 +143,17 @@
         overflow-x: hidden;
         white-space: nowrap;
 
-        // Boxed variant: card-like items with padding and optional search box on top.
+        // Boxed variant: card-like items with padding and optional search box on top. The
+        // panel sits on the darker surface so the cards on it read as raised, the way the
+        // filter menus of the list pages do.
         &--boxed {
             display: flex;
             flex-direction: column;
+            background-color: var(--color-sidenav-background);
             max-height: 360px;
-            padding: 1rem 0 1rem 1rem;
+            // Even on both sides: the list below reserves its scrollbar with
+            // `scrollbar-gutter`, so the right side needs no bare edge of its own.
+            padding: 1rem;
             gap: 1rem;
         }
     }
@@ -177,6 +182,10 @@
         scrollbar-gutter: stable;
     }
 
+    &__dropdown--boxed &__search {
+        background-color: var(--color-ks-line);
+    }
+
     &__option-body {
         display: flex;
         flex-direction: column;
@@ -190,6 +199,13 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    &__dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
     }
 
     &__item-icon {
@@ -230,10 +246,28 @@
         transition: background 0.15s ease;
     }
 
+    &__meta {
+        // Gives way before the name does: which libraries a venv has matters less than which
+        // venv it is, so this is what shrinks when the row runs out of room.
+        min-width: 0;
+        flex-shrink: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-ks-transparent-text-60);
+        font-size: 0.75rem;
+    }
+
     &__tip {
         flex-shrink: 0;
         color: var(--text-secondary-60);
         font-size: 0.8125rem;
+    }
+
+    &__group-label {
+        padding: 0.5rem 0.25rem 0.25rem;
+        color: var(--color-ks-transparent-text-60);
+        font-size: 0.75rem;
     }
 
     &__option {
@@ -273,7 +307,7 @@
             font-size: 0.875rem;
             border-radius: 4px;
             border: 1px solid var(--color-divider-subtle);
-            background-color: var(--color-input-background);
+            background-color: var(--color-ks-line);
             transition: border-color 0.15s ease;
         }
 
@@ -291,6 +325,17 @@
 
             &.selector__option--boxed {
                 border-color: var(--accent-color);
+            }
+        }
+
+        // After --exists and --selected on purpose: equal specificity, so source order is what
+        // takes the hover highlight and the accent color back off an option nobody may pick.
+        &--disabled {
+            color: var(--color-input-text-placeholder);
+            cursor: default;
+
+            &:hover {
+                background: transparent;
             }
         }
 

@@ -76,299 +76,136 @@ def _channel_with_nested_webhook_trigger(
     }
 
 
-@pytest.mark.asyncio
-async def test_voice_webhook_prefers_ngrok_domain_over_live_url(monkeypatch):
-    """`live_url` belongs to the generic webhook-trigger microservice and already
-    carries a `/webhooks/{path}` prefix (e.g. `/webhooks/abc123`). Reusing it to
-    build the Media Stream WS URL produces a URL that nginx's `/webhooks/`
-    location block intercepts and routes to the unrelated `webhook` stub service
-    (no WebSocket handler), breaking the Twilio Media Stream handshake. The bare
-    `ngrok_domain` must be used instead whenever it is available — this is the
-    real-world case where both fields are populated simultaneously.
-    """
-    from api.main import twilio_voice_webhook_channel
+@pytest.fixture
+def resolve_channel(monkeypatch):
+    """Django's channel lookup is external; each test sets the channel it returns."""
 
-    channel = _channel_with_nested_webhook_trigger(
-        live_url="https://live.example.ngrok.io/webhooks/abc123",
-        ngrok_domain="fallback.example.ngrok.io",
-    )
+    def _set(channel):
+        async def resolve(channel_token):
+            return channel.get("realtime_agent_definition"), channel
 
-    async def fake_resolve(channel_token):
-        return channel.get("realtime_agent_definition"), channel
+        monkeypatch.setattr("api.main._resolve_channel_agent", resolve)
 
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-
-    response = await twilio_voice_webhook_channel(
-        CHANNEL_TOKEN,
-        request=_fake_request(base_url="https://live.example.ngrok.io"),
-    )
-
-    assert response.status_code == 200
-    body = response.body.decode()
-    assert f"wss://fallback.example.ngrok.io/voice/{CHANNEL_TOKEN}/stream" in body
-    assert "/webhooks/" not in body
+    return _set
 
 
 @pytest.mark.asyncio
-async def test_voice_webhook_falls_back_to_ngrok_domain_when_no_live_url(monkeypatch):
-    from api.main import twilio_voice_webhook_channel
-
-    channel = _channel_with_nested_webhook_trigger(
-        live_url=None,
-        ngrok_domain="fallback.example.ngrok.io",
-    )
-
-    async def fake_resolve(channel_token):
-        return channel.get("realtime_agent_definition"), channel
-
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-
-    response = await twilio_voice_webhook_channel(
-        CHANNEL_TOKEN,
-        request=_fake_request(base_url="https://fallback.example.ngrok.io"),
-    )
-
-    assert response.status_code == 200
-    assert (
-        f"wss://fallback.example.ngrok.io/voice/{CHANNEL_TOKEN}/stream"
-        in response.body.decode()
-    )
-
-
-@pytest.mark.asyncio
-async def test_voice_webhook_resolves_stream_and_base_url_from_live_url_when_no_ngrok_domain(
-    monkeypatch,
+@pytest.mark.parametrize(
+    ("live_url", "ngrok_domain", "signed_base_url", "stream_host"),
+    [
+        # live_url belongs to the webhook microservice and carries a /webhooks/ prefix that
+        # nginx routes elsewhere, so the bare ngrok domain wins whenever it is set.
+        ("https://live.example.ngrok.io/webhooks/abc123", "fallback.example.ngrok.io", "https://live.example.ngrok.io", "fallback.example.ngrok.io"),
+        (None, "fallback.example.ngrok.io", "https://fallback.example.ngrok.io", "fallback.example.ngrok.io"),
+        # Free-tier ngrok has no static domain; live_url's host is the active tunnel.
+        ("https://random-abc123.ngrok-free.dev/webhooks/abc123", None, "https://random-abc123.ngrok-free.dev", "random-abc123.ngrok-free.dev"),
+    ],
+    ids=["ngrok-domain-over-live-url", "ngrok-domain-only", "live-url-only"],
+)
+async def test_signed_call_is_sent_to_the_channels_media_stream(
+    resolve_channel, live_url, ngrok_domain, signed_base_url, stream_host
 ):
-    """`ngrok_config.domain` is the static custom-domain setting and is
-    legitimately `None` for free-tier/random-subdomain ngrok tunnels.
-    `live_url` is provider-agnostic and already reflects the real,
-    currently-active tunnel host in that case, so both `voice_stream_url`
-    (the Media Stream WS target) and `base_url` (used for Twilio signature
-    validation) must fall back to `live_url`'s resolved host rather than
-    fail-closed 503'ing just because `ngrok_domain` is unset. A 200 here
-    proves `base_url` resolved correctly (otherwise signature validation
-    would reject the request); the body assertion proves `voice_stream_url`
-    did too.
-    """
+    """A 200 proves the signature was checked against the right tunnel URL."""
     from api.main import twilio_voice_webhook_channel
 
-    channel = _channel_with_nested_webhook_trigger(
-        live_url="https://random-abc123.ngrok-free.dev/webhooks/abc123",
-        ngrok_domain=None,
-    )
+    resolve_channel(_channel_with_nested_webhook_trigger(live_url=live_url, ngrok_domain=ngrok_domain))
 
-    async def fake_resolve(channel_token):
-        return channel.get("realtime_agent_definition"), channel
-
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-
-    response = await twilio_voice_webhook_channel(
-        CHANNEL_TOKEN,
-        request=_fake_request(base_url="https://random-abc123.ngrok-free.dev"),
-    )
+    response = await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request(base_url=signed_base_url))
 
     assert response.status_code == 200
-    body = response.body.decode()
-    assert f"wss://random-abc123.ngrok-free.dev/voice/{CHANNEL_TOKEN}/stream" in body
-    assert "/webhooks/" not in body
-
-
-# ---------------------------------------------------------------------------
-# stream_token auth: the TwiML <Stream> URL must embed a token that the
-# paired WebSocket route can validate before accepting the connection.
-# ---------------------------------------------------------------------------
+    stream_url = urlparse(ET.fromstring(response.body).find("./Connect/Stream").get("url"))
+    assert (stream_url.scheme, stream_url.netloc, stream_url.path) == ("wss", stream_host, f"/voice/{CHANNEL_TOKEN}/stream")
 
 
 @pytest.mark.asyncio
-async def test_voice_webhook_embeds_stream_token_bound_to_channel(monkeypatch):
-    from api.main import stream_token_repository, twilio_voice_webhook_channel
+async def test_twilio_form_post_is_parsed_and_answered_with_twiml(resolve_channel):
+    """Twilio posts its call parameters form-encoded; the real request parser must
+    read them, or no signature can be validated and every call fails."""
+    from httpx import ASGITransport, AsyncClient
 
-    channel = _channel_with_nested_webhook_trigger(
-        live_url=None, ngrok_domain="fallback.example.ngrok.io"
-    )
+    from api.main import app
 
-    async def fake_resolve(channel_token):
-        return channel.get("realtime_agent_definition"), channel
+    base_url = "https://fallback.example.ngrok.io"
+    path = f"/voice/{CHANNEL_TOKEN}"
+    call_parameters = {"CallSid": "CA123", "From": "+15550001111", "To": "+10000000000"}
+    resolve_channel(_channel_with_nested_webhook_trigger(live_url=None, ngrok_domain="fallback.example.ngrok.io"))
 
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-
-    response = await twilio_voice_webhook_channel(
-        CHANNEL_TOKEN,
-        request=_fake_request(base_url="https://fallback.example.ngrok.io"),
-    )
-    body = response.body.decode()
-
-    stream_url = urlparse(body.split('url="')[1].split('"')[0])
-    assert stream_url.path == f"/voice/{CHANNEL_TOKEN}/stream"
-    token = parse_qs(stream_url.query)["stream_token"][0]
-    assert token
-
-    # The minted token must be bound to this exact channel_token and be
-    # single-use — the WebSocket handler's `consume()` call, not a raw
-    # string comparison here, is what actually gates the media bridge.
-    assert stream_token_repository.consume(token, bound_key=CHANNEL_TOKEN) is True
-    assert stream_token_repository.consume(token, bound_key=CHANNEL_TOKEN) is False
-
-
-@pytest.mark.asyncio
-async def test_voice_webhook_embeds_stream_token_as_twiml_parameter(monkeypatch):
-    """Twilio does not reliably forward the `?stream_token=...` query string
-    on `<Stream url="...">` to the actual Media Stream WebSocket (confirmed
-    in production — see EST voice-call regression). The nested
-    `<Parameter name="stream_token" value="...">` element is the mechanism
-    Twilio actually relays, via `start.customParameters` on the WS leg — so
-    the TwiML must always include it."""
-    import re
-
-    from api.main import stream_token_repository, twilio_voice_webhook_channel
-
-    channel = _channel_with_nested_webhook_trigger(
-        live_url=None, ngrok_domain="fallback.example.ngrok.io"
-    )
-
-    async def fake_resolve(channel_token):
-        return channel.get("realtime_agent_definition"), channel
-
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-
-    response = await twilio_voice_webhook_channel(
-        CHANNEL_TOKEN,
-        request=_fake_request(base_url="https://fallback.example.ngrok.io"),
-    )
-    body = response.body.decode()
-
-    match = re.search(r'<Parameter name="stream_token" value="([^"]+)"', body)
-    assert match, f'expected a <Parameter name="stream_token"> element, got: {body}'
-    param_token = match.group(1)
-    assert param_token
-
-    # Must be the exact same single-use token embedded in the URL query
-    # string fallback, not a second, independently-minted one.
-    stream_url = urlparse(body.split('url="')[1].split('"')[0])
-    query_token = parse_qs(stream_url.query)["stream_token"][0]
-    assert param_token == query_token
-
-    assert stream_token_repository.consume(param_token, bound_key=CHANNEL_TOKEN) is True
-
-
-@pytest.mark.asyncio
-async def test_voice_webhook_xml_escapes_url_and_token(monkeypatch):
-    """A raw `&` (or other XML-special character) in the stream URL or token
-    must never reach the TwiML body unescaped — an unescaped `&` inside an
-    XML attribute is invalid XML and can truncate/corrupt the value Twilio's
-    XML parser extracts from the element."""
-    from api.main import twilio_voice_webhook_channel
-
-    channel = _channel_with_nested_webhook_trigger(
-        live_url=None, ngrok_domain="fallback.example.ngrok.io"
-    )
-
-    async def fake_resolve(channel_token):
-        return channel.get("realtime_agent_definition"), channel
-
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-
-    response = await twilio_voice_webhook_channel(
-        CHANNEL_TOKEN,
-        request=_fake_request(base_url="https://fallback.example.ngrok.io"),
-    )
-    body = response.body.decode()
-
-    # The URL now carries two query params (stream_token appended to none in
-    # this case, but exercised generally): verify no literal, unescaped `&`
-    # appears anywhere as a bare ampersand not part of `&amp;`.
-    for bare_amp in re.finditer(r"&(?!amp;)", body):
-        pytest.fail(
-            f"found an unescaped '&' in TwiML body at pos {bare_amp.start()}: {body}"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.post(
+            path,
+            data=call_parameters,
+            headers={"X-Twilio-Signature": _compute_signature(f"{base_url}{path}", call_parameters, AUTH_TOKEN)},
         )
 
-    # And the produced XML must actually be well-formed.
-    ET.fromstring(body)
-
-
-# ---------------------------------------------------------------------------
-# Fail-closed: signature validation must never be silently skipped.
-# ---------------------------------------------------------------------------
+    assert response.status_code == 200
+    assert ET.fromstring(response.content).find("./Connect/Stream") is not None
 
 
 @pytest.mark.asyncio
-async def test_voice_webhook_503s_when_auth_token_not_configured(monkeypatch):
-    """A missing/unset `auth_token` must fail closed (503), not fall through
-    to skipping signature validation entirely (that was the original,
-    unauthenticated-webhook vulnerability)."""
-    from api.main import twilio_voice_webhook_channel
-    from fastapi import HTTPException
+async def test_twiml_carries_one_single_use_stream_token_bound_to_the_channel(resolve_channel):
+    """Twilio drops the URL query on the Media Stream leg and relays only the nested
+    <Parameter>, so the token travels in both, and they must be the same token."""
+    from api.main import stream_token_repository, twilio_voice_webhook_channel
 
-    channel = _channel_with_nested_webhook_trigger(
-        live_url=None, ngrok_domain="fallback.example.ngrok.io"
+    resolve_channel(_channel_with_nested_webhook_trigger(live_url=None, ngrok_domain="fallback.example.ngrok.io"))
+
+    response = await twilio_voice_webhook_channel(
+        CHANNEL_TOKEN, request=_fake_request(base_url="https://fallback.example.ngrok.io")
     )
+
+    # Parsing fails on any unescaped XML-special character in the URL or token.
+    stream = ET.fromstring(response.body).find("./Connect/Stream")
+    query_token = parse_qs(urlparse(stream.get("url")).query)["stream_token"][0]
+    (parameter,) = stream.findall("Parameter")
+    assert (parameter.get("name"), parameter.get("value")) == ("stream_token", query_token)
+    assert re.search(r"&(?!amp;)", response.body.decode()) is None
+    assert stream_token_repository.consume(query_token, bound_key=CHANNEL_TOKEN) is True
+    assert stream_token_repository.consume(query_token, bound_key=CHANNEL_TOKEN) is False
+
+
+def _legacy_only_channel():
+    return {"realtime_agent": 42, "realtime_agent_definition": None, "twilio": {"auth_token": AUTH_TOKEN}}
+
+
+def _channel_without_auth_token():
+    channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain="fallback.example.ngrok.io")
     channel["twilio"]["auth_token"] = None
-
-    async def fake_resolve(channel_token):
-        return channel["realtime_agent_definition"], channel
-
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-
-    with pytest.raises(HTTPException) as exc_info:
-        await twilio_voice_webhook_channel(
-            CHANNEL_TOKEN, request=_fake_request(auth_token=None)
-        )
-
-    assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == "Twilio auth not configured"
+    return channel
 
 
 @pytest.mark.asyncio
-async def test_voice_webhook_503s_when_no_tunnel_domain_configured(monkeypatch):
-    """A channel whose `webhook_trigger` has neither `ngrok_domain` nor
-    `live_url` set must fail closed (503) — there is no static env-var
-    fallback for the Media Stream WS URL, by design."""
-    from api.main import twilio_voice_webhook_channel
+@pytest.mark.parametrize(
+    ("channel", "request_kwargs", "status", "detail"),
+    [
+        # Not signed by Twilio with this channel's auth token.
+        (
+            lambda: _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain="fallback.example.ngrok.io"),
+            {"auth_token": "someone-elses-token", "base_url": "https://fallback.example.ngrok.io"},
+            403, "Invalid Twilio signature",
+        ),
+        # A missing auth token must fail closed, never skip signature validation.
+        (_channel_without_auth_token, {"auth_token": None}, 503, "Twilio auth not configured"),
+        (
+            lambda: _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None),
+            {}, 503, "No tunnel domain configured for this channel's webhook_trigger.",
+        ),
+        # Django no longer accepts the removed legacy staff agent as a destination.
+        (_legacy_only_channel, {}, 404, re.compile(r"(?i)legacy.*42|42.*legacy")),
+    ],
+    ids=["bad-signature", "no-auth-token", "no-tunnel", "legacy-agent-only"],
+)
+async def test_call_is_refused_without_twiml(resolve_channel, channel, request_kwargs, status, detail):
     from fastapi import HTTPException
 
-    channel = _channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=None)
-
-    async def fake_resolve(channel_token):
-        return channel["realtime_agent_definition"], channel
-
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-
-    with pytest.raises(HTTPException) as exc_info:
-        await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request())
-
-    assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == "No tunnel domain configured for this channel's webhook_trigger."
-
-
-# ---------------------------------------------------------------------------
-# Legacy `realtime_agent` alone is no longer a usable destination — Django's
-# `InitRealtimeSerializer` dropped `agent_id` entirely, so a channel still
-# pointing only at the removed legacy staff agent must be rejected up front.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_voice_webhook_404s_when_channel_only_has_legacy_agent(monkeypatch):
-    """A channel config with `realtime_agent` set and `realtime_agent_definition`
-    null has no usable destination and must be rejected with a clear 404
-    before any TwiML is generated or Django's init-realtime is ever called."""
     from api.main import twilio_voice_webhook_channel
-    from fastapi import HTTPException
 
-    channel = {
-        "realtime_agent": 42,
-        "realtime_agent_definition": None,
-        "twilio": {"auth_token": AUTH_TOKEN},
-    }
+    resolve_channel(channel())
 
-    async def fake_resolve(channel_token):
-        return channel.get("realtime_agent_definition"), channel
+    with pytest.raises(HTTPException) as refused:
+        await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request(**request_kwargs))
 
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-
-    with pytest.raises(HTTPException) as exc_info:
-        await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request())
-
-    assert exc_info.value.status_code == 404
-    assert "legacy" in exc_info.value.detail.lower()
-    assert "42" in exc_info.value.detail
+    assert refused.value.status_code == status
+    if isinstance(detail, re.Pattern):
+        assert detail.search(refused.value.detail)
+    else:
+        assert refused.value.detail == detail

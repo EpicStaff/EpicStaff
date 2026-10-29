@@ -1,5 +1,9 @@
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, inline_serializer
 from rest_framework import serializers as drf_serializers
+from tables.swagger_schemas.common_schemas import (
+    TRIGGER_NODES_REQUIRE_USE_403_RESPONSE,
+    UNAUTHORIZED_401_RESPONSE,
+)
 
 _id_list_field = drf_serializers.ListField(child=drf_serializers.IntegerField(), required=False)
 
@@ -12,7 +16,11 @@ SAVE_FLOW_SWAGGER = {
         "- IDs in `deleted` → deleted (validated as belonging to this graph).\n\n"
         "FE sends only changed entities. "
         "All entities are validated first. If any fail, the entire request is rejected "
-        "and no DB writes happen."
+        "and no DB writes happen.\n\n"
+        "Requires UPDATE on flows. A non-empty `webhook_trigger_node_list`, "
+        "`telegram_trigger_node_list` or `schedule_trigger_node_list` (any create or "
+        "update of a trigger node, including a position-only change) also requires USE "
+        "on flows; deleting trigger nodes does not."
     ),
     "request": inline_serializer(
         name="SaveFlowRequest",
@@ -59,9 +67,6 @@ SAVE_FLOW_SWAGGER = {
             "edge_list": drf_serializers.ListField(
                 child=drf_serializers.DictField(), required=False
             ),
-            "conditional_edge_list": drf_serializers.ListField(
-                child=drf_serializers.DictField(), required=False
-            ),
             "deleted": inline_serializer(
                 name="DeletedIds",
                 fields={
@@ -79,7 +84,6 @@ SAVE_FLOW_SWAGGER = {
                     "telegram_trigger_node_ids": _id_list_field,
                     "schedule_trigger_node_ids": _id_list_field,
                     "edge_ids": _id_list_field,
-                    "conditional_edge_ids": _id_list_field,
                 },
                 required=False,
             ),
@@ -98,7 +102,7 @@ SAVE_FLOW_SWAGGER = {
                         "output_variable_path": "result",
                         "python_code": {
                             "code": "def main(input): return input.upper()",
-                            "libraries": [],
+                            "venv_id": None,
                         },
                         "metadata": {"position": {"x": 700, "y": 200}},
                     }
@@ -174,7 +178,6 @@ SAVE_FLOW_SWAGGER = {
                         "metadata": {},
                     },
                 ],
-                "conditional_edge_list": [],
                 "deleted": {
                     "python_node_ids": [8],
                     "edge_ids": [14],
@@ -186,6 +189,8 @@ SAVE_FLOW_SWAGGER = {
     "responses": {
         200: OpenApiResponse(description="Full updated graph state after save."),
         400: OpenApiResponse(description="Validation errors — no DB changes were made."),
+        401: UNAUTHORIZED_401_RESPONSE,
+        403: TRIGGER_NODES_REQUIRE_USE_403_RESPONSE,
         404: OpenApiResponse(description="Graph not found."),
     },
 }

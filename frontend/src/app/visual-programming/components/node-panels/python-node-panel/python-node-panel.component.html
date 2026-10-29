@@ -22,7 +22,7 @@
                     <div class="field-isolated">
                         <app-custom-input
                             label="Node Name"
-                            tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
+                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"
@@ -40,8 +40,10 @@
                             [pythonNodeId]="node().backendId"
                             [graphId]="graphId()"
                             [nodeName]="node().node_name"
-                            [testRunning]="testRunning()"
+                            [nodeNumber]="node().nodeNumber"
+                            [testRunning]="codeTestRun.isRunning()"
                             [testInputDirty]="testInputDirty()"
+                            [runTestBlocker]="runTestBlocker()"
                             (testModeChange)="isOpenTestMode.set($event)"
                             (runTest)="onRunTest($event)"
                         ></app-input-map>
@@ -65,14 +67,28 @@
                         [readonly]="isReadOnly()"
                     ></app-custom-input>
 
-                    <app-custom-input
-                        label="Libraries"
-                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                        formControlName="libraries"
-                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                        [activeColor]="activeColor"
+                    <div class="form-group">
+                        <app-select
+                            label="Venv"
+                            tooltipText="The virtual environment this Python code runs in. Leave empty to use the default environment."
+                            placeholder="Select venv"
+                            formControlName="venv"
+                            [items]="venvItems()"
+                            variant="boxed"
+                            [grouped]="true"
+                            [showSearch]="true"
+                            searchPlaceholder="Search by venv name..."
+                            [loading]="loadingVenvs()"
+                            [readonly]="isReadOnly()"
+                            (opened)="onVenvDropdownOpened()"
+                            (changed)="onVenvChanged($event)"
+                        />
+                    </div>
+
+                    <app-execution-timeout-field
+                        [field]="executionTimeout"
                         [readonly]="isReadOnly()"
-                    ></app-custom-input>
+                    />
 
                     <app-node-storage-section
                         [readonly]="isReadOnly()"
@@ -113,11 +129,11 @@
 
                         @if (isOpenTestMode() && !isReadOnly()) {
                             <app-python-terminal
-                                [logs]="terminalLogs()"
-                                [terminalHeight]="terminalHeight()"
-                                [status]="terminalStatus()"
-                                (heightChange)="onTerminalHeightChange($event)"
-                                (clearLogs)="onClearLogs()"
+                                [logs]="codeTestRun.logs()"
+                                [terminalHeight]="codeTestRun.terminalHeight()"
+                                [status]="codeTestRun.status()"
+                                (heightChange)="codeTestRun.setTerminalHeight($event)"
+                                (clearLogs)="codeTestRun.clearLogs()"
                             />
                         }
                     </div>

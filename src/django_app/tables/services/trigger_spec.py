@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from tables.models.graph_models import (
@@ -8,12 +8,17 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 from tables.models.session_models import SessionTrigger
+from utils.graph_utils import node_label
 
 
 @dataclass(frozen=True)
 class TriggerSpec:
-    """Describes what started a Session, in a form that materializes 1:1 onto
+    """Describes what started a Session, in a form that materializes onto
     `SessionTrigger` columns via `to_fields()`.
+
+    `node_name` and `node_number` are the trigger node's own fields: they build the
+    session entrypoint (the node's runtime name) and the `SessionTrigger.node_name`
+    snapshot (the node's "Name #N" label).
 
     `trigger_type` always agrees with whichever node id is populated, because
     the only intended way to build one is through the named constructors below
@@ -24,6 +29,7 @@ class TriggerSpec:
 
     trigger_type: str
     node_name: str | None = None
+    node_number: int | None = None
     schedule_trigger_node_id: int | None = None
     webhook_trigger_node_id: int | None = None
     telegram_trigger_node_id: int | None = None
@@ -43,16 +49,18 @@ class TriggerSpec:
         return cls(
             trigger_type=SessionTrigger.TriggerType.SCHEDULE,
             node_name=node.node_name,
+            node_number=node.node_number,
             schedule_trigger_node_id=node.id,
         )
 
     @classmethod
     def webhook(
-        cls, node: WebhookTriggerNode, path: str, config_id: str | None = None
+        cls, node: WebhookTriggerNode, path: str | None, config_id: str | None = None
     ) -> "TriggerSpec":
         return cls(
             trigger_type=SessionTrigger.TriggerType.WEBHOOK,
             node_name=node.node_name,
+            node_number=node.node_number,
             webhook_trigger_node_id=node.id,
             extra={"path": path, "config_id": config_id},
         )
@@ -66,6 +74,7 @@ class TriggerSpec:
         return cls(
             trigger_type=SessionTrigger.TriggerType.TELEGRAM,
             node_name=node.node_name,
+            node_number=node.node_number,
             telegram_trigger_node_id=node.id,
             extra=extra,
         )
@@ -92,6 +101,10 @@ class TriggerSpec:
             return None
         return chat.get("id")
 
+    def as_test_run(self) -> "TriggerSpec":
+        """Return a copy flagged as an editor test run; the original spec is left unchanged."""
+        return replace(self, extra={**self.extra, SessionTrigger.TEST_RUN_EXTRA_KEY: True})
+
     @property
     def node_id(self) -> int | None:
         """Id of the node that triggered the session, whichever type applies."""
@@ -101,11 +114,16 @@ class TriggerSpec:
             or self.telegram_trigger_node_id
         )
 
+    def _node_label(self) -> str | None:
+        if self.node_name is None:
+            return None
+        return node_label(node_name=self.node_name, node_number=self.node_number)
+
     def to_fields(self) -> dict:
         """Kwargs for `SessionTrigger.objects.create(session=session, **spec.to_fields())`."""
         return {
             "trigger_type": self.trigger_type,
-            "node_name": self.node_name,
+            "node_name": self._node_label(),
             "schedule_trigger_node_id": self.schedule_trigger_node_id,
             "webhook_trigger_node_id": self.webhook_trigger_node_id,
             "telegram_trigger_node_id": self.telegram_trigger_node_id,

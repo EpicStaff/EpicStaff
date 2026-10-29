@@ -1,14 +1,27 @@
 import asyncio
 from unittest.mock import MagicMock
 
+import pytest
+
 from services.graph.events import StopEvent
 from services.graph.nodes.knowledge_node import KnowledgeNode
 from services.knowledge_search_service import KnowledgeSearchService
-from src.shared.models import FoundChunk, NaiveRagSearchConfig
+from src.shared.models import (
+    FoundChunk,
+    GraphRagBasicSearchParams,
+    GraphRagSearchConfig,
+    NaiveRagSearchConfig,
+    SearchOutcome,
+    SearchUsage,
+)
 
 
 class FakeKnowledgeClient:
-    """Stand-in for `clients.KnowledgeClient`: returns fixed chunks, makes no HTTP calls."""
+    """Stand-in for `clients.KnowledgeClient`: returns `search_result`, makes no HTTP calls."""
+
+    search_result: list[FoundChunk] | str = [
+        FoundChunk(order=0, similarity=0.9, text="chunk text", source="doc.txt")
+    ]
 
     def __init__(self, *args, **kwargs):
         pass
@@ -19,13 +32,17 @@ class FakeKnowledgeClient:
     def __exit__(self, *exc_info):
         pass
 
-    def search(self, **kwargs):
-        return [
-            FoundChunk(order=0, similarity=0.9, text="chunk text", source="doc.txt")
-        ]
+    search_usage: SearchUsage = SearchUsage()
+
+    def search_with_usage(self, **kwargs):
+        return SearchOutcome(result=self.search_result, usage=self.search_usage)
 
 
-def make_node(knowledge_search_service: KnowledgeSearchService) -> KnowledgeNode:
+def make_node(
+    knowledge_search_service: KnowledgeSearchService,
+    rag_type_id: str = "naive:2",
+    rag_search_config=None,
+) -> KnowledgeNode:
     return KnowledgeNode(
         session_id=1,
         node_name="knowledge_1",
@@ -33,35 +50,180 @@ def make_node(knowledge_search_service: KnowledgeSearchService) -> KnowledgeNode
         input_map={},
         output_variable_path=None,
         collection_id=5,
-        rag_type_id="naive:2",
+        rag_type_id=rag_type_id,
         query="hello world",
-        rag_search_config=NaiveRagSearchConfig(),
+        rag_search_config=rag_search_config or NaiveRagSearchConfig(),
         knowledge_search_service=knowledge_search_service,
     )
 
 
-def test_execute_writes_extracted_chunks_message_to_stream(monkeypatch):
+def test_execute_emits_naive_extracted_chunks_message_shape(monkeypatch):
     monkeypatch.setattr(
         "services.knowledge_search_service.KnowledgeClient", FakeKnowledgeClient
     )
     service = KnowledgeSearchService(redis_service=MagicMock())
-    node = make_node(service)
+    writer = MagicMock()
+
+    asyncio.run(
+        make_node(service).execute(state={}, writer=writer, execution_order=3, input_={})
+    )
+
+    writer.assert_called_once()
+    graph_message = writer.call_args[0][0]
+    assert graph_message.session_id == 1
+    assert graph_message.name == "knowledge_1"
+    assert graph_message.execution_order == 3
+    assert graph_message.message_data == {
+        "message_type": "extracted_chunks",
+        "rag_type": "naive",
+        "collection_id": 5,
+        "retrieved_chunks": 1,
+        "knowledge_query": "hello world",
+        "rag_search_config": {
+            "rag_strategy": "naive",
+            "search_limit": 3,
+            "similarity_threshold": 0.2,
+        },
+        "chunks": [
+            {"order": 0, "similarity": 0.9, "text": "chunk text", "source": "doc.txt"}
+        ],
+        "answer": None,
+        "token_usage": {},
+    }
+
+
+@pytest.mark.parametrize("answer", ["graph answer", ""])
+def test_execute_emits_graph_extracted_chunks_message_shape(monkeypatch, answer):
+    monkeypatch.setattr(FakeKnowledgeClient, "search_result", answer)
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", FakeKnowledgeClient
+    )
+    service = KnowledgeSearchService(redis_service=MagicMock())
+    node = make_node(
+        service,
+        rag_type_id="graph:7",
+        rag_search_config=GraphRagSearchConfig(
+            search_params=GraphRagBasicSearchParams()
+        ),
+    )
     writer = MagicMock()
 
     asyncio.run(node.execute(state={}, writer=writer, execution_order=3, input_={}))
 
-    writer.assert_called_once()
-    graph_message = writer.call_args[0][0]
-    message_data = graph_message.message_data
+    message_data = writer.call_args[0][0].message_data
+    rag_search_config = message_data.pop("rag_search_config")
+    assert rag_search_config["rag_strategy"] == "graph"
+    assert rag_search_config["method"] == "basic"
+    assert message_data == {
+        "message_type": "extracted_chunks",
+        "rag_type": "graph",
+        "collection_id": 5,
+        "retrieved_chunks": 0,
+        "knowledge_query": "hello world",
+        "chunks": [],
+        "answer": answer,
+        "token_usage": {},
+    }
 
-    assert graph_message.session_id == 1
-    assert graph_message.name == "knowledge_1"
-    assert graph_message.execution_order == 3
-    assert message_data["message_type"] == "extracted_chunks"
-    assert "crew_id" not in message_data
-    assert "agent_id" not in message_data
-    assert message_data["collection_id"] == 5
-    assert message_data["knowledge_query"] == "hello world"
-    assert message_data["chunks"] == [
-        {"order": 0, "similarity": 0.9, "text": "chunk text", "source": "doc.txt"}
-    ]
+
+def test_execute_forwards_extra_headers_to_the_search(monkeypatch):
+    received = {}
+
+    class CapturingKnowledgeClient(FakeKnowledgeClient):
+        def search_with_usage(self, **kwargs):
+            received.update(kwargs)
+            return SearchOutcome(result=[])
+
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", CapturingKnowledgeClient
+    )
+    node = KnowledgeNode(
+        session_id=1,
+        node_name="knowledge_1",
+        stop_event=StopEvent(),
+        input_map={},
+        output_variable_path=None,
+        collection_id=5,
+        rag_type_id="graph:7",
+        query="hello world",
+        rag_search_config=GraphRagSearchConfig(search_params=GraphRagBasicSearchParams()),
+        knowledge_search_service=KnowledgeSearchService(redis_service=MagicMock()),
+        embedder_extra_headers={"X-Emb": "emb-resolved"},
+        llm_extra_headers={"X-Llm": "llm-resolved"},
+    )
+
+    asyncio.run(node.execute(state={}, writer=MagicMock(), execution_order=1, input_={}))
+
+    assert received["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
+    assert received["llm_extra_headers"] == {"X-Llm": "llm-resolved"}
+
+
+def test_execute_adds_search_embedding_usage_to_the_message_token_usage(monkeypatch):
+    monkeypatch.setattr(
+        FakeKnowledgeClient,
+        "search_usage",
+        SearchUsage(embedding_tokens=12, embedding_cost_usd=0.0002),
+    )
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", FakeKnowledgeClient
+    )
+    writer = MagicMock()
+
+    asyncio.run(
+        make_node(KnowledgeSearchService(redis_service=MagicMock())).execute(
+            state={}, writer=writer, execution_order=3, input_={}
+        )
+    )
+
+    message_data = writer.call_args[0][0].message_data
+    assert message_data["token_usage"] == {
+        "prompt_tokens": 12,
+        "completion_tokens": 0,
+        "total_tokens": 12,
+        "total_cost_usd": 0.0002,
+    }
+
+
+def test_execute_adds_graph_search_llm_usage_to_the_message_token_usage(monkeypatch):
+    monkeypatch.setattr(
+        FakeKnowledgeClient,
+        "search_usage",
+        SearchUsage(
+            embedding_tokens=10,
+            embedding_cost_usd=0.0001,
+            llm_input_tokens=100,
+            llm_output_tokens=20,
+            llm_cost_usd=0.003,
+        ),
+    )
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", FakeKnowledgeClient
+    )
+    writer = MagicMock()
+
+    asyncio.run(
+        make_node(KnowledgeSearchService(redis_service=MagicMock())).execute(
+            state={}, writer=writer, execution_order=3, input_={}
+        )
+    )
+
+    token_usage = writer.call_args[0][0].message_data["token_usage"]
+    assert token_usage["prompt_tokens"] == 110
+    assert token_usage["completion_tokens"] == 20
+    assert token_usage["total_tokens"] == 130
+    assert token_usage["total_cost_usd"] == 0.0031
+
+
+def test_search_usage_with_unknown_llm_cost_counts_it_as_zero():
+    usage = SearchUsage(llm_input_tokens=5, llm_output_tokens=3, llm_cost_usd=None)
+
+    assert usage.to_token_usage() == {
+        "prompt_tokens": 5,
+        "completion_tokens": 3,
+        "total_tokens": 8,
+        "total_cost_usd": 0.0,
+    }
+
+
+def test_empty_search_usage_has_no_token_usage():
+    assert SearchUsage().to_token_usage() == {}

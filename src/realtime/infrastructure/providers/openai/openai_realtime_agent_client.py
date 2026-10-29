@@ -1,4 +1,5 @@
 import json
+import uuid
 from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Any
@@ -8,7 +9,7 @@ from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
 from utils.openai_endpoints import derive_realtime_ws_url
-from utils.public_error import (
+from src.shared.public_error import (
     PublicErrorMessage,
     build_public_error_message,
     new_error_correlation_id,
@@ -19,6 +20,8 @@ from infrastructure.providers.openai.event_handlers.agent_client_event_handler i
     ClientEventHandler,
 )
 from infrastructure.providers.openai.event_handlers.agent_server_event_handler import (
+    HIDDEN_ITEM_ID_PREFIX,
+    HIDDEN_ITEM_ID_SUFFIX_LENGTH,
     ServerEventHandler,
 )
 
@@ -278,10 +281,10 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         event = {
             "type": "conversation.item.create",
             "item": {
-                "id": "dont_show_it",
+                "id": f"{HIDDEN_ITEM_ID_PREFIX}_{uuid.uuid4().hex[:HIDDEN_ITEM_ID_SUFFIX_LENGTH]}",
                 "type": "message",
                 "role": "user",
                 "content": [{"type": "input_text", "text": text}],
             },
         }
-        await self.send_server(event=event)
+        await self.send_server(event)

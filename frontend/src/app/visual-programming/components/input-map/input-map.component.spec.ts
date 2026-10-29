@@ -1,9 +1,13 @@
-import { ChangeDetectorRef, Component, CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { ChangeDetectorRef, Component, CUSTOM_ELEMENTS_SCHEMA, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { By } from '@angular/platform-browser';
 
 import { GraphSessionService } from '../../../features/flows/services/flows-sessions.service';
 import { RunSessionSSEService } from '../../../pages/running-graph/services/graph-session-sse.service';
+import { ConfigService } from '../../../services/config';
 import { FlowService } from '../../services/flow.service';
 import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
@@ -172,5 +176,149 @@ describe('InputMapComponent variable picker', () => {
             expect(pairs().length).toBe(2);
             expect(listed().length).toBe(3);
         });
+    });
+});
+
+// The Python node panel in Test mode, with a saved node whose Run the panel may block.
+@Component({
+    imports: [ReactiveFormsModule, InputMapComponent],
+    template: `<form [formGroup]="form">
+        <app-input-map
+            [testMode]="true"
+            [showTestMode]="true"
+            [pythonNodeId]="31"
+            [runTestBlocker]="blocker()"
+            (runTest)="runs.push($event)"
+        />
+    </form>`,
+})
+class PythonPanelTestModeHostComponent {
+    readonly form: FormGroup = new FormBuilder().group({
+        input_map: new FormArray([new FormBuilder().group({ key: ['count'], value: ['variables.count'] })]),
+        test_input: new FormArray([new FormBuilder().group({ key: ['count'], value: ['3'] })]),
+    });
+    readonly blocker = signal<string | null>(null);
+    readonly runs: Record<string, string>[] = [];
+}
+
+describe('InputMapComponent test Run', () => {
+    let fixture: ComponentFixture<PythonPanelTestModeHostComponent>;
+
+    const runButton = (): HTMLButtonElement =>
+        Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.test-mode-actions button')
+        ).find((button) => button.textContent?.trim() === 'Run Test')!;
+    const inputMap = (): InputMapComponent =>
+        fixture.debugElement.query(By.directive(InputMapComponent)).componentInstance as InputMapComponent;
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowService, useValue: { startNodeInitialState: signal({}) } },
+                { provide: PythonCodeRunService, useValue: {} },
+                { provide: GraphSessionService, useValue: {} },
+                { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+                { provide: SidePanelService, useValue: {} },
+            ],
+        });
+        // The buttons' tooltips are not rendered here: the tooltip text is read from the component.
+        TestBed.overrideComponent(InputMapComponent, {
+            set: { imports: [ReactiveFormsModule], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        fixture = TestBed.createComponent(PythonPanelTestModeHostComponent);
+        fixture.detectChanges();
+    });
+
+    afterEach(() => fixture.destroy());
+
+    it('runs with the test values while the panel does not block it', () => {
+        expect(runButton().disabled).toBe(false);
+
+        runButton().click();
+
+        expect(fixture.componentInstance.runs).toEqual([{ count: '3' }]);
+    });
+
+    it('is disabled, says why, and does not run while the panel blocks it', () => {
+        fixture.componentInstance.blocker.set('Click Save to run your latest code changes');
+        fixture.detectChanges();
+
+        expect(runButton().disabled).toBe(true);
+        expect(inputMap().getRunTestButtonTooltip()).toBe('Click Save to run your latest code changes');
+
+        inputMap().onRunTest();
+        expect(fixture.componentInstance.runs).toEqual([]);
+    });
+});
+
+// The Python node panel of a saved node, which looks up the node's last successful session by the node's run name.
+@Component({
+    imports: [ReactiveFormsModule, InputMapComponent],
+    template: `<form [formGroup]="form">
+        <app-input-map
+            [graphId]="7"
+            [pythonNodeId]="42"
+            [nodeName]="'Py'"
+            [nodeNumber]="nodeNumber()"
+        />
+    </form>`,
+})
+class SavedPythonNodePanelHostComponent {
+    readonly form: FormGroup = new FormBuilder().group({
+        input_map: new FormArray([new FormBuilder().group({ key: ['count'], value: ['variables.count'] })]),
+        test_input: new FormArray([]),
+    });
+    readonly nodeNumber = signal<number | undefined>(undefined);
+}
+
+describe('InputMapComponent last successful session lookup', () => {
+    let fixture: ComponentFixture<SavedPythonNodePanelHostComponent>;
+    let http: HttpTestingController;
+
+    const searchedNodeNames = (): (string | null)[] =>
+        http
+            .match((request) => request.url === '/api/sessions/')
+            .map((request) => request.request.params.get('node_name'));
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } },
+                { provide: FlowService, useValue: { startNodeInitialState: signal({}) } },
+                { provide: PythonCodeRunService, useValue: {} },
+                { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+                { provide: SidePanelService, useValue: {} },
+            ],
+        });
+        TestBed.overrideComponent(InputMapComponent, {
+            set: { imports: [ReactiveFormsModule], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        http = TestBed.inject(HttpTestingController);
+        fixture = TestBed.createComponent(SavedPythonNodePanelHostComponent);
+    });
+
+    afterEach(() => fixture.destroy());
+
+    it.each([
+        { nodeNumber: 3, runName: 'Py #3 #42' },
+        { nodeNumber: undefined, runName: 'Py #42' },
+    ])('searches sessions by $runName when the node number is $nodeNumber', ({ nodeNumber, runName }) => {
+        fixture.componentInstance.nodeNumber.set(nodeNumber);
+        fixture.detectChanges();
+
+        expect(searchedNodeNames()).toEqual([runName]);
+    });
+
+    it('searches again under the new run name when the node gets a number', () => {
+        fixture.detectChanges();
+        const searchedBeforeTheNumber = searchedNodeNames();
+        expect(searchedBeforeTheNumber).toEqual(['Py #42']);
+
+        fixture.componentInstance.nodeNumber.set(2);
+        fixture.detectChanges();
+
+        expect(searchedNodeNames()).toEqual(['Py #2 #42']);
     });
 });

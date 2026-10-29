@@ -1,4 +1,8 @@
-<div class="create-custom-tool-dialog">
+<div
+    class="create-custom-tool-dialog"
+    (appEnterSubmit)="submit()"
+    [appEnterSubmitDisabled]="isSaving()"
+>
     <form
         [formGroup]="form"
         (ngSubmit)="submit()"
@@ -61,6 +65,11 @@
             </div>
         </header>
 
+        <app-error-banner
+            class="save-error"
+            [message]="errorMessage()"
+        />
+
         <div
             class="dialog-content"
             [class.right-collapsed]="activeEditor() === ActiveEditor.None"
@@ -89,18 +98,36 @@
                     }
                 </div>
 
-                <div class="form-section">
-                    <app-textarea
-                        class="description-textarea"
-                        label="Description"
-                        [required]="true"
-                        [disabled]="isBuiltIn()"
-                        tooltipText="Describe what this tool does so agents know when to use it."
-                        formControlName="description"
-                        placeholder="Enter tool description..."
-                        [rows]="3"
-                        [invalid]="form.controls.description.touched && form.controls.description.invalid"
-                    ></app-textarea>
+                <div class="form-section description-section">
+                    <div class="section-header">
+                        <button
+                            type="button"
+                            class="collapse-toggle"
+                            [attr.aria-expanded]="descriptionExpanded()"
+                            (click)="descriptionExpanded.set(!descriptionExpanded())"
+                        >
+                            <app-svg-icon
+                                class="collapse-toggle__chevron"
+                                [class.collapse-toggle__chevron--rotated]="!descriptionExpanded()"
+                                icon="chevron-down-filled"
+                                size="8px"
+                            ></app-svg-icon>
+                            <span>Description<span class="collapse-toggle__required">*</span></span>
+                        </button>
+                        <app-help-tooltip
+                            text="Describe what this tool does so agents know when to use it."
+                        ></app-help-tooltip>
+                    </div>
+                    @if (descriptionExpanded()) {
+                        <app-textarea
+                            class="description-textarea"
+                            [disabled]="isBuiltIn()"
+                            formControlName="description"
+                            placeholder="Enter tool description..."
+                            [rows]="3"
+                            [invalid]="form.controls.description.touched && form.controls.description.invalid"
+                        ></app-textarea>
+                    }
                     @if (form.controls.description.touched) {
                         <app-validation-errors [control]="form.controls.description" />
                     }
@@ -117,6 +144,24 @@
                         />
                     </div>
                 }
+
+                <div class="form-section">
+                    <app-select
+                        label="Venv"
+                        tooltipText="The virtual environment this tool's code runs in. Leave empty to use the default environment."
+                        placeholder="Select venv"
+                        formControlName="venvId"
+                        [items]="venvItems()"
+                        variant="boxed"
+                        [grouped]="true"
+                        [showSearch]="true"
+                        searchPlaceholder="Search by venv name..."
+                        [loading]="loadingVenvs()"
+                        [readonly]="isBuiltIn()"
+                        (opened)="onVenvDropdownOpened()"
+                        (changed)="onVenvChanged($event)"
+                    />
+                </div>
 
                 @if (activeEditor() !== ActiveEditor.Python) {
                     <div
@@ -275,7 +320,7 @@
                                         [attr.aria-label]="
                                             jsonSectionExpanded() ? 'Collapse JSON section' : 'Expand JSON section'
                                         "
-                                        matTooltip="Collapse"
+                                        [matTooltip]="jsonSectionExpanded() ? 'Collapse' : 'Expand'"
                                         matTooltipPosition="above"
                                         (click)="toggleJsonSection()"
                                     >
@@ -318,15 +363,14 @@
                     }
                 </div>
 
-                <div class="form-section">
-                    <app-chips-input
-                        label="Library"
-                        [readOnly]="isBuiltIn()"
-                        tooltipText="Add Python libraries needed by your tool. They must be available in the Python environment that runs the tool."
-                        inputPlaceholder="Enter library name..."
-                        formControlName="libraries"
-                    ></app-chips-input>
-                </div>
+                @if (executionTimeout(); as executionTimeoutField) {
+                    <div class="form-section">
+                        <app-execution-timeout-field
+                            [field]="executionTimeoutField"
+                            [readonly]="isBuiltIn()"
+                        />
+                    </div>
+                }
             </section>
 
             @if (activeEditor() !== ActiveEditor.None) {

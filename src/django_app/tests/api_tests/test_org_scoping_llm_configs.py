@@ -200,7 +200,7 @@ def test_quickstart_llm_model_is_stamped_to_the_running_org(org_a, org_b):
     provider = Provider.objects.create(name="openai")
 
     model = QuickstartService()._get_or_create_llm_model(
-        provider=provider, org_id=org_a.id
+        provider=provider, org_id=org_a.id, author=None
     )
 
     assert model.org_id == org_a.id
@@ -219,7 +219,7 @@ def test_quickstart_reuses_an_existing_builtin(org_a):
     )
 
     model = QuickstartService()._get_or_create_llm_model(
-        provider=provider, org_id=org_a.id
+        provider=provider, org_id=org_a.id, author=None
     )
 
     assert model.id == builtin.id
@@ -227,15 +227,15 @@ def test_quickstart_reuses_an_existing_builtin(org_a):
 
 
 @pytest.mark.django_db
-def test_quickstart_prefers_own_org_row_over_builtin(org_a):
-    """When BOTH a built-in and the org's own row match, resolution must be
-    deterministic and pick the org's row — the more specific intent."""
+def test_quickstart_prefers_builtin_over_own_org_row_with_same_name(org_a):
+    """A same-named custom model can carry a custom base_url, so quickstart must
+    not attach its secret to it; the built-in wins, deterministically."""
     provider = Provider.objects.create(name="openai")
     name = QuickstartService().PROVIDER_CONFIGS["openai"]["llm_model"]
-    LLMModel.objects.create(
+    builtin = LLMModel.objects.create(
         name=name, llm_provider=provider, is_custom=False, predefined=True
     )
-    mine = LLMModel.objects.create(
+    LLMModel.objects.create(
         name=name,
         llm_provider=provider,
         is_custom=True,
@@ -246,9 +246,9 @@ def test_quickstart_prefers_own_org_row_over_builtin(org_a):
     for _ in range(5):  # .first() without ORDER BY was non-deterministic
         assert (
             QuickstartService()
-            ._get_or_create_llm_model(provider=provider, org_id=org_a.id)
+            ._get_or_create_llm_model(provider=provider, org_id=org_a.id, author=None)
             .id
-            == mine.id
+            == builtin.id
         )
 
 
@@ -261,7 +261,7 @@ def test_quickstart_does_not_reuse_another_orgs_row(org_a, org_b):
     )
 
     model = QuickstartService()._get_or_create_llm_model(
-        provider=provider, org_id=org_a.id
+        provider=provider, org_id=org_a.id, author=None
     )
 
     assert model.id != theirs.id
@@ -273,7 +273,7 @@ def test_quickstart_embedding_model_is_stamped_to_the_running_org(org_a):
     provider = Provider.objects.create(name="openai")
 
     model = QuickstartService()._get_or_create_embedder_model(
-        provider=provider, org_id=org_a.id
+        provider=provider, org_id=org_a.id, author=None
     )
 
     assert model.org_id == org_a.id

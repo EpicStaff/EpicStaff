@@ -190,6 +190,12 @@
     }
 }
 
+// Single selection has no checkbox, so a selected row is tinted as well, and keeps the tint on hover (later and as
+// specific as the hover rule). Multiple selection shows its checkboxes instead.
+.select-dropdown__list--single .select-dropdown__row--selected {
+    background-color: var(--color-ghost-btn-active);
+}
+
 .select-dropdown__row ::ng-deep app-checkbox input[type='checkbox'] {
     background-color: transparent;
 
@@ -210,17 +216,6 @@
 
 .select-dropdown__row:hover ::ng-deep app-checkbox input[type='checkbox']:not(:checked):not(:indeterminate) {
     border-color: var(--fog-200);
-}
-
-.select-dropdown__check {
-    flex-shrink: 0;
-    color: var(--accent-color);
-}
-
-.select-dropdown__check-spacer {
-    display: inline-block;
-    flex-shrink: 0;
-    width: 12px;
 }
 
 .select-dropdown__row-icon {

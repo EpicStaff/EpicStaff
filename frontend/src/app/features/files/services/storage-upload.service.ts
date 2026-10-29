@@ -4,17 +4,19 @@ import { ConfirmationDialogData, ConfirmationDialogService } from '@shared/compo
 import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml, formatFileSize } from '@shared/utils';
 import { catchError, concat, defer, EMPTY, from, Observable, of, switchMap, throwError } from 'rxjs';
-import { map, mergeMap, toArray } from 'rxjs/operators';
+import { finalize, map, mergeMap, tap, toArray } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ToastService } from '../../../services/notifications';
 import {
+    RecycleBinPurgedEntry,
     StorageItem,
     StorageStreamUploadResponse,
     StorageUploadBatchResult,
     StorageUploadOutcome,
     StorageUploadResult,
 } from '../models/storage.models';
+import { recycleBinPurgeMessage } from '../utils/recycle-bin-purge.utils';
 import { normalizeStoragePath } from '../utils/storage-path.utils';
 import { FileTooLargeError, isStorageQuotaExceeded, UploadSkippedError } from '../utils/upload-error.utils';
 import { uploadLimitFor, usableUploadLimits } from '../utils/upload-limits.utils';
@@ -93,7 +95,8 @@ export class StorageUploadService {
     }
 
     /** Uploads files a few at a time and emits each file's outcome as it settles; never errors.
-     *  Files over their size cap fail without being sent; after a quota error, unstarted files are skipped. */
+     *  Files over their size cap fail without being sent; after a quota error, unstarted files are skipped.
+     *  Recycle-bin entries the server purged to make room are reported in one toast once the batch ends. */
     uploadEach(path: string, files: File[]): Observable<StorageUploadOutcome> {
         if (!files.length) return EMPTY;
 
@@ -138,6 +141,7 @@ export class StorageUploadService {
 
         return defer(() => {
             let quotaError: unknown = null;
+            const purged: RecycleBinPurgedEntry[] = [];
             return from(files).pipe(
                 mergeMap(
                     (file) =>
@@ -145,6 +149,7 @@ export class StorageUploadService {
                         defer((): Observable<StorageUploadOutcome> => {
                             if (quotaError) return of({ ok: false, file, error: new UploadSkippedError(quotaError) });
                             return this.storageApiService.uploadStream(path, file).pipe(
+                                tap((response) => purged.push(...response.recycle_bin_purged)),
                                 map(
                                     (response): StorageUploadOutcome => ({
                                         ok: true,
@@ -159,9 +164,16 @@ export class StorageUploadService {
                             );
                         }),
                     UPLOAD_CONCURRENCY
-                )
+                ),
+                // finalize also runs when the caller unsubscribes early: what was purged so far is still gone.
+                finalize(() => this.reportRecycleBinPurge(purged))
             );
         });
+    }
+
+    private reportRecycleBinPurge(purged: RecycleBinPurgedEntry[]): void {
+        const message = recycleBinPurgeMessage(purged);
+        if (message) this.toastService.warning(message);
     }
 
     private hasOverwriteRisk(preview: OverwritePreview): boolean {

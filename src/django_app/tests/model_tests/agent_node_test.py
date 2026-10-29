@@ -61,7 +61,7 @@ def org_request(org, superadmin_user):
     """Authenticated request scoped to `org`, for serializers built directly
     (not through a view). `AgentNodeSerializer`'s `graph`/`agent_definition`/
     `surface_list` fields resolve org scope from `request` via
-    `OrgContextService` (see `tables/serializers/org_scoped_fields.py`) —
+    `OrgContextService` (see `rbac/scoping/fields.py`) —
     without a request they deny every pk. `superadmin_user` bypasses the
     membership check so this fixture doesn't need an `OrganizationUser` row
     wired up. Built directly rather than via `force_authenticate` since that
@@ -80,9 +80,9 @@ def graph(db, org):
 @pytest.fixture
 def agent(db, org):
     return AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="agent-node-agent",
-        instructions="do things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
 
 
@@ -115,7 +115,7 @@ def mcp_tool(db, org):
 @pytest.fixture
 def surface_a(db, org):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="agent-node-surface-a",
         instructions="be concise",
     )
@@ -419,6 +419,118 @@ def test_bulk_save_creates_agent_node_with_tasks_and_inline_surface(
 
 
 # ---------------------------------------------------------------------------
+# 6b. Task ids must belong to the node being saved
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_bulk_save_rejects_stale_task_id_instead_of_failing_on_commit(
+    client, graph, agent_node
+):
+    kept_task = AgentNodeTask.objects.create(
+        agent_node=agent_node, name="kept", order=0
+    )
+    deleted_task = AgentNodeTask.objects.create(
+        agent_node=agent_node, name="deleted", order=1
+    )
+    stale_id = deleted_task.id
+    deleted_task.delete()
+
+    payload = {
+        "save_version": graph.save_version,
+        "agent_node_list": [
+            {
+                "id": agent_node.id,
+                "graph": graph.id,
+                "node_name": agent_node.node_name,
+                "tasks": [
+                    {"id": stale_id, "name": "deleted", "order": 0},
+                    {
+                        "name": "after",
+                        "order": 1,
+                        "id": None,
+                        "context_task_ids": [stale_id],
+                    },
+                ],
+            },
+        ],
+    }
+
+    response = client.post(f"/api/graphs/{graph.id}/save/", payload, format="json")
+
+    assert response.status_code == 400, response.content
+    assert str([stale_id]) in str(response.data)
+    assert list(agent_node.tasks.values_list("id", flat=True)) == [kept_task.id]
+
+
+@pytest.mark.django_db
+def test_update_rejects_task_id_owned_by_another_agent_node(graph, agent_node):
+    other_node = AgentNode.objects.create(graph=graph, node_name="agent-node-other")
+    foreign_task = AgentNodeTask.objects.create(
+        agent_node=other_node, name="foreign", order=0
+    )
+
+    data = {
+        "tasks": [
+            {"id": foreign_task.id, "name": "foreign", "order": 0},
+        ]
+    }
+
+    serializer = _make_serializer(data, instance=agent_node)
+
+    assert not serializer.is_valid()
+    assert str([foreign_task.id]) in str(serializer.errors["tasks"])
+    assert agent_node.tasks.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_rejects_any_task_id(graph, org, org_request):
+    data = {
+        "graph": graph.pk,
+        "node_name": "agent-node-create-with-id",
+        "tasks": [{"id": 13, "name": "task-a", "order": 0}],
+    }
+
+    serializer = _make_serializer(
+        data, context={"organization": org, "request": org_request}
+    )
+
+    assert not serializer.is_valid()
+    assert str([13]) in str(serializer.errors["tasks"])
+
+
+@pytest.mark.django_db
+def test_update_resolves_context_links_by_id_and_temp_id(agent_node):
+    existing_task = AgentNodeTask.objects.create(
+        agent_node=agent_node, name="existing", order=0
+    )
+    new_temp_id = uuid.uuid4()
+    data = {
+        "tasks": [
+            {"id": existing_task.id, "name": "existing", "order": 0},
+            {"temp_id": str(new_temp_id), "name": "created", "order": 1},
+            {
+                "name": "last",
+                "order": 2,
+                "context_task_ids": [existing_task.id],
+                "context_task_temp_ids": [str(new_temp_id)],
+            },
+        ]
+    }
+
+    serializer = _make_serializer(data, instance=agent_node)
+    assert serializer.is_valid(), serializer.errors
+    serializer.save()
+
+    created_task = AgentNodeTask.objects.get(agent_node=agent_node, name="created")
+    last_task = AgentNodeTask.objects.get(agent_node=agent_node, name="last")
+    assert set(last_task.context_tasks.values_list("id", flat=True)) == {
+        existing_task.id,
+        created_task.id,
+    }
+
+
+# ---------------------------------------------------------------------------
 # 7. AgentNodePayloadService.build_agent_node_data
 # ---------------------------------------------------------------------------
 
@@ -482,74 +594,6 @@ def org_scoped_agent_node(db, org):
     )
 
 
-@pytest.mark.django_db
-def test_s3_pool_excludes_surface_granted_file_not_attached_to_graph(
-    org_scoped_agent_node, surface_a, storage_file
-):
-    SurfaceStorageItem.objects.create(
-        surface=surface_a, storage_file=storage_file, can_view="allow"
-    )
-    org_scoped_agent_node.surface_list.set([surface_a])
-
-    service = AgentNodePayloadService(ConverterService())
-    data = service.build_agent_node_data(
-        org_scoped_agent_node,
-        node_name="agent-node-s3-pool #1",
-        graph_id=org_scoped_agent_node.graph_id,
-        session_id=None,
-    )
-
-    assert data.s3_files == []
-
-
-@pytest.mark.django_db
-def test_s3_pool_includes_surface_granted_file_attached_to_graph(
-    org_scoped_agent_node, surface_a, storage_file
-):
-    GraphStorageFile.objects.create(
-        graph=org_scoped_agent_node.graph, storage_file=storage_file
-    )
-    SurfaceStorageItem.objects.create(
-        surface=surface_a, storage_file=storage_file, can_view="allow"
-    )
-    org_scoped_agent_node.surface_list.set([surface_a])
-
-    service = AgentNodePayloadService(ConverterService())
-    data = service.build_agent_node_data(
-        org_scoped_agent_node,
-        node_name="agent-node-s3-pool #1",
-        graph_id=org_scoped_agent_node.graph_id,
-        session_id=None,
-    )
-
-    assert [f.id for f in data.s3_files] == [storage_file.pk]
-
-
-@pytest.mark.django_db
-def test_s3_pool_graph_id_none_skips_ceiling_surface_stays_authoritative(
-    org_scoped_agent_node, surface_a, storage_file
-):
-    SurfaceStorageItem.objects.create(
-        surface=surface_a, storage_file=storage_file, can_view="allow"
-    )
-    org_scoped_agent_node.surface_list.set([surface_a])
-
-    service = AgentNodePayloadService(ConverterService())
-    data = service.build_agent_node_data(
-        org_scoped_agent_node,
-        node_name="agent-node-s3-pool #1",
-        graph_id=None,
-        session_id=None,
-    )
-
-    assert [f.id for f in data.s3_files] == [storage_file.pk]
-
-
-# ---------------------------------------------------------------------------
-# 7c. flow ceiling is path-prefix aware (folder attachments cover nested files)
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def docs_folder(db, org):
     return StorageFile.objects.create(
@@ -564,50 +608,38 @@ def docs_file(db, org):
     )
 
 
+@pytest.mark.parametrize(
+    ("granted", "attached", "pass_graph_id", "expected"),
+    [
+        ("storage_file", None, True, []),
+        ("storage_file", "storage_file", True, ["storage_file"]),
+        # Without a graph there is no ceiling: the surface grant decides alone.
+        ("storage_file", None, False, ["storage_file"]),
+        # A folder attached to the flow covers the files inside it...
+        ("docs_file", "docs_folder", True, ["docs_file"]),
+        # ...but a folder grant does not widen a single attached file.
+        ("docs_folder", "docs_file", True, []),
+    ],
+    ids=["not-attached", "attached", "no-graph-no-ceiling", "file-inside-attached-folder", "folder-grant-over-attached-file"],
+)
 @pytest.mark.django_db
-def test_s3_pool_includes_file_nested_in_attached_folder(
-    org_scoped_agent_node, surface_a, docs_folder, docs_file
+def test_agent_files_are_capped_by_what_the_flow_has_attached(
+    org_scoped_agent_node, surface_a, storage_file, docs_folder, docs_file, granted, attached, pass_graph_id, expected
 ):
-    GraphStorageFile.objects.create(
-        graph=org_scoped_agent_node.graph, storage_file=docs_folder
-    )
-    SurfaceStorageItem.objects.create(
-        surface=surface_a, storage_file=docs_file, can_view="allow"
-    )
+    files = {"storage_file": storage_file, "docs_folder": docs_folder, "docs_file": docs_file}
+    if attached:
+        GraphStorageFile.objects.create(graph=org_scoped_agent_node.graph, storage_file=files[attached])
+    SurfaceStorageItem.objects.create(surface=surface_a, storage_file=files[granted], can_view="allow")
     org_scoped_agent_node.surface_list.set([surface_a])
 
-    service = AgentNodePayloadService(ConverterService())
-    data = service.build_agent_node_data(
+    data = AgentNodePayloadService(ConverterService()).build_agent_node_data(
         org_scoped_agent_node,
         node_name="agent-node-s3-pool #1",
-        graph_id=org_scoped_agent_node.graph_id,
+        graph_id=org_scoped_agent_node.graph_id if pass_graph_id else None,
         session_id=None,
     )
 
-    assert [f.id for f in data.s3_files] == [docs_file.pk]
-
-
-@pytest.mark.django_db
-def test_s3_pool_excludes_folder_grant_broader_than_attached_file(
-    org_scoped_agent_node, surface_a, docs_folder, docs_file
-):
-    GraphStorageFile.objects.create(
-        graph=org_scoped_agent_node.graph, storage_file=docs_file
-    )
-    SurfaceStorageItem.objects.create(
-        surface=surface_a, storage_file=docs_folder, can_view="allow"
-    )
-    org_scoped_agent_node.surface_list.set([surface_a])
-
-    service = AgentNodePayloadService(ConverterService())
-    data = service.build_agent_node_data(
-        org_scoped_agent_node,
-        node_name="agent-node-s3-pool #1",
-        graph_id=org_scoped_agent_node.graph_id,
-        session_id=None,
-    )
-
-    assert data.s3_files == []
+    assert [file.id for file in data.s3_files] == [files[key].pk for key in expected]
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,12 @@ import { CollectionDetailsGraphRag } from '../models/graph-rag.model';
 import { CollectionDetailsNaiveRag } from '../models/naive-rag.model';
 import { CollectionsApiService } from './collections-api.service';
 
+/** The custom names of a RAG's embedding and LLM configs; null when unknown or not used by the RAG. */
+export interface RagModelNames {
+    embedderName: string | null;
+    llmName: string | null;
+}
+
 @Injectable({
     providedIn: 'root',
 })
@@ -60,6 +66,21 @@ export class CollectionsStorageService implements StorageService {
             if (found) return found.status;
         }
         return null;
+    }
+
+    /**
+     * The embedder and LLM names of a cached RAG, matched on id and type (naive and graph ids can collide, see
+     * `getRagStatus`). Both null when the collection or the RAG isn't cached.
+     */
+    getRagModelNames(collectionId: number, ragId: number, ragType: RagType): RagModelNames {
+        const collection = this.fullCollectionsSignal().find((candidate) => candidate.collection_id === collectionId);
+        const rag = collection?.rag_configurations.find(
+            (configuration) => configuration.rag_id === ragId && configuration.rag_type === ragType
+        );
+        return {
+            embedderName: rag?.embedder_name || null,
+            llmName: (rag && 'llm_name' in rag && rag.llm_name) || null,
+        };
     }
 
     // Optimistically sets the given rag's status to 'processing' in the fullCollections cache.
@@ -153,7 +174,7 @@ export class CollectionsStorageService implements StorageService {
     ): Observable<CreateCollectionDtoResponse> {
         return this.collectionsApiService.updateCollectionById(id, body).pipe(
             tap((updated) => {
-                this.updateOrCreateCollectionInCache(updated);
+                this.mergeUpdateIntoCache(updated, body);
             }),
             catchError((err) => throwError(() => err))
         );
@@ -227,6 +248,33 @@ export class CollectionsStorageService implements StorageService {
         this.fullCollectionsLoaded.set(false);
         this.processingConfigIdsSignal.set(new Set());
         this.selectedCollectionIdSignal.set(null);
+    }
+
+    /**
+     * Applies a PATCH response, taking from it only the fields that were sent plus the edit metadata. The
+     * collection page saves one field at a time in order, but the create-collection wizard saves the name and
+     * the guidance of the same collection on their own, outside that queue; taking the whole response would let
+     * one save's older copy of the other field overwrite a newer value in the cache.
+     */
+    private mergeUpdateIntoCache(
+        updated: CreateCollectionDtoResponse,
+        body: Partial<CreateCollectionDtoResponse>
+    ): void {
+        const cached = this.fullCollectionsSignal().find((c) => c.collection_id === updated.collection_id);
+        if (!cached) {
+            this.updateOrCreateCollectionInCache(updated);
+            return;
+        }
+        const sentFields = Object.fromEntries(
+            Object.keys(body).map((key) => [key, updated[key as keyof CreateCollectionDtoResponse]])
+        ) as Partial<CreateCollectionDtoResponse>;
+        this.updateOrCreateCollectionInCache({
+            ...cached,
+            ...sentFields,
+            updated_at: updated.updated_at,
+            last_edited_by: updated.last_edited_by,
+            last_edited_at: updated.last_edited_at,
+        });
     }
 
     private deleteCollectionFromCache(id: number) {

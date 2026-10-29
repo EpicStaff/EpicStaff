@@ -9,6 +9,7 @@ from src.shared.models import (
     args_schema_to_variables as _shared_args_schema_to_variables,
 )
 from tables.models import PythonCode, PythonCodeTool
+from tables.services.recycle_bin.deleting import move_to_recycle_bin
 
 
 @dataclass
@@ -92,9 +93,7 @@ def create_or_update_python_tool(
     python_tool_obj = PythonCodeTool.objects.filter(name=name).first()
 
     if python_tool_obj is None:
-        python_code_obj = PythonCode.objects.create(
-            code=code, entrypoint=entrypoint, libraries=requirements
-        )
+        python_code_obj = PythonCode.objects.create(code=code, entrypoint=entrypoint)
         python_tool_obj = PythonCodeTool.objects.create(
             name=name,
             python_code=python_code_obj,
@@ -108,7 +107,6 @@ def create_or_update_python_tool(
         python_code_obj: PythonCode = python_tool_obj.python_code
         python_code_obj.code = code
         python_code_obj.entrypoint = entrypoint
-        python_code_obj.libraries = requirements
         python_tool_obj.description = description
         python_tool_obj.variables = variables
         python_tool_obj.use_storage = use_storage
@@ -155,8 +153,9 @@ def upload_tools():
         to_delete = db_tools.difference(tool_name_set)
 
         # Queryset .delete() bypasses Model.delete() entirely (Django never calls
-        # instance delete() for queryset-level deletes), so it always hard-deletes
-        # regardless of settings.SOFT_DELETE. Delete per-instance instead so
-        # SoftDeleteMixin.delete() (and thus DeleteService) fires.
-        for tool in PythonCodeTool.objects.filter(name__in=to_delete):
-            tool.delete()
+        # instance delete() for queryset-level deletes), so it would hard-delete.
+        # Delete per-instance instead so SoftDeleteMixin.delete() (and thus
+        # DeleteService) moves each removed tool to the recycle bin. No person
+        # asked for it, so no one is recorded as the deleter.
+        for tool in PythonCodeTool.objects.filter(built_in=True, name__in=to_delete):
+            move_to_recycle_bin(tool, None)

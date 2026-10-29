@@ -13,6 +13,24 @@ import { resolveWireEnds } from '../routing/route-all';
  * portOffsetFromTop, the geometry the router draws with, so layout and routing never disagree.
  */
 
+/** Shared grid step for the layout pipeline. All snapping uses this constant. */
+export const GRID = 20;
+
+/** Edges whose source and target are both in `memberIds`. */
+export function edgesInComponent(edges: LayoutEdge[], memberIds: Set<string>): LayoutEdge[] {
+    return edges.filter((edge) => memberIds.has(edge.source) && memberIds.has(edge.target));
+}
+
+/**
+ * Median of a numeric array. Returns the middle value for odd lengths,
+ * the mean of the two middle values for even lengths. Does not mutate the input.
+ */
+export function median(values: number[]): number {
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = sorted.length >> 1;
+    return sorted.length & 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 export interface LayoutNode {
     id: string;
     width: number;

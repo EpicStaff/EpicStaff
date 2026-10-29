@@ -5,6 +5,7 @@ import zipfile
 from datetime import datetime, timezone
 
 from botocore.exceptions import ClientError
+from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from tables.exceptions import RangeNotSatisfiable
 from tables.services.storage_service.base import AbstractStorageBackend, StorageUnreachable
 from tables.services.storage_service.dataclasses import (
@@ -13,8 +14,10 @@ from tables.services.storage_service.dataclasses import (
     FileListItem,
     TreeNode,
 )
-from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
+from tables.services.storage_service.manager import StorageManager
+from tables.services.storage_service.path_utils import storage_key
 from tables.services.storage_service.quota import record_files_within_quota
+from tables.services.storage_service.recycle_bin import StorageRecycleBinService
 from tables.services.storage_service.s3_backend import S3StorageBackend
 
 MODIFIED = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -554,7 +557,11 @@ class _Paginator:
         self._client = client
         self._page_size = page_size
 
-    def paginate(self, *, Bucket, Prefix):
+    def paginate(self, *, Bucket, Prefix, Delimiter=None):
+        if Delimiter is not None:
+            # One page: delimiter listings in these tests stay far below a page.
+            yield self._client.list_objects_v2(Bucket=Bucket, Prefix=Prefix, Delimiter=Delimiter)
+            return
         keys = sorted(key for key in self._client.objects if key.startswith(Prefix))
         for start in range(0, len(keys), self._page_size):
             yield {
@@ -596,14 +603,45 @@ class FakeS3Client:
         }
 
     def list_objects_v2(self, *, Bucket, Prefix, MaxKeys=1000, Delimiter=None):
-        keys = sorted(key for key in self.objects if key.startswith(Prefix))[:MaxKeys]
-        return {
-            "KeyCount": len(keys),
+        keys = sorted(key for key in self.objects if key.startswith(Prefix))
+        prefixes: list[str] = []
+        if Delimiter is not None:
+            # S3 rolls everything past the next delimiter up into one CommonPrefix.
+            direct = []
+            for key in keys:
+                rest = key[len(Prefix):]
+                if Delimiter in rest:
+                    common = Prefix + rest[: rest.index(Delimiter) + 1]
+                    if common not in prefixes:
+                        prefixes.append(common)
+                else:
+                    direct.append(key)
+            keys = direct
+        keys = keys[:MaxKeys]
+        response = {
+            "KeyCount": len(keys) + len(prefixes),
             "Contents": [
                 {"Key": key, "Size": len(self.objects[key]), "LastModified": MODIFIED}
                 for key in keys
             ],
         }
+        if prefixes:
+            response["CommonPrefixes"] = [{"Prefix": prefix} for prefix in prefixes[:MaxKeys]]
+        return response
+
+    def get_object(self, *, Bucket, Key, Range=None):
+        if Key not in self.objects:
+            raise client_error("NoSuchKey", 404, "GetObject")
+        body = self.objects[Key]
+        response = {"Body": io.BytesIO(body)}
+        if Range is not None:
+            first, _, last = Range.removeprefix("bytes=").partition("-")
+            first, last = int(first), int(last) if last else len(body) - 1
+            if first >= len(body):
+                raise client_error("InvalidRange", 416, "GetObject")
+            last = min(last, len(body) - 1)
+            response = {"Body": io.BytesIO(body[first : last + 1]), "ContentRange": f"bytes {first}-{last}/{len(body)}"}
+        return response
 
     def get_paginator(self, name):
         assert name == "list_objects_v2"
@@ -666,7 +704,12 @@ def seed_file(backend, org_id: int, path: str, content: bytes) -> None:
     """Store a file of the org and record its row within the quota, as a finished
     upload leaves it."""
     backend.put_bytes(storage_key(org_id, path), content)
-    record_files_within_quota(org_id, [(path, len(content))])
+    record_files_within_quota(
+        org_id,
+        [(path, len(content))],
+        recycle_bin=StorageRecycleBinService(StorageManager(backend)),
+        bin_purge=None,
+    )
 
 
 async def async_chunks(*chunks: bytes):

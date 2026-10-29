@@ -2,8 +2,9 @@
 LiteLLMClient: concrete ``LLMClient`` backed by LiteLLM Router.
 
 Composes ``RouterPool`` (per-deployment rpm enforcement) and ``RetryPolicy``
-(exponential backoff on transient errors).  Normalizes LiteLLM streaming
-chunks into the ``LLMChunk`` schema consumed by ``AgentLoop``.
+(exponential backoff on transient errors).  Normalizes LiteLLM streamed chunks
+or a single non-streamed response into the ``LLMChunk`` schema consumed by
+``AgentLoop``.
 
 Default max-retry count is read from ``AGENT_DEFAULT_MAX_RETRIES`` env var via
 ``settings.load_settings()`` on first need; override via the ``retry`` param.
@@ -15,16 +16,62 @@ import uuid
 from collections.abc import AsyncIterator
 
 import litellm
+from litellm.types.utils import CostPerToken, Usage
 from loguru import logger
 
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
 from app.llm.retry import RetryPolicy
 from app.llm.router_pool import RouterPool, get_router_pool
 from app.logging_utils import redact
+from shared.bench_log import BENCH_LEVEL
 
+# The token prices are cost-only: litellm's completion call would take them as
+# custom pricing and register them in its process-wide price map.
 _STRIPPED_MODEL_CONFIG_KEYS = frozenset(
-    {"model", "api_key", "base_url", "api_version", "max_retry_limit", "max_rpm"}
+    {
+        "model",
+        "api_key",
+        "base_url",
+        "api_version",
+        "max_retry_limit",
+        "max_rpm",
+        "input_cost_per_token",
+        "output_cost_per_token",
+    }
 )
+
+
+_USAGE_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens", "total_cost_usd")
+
+
+async def _bench_llm_span(
+    chunks: AsyncIterator[LLMChunk], model: str | None
+) -> AsyncIterator[LLMChunk]:
+    """Re-yield `chunks`, logging BENCH llm_start/llm_end around the whole call (retries and full
+    stream consumption included) so the benchmark can measure real LLM wall time."""
+    logger.log(BENCH_LEVEL, "bench {checkpoint}", checkpoint="llm_start", model=model)
+    usage: dict = {}
+    error_type = None
+    try:
+        async for chunk in chunks:
+            if chunk.usage:
+                usage = chunk.usage
+            yield chunk
+    except GeneratorExit:
+        raise
+    except BaseException as error:
+        error_type = type(error).__name__
+        raise
+    finally:
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="llm_end",
+            model=model,
+            ok=error_type is None,
+            error_type=error_type,
+            **{field: usage.get(field) for field in _USAGE_FIELDS},
+        )
 
 
 def _cached_prompt_tokens(data: dict) -> int:
@@ -70,26 +117,132 @@ def _usage_dict(usage) -> dict:
     }
 
 
-def _usage_cost_usd(model: str, usage: dict) -> float:
-    """Best-effort USD cost for a normalized usage dict via litellm's price map.
+def _plain(value):
+    """Recursively turn pydantic models / SimpleNamespaces inside a usage payload into dicts."""
+    if isinstance(value, dict):
+        return {key: _plain(item) for key, item in value.items()}
 
-    ``model`` must be the real ``provider/model`` string, NOT the Router's
-    synthetic hash model name — litellm's price map only recognizes real
-    model identifiers. Unmapped or self-hosted models raise inside litellm;
-    swallowed to 0.0 since cost is a display-only value, never billing truth.
+    if hasattr(value, "model_dump"):
+        return _plain(value.model_dump())
+
+    if hasattr(value, "__dict__"):
+        return _plain(vars(value))
+
+    return value
+
+
+def _as_litellm_usage(usage) -> Usage:
+    """Return the provider's usage as a litellm ``Usage``, keeping every field.
+
+    Cache-write counts and their 5m/1h split live in provider-specific fields
+    that ``_usage_dict`` does not carry, so the price-map path hands litellm
+    the original usage instead.
+    """
+    if isinstance(usage, Usage):
+        return usage
+
+    data = _plain(usage)
+    return Usage(**data)
+
+
+def _custom_cost_per_token(model_config: dict) -> CostPerToken | None:
+    """Return the config's own token prices, or None when it does not set both."""
+    input_cost = model_config.get("input_cost_per_token")
+    output_cost = model_config.get("output_cost_per_token")
+
+    if input_cost is None or output_cost is None:
+        return None
+
+    return CostPerToken(input_cost_per_token=input_cost, output_cost_per_token=output_cost)
+
+
+def _usage_cost_usd(model: str, usage, custom_cost_per_token: CostPerToken | None = None) -> float:
+    """Best-effort USD cost for the provider's raw usage (Usage / dict / SimpleNamespace).
+
+    With ``custom_cost_per_token`` the config's own prices are used and the
+    model is not looked up. Cached prompt tokens are then billed at the input
+    price: litellm's normalized ``prompt_tokens`` already includes them, and
+    passing ``cache_read_input_tokens`` as well would make litellm count them
+    a second time.
+
+    Otherwise litellm's price map is used, fed the provider's original
+    ``usage`` so cache reads and cache writes (including the 5m/1h split)
+    are priced at their own rates. ``model`` must be the real
+    ``provider/model`` string, NOT the Router's synthetic hash model name —
+    litellm's price map only recognizes real model identifiers. Unmapped or
+    self-hosted models raise inside litellm; swallowed to 0.0 since cost is a
+    display-only value, never billing truth.
     """
     try:
-        prompt_cost, completion_cost = litellm.cost_per_token(
-            model=model,
-            prompt_tokens=usage["prompt_tokens"],
-            completion_tokens=usage["completion_tokens"],
-            cache_read_input_tokens=usage["cached_prompt_tokens"],
-        )
+        litellm_usage = _as_litellm_usage(usage)
+
+        if custom_cost_per_token is not None:
+            prompt_cost, completion_cost = litellm.cost_per_token(
+                model=model,
+                prompt_tokens=litellm_usage.prompt_tokens,
+                completion_tokens=litellm_usage.completion_tokens,
+                custom_cost_per_token=custom_cost_per_token,
+            )
+        else:
+            prompt_cost, completion_cost = litellm.cost_per_token(
+                model=model,
+                usage_object=litellm_usage,
+            )
         return prompt_cost + completion_cost
 
     except Exception as error:
         logger.debug("cost lookup failed model={} error={}", model, error)
         return 0.0
+
+
+def _synthetic_call_id() -> str:
+    """Id for a tool call the provider sent without one."""
+    return f"call_{uuid.uuid4().hex[:8]}"
+
+
+def _usage_chunk(usage, model: str, custom_cost_per_token: CostPerToken | None = None) -> LLMChunk:
+    usage_data = _usage_dict(usage)
+    usage_data["total_cost_usd"] = _usage_cost_usd(model, usage, custom_cost_per_token)
+    logger.debug("litellm usage={}", usage_data)
+    return LLMChunk(usage=usage_data)
+
+
+def _response_chunks(
+    response, model: str, custom_cost_per_token: CostPerToken | None = None
+) -> list[LLMChunk]:
+    """Split a non-streamed response into the chunks the stream path would yield."""
+    chunks: list[LLMChunk] = []
+    finish_reason = None
+
+    # The Responses API bridge returns text and tool calls as separate choices.
+    for choice in response.choices or []:
+        message = choice.message
+        finish_reason = choice.finish_reason or finish_reason
+
+        if message.content:
+            chunks.append(LLMChunk(delta_text=message.content))
+
+        for tool_call in message.tool_calls or []:
+            chunks.append(
+                LLMChunk(
+                    tool_call_fragment=ToolCallFragment(
+                        id=tool_call.id or _synthetic_call_id(),
+                        name=tool_call.function.name or "",
+                        arguments_delta=tool_call.function.arguments or "",
+                    )
+                )
+            )
+
+    usage = getattr(response, "usage", None)
+
+    if usage:
+        chunks.append(_usage_chunk(usage, model, custom_cost_per_token))
+
+    if finish_reason:
+        logger.debug("litellm finish_reason={}", finish_reason)
+        chunks.append(LLMChunk(finish_reason=finish_reason))
+
+    return chunks
 
 
 def _kwargs_for_acompletion(model_config: dict) -> dict:
@@ -128,15 +281,18 @@ class LiteLLMClient(LLMClient):
         runtime_config: dict | None = None,
     ) -> AsyncIterator[LLMChunk]:
         """Return an async generator of normalized ``LLMChunk`` objects."""
-        assert stream is True, "LiteLLMClient only supports streaming mode"
-        return self._stream(messages, tools, model_config, runtime_config)
+        return _bench_llm_span(
+            self._chat(messages, tools, model_config, runtime_config, stream),
+            model_config.get("model"),
+        )
 
-    async def _stream(
+    async def _chat(
         self,
         messages: list[dict],
         tools: list,
         model_config: dict,
         runtime_config: dict | None,
+        stream: bool,
     ) -> AsyncIterator[LLMChunk]:
         litellm_tools = (
             [
@@ -168,14 +324,17 @@ class LiteLLMClient(LLMClient):
             retry = retry.with_max_retries(runtime_max_retries)
 
         extra_kwargs = _kwargs_for_acompletion(model_config)
+        custom_cost_per_token = _custom_cost_per_token(model_config)
+
+        if stream:
+            extra_kwargs["stream_options"] = {"include_usage": True}
 
         async def _call():
             return await router.acompletion(
                 model=synthetic_model,
                 messages=messages,
-                stream=True,
+                stream=stream,
                 tools=litellm_tools,
-                stream_options={"include_usage": True},
                 _skip_mcp_handler=True,  # agent handles MCP itself; don't import litellm.proxy stack
                 **extra_kwargs,
             )
@@ -185,25 +344,29 @@ class LiteLLMClient(LLMClient):
         _msg_count = len(messages)
         _tool_count = len(litellm_tools or [])
         logger.opt(lazy=True).debug(
-            "litellm request model={} synthetic={} messages={} tools={} kwargs={}",
+            "litellm request model={} synthetic={} stream={} messages={} tools={} kwargs={}",
             lambda: _model,
             lambda: _synthetic,
+            lambda: stream,
             lambda: _msg_count,
             lambda: _tool_count,
             lambda: redact(extra_kwargs),
         )
-        response_stream = await retry.aretry(_call)
+        response = await retry.aretry(_call)
 
+        if not stream:
+            for chunk in _response_chunks(response, model_config["model"], custom_cost_per_token):
+                yield chunk
+            return
+
+        # No caller streams yet (the agent loop uses stream=False); kept for the STREAM-mode chat runner.
         tc_map: dict[int, dict] = {}
 
-        async for chunk in response_stream:
+        async for chunk in response:
             usage = getattr(chunk, "usage", None)
 
             if usage:
-                usage_data = _usage_dict(usage)
-                usage_data["total_cost_usd"] = _usage_cost_usd(model_config["model"], usage_data)
-                logger.debug("litellm usage={}", usage_data)
-                yield LLMChunk(usage=usage_data)
+                yield _usage_chunk(usage, model_config["model"], custom_cost_per_token)
 
             choices = chunk.choices or []
 
@@ -221,13 +384,7 @@ class LiteLLMClient(LLMClient):
                 idx = tc.index
 
                 if idx not in tc_map:
-                    tool_id = tc.id
-
-                    if tool_id is None:
-                        # Provider sent no id on the first fragment — synthesize one.
-                        tool_id = f"call_{uuid.uuid4().hex[:8]}"
-
-                    tc_map[idx] = {"id": tool_id, "name": tc.function.name}
+                    tc_map[idx] = {"id": tc.id or _synthetic_call_id(), "name": tc.function.name}
 
                 seeded = tc_map[idx]
 

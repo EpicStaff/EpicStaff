@@ -4,7 +4,6 @@ from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     DecisionTableNode,
     Edge,
     EndNode,
@@ -45,6 +44,13 @@ from tables.services.graph_bulk_save_service.factories import (
     KnowledgeNodeSaveableFactory,
     NodeSaveableFactory,
 )
+from tables.services.secrets.secret_use_checks import (
+    SecretUseCheck,
+    check_cdt_node_write,
+    check_python_node_write,
+    check_telegram_trigger_node_write,
+    check_webhook_trigger_node_write,
+)
 
 # Singletons — factories are stateless.
 _DEFAULT_FACTORY = DefaultNodeSaveableFactory()
@@ -62,6 +68,12 @@ class NodeTypeConfig:
     model_class: type  # Django model class, e.g. AgentNode
     serializer_class: type  # bulk serializer class, e.g. AgentNodeBulkSerializer
     saveable_factory: NodeSaveableFactory = field(default=None)
+    # A trigger node: it starts flow runs on its own (webhook call, Telegram
+    # message, schedule), so creating or editing one requires FLOWS.USE.
+    starts_runs: bool = False
+    # The node's `check_<entity>_write` from secret_use_checks, for a node type whose
+    # writes can need secrets:USE. Called with the validated data before the save.
+    secret_use_check: SecretUseCheck | None = None
 
     def __post_init__(self):
         if self.saveable_factory is None:
@@ -81,7 +93,9 @@ NODE_TYPE_REGISTRY — single source of truth for all node types
 
 To add a new node type:
   1. Add one BulkSerializer class in graph_bulk_save_serializers.py.
-  2. Add one NodeTypeConfig line here.
+  2. Add one NodeTypeConfig line here; set starts_runs=True if the node
+     starts flow runs by itself (a trigger), and secret_use_check if it
+     references secrets.
   Everything else (service loop, serializer fields, deletions, temp_id
   scan) updates automatically.
 """
@@ -92,6 +106,7 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "python_node_ids",
         PythonNode,
         PythonNodeBulkSerializer,
+        secret_use_check=check_python_node_write,
     ),
     NodeTypeConfig(
         "file_extractor_node_list",
@@ -135,6 +150,7 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         ClassificationDecisionTableNode,
         ClassificationDecisionTableNodeBulkSerializer,
         saveable_factory=_CLASSIFICATION_DT_FACTORY,
+        secret_use_check=check_cdt_node_write,
     ),
     NodeTypeConfig(
         "decision_table_node_list",
@@ -161,18 +177,23 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "webhook_trigger_node_ids",
         WebhookTriggerNode,
         WebhookTriggerNodeBulkSerializer,
+        starts_runs=True,
+        secret_use_check=check_webhook_trigger_node_write,
     ),
     NodeTypeConfig(
         "telegram_trigger_node_list",
         "telegram_trigger_node_ids",
         TelegramTriggerNode,
         TelegramTriggerNodeBulkSerializer,
+        starts_runs=True,
+        secret_use_check=check_telegram_trigger_node_write,
     ),
     NodeTypeConfig(
         "schedule_trigger_node_list",
         "schedule_trigger_node_ids",
         ScheduleTriggerNode,
         ScheduleTriggerNodeBulkSerializer,
+        starts_runs=True,
     ),
     NodeTypeConfig(
         "task_node_list",
@@ -189,6 +210,17 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
 ]
 
 
+# The trigger node types, by graph relation (`<type>_node_list`) and by model. Every
+# "is this a trigger node" decision (the flows:USE checks in tables/services/
+# trigger_nodes.py) derives from `starts_runs` through these.
+TRIGGER_NODE_LIST_KEYS: frozenset[str] = frozenset(
+    config.list_key for config in NODE_TYPE_REGISTRY if config.starts_runs
+)
+TRIGGER_NODE_MODELS: frozenset[type] = frozenset(
+    config.model_class for config in NODE_TYPE_REGISTRY if config.starts_runs
+)
+
+
 """
 EDGE_DELETE_CONFIGS — edges must be deleted before nodes (FK constraints).
 Kept separate from NODE_TYPE_REGISTRY because edges are not upserted via
@@ -197,5 +229,4 @@ this registry; they have their own validation path in the service.
 
 EDGE_DELETE_CONFIGS: list[EdgeDeleteConfig] = [
     EdgeDeleteConfig("edge_ids", Edge),
-    EdgeDeleteConfig("conditional_edge_ids", ConditionalEdge),
 ]

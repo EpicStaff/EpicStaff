@@ -17,6 +17,18 @@
     margin: 0;
 }
 
+// Same look as app-validation-errors items.
+.wt-error {
+    margin: 0;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    border-left: 2px solid var(--red-500);
+    background: var(--red-alpha-8-flat);
+    color: var(--red-500);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+}
+
 // Match app-select (app-tooltip) labels to the app-custom-input labels.
 // Anchored to app-select to outrank the tooltip component's own .tooltip-label rule.
 :host ::ng-deep app-select .tooltip-label {

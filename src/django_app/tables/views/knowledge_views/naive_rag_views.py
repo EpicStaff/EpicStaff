@@ -7,7 +7,6 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema,
 )
-from loguru import logger
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
@@ -143,7 +142,7 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         try:
             naive_rag = NaiveRagService.create_or_update_naive_rag(
-                collection_id=collection_id, embedder_id=embedder_id
+                collection_id=collection_id, embedder_id=embedder_id, user=request.user
             )
 
             response_serializer = NaiveRagSerializer(naive_rag)
@@ -162,11 +161,6 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**NAIVE_RAG_COLLECTIONS_GET)
     @action(
@@ -182,23 +176,16 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         self.get_in_active_org_or_404(SourceCollection, collection_id)
 
-        try:
-            naive_rag = NaiveRagService.get_or_none_naive_rag_by_collection(collection_id)
+        naive_rag = NaiveRagService.get_or_none_naive_rag_by_collection(collection_id)
 
-            if not naive_rag:
-                return Response(
-                    {"error": f"NaiveRag not found for collection {collection_id}"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            serializer = NaiveRagSerializer(naive_rag)
-            return Response(serializer.data)
-
-        except Exception as e:
+        if not naive_rag:
             return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {"error": f"NaiveRag not found for collection {collection_id}"},
+                status=status.HTTP_404_NOT_FOUND,
             )
+
+        serializer = NaiveRagSerializer(naive_rag)
+        return Response(serializer.data)
 
     @extend_schema(**NAIVE_RAG_GET)
     def retrieve(self, request, pk=None):
@@ -211,17 +198,12 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         except NaiveRagNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**NAIVE_RAG_DELETE)
     def destroy(self, request, pk=None):
         self.get_in_active_org_or_404(NaiveRag, int(pk), _NAIVE_RAG_ORG_PATH)
         try:
-            result = NaiveRagService.delete_naive_rag(int(pk))
+            result = NaiveRagService.delete_naive_rag(int(pk), user=request.user)
 
             return Response(
                 {"message": "NaiveRag deleted successfully", **result},
@@ -230,11 +212,6 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         except NaiveRagNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_INITIALIZE_POST)
     def initialize_configs(self, request, naive_rag_id=None):
@@ -243,7 +220,9 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             naive_rag = NaiveRagService.get_naive_rag(int(naive_rag_id))
 
             # Initialize configs for documents without configs
-            new_configs = NaiveRagService.init_document_configs(naive_rag_id=int(naive_rag_id))
+            new_configs = NaiveRagService.init_document_configs(
+                naive_rag_id=int(naive_rag_id), user=request.user
+            )
 
             existing_count = NaiveRagDocumentConfig.objects.filter(
                 naive_rag=naive_rag
@@ -278,11 +257,6 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         except NaiveRagNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to initialize configs: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
 
 class NaiveRagDocumentConfigViewSet(
@@ -371,6 +345,7 @@ class NaiveRagDocumentConfigViewSet(
             result = NaiveRagService.bulk_update_document_configs_with_partial_errors(
                 naive_rag_id=int(naive_rag_id),
                 data=serializer.validated_data,
+                user=request.user,
             )
 
             # Use the new serializer that includes errors field
@@ -411,11 +386,6 @@ class NaiveRagDocumentConfigViewSet(
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
@@ -428,7 +398,7 @@ class NaiveRagDocumentConfigViewSet(
 
         try:
             result = NaiveRagService.bulk_delete_document_configs(
-                naive_rag_id=int(naive_rag_id), config_ids=config_ids
+                naive_rag_id=int(naive_rag_id), config_ids=config_ids, user=request.user
             )
 
             return Response(
@@ -445,11 +415,6 @@ class NaiveRagDocumentConfigViewSet(
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_GET)
     @action(detail=False, methods=["get"])
@@ -471,11 +436,6 @@ class NaiveRagDocumentConfigViewSet(
 
         except NaiveRagNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIG_GET)
     def retrieve(self, request, pk=None, naive_rag_id=None):
@@ -489,11 +449,6 @@ class NaiveRagDocumentConfigViewSet(
                 {"error": f"Document config [{pk}] for naive_rag_id [{naive_rag_id}] not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIG_PUT)
     def update(self, request, pk=None, naive_rag_id=None):
@@ -506,6 +461,7 @@ class NaiveRagDocumentConfigViewSet(
                 config_id=int(pk),
                 naive_rag_id=naive_rag_id,
                 data=serializer.validated_data,
+                user=request.user,
             )
 
             response_serializer = DocumentConfigSerializer(config)
@@ -524,18 +480,13 @@ class NaiveRagDocumentConfigViewSet(
             return Response({"errors": e.errors}, status=status.HTTP_400_BAD_REQUEST)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIG_DELETE)
     def destroy(self, request, pk=None, naive_rag_id=None):
         self._assert_naive_rag_in_active_org(naive_rag_id)
         try:
             result = NaiveRagService.delete_document_config(
-                config_id=int(pk), naive_rag_id=int(naive_rag_id)
+                config_id=int(pk), naive_rag_id=int(naive_rag_id), user=request.user
             )
 
             return Response(
@@ -550,11 +501,6 @@ class NaiveRagDocumentConfigViewSet(
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
 
 class NaiveRagChunkViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet):
@@ -807,12 +753,6 @@ class NaiveRagChunkSearchView(OrgScopedServiceViewSetMixin, APIView):
             )
         except DocumentConfigNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.exception("Chunk search failed")
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
         return Response(
             {
@@ -877,12 +817,6 @@ class NaiveRagPreviewChunkBulkByIdsView(OrgScopedServiceViewSetMixin, APIView):
             )
         except DocumentConfigNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.exception("Bulk fetch of preview chunks by ids failed")
-            return Response(
-                {"error": f"An unexpected error occurred: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
         chunk_serializer = NaiveRagPreviewChunkSerializer(chunks, many=True)
         return Response(

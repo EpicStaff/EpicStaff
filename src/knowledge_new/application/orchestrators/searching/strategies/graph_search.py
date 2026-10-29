@@ -7,7 +7,9 @@ from application.commands import RunSearch
 from application.orchestrators.searching.base import AbstractSearchOrchestrator
 from application.results import SearchResult
 from domain.enums import GraphSearchMethodEnum
-from domain.errors import UnsupportedError
+from domain.errors import GraphRagConfigNotFoundError, UnsupportedError
+from domain.models import GraphPricingConfig, SearchUsage
+from domain.usage import UsageTally
 from graphrag.api import basic_search, drift_search, global_search, local_search
 from graphrag.config.models.basic_search_config import BasicSearchConfig
 from graphrag.config.models.drift_search_config import DRIFTSearchConfig
@@ -17,8 +19,12 @@ from graphrag.config.models.local_search_config import LocalSearchConfig
 from graphrag.data_model import DataReader
 from graphrag_storage import create_storage
 from graphrag_storage.tables.table_provider_factory import create_table_provider
+from infrastructure.graphrag.model_headers import set_extra_headers
+from infrastructure.graphrag.usage_metrics import track_usage
 from infrastructure.grounding_guard import apply_grounding_guard
 from infrastructure.prompt_patching import patch_graphrag_prompts
+from infrastructure.token_estimation import qualified_model_name
+from infrastructure.usage_cost import embedding_cost, llm_cost
 from pydantic import BaseModel as PydanticModel
 
 
@@ -110,9 +116,16 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
     async def on_execute(self, command: RunSearch) -> SearchResult:
         async with self.uow:
             config = await self.uow.graph_rag_repo.get_config(command.rag_id)
+            pricing = await self._get_pricing(command.rag_id)
 
         config.embedding_models["default_embedding_model"].api_key = command.embedding_api_key
         config.completion_models["default_completion_model"].api_key = command.llm_api_key
+        set_extra_headers(
+            config.embedding_models["default_embedding_model"], command.embedding_extra_headers
+        )
+        set_extra_headers(
+            config.completion_models["default_completion_model"], command.llm_extra_headers
+        )
 
         if command.search_config.method not in self._SEARCH_MAP:
             raise UnsupportedError(
@@ -137,22 +150,61 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
         if callable(extra_kwargs):
             extra_kwargs = extra_kwargs(command.search_config, method_config, files)
 
-        result, context = await specs.searcher(
-            query=command.query,
-            config=config,
-            **files,
-            **extra_kwargs,
-        )
+        # The grounding judge's LLM call is part of the search, so it is metered too.
+        with track_usage(config) as tally:
+            result, context = await specs.searcher(
+                query=command.query,
+                config=config,
+                **files,
+                **extra_kwargs,
+            )
 
-        result = await apply_grounding_guard(
-            query=command.query,
-            response=result,
-            context=context,
-            config=config,
-            method=command.search_config.method,
-        )
+            result = await apply_grounding_guard(
+                query=command.query,
+                response=result,
+                context=context,
+                config=config,
+                method=command.search_config.method,
+                rag_id=command.rag_id,
+            )
 
-        return SearchResult(result=result)
+        return SearchResult(result=result, usage=self._usage(tally, pricing))
+
+    async def _get_pricing(self, rag_id: int) -> GraphPricingConfig | None:
+        """Return the RAG's model names and custom prices, None when they cannot be resolved.
+
+        Only the cost of the search depends on it, so a missing pricing config must not
+        fail the search itself.
+        """
+        try:
+            return await self.uow.graph_rag_repo.get_pricing_config(rag_id=rag_id)
+        except GraphRagConfigNotFoundError:
+            return None
+
+    @staticmethod
+    def _usage(tally: UsageTally, pricing: GraphPricingConfig | None) -> SearchUsage:
+        """Convert the metered `tally` to a `SearchUsage`; a cost is None when unpriced."""
+        embedding_cost_usd = None
+        llm_cost_usd = None
+        if pricing is not None:
+            embedding_cost_usd = embedding_cost(
+                qualified_model_name(pricing.embedding.provider, pricing.embedding.model),
+                tally.embedding_tokens,
+            )
+            llm_cost_usd = llm_cost(
+                qualified_model_name(pricing.llm_provider, pricing.llm_model),
+                tally.llm_input_tokens,
+                tally.llm_output_tokens,
+                pricing.input_cost_per_token,
+                pricing.output_cost_per_token,
+            )
+        return SearchUsage(
+            embedding_tokens=tally.embedding_tokens,
+            embedding_cost_usd=embedding_cost_usd,
+            llm_input_tokens=tally.llm_input_tokens,
+            llm_output_tokens=tally.llm_output_tokens,
+            llm_cost_usd=llm_cost_usd,
+        )
 
     @staticmethod
     async def _resolve_files(

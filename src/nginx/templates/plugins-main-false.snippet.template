@@ -1,0 +1,2 @@
+# PLUGINS_ENABLED=false: EpicStaff's server gets no plugin routes. Django does not mount the
+# plugin API either, so /api/admin/plugins/ and /api/plugin-public/ are its plain 404.

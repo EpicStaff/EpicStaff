@@ -1,13 +1,23 @@
 import asyncio
 import signal
+from zoneinfo import ZoneInfo
 
 import settings
 from db.config import AsyncSessionLocal
+from helpers.chat_retention_client import ChatRetentionClient
 from helpers.logger import logger
+from repositories.retention_repository import RetentionRepository
 from repositories.session_repository import SessionRepository
+from repositories.temp_storage_account_repository import TempStorageAccountRepository
+from services.audit_export_cleanup_service import (
+    ExportCleanupService,
+    build_export_redis_client,
+)
 from services.redis_service import RedisService
+from services.retention_service import RetentionService
 from services.schedule_service import ScheduleService
 from services.session_timeout_service import SessionTimeoutService
+from services.storage_account_cleanup_service import StorageAccountCleanupService
 from sqlalchemy import text
 
 redis_service = RedisService(
@@ -16,17 +26,40 @@ redis_service = RedisService(
     settings.REDIS_USER,
     settings.REDIS_PASSWORD,
 )
+redis_export_service = build_export_redis_client()
 
 session_repository = SessionRepository(AsyncSessionLocal)
 
 session_timeout_service = SessionTimeoutService(
     redis_service=redis_service,
-    session_schema_channel=settings.SESSION_SCHEMA_CHANNEL,
     session_timeout_channel=settings.SESSION_TIMEOUT_CHANNEL,
     session_repository=session_repository,
+    sweep_interval_seconds=settings.SESSION_TIMEOUT_SWEEP_INTERVAL_SECONDS,
 )
 
 schedule_service = ScheduleService(redis_service=redis_service)
+export_cleanup_service = ExportCleanupService(
+    redis_client=redis_export_service,
+    sweep_interval_seconds=settings.AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS,
+    export_data_dir=settings.AUDITOR_EXPORT_DATA_DIR,
+)
+
+temp_storage_account_repository = TempStorageAccountRepository(AsyncSessionLocal)
+storage_account_cleanup_service = StorageAccountCleanupService(
+    repository=temp_storage_account_repository,
+    timezone=ZoneInfo(settings.TIMEZONE),
+)
+
+retention_service = RetentionService(
+    repository=RetentionRepository(AsyncSessionLocal),
+    chat_client=(
+        ChatRetentionClient(settings.CHAT_UPSTREAM_URL, settings.CHAT_INTERNAL_API_KEY)
+        if settings.CHAT_ENABLED
+        else None
+    ),
+    policy=settings.RETENTION_POLICY,
+    timezone=ZoneInfo(settings.TIMEZONE),
+)
 
 
 async def test_database_connection():
@@ -55,9 +88,7 @@ async def test_database_connection():
 
 
 async def main():
-    """
-    Starts redis subscribtion, starts SessionTimeoutService, connects to DB
-    """
+    """Connect to the DB and Redis, then start the schedule, cleanup, retention, session-timeout and export-cleanup services."""
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
 
@@ -72,14 +103,20 @@ async def main():
         await redis_service.init_redis()
         logger.info("Redis subscription initialized successfully.")
 
+        await schedule_service.start()
+        logger.info("ScheduleService started successfully.")
+
+        await storage_account_cleanup_service.start()
+        logger.info("StorageAccountCleanupService started successfully.")
+
+        await retention_service.start()
+        logger.info("RetentionService started successfully.")
+
         await session_timeout_service.start()
         logger.info("SessionTimeoutService started successfully.")
 
-        await session_timeout_service.initial_check_all_sessions_for_timeout()
-        logger.info("Start SessionTimeoutService initial timeout check.")
-
-        await schedule_service.start()
-        logger.info("ScheduleService started successfully.")
+        await export_cleanup_service.start()
+        logger.info("ExportCleanupService started successfully.")
 
     except Exception as e:
         logger.error(f"Error during initialization: {e}")
@@ -94,8 +131,12 @@ async def shutdown():
 
     if schedule_service.scheduler.running:
         schedule_service.scheduler.shutdown(wait=False)
+    storage_account_cleanup_service.stop()
+    retention_service.stop()
     if redis_service.aioredis_client:
         await redis_service.aioredis_client.close()
+    await export_cleanup_service.stop()
+    await redis_export_service.aclose()
 
 
 if __name__ == "__main__":

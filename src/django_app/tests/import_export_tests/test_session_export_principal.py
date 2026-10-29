@@ -2,6 +2,7 @@ import csv
 import io
 import uuid
 
+import fakeredis
 import pytest
 from django.utils import timezone
 
@@ -13,34 +14,27 @@ from tables.import_export.export_tabular_projections.session import (
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.models.graph_models import Graph, GraphSessionMessage, ScheduleTriggerNode
-from tables.models.session_models import Session
-from tables.services.redis_pubsub import RedisPubSub
+from tables.models.session_models import Session, SessionPrincipal
+from tables.services.graph_message_store import GraphMessageStore
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
-
-
-class _FakeGraphDump:
-    def model_dump(self, mode=None):
-        return {}
-
-
-class _FakeSessionData:
-    graph = _FakeGraphDump()
+from src.shared.models import GraphData, SessionData
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = None):
-    """Stub the run_session tail (SessionData build + Redis publish) so tests
-    don't need a fully built graph or a live Redis connection."""
+    """Stub the run_session tail: the test graphs have no nodes to build SessionData
+    from, and crew is not there to receive the Redis publish. The stand-in is a real,
+    empty SessionData, so code that walks it keeps up with new fields."""
     sm = session_manager or SessionManagerService()
-    monkeypatch.setattr(
-        sm, "create_session_data", lambda session, token_budget=None: _FakeSessionData()
-    )
-    monkeypatch.setattr(
-        sm.redis_service,
-        "publish_session_data",
-        lambda *, session_data, org_id=None: 2,
-    )
+
+    def empty_session_data(session, start_node, token_budget=None, run_type=""):
+        graph = GraphData(name="g", entrypoint="__end__", end_node=None)
+        return SessionData(id=session.id, org_id=session.graph.org_id, audit_retention_days=0, graph=graph)
+
+    monkeypatch.setattr(sm, "create_session_data", empty_session_data)
+    monkeypatch.setattr(sm.redis_service, "publish_session_data", lambda **kwargs: 2)
     return sm
 
 
@@ -69,16 +63,28 @@ def _add_subgraph_message(session_id: int, message_type: str, exec_id: str, **ex
 
 
 def _export(session_id: int) -> dict:
-    data = ExportService(entity_registry).export_entities(
-        EntityType.SESSION, [session_id]
+    data = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.SESSION,
+            [session_id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data
     )
     [exported] = data[EntityType.SESSION]
     return exported
 
 
 def _export_csv_rows(session_id: int) -> list[dict]:
-    data = ExportService(entity_registry).export_entities(
-        EntityType.SESSION, [session_id]
+    data = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.SESSION,
+            [session_id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data
     )
     response = CsvExportFormatStrategy(SessionTabularProjection()).render(
         data, EntityType.SESSION, "session", str(session_id)
@@ -109,6 +115,7 @@ def test_export_entity_json_envelope_includes_principal(
     assert principal["user"] == regular_user.id
     assert principal["email"] == regular_user.email
     assert principal["api_key"] is None
+    assert principal["api_key_name"] is None
     assert len(exported["messages"]) == 1
 
 
@@ -129,10 +136,8 @@ def test_export_csv_includes_principal_columns_for_user_run(
     rows = _export_csv_rows(session_id)
 
     assert len(rows) == 1
-    assert rows[0]["principal_kind"] == "user"
-    assert rows[0]["principal_user_id"] == str(regular_user.id)
-    assert rows[0]["principal_email"] == regular_user.email
-    assert rows[0]["principal_api_key_id"] == ""
+    assert rows[0]["started_by_type"] == "user"
+    assert rows[0]["started_by"] == regular_user.email
 
 
 @pytest.mark.django_db
@@ -140,7 +145,7 @@ def test_export_csv_includes_principal_columns_for_trigger_run(
     default_org, monkeypatch
 ):
     graph = Graph.objects.create(name="export-csv-trigger", org=default_org)
-    node = ScheduleTriggerNode.objects.create(graph=graph, node_name="sched")
+    node = ScheduleTriggerNode.objects.create(graph=graph, node_name="sched", node_number=4)
     _stub_publish(monkeypatch)
 
     ScheduleTriggerService()._start_session(node)
@@ -151,10 +156,8 @@ def test_export_csv_includes_principal_columns_for_trigger_run(
     rows = _export_csv_rows(session.id)
 
     assert len(rows) == 1
-    assert rows[0]["principal_kind"] == "trigger"
-    assert rows[0]["principal_user_id"] == ""
-    assert rows[0]["principal_email"] == ""
-    assert rows[0]["principal_api_key_id"] == ""
+    assert rows[0]["started_by_type"] == "trigger"
+    assert rows[0]["started_by"] == "sched #4"
 
 
 @pytest.mark.django_db
@@ -189,7 +192,7 @@ def test_export_subflow_session_json_and_csv_do_not_crash_and_include_principal(
         output={"result": "ok"},
     )
 
-    RedisPubSub()._create_subgraph_sessions(root_session_id)
+    GraphMessageStore(fakeredis.FakeRedis()).create_subgraph_sessions(root_session_id)
 
     child_session = Session.objects.get(parent_session_id=root_session_id)
     _add_message(child_session.id)
@@ -203,6 +206,135 @@ def test_export_subflow_session_json_and_csv_do_not_crash_and_include_principal(
 
     rows = _export_csv_rows(child_session.id)
     assert len(rows) == 1
-    assert rows[0]["principal_kind"] == "user"
-    assert rows[0]["principal_user_id"] == str(regular_user.id)
-    assert rows[0]["principal_email"] == regular_user.email
+    assert rows[0]["started_by_type"] == "user"
+    assert rows[0]["started_by"] == regular_user.email
+
+
+def _api_key_session_rows(default_org, kind, api_key, email) -> list[dict]:
+    graph = Graph.objects.create(name="export-csv-api-key", org=default_org)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    SessionPrincipal.objects.create(session=session, kind=kind, api_key=api_key, email=email)
+    _add_message(session.id)
+    return _export_csv_rows(session.id)
+
+
+@pytest.mark.django_db
+def test_export_csv_started_by_user_api_key_shows_key_name_and_email(
+    default_org, regular_user, user_api_key
+):
+    _, api_key = user_api_key
+
+    [row] = _api_key_session_rows(
+        default_org, SessionPrincipal.ActionKind.API_KEY_USER, api_key, regular_user.email
+    )
+
+    assert row["started_by_type"] == "api_key"
+    assert row["started_by"] == f"user-key ({regular_user.email})"
+
+
+@pytest.mark.django_db
+def test_export_csv_started_by_system_api_key_shows_key_name(default_org, env_api_key):
+    _, api_key = env_api_key
+
+    [row] = _api_key_session_rows(
+        default_org, SessionPrincipal.ActionKind.API_KEY_SYSTEM, api_key, None
+    )
+
+    assert (row["started_by_type"], row["started_by"]) == ("system_api_key", "env-system")
+
+
+@pytest.mark.django_db
+def test_export_csv_started_by_deleted_user_api_key_falls_back_to_email(
+    default_org, regular_user, user_api_key
+):
+    _, api_key = user_api_key
+    graph = Graph.objects.create(name="export-csv-deleted-key", org=default_org)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    SessionPrincipal.objects.create(
+        session=session,
+        kind=SessionPrincipal.ActionKind.API_KEY_USER,
+        api_key=api_key,
+        email=regular_user.email,
+    )
+    _add_message(session.id)
+    api_key.delete()
+
+    [row] = _export_csv_rows(session.id)
+
+    assert (row["started_by_type"], row["started_by"]) == ("api_key", regular_user.email)
+
+
+@pytest.mark.django_db
+def test_export_csv_started_by_deleted_system_api_key_is_empty(default_org, env_api_key):
+    _, api_key = env_api_key
+    graph = Graph.objects.create(name="export-csv-deleted-system-key", org=default_org)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    SessionPrincipal.objects.create(
+        session=session, kind=SessionPrincipal.ActionKind.API_KEY_SYSTEM, api_key=api_key
+    )
+    _add_message(session.id)
+    api_key.delete()
+
+    [row] = _export_csv_rows(session.id)
+
+    assert (row["started_by_type"], row["started_by"]) == ("system_api_key", "")
+
+
+@pytest.mark.django_db
+def test_export_csv_started_by_unknown_or_missing_principal(default_org):
+    [unknown_row] = _api_key_session_rows(
+        default_org, SessionPrincipal.ActionKind.UNKNOWN, None, None
+    )
+    graph = Graph.objects.create(name="export-csv-no-principal", org=default_org)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    _add_message(session.id)
+    [missing_row] = _export_csv_rows(session.id)
+
+    assert (unknown_row["started_by_type"], unknown_row["started_by"]) == ("unknown", "")
+    assert (missing_row["started_by_type"], missing_row["started_by"]) == ("unknown", "")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("stream_type", ["agent_node_stream", "task_node_stream"])
+def test_export_csv_includes_agent_tool_events(
+    default_org, regular_user, monkeypatch, stream_type
+):
+    graph = Graph.objects.create(name="export-csv-tools", org=default_org)
+    sm = _stub_publish(monkeypatch)
+    session_id = sm.run_session(
+        graph_id=graph.id,
+        variables={},
+        user=regular_user,
+        trigger=TriggerSpec.manual(),
+    )
+    task = {"name": "lookup", "order": 0}
+    for step_id, event, data in [
+        (1, "tool_call", {"id": "c1", "name": "search", "arguments": '{"q": "x"}', "task": task}),
+        (2, "tool_result", {"tool_call_id": "c1", "name": "search", "content": "found", "is_error": False, "task": task}),
+    ]:
+        GraphSessionMessage.objects.create(
+            session_id=session_id,
+            created_at=timezone.now(),
+            name="agent",
+            execution_order=step_id,
+            message_data={
+                "message_type": stream_type,
+                "event": event,
+                "step_id": step_id,
+                "is_final": False,
+                "data": data,
+            },
+            uuid=uuid.uuid4(),
+        )
+
+    exported_types = [m["message_data"]["event"] for m in _export(session_id)["messages"]]
+    assert exported_types == ["tool_call", "tool_result"]
+
+    call, result = sorted(_export_csv_rows(session_id), key=lambda row: row["execution_order"])
+    assert call["message_type"] == stream_type
+    assert call["event"] == "tool_call"
+    assert result["event"] == "tool_result"
+    assert call["tool_name"] == "search"
+    assert call["tool_arguments"] == '{"q": "x"}'
+    assert result["tool_name"] == "search"
+    assert result["tool_result"] == "found"

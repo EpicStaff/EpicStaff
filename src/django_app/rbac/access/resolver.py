@@ -1,6 +1,8 @@
 from rbac.access.effective import EffectivePermissions
+from rbac.access.principals import is_pinned_org_principal
 from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models import OrganizationUser
+from rbac.scoping.fields import resolve_active_org_id
 
 
 class PermissionResolver:
@@ -11,11 +13,21 @@ class PermissionResolver:
     Bypass via `User.is_superadmin` happens here, so view layers
     never special-case superadmin.
 
+    A `PinnedOrgPrincipal` resolves its own permissions in its pinned org
+    and is treated as a non-member of every other org, so
+    `assert_row_org_permission` turns another org's row into the view's
+    own not-found.
+
     Cache seam: when a Redis cache lands later, it wraps the
     DB-fetch portion of resolve().
     """
 
     def resolve(self, user, org_id: int) -> EffectivePermissions:
+        if is_pinned_org_principal(user):
+            if org_id != user.pinned_org_id:
+                raise OrgMembershipRequiredError()
+            return user.resolve_effective_permissions(org_id)
+
         if getattr(user, "is_superadmin", False):
             return EffectivePermissions(is_superadmin=True, role=None, by_resource={})
 
@@ -31,3 +43,18 @@ class PermissionResolver:
             raise OrgMembershipRequiredError()
 
         return EffectivePermissions.from_role(membership.role)
+
+
+def resolve_request_permissions(request) -> EffectivePermissions:
+    """Return the caller's permissions in the request's active org, resolved once per request.
+
+    Shares the `_rbac_effective_permissions` cache with `HasOrgPermission`, so a
+    serializer rendering many rows behind that gate runs no extra query.
+    """
+    effective = getattr(request, "_rbac_effective_permissions", None)
+    if effective is None:
+        effective = PermissionResolver().resolve(
+            user=request.user, org_id=resolve_active_org_id(request)
+        )
+        request._rbac_effective_permissions = effective
+    return effective

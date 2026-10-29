@@ -1,19 +1,33 @@
 import { Dialog as CdkDialog, DialogModule } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, input, Output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    EventEmitter,
+    inject,
+    Input,
+    input,
+    Output,
+    signal,
+} from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 // import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
 // import { ToastService } from '../../../../../../services/notifications';
-import { AppSvgIconComponent, Spinner2Component } from '@shared/components';
+import { AppSvgIconComponent, Spinner2Component, StatusBadgeComponent } from '@shared/components';
 import { CollapseOnOverflowDirective, HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
-import { EditorInfo } from 'src/app/features/flows/services/graph-collaboration.ws.service';
+import { PresentEditor } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
 import { GraphDto } from '../../../../../../features/flows/models/graph.model';
 import { LabelsStorageService } from '../../../../../../features/flows/services/labels-storage.service';
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
+import { FLOW_ACTION_PERMISSIONS } from '../../../../../../visual-programming/core/constants/flow-action-permissions';
+import { KeymapService } from '../../../../../../visual-programming/services/keymap.service';
+import { PREVIEW_BLOCKED_MESSAGES } from './flow-header.constants';
 import { GraphPresenceIndicatorsComponent } from './presence-indicator/graph-presence-indicators.component';
 import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
 
@@ -30,6 +44,7 @@ import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
         GraphPresenceIndicatorsComponent,
         MatTooltipModule,
         HasPermissionDirective,
+        StatusBadgeComponent,
     ],
     templateUrl: './flow-header.component.html',
     styleUrls: ['./flow-header.component.scss'],
@@ -39,27 +54,32 @@ export class FlowHeaderComponent {
     @Input() graphName?: string;
     @Input() graphId?: number;
     @Input() isAssistantOpen = false;
-    @Input() isEpicChatEnabled = false;
     @Input() graph?: GraphDto;
     @Input() isSaving = false;
     @Input() isRunning = false;
     readonly isPreviewMode = input(false);
+    /** The status of the run in progress (regular or test); null hides the badge. */
+    readonly runStatus = input<GraphSessionStatus | null>(null);
     @Input() hasUnsavedChanges = false;
-    @Input() editors: EditorInfo[] = [];
+    @Input() editors: PresentEditor[] = [];
     @Output() save = new EventEmitter<void>();
     @Output() back = new EventEmitter<void>();
     @Output() viewSessions = new EventEmitter<void>();
     @Output() run = new EventEmitter<void>();
     @Output() getCurl = new EventEmitter<void>();
-    @Output() connectChat = new EventEmitter<void>();
     @Output() toggleAssistant = new EventEmitter<void>();
     @Output() flowEdited = new EventEmitter<GraphDto>();
     @Output() saveVersion = new EventEmitter<void>();
     @Output() viewVersionHistory = new EventEmitter<void>();
 
     public isSaveDropdownOpen = signal(false);
+    /** Shows Run and Get cURL; their shortcuts check the same requirement. */
+    protected readonly canUseFlow = computed(() => this.permissions.meets(FLOW_ACTION_PERMISSIONS.useFlow));
+    protected readonly previewBlockedMessages = PREVIEW_BLOCKED_MESSAGES;
 
     private readonly dialog = inject(CdkDialog);
+    private readonly permissions = inject(PermissionsService);
+    protected readonly keymap = inject(KeymapService);
 
     constructor(private router: Router) {}
 
@@ -90,10 +110,6 @@ export class FlowHeaderComponent {
 
     onGetCurl() {
         this.getCurl.emit();
-    }
-
-    onConnectChat() {
-        this.connectChat.emit();
     }
 
     onToggleAssistant() {

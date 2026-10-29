@@ -6,6 +6,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 from django.db.models import F
 from loguru import logger
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.exceptions import GraphSaveVersionConflictError
@@ -14,8 +15,11 @@ from tables.models.base_models import (
     BaseGlobalNode,
     BaseGraphEntity,
     ContentHashMixin,
+    GraphAuthorModel,
+    NumberedNode,
     SoftDeleteFields,
     SoftDeleteMixin,
+    TestPayloadMixin,
     TimestampMixin,
     soft_delete_consistency_constraint,
 )
@@ -35,12 +39,12 @@ class GraphManager(ActiveManager):
                 WITH RECURSIVE subgraph_tree AS (
                     SELECT sn.subgraph_id
                     FROM tables_subgraphnode sn
-                    WHERE sn.graph_id = %s AND sn.is_soft_deleted = false
+                    WHERE sn.graph_id = %s AND sn.active = true
                     UNION
                     SELECT sn.subgraph_id
                     FROM tables_subgraphnode sn
                     INNER JOIN subgraph_tree st ON sn.graph_id = st.subgraph_id
-                    WHERE sn.is_soft_deleted = false
+                    WHERE sn.active = true
                 )
                 SELECT subgraph_id FROM subgraph_tree
                 """,
@@ -51,7 +55,7 @@ class GraphManager(ActiveManager):
         return self.filter(id__in=subgraph_ids).prefetch_related("tags")
 
 
-class Graph(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
+class Graph(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMixin):
     objects = GraphManager()
     all_objects = models.Manager()
 
@@ -72,6 +76,32 @@ class Graph(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
         default=False, help_text="If 'True' -> flow is connected to EpicChat widget."
     )
     save_version = models.BigIntegerField(default=1)
+    # High-water mark of issued node badge numbers. Written only by NodeNumberService,
+    # and lowered only when an import replaces the graph's content (rewind_to_surviving_nodes).
+    # A version restore keeps it.
+    node_number_seq = models.IntegerField(default=0, editable=False)
+
+    def save(self, *args, **kwargs):
+        """Save the graph, never writing `node_number_seq` on an update.
+
+        The counter moves only through NodeNumberService's UPDATEs. A full save of an
+        instance loaded before a number was issued would otherwise write its stale value
+        back and lower the counter, and the next number issued would repeat one that a
+        live node holds. An insert still writes the default.
+        """
+        if not self._state.adding and self.pk is not None and not kwargs.get("force_insert"):
+            update_fields = kwargs.get("update_fields")
+            if update_fields is None:
+                deferred_fields = self.get_deferred_fields()
+                update_fields = [
+                    field.name
+                    for field in self._meta.concrete_fields
+                    if not field.primary_key and field.attname not in deferred_fields
+                ]
+            kwargs["update_fields"] = [
+                field_name for field_name in update_fields if field_name != "node_number_seq"
+            ]
+        super().save(*args, **kwargs)
 
     @classmethod
     def increment_version_if_current(cls, pk: int, expected: int) -> int:
@@ -97,13 +127,13 @@ class Graph(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
             soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "name"],
-                condition=models.Q(is_soft_deleted=False),
+                condition=models.Q(active=True),
                 name="unique_graph_name_per_org",
             ),
         ]
 
 
-class BaseNode(BaseGraphEntity, BaseGlobalNode):
+class BaseNode(BaseGraphEntity, BaseGlobalNode, NumberedNode):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE)
     node_name = models.CharField(max_length=255, blank=True)
     input_map = models.JSONField(default=dict)
@@ -137,7 +167,7 @@ class CrewNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class PythonNode(BaseNode, SoftDeleteFields):
+class PythonNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="python_node_list")
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
     test_input = models.JSONField(default=dict, blank=True)
@@ -159,6 +189,8 @@ class PythonNode(BaseNode, SoftDeleteFields):
             "updated_at",
             "content_hash",
             "metadata",
+            "created_by",
+            "node_number",
             "python_code",
             "test_input",
         ]
@@ -176,7 +208,7 @@ class PythonNode(BaseNode, SoftDeleteFields):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class KnowledgeNode(BaseNode, SoftDeleteFields):
+class KnowledgeNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="knowledge_node_list")
     source_collection = models.ForeignKey(
         "SourceCollection", on_delete=models.SET_NULL, null=True, blank=True
@@ -206,7 +238,7 @@ class KnowledgeNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class FileExtractorNode(BaseNode, SoftDeleteFields):
+class FileExtractorNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="file_extractor_node_list"
     )
@@ -217,7 +249,7 @@ class FileExtractorNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class KeyValueNode(BaseNode, SoftDeleteFields):
+class KeyValueNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     class Mode(models.TextChoices):
         READ = "read"
         WRITE = "write"
@@ -242,7 +274,7 @@ class KeyValueNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class AudioTranscriptionNode(BaseNode, SoftDeleteFields):
+class AudioTranscriptionNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="audio_transcription_node_list"
     )
@@ -253,7 +285,7 @@ class AudioTranscriptionNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class EndNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class EndNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     # TODO: can be OneToOne field
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="end_node")
     output_map = models.JSONField()
@@ -283,7 +315,7 @@ class EndNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         super().save(*args, **kwargs)
 
 
-class SubGraphNode(BaseNode, SoftDeleteFields):
+class SubGraphNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="subgraph_node_list")
     subgraph = models.ForeignKey(
         "Graph",
@@ -327,57 +359,19 @@ class Edge(BaseGraphEntity, SoftDeleteFields):
             raise ObjectDoesNotExist(f"End node with ID {self.end_node_id} not found.")
 
 
-class ConditionalEdge(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="conditional_edge_list"
-    )
-
-    source_node_id = models.BigIntegerField(null=True, default=None)
-    python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
-    input_map = models.JSONField(default=dict)
-
-    class Meta:
-        default_manager_name = "objects"
-        base_manager_name = "all_objects"
-        constraints = [
-            soft_delete_consistency_constraint(),
-            models.UniqueConstraint(
-                fields=["graph", "source_node_id"],
-                name="unique_graph_conditional_edge_source",
-            ),
-        ]
-
-    def generate_hash(self):
-        excluded_fields = [
-            "id",
-            "created_at",
-            "updated_at",
-            "content_hash",
-            "metadata",
-            "python_code",
-        ]
-        data = {
-            f.name: str(getattr(self, f.name))
-            for f in self._meta.fields
-            if f.name not in excluded_fields
-        }
-        data["python_code"] = self.python_code.content_hash
-        data_string = json.dumps(data, sort_keys=True, default=str).encode("utf-8")
-        return hashlib.sha256(data_string).hexdigest()
-
-    def clean(self):
-        if not BaseGlobalNode.find_globally(self.source_node_id):
-            raise ValidationError(
-                {"source_node_id": f"Node with ID {self.source_node_id} does not exist."}
-            )
-
-
 class GraphSessionMessage(models.Model):
     session = models.ForeignKey("Session", on_delete=models.CASCADE)
     created_at = models.DateTimeField()
     name = models.CharField(default="")
     execution_order = models.IntegerField(default=0)
     message_data = models.JSONField()
+    # The emitting node's TYPE (e.g. "AGENT"). A node's start and finish rows store it; its
+    # other rows (tool calls, end output) may leave it empty and take it from the same
+    # node's rows at export. Empty also on non-node rows (graph_end), on user messages
+    # (written by Django), and on rows saved before crew sent it that the migration
+    # backfill could not type: subflow-inner rows, subflow-session rows, and names
+    # missing from the session's old graph snapshot.
+    node_type = models.CharField(default="", blank=True)
     uuid = models.UUIDField(null=False, editable=False, unique=True)
     parent_subgraph_execution_id = models.UUIDField(null=True, blank=True, db_index=True)
 
@@ -390,7 +384,7 @@ class GraphSessionMessage(models.Model):
         ]
 
 
-class StartNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class StartNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="start_node_list")
     variables = models.JSONField(default=dict)
 
@@ -407,7 +401,9 @@ class StartNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         ]
 
 
-class DecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class DecisionTableNode(
+    GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, NumberedNode, SoftDeleteFields
+):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="decision_table_node_list"
     )
@@ -421,7 +417,15 @@ class DecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
     def generate_hash(self):
-        excluded_fields = ["id", "created_at", "updated_at", "content_hash", "metadata"]
+        excluded_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "content_hash",
+            "metadata",
+            "created_by",
+            "node_number",
+        ]
         data = {
             f.name: str(getattr(self, f.name))
             for f in self._meta.fields
@@ -591,7 +595,14 @@ class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
         ]
 
 
-class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class WebhookTriggerNode(
+    GraphAuthorModel,
+    BaseGraphEntity,
+    TestPayloadMixin,
+    BaseGlobalNode,
+    NumberedNode,
+    SoftDeleteFields,
+):
     node_name = models.CharField(max_length=255, blank=False)
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="webhook_trigger_node_list"
@@ -603,6 +614,7 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         related_name="webhook_trigger_nodes",
     )
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
+    use_storage = models.BooleanField(default=False)
 
     class Meta:
         default_manager_name = "objects"
@@ -620,7 +632,10 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
             "updated_at",
             "content_hash",
             "metadata",
+            "created_by",
+            "node_number",
             "python_code",
+            "test_payload",
         ]
 
         data = {
@@ -636,7 +651,14 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class TelegramTriggerNode(
+    GraphAuthorModel,
+    BaseGraphEntity,
+    TestPayloadMixin,
+    BaseGlobalNode,
+    NumberedNode,
+    SoftDeleteFields,
+):
     node_name = models.CharField(max_length=255, blank=False)
     telegram_bot_api_key_secret = models.ForeignKey(
         "Secret",
@@ -661,7 +683,16 @@ class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
     def generate_hash(self):
-        excluded_fields = ["id", "created_at", "updated_at", "content_hash", "metadata"]
+        excluded_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "content_hash",
+            "metadata",
+            "created_by",
+            "node_number",
+            "test_payload",
+        ]
         data = {
             f.name: str(getattr(self, f.attname))
             for f in self._meta.fields
@@ -694,7 +725,9 @@ class TelegramTriggerNodeField(ContentHashMixin, SoftDeleteFields):
         ]
 
 
-class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class ScheduleTriggerNode(
+    GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, NumberedNode, SoftDeleteFields
+):
     class RunMode(models.TextChoices):
         ONCE = "once", "Once"
         REPEAT = "repeat", "Repeat"
@@ -743,6 +776,8 @@ class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
             "updated_at",
             "content_hash",
             "metadata",
+            "created_by",
+            "node_number",
             "current_runs",
             "next_run_date_time",
         ]
@@ -755,7 +790,9 @@ class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class ClassificationDecisionTableNode(
+    GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, NumberedNode, SoftDeleteFields
+):
     graph = models.ForeignKey(
         "Graph",
         on_delete=models.CASCADE,
@@ -821,10 +858,6 @@ class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDelet
         base_manager_name = "all_objects"
         constraints = [
             soft_delete_consistency_constraint(),
-            models.UniqueConstraint(
-                fields=["graph", "node_name"],
-                name="unique_graph_node_name_for_classification_dt_node",
-            ),
         ]
 
 
@@ -855,6 +888,9 @@ class ClassificationDecisionTablePrompt(TimestampMixin, SoftDeleteFields):
 
 
 class ClassificationConditionGroupSection(BaseGraphEntity, SoftDeleteFields):
+    # A child row of its classification decision table, with no `graph` of its own.
+    last_edit_owner_field = None
+
     id = models.UUIDField(primary_key=True)  # client-generated id — and the Django PK
     classification_decision_table_node = models.ForeignKey(
         "ClassificationDecisionTableNode",
@@ -863,8 +899,16 @@ class ClassificationConditionGroupSection(BaseGraphEntity, SoftDeleteFields):
     )
     name = models.CharField(max_length=255, blank=True, default="")
 
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
+
 
 class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
+    # A child row of its classification decision table, with no `graph` of its own.
+    last_edit_owner_field = None
+
     classification_decision_table_node = models.ForeignKey(
         "ClassificationDecisionTableNode",
         on_delete=models.CASCADE,
@@ -920,7 +964,7 @@ class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
                 )
 
 
-class GraphNote(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class GraphNote(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="graph_note_list")
     content = models.TextField()
 
@@ -938,9 +982,7 @@ class GraphVersion(SoftDeleteMixin):
     )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
-    snapshot = models.JSONField(
-        help_text="Serialized graph state: nodes, edges, conditional edges, metadata."
-    )
+    snapshot = models.JSONField(help_text="Serialized graph state: nodes, edges, metadata.")
     dependencies = models.JSONField(
         default=dict,
         help_text="Lightweight manifest of external dependency IDs referenced at snapshot time.",
@@ -957,15 +999,11 @@ class GraphVersion(SoftDeleteMixin):
         ordering = ["-created_at"]
 
 
-class StorageFile(models.Model):
+class StorageFile(OrgScopedModel, LastEditTrackedModel, SoftDeleteFields):
+    """A file or folder in an organization's storage, mirrored from the storage backend."""
+
     ITEM_TYPE_CHOICES = [("file", "file"), ("folder", "folder")]
 
-    org = models.ForeignKey(
-        "rbac.Organization",
-        on_delete=models.CASCADE,
-        related_name="storage_files",
-        help_text="Organization that owns this storage entry.",
-    )
     path = models.CharField(
         max_length=1000,
         help_text="Org-relative path, never starts with '/'. Folders end with '/'.",
@@ -1005,17 +1043,28 @@ class StorageFile(models.Model):
         help_text="Timestamp of the last update to this row.",
     )
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
-            models.UniqueConstraint(fields=["org", "path"], name="unique_storage_file_per_org")
+            soft_delete_consistency_constraint(),
+            # A binned row keeps its path, so a new upload to the same path must
+            # not clash with it. Two binned rows may share a path too.
+            models.UniqueConstraint(
+                fields=["org", "path"],
+                condition=models.Q(active=True),
+                name="unique_active_storage_file_per_org",
+            ),
         ]
         indexes = [
+            *OrgScopedModel.Meta.indexes,
             models.Index(fields=["org", "path"]),
             models.Index(fields=["org", "parent_path"]),
         ]
 
 
 class GraphStorageFile(SoftDeleteFields):
+    soft_delete_reference_fields = ("storage_file",)
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="storage_files")
     storage_file = models.ForeignKey(
         "StorageFile", on_delete=models.CASCADE, related_name="graph_storage_files"
@@ -1049,7 +1098,7 @@ class SessionStorageFile(models.Model):
         ]
 
 
-class TaskNode(BaseNode, SoftDeleteFields):
+class TaskNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph",
         on_delete=models.CASCADE,
@@ -1092,7 +1141,7 @@ class TaskNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class AgentNode(BaseNode, SoftDeleteFields):
+class AgentNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     """Node representing an agent that executes an ordered list of sub-tasks (AgentNodeTask) with shared surfaces."""
 
     graph = models.ForeignKey(

@@ -22,7 +22,7 @@ from tables.exceptions import (
     NaiveRagIndexNotReadyException,
     NoNaiveRagForCollectionException,
 )
-from tables.models.knowledge_models import GraphRag, NaiveRag
+from tables.models.knowledge_models import GraphRag, NaiveRag, SourceCollection
 from tables.serializers.knowledge_serializers import (
     COLLECTION_DESCRIPTION_MAX_LENGTH,
     SourceCollectionCreateSerializer,
@@ -35,96 +35,66 @@ from tables.services.knowledge_services.collection_management_service import (
 MODULE = "tables.services.knowledge_services.collection_management_service"
 
 
-class TestSourceCollectionCreateSerializerDescriptionValidation:
-    def test_description_over_limit_rejected(self):
-        serializer = SourceCollectionCreateSerializer(
-            data={
-                "collection_name": "Overlong Description Collection",
-                "description": "x" * (COLLECTION_DESCRIPTION_MAX_LENGTH + 1),
-            }
-        )
+@pytest.mark.parametrize("serializer_class", [SourceCollectionCreateSerializer, SourceCollectionUpdateSerializer])
+@pytest.mark.parametrize(
+    ("length", "valid"),
+    [(COLLECTION_DESCRIPTION_MAX_LENGTH, True), (COLLECTION_DESCRIPTION_MAX_LENGTH + 1, False)],
+    ids=["at-limit", "over-limit"],
+)
+def test_description_length_limit(serializer_class, length, valid):
+    serializer = serializer_class(data={"collection_name": "Described Collection", "description": "x" * length})
 
-        assert serializer.is_valid() is False
-        assert "description" in serializer.errors
-
-    def test_description_at_limit_accepted(self):
-        serializer = SourceCollectionCreateSerializer(
-            data={
-                "collection_name": "At Limit Description Collection",
-                "description": "x" * COLLECTION_DESCRIPTION_MAX_LENGTH,
-            }
-        )
-
-        assert serializer.is_valid() is True
+    assert serializer.is_valid() is valid
+    assert ("description" in serializer.errors) is not valid
 
 
-class TestSourceCollectionUpdateSerializerDescriptionValidation:
-    def test_description_over_limit_rejected(self):
-        serializer = SourceCollectionUpdateSerializer(
-            data={
-                "collection_name": "Existing Name",
-                "description": "x" * (COLLECTION_DESCRIPTION_MAX_LENGTH + 1),
-            }
-        )
+@pytest.mark.django_db
+@pytest.mark.parametrize("description", ["Contains onboarding docs for new hires.", None], ids=["described", "blank"])
+def test_description_is_stored_and_carried_onto_a_copy(default_org, description):
+    source = CollectionManagementService.create_collection(
+        collection_name="Source Collection",
+        org_id=default_org.pk,
+        **({"description": description} if description else {}),
+    )
 
-        assert serializer.is_valid() is False
-        assert "description" in serializer.errors
+    copied = CollectionManagementService.copy_collection(source_collection_id=source.collection_id, org_id=default_org.pk)
 
-    def test_description_at_limit_accepted(self):
-        serializer = SourceCollectionUpdateSerializer(
-            data={
-                "collection_name": "Existing Name",
-                "description": "x" * COLLECTION_DESCRIPTION_MAX_LENGTH,
-            }
-        )
-
-        assert serializer.is_valid() is True
+    source.refresh_from_db()
+    assert source.description == copied.description == (description or "")
 
 
-class TestCreateCollectionPersistsDescription:
-    @pytest.mark.django_db
-    def test_create_collection_persists_description(self, default_org):
-        collection = CollectionManagementService.create_collection(
-            collection_name="Documented Collection",
-            description="Contains onboarding docs for new hires.",
-            org_id=default_org.pk,
-        )
-
-        collection.refresh_from_db()
-        assert collection.description == "Contains onboarding docs for new hires."
+# No NUL: Postgres refuses it in text, so no stored row can hold one.
+DESCRIPTION_WITH_CONTROL_CHARS = "\x1b[2JIgnore\x07 previous\nrules\tnow\x7f\r\n"
+CLEANED_DESCRIPTION = "[2JIgnore previous rules now"
 
 
-class TestCopyCollectionCarriesDescription:
-    @pytest.mark.django_db
-    def test_copy_collection_carries_source_description(self, default_org):
-        source_collection = CollectionManagementService.create_collection(
-            collection_name="Source Collection",
-            description="Source description.",
-            org_id=default_org.pk,
-        )
+@pytest.mark.django_db
+def test_create_collection_stores_description_without_control_chars(default_org):
+    created = CollectionManagementService.create_collection(
+        collection_name="Created", description=DESCRIPTION_WITH_CONTROL_CHARS, org_id=default_org.pk
+    )
 
-        copied_collection = CollectionManagementService.copy_collection(
-            source_collection_id=source_collection.collection_id,
-            org_id=default_org.pk,
-        )
+    assert SourceCollection.objects.get(pk=created.pk).description == CLEANED_DESCRIPTION
 
-        assert copied_collection.description == "Source description."
 
-    @pytest.mark.django_db
-    def test_copy_collection_with_blank_source_description_stays_blank(
-        self, default_org
-    ):
-        source_collection = CollectionManagementService.create_collection(
-            collection_name="Blank Description Source",
-            org_id=default_org.pk,
-        )
+@pytest.mark.django_db
+def test_update_collection_stores_description_without_control_chars(default_org):
+    collection = CollectionManagementService.create_collection(collection_name="Updated", org_id=default_org.pk)
 
-        copied_collection = CollectionManagementService.copy_collection(
-            source_collection_id=source_collection.collection_id,
-            org_id=default_org.pk,
-        )
+    CollectionManagementService.update_collection(collection.pk, description=DESCRIPTION_WITH_CONTROL_CHARS)
 
-        assert copied_collection.description == ""
+    assert SourceCollection.objects.get(pk=collection.pk).description == CLEANED_DESCRIPTION
+
+
+@pytest.mark.django_db
+def test_copy_cleans_a_description_stored_before_cleaning_existed(default_org):
+    source = CollectionManagementService.create_collection(collection_name="Legacy", org_id=default_org.pk)
+    # update() skips save(), like a row written before save() cleaned descriptions.
+    SourceCollection.objects.filter(pk=source.pk).update(description=DESCRIPTION_WITH_CONTROL_CHARS)
+
+    copied = CollectionManagementService.copy_collection(source_collection_id=source.pk, org_id=default_org.pk)
+
+    assert SourceCollection.objects.get(pk=copied.pk).description == CLEANED_DESCRIPTION
 
 
 class TestGetGraphMetrics:

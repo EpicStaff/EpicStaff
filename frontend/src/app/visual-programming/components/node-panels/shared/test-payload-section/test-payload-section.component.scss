@@ -1,0 +1,71 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+:host(.full-height) {
+    height: 100%;
+    min-height: 0;
+
+    .editor-card {
+        flex: 1;
+        min-height: 0;
+    }
+}
+
+.section-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    width: 100%;
+
+    &__chevron {
+        transition: transform 0.2s ease;
+
+        &--closed {
+            transform: rotate(-90deg);
+        }
+    }
+}
+
+// Same card as the function-code editor above it.
+.editor-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+
+    :host(.full-height) & {
+        border: none;
+        border-radius: 0;
+    }
+}
+
+.payload-messages {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    word-break: break-word;
+
+    &--hint {
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &--error {
+        color: var(--color-error);
+    }
+}

@@ -1,12 +1,15 @@
 from pathlib import Path
 
 from src.shared.envtools import Env
+from src.shared.redis_streams.graph_message_stream import DEFAULT_GRAPH_MESSAGE_STREAM_MAXLEN
 
 BASE_DIR = Path(__file__).resolve().parent
 
 env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
     env.read_env(env_file=BASE_DIR / "../.env")
+
+LOG_LEVEL = env.log_level("CREW_LOG_LEVEL", allowed=env.LOG_LEVELS_WITH_BENCH)
 
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.int("REDIS_PORT")
@@ -18,7 +21,6 @@ REMEMBERED_OUTPUTS_TTL = env.time("CREW_REMEMBERED_OUTPUTS_TTL")
 
 KNOWLEDGE_SEARCH_REQUEST_CHANNEL = env.str("KNOWLEDGE_SEARCH_REQUEST_CHANNEL")
 KNOWLEDGE_SEARCH_RESPONSE_CHANNEL = env.str("KNOWLEDGE_SEARCH_RESPONSE_CHANNEL")
-SESSION_STATUS_CHANNEL = env.str("SESSION_STATUS_CHANNEL")
 SESSION_SCHEMA_CHANNEL = env.str("SESSION_SCHEMA_CHANNEL")
 SESSION_TIMEOUT_CHANNEL = env.str("SESSION_TIMEOUT_CHANNEL")
 MAX_CONCURRENT_SESSIONS = env.int("CREW_MAX_CONCURRENT_SESSIONS")
@@ -33,19 +35,36 @@ AGENT_REQUEST_STREAM = env.str("AGENT_REQUEST_STREAM")
 AGENT_RESULT_STREAM = env.str("AGENT_RESULT_STREAM")
 AGENT_RESULT_TIMEOUT = env.time("AGENT_RESULT_TIMEOUT")
 
+# Approximate cap on the graph message stream (src/shared/redis_streams/graph_message_stream.py).
+# django_app deletes each entry once stored, so the stream only holds its backlog; the cap
+# only bites when django_app falls this far behind or is down. Trimming drops unread
+# messages silently, and each entry can be ~300 KB, so the worst case is about
+# 2000 x 300 KB = 600 MB of Redis memory. django_app warns when its backlog grows past
+# half of the default.
+GRAPH_MESSAGE_STREAM_MAXLEN = env.int(
+    "CREW_GRAPH_MESSAGE_STREAM_MAXLEN", DEFAULT_GRAPH_MESSAGE_STREAM_MAXLEN
+)
+
 DEFAULT_RAG_SEARCH_TIMEOUT = env.time("DEFAULT_RAG_SEARCH_TIMEOUT")
 NAIVE_RAG_SEARCH_TIMEOUT = env.time("NAIVE_RAG_SEARCH_TIMEOUT")
 GRAPH_RAG_SEARCH_TIMEOUT = env.time("GRAPH_RAG_SEARCH_TIMEOUT")
 
-# optional run-level token budget hard stop.
-# Global fallback used when a session does not carry a per-run override
-# (see GraphSessionManagerService.run_session / SessionData.initial_state
-# reserved key "__token_budget__"). None (default) means "no limit" —
-# the feature is fully inert unless TOKEN_BUDGET is set or a run explicitly
-# opts in, so existing runs are byte-for-byte unchanged.
+AUDIT_TRAIL_ENABLED = env.bool("AUDIT_TRAIL_ENABLED")
+AUDITOR_URL = env.str("AUDITOR_URL")
+AUDITOR_INGEST_API_KEY = env.str("AUDITOR_INGEST_API_KEY")
+
+# Run-level token hard stop for sessions whose SessionData.token_budget is None.
+# CREW_TOKEN_BUDGET=0 means no limit.
 DEFAULT_TOKEN_BUDGET = env.int("CREW_TOKEN_BUDGET") or None
 
 DJANGO_HOST = env.str("DJANGO_HOST")
 DJANGO_PORT = env.int("DJANGO_PORT")
 DJANGO_API_KEY = env.str("DJANGO_API_KEY")
 KEY_VALUE_TIMEOUT = env.time("CREW_KEY_VALUE_TIMEOUT")
+
+SANDBOX_HOST = env.str("SANDBOX_HOST")
+SANDBOX_PORT = env.int("SANDBOX_PORT")
+SANDBOX_TIMEOUT = env.time("CREW_SANDBOX_TIMEOUT")
+# Safety net for the wait on a sandbox code-execution result.
+# None means "wait indefinitely".
+CODE_RESULT_TIMEOUT = env.time("CREW_CODE_RESULT_TIMEOUT")

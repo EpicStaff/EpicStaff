@@ -1,6 +1,8 @@
 # from datetime import timedelta
 
-from django.db.models import Exists, F, IntegerField, OuterRef
+from django import forms
+from django.core.exceptions import ValidationError
+from django.db.models import CharField, Exists, F, IntegerField, OuterRef
 from django.db.models.functions import Cast, Extract
 from django_filters import rest_framework as filters
 from rest_framework.filters import BaseFilterBackend, OrderingFilter
@@ -13,12 +15,40 @@ from tables.models.embedding_models import EmbeddingModel
 from tables.models.llm_models import LLMModel
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool
-from tables.models.session_models import Session
+from tables.models.session_models import Session, SessionTrigger
 from tables.models.webhook_models import WebhookTrigger
 
 
 class CharInFilter(filters.BaseInFilter, filters.CharFilter):
     pass
+
+
+class StrictBooleanField(forms.NullBooleanField):
+    """NullBooleanField that rejects unrecognised values instead of cleaning them to None.
+
+    The stock field (and django-filter's `BooleanFilter`) silently turns `?flag=garbage`
+    into "no filter", which returns the unfiltered list as if the caller had asked for it.
+    Accepts `true`/`1` and `false`/`0`, case-insensitive; an empty value means "not supplied".
+    """
+
+    default_error_messages = {"invalid": "Must be 'true' or 'false'."}
+
+    def to_python(self, value):
+        if value in self.empty_values:
+            return None
+        parsed = super().to_python(value.lower() if isinstance(value, str) else value)
+        if parsed is None:
+            raise ValidationError(self.error_messages["invalid"], code="invalid")
+        return parsed
+
+
+class StrictBooleanFilter(filters.BooleanFilter):
+    field_class = StrictBooleanField
+
+    def __init__(self, *args, **kwargs):
+        # The default BooleanWidget maps unknown strings to None before the field sees them.
+        kwargs.setdefault("widget", forms.TextInput)
+        super().__init__(*args, **kwargs)
 
 
 class LabelFilterBackend(BaseFilterBackend):
@@ -93,14 +123,32 @@ class KeyValueTableEntryOrderingFilter(OrderingFilter):
         return queryset.order_by(*expressions, "key", "id")
 
 
+def filter_sessions_by_id_search(queryset, search: str):
+    """Keep sessions whose id contains `search` as a substring (`12` matches 12, 112, 1203).
+
+    Shared by the session list filter and the export-all action so both read the
+    search the same way. Surrounding whitespace is ignored and a blank search
+    leaves the queryset unfiltered. Ids are integers, so a search containing any
+    non-digit cannot match and returns no rows.
+    """
+    search = search.strip()
+    if not search:
+        return queryset
+    if not search.isdigit():
+        return queryset.none()
+    return queryset.annotate(id_text=Cast("id", CharField())).filter(id_text__contains=search)
+
+
 class SessionFilter(filters.FilterSet):
     status = CharInFilter(field_name="status", lookup_expr="in")
+    id_search = filters.CharFilter(method="filter_by_id_search")
     node_name = filters.CharFilter(
         field_name="graphsessionmessage__name", lookup_expr="exact", distinct=True
     )
     graph_name = CharInFilter(field_name="graph__name", lookup_expr="in")
     is_error_cause = filters.BooleanFilter(method="filter_by_error_cause")
     trigger_type = CharInFilter(field_name="trigger__trigger_type", lookup_expr="in")
+    is_test_run = StrictBooleanFilter(method="filter_by_test_run")
 
     created_at = filters.DateTimeFromToRangeFilter(field_name="created_at")
     # duration filters
@@ -111,7 +159,14 @@ class SessionFilter(filters.FilterSet):
 
     class Meta:
         model = Session
-        fields = ["graph_id", "graph_name", "status", "node_name", "trigger_type"]
+        fields = [
+            "graph_id",
+            "graph_name",
+            "status",
+            "node_name",
+            "trigger_type",
+            "is_test_run",
+        ]
 
     def _annotate_duration(self, queryset):
         """Calculate duration and cast it to integer type"""
@@ -141,6 +196,21 @@ class SessionFilter(filters.FilterSet):
         return self._annotate_duration(queryset).filter(
             finished_at__isnull=False, duration__gte=value
         )
+
+    def filter_by_id_search(self, queryset, name, value):
+        return filter_sessions_by_id_search(queryset, value)
+
+    def filter_by_test_run(self, queryset, name, value):
+        # An EXISTS pair keeps `false` the exact complement of `true`: a join-based
+        # exclude() would have to reason about sessions with no trigger row and
+        # extras without the key, both of which compare as NULL.
+        test_run_triggers = SessionTrigger.objects.filter(
+            session_id=OuterRef("pk"),
+            **{f"extra__{SessionTrigger.TEST_RUN_EXTRA_KEY}": True},
+        )
+        if value:
+            return queryset.filter(Exists(test_run_triggers))
+        return queryset.filter(~Exists(test_run_triggers))
 
     def filter_by_error_cause(self, queryset, name, value):
         """Returns sessions that finished with error on specific node"""

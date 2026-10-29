@@ -1,0 +1,250 @@
+@use '../../../../../styles/header-layout' as header;
+
+.venvs-page {
+    @include header.headerLayout();
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    box-sizing: border-box;
+
+    .sticky-header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        width: 100%;
+        box-sizing: border-box;
+        background-color: var(--color-background-body);
+        border-bottom: 1px solid var(--color-divider-subtle);
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.75rem 3.75rem 1rem 2.5rem;
+            height: 80px;
+            border-bottom: 1px solid var(--color-divider-subtle);
+
+            .header-titles {
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+
+                .title {
+                    font-size: var(--text-h1-size);
+                    font-weight: var(--text-h1-weight);
+                    color: var(--color-text-primary);
+                }
+
+                .subtitle-inline {
+                    margin-left: 0.7rem;
+                    font-size: var(--text-body-medium-size);
+                    font-weight: var(--text-body-medium-weight);
+                    color: var(--text-secondary-60);
+                    display: inline-block;
+                    white-space: normal;
+                }
+            }
+
+            .header-actions {
+                display: flex;
+                align-items: center;
+                margin-left: auto;
+                gap: 0.75rem;
+            }
+        }
+    }
+
+    .tabs {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        height: 40px;
+        padding: 0 3.75rem 0 2.75rem;
+
+        .tabs-left {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .tab-sep {
+            text-align: center;
+            font-size: 1.625rem;
+            padding: 0 12px;
+            color: var(--transparent-white-16);
+            font-weight: 500;
+            opacity: 0.3;
+            user-select: none;
+        }
+
+        .tabs-right {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            min-width: 0;
+            flex: 0 1 auto;
+        }
+    }
+
+    // The filter and sort triggers of the tools list page, so both pages read as one product.
+    .menu-trigger {
+        display: inline-flex;
+        flex-shrink: 0;
+        align-items: center;
+        gap: 0.75rem;
+        height: 28px;
+        padding: 0 0.5rem;
+        background: transparent;
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        color: var(--color-text-primary);
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: border-color 0.15s ease;
+
+        &:hover,
+        &.active {
+            border-color: var(--accent-color);
+        }
+
+        .menu-chevron {
+            color: var(--color-text-secondary);
+            transition: transform 0.15s ease;
+
+            &.open {
+                transform: rotate(180deg);
+            }
+        }
+    }
+
+    .filter-trigger {
+        gap: 0.5rem;
+
+        .filter-count {
+            margin-left: 0.25rem;
+            color: var(--accent-color);
+            font-weight: 500;
+        }
+
+        .filter-clear-inline {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 28px;
+            width: 28px;
+            margin-right: -0.5rem;
+            color: var(--accent-color);
+            border-left: 1px solid var(--color-divider-subtle);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.15s;
+
+            &:hover {
+                background: var(--transparent-white-8);
+            }
+        }
+    }
+
+    .search {
+        flex: 0 1 280px;
+        width: 280px;
+        min-width: 0;
+    }
+
+    &__body {
+        padding: 24px 2.5rem 2rem;
+    }
+
+    &__list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    &__skeleton {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 16px;
+        border-radius: 10px;
+        background-color: var(--color-flow-card-bg);
+        box-shadow: var(--shadow-raised);
+        animation: venv-skeleton-pulse 1.5s infinite ease-in-out;
+    }
+
+    &__skeleton-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        height: 28px;
+        min-width: 0;
+    }
+
+    &__skeleton-chips {
+        display: flex;
+        gap: 8px;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    &__skeleton-bar {
+        display: block;
+        flex-shrink: 0;
+        max-width: 100%;
+        background-color: var(--transparent-white-8);
+
+        &--name {
+            width: 169px;
+            height: 22px;
+            border-radius: 4px;
+        }
+
+        &--chip {
+            width: 80px;
+            height: 28px;
+            border-radius: 4px;
+        }
+
+        &--meta {
+            flex: 0 1 169px;
+            min-width: 0;
+            height: 16px;
+            border-radius: 2px;
+        }
+    }
+
+    &__empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 88px;
+        padding: 16px;
+        border-radius: 10px;
+        background-color: var(--color-flow-card-bg);
+        color: var(--color-ks-transparent-text-60);
+        text-align: center;
+
+        p {
+            margin: 0;
+        }
+    }
+}
+
+@keyframes venv-skeleton-pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+    100% {
+        opacity: 1;
+    }
+}

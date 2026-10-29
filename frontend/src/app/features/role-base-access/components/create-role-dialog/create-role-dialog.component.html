@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="!canSubmit()"
+>
     <div class="header">
         <span class="title">{{ dialogTitle() }}</span>
         <div class="actions">
@@ -6,6 +10,7 @@
                 <app-button
                     leftIcon="copy"
                     type="outline-primary"
+                    [disabled]="extensionRows.isLoading()"
                     (click)="onDuplicate()"
                 >
                     Duplicate Role
@@ -31,7 +36,7 @@
         class="subheader"
         [formGroup]="form"
     >
-        @if (!isEditMode) {
+        @if (!isEditMode()) {
             <div class="control">
                 <label class="label">Organization <span class="required">*</span></label>
                 <app-select
@@ -64,10 +69,27 @@
 
     <!-- CONTENT: permissions -->
     <div class="content">
+        @if (extensionNotice(); as notice) {
+            <p
+                class="permission-notice permission-notice--error"
+                role="alert"
+            >
+                {{ notice }}
+            </p>
+        }
+        @if (leftOutNotice(); as notice) {
+            <p
+                class="permission-notice permission-notice--warning"
+                role="status"
+            >
+                {{ notice }}
+            </p>
+        }
         @if (catalog(); as cat) {
             <app-permissions-table
                 [catalog]="cat"
-                [selectedPermissions]="selectedPermissions()"
+                [extensionGroups]="extensionRows.groups()"
+                [selectedPermissions]="matrixSelection()"
                 [disabledPermissions]="disabledPermissions()"
                 (permissionToggle)="onPermissionToggle($event)"
                 (resourceToggle)="onResourceToggle($event)"

@@ -1,0 +1,21 @@
+<app-audit-operator-select
+    [operators]="operators"
+    [labels]="operatorLabels"
+    [selectedOperator]="filter().op"
+    (selectedOperatorChange)="setOp($event)"
+/>
+
+@if (needsValue()) {
+    <app-number-stepper
+        class="tokens-filter__stepper"
+        size="sm"
+        [alwaysShowButtons]="true"
+        ariaLabel="Tokens"
+        [integer]="true"
+        [allowEmpty]="true"
+        [min]="0"
+        [step]="stepSize()"
+        [value]="numericValue()"
+        (changed)="setValue($event)"
+    />
+}

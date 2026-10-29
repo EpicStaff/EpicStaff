@@ -23,7 +23,7 @@ from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool
-from tables.services.converter_service import ConverterService
+from tables.services.converter_service import ConverterService, secret_names_prefetch
 from tables.services.rag_lookup_service import RagLookupService
 
 
@@ -75,7 +75,14 @@ class BaseNodePayloadService:
         graph_id: int | None,
         session_id: int | None,
         s3_files: list[S3FileSpec],
+        org_id: int | None = None,
     ) -> list[BaseToolData]:
+        """Convert the surface's allowed python and MCP tools into tool payloads.
+
+        `org_id` must be the `Graph.org_id` read from the graph row: it becomes the
+        `X-Organization-Id` header of sandbox callback tools. When None, the
+        converter reads it from `graph_id` itself.
+        """
         allowed_python_tool_ids = [
             entry.python_tool for entry in combined_surface.python_tools if entry.mode == "allow"
         ]
@@ -86,13 +93,22 @@ class BaseNodePayloadService:
 
         tools: list[BaseToolData] = []
 
-        for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_python_tool_ids):
+        python_tools = (
+            PythonCodeTool.objects.filter(pk__in=allowed_python_tool_ids)
+            .select_related("python_code__venv")
+            .prefetch_related(secret_names_prefetch("python_code__secrets"))
+        )
+        for python_tool in python_tools:
             tools.append(
                 self.converter_service.convert_tool_to_base_tool_pydantic(
                     python_tool,
                     graph_id=graph_id,
                     session_id=session_id,
                     storage_allowed_paths_override=surface_storage_paths,
+                    storage_org_prefix_override=self.converter_service.storage_prefix_for_org(
+                        org_id
+                    ),
+                    org_id_override=org_id,
                 )
             )
 

@@ -1,0 +1,188 @@
+@use '../../../../../styles/status-chip';
+@use '../../../../../styles/touch';
+
+// The widest row without the title (Human, Test, both rings with numbers, Resolve and ⋯) takes about 450px.
+$usage-numbers-min-width: 480px;
+
+:host {
+    display: block;
+    flex-shrink: 0;
+}
+
+// A container, not a media query: the thread's width depends on the resizable columns beside it.
+:host(:not(.chat-thread-header--phone)) {
+    container: chat-thread-header / inline-size;
+}
+
+@container chat-thread-header (max-width: #{$usage-numbers-min-width - 0.02px}) {
+    .thread-header__usage {
+        --usage-ring-text-display: none;
+    }
+}
+
+// A test conversation, in the thread header.
+// The flow sessions' status chip, so chat chips match every other status chip. Looks: Test = expired,
+// Bot = pending, Awaiting human = waiting, Human = running, Closed = expired.
+.test-chip {
+    @include status-chip.chip;
+    @include status-chip.expired;
+    margin-left: 6px;
+}
+
+.mode-badge {
+    @include status-chip.chip;
+    @include status-chip.pending;
+    flex-shrink: 0;
+
+    &--awaiting_human {
+        @include status-chip.waiting;
+    }
+
+    &--human {
+        @include status-chip.running;
+    }
+
+    &--closed {
+        @include status-chip.expired;
+    }
+}
+
+// One compact row: mode pill, title, Test chip, today's usage rings and the operator's actions; the handoff
+// reason, when there is one, on a muted second line.
+.thread-header {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-height: 48px;
+    padding: 6px 16px;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--color-divider-regular);
+
+    &__row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    &__title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
+
+        // Focusable for its tooltip (the full conversation id).
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+    }
+
+    &__usage {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-left: auto;
+        flex-shrink: 0;
+    }
+
+    // The shared button's host has min-width: 0, so it would shrink and clip its label.
+    &__action {
+        flex-shrink: 0;
+    }
+
+    &__reason {
+        color: var(--color-text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .mode-badge:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+// The thread screen's header on phones: a nav bar (Back, the visitor centred, ⋯), then the mode, Test and today's
+// usage centred under it, then the handoff reason.
+:host(.chat-thread-header--phone) .thread-header {
+    gap: 4px;
+    padding: 0 max(4px, env(safe-area-inset-right, 0px)) 8px max(4px, env(safe-area-inset-left, 0px));
+
+    .thread-header__row {
+        flex-wrap: wrap;
+        justify-content: center;
+        padding: 0 8px;
+    }
+
+    .thread-header__usage {
+        margin-left: 0;
+    }
+
+    .thread-header__reason {
+        padding: 0 8px;
+        text-align: center;
+    }
+}
+
+.thread-header__nav {
+    display: grid;
+    grid-template-columns: minmax(touch.$target-size, 1fr) minmax(0, max-content) minmax(touch.$target-size, 1fr);
+    align-items: center;
+    gap: 4px;
+    min-height: touch.$target-size;
+
+    .thread-header__title {
+        text-align: center;
+    }
+}
+
+.thread-header__back {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    max-width: 100%;
+    min-height: touch.$target-size;
+    padding: 0 8px 0 0;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--accent-color);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+    cursor: pointer;
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: -1px;
+    }
+}
+
+.thread-header__back-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.thread-header__nav-end {
+    justify-self: end;
+    display: flex;
+}
+
+// On All desks, which desk the conversation came in on (Back only says All desks).
+.thread-header__desk {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-secondary);
+}

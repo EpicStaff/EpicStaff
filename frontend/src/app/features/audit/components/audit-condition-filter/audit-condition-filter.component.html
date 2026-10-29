@@ -1,0 +1,61 @@
+@for (group of groups(); track group.id; let groupIndex = $index) {
+    @if (groupIndex > 0) {
+        <app-audit-select
+            class="conditions-filter__group-join"
+            [options]="joinOptions"
+            [value]="group.join"
+            (valueChange)="setGroupJoin(group.id, $event)"
+            ariaLabel="Join with previous group"
+        />
+    }
+
+    <div
+        class="conditions-filter__group"
+        [class.conditions-filter__group--framed]="groups().length > 1"
+        cdkDropList
+        (cdkDropListDropped)="reorderCondition(group.id, $event)"
+    >
+        @for (condition of group.conditions; track condition.id; let index = $index) {
+            <div
+                class="conditions-filter__draggable"
+                cdkDrag
+            >
+                <span
+                    class="conditions-filter__drag-handle"
+                    cdkDragHandle
+                >
+                    <app-svg-icon
+                        icon="drag-handle"
+                        size="12px"
+                    />
+                </span>
+
+                <app-audit-condition-row
+                    [condition]="condition"
+                    (conditionChange)="updateCondition(group.id, $event)"
+                    [operators]="operators()"
+                    [showJoin]="index > 0"
+                    [showKey]="showKey()"
+                    [keyOptions]="keyOptions()"
+                    (removed)="removeCondition(group.id, condition.id)"
+                />
+            </div>
+        }
+
+        <button
+            class="conditions-filter__add"
+            type="button"
+            (click)="addCondition(group.id)"
+        >
+            + Add condition
+        </button>
+    </div>
+}
+
+<button
+    class="conditions-filter__add conditions-filter__add--group"
+    type="button"
+    (click)="addGroup()"
+>
+    + Add group
+</button>

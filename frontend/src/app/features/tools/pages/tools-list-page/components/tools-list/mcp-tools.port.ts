@@ -30,6 +30,14 @@ export class McpToolsPort implements ToolsListPort<GetMcpToolRequest> {
         favoriteOf: (t) => t.is_favorite,
         searchableTextOf: (t) => [t.name, t.tool_name, t.transport],
         updatedAtOf: (t) => t.updated_at,
+        fieldTextsOf: (t, labelById) => ({
+            name: [t.name, t.tool_name],
+            description: [t.transport],
+            label: (t.labels ?? [])
+                .map((id) => labelById.get(id))
+                .filter(Boolean)
+                .flatMap((l) => [l!.name, l!.full_path]),
+        }),
     };
 
     public readonly createdEvent$: Observable<GetMcpToolRequest> = this.events.mcpToolCreated$;
@@ -102,7 +110,7 @@ export class McpToolsPort implements ToolsListPort<GetMcpToolRequest> {
             data: {},
             maxWidth: '95vw',
             maxHeight: '90vh',
-            autoFocus: true,
+            autoFocus: false,
         });
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (result) this.events.emitMcpToolCreated(result);

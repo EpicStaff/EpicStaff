@@ -1,8 +1,10 @@
 import ntpath
+import re
 
 from django.core.exceptions import SuspiciousFileOperation
 from django.db import models
 from loguru import logger
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
@@ -11,6 +13,17 @@ from tables.models.base_models import (
     SoftDeleteMixin,
     soft_delete_consistency_constraint,
 )
+
+_WHITESPACE_CONTROL_CHARS_RE = re.compile(r"[\n\t]")
+_C0_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def clean_collection_description(description: str) -> str:
+    """Turn newlines and tabs into spaces, drop other C0 control chars, trim.
+
+    Not capped like tool descriptions: the 2000-character limit is checked on input.
+    """
+    return _C0_CONTROL_CHARS_RE.sub("", _WHITESPACE_CONTROL_CHARS_RE.sub(" ", description)).strip()
 
 
 def _is_bare_file_name(file_name: str) -> bool:
@@ -29,7 +42,7 @@ def _is_bare_file_name(file_name: str) -> bool:
     return "/" not in file_name and "\\" not in file_name
 
 
-class SourceCollection(OrgScopedModel, SoftDeleteMixin, models.Model):
+class SourceCollection(OrgScopedModel, LastEditTrackedModel, SoftDeleteMixin, models.Model):
     objects = ActiveManager()
     all_objects = models.Manager()
 
@@ -69,8 +82,6 @@ class SourceCollection(OrgScopedModel, SoftDeleteMixin, models.Model):
         default=SourceCollectionOrigin.USER,
     )
 
-    # TODO: change to OneToMany relation with User model after implementation auth
-    user_id = models.CharField(max_length=120, default="dummy_user", blank=True)
     status = models.CharField(
         max_length=20,
         choices=SourceCollectionStatus.choices,
@@ -87,7 +98,7 @@ class SourceCollection(OrgScopedModel, SoftDeleteMixin, models.Model):
             soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "collection_name"],
-                condition=models.Q(is_soft_deleted=False),
+                condition=models.Q(active=True),
                 name="unique_collection_name_per_org",
             ),
         ]
@@ -122,6 +133,7 @@ class SourceCollection(OrgScopedModel, SoftDeleteMixin, models.Model):
         ):
             self.collection_name = self._generate_unique_collection_name(base_name)
 
+        self.description = clean_collection_description(self.description)
         super().save(*args, **kwargs)
 
     def update_collection_status(self):

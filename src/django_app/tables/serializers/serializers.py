@@ -1,3 +1,7 @@
+from urllib.parse import urlsplit
+
+from django.conf import settings
+from rbac.models.enums import ResourceType
 from rest_framework import serializers
 from tables.import_export.services.partial_export_service import (
     LIST_KEY_TO_ENTITY_TYPE,
@@ -6,6 +10,17 @@ from tables.models import PythonCode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
 from tables.models.session_models import Session
+from tables.serializers.naive_rag_serializers import DocumentConfigEstimateOverrideSerializer
+from tables.serializers.utils.bulk_ids import (
+    BULK_DELETE_MAX_IDS,
+    BulkIdListField,
+    BulkIdListSerializer,
+)
+from tables.serializers.utils.list_fields import BoundedListField
+from tables.services.code_run_targets import CODE_RUN_TARGETS
+from tables.services.delete_services.usage import SkipReason
+from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
+from tables.validators.trigger_payload_validator import validate_trigger_payload
 
 
 class ToolUsageSerializer(serializers.Serializer):
@@ -63,18 +78,50 @@ class RunSessionSerializer(serializers.Serializer):
     # agent session that triggered it. Not exposed by any UI form — purely a
     # programmatic/tool-runtime input.
     parent_session_id = serializers.IntegerField(required=False, allow_null=True)
-    # optional run-level token budget hard stop. Not exposed
-    # by any UI form. Threaded to crew via SessionData.initial_state's
-    # reserved "__token_budget__" key (see
-    # SessionManagerService.create_session_data) rather than a new typed
-    # SessionData field. Omitted/None (default) means "no limit" -- inert
-    # for every existing caller.
+    # Optional run-level token hard stop, not exposed by any UI form; the only per-run
+    # override. Omitted/None falls back to crew's CREW_TOKEN_BUDGET (0 means no limit).
     token_budget = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    # Delivered by the session callback sender once the run reaches a terminal
+    # status. Only the system API key may set these (the view enforces it); the
+    # host must be on SESSION_CALLBACK_ALLOWED_HOSTS so the sender cannot be
+    # aimed at an internal service.
+    # CharField, not URLField: URLField rejects single-label hosts such as `chat`,
+    # which is how compose services are addressed; the allowlist below is the guard.
+    callback_url = serializers.CharField(required=False, allow_null=True, max_length=2048)
+    callback_secret = serializers.CharField(
+        required=False, allow_null=True, min_length=32, max_length=256, trim_whitespace=False
+    )
+
+    def validate_callback_url(self, value):
+        if value is None:
+            return None
+        parts = urlsplit(value)
+        if parts.scheme not in ("http", "https"):
+            raise serializers.ValidationError("Enter a valid http(s) URL.")
+        try:
+            parts.port  # noqa: B018 -- reading it is the validation
+        except ValueError:
+            raise serializers.ValidationError("Invalid port in callback URL.") from None
+        host = (parts.hostname or "").lower()
+        if host not in settings.SESSION_CALLBACK_ALLOWED_HOSTS:
+            raise serializers.ValidationError("Host is not an allowed callback target.")
+        return value
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
             raise serializers.ValidationError("Either 'graph_id' or 'graph_uuid' must be provided.")
+        if (attrs.get("callback_url") is None) != (attrs.get("callback_secret") is None):
+            raise serializers.ValidationError(
+                {"callback_secret": "callback_url and callback_secret must be given together."}
+            )
         return attrs
+
+
+class SessionTestRunSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+    node_type = serializers.ChoiceField(choices=sorted(TEST_RUN_STRATEGIES))
+    node_id = serializers.IntegerField()
+    payload = serializers.JSONField(validators=[validate_trigger_payload])
 
 
 class GetUpdatesSerializer(serializers.Serializer):
@@ -108,13 +155,13 @@ class BaseToolSerializer(serializers.Serializer):
         repr = {}
         if isinstance(instance, PythonCodeTool):
             repr["unique_name"] = f"python-code-tool:{instance.pk}"
-            repr["data"] = PythonCodeToolSerializer(instance).data
+            repr["data"] = PythonCodeToolSerializer(instance, context=self.context).data
         elif isinstance(instance, McpTool):
             repr["unique_name"] = f"mcp-tool:{instance.pk}"
-            repr["data"] = McpToolSerializer(instance).data
+            repr["data"] = McpToolSerializer(instance, context=self.context).data
         elif isinstance(instance, PythonCodeToolConfig):
             repr["unique_name"] = f"python-code-tool-config:{instance.pk}"
-            repr["data"] = PythonCodeToolConfigSerializer(instance).data
+            repr["data"] = PythonCodeToolConfigSerializer(instance, context=self.context).data
         else:
             raise TypeError(f"Unsupported tool type for serialization: {type(instance)}")
 
@@ -140,12 +187,141 @@ class ProcessRagIndexingSerializer(serializers.Serializer):
     document_config_ids = serializers.ListField(child=serializers.IntegerField(min_value=1))
 
 
+class ProcessRagIndexingEstimateSerializer(ProcessRagIndexingSerializer):
+    """Estimate request: the indexing body plus optional unsaved per-document chunking settings."""
+
+    document_configs = DocumentConfigEstimateOverrideSerializer(
+        many=True, required=False, default=list
+    )
+
+    def validate_document_configs(self, document_configs):
+        config_ids = [item["document_config_id"] for item in document_configs]
+        if len(config_ids) != len(set(config_ids)):
+            raise serializers.ValidationError("document_config_id must be unique.")
+        return document_configs
+
+    def validate(self, attrs):
+        extra_ids = {item["document_config_id"] for item in attrs["document_configs"]} - set(
+            attrs["document_config_ids"]
+        )
+        if extra_ids:
+            raise serializers.ValidationError(
+                {
+                    "document_configs": (
+                        f"document_config_id not in document_config_ids: {sorted(extra_ids)}"
+                    )
+                }
+            )
+        return attrs
+
+
 class BulkExportSerializer(serializers.Serializer):
     ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         allow_empty=False,
         help_text="List of entity IDs",
     )
+
+    def validate_ids(self, ids: list[int]) -> list[int]:
+        # Callers compare the number of rows found against len(ids), so a
+        # repeated id would otherwise be reported as a missing entity.
+        return list(dict.fromkeys(ids))
+
+
+class BulkDeleteQuerySerializer(serializers.Serializer):
+    dry_run = serializers.BooleanField(
+        default=False,
+        help_text=(
+            "Preview only: report what would be deleted and the usage that blocks "
+            "the rest, without deleting anything. A preview always responds 200. "
+            "This is a query parameter: a `dry_run` field in the request body is "
+            "rejected with 400, as is any body key other than `ids`. A blank or "
+            "repeated `dry_run` is rejected with 400 too."
+        ),
+    )
+
+    def to_internal_value(self, data):
+        # A QueryDict reads a blank `?dry_run` as absent and a repeated one as its
+        # last value; either would turn the caller's preview into a real delete.
+        values = data.getlist("dry_run")
+        if len(values) > 1 or values == [""]:
+            raise serializers.ValidationError({"dry_run": ["Pass dry_run once, as true or false."]})
+        return super().to_internal_value(data)
+
+
+class BulkDeleteRequestSerializer(serializers.Serializer):
+    """Request body for every bulk-delete action (BulkDeleteActionMixin).
+
+    The algorithm is shared through BaseDeleteService; each entity declares only
+    its deletable scope and its referencing sources. `dry_run` is not part of the
+    body — it selects the operation, so it travels as a query parameter, read by
+    BulkDeleteQuerySerializer.
+    """
+
+    ids = BoundedListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=BULK_DELETE_MAX_IDS,
+        help_text="List of entity IDs to delete",
+    )
+
+    def validate(self, attrs):
+        # DRF drops unknown body keys silently: a `dry_run` sent here instead of
+        # the query string would turn the caller's preview into a real delete.
+        if self.initial_data.keys() - self.fields.keys():
+            raise serializers.ValidationError(
+                "The body takes only ids; dry_run is a query parameter."
+            )
+        return attrs
+
+
+class BulkIdsSerializer(BulkIdListSerializer):
+    """Request body of the bulk deletes outside BulkDeleteActionMixin: tools and sessions."""
+
+    ids = BulkIdListField(help_text="IDs to delete")
+
+
+class UsageRefSerializer(serializers.Serializer):
+    resource_type = serializers.ChoiceField(choices=ResourceType.choices)
+    id = serializers.IntegerField()
+    name = serializers.CharField(allow_null=True)
+
+
+class UsageBucketSerializer(serializers.Serializer):
+    """One resource type's references. The hidden total never reaches the wire."""
+
+    resource_type = serializers.ChoiceField(choices=ResourceType.choices)
+    visible_count = serializers.IntegerField()
+    visible_sample = UsageRefSerializer(many=True)
+    truncated = serializers.BooleanField()
+
+
+class UsageReportSerializer(serializers.Serializer):
+    blocked = serializers.BooleanField()
+    by_resource_type = UsageBucketSerializer(many=True, source="buckets")
+
+
+class SkippedEntrySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    reason = serializers.ChoiceField(choices=SkipReason.choices)
+
+
+class BulkDeleteResultSerializer(serializers.Serializer):
+    """The response of every bulk-delete action, for every entity.
+
+    `usage` is keyed by entity id; JSON object keys are always strings, so those
+    keys arrive as strings while every other id field is an integer. `usage` is
+    populated on a dry run only — a real delete returns `{}`, keeping the key
+    present so the shape never varies.
+    """
+
+    dry_run = serializers.BooleanField()
+    deleted_count = serializers.IntegerField()
+    deleted_ids = serializers.ListField(child=serializers.IntegerField())
+    deletable_ids = serializers.ListField(child=serializers.IntegerField())
+    not_found_ids = serializers.ListField(child=serializers.IntegerField())
+    skipped = SkippedEntrySerializer(many=True)
+    usage = serializers.DictField(child=UsageReportSerializer())
 
 
 class GraphNodesPartialExportSerializer(serializers.Serializer):
@@ -210,6 +386,14 @@ class SessionExportAllSerializer(serializers.Serializer):
     )
     node_name = serializers.CharField(required=False)
     is_error_cause = serializers.BooleanField(required=False)
+    id_search = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text=(
+            "Keep sessions whose id contains this value (`12` matches 12, 112, 1203). "
+            "Blank means no filtering; a value with non-digits matches nothing."
+        ),
+    )
     created_at_after = serializers.DateTimeField(required=False)
     created_at_before = serializers.DateTimeField(required=False)
     finished_at_after = serializers.DateTimeField(required=False)
@@ -234,13 +418,30 @@ class InspectImportRequestSerializer(serializers.Serializer):
     file = serializers.FileField()
 
 
+class CodeRunTargetSerializer(serializers.Serializer):
+    type = serializers.ChoiceField(choices=sorted(CODE_RUN_TARGETS))
+    id = serializers.IntegerField(min_value=1)
+
+
 class RunPythonCodeSerializer(serializers.Serializer):
+    """Exactly one of `target` (a code slot of a node, run as a real run would)
+    or `python_code_id` (the bare code, without the node's storage)."""
+
     python_code_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCode.objects.all(),
         source="python_code",
+        required=False,
     )
+    target = CodeRunTargetSerializer(required=False)
     variables = serializers.DictField(
         child=serializers.JSONField(),
         required=False,
         default=dict,
     )
+
+    def validate(self, attrs):
+        if ("target" in attrs) == ("python_code" in attrs):
+            raise serializers.ValidationError(
+                "Provide exactly one of `target` or `python_code_id`."
+            )
+        return attrs

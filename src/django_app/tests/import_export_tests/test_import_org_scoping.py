@@ -18,6 +18,7 @@ from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.schemas import ImportSettings
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 @pytest.fixture
@@ -40,8 +41,10 @@ class TestStrictCrossOrg:
         self, exportable_agent_definition, export_service, org_b
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [exportable_agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         id_mapper, _ = _import(export_data, org_b.id)
 
@@ -51,7 +54,7 @@ class TestStrictCrossOrg:
         new_definition = AgentDefinition.objects.get(
             id=id_mapper.get_created_ids(EntityType.AGENT_DEFINITION)[0]
         )
-        assert new_definition.organization_id == org_b.id
+        assert new_definition.org_id == org_b.id
 
         new_cfg_ids = id_mapper.get_created_ids(EntityType.LLM_CONFIG)
         assert new_cfg_ids, "LLM config should be created in org_b, not reused"
@@ -61,8 +64,10 @@ class TestStrictCrossOrg:
         self, exportable_agent_definition, export_service, default_org
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [exportable_agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         id_mapper, _ = _import(export_data, default_org.id)
 
@@ -139,7 +144,9 @@ class TestMcpAndLabelCrossOrg:
         )
         graph.labels.add(flow_label, tool_label)
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         id_mapper, _ = ImportService(entity_registry).import_data(
             export_data,
@@ -160,8 +167,10 @@ class TestHybridCrossOrg:
         self, exportable_agent_definition, export_service, org_b
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [exportable_agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         id_mapper, _ = _import(export_data, org_b.id)
 
@@ -245,7 +254,7 @@ class TestWebhookAndGraphCrossOrg:
         wt = WebhookTrigger.objects.create(path="shared-path", org=default_org)
         graph = Graph.objects.create(name="src flow", org=default_org)
         code = PythonCode.objects.create(
-            code="def main(): ...", entrypoint="main", libraries=""
+            code="def main(): ...", entrypoint="main"
         )
         WebhookTriggerNode.objects.create(
             graph=graph, node_name="wt", webhook_trigger=wt, python_code=code
@@ -262,7 +271,9 @@ class TestWebhookAndGraphCrossOrg:
         self, rich_seeded_db, export_service, org_b
     ):
         graph = rich_seeded_db["graph"]  # "graph1" in default_org
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         id_mapper, _ = _import(export_data, org_b.id)
 

@@ -18,6 +18,7 @@ from tables.import_export.registry import entity_registry
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.services.secrets import secret_service
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 @pytest.fixture
@@ -71,8 +72,10 @@ class TestImportedLLMConfigApiKeyNotLeaked:
         existing_config.save()
 
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [exportable_agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         mapper = _build_identity_mapper(export_data)
         strategy = entity_registry.get_strategy(EntityType.LLM_CONFIG)
@@ -96,7 +99,9 @@ class TestImportedGraphHasOrganizationStamped:
         imported graph pointing at the default organization.
         """
         graph = rich_seeded_db["graph"]
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         id_mapper, _ = import_service.import_data(
             export_data, EntityType.GRAPH, org_id=default_org.id
