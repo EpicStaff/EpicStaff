@@ -486,6 +486,7 @@ class TestBackwardCompatibility:
             graph=graph,
             declarations={"nodes": {"999": {"python_code": ["STRIPE_KEY"]}}},
             node_mapper=IDMapper(),
+            user=None,
         )
 
         manager.change_old_warnings_ids(warnings, IDMapper())

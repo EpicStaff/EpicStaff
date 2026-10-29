@@ -1,6 +1,7 @@
 """Node uuids through export and import: kept when a file replaces its flow, new otherwise."""
 
 from copy import deepcopy
+from uuid import UUID
 
 import pytest
 from django.utils import timezone
@@ -24,6 +25,7 @@ from tests.graph_node_builders import (
     create_node,
     node_uuids_by_model,
 )
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import acme, beta  # noqa: F401
 
 by_model_name = {"ids": lambda model: model.__name__}
@@ -36,7 +38,9 @@ def _flow(org, name="flow"):
 
 
 def _export(export_service, graph):
-    return export_service.export_entities(EntityType.GRAPH, [graph.id])
+    return export_service.export_entities(
+        EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
 
 
 def _import(import_service, export_data, settings, org=None) -> Graph:
@@ -192,17 +196,23 @@ def test_partial_import_twice_into_one_graph_gives_new_distinct_uuids(default_or
             for model, node in nodes.items()
         ],
         org_id=default_org.id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
     )
     assert not export.has_errors, export.errors
     target = _flow(default_org, "target")
 
+    pasted = []
     for _ in range(2):
-        PartialImportService(entity_registry).import_data(
+        result = PartialImportService(entity_registry).import_data(
             export.data, target, org_id=default_org.id
         )
+        pasted += [
+            UUID(node["uuid"])
+            for list_key, rows in result.content.items()
+            if list_key != "edge_list"
+            for node in rows
+        ]
 
-    target_uuids = node_uuids_by_model(target, MULTIPLE_PER_GRAPH_NODE_MODELS)
-    pasted = [node_uuid for model_uuids in target_uuids.values() for node_uuid in model_uuids]
     assert len(pasted) == 2 * len(MULTIPLE_PER_GRAPH_NODE_MODELS)
     assert len(set(pasted)) == len(pasted)
     assert set(pasted).isdisjoint(node.uuid for node in nodes.values())

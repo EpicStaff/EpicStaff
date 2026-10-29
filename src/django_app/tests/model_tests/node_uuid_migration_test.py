@@ -9,16 +9,17 @@ from django.utils import timezone
 from tables.models import Graph
 from tests.graph_node_builders import MULTIPLE_PER_GRAPH_NODE_MODELS, NODE_MODELS, create_node
 
-pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("mock_telegram_service")]
+# The migrations run outside a test transaction: a later one adds an index concurrently,
+# which Postgres refuses inside a transaction block.
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.usefixtures("mock_telegram_service"),
+]
 
 MIGRATION_BEFORE_NODE_UUID = ("tables", "0261_merge_20261007_1300")
 
 
 def _migrate(targets: list[tuple[str, str]]) -> None:
-    # Rows the test just created leave deferred foreign-key checks pending, and
-    # Postgres refuses ALTER TABLE on a table with pending trigger events.
-    with connection.cursor() as cursor:
-        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
     MigrationExecutor(connection).migrate(targets)
 
 
@@ -50,7 +51,17 @@ def existing_nodes(graph, default_org):
     return nodes
 
 
-def test_migration_gives_existing_rows_distinct_uuids_and_keeps_content_hashes(existing_nodes):
+@pytest.fixture
+def latest_schema_afterwards(db):
+    """Migrate back to the latest schema even when the test fails part-way: nothing rolls
+    the schema back outside a test transaction, and later tests need it."""
+    yield
+    _migrate_to_leaves()
+
+
+def test_migration_gives_existing_rows_distinct_uuids_and_keeps_content_hashes(
+    latest_schema_afterwards, existing_nodes
+):
     before = {
         (type(node), node.pk): (node.uuid, type(node)._base_manager.get(pk=node.pk).generate_hash())
         for node in existing_nodes
