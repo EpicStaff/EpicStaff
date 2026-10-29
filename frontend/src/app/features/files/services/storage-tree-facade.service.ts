@@ -33,6 +33,7 @@ import {
 import { StorageDetailsDialogComponent } from '../components/storage-details-dialog/storage-details-dialog.component';
 import { StorageItem, StorageItemInfo, StorageUsage, StorageUsageGroup } from '../models/storage.models';
 import { recycleBinPurgeMessage } from '../utils/recycle-bin-purge.utils';
+import { movedStorageItemsMessage } from '../utils/storage-delete-message.utils';
 import { getFileExtension } from '../utils/storage-file.utils';
 import { toStorageItems } from '../utils/storage-tree.utils';
 import { describeUploadFailures } from '../utils/upload-error.utils';
@@ -765,7 +766,7 @@ export class StorageTreeFacade {
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: () => {
-                            this.toastService.success(`"${item.name}" deleted`);
+                            this.toastService.success(movedStorageItemsMessage([item]));
                             if (this.selectedFile()?.path === item.path) {
                                 this.selectedFile.set(null);
                             }
@@ -825,7 +826,7 @@ export class StorageTreeFacade {
     }
 
     private handleDeleteSelected(selectedItems: StorageItem[]): void {
-        this.deleteItems(selectedItems, 'Selected items deleted', 'Select a file or folder first');
+        this.deleteItems(selectedItems, 'Select a file or folder first');
     }
 
     private handleDownloadAll(): void {
@@ -847,7 +848,7 @@ export class StorageTreeFacade {
 
     private handleDeleteAll(): void {
         const items = this.treeData();
-        this.deleteItems(items, 'All items deleted', 'Nothing to delete', true);
+        this.deleteItems(items, 'Nothing to delete', true);
     }
 
     private filterAllowedFiles(files: File[]): File[] {
@@ -864,12 +865,7 @@ export class StorageTreeFacade {
         return valid;
     }
 
-    private deleteItems(
-        candidates: StorageItem[],
-        successMessage: string,
-        emptyMessage: string,
-        clearSelectedFile: boolean = false
-    ): void {
+    private deleteItems(candidates: StorageItem[], emptyMessage: string, clearSelectedFile: boolean = false): void {
         const items = candidates.filter((item): item is StorageItem & { path: string } => Boolean(item.path));
         if (!items.length) {
             this.toastService.info(emptyMessage);
@@ -890,7 +886,7 @@ export class StorageTreeFacade {
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: () => {
-                            this.toastService.success(successMessage);
+                            this.toastService.success(movedStorageItemsMessage(items));
                             if (clearSelectedFile) {
                                 this.selectedFile.set(null);
                             } else if (

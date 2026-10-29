@@ -13,6 +13,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, RealtimeChannel, ResourceCode } from '@shared/models';
 import { RealtimeChannelService } from '@shared/services';
+import { movedToRecycleBinMessage } from '@shared/utils';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
@@ -155,7 +156,9 @@ export class VoiceSettingsSectionComponent implements OnInit {
                         .subscribe({
                             next: () => {
                                 this.channels.update((chs) => chs.filter((c) => c.id !== channel.id));
-                                this.toastService.success(`Channel "${channel.name}" deleted`);
+                                this.toastService.success(
+                                    movedToRecycleBinMessage(1, 'voice channel', 'voice channels')
+                                );
                             },
                             error: () => this.toastService.error('Failed to delete channel'),
                         });

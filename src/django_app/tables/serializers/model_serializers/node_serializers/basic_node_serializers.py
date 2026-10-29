@@ -1,6 +1,8 @@
 from collections import Counter
+from collections.abc import Mapping
 
 import jsonschema
+from agents.exceptions import SurfaceValidationError
 from agents.models.agent_models import AgentDefinition
 from agents.models.surface_models import Surface
 from agents.serializers.inline_surface_serializers import (
@@ -13,7 +15,9 @@ from agents.services.agent_inline_surface_service import AgentInlineSurfaceServi
 from agents.services.inline_surface_service import InlineSurfaceService
 from agents.validators.surface_validator import SurfaceValidator
 from django.db import transaction
+from rbac.access.resolver import resolve_request_permissions
 from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
+from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.graph_models import (
@@ -316,7 +320,54 @@ class EdgeSerializer(
         return attrs
 
 
+class SurfaceReadGateMixin:
+    """Hides a node's `surface_list` / `inline_surface` from callers without surfaces
+    READ, and ignores both fields in their writes.
+
+    The editor posts back what it was shown, so the hidden (empty) values must not
+    clear the node's surfaces, nor may such a caller attach surfaces it cannot read.
+    The fields are dropped before validation, so their errors cannot reveal which
+    surface ids exist.
+    """
+
+    def _can_read_surfaces(self) -> bool:
+        request = self.context.get("request")
+        if request is None:
+            return False
+        return resolve_request_permissions(request).can(ResourceType.SURFACES, Permission.READ)
+
+    def to_internal_value(self, data):
+        # A non-mapping body is left for super() to reject with its usual error.
+        if isinstance(data, Mapping) and not self._can_read_surfaces():
+            data = data.copy()
+            data.pop("surface_list", None)
+            data.pop("inline_surface", None)
+        return super().to_internal_value(data)
+
+    def _validate_node_surfaces(self, validate_surfaces, surfaces, agent_definition):
+        """Run `validate_surfaces`, hiding which surfaces failed from a caller who cannot read them."""
+        try:
+            validate_surfaces(surfaces=surfaces, agent_definition=agent_definition)
+        except SurfaceValidationError:
+            if self._can_read_surfaces():
+                raise
+            raise SurfaceValidationError(
+                detail={
+                    "agent_definition": "This node has surfaces that the selected agent "
+                    "cannot use. Ask someone who can view surfaces to update them first."
+                }
+            ) from None
+
+    def _redact_surfaces(self, data):
+        """Blank the surface fields of a rendered node; call last in `to_representation`."""
+        if not self._can_read_surfaces():
+            data["surface_list"] = []
+            data["inline_surface"] = None
+        return data
+
+
 class TaskNodeSerializer(
+    SurfaceReadGateMixin,
     ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
@@ -358,9 +409,8 @@ class TaskNodeSerializer(
         else:
             agent_definition = self.instance.agent_definition if self.instance else None
 
-        SurfaceValidator.validate_task_node_surfaces(
-            surfaces=surfaces,
-            agent_definition=agent_definition,
+        self._validate_node_surfaces(
+            SurfaceValidator.validate_task_node_surfaces, surfaces, agent_definition
         )
 
         return attrs
@@ -393,7 +443,7 @@ class TaskNodeSerializer(
         data = super().to_representation(instance)
         inline = getattr(instance, "inline_surface", None)
         data["inline_surface"] = InlineSurfaceReadSerializer(inline).data if inline else None
-        return data
+        return self._redact_surfaces(data)
 
 
 class AgentNodeTaskWriteSerializer(serializers.Serializer):
@@ -431,6 +481,7 @@ class AgentNodeTaskReadSerializer(serializers.ModelSerializer):
 
 
 class AgentNodeSerializer(
+    SurfaceReadGateMixin,
     ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
@@ -458,6 +509,7 @@ class AgentNodeSerializer(
 
     def validate(self, attrs):
         if "tasks" in attrs:
+            self._validate_task_ids_belong_to_node(attrs["tasks"])
             self._validate_tasks(attrs["tasks"])
 
         if "surface_list" in attrs:
@@ -475,12 +527,30 @@ class AgentNodeSerializer(
         else:
             agent_definition = self.instance.agent_definition if self.instance else None
 
-        SurfaceValidator.validate_agent_node_surfaces(
-            surfaces=surfaces,
-            agent_definition=agent_definition,
+        self._validate_node_surfaces(
+            SurfaceValidator.validate_agent_node_surfaces, surfaces, agent_definition
         )
 
         return attrs
+
+    def _validate_task_ids_belong_to_node(self, tasks_data):
+        # A task id that is not one of this node's tasks (deleted, or owned by
+        # another node) would otherwise be created as a new row while its
+        # context links keep the stale id, breaking the FK or linking across nodes.
+        supplied_ids = {task["id"] for task in tasks_data if task.get("id")}
+        if not supplied_ids:
+            return
+
+        if self.instance is None:
+            known_ids = set()
+        else:
+            known_ids = set(self.instance.tasks.values_list("id", flat=True))
+
+        unknown_ids = sorted(supplied_ids - known_ids)
+        if unknown_ids:
+            raise serializers.ValidationError(
+                {"tasks": f"Unknown task id(s) for this agent node: {unknown_ids}"}
+            )
 
     @staticmethod
     def _validate_tasks(tasks_data):
@@ -609,10 +679,23 @@ class AgentNodeSerializer(
         data["tasks"] = AgentNodeTaskReadSerializer(instance.tasks.all(), many=True).data
         inline = getattr(instance, "inline_surface", None)
         data["inline_surface"] = AgentInlineSurfaceReadSerializer(inline).data if inline else None
-        return data
+        return self._redact_surfaces(data)
 
 
 class AgentNodeTaskSerializer(serializers.ModelSerializer):
+    agent_node = OrgScopedPrimaryKeyRelatedField(
+        queryset=AgentNode.objects.all(),
+        org_lookup="graph__org_id",
+        help_text="Parent AgentNode this task belongs to.",
+    )
+    context_tasks = OrgScopedPrimaryKeyRelatedField(
+        queryset=AgentNodeTask.objects.all(),
+        many=True,
+        required=False,
+        org_lookup="agent_node__graph__org_id",
+        help_text="Earlier sibling tasks whose outputs are injected as context for this task.",
+    )
+
     class Meta:
         model = AgentNodeTask
         fields = [

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from manager.domain.enums import VenvStatus
+from manager.domain.enums import VenvOrder, VenvStatus
 from manager.domain.models import DEFAULT_VENV_NAME, Venv
 from manager.domain.ports import AbstractVenvRepository
 
@@ -56,15 +56,32 @@ class FakeVenvRepository(AbstractVenvRepository):
         self._next_id += 1
         return stored.model_copy(deep=True)
 
-    async def list(self, *, ids=None, limit=None, offset=None) -> tuple[list[Venv], int]:
+    async def list(
+        self,
+        *,
+        ids=None,
+        name_contains=None,
+        order=VenvOrder.DEFAULT,
+        limit=None,
+        offset=None,
+    ) -> tuple[list[Venv], int]:
         if ids is not None and not ids:
             return [], 0
 
         rows = list(self.rows.values())
         if ids is not None:
             rows = [row for row in rows if row.id in ids]
+        if name_contains:
+            # A plain substring, the way the escaped ILIKE pattern of the real repository
+            # matches: what the caller typed as `%` or `_` is that character, not a wildcard.
+            term = name_contains.lower()
+            rows = [row for row in rows if term in row.name.lower()]
 
         total = len(rows)
+        if order is VenvOrder.DEFAULT:
+            rows.sort(key=lambda row: row.id)
+        else:
+            rows.sort(key=lambda row: row.name.lower(), reverse=order is VenvOrder.NAME_DESC)
         if offset is not None:
             rows = rows[offset:]
         if limit is not None:

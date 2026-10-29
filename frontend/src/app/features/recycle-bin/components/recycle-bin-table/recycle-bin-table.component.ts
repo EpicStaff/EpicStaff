@@ -57,7 +57,7 @@ import {
     INITIAL_COLUMN_DIRECTIONS,
     kindFilterNarrows,
 } from '../../utils/recycle-bin-query.util';
-import { isExpandableItem } from '../../utils/recycle-bin-rows.util';
+import { isExpandableItem, unlistedContentsCount } from '../../utils/recycle-bin-rows.util';
 import { purgeDate, timeLeftLabel } from '../../utils/recycle-bin-time.util';
 
 // Widths follow the Secrets list (name flexes, the rest 128px, actions 96px).
@@ -244,6 +244,7 @@ export class RecycleBinTableComponent {
     protected readonly contentLabels = RECYCLE_BIN_CONTENT_LABELS;
     protected readonly contentVisuals = RECYCLE_BIN_CONTENT_VISUALS;
     protected readonly showAllLimit = RECYCLE_BIN_SHOW_ALL_LIMIT;
+    protected readonly moreCount = unlistedContentsCount;
     protected readonly unknownUser = UNKNOWN_USER;
 
     private readonly locale = inject(LOCALE_ID);
@@ -286,11 +287,6 @@ export class RecycleBinTableComponent {
     /** "Show all" until the row holds the most it can load; past that the list just says how many more. */
     protected canShowAll(item: RecycleBinItem): boolean {
         return item.contents.length < RECYCLE_BIN_SHOW_ALL_LIMIT;
-    }
-
-    /** Contents the backend counted but didn't send (it lists at most 100). */
-    protected moreCount(item: RecycleBinItem): number {
-        return Math.max(0, item.contentsTotal - item.contents.length);
     }
 
     protected onFilterChange(key: 'kind' | 'count', value: unknown): void {

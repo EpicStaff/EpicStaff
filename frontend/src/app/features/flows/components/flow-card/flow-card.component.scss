@@ -40,6 +40,11 @@
         margin-left: -12px;
     }
 
+    &.drag-over {
+        outline: 2px dashed var(--accent-color);
+        background: var(--purple-alpha-8);
+    }
+
     .selection-checkbox {
         display: flex;
         align-items: center;
@@ -206,6 +211,11 @@
 
             &:hover {
                 background: var(--graphite-690);
+            }
+
+            &.drag-over {
+                outline: 2px dashed var(--accent-color);
+                background: var(--purple-alpha-8);
             }
 
             .subflow-main {

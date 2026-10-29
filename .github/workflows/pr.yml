@@ -151,13 +151,13 @@ jobs:
           # src/docker-compose.yaml defines it (image, init script, pg_hba.conf).
           filter plugins_db "^(src/es_plugins/|src/plugins_db/|src/plugin_sdk/|plugin-samples/weather/database/|plugin-samples/weather/backend/|src/docker-compose\.yaml$|$backend_wide)"
 
-          # The manager's session purge and the Django schema it deletes from:
-          # any app's models or migrations (a new foreign key to Session, a
-          # changed table), the callback statuses the contract test compares,
-          # Django's settings, dependencies and test set-up (the manager's tests
-          # migrate with them, the contract test loads them), crewdb's role
-          # grants, and the env file the job generates.
-          filter retention "^(src/manager/|src/crewdb/|src/django_app/[^/]+/(models/|models\.py$|migrations/)|src/django_app/tables/services/session_callbacks/|src/django_app/django_app/settings/|src/django_app/(pyproject\.toml|uv\.lock)$|src/django_app/tests/[^/]+\.py$|src/django_app/tests/model_tests/test_session_retention_contract\.py$|src/env\.yaml$|scripts/envtool\.py$|$backend_wide)"
+          # The manager suite and the contract between its session purge and the
+          # Django schema it deletes from: any app's models (a new foreign key to
+          # Session, a changed table), the callback statuses the contract test
+          # compares, the manager role's grant matrix it checks, Django's
+          # settings, dependencies and test set-up (the contract test loads them),
+          # and the env file the job generates.
+          filter retention "^(src/manager/|src/django_app/tables/service_db_grants\.py$|src/django_app/[^/]+/(models/|models\.py$)|src/django_app/tables/services/session_callbacks/|src/django_app/django_app/settings/|src/django_app/(pyproject\.toml|uv\.lock)$|src/django_app/tests/[^/]+\.py$|src/django_app/tests/model_tests/test_session_retention_contract\.py$|src/env\.yaml$|scripts/envtool\.py$|$backend_wide)"
 
   # Deliberately NOT gated on vars.CLA_ENFORCED, unlike check-cla below. That
   # toggle controls signature enforcement; this is repo hygiene. An edit to
@@ -587,39 +587,21 @@ jobs:
       - name: Unit tests
         run: make chat-tests
 
-  # The manager's nightly purge deletes sessions with raw SQL, so Django's cascade never
-  # runs and only these tests show what it deletes and what it must leave alone (other
-  # organizations' rows, locked rows, sessions with an undelivered callback, flows in the
-  # recycle bin). test_retention_repository_sql.py migrates its own <DB_NAME>_test with
-  # `make django-migrate` and applies the manager role's grants from
-  # src/crewdb/custom-docker-entrypoint.sh. It skips when crewdb is unreachable, which on a
-  # runner would turn a broken database into a green check, so REQUIRE_CREWDB makes that a
-  # failure. The rest of the manager suite runs alongside: it takes seconds and runs nowhere
-  # else. The django file is the other half of the contract: it fails when a new foreign key
-  # to Session is missing from src/shared/retention.py. It reads only model metadata and
-  # needs no database, but every django test clears the Redis cache first (the autouse
-  # clear_cache fixture in tests/fixtures.py), hence the redis service.
+  # The manager suite, which runs nowhere else and needs neither a database nor Redis,
+  # and django_app's session retention contract. The manager's nightly purge deletes
+  # sessions with raw SQL, so Django's cascade never runs; the contract test fails when a
+  # new foreign key to Session is missing from src/shared/retention.py, or a table the
+  # purge touches is not granted to the manager role in
+  # src/django_app/tables/service_db_grants.py. Neither runs the purge SQL against a
+  # database. The contract test reads only model metadata and the grant matrix, so
+  # pytest-django creates no test database, but every django test clears the Redis cache
+  # first (the autouse clear_cache fixture in tests/fixtures.py), hence the redis service.
   retention-purge-tests:
     needs: changes
     if: needs.changes.outputs.retention == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
-      crewdb:
-        # The base image of src/crewdb/Dockerfile.crewdb (Postgres with pgvector, which the
-        # migrations need), pinned to its multi-arch index digest. The custom image only adds
-        # curl and the entrypoint that creates the service roles; the manager's role is
-        # created in a step below.
-        image: ankane/pgvector:v0.5.1@sha256:d3a9d8ac27bb7e05e333ef25b634d2625adaa85336ab729954b9e94859bf6fa7
-        env:
-          POSTGRES_USER: root_user
-          POSTGRES_PASSWORD: root_password
-          POSTGRES_DB: epicstaff_db
-        ports: ["5432:5432"]
-        # Over TCP: during initdb the image runs a temporary server on the socket only,
-        # which a socket check would report as ready.
-        options: >-
-          --health-cmd "pg_isready -h 127.0.0.1 -U root_user" --health-interval 5s --health-timeout 5s --health-retries 20
       redis:
         # The stack runs the unpinned `redis` image with an ACL user, set on its command
         # line, which a service container cannot override; this one runs without a
@@ -633,20 +615,12 @@ jobs:
       # interpreter instead of the one set up below.
       UV_PYTHON_DOWNLOADS: never
       # Both settings modules read src/.env, but a variable already in the process
-      # environment wins (Env.read_env never overrides). These point them at the service
-      # containers and keep the credentials in one place with the ones they start with.
-      DB_HOST: 127.0.0.1
-      DB_PORT: "5432"
-      DB_NAME: epicstaff_db
-      DB_USER: root_user
-      DB_PASSWORD: root_password
-      MANAGER_DB_USER: manager_db_user
-      MANAGER_DB_PASSWORD: manager_db_password
+      # environment wins (Env.read_env never overrides). These point django_app at the
+      # redis service container, which runs without a password.
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: "6379"
       REDIS_USER: ""
       REDIS_PASSWORD: ""
-      REQUIRE_CREWDB: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -678,15 +652,6 @@ jobs:
         run: |
           make uv-sync svc=manager
           make uv-sync svc=django_app
-
-      # What create_manager_user in src/crewdb/custom-docker-entrypoint.sh does when crewdb
-      # starts. Without the role the grants test cannot run; the grants themselves come
-      # from the entrypoint, applied by the test.
-      - name: Create the manager role
-        run: >-
-          docker exec ${{ job.services.crewdb.id }}
-          psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME"
-          -c "CREATE USER \"$MANAGER_DB_USER\" WITH PASSWORD '$MANAGER_DB_PASSWORD'"
 
       - name: Manager tests
         run: make manager-tests
