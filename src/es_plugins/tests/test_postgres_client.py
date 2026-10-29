@@ -202,6 +202,34 @@ async def test_a_failure_without_any_error_output_has_no_first_line(tmp_path):
     assert failed.value.first_line is None
 
 
+class Refused(Exception):
+    pass
+
+
+@pytest.mark.parametrize("refusal", ["wants no more", "raises"])
+async def test_a_tool_stopped_with_more_output_than_the_stream_holds_still_ends_the_run(tmp_path, refusal):
+    # The sink takes its time, so the output piles up past what the stream buffers and asyncio
+    # stops reading the pipe: the run must end anyway once the tool is killed.
+    tool(tmp_path, "pg_dump", f"echo $$ > '{tmp_path}/pid'\nexec head -c {64 * 1024 * 1024} /dev/zero\n")
+
+    async def refuse(chunk: bytes) -> bool:
+        await asyncio.sleep(0.5)
+        if refusal == "raises":
+            raise Refused
+        return False
+
+    run = PostgresClient(tmp_path).run("pg_dump", [], login=LOGIN, stdout=refuse)
+    if refusal == "raises":
+        with pytest.raises(Refused):
+            await asyncio.wait_for(run, 10)
+    else:
+        await asyncio.wait_for(run, 10)
+
+    pid = int((tmp_path / "pid").read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
 async def test_a_cancelled_run_kills_the_tool(tmp_path):
     tool(tmp_path, "pg_dump", f"echo $$ > '{tmp_path}/pid'\nexec sleep 60\n")
     run = asyncio.create_task(PostgresClient(tmp_path).run("pg_dump", [], login=LOGIN))
