@@ -88,6 +88,7 @@ TAG_MAP = [
     ("api/admin/roles", "Admin: Roles"),
     # Config / Defaults
     ("api/tool-labels", "Tool Labels"),
+    ("api/agent-labels", "Agent Labels"),
     ("api/labels", "Labels"),
     ("api/secrets", "Secrets"),
     ("api/storage", "Storage"),
@@ -149,6 +150,7 @@ TAGS_ORDER = [
     "Admin: Users",
     "Admin: Roles",
     "Tool Labels",
+    "Agent Labels",
     "Labels",
     "Secrets",
     "Storage",

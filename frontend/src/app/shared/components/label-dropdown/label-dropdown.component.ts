@@ -3,6 +3,7 @@ import { TemplatePortal } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
@@ -11,6 +12,7 @@ import {
     ElementRef,
     HostListener,
     inject,
+    Injector,
     input,
     OnInit,
     output,
@@ -23,7 +25,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { LabelColor, LabelTreeNode } from '@shared/models';
+import { getLabelColorOption, LabelColor, labelColorInTurn, LabelTreeNode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -36,6 +38,10 @@ interface FlatLabelNode {
     depth: number;
 }
 
+const SINGLE_MODE_SEARCH_FROM = 8;
+/** Single mode: the rows arrow keys walk, in on-screen order — the options, then the "+ New" row. */
+const SINGLE_MODE_ROWS = '.labels-listbox > [role="option"], .labels-list > .add-in-place-btn';
+
 /**
  * Feature-agnostic labels picker. Consumers must have LABELS_STORE provided in
  * their injector (see @shared/services/labels-store.token).
@@ -45,6 +51,12 @@ interface FlatLabelNode {
  *   - Custom trigger: set [hideTrigger]="true" and call `openAt(triggerEl)` from
  *     your own click handler. The dropdown is portalled via CDK Overlay so its
  *     position is independent of the component's location in the DOM.
+ *
+ * Selection modes:
+ *   - `multi` (default): checkboxes and a Save footer; emits the checked ids on save.
+ *   - `single`: a click picks one label and closes at once, emitting `[id]`; the
+ *     `emptyOptionLabel` row emits `[]`. Adding a label also picks it. Escape closes
+ *     and focus returns to the trigger. For flat label sets (no sublabels).
  */
 @Component({
     selector: 'app-label-dropdown',
@@ -75,6 +87,12 @@ export class LabelDropdownComponent implements OnInit {
      *  provides its own and calls openAt(element). */
     readonly hideTrigger = input<boolean>(false);
 
+    readonly mode = input<'multi' | 'single'>('multi');
+    /** The word for one label in the panel's copy, e.g. "group". */
+    readonly noun = input<string>('label');
+    /** Single mode only: the row that clears the selection. */
+    readonly emptyOptionLabel = input<string>('None');
+
     /** Full-replacement contract used by single-entity consumers. */
     selectionChange = output<number[]>();
     /**
@@ -93,6 +111,7 @@ export class LabelDropdownComponent implements OnInit {
     private readonly overlayPositionBuilder = inject(OverlayPositionBuilder);
     private readonly vcr = inject(ViewContainerRef);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     readonly isOpen = signal<boolean>(false);
     readonly localCheckedIds = signal<Set<number>>(new Set());
@@ -110,6 +129,19 @@ export class LabelDropdownComponent implements OnInit {
     readonly addLabelError = signal<string>('');
 
     readonly searchTerm = signal<string>('');
+
+    protected readonly isSingle = computed<boolean>(() => this.mode() === 'single');
+    /** A short single-select list is scanned at a glance; search pays off only once it grows. */
+    protected readonly showSearch = computed<boolean>(
+        () => !this.isSingle() || this.labelTree().length >= SINGLE_MODE_SEARCH_FROM
+    );
+    protected readonly pluralTitle = computed<string>(() => {
+        const noun = this.noun();
+        return `${noun.charAt(0).toUpperCase()}${noun.slice(1)}s`;
+    });
+    protected readonly addButtonText = computed<string>(() =>
+        this.isSingle() ? `New ${this.noun()}` : `Add ${this.noun()}`
+    );
 
     readonly labelTree = this.labelsStorage.labelTree;
 
@@ -137,6 +169,8 @@ export class LabelDropdownComponent implements OnInit {
     readonly dropdownTemplate = viewChild.required<TemplateRef<unknown>>('dropdownTemplate');
 
     private overlayRef?: OverlayRef;
+    /** Single mode: where focus returns when the panel closes. */
+    private openedFrom: HTMLElement | null = null;
 
     constructor() {
         effect(() => {
@@ -166,6 +200,7 @@ export class LabelDropdownComponent implements OnInit {
     onDocumentKeydown(event: KeyboardEvent): void {
         if (!this.isOpen()) return;
         if (this.addingRoot() || this.addingChildOf() !== null) return;
+        if (this.isSingle()) return;
 
         if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
             event.preventDefault();
@@ -223,6 +258,77 @@ export class LabelDropdownComponent implements OnInit {
         const portal = new TemplatePortal(this.dropdownTemplate(), this.vcr);
         this.overlayRef.attach(portal);
         this.isOpen.set(true);
+
+        if (this.isSingle()) {
+            this.openedFrom = originElement;
+            this.overlayRef
+                .keydownEvents()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((event) => {
+                    if (this.moveOptionFocus(event)) return;
+                    if (event.key === 'Escape') this.onSingleModeEscape(event);
+                });
+            // Without a search box (a short list), focus starts on the current choice instead.
+            const panel = this.overlayRef.overlayElement;
+            (
+                panel.querySelector<HTMLElement>('.labels-search__input') ??
+                panel.querySelector<HTMLElement>('.tree-row--single.selected')
+            )?.focus();
+        }
+    }
+
+    /**
+     * Single mode, innermost first: Escape cancels an in-place add (focus back on "+ New"), then clears a
+     * non-empty search it was pressed in, and only then closes the panel.
+     */
+    private onSingleModeEscape(event: KeyboardEvent): void {
+        event.preventDefault();
+        if (this.addingRoot()) {
+            this.cancelAdd();
+            afterNextRender(
+                () => this.overlayRef?.overlayElement.querySelector<HTMLElement>('.add-in-place-btn')?.focus(),
+                { injector: this.injector }
+            );
+            return;
+        }
+        const inSearch = document.activeElement?.classList.contains('labels-search__input') ?? false;
+        if (inSearch && this.searchTerm()) {
+            this.searchTerm.set('');
+            return;
+        }
+        this.close();
+    }
+
+    /**
+     * Single mode: Up/Down/Home/End walk the rows ("+ New" included); Down from the search box enters
+     * the list. True when the key was handled. Keys typed into the "new label" input are left alone.
+     */
+    private moveOptionFocus(event: KeyboardEvent): boolean {
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || this.addingRoot()) return false;
+        const panel = this.overlayRef?.overlayElement;
+        if (!panel) return false;
+        const rows = Array.from(panel.querySelectorAll<HTMLElement>(SINGLE_MODE_ROWS));
+        if (!rows.length) return false;
+        const current = rows.indexOf(document.activeElement as HTMLElement);
+        const inSearch = document.activeElement?.classList.contains('labels-search__input') ?? false;
+        if (inSearch && event.key !== 'ArrowDown') return false;
+
+        event.preventDefault();
+        const search = panel.querySelector<HTMLElement>('.labels-search__input');
+        if (event.key === 'ArrowUp' && current <= 0 && search) {
+            search.focus();
+            return true;
+        }
+        const last = rows.length - 1;
+        let next: number;
+        if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = last;
+        else if (event.key === 'ArrowDown') next = current < 0 ? 0 : Math.min(current + 1, last);
+        else next = current <= 0 ? 0 : current - 1;
+
+        rows[next].focus();
+        rows[next].scrollIntoView?.({ block: 'nearest' });
+        return true;
     }
 
     close(): void {
@@ -232,6 +338,18 @@ export class LabelDropdownComponent implements OnInit {
         this.isOpen.set(false);
         this.searchTerm.set('');
         this.cancelAdd();
+        this.openedFrom?.focus();
+        this.openedFrom = null;
+    }
+
+    /** Single mode: picks `id` (or none) and closes. */
+    selectSingle(id: number | null): void {
+        this.selectionChange.emit(id === null ? [] : [id]);
+        this.close();
+    }
+
+    labelColor(node: LabelTreeNode): string {
+        return getLabelColorOption(node.metadata?.color).circleBg;
     }
 
     toggle(): void {
@@ -345,6 +463,16 @@ export class LabelDropdownComponent implements OnInit {
         this.addingChildOf.set(null);
         this.newLabelName.set('');
         this.addLabelError.set('');
+        // Single mode swaps the "+ New" row for the input in place; `autofocus` does not fire there.
+        // It also suggests the next color in turn, so new groups differ unless the user picks one.
+        if (this.isSingle()) {
+            this.newLabelColor.set(labelColorInTurn(this.labelsStorage.labels().length));
+            setTimeout(() =>
+                this.overlayRef?.overlayElement
+                    .querySelector<HTMLInputElement>('.add-label-row--in-place input')
+                    ?.focus()
+            );
+        }
     }
 
     startAddChild(parentId: number): void {
@@ -373,8 +501,9 @@ export class LabelDropdownComponent implements OnInit {
         this.addLabelError.set('');
         const parentId = this.addingChildOf();
         this.labelsStorage.createLabel(name, parentId ?? undefined, this.newLabelColor()).subscribe({
-            next: () => {
+            next: (created) => {
                 this.cancelAdd();
+                if (this.isSingle()) this.selectSingle(created.id);
             },
             error: (err: HttpErrorResponse) => {
                 this.addLabelError.set(this.parseError(err));
@@ -410,8 +539,8 @@ export class LabelDropdownComponent implements OnInit {
             msg.includes('Top-level label with this name already exists') ||
             msg.includes('name, parent must make a unique set')
         ) {
-            return 'This label name already exists. Please try another name.';
+            return `This ${this.noun()} name already exists. Please try another name.`;
         }
-        return 'Failed to save label. Please try again.';
+        return `Failed to save ${this.noun()}. Please try again.`;
     }
 }

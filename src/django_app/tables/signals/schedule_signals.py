@@ -9,6 +9,7 @@ from src.shared.models import (
     ScheduleTriggerNodeUpdateData,
     ScheduleTriggerNodeUpdateMessage,
 )
+
 from tables.models.graph_models import ScheduleTriggerNode
 from tables.services.redis_service import RedisService
 

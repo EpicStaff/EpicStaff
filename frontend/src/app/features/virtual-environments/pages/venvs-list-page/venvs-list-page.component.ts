@@ -7,7 +7,6 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
-    CheckboxComponent,
     ConfirmationDialogService,
     SearchComponent,
     TabButtonComponent,
@@ -50,7 +49,6 @@ const SEARCH_DEBOUNCE_MS = 300;
         MatTooltipModule,
         AppSvgIconComponent,
         ButtonComponent,
-        CheckboxComponent,
         SearchComponent,
         TabButtonComponent,
         HasPermissionDirective,

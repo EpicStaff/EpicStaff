@@ -4,6 +4,7 @@ from django.db import IntegrityError
 from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField, OrgScopedUniqueValidator
 from rest_framework import serializers
+from tables.models.label_models import Label
 from tables.models.llm_models import LLMConfig
 
 from agents.models.agent_models import (
@@ -114,6 +115,7 @@ class AgentDefinitionReadSerializer(LastEditFieldsSerializerMixin, serializers.M
             "max_consecutive_failures",
             "schema_max_retries",
             "metadata",
+            "group",
             "default_surfaces",
             "agent_definition_realtime_config_id",
             "has_realtime_definition",
@@ -134,6 +136,11 @@ class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.
     )
     fcm_llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    group = OrgScopedPrimaryKeyRelatedField(
+        queryset=Label.objects.filter(scope=Label.Scope.AGENT),
         required=False,
         allow_null=True,
     )
@@ -168,6 +175,7 @@ class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.
             "max_consecutive_failures",
             "schema_max_retries",
             "metadata",
+            "group",
             "default_surfaces",
         ]
 

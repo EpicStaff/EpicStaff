@@ -1,7 +1,12 @@
 <div class="color-picker-wrapper">
     <button
+        #triggerButton
         type="button"
         class="color-trigger-btn"
+        cdkOverlayOrigin
+        #trigger="cdkOverlayOrigin"
+        aria-haspopup="listbox"
+        [attr.aria-expanded]="isOpen()"
         (click)="toggle($event)"
         title="Select color"
     >
@@ -27,17 +32,33 @@
         </svg>
     </button>
 
-    @if (isOpen()) {
+    <!-- An overlay, so a scrolling container around the picker (e.g. a dropdown list) cannot clip it. -->
+    <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="trigger"
+        [cdkConnectedOverlayOpen]="isOpen()"
+        [cdkConnectedOverlayPositions]="positions"
+        (attach)="onPanelAttached()"
+        (detach)="isOpen.set(false)"
+        (overlayKeydown)="onPanelKeydown($event)"
+        (overlayOutsideClick)="onOutsideClick($event)"
+    >
         <div
             class="color-options-panel"
-            [class.open-upward]="openUpward()"
+            role="listbox"
+            aria-label="Color"
             (click)="$event.stopPropagation()"
         >
             @for (option of colorOptions; track option.id) {
                 <button
+                    #optionButton
                     type="button"
+                    role="option"
+                    tabindex="-1"
                     class="color-option-btn"
                     [class.selected]="option.id === currentOption.id"
+                    [attr.aria-selected]="option.id === currentOption.id"
+                    [attr.aria-label]="option.id"
                     [title]="option.id"
                     (click)="select(option, $event)"
                 >
@@ -54,5 +75,5 @@
                 </button>
             }
         </div>
-    }
+    </ng-template>
 </div>

@@ -90,3 +90,47 @@
     margin-left: auto;
     flex-shrink: 0;
 }
+
+.crumbs__group {
+    padding: 2px 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font: inherit;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+
+    &:hover,
+    &[aria-expanded='true'] {
+        color: var(--color-text-primary);
+        border-color: var(--color-input-border);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+
+    // "Add to group": a dashed outline makes the empty picker discoverable.
+    &--empty {
+        border-style: dashed;
+        border-color: var(--color-input-border);
+    }
+}
+
+.crumbs__dot {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.crumbs__caret {
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+}
+
+// The picker's panel opens in an overlay; its host only anchors the component.
+app-label-dropdown {
+    display: none;
+}

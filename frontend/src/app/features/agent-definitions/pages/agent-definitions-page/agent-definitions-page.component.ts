@@ -23,7 +23,8 @@ import {
     UnsavedChangesDialogService,
 } from '@shared/components';
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, getLabelColorOption, LABEL_COLOR_OPTIONS, ResourceCode } from '@shared/models';
+import { escapeHtml } from '@shared/utils';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
@@ -34,7 +35,7 @@ import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
 import { AgentDefinition } from '../../models/agent-definition.model';
-import { ExplorerSectionId } from '../../models/explorer.model';
+import { ExplorerSectionId, GroupAssignTarget } from '../../models/explorer.model';
 import { CreateSurfaceRequest } from '../../models/surface.model';
 import { SURFACE_CATEGORIES, SurfaceCategoryConfig, SurfaceCategoryId } from '../../models/surface-category.model';
 import { BranchTreeNode } from '../../models/tree-node.model';
@@ -50,6 +51,8 @@ import { AgentDocPreviewComponent } from './components/agent-doc-preview/agent-d
 import { DetailCrumb, DetailHeaderComponent } from './components/detail-header/detail-header.component';
 import { EmptyDetailComponent } from './components/empty-detail/empty-detail.component';
 import { ExplorerComponent } from './components/explorer/explorer.component';
+import { ExplorerMenuSubject } from './components/explorer/explorer-context-menu/explorer-menu.model';
+import { GROUP_MENU_ACTION } from './components/explorer/explorer-menu.util';
 import {
     ExplorerTreeAttachSurfaceEvent,
     ExplorerTreeMenuEvent,
@@ -167,23 +170,59 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         return SURFACE_CATEGORIES.find((c) => c.id === place) ?? null;
     });
 
+    /** May the user move the selected agent or shared surface to another group? */
+    private readonly canRegroupAgents = computed<boolean>(() => {
+        this.permissions.active();
+        return this.permissions.can(ResourceCode.Agents, ActionCode.Update);
+    });
+
+    private readonly canRegroupSurfaces = computed<boolean>(() => {
+        this.permissions.active();
+        return this.permissions.can(ResourceCode.Surfaces, ActionCode.Update);
+    });
+
     protected readonly surfaceCrumbs = computed<DetailCrumb[]>(() => {
         const sv = this.store.selectedSurfaceView();
         if (!sv) return [];
         if (sv.ownerAgent) {
+            // Under its agent the surface is never grouped itself: the crumb is the agent's group, and picking moves the agent.
             return [
                 { label: 'AGENTS' },
+                ...this.groupCrumb(sv.ownerAgent.group, this.canRegroupAgents()),
                 { label: sv.ownerAgent.name, navAgentId: sv.ownerAgent.id },
                 { label: 'Surfaces', navAgentSurfacesId: sv.ownerAgent.id },
                 { label: sv.surface.name },
             ];
         }
-        return [{ label: 'SHARED SURFACES' }, { label: sv.surface.name }];
+        return [
+            { label: 'SHARED SURFACES' },
+            ...this.groupCrumb(sv.surface.group, sv.surface.owner_agent == null && this.canRegroupSurfaces()),
+            { label: sv.surface.name },
+        ];
+    });
+
+    /** Like an owned surface, an instruction shows its agent's group; picking one moves the agent. */
+    protected readonly docCrumbs = computed<DetailCrumb[]>(() => {
+        const doc = this.store.selectedAgentDoc();
+        if (!doc) return [];
+        return [
+            { label: 'AGENTS' },
+            ...this.groupCrumb(doc.agent.group, this.canRegroupAgents()),
+            { label: doc.agent.name, navAgentId: doc.agent.id },
+            { label: 'Instructions', navAgentInstructionsId: doc.agent.id },
+            { label: doc.instruction.name },
+        ];
     });
 
     protected readonly agentCrumbs = computed<DetailCrumb[]>(() => {
         const agent = this.store.selectedAgent();
-        if (agent) return [{ label: 'AGENTS' }, { label: agent.name }];
+        if (agent) {
+            return [
+                { label: 'AGENTS' },
+                ...this.groupCrumb(agent.group, this.canRegroupAgents()),
+                { label: agent.name },
+            ];
+        }
         const s = this.store.selectedSurface();
         if (s) return [{ label: 'SHARED SURFACES' }, { label: s.name }];
         return [];
@@ -479,7 +518,108 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             this.openExplorerAgentDetails(event);
             return;
         }
+        if (this.applyGroupMenuAction(event)) return;
         this.guardUnsaved(() => this.applyExplorerTreeMenu(event));
+    }
+
+    /**
+     * Applies a group item of an explorer menu; false when the action is not one. Only "New agent in
+     * <group>" changes the selection, so only it asks about unsaved changes.
+     */
+    private applyGroupMenuAction({ node, action }: ExplorerTreeMenuEvent): boolean {
+        if (action.startsWith(GROUP_MENU_ACTION.moveToGroupPrefix)) {
+            const target = this.groupAssignTarget(node);
+            const value = action.slice(GROUP_MENU_ACTION.moveToGroupPrefix.length);
+            if (target) this.store.moveToGroup(target, value === GROUP_MENU_ACTION.ungrouped ? null : Number(value));
+            return true;
+        }
+        if (action === GROUP_MENU_ACTION.newGroup) {
+            this.store.startNewGroup(this.groupAssignTarget(node));
+            return true;
+        }
+        if (node.kind === 'section-header') {
+            if (action !== GROUP_MENU_ACTION.collapseAll && action !== GROUP_MENU_ACTION.expandAll) return false;
+            this.store.setAllGroupsCollapsed(node.section, action === GROUP_MENU_ACTION.collapseAll);
+            return true;
+        }
+        if (node.kind !== 'group-header') return false;
+        const groupId = node.groupId;
+        if (action.startsWith(GROUP_MENU_ACTION.groupColorPrefix)) {
+            const color = action.slice(GROUP_MENU_ACTION.groupColorPrefix.length);
+            const option = LABEL_COLOR_OPTIONS.find((candidate) => candidate.id === color);
+            if (option) this.store.setGroupColor(groupId, option.id);
+            return true;
+        }
+        switch (action) {
+            case GROUP_MENU_ACTION.newAgentInGroup:
+                this.guardUnsaved(() => {
+                    this.storageFacade.selectedFile.set(null);
+                    this.store.beginCreateAgent(groupId);
+                });
+                return true;
+            case GROUP_MENU_ACTION.renameGroup:
+                this.store.startRenameGroup(groupId);
+                return true;
+            case GROUP_MENU_ACTION.deleteGroup:
+                this.confirmDeleteGroup(groupId);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** The agent or shared surface a menu was opened on; owned surfaces follow their agent and are never grouped. */
+    private groupAssignTarget(node: ExplorerMenuSubject): GroupAssignTarget | null {
+        if (node.kind === 'agent') return { kind: 'agent', id: node.agentId };
+        if (node.kind === 'surface' && node.ownerAgentId == null) return { kind: 'surface', id: node.surfaceId };
+        return null;
+    }
+
+    private confirmDeleteGroup(groupId: number): void {
+        const group = this.store.groupsById().get(groupId);
+        if (!group) return;
+        const agentCount = this.store.agents().filter((agent) => agent.group === groupId).length;
+        const surfaceCount = this.store.sharedSurfaces().filter((surface) => surface.group === groupId).length;
+        const members = [
+            agentCount > 0 ? `${agentCount} agent${agentCount === 1 ? '' : 's'}` : '',
+            surfaceCount > 0 ? `${surfaceCount} shared surface${surfaceCount === 1 ? '' : 's'}` : '',
+        ]
+            .filter(Boolean)
+            .join(' and ');
+        const outcome = members ? `Its ${members} will move to Ungrouped.` : 'The group is empty.';
+        this.confirmationDialog
+            .confirm(
+                {
+                    title: 'Delete group',
+                    message: `Delete the <strong>${escapeHtml(group.name)}</strong> group? ${outcome}`,
+                    confirmText: 'Delete',
+                    type: 'danger',
+                    isShownBorder: true,
+                },
+                { width: DELETE_CONFIRM_DIALOG_WIDTH }
+            )
+            .subscribe((result) => {
+                if (result === true) this.store.deleteGroup(groupId);
+            });
+    }
+
+    /**
+     * The group crumb: a picker when `editable` ("Add to group" while ungrouped), else read-only
+     * text of the group, or nothing when there is no group to show.
+     */
+    private groupCrumb(groupId: number | null, editable: boolean): DetailCrumb[] {
+        const group = groupId === null ? undefined : this.store.groupsById().get(groupId);
+        if (!group && !editable) return [];
+        return [
+            {
+                label: group?.name ?? 'Add to group',
+                group: {
+                    groupId: group?.id ?? null,
+                    editable,
+                    color: group ? getLabelColorOption(group.metadata?.color).circleBg : null,
+                },
+            },
+        ];
     }
 
     private applyExplorerTreeMenu({ node, action }: ExplorerTreeMenuEvent): void {

@@ -40,6 +40,7 @@ export class SurfaceSummaryDialogComponent {
             name: `${this.data.placeLabel} summary`,
             instructions: c.instructions,
             owner_agent: null,
+            group: null,
             python_tools: c.python_tools,
             mcp_tools: c.mcp_tools,
             storage_items: c.storage_items,

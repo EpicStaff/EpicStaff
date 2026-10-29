@@ -15,6 +15,7 @@ import { DragHoverDirective, ResizableSectionDirective, ResizableSidebarDirectiv
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SectionHeightService, SidebarWidthService } from '@shared/services';
 
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { StorageItem } from '../../../../../files/models/storage.models';
 import { StorageDragService } from '../../../../../files/services/storage-drag.service';
 import { ExplorerSectionId } from '../../../../models/explorer.model';
@@ -25,6 +26,7 @@ import { AgentsSectionComponent } from './agents-section/agents-section.componen
 import { BranchesFilterComponent } from './branches-filter/branches-filter.component';
 import { ExplorerContextMenuComponent } from './explorer-context-menu/explorer-context-menu.component';
 import { ExplorerMenuItem, ExplorerMenuPosition } from './explorer-context-menu/explorer-menu.model';
+import { groupMenuItems, menuPositionFromClick } from './explorer-menu.util';
 import { StorageSectionComponent } from './storage-section/storage-section.component';
 import { SurfacesSectionComponent } from './surfaces-section/surfaces-section.component';
 
@@ -65,6 +67,7 @@ export class ExplorerComponent {
     protected readonly store: AgentsPageStore = inject(AgentsPageStore);
     private readonly storageDrag = inject(StorageDragService);
     private readonly surfaceDrag = inject(SurfaceDragService);
+    private readonly permissions = inject(PermissionsService);
     private readonly el = inject(ElementRef<HTMLElement>);
     private readonly sidebarWidthService = inject(SidebarWidthService);
     private readonly sectionHeightService = inject(SectionHeightService);
@@ -182,11 +185,25 @@ export class ExplorerComponent {
         this.attachSharedSurface.emit(event);
     }
 
+    /** Opens the menu with the group items for its subject ahead of the subject's own items. */
     onTreeMenuOpen(event: ExplorerTreeMenuOpenEvent): void {
+        const items = [...groupMenuItems(event.node, this.store.groups()), ...event.items].filter((item) =>
+            this.permissions.can(item.resource, item.action)
+        );
+        if (items.length === 0) return;
         this.menuTarget = { node: event.node, trigger: event.trigger };
-        this.menuItems.set(event.items);
+        this.menuItems.set(items);
         this.menuPosition.set(event.position);
         this.menuOpen.set(true);
+    }
+
+    onAgentsSectionMenu(event: MouseEvent): void {
+        this.onTreeMenuOpen({
+            node: { kind: 'section-header', section: 'agents' },
+            items: [],
+            position: menuPositionFromClick(event),
+            trigger: event.currentTarget as HTMLElement,
+        });
     }
 
     onMenuItemAction(action: string): void {
@@ -195,7 +212,9 @@ export class ExplorerComponent {
         if (target) this.treeMenuAction.emit({ ...target, action });
     }
 
+    /** Focus goes back to the ⋮ first, so an action that moves focus elsewhere (rename, a dialog) still wins. */
     closeMenu(): void {
+        this.menuTarget?.trigger.focus();
         this.menuOpen.set(false);
         this.menuTarget = null;
     }

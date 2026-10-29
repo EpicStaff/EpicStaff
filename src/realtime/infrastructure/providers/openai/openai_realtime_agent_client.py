@@ -8,12 +8,12 @@ import websockets
 from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
-from utils.openai_endpoints import derive_realtime_ws_url
 from src.shared.public_error import (
     PublicErrorMessage,
     build_public_error_message,
     new_error_correlation_id,
 )
+from utils.openai_endpoints import derive_realtime_ws_url
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
 from infrastructure.providers.openai.event_handlers.agent_client_event_handler import (

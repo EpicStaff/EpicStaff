@@ -384,3 +384,74 @@
         gap: 0.5rem;
     }
 }
+
+// Single-select mode: "+ New" sits where the new row will appear and turns into the input in place.
+.add-in-place-btn {
+    width: 100%;
+    height: 32px;
+    flex-shrink: 0;
+    border: 1px dashed var(--color-input-border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--color-ks-transparent-text-60);
+    text-align: center;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        outline: none;
+        color: var(--accent-color);
+        border-color: var(--accent-color);
+    }
+}
+
+.add-label-row--in-place {
+    min-width: 0;
+    padding: 0;
+}
+
+.label-error--in-place {
+    margin: 0;
+}
+
+// Single-select mode: a pick list, so rows are compact and the list is taller than the multi editor's.
+.labels-list--single {
+    gap: 4px;
+    max-height: min(420px, 50vh);
+}
+
+// The options inside `.labels-list--single`, spaced like the rows that follow them.
+.labels-listbox {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 4px;
+}
+
+// Single-select mode: each row is a button that picks one label.
+.tree-row--single {
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+    padding: 0 1rem;
+    text-align: left;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+
+    &:focus-visible {
+        outline: none;
+        border-color: var(--accent-color);
+    }
+}
+
+.label-dot {
+    flex-shrink: 0;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+
+    &--empty {
+        border: 1px dashed var(--color-text-secondary);
+    }
+}

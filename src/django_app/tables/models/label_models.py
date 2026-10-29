@@ -9,6 +9,9 @@ class Label(OrgScopedModel, MetadataMixin):
     class Scope(models.TextChoices):
         FLOW = "flow", "Flow"
         TOOL = "tool", "Tool"
+        # One scope shared by agents AND shared surfaces, so a single group
+        # ("Sales") holds both kinds of item. Groups are flat (no parent).
+        AGENT = "agent", "Agent"
 
     name = models.CharField(max_length=100)
     scope = models.CharField(
@@ -16,8 +19,9 @@ class Label(OrgScopedModel, MetadataMixin):
         choices=Scope.choices,
         default=Scope.FLOW,
         db_index=True,
-        help_text="Which independent label tree this label belongs to (Flow labels "
-        "and Tool labels never share instances, even with the same name/parent).",
+        help_text="Which independent label tree this label belongs to: Flow labels, Tool "
+        "labels or agent groups (flat, shared by agents and shared surfaces). Trees never "
+        "share instances, even with the same name/parent.",
     )
     parent = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.CASCADE, related_name="children"
@@ -34,6 +38,10 @@ class Label(OrgScopedModel, MetadataMixin):
                 fields=["org", "scope", "name"],
                 condition=models.Q(parent__isnull=True),
                 name="unique_top_level_label_name_per_org",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(scope="agent") | models.Q(parent__isnull=True),
+                name="agent_label_has_no_parent",
             ),
         ]
 
