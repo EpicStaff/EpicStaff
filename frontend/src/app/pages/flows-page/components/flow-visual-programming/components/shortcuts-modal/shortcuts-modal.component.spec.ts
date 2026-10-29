@@ -347,6 +347,27 @@ describe('ShortcutsModalComponent', () => {
         expect(sectionTitles()).toEqual(BASE_SECTIONS);
     });
 
+    // The columns can only keep a heading with its rows when both sit in one unbreakable box; the rest of
+    // the rows stay outside it so a long section can still continue in the next column.
+    it('keeps every section heading in one box with its first row only', () => {
+        setUp();
+        loadUser([
+            { action: 'node.agent', keys: 'Alt+KeyB' },
+            { action: 'editing.save', keys: null },
+        ]);
+        openModal();
+
+        const headingBoxes = [...BASE_SECTIONS, 'Additional'].map((title) => {
+            const [firstRow, secondRow] = rowElementsOf(title);
+            const box = cardOf(title).querySelector('.shortcuts__card-title')!.parentElement!;
+            return { title, holdsFirstRow: box.contains(firstRow), holdsSecondRow: box.contains(secondRow) };
+        });
+
+        expect(headingBoxes).toEqual(
+            [...BASE_SECTIONS, 'Additional'].map((title) => ({ title, holdsFirstRow: true, holdsSecondRow: false }))
+        );
+    });
+
     it('keeps the same height when minimized', () => {
         setUp();
         openModal();
