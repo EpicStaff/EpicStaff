@@ -74,10 +74,14 @@
     }
 
     .settings-dropdown-item {
+        display: block;
         width: 100%;
         padding: 10px 16px;
+        border: none;
         background: transparent;
+        font-family: inherit;
         font-size: 0.875rem;
+        text-align: left;
         color: var(--text);
         cursor: pointer;
         transition: background 0.15s ease;
@@ -88,6 +92,12 @@
 
         &:hover {
             background: var(--transparent-white-8);
+        }
+
+        // Inset, so the dropdown's overflow clipping cannot cut the ring off.
+        &:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
         }
     }
 

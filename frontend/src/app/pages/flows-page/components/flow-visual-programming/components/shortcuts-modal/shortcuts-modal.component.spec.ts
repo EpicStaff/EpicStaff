@@ -349,6 +349,7 @@ describe('ShortcutsModalComponent', () => {
 
     // The columns can only keep a heading with its rows when both sit in one unbreakable box; the rest of
     // the rows stay outside it so a long section can still continue in the next column.
+    // This covers the markup only: jsdom has no column layout. The column break itself was checked in the browser.
     it('keeps every section heading in one box with its first row only', () => {
         setUp();
         loadUser([

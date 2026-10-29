@@ -88,8 +88,8 @@ describe('tool delete dialogs', () => {
     });
 
     it.each([
-        [1, 'Delete unused tool?', '<strong>1 MCP tool</strong>'],
-        [3, 'Delete unused tools?', '<strong>3 MCP tools</strong>'],
+        [1, 'Delete Unused Tool?', '<strong>1 MCP tool</strong>'],
+        [3, 'Delete Unused Tools?', '<strong>3 MCP tools</strong>'],
     ])('titles the unused-tools dialog as a question for %i tool(s)', (count, title, countText) => {
         const dialog = buildUnusedDeleteDialog(count, 'MCP tool', 'MCP tools', 7);
 

@@ -60,6 +60,17 @@
                 border-color: var(--accent-color-hover);
                 color: var(--accent-color-hover);
             }
+
+            // The button takes the dialog's initial focus. After a mouse click the browser can still match
+            // :focus-visible for that programmatic focus, so a mouse origin (cdkMonitorElementFocus) never gets the ring.
+            &:focus {
+                outline: none;
+            }
+
+            &:focus-visible:not(.cdk-mouse-focused) {
+                outline: 2px solid var(--accent-color);
+                outline-offset: 2px;
+            }
         }
     }
 
