@@ -12,10 +12,10 @@ const BASE_DATA: ConfirmationDialogData = {
     type: 'danger',
 };
 
-let dialogRef: { close: ReturnType<typeof vi.fn>; keydownEvents: typeof EMPTY };
+let dialogRef: { close: ReturnType<typeof vi.fn>; keydownEvents: typeof EMPTY; config: object };
 
 function render(data: ConfirmationDialogData): ComponentFixture<ConfirmationDialogComponent> {
-    dialogRef = { close: vi.fn(), keydownEvents: EMPTY };
+    dialogRef = { close: vi.fn(), keydownEvents: EMPTY, config: {} };
     TestBed.configureTestingModule({
         imports: [ConfirmationDialogComponent],
         providers: [

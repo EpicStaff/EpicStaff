@@ -69,6 +69,9 @@ class ResizeObserverStub {
     disconnect(): void {}
 }
 
+/** A restore toast shows its whole text and stays longer than the default. */
+const RESTORE_TOAST_ARGS = [expect.any(Number), undefined, { fullText: true }];
+
 describe('RecycleBinTabComponent', () => {
     let fixture: ComponentFixture<RecycleBinTabComponent>;
     let httpTesting: HttpTestingController;
@@ -241,7 +244,8 @@ describe('RecycleBinTabComponent', () => {
             });
 
             expect(toast.success).toHaveBeenCalledWith(
-                `"Report" restored as "Report #2", because that name was taken. Its links to other items aren't restored.`
+                `"Report" restored as "Report #2", because that name was taken. Links from other items, if any, aren't restored.`,
+                ...RESTORE_TOAST_ARGS
             );
             httpTesting.expectOne(FLOWS_LIST).flush(page([]));
         });
@@ -259,7 +263,8 @@ describe('RecycleBinTabComponent', () => {
                 failed: [],
             });
             expect(toast.success).toHaveBeenCalledWith(
-                `"API key" restored. Everything that used it is connected again.`
+                `"API key" restored. Everything that used it is connected again.`,
+                ...RESTORE_TOAST_ARGS
             );
 
             // The tab's own reload, and the pickers' cache: the live list and the bin list.
@@ -446,7 +451,8 @@ describe('RecycleBinTabComponent', () => {
             });
 
             expect(toast.success).toHaveBeenCalledWith(
-                `2 restored, 1 renamed: Report → Report #2. Their links to other items aren't restored.`
+                `2 restored, 1 renamed: Report → Report #2. Links from other items, if any, aren't restored.`,
+                ...RESTORE_TOAST_ARGS
             );
             httpTesting.expectOne(FLOWS_LIST).flush(page([entry(7, 'Sync')]));
             fixture.detectChanges();
