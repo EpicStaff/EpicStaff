@@ -75,6 +75,7 @@ from tables.serializers.quickstart_serializers import (
 )
 from tables.serializers.serializers import (
     BulkExportSerializer,
+    BulkIdsSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
     ProcessRagIndexingEstimateSerializer,
@@ -399,12 +400,10 @@ class SessionViewSet(
     @extend_schema(**SESSION_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk_delete")
     def bulk_delete(self, request):
-        ids = request.data.get("ids", [])
-        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
-            return Response(
-                {"detail": "ids must be a list of integers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = BulkIdsSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        ids = body.validated_data["ids"]
 
         # Count the requested sessions before deleting: delete() also counts the
         # sub-sessions removed by the parent_session cascade. The row lock keeps a
