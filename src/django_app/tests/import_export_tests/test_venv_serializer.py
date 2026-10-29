@@ -81,3 +81,18 @@ class TestRefusedLibraries:
 
     def test_an_environment_with_a_blank_name(self):
         assert "name" in errors_for(venv([], name=""))
+
+
+class TestEnvironmentName:
+    """The sandbox refuses any other name, and it would do so mid-import, after
+    earlier environments of the same file were already created upstream."""
+
+    @pytest.mark.parametrize("name", ["Tool #2-venv", "Інструмент", "x" * 256])
+    def test_a_name_the_sandbox_would_refuse(self, name):
+        assert "name" in errors_for(venv([], name=name))
+
+    @pytest.mark.parametrize("name", ["My_tool 2-venv", "x" * 255])
+    def test_letters_digits_spaces_underscores_and_hyphens(self, name):
+        serializer = VenvImportSerializer(data=venv([], name=name))
+
+        assert serializer.is_valid(), serializer.errors
