@@ -18,14 +18,36 @@
         color: var(--color-text-secondary);
     }
 
+    // The button stays beside the last line as the field grows.
     &__row {
         display: flex;
-        align-items: center;
+        align-items: flex-end;
         gap: 8px;
     }
 
+    // The shared input's look; the height is set from the text by the component.
     &__input {
         flex: 1;
+        min-width: 0;
+        // About ten lines, then it scrolls; in lines, so it follows the phone's larger text.
+        max-height: calc(10lh + 18px);
+        padding: 8px 12px;
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        background-color: var(--color-input-background);
+        color: var(--color-text-primary);
+        resize: none;
+        overflow-y: auto;
+        transition: border-color 0.2s ease;
+
+        &::placeholder {
+            color: var(--color-input-text-placeholder);
+        }
+
+        &:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
     }
 
     &__visible-name {
@@ -84,11 +106,10 @@
             max(12px, env(safe-area-inset-left, 0px));
     }
 
-    // iOS zooms into a field with smaller text. Important: the shared input sets its size with a selector of its own,
-    // and this one must win whatever that is; the input keeps its look everywhere else.
-    .composer__input ::ng-deep .text-input {
+    // iOS zooms into a field with smaller text.
+    .composer__input {
         min-height: touch.$target-size;
-        font-size: touch.$input-font-size !important;
+        font-size: touch.$input-font-size;
     }
 
     .composer__row ::ng-deep .btn,
