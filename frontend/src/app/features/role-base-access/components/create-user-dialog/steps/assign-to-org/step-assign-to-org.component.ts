@@ -1,6 +1,22 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
+import { TemplatePortal } from '@angular/cdk/portal';
 import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    input,
+    OnInit,
+    signal,
+    TemplateRef,
+    ViewChild,
+    ViewContainerRef,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import {
+    AppSvgIconComponent,
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
@@ -10,8 +26,9 @@ import {
     SelectItem,
     TableRow,
 } from '@shared/components';
+import { OverflowBadgeDirective, OverflowItemDirective, OverflowItemsDirective } from '@shared/directives';
 import { ActionCode, FullMembership, Organization, ResourceCode, UserRole } from '@shared/models';
-import { catchError, forkJoin, of } from 'rxjs';
+import { catchError, forkJoin, of, take } from 'rxjs';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { RolesService } from '../../../../services/admin/roles.service';
@@ -21,6 +38,12 @@ import { OrgAvatarComponent } from '../../../org-avatar/org-avatar.component';
 export interface OrgAssignment {
     orgId: number;
     roleId: number;
+}
+
+interface RoleChip {
+    roleId: number;
+    roleName: string;
+    orgCount: number;
 }
 
 @Component({
@@ -35,12 +58,27 @@ export interface OrgAssignment {
         SearchComponent,
         OrgAvatarComponent,
         LoadingSpinnerComponent,
+        OverflowItemsDirective,
+        OverflowItemDirective,
+        OverflowBadgeDirective,
+        MatTooltipModule,
+        AppSvgIconComponent,
+        OverlayModule,
     ],
 })
 export class StepAssignToOrgComponent implements OnInit {
     private rolesService = inject(RolesService);
     private permissionsService = inject(PermissionsService);
     private destroyRef = inject(DestroyRef);
+    private overlay = inject(Overlay);
+    private overlayPositionBuilder = inject(OverlayPositionBuilder);
+    private vcr = inject(ViewContainerRef);
+
+    @ViewChild(OverflowItemsDirective) private overflowDir?: OverflowItemsDirective;
+    @ViewChild('overflowDropdown') private overflowDropdown!: TemplateRef<unknown>;
+    private overflowOverlayRef: OverlayRef | null = null;
+    /** Role names seeded from existingMemberships so chips display correctly before roles API responds. */
+    private roleNames = new Map<number, string>();
 
     organizations = input.required<Organization[]>();
     existingMemberships = input<FullMembership[]>([]);
@@ -52,6 +90,7 @@ export class StepAssignToOrgComponent implements OnInit {
     isOrgsLoading = signal<boolean>(false);
     selectedOrganizations = signal<TableRow[]>([]);
     private roleItemsByOrg = signal<Map<number, SelectItem[]>>(new Map());
+    private recentlyRemovedOrgIds = new Set<number>();
     /** Built-in roles only: custom roles belong to one org, so they stay a per-row choice. */
     readonly bulkRoleItems = signal<SelectItem[]>([]);
     bulkRoleId = signal<number | null>(null);
@@ -63,6 +102,32 @@ export class StepAssignToOrgComponent implements OnInit {
      */
     selectionIds = computed(() => [...this.selectedOrgIds()], { equal: haveSameIds });
     readonly hasInvalidRow = computed(() => this.selectedOrganizations().some((r) => r['role'] == null));
+
+    /** Chips grouped by role: one chip per distinct role across all selected orgs. */
+    readonly roleChips = computed<RoleChip[]>(() => {
+        const countByRole = new Map<number, RoleChip>();
+
+        for (const row of this.selectedOrganizations()) {
+            const roleId = row['role'] as number | null;
+            if (roleId == null) continue;
+
+            const existing = countByRole.get(roleId);
+            if (existing) {
+                existing.orgCount++;
+            } else {
+                countByRole.set(roleId, { roleId, roleName: this.roleNameById(roleId), orgCount: 1 });
+            }
+        }
+
+        return [...countByRole.values()];
+    });
+
+    /** The subset of roleChips hidden by the overflow container — shown in the overflow dropdown. */
+    readonly hiddenChips = computed<RoleChip[]>(() => {
+        const count = this.overflowDir?.overflowCount() ?? 0;
+        const chips = this.roleChips();
+        return chips.slice(chips.length - count);
+    });
 
     /**
      * Search as the table's display-only `rowVisible` filter: hidden rows keep their selection.
@@ -81,6 +146,7 @@ export class StepAssignToOrgComponent implements OnInit {
 
     ngOnInit(): void {
         const memberships = this.existingMemberships();
+        memberships.forEach((m) => this.roleNames.set(m.role.id, m.role.name));
         const membershipMap = new Map(memberships.map((m) => [m.organization.id, m.role.id]));
 
         const assignableOrgs = this.organizations().filter((org) =>
@@ -149,21 +215,24 @@ export class StepAssignToOrgComponent implements OnInit {
     readonly isRowSelectable = (): boolean => !this.disabled();
 
     onSelection(items: TableRow[]): void {
-        const previouslySelectedIds = this.selectedOrgIds();
+        const removedIds = this.recentlyRemovedOrgIds;
+        this.recentlyRemovedOrgIds = new Set();
+        const effectiveItems = items.filter((r) => !removedIds.has(r['id'] as number));
+        const previouslySelectedIds = new Set([...this.selectedOrgIds(), ...removedIds]);
         const bulkRoleId = this.bulkRoleId();
-        let selection = items;
+        let selection = effectiveItems;
 
         if (bulkRoleId !== null) {
             // Only role-less rows that just joined the selection follow the bulk role,
             // so manual overrides and existing memberships keep the role they already have.
             const idsToAssign = new Set(
-                newRoleLessRows(items, previouslySelectedIds)
+                newRoleLessRows(effectiveItems, previouslySelectedIds)
                     .filter((r) => this.isRoleValidForOrg(r['id'] as number, bulkRoleId))
                     .map((r) => r['id'] as number)
             );
             if (idsToAssign.size) {
                 this.setRoleInTableData(idsToAssign, bulkRoleId);
-                selection = withRole(items, idsToAssign, bulkRoleId);
+                selection = withRole(effectiveItems, idsToAssign, bulkRoleId);
             }
         }
 
@@ -188,12 +257,65 @@ export class StepAssignToOrgComponent implements OnInit {
 
         const idsToAssign = new Set(
             this.selectedOrganizations()
+                .filter((r) => r['role'] == null)
                 .map((r) => r['id'] as number)
                 .filter((orgId) => this.isRoleValidForOrg(orgId, value))
         );
         if (!idsToAssign.size) return;
         this.setRoleInTableData(idsToAssign, value);
         this.selectedOrganizations.update((rows) => withRole(rows, idsToAssign, value));
+    }
+
+    chipTooltip(chip: RoleChip): string {
+        return this.selectedOrganizations()
+            .filter((row) => row['role'] === chip.roleId)
+            .map((row) => row['name'] as string)
+            .join(', ');
+    }
+
+    removeChip(roleId: number): void {
+        const orgIdsToRemove = new Set(
+            this.selectedOrganizations()
+                .filter((r) => r['role'] === roleId)
+                .map((r) => r['id'] as number)
+        );
+        this.recentlyRemovedOrgIds = orgIdsToRemove;
+        this.selectedOrganizations.update((rows) => rows.filter((r) => !orgIdsToRemove.has(r['id'] as number)));
+    }
+
+    openOverflowMenu(origin: HTMLElement): void {
+        if (this.overflowOverlayRef) {
+            this.closeOverflowMenu();
+            return;
+        }
+        const positionStrategy = this.overlayPositionBuilder
+            .flexibleConnectedTo(origin)
+            .withPositions([
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+            ])
+            .withPush(false);
+
+        this.overflowOverlayRef = this.overlay.create({
+            positionStrategy,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            hasBackdrop: true,
+            backdropClass: 'transparent-backdrop',
+            minWidth: 200,
+        });
+
+        this.overflowOverlayRef
+            .backdropClick()
+            .pipe(take(1))
+            .subscribe(() => this.closeOverflowMenu());
+
+        this.overflowOverlayRef.attach(new TemplatePortal(this.overflowDropdown, this.vcr));
+    }
+
+    closeOverflowMenu(): void {
+        this.overflowOverlayRef?.detach();
+        this.overflowOverlayRef?.dispose();
+        this.overflowOverlayRef = null;
     }
 
     getAssignments(): OrgAssignment[] {
@@ -216,5 +338,16 @@ export class StepAssignToOrgComponent implements OnInit {
      */
     private setRoleInTableData(orgIds: Set<number>, roleId: number): void {
         this.organizationsTableData.update((rows) => withRole(rows, orgIds, roleId));
+    }
+
+    private roleNameById(roleId: number): string {
+        const bulkItem = this.bulkRoleItems().find((item) => item.value === roleId);
+        if (bulkItem) return bulkItem.name;
+
+        for (const items of this.roleItemsByOrg().values()) {
+            const found = items.find((item) => item.value === roleId);
+            if (found) return found.name;
+        }
+        return this.roleNames.get(roleId) ?? String(roleId);
     }
 }
