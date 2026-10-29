@@ -23,6 +23,7 @@ export function inlineSurfaceToSurface(inline: InlineSurface): Surface {
         name: '',
         instructions: inline.instructions,
         owner_agent: null,
+        group: null,
         python_tools: inline.python_tools,
         mcp_tools: inline.mcp_tools,
         storage_items: inline.storage_items,

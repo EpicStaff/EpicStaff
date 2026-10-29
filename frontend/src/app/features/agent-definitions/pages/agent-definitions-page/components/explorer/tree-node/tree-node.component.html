@@ -111,6 +111,9 @@
             [class.row--selected]="isSelected()"
             [class.row--drop-target]="surfaceDropActive()"
             [style.padding-left.px]="12 + depth() * 20"
+            [attr.draggable]="isDraggableAgent() ? 'true' : null"
+            (dragstart)="onAgentDragStart($event)"
+            (dragend)="onAgentDragEnd()"
             appDragHover
             (dragHover)="onRowDragHover()"
             (dragover)="onSurfaceDragOver($event)"

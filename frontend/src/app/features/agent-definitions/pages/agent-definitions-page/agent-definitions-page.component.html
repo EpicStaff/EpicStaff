@@ -51,6 +51,7 @@
                 />
             } @else if (store.selectedAgentDoc(); as doc) {
                 <app-agent-doc-preview
+                    [crumbs]="docCrumbs()"
                     [agent]="doc.agent"
                     [instruction]="doc.instruction"
                     [showSidebar]="store.showSidebar()"
@@ -58,6 +59,8 @@
                     (toggleSidebar)="store.toggleSidebar()"
                     (save)="store.updateInstructionContent(doc.agent.id, doc.instructionIndex, $event)"
                     (openAgent)="store.selectAgent($event)"
+                    (openAgentInstructions)="store.selectAgentInstructions($event)"
+                    (groupChange)="onGroupChange($event)"
                 />
             } @else if (store.selectedSurfaceView()) {
                 <app-detail-header
@@ -65,6 +68,7 @@
                     [crumbs]="surfaceCrumbs()"
                     (toggleSidebar)="store.toggleSidebar()"
                     (navAgent)="store.selectAgent($event)"
+                    (groupChange)="onGroupChange($event)"
                     (navAgentSurfaces)="store.selectAgentSurfaces($event)"
                 >
                     <button
@@ -125,6 +129,7 @@
                     [crumbs]="agentCrumbs()"
                     (toggleSidebar)="store.toggleSidebar()"
                     (navAgent)="store.selectAgent($event)"
+                    (groupChange)="onGroupChange($event)"
                 >
                     @if ((store.selectedAgent() || store.selectedSurface()) && canOpenHeaderMenu()) {
                         <button

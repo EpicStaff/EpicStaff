@@ -30,6 +30,7 @@ export interface AgentDefinition extends AuthorshipFields {
     agent_definition_realtime_config_id: number | null;
     has_realtime_definition: boolean;
     default_surfaces: AgentDefaultSurface[];
+    group: number | null;
     metadata: AgentMetadata;
     max_iter: number;
     max_rpm: number;
@@ -52,6 +53,7 @@ export interface CreateAgentDefinitionRequest {
     llm_config?: number | null;
     fcm_llm_config?: number | null;
     default_surfaces?: AgentDefaultSurface[];
+    group?: number | null;
     metadata?: AgentMetadata;
     max_iter?: number;
     max_rpm?: number;

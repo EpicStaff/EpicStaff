@@ -7,3 +7,48 @@
     color: var(--color-text-secondary);
     font-size: 0.85rem;
 }
+
+.new-group {
+    padding: 4px 8px 6px 12px;
+
+    &__field {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    &__input {
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 28px;
+        padding: 0 6px;
+        background: var(--color-input-background);
+        border: 1px solid var(--accent-color);
+        border-radius: 4px;
+        outline: none;
+        color: var(--color-text-primary);
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+
+        &--error {
+            border-color: var(--color-ks-status-failed);
+        }
+    }
+
+    &__help,
+    &__error {
+        padding: 2px 0 0;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+    }
+
+    &__help {
+        color: var(--color-text-secondary);
+    }
+
+    &__error {
+        color: var(--color-ks-status-failed);
+    }
+}

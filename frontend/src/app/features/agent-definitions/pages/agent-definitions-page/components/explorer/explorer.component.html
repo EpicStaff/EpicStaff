@@ -66,8 +66,11 @@
                         [expanded]="store.isSectionExpanded('agents')"
                         [showAdd]="true"
                         [resource]="ResourceCode.Agents"
+                        [showMenu]="true"
+                        [menuActions]="[ActionCode.Read]"
                         (toggleSection)="store.toggleSection('agents')"
                         (add)="onAdd('agents')"
+                        (menu)="onAgentsSectionMenu($event)"
                     />
                     <div
                         #agentsBody

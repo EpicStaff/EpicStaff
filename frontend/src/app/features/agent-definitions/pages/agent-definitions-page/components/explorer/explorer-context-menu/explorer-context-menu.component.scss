@@ -9,5 +9,53 @@
 .explorer-menu {
     position: fixed;
     z-index: 1001;
+    // Long group lists scroll inside the menu instead of running off the screen.
+    max-height: min(24rem, calc(100vh - 16px));
+    overflow-y: auto;
     @include row-more-menu.panel;
+
+    &__item {
+        gap: 8px;
+
+        // An expanded sub-list ("Move to group", "Color") sits on its own band so it reads as one block
+        // under its parent row. Mixed from the text color, so it lifts in the dark theme and dims in the
+        // light one; hover still tints over it.
+        &--nested {
+            padding-left: 28px;
+            background-color: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+        }
+
+        &--danger {
+            color: var(--color-ks-status-failed);
+        }
+    }
+
+    &__label {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__dot {
+        flex-shrink: 0;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+
+        &--empty {
+            border: 1px dashed var(--color-text-secondary);
+        }
+    }
+
+    &__chevron {
+        flex-shrink: 0;
+        transform: rotate(-90deg);
+        transition: transform 0.15s ease;
+
+        &--open {
+            transform: none;
+        }
+    }
 }

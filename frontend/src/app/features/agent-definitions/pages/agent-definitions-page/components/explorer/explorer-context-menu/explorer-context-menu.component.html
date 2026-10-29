@@ -4,19 +4,42 @@
         (click)="close.emit()"
     ></div>
     <div
+        #menu
         class="explorer-menu"
-        [style.left.px]="position().x"
-        [style.top.px]="position().y"
+        role="menu"
+        [style.left.px]="placement().x"
+        [style.top.px]="placement().y"
+        (keydown.escape)="close.emit()"
     >
-        @for (item of items(); track item.id) {
+        @for (row of rows(); track row.item.id) {
             <button
                 type="button"
+                role="menuitem"
                 class="explorer-menu__item"
-                [class.explorer-menu__item--disabled]="item.disabled"
-                [disabled]="item.disabled"
-                (click)="onAction(item.id, item.disabled)"
+                [class.explorer-menu__item--nested]="row.nested"
+                [class.explorer-menu__item--disabled]="row.item.disabled"
+                [class.explorer-menu__item--danger]="row.item.danger"
+                [disabled]="row.item.disabled"
+                [attr.aria-haspopup]="row.item.children ? 'menu' : null"
+                [attr.aria-expanded]="row.item.children ? expandedId() === row.item.id : null"
+                (click)="onRowClick(row.item)"
             >
-                {{ item.label }}
+                @if (row.item.dotColor !== undefined) {
+                    <span
+                        class="explorer-menu__dot"
+                        [class.explorer-menu__dot--empty]="row.item.dotColor === null"
+                        [style.background-color]="row.item.dotColor"
+                    ></span>
+                }
+                <span class="explorer-menu__label">{{ row.item.label }}</span>
+                @if (row.item.children) {
+                    <app-svg-icon
+                        class="explorer-menu__chevron"
+                        [class.explorer-menu__chevron--open]="expandedId() === row.item.id"
+                        icon="chevron-down-filled"
+                        size="8px"
+                    />
+                }
             </button>
         }
     </div>

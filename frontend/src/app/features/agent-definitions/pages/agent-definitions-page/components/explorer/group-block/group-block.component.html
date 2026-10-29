@@ -1,0 +1,104 @@
+@let b = block();
+@if (!hidden()) {
+    <div
+        class="group-block"
+        role="group"
+        [attr.aria-label]="b.label"
+        (dragover)="onDragOver($event)"
+        (dragleave)="onDragLeave($event)"
+        (drop)="onDrop($event)"
+    >
+        <div
+            class="group-header"
+            [class.group-header--drop-target]="dropActive()"
+        >
+            @if (renaming()) {
+                <div class="group-header__main">
+                    <span
+                        class="group-header__dot"
+                        [style.background-color]="dotColor()"
+                    ></span>
+                    <input
+                        #renameInput
+                        class="group-header__rename"
+                        type="text"
+                        aria-label="Group name"
+                        [value]="b.label"
+                        (keydown.enter)="commitRename(renameInput.value)"
+                        (keydown.escape)="cancelRename()"
+                        (blur)="commitRename(renameInput.value)"
+                    />
+                </div>
+            } @else {
+                <button
+                    type="button"
+                    class="group-header__main group-header__toggle"
+                    [attr.aria-expanded]="!collapsed()"
+                    (click)="toggle()"
+                >
+                    <app-svg-icon
+                        class="group-header__chevron"
+                        [class.group-header__chevron--collapsed]="collapsed()"
+                        icon="chevron-down-filled"
+                        size="8px"
+                    />
+                    <span
+                        class="group-header__dot"
+                        [class.group-header__dot--none]="b.groupId === null"
+                        [style.background-color]="dotColor()"
+                    ></span>
+                    <span class="group-header__name">{{ b.label }}</span>
+                    <span class="group-header__count">{{ b.memberCount }}</span>
+                </button>
+            }
+            @if (b.groupId !== null && !renaming()) {
+                <span class="group-header__actions">
+                    @if (section() === 'agents') {
+                        <button
+                            *appHasPermission="[ResourceCode.Agents, ActionCode.Create]"
+                            type="button"
+                            class="group-header__action"
+                            [attr.aria-label]="'New agent in ' + b.label"
+                            [matTooltip]="'New agent in ' + b.label"
+                            (click)="onAddAgent($event)"
+                        >
+                            <app-svg-icon
+                                icon="plus-filled"
+                                size="10px"
+                            />
+                        </button>
+                    }
+                    <button
+                        type="button"
+                        class="group-header__action"
+                        aria-haspopup="menu"
+                        [attr.aria-label]="b.label + ' menu'"
+                        (click)="onMenuClick($event)"
+                    >
+                        <app-svg-icon
+                            icon="dots-vertical"
+                            size="1rem"
+                        />
+                    </button>
+                </span>
+            }
+        </div>
+
+        @if (!collapsed()) {
+            @if (showEmptyHint()) {
+                <div class="group-block__hint">Drag agents here or use Move to group</div>
+            }
+            @for (node of b.nodes; track trackByKey($index, node)) {
+                <app-tree-node
+                    [node]="node"
+                    [depth]="1"
+                    [selected]="selected()"
+                    (selectNode)="selectNode.emit($event)"
+                    (menuAction)="menuAction.emit($event)"
+                    (menuOpen)="menuOpen.emit($event)"
+                    (attachSurface)="attachSurface.emit($event)"
+                />
+            }
+        }
+    </div>
+}

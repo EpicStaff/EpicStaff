@@ -23,6 +23,7 @@ const SURFACE: Surface = {
     name: 'Research',
     instructions: '',
     owner_agent: null,
+    group: null,
     python_tools: [{ python_tool: 1, mode: 'deny' }],
     mcp_tools: [
         { mcp_tool: 2, mode: 'deny' },
@@ -152,6 +153,7 @@ const DETAILS_SURFACE: Surface = {
     name: 'Surface_1',
     instructions: '',
     owner_agent: null,
+    group: null,
     python_tools: [],
     mcp_tools: [],
     storage_items: [],

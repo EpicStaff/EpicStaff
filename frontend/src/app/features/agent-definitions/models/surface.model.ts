@@ -66,6 +66,8 @@ export interface Surface extends AuthorshipFields {
     name: string;
     instructions: string;
     owner_agent: number | null;
+    /** Id of the surface's group (an `agent-labels/` row). Always null on an owned surface (the backend rejects it). */
+    group: number | null;
     python_tools: SurfacePythonTool[];
     mcp_tools: SurfaceMcpTool[];
     storage_items: SurfaceStorageItem[];
@@ -78,6 +80,7 @@ export interface CreateSurfaceRequest {
     name: string;
     instructions?: string;
     owner_agent?: number | null;
+    group?: number | null;
     python_tools?: SurfacePythonTool[];
     mcp_tools?: SurfaceMcpTool[];
     storage_items?: SurfaceStorageItem[];

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
@@ -30,6 +30,8 @@ type DocMode = 'preview' | 'markdown';
 export class AgentDocPreviewComponent {
     private readonly permissionService = inject(PermissionsService);
 
+    /** Built by the page, which owns the group crumb shared with the agent and surface views. */
+    crumbs = input.required<DetailCrumb[]>();
     agent = input.required<AgentDefinition>();
     instruction = input.required<AgentInstruction>();
     showSidebar = input<boolean>(true);
@@ -39,6 +41,9 @@ export class AgentDocPreviewComponent {
     readonly save = output<string>();
     readonly toggleSidebar = output<void>();
     readonly openAgent = output<number>();
+    readonly openAgentInstructions = output<number>();
+    /** Picked in the group crumb: moves the agent (a group id, or null for Ungrouped). */
+    readonly groupChange = output<number | null>();
 
     readonly mode = signal<DocMode>('preview');
     readonly draft = signal<string>('');
@@ -56,13 +61,6 @@ export class AgentDocPreviewComponent {
             }
         });
     }
-
-    readonly crumbs = computed<DetailCrumb[]>(() => [
-        { label: 'AGENTS' },
-        { label: this.agent().name, icon: 'agents-tab', navAgentId: this.agent().id },
-        { label: 'Instructions' },
-        { label: this.instruction().name },
-    ]);
 
     readonly monacoOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',

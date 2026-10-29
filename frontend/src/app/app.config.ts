@@ -16,6 +16,7 @@ import { forbiddenInterceptor } from './core/interceptors/forbidden.interceptor'
 import { networkConnectionInterceptor } from './core/interceptors/network-connection.interceptor';
 import { preflightPermissionInterceptor } from './core/interceptors/preflight-permission.interceptor';
 import { validationErrorsInterceptor } from './core/interceptors/validation-errors.interceptor';
+import { provideAgentDefinitionsStorages } from './features/agent-definitions/agent-definitions.providers';
 import { provideAuditStorages } from './features/audit/audit.providers';
 import { provideChatStorages } from './features/chat/chat.providers';
 import { provideConfigureModelsStorages } from './features/configure-models/configure-models.providers';
@@ -73,6 +74,7 @@ export const appConfig: ApplicationConfig = {
         ...provideConfigureModelsStorages(),
         ...provideFlowsStorages(),
         ...provideToolsStorages(),
+        ...provideAgentDefinitionsStorages(),
         ...provideKnowledgeSourcesStorages(),
         ...provideKeyValueTablesStorages(),
         ...provideChatStorages(),
