@@ -25,6 +25,7 @@ import { flowUrl } from '@shared/utils';
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { CAPTION_TABLE_NAME_LIMIT, keyValueSummaryParts } from '../../core/constants/key-value-mode-visuals';
+import { NODE_DIFF_BADGES } from '../../core/constants/node-diff-badges';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import { showsNodeNumber } from '../../core/helpers/node-number.util';
@@ -45,8 +46,10 @@ import {
 } from '../../core/models/node.model';
 import { CustomPortId } from '../../core/models/port.model';
 import { FlowService } from '../../services/flow.service';
+import { FlowDiffStateService } from '../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
+import { NodeDiffStatus } from '../../utils/diff';
 import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
@@ -79,6 +82,7 @@ export class FlowBaseNodeComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
     private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
+    private readonly flowDiffState = inject(FlowDiffStateService);
 
     @Input({ required: true }) node!: NodeModel;
     @Output() fNodeSizeChange = new EventEmitter<{
@@ -157,6 +161,31 @@ export class FlowBaseNodeComponent implements OnInit {
     }
 
     public getNodeClass(): string {
+        const status = this.diffStatus;
+        return status ? `${this.typeClass()} diff-${status}` : this.typeClass();
+    }
+
+    /** The node's status on a version diff canvas; `null` elsewhere. */
+    protected get diffStatus(): NodeDiffStatus | null {
+        return this.flowDiffState.nodeStatus(this.node.id);
+    }
+
+    /** The status badge: none for an unchanged node, or off a diff canvas. */
+    protected get diffBadge(): { status: NodeDiffStatus; icon: string; label: string } | null {
+        const status = this.diffStatus;
+        return status && status !== 'unchanged' ? { status, ...NODE_DIFF_BADGES[status] } : null;
+    }
+
+    protected get hasMissingReferences(): boolean {
+        return this.flowDiffState.hasMissingReferences(this.node.id);
+    }
+
+    /** The hover/selected-only summary tab above a Key-Value node is drawn, in the badge's top-left corner. */
+    protected get showsSummaryTab(): boolean {
+        return this.keyValueNode !== null;
+    }
+
+    private typeClass(): string {
         const blockedClass = this.isBlockedSubgraph ? ' is-blocked' : '';
         switch (this.node.type) {
             case NodeType.AGENT:

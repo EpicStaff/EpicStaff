@@ -52,6 +52,8 @@ export class NodeFactoryService {
             output_variable_path: null,
             size,
             ...overrides,
+            // A created node is always a new identity, whatever the overrides carry.
+            nodeUuid: generateUuid(),
             position: findNearestFreePosition(
                 snappedPosition,
                 getCollisionBounds({ type: type as NodeModel['type'], size, data: nodeData }),

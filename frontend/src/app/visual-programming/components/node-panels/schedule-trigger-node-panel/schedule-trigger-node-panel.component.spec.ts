@@ -28,6 +28,7 @@ import { ScheduleTriggerNodePanelComponent } from './schedule-trigger-node-panel
 const unsavedScheduleNode: ScheduleTriggerNodeModel = {
     id: 'schedule-1',
     backendId: null,
+    nodeUuid: 'node-uuid-schedule-1',
     type: NodeType.SCHEDULE_TRIGGER,
     node_name: 'Schedule #1',
     data: {

@@ -1,0 +1,221 @@
+// The version diff's mark on a changed field value (node panel, Changes tab of a version preview).
+//
+// Contract: the field mark (`app-diff-field-mark`, flow editor) puts `.diff-value-marked` on an element around a
+// form component while a restore changes that field, and nowhere else. A form component that can be marked calls
+// `marked(...)` with the selector of its own value box; the styles only apply under that class, so the live
+// editor and every other user of the component see no change.
+//
+// The mark keeps the rest (status rule, tooltip, description, focus): the component only draws the yellow border,
+// the pen badge on the box's top-right corner, half outside, and the focus ring of the focused field. A value box
+// that clips what sticks out (a code editor card) calls `marked-frame(...)` instead and draws only the border; the
+// mark then draws the badge and the focus ring on itself.
+//
+// A value box the page itself lays out inside the mark (not a form component's own) calls `marked-inside(...)` from
+// the page's styles instead.
+//
+// Rule: a mark wraps exactly one form component, and that component includes `marked()` or `marked-frame()`.
+// `:host-context` matches any ancestor, so a marked component nested inside another wrapped one would be marked
+// too. The mark turns off its own outline, so a wrapped component without either would also get no focus ring.
+
+@use 'sass:list';
+
+$context: '.diff-value-marked';
+
+$badge-size: 16px;
+
+/// The round yellow pen badge, without its position or glyph (each call site sets those). Also used by the mark
+/// itself for a marked table row.
+@mixin badge-look {
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: $badge-size;
+    height: $badge-size;
+    border-radius: 50%;
+    background-color: var(--color-diff-changed);
+    color: var(--color-text-on-bright);
+    font-size: 0.625rem;
+    line-height: 1;
+}
+
+/// @param $box the value box: gets the yellow border and the focus ring.
+/// @param $badge-anchor the element the badge sits on: the box itself unless the box clips what sticks out.
+/// @param $draws-box whether the box has no border of its own (plain text, a row) and needs the input-box look
+///   (padding, border, background, full width) to read as a value.
+/// @param $display the box's display, for an inline element that has to become a box.
+@mixin marked($box, $badge-anchor: $box, $draws-box: false, $display: null) {
+    @include -marked-rules(
+        ':host-context(#{$context})',
+        ':host-context(#{$context}:focus-visible)',
+        $box,
+        $badge-anchor,
+        $draws-box,
+        $display
+    );
+}
+
+/// `marked()` for a value box that a page lays out in its own template, inside the mark it places there (e.g. a
+/// trigger button it projects into a dropdown, or a list it draws itself), so the box is not in a component's own
+/// view. Same parameters as `marked()`.
+@mixin marked-inside($box, $badge-anchor: $box, $draws-box: false, $display: null) {
+    @include -marked-rules($context, '#{$context}:focus-visible', $box, $badge-anchor, $draws-box, $display);
+}
+
+@mixin -marked-rules($marked, $focused, $box, $badge-anchor, $draws-box, $display) {
+    #{$marked} #{$box} {
+        display: $display;
+
+        @if $draws-box {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--color-diff-changed);
+            border-radius: 4px;
+            background-color: var(--color-input-background);
+        } @else {
+            border-color: var(--color-diff-changed);
+        }
+    }
+
+    #{$focused} #{$box} {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+
+    #{$marked} #{$badge-anchor} {
+        position: relative;
+        @include corner-badge;
+    }
+}
+
+/// The pen badge as the `::after` of the element this is included in, on its top-right corner, half outside. The
+/// element must be positioned. Also used by the mark itself around a value box that clips (`marked-frame`).
+@mixin corner-badge {
+    &::after {
+        @include pen-badge;
+        position: absolute;
+        top: calc($badge-size / -2);
+        right: calc($badge-size / -2);
+    }
+}
+
+/// The pen badge as the content of a pseudo-element, without its position.
+@mixin pen-badge {
+    // The pen of tabler's `.ti-pencil`.
+    @include status-badge('\eb04', var(--color-diff-changed));
+}
+
+/// A round status badge with a tabler glyph as the content of a pseudo-element, without its position. The glyph has
+/// empty alternative text: the mark names the field or row for screen readers (role="group", aria-labelledby; a grid
+/// row's name cell).
+/// @param $glyph the glyph's code in tabler's icon font (its `.ti-*:before` content).
+/// @param $color the badge's background: the status colour.
+@mixin status-badge($glyph, $color) {
+    @include badge-look;
+    background-color: $color;
+    content: list.slash($glyph, '');
+    // The icon font by name, as a pseudo-element cannot take the `ti` class; no `text-*` token fits a glyph.
+    font-family: 'tabler-icons';
+    font-style: normal;
+    pointer-events: none;
+}
+
+/// How far outside its row a row frame (`row-frame`) and the row's badge sit. A row sets it when its own content
+/// reaches its edge (a row of inputs), so the frame does not touch them; not set: on the row's edge (a table row,
+/// whose cells have padding of their own).
+$row-frame-offset: var(--diff-row-frame-offset, 0px);
+
+/// The border of a row a restore changes, adds or removes, as the `::before` of the row: a frame that takes no space,
+/// so the row keeps the width and alignment of an unmarked row. It sits `$row-frame-offset` outside the row's edge and
+/// takes the row's rounded corners. The row must be positioned.
+@mixin row-frame($color) {
+    &::before {
+        content: '';
+        position: absolute;
+        inset: calc(-1 * #{$row-frame-offset});
+        border: 1px solid $color;
+        border-radius: inherit;
+        pointer-events: none;
+    }
+}
+
+/// For a component whose host is the whole value box and clips what sticks out, e.g. a code editor card whose
+/// border and rounded corners the page around it sets. The yellow border is drawn as a frame just inside the host's
+/// edge, above its content; the badge and the focus ring would be clipped, so the mark draws both on itself (its
+/// `diffDrawsBadge` input). The mark then wraps the element that clips, which may be the host or an element of the
+/// page around it.
+/// @param $content the element that holds the component's content, kept below the frame. It must be positioned.
+@mixin marked-frame($content) {
+    :host-context(#{$context}) {
+        position: relative;
+
+        &::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            border: 1px solid var(--color-diff-changed);
+            border-radius: inherit;
+            pointer-events: none;
+        }
+    }
+
+    // Its own stacking context, so nothing inside it (an editor's own layers) is drawn above the frame.
+    :host-context(#{$context}) #{$content} {
+        z-index: 0;
+    }
+}
+
+/// The row marks of an ag-grid table (the decision table grids), included under `::ng-deep` in the grid's styles; the
+/// rows get their classes from `condition-group-row-marks.ts`. No frame: a badge in the row's first cell, at its left
+/// (the grid's viewport clips whatever sticks out of a row), with the canvas node badges' icons (a pen for changed, a
+/// plus for added, a bin for removed), and the row's text in the status colour. A row a restore removes is also struck
+/// and faded, as the removed rows of the other tables.
+/// @param $first-cell the selector of the cell that holds the badge.
+@mixin grid-row-marks($first-cell) {
+    $statuses: (
+        'changed': (
+            '\eb04',
+            var(--color-diff-changed),
+        ),
+        'added': (
+            '\eb0b',
+            var(--color-diff-added),
+        ),
+        'removed': (
+            '\eb41',
+            var(--color-diff-deleted),
+        ),
+    );
+
+    @each $status, $badge in $statuses {
+        $glyph: list.nth($badge, 1);
+        $color: list.nth($badge, 2);
+
+        .ag-row.condition-group-row--#{$status} #{$first-cell}::after {
+            @include status-badge($glyph, $color);
+            position: absolute;
+            top: 50%;
+            left: 4px;
+            transform: translateY(-50%);
+        }
+
+        // `!important`: the grids colour cell text inline (`cellStyle`) and inside their cell renderers.
+        .ag-row.condition-group-row--#{$status} .ag-cell {
+            &,
+            * {
+                color: $color !important;
+            }
+        }
+    }
+
+    .ag-row.condition-group-row--removed .ag-cell {
+        opacity: var(--diff-deleted-opacity);
+
+        &,
+        * {
+            text-decoration: line-through;
+        }
+    }
+}

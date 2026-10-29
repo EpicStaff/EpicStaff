@@ -74,6 +74,16 @@ def member_only(db, django_user_model, acme, role_member):
 
 
 @pytest.fixture
+def viewer_only(db, django_user_model, acme, role_viewer):
+    """Plain Viewer of Acme (read-only)."""
+    user = django_user_model.objects.create_user(
+        email="viewer-only-xorg@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=acme, role=role_viewer)
+    return user
+
+
+@pytest.fixture
 def superadmin(db, django_user_model):
     return django_user_model.objects.create_user(
         email="superadmin-xorg@example.com",

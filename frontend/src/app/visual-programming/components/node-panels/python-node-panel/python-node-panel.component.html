@@ -20,14 +20,16 @@
                     [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
                 >
                     <div class="field-isolated">
-                        <app-custom-input
-                            label="Node Name"
-                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [readonly]="isReadOnly()"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'node_name'">
+                            <app-custom-input
+                                label="Node Name"
+                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
 
@@ -44,59 +46,79 @@
                             [testRunning]="codeTestRun.isRunning()"
                             [testInputDirty]="testInputDirty()"
                             [runTestBlocker]="runTestBlocker()"
+                            [rowChanges]="inputMapRowChanges()"
                             (testModeChange)="isOpenTestMode.set($event)"
                             (runTest)="onRunTest($event)"
                         ></app-input-map>
                     </div>
 
-                    <app-node-secrets-field
-                        [activeColor]="activeColor"
-                        [value]="selectedSecretIds()"
-                        [readonly]="!canEditSecrets()"
-                        [names]="secretNames()"
-                        [tooltipText]="secretsTooltip()"
-                        (valueChange)="onSecretsChange($event)"
-                    />
+                    <app-diff-field-mark [diffField]="'python_code.secret_names'">
+                        <app-node-secrets-field
+                            [activeColor]="activeColor"
+                            [value]="selectedSecretIds()"
+                            [readonly]="!canEditSecrets()"
+                            [names]="secretNames()"
+                            [tooltipText]="secretsTooltip()"
+                            [diffField]="'python_code.secret_names'"
+                            (valueChange)="onSecretsChange($event)"
+                        />
+                    </app-diff-field-mark>
 
-                    <app-custom-input
-                        label="Output Variable Path"
-                        tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
-                        formControlName="output_variable_path"
-                        placeholder="Enter output variable path (leave empty for null)"
-                        [activeColor]="activeColor"
-                        [readonly]="isReadOnly()"
-                    ></app-custom-input>
+                    <app-diff-field-mark [diffField]="'output_variable_path'">
+                        <app-custom-input
+                            label="Output Variable Path"
+                            tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
+                            formControlName="output_variable_path"
+                            placeholder="Enter output variable path (leave empty for null)"
+                            [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
+                        ></app-custom-input>
+                    </app-diff-field-mark>
 
                     <div class="form-group">
-                        <app-select
-                            label="Venv"
-                            tooltipText="The virtual environment this Python code runs in. Leave empty to use the default environment."
-                            placeholder="Select venv"
-                            formControlName="venv"
-                            [items]="venvItems()"
-                            variant="boxed"
-                            [grouped]="true"
-                            [showSearch]="true"
-                            searchPlaceholder="Search by venv name..."
-                            [loading]="loadingVenvs()"
-                            [readonly]="isReadOnly()"
-                            (opened)="onVenvDropdownOpened()"
-                            (changed)="onVenvChanged($event)"
-                        />
+                        <app-diff-field-mark
+                            [diffField]="'python_code.venv_id'"
+                            [diffFormat]="venvNameFormat"
+                        >
+                            <app-select
+                                label="Venv"
+                                tooltipText="The virtual environment this Python code runs in. Leave empty to use the default environment."
+                                placeholder="Select venv"
+                                formControlName="venv"
+                                [items]="venvItems()"
+                                variant="boxed"
+                                [grouped]="true"
+                                [showSearch]="true"
+                                searchPlaceholder="Search by venv name..."
+                                [loading]="loadingVenvs()"
+                                [readonly]="isReadOnly()"
+                                (opened)="onVenvDropdownOpened()"
+                                (changed)="onVenvChanged($event)"
+                            />
+                        </app-diff-field-mark>
+                        <app-missing-reference-note [fields]="['python_code.venv_id']" />
                     </div>
 
-                    <app-execution-timeout-field
-                        [field]="executionTimeout"
-                        [readonly]="isReadOnly()"
-                    />
+                    <!-- A node without its own timeout shows the default, so the tooltip does too. -->
+                    <app-diff-field-mark
+                        [diffField]="'python_code.execution_timeout'"
+                        [diffDefaultValue]="executionTimeout.limits.defaultSeconds"
+                    >
+                        <app-execution-timeout-field
+                            [field]="executionTimeout"
+                            [readonly]="isReadOnly()"
+                        />
+                    </app-diff-field-mark>
 
-                    <app-node-storage-section
-                        [readonly]="isReadOnly()"
-                        [useStorage]="useStorage()"
-                        (onToggleChange)="onStorageToggle($event)"
-                        (onInsertCode)="insertStorageCode($event)"
-                        (onRemoveCode)="removeStorageCode($event)"
-                    ></app-node-storage-section>
+                    <app-diff-field-mark [diffField]="'use_storage'">
+                        <app-node-storage-section
+                            [readonly]="isReadOnly()"
+                            [useStorage]="useStorage()"
+                            (onToggleChange)="onStorageToggle($event)"
+                            (onInsertCode)="insertStorageCode($event)"
+                            (onRemoveCode)="removeStorageCode($event)"
+                        ></app-node-storage-section>
+                    </app-diff-field-mark>
                 </div>
 
                 @if (isExpanded()) {
@@ -117,15 +139,30 @@
                     class="code-editor-wrapper"
                 >
                     <div class="code-editor-column">
-                        <app-code-editor
-                            class="code-editor-section"
-                            [pythonCode]="pythonCode"
-                            [secretNames]="secretNames()"
-                            [inputMapKeys]="inputMapKeys()"
-                            [readOnly]="isReadOnly()"
-                            (pythonCodeChange)="onPythonCodeChange($event)"
-                            (errorChange)="onCodeErrorChange($event)"
-                        ></app-code-editor>
+                        @if (codeDiff(); as code) {
+                            <app-code-diff-view
+                                class="code-editor-section"
+                                [current]="code.current"
+                                [version]="code.version"
+                            />
+                        } @else {
+                            <!-- The mark shows only in the narrow panel: the widened one shows the diff above instead. -->
+                            <app-diff-field-mark
+                                [diffField]="'python_code.code'"
+                                [diffHint]="codeDiffHint"
+                                [diffDrawsBadge]="true"
+                            >
+                                <app-code-editor
+                                    class="code-editor-section"
+                                    [pythonCode]="pythonCode"
+                                    [secretNames]="secretNames()"
+                                    [inputMapKeys]="inputMapKeys()"
+                                    [readOnly]="isReadOnly()"
+                                    (pythonCodeChange)="onPythonCodeChange($event)"
+                                    (errorChange)="onCodeErrorChange($event)"
+                                ></app-code-editor>
+                            </app-diff-field-mark>
+                        }
 
                         @if (isOpenTestMode() && !isReadOnly()) {
                             <app-python-terminal

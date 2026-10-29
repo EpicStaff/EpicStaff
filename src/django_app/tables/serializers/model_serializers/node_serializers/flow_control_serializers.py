@@ -51,6 +51,7 @@ class StartNodeSerializer(
         model = StartNode
         fields = [
             "id",
+            "uuid",
             "graph",
             "variables",
             "node_name",
@@ -97,6 +98,7 @@ class EndNodeSerializer(
         model = EndNode
         fields = [
             "id",
+            "uuid",
             "graph",
             "output_map",
             "node_name",
@@ -249,6 +251,7 @@ class ClassificationDecisionTableNodeSerializer(
         model = ClassificationDecisionTableNode
         fields = [
             "id",
+            "uuid",
             "graph",
             "node_name",
             "node_number",

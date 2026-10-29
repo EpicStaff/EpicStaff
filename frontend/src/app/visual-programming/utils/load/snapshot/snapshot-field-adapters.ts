@@ -24,7 +24,7 @@ import { InlineSurface } from '../../../core/models/task-node.model';
 
 /**
  * Declared secret names → live refs. A name the organisation no longer has is left out, the same
- * as a secret deleted after the node was saved; the restore warnings report it.
+ * as a secret deleted after the node was saved; the preview and restore warnings report it.
  */
 export function resolveDeclaredSecrets(
     names: readonly string[] | undefined,
@@ -45,25 +45,22 @@ export function resolveSecretIdByName(
 }
 
 /**
- * Export python code (no id) → live python code.
- *
- * KNOWN BROKEN: a restored version loses its environment. Libraries now live only
- * on the venv, and the export carries neither the venv nor a reference to one, so
- * `code.libraries` is dropped here and the node comes back on the default venv.
- * Fixing it means deciding how a venv travels in an export; until then this is the
- * honest mapping of what the snapshot actually holds.
+ * Export python code (no id) → live python code. `venv` is the id of the venv the code runs in; a version saved
+ * before venvs has none, which is the same as no venv. Such a version's `libraries` are not read: they do not come
+ * back on a restore.
  */
 export function toLivePythonCode(code: SnapshotPythonCode, secrets: DeclaredSecretRef[]): GetPythonCodeRequest {
     return {
         id: 0,
         code: code.code,
         entrypoint: code.entrypoint,
+        venv_id: code.venv ?? null,
         secrets,
         execution_timeout: code.execution_timeout,
     };
 }
 
-/** Export CDT pre/post code → live CDT code block. Drops `libraries`; see `toLivePythonCode`. */
+/** Export CDT pre/post code → live CDT code block. Drops `libraries` and `venv`: the table's code model has neither. */
 export function toLiveClassificationPythonCode(
     code: SnapshotClassificationPythonCode | null,
     secrets: DeclaredSecretRef[]

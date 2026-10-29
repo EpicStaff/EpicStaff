@@ -210,4 +210,12 @@ describe('CodeEditorComponent', () => {
         expect(query('use[href="#icon-play-outline"]')).toBeNull();
         expect(query('.right-section button.action-icon')?.getAttribute('aria-label')).toBe('Copy code');
     });
+
+    // The frame of the flow editor's version diff is opt-in: it is drawn only under the class the field mark puts
+    // on itself. A bare editor, as in the tools dialog, has no marked ancestor.
+    it('is not inside a marked field on its own, so it draws no mark frame', () => {
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.closest('.diff-value-marked')).toBeNull();
+    });
 });

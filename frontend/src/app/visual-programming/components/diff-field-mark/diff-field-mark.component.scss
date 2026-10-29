@@ -1,0 +1,63 @@
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
+
+// Off the Changes tab the element form leaves the layout as if it were not there.
+:host(app-diff-field-mark) {
+    display: contents;
+}
+
+// Around a whole field: the wrapped form component draws the border, badge and focus ring on its value box.
+:host(app-diff-field-mark.diff-field-mark--shown) {
+    display: block;
+    outline: none;
+}
+
+// Around a value box that clips what sticks out (a code editor card): the box draws only its border, so the badge
+// and the focus ring go on the mark, whose corners are the box's.
+:host(app-diff-field-mark.diff-field-mark--draws-badge) {
+    position: relative;
+    @include diff-value-mark.corner-badge;
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+// Around a group of inputs that together hold one value: the mark draws the box itself, like a value box drawn by
+// `marked($draws-box: true)`, with the badge on its corner. The inputs inside keep their own look.
+:host(app-diff-field-mark.diff-field-mark--group) {
+    position: relative;
+    padding: 8px 12px;
+    border: 1px solid var(--color-diff-changed);
+    border-radius: 4px;
+    @include diff-value-mark.corner-badge;
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+// On an element that lays out its own value (a row): the mark draws the border, badge and focus ring itself. The
+// border is a frame that takes no space, so a marked row is as wide as an unmarked one; the row sets how far outside
+// its edge the frame sits (`row-frame` in `styles/_diff-value-mark.scss`). Whatever holds the row must not clip the
+// badge, which sticks out of the frame's corner.
+:host([appDiffFieldMark].diff-field-mark--shown) {
+    position: relative;
+    @include diff-value-mark.row-frame(var(--color-diff-changed));
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        // Around the frame, not across it.
+        outline-offset: calc(#{diff-value-mark.$row-frame-offset} + 2px);
+    }
+}
+
+// On the frame's top-right corner, half outside, like the badge of the element form. A real element rather than a
+// pseudo-element, for its `title`. The glyph is the `ti ti-pencil` icon inside.
+.diff-field-mark__badge {
+    @include diff-value-mark.badge-look;
+    position: absolute;
+    top: calc(-1 * #{diff-value-mark.$row-frame-offset} - #{diff-value-mark.$badge-size} / 2);
+    right: calc(-1 * #{diff-value-mark.$row-frame-offset} - #{diff-value-mark.$badge-size} / 2);
+}

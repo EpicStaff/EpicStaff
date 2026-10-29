@@ -42,7 +42,6 @@
     }
 
     .f-connection {
-        z-index: 2;
         .f-connection-drag-handle {
             fill: transparent;
         }
@@ -109,6 +108,13 @@
             }
         }
 
+        // The snap and drag previews have positioned hosts, so the z-index lifts them over the edges. A
+        // plain `f-connection` host is not positioned: its paint order is the DOM order (`sortedConnections`).
+        &.f-snap-connection,
+        &.f-connection-for-create {
+            z-index: 2;
+        }
+
         &.is-dimmed {
             opacity: 0.25;
             transition: opacity 0.15s ease;
@@ -166,6 +172,51 @@
 
         &.is-reassign-follower {
             opacity: 0.3;
+        }
+
+        // Version diff: an edge a restore adds is green, one it removes is red and faded; an unchanged
+        // edge keeps the default look. The colour wins over the gradient stroke and the arrow colours. The
+        // dash stays the normal one (a virtual or backward edge is dashed, the rest solid).
+        &.diff-added {
+            --diff-edge-color: var(--color-diff-added);
+        }
+
+        &.diff-deleted {
+            --diff-edge-color: var(--color-diff-deleted);
+        }
+
+        // On the host, so the path and its arrow markers fade together. A highlighted edge is back at full
+        // strength; a reassign follower or an edge off the hover path keeps its own fade.
+        &.diff-deleted:not(:hover, .on-hover-path, .f-selected, .is-reassign-follower, .is-dimmed) {
+            opacity: var(--diff-deleted-opacity);
+        }
+
+        // Hovered, or an edge on the hovered node's path: the diff colour stays (it does not turn purple like an
+        // unchanged edge); a brighter tint and a thicker stroke mark the highlight instead.
+        &.diff-added:is(:hover, .on-hover-path) {
+            --diff-edge-color: var(--color-diff-added-highlight);
+        }
+
+        &.diff-deleted:is(:hover, .on-hover-path) {
+            --diff-edge-color: var(--color-diff-deleted-highlight);
+        }
+
+        // Not while selected: the selection highlight wins.
+        &.diff-added:not(.f-selected),
+        &.diff-deleted:not(.f-selected) {
+            .f-connection-path {
+                stroke: var(--diff-edge-color) !important;
+            }
+
+            svg.f-marker path,
+            svg.f-marker circle {
+                fill: var(--diff-edge-color) !important;
+            }
+
+            &:is(:hover, .on-hover-path) .f-connection-path {
+                // 3.5, not 4: the arrow markers scale with the stroke width.
+                stroke-width: 3.5;
+            }
         }
 
         .connection-center {

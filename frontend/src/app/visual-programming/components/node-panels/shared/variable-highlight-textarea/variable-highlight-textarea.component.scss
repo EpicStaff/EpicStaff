@@ -1,4 +1,5 @@
 @use './variable-highlight' as highlight;
+@use '../../../../../../styles/diff-value-mark' as diff-value-mark;
 
 :host {
     display: block;
@@ -89,5 +90,18 @@
 
     &:focus {
         outline: none;
+    }
+}
+
+// Version diff: the value of a changed field. The preview's read-only field is disabled, which fades it; only its text
+// fades then, so the mark's border and badge read as on any other field.
+@include diff-value-mark.marked('.vht-field');
+
+:host-context(.diff-value-marked) .vht-field--disabled {
+    opacity: 1;
+
+    .vht-backdrop,
+    .vht-textarea {
+        opacity: 0.7;
     }
 }

@@ -276,3 +276,37 @@
         </div>
     </div>
 }
+<!--
+    Version diff canvas: the status badge (top-left) and the missing-reference marker right of it, 2px under the
+    badge (in the badge's spot when there is no badge). Both yield to a Key-Value summary tab.
+-->
+@let badge = diffBadge;
+@if (badge) {
+    <div
+        class="diff-badge diff-badge--{{ badge.status }}"
+        [class.diff-badge--yields-to-tab]="showsSummaryTab"
+        role="img"
+        [attr.aria-label]="badge.label"
+        [attr.title]="badge.label"
+    >
+        <i
+            [class]="badge.icon"
+            aria-hidden="true"
+        ></i>
+    </div>
+}
+@if (hasMissingReferences) {
+    <div
+        class="missing-references-marker"
+        [class.missing-references-marker--beside-badge]="badge !== null"
+        [class.missing-references-marker--yields-to-tab]="showsSummaryTab"
+        role="img"
+        aria-label="This version uses items that no longer exist"
+        title="This version uses items that no longer exist"
+    >
+        <app-svg-icon
+            icon="alert-triangle"
+            size="0.75rem"
+        ></app-svg-icon>
+    </div>
+}

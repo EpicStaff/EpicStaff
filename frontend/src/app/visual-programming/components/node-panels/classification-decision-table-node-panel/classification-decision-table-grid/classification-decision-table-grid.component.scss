@@ -1,3 +1,5 @@
+@use '../../../../../../styles/diff-value-mark' as diff-value-mark;
+
 $grid-header-height: 40px;
 $grid-header-gap: 1rem;
 $grid-above-btns-height: 24px;
@@ -640,4 +642,10 @@ $group-gutter-width: 28px;
     box-shadow:
         -4px 0px 4px 0px rgba(0, 0, 0, 0.25),
         4px 0px 4px 0px rgba(0, 0, 0, 0.25);
+}
+
+// Version diff (Changes tab): the rows a restore changes, adds or removes. The Enable cell, the first of the read-only
+// grid, holds the badge.
+:host ::ng-deep .decision-grid {
+    @include diff-value-mark.grid-row-marks('.ag-cell[col-id="dock_visible"]');
 }

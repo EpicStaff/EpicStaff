@@ -10,6 +10,7 @@ export function mapFileExtractorNodeToModel(n: GetFileExtractorNodeRequest): Fil
     return {
         id: generateUuid(),
         backendId: n.id,
+        nodeUuid: n.uuid,
         type: NodeType.FILE_EXTRACTOR,
         node_name: n.node_name,
         nodeNumber: n.node_number ?? undefined,

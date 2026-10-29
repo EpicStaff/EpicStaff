@@ -7,6 +7,7 @@ function makeNode(type: NodeType): NodeModel {
     return {
         id: 'n1',
         backendId: null,
+        nodeUuid: null,
         type,
         node_name: 'test',
         color: '#000',

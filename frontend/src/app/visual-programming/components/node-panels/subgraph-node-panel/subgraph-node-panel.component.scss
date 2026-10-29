@@ -32,6 +32,7 @@
     margin-bottom: 0.5rem;
 }
 
+// Also on the field mark around the select, the row's item while it shows (it leaves no box otherwise).
 .select-field {
     flex: 1;
     min-width: 0;
@@ -50,4 +51,9 @@
 app-go-to-button.is-disabled {
     pointer-events: none;
     opacity: 0.5;
+}
+
+// Spaced off the field above it, like the recycle-bin note.
+.missing-reference-note {
+    margin-top: 0.5rem;
 }

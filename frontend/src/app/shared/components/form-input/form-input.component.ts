@@ -94,6 +94,8 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
     `,
     styles: [
         `
+            @use '../../../../styles/diff-value-mark' as diff-value-mark;
+
             :host {
                 width: 100%;
             }
@@ -213,6 +215,10 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
                 }
             }
+
+            // Version diff: a changed read-only value, boxed like an input so every marked value has one width.
+            // Keep last: it overrides the read-only value's own look above.
+            @include diff-value-mark.marked('.readonly-value', $draws-box: true, $display: block);
         `,
     ],
     changeDetection: ChangeDetectionStrategy.Eager,

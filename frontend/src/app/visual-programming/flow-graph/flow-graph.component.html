@@ -163,7 +163,11 @@
                     [class.is-backward]="routingOrchestrator.backwardConnectionIds().has(connection.id)"
                     [class.is-reassign-follower]="reassignHandler.followerIds().has(connection.id)"
                     [class.is-dimmed]="hoverContext() !== null && !hoverContext()!.connectionIds.has(connection.id)"
-                    [style.z-index]="routingOrchestrator.backwardConnectionIds().has(connection.id) ? 0 : 1"
+                    [class.on-hover-path]="hoverContext()?.connectionIds.has(connection.id) ?? false"
+                    [class.diff-added]="flowDiffState.connectionStatus(connection.id) === 'added'"
+                    [class.diff-deleted]="flowDiffState.connectionStatus(connection.id) === 'deleted'"
+                    [class.diff-unchanged]="flowDiffState.connectionStatus(connection.id) === 'unchanged'"
+                    [attr.title]="connectionDiffTitle(connection.id)"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()
                             ? nodeColorMap().get(connection.sourceNodeId) || '#555'

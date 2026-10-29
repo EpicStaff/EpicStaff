@@ -481,3 +481,97 @@
 }
 
 // Overlay visuals moved to app-flow-node-variables-overlay component
+
+// Both marks sit above the node's own action bars (`.actions`, z-index 11), so neither is ever covered. The
+// missing-reference marker is under the status badge it touches, and above it while hovered.
+$missing-references-marker-z-index: 12;
+$diff-marker-z-index: 13;
+$missing-references-marker-hover-z-index: 14;
+
+// Version diff canvas. Added and deleted nodes get a status border, which also wraps a Key-Value node's
+// summary tab while it shows (the badge then yields to the tab); a changed node only has its badge.
+:host(.diff-added) {
+    --diff-node-color: var(--color-diff-added);
+}
+
+:host(.diff-deleted) {
+    --diff-node-color: var(--color-diff-deleted);
+    // A ghost: the content fades, the badges keep full strength.
+    background: transparent;
+
+    > :not(.diff-badge, .missing-references-marker) {
+        opacity: var(--diff-deleted-opacity);
+    }
+}
+
+:host(.diff-added),
+:host(.diff-deleted) {
+    // !important: the status stays visible on a selected node too.
+    .interactive-node-body,
+    .interactive-node-body .node-action-bar .key-value-summary-tab {
+        border-color: var(--diff-node-color) !important;
+    }
+
+    app-graph-note {
+        outline: 2px solid var(--diff-node-color);
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+}
+
+.diff-badge,
+.missing-references-marker {
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    z-index: $diff-marker-z-index;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    color: var(--color-text-on-bright);
+    pointer-events: auto;
+    // Comes back only once the summary tab has faded out.
+    transition: opacity mixins.$node-actions-fade-duration ease mixins.$node-actions-hide-delay;
+}
+
+.diff-badge {
+    font-size: 0.75rem;
+
+    &--added {
+        background-color: var(--color-diff-added);
+    }
+
+    &--deleted {
+        background-color: var(--color-diff-deleted);
+    }
+
+    &--changed {
+        background-color: var(--color-diff-changed);
+    }
+}
+
+:host(:hover),
+:host(.f-selected) {
+    .diff-badge--yields-to-tab,
+    .missing-references-marker--yields-to-tab {
+        opacity: 0;
+        transition-delay: 0s;
+    }
+}
+
+.missing-references-marker {
+    z-index: $missing-references-marker-z-index;
+    background-color: var(--color-diff-missing-reference);
+
+    // Right of the badge (x -10 to 10), overlapping it by 2px.
+    &--beside-badge {
+        left: 8px;
+    }
+
+    &:hover {
+        z-index: $missing-references-marker-hover-z-index;
+    }
+}

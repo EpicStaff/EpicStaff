@@ -52,6 +52,7 @@ export function mapClassificationDecisionTableNodeToModel(
     return {
         id: generateUuid(),
         backendId: n.id,
+        nodeUuid: n.uuid,
         type: NodeType.CLASSIFICATION_TABLE,
         node_name: n.node_name,
         nodeNumber: n.node_number ?? undefined,

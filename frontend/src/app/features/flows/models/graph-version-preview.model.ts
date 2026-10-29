@@ -31,7 +31,7 @@ import { RestoreWarning } from './graph.model';
  * (backend `GraphStrategy.export_entity`, converted to the current import version and
  * filtered of missing dependencies). Node rows come from the per-node import serializers:
  * `graph`, `created_at`, `updated_at` and the authorship fields are never present, nested
- * python code has no `id` and carries `libraries` as a space-separated string.
+ * python code has no `id` and names its venv as `venv`.
  */
 
 /** Every `node_type` the backend export emits (backend `NODE_RELATIONS`). */
@@ -55,12 +55,18 @@ export type SnapshotNodeType =
 
 type ExcludedExportFields = 'graph' | 'created_at' | 'updated_at' | keyof AuthorshipFields;
 
-/** A node DTO as the export writes it: without the excluded fields, tagged with its `node_type`. */
-type SnapshotNodeOf<TNodeType extends SnapshotNodeType, TNodeDto> = Omit<TNodeDto, ExcludedExportFields> & {
-    node_type: TNodeType;
-};
+/** The node's stable uuid. Absent on nodes of versions saved before node uuids that the backend could not stamp. */
+interface SnapshotNodeIdentity {
+    uuid?: string;
+}
 
-interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> {
+/** A node DTO as the export writes it: without the excluded fields, tagged with its `node_type`. */
+type SnapshotNodeOf<TNodeType extends SnapshotNodeType, TNodeDto> = Omit<TNodeDto, ExcludedExportFields | 'uuid'> &
+    SnapshotNodeIdentity & {
+        node_type: TNodeType;
+    };
+
+interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> extends SnapshotNodeIdentity {
     id: number;
     node_type: TNodeType;
     node_name: string;
@@ -71,13 +77,10 @@ interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> {
 
 export interface SnapshotPythonCode {
     code: string;
-    /**
-     * Space-separated library list, e.g. `"requests pandas"`, as older snapshots
-     * stored it. KNOWN BROKEN: libraries now live only on the venv and the export
-     * carries no venv, so nothing reads this any more and new snapshots have
-     * nothing to put in it. See `toLivePythonCode`.
-     */
-    libraries: string;
+    /** Space-separated library list of a version saved before venvs; not read (see `toLivePythonCode`). */
+    libraries?: string;
+    /** Id of the venv the code runs in; absent in versions saved before venvs. */
+    venv?: number | null;
     entrypoint: string;
     global_kwargs?: Record<string, unknown>;
     /** Seconds; absent in versions saved before code had an execution timeout. */
@@ -158,9 +161,9 @@ export interface SnapshotScheduleTriggerNode extends SnapshotNodeBase<'ScheduleT
     next_run_date_time: string | null;
 }
 
-export type SnapshotClassificationPythonCode = Omit<CDTPythonCodeBlock, 'libraries' | 'secret_ids' | 'secrets'> & {
-    /** Space-separated library list, e.g. `"requests pandas"`. */
-    libraries: string;
+export type SnapshotClassificationPythonCode = Omit<CDTPythonCodeBlock, 'secret_ids' | 'secrets'> & {
+    /** Space-separated library list of a version saved before venvs; not read. */
+    libraries?: string;
 };
 
 export type SnapshotClassificationDecisionTableNode = SnapshotNodeOf<
@@ -254,4 +257,11 @@ export interface PreviewGraphVersionResponse {
      * recorded node authorship; a node missing from it has no recorded author or editor.
      */
     node_authorship: Record<string, SnapshotNodeAuthorship>;
+    /**
+     * Secret name → secret id, for the names the previewed nodes declared (`snapshot.secret_declarations`) that
+     * still exist in the flow's organisation: what a restore re-links. A declared name missing here gets a
+     * `secret_declaration_dropped` warning instead. The backend resolves them, so the preview needs no access
+     * to the secrets list.
+     */
+    resolved_secrets: Record<string, number>;
 }

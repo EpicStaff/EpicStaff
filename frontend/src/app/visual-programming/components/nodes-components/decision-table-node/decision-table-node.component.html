@@ -62,8 +62,13 @@
     <div class="decision-table__groups">
         @if (conditionGroups.length > 0) {
             @for (group of conditionGroups; track trackConditionGroup($index, group)) {
+                @let isAdded = isAddedRoute(group);
                 <div
                     class="decision-table__group"
+                    [class.decision-table__group--added]="isAdded"
+                    [attr.role]="isAdded ? 'group' : null"
+                    [attr.title]="isAdded ? addedRouteLabel : null"
+                    [attr.aria-label]="isAdded ? addedRouteLabel : null"
                     [style.min-height.px]="rowHeightPx"
                 >
                     <span class="group-name">{{ group.group_name || 'Group ' + ($index + 1) }}</span>
@@ -107,6 +112,34 @@
                 [style.min-height.px]="rowHeightPx"
             >
                 <span class="group-name">No condition groups</span>
+            </div>
+        }
+
+        <!-- Version diff canvas only: a route only the current canvas has, so the edge a restore removes can attach. -->
+        @for (port of removedRoutePorts; track port.id) {
+            <div
+                class="decision-table__group decision-table__group--removed"
+                role="group"
+                title="Restore removes this condition"
+                aria-label="Restore removes this condition"
+                [style.min-height.px]="rowHeightPx"
+            >
+                <span class="group-name">{{ port.label }}</span>
+                <div class="port-wrapper no-hover">
+                    <div
+                        class="port-circle"
+                        fNodeOutput
+                        [fOutputId]="port.id"
+                        [fOutputDisabled]="true"
+                        [fOutputConnectableSide]="port.position"
+                        [style.border-color]="port.color"
+                    >
+                        <i
+                            class="fa-solid fa-plus plus-icon"
+                            [style.color]="port.color"
+                        ></i>
+                    </div>
+                </div>
             </div>
         }
 

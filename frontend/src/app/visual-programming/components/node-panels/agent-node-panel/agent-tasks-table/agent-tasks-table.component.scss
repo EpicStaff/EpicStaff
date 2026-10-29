@@ -1,3 +1,5 @@
+@use '../../../../../../styles/diff-value-mark' as diff-value-mark;
+
 $col-index: 40px;
 $col-name: 256px;
 $col-instructions-min: 256px;
@@ -354,4 +356,39 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     text-align: center;
     color: var(--fog-alpha-50);
     font-size: 0.8125rem;
+}
+
+// Version diff (Changes tab). A row a restore changes (the field mark draws its frame and badge) or adds gets a frame
+// that takes no space, so every row keeps its width. The badge sticks out of the frame's top-right corner: the rows
+// leave room for it at the table's right end, inside the scroll area that would clip it.
+.att--diff .att__inner {
+    padding-right: calc(#{diff-value-mark.$badge-size} / 2);
+}
+
+.att-row--added {
+    position: relative;
+    @include diff-value-mark.row-frame(var(--color-diff-added));
+}
+
+// A task only on the canvas, as the removed rows of the Input List: red, struck, faded.
+.att-row--removed .att-cell {
+    color: var(--color-diff-deleted);
+    text-decoration: line-through;
+    opacity: var(--diff-deleted-opacity);
+}
+
+.att-removed-text {
+    width: 100%;
+    height: 100%;
+    padding: 4px;
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+
+    &--schema {
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    }
 }

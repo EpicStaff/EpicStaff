@@ -36,15 +36,20 @@ import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigge
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { DisplayedTelegramField, TelegramTriggerNodeField } from '../../../core/models/telegram-trigger.model';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { fieldChangeFor, linkedEntityFormat } from '../../../utils/diff';
 import {
     buildTelegramSamplePayload,
     formatTestPayload,
     TestPayloadValidator,
     validateTelegramTestPayload,
 } from '../../../utils/test-run';
+import { DiffFieldMarkChange, DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
+import { webhookTriggerNameFormat } from '../shared/diff/webhook-trigger-name-format';
 import { RunTestPayloadButtonComponent } from '../shared/run-test-payload-button/run-test-payload-button.component';
 import { TestPayloadSectionComponent } from '../shared/test-payload-section/test-payload-section.component';
 import { TriggerTestPayloadState, withTestPayload } from '../shared/test-payload-section/trigger-test-payload.state';
@@ -75,6 +80,8 @@ export const INSERT_EXAMPLE_NO_FIELDS_REASON = 'Select fields first';
         TelegramWebhookRegistrationComponent,
         TestPayloadSectionComponent,
         RunTestPayloadButtonComponent,
+        MissingReferenceNoteComponent,
+        DiffFieldMarkComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -83,6 +90,7 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
 
     /** Rendered by the panel shell in its header. */
     public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
+    private readonly triggerSelect = viewChild(WebhookTriggerSelectComponent);
 
     private dialog = inject(Dialog);
     private secretsStorageService = inject(SecretsStorageService);
@@ -90,6 +98,7 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     private readonly savedFlowStateService = inject(SavedFlowStateService);
     private readonly sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
 
     protected readonly leftColumnWidth = createColumnWidthState('telegram-trigger-node', 550);
 
@@ -173,6 +182,25 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
             )
         )
     );
+
+    /** The secrets offered for the bot key name a changed key in the mark's tooltip; one not offered: `secret #id`. */
+    protected readonly secretNameFormat = linkedEntityFormat(
+        'secret',
+        (id) => this.secretItems().find((item) => item.value === id)?.name
+    );
+    /** The triggers the select listed name a changed trigger in the mark's tooltip; one not listed: `trigger #id`. */
+    // Reads `triggerSelect` while the fields are set up, so that query must stay declared above this field.
+    protected readonly triggerNameFormat = webhookTriggerNameFormat(this.triggerSelect);
+    /**
+     * Changes tab of a version preview: the picked fields a restore changes, each side as the field labels, so the
+     * tooltip strikes the fields a restore removes; `null` when they are unchanged.
+     */
+    protected readonly fieldsChange = computed<DiffFieldMarkChange | null>(() => {
+        const change = fieldChangeFor(this.panelDiff(), 'fields');
+        return change
+            ? { current: telegramFieldLabels(change.current), version: telegramFieldLabels(change.version) }
+            : null;
+    });
 
     constructor() {
         super();
@@ -354,6 +382,15 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     }
 
     protected readonly WebhookStatus = WebhookStatus;
+}
+
+/** A picked field as the mark's tooltip names it: where it comes from and the variable it fills. */
+function telegramFieldLabels(fields: unknown): string[] {
+    if (!Array.isArray(fields)) return [];
+    return fields.map((field: Partial<TelegramTriggerNodeField>) => {
+        const name = `${field.parent}.${field.field_name}`;
+        return field.variable_path ? `${name} (${field.variable_path})` : name;
+    });
 }
 
 /** Loaded nodes may carry the nested trigger object instead of its id. */

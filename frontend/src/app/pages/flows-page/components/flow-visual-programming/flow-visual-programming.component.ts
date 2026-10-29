@@ -1971,7 +1971,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
-    /** A renamed or re-described version keeps the preview bar in step; same id, so nothing reloads. */
+    /** Replaces the previewed version with its renamed or re-described copy; same id, so the preview does not reload. */
     public onVersionUpdated(version: GraphVersionDto): void {
         if (this.previewedVersion()?.id === version.id) {
             this.previewedVersion.set(version);

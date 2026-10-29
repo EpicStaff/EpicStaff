@@ -76,6 +76,18 @@ import {
     toDisplayExpression,
 } from '../../../../utils/condition-expression.helper';
 import {
+    ConditionGroupNameCellParams,
+    ConditionGroupNameCellRendererComponent,
+} from '../../shared/condition-group-row-marks/condition-group-name-cell-renderer.component';
+import {
+    ConditionGroupGridRowChanges,
+    isRemovedGroupRow,
+    lockRemovedRows,
+    rowMarkClass,
+    rowStatusText,
+} from '../../shared/condition-group-row-marks/condition-group-row-marks';
+import { ConditionGroupRowTooltipsDirective } from '../../shared/condition-group-row-marks/condition-group-row-tooltips.directive';
+import {
     CDT_COLUMN_KIND,
     CDT_ENABLE_CONTINUE_DIALOG_WIDTH,
     CDT_FIELD_PREFIX,
@@ -98,6 +110,7 @@ import {
     normalizeRouteCode,
     routePortIdForRow,
 } from '../cdt-route-continue.util';
+import { withRemovedRows } from './cdt-row-changes';
 import { ColumnHeaderMenuComponent } from './column-header-menu/column-header-menu.component';
 import { EnableFilterHeaderComponent, EnableFilterMode } from './enable-filter-header/enable-filter-header.component';
 import { ExpressionBuilderCellEditorComponent } from './expression-builder/expression-builder-cell-editor.component';
@@ -160,10 +173,18 @@ interface GroupOverlayItem {
 
 @Component({
     selector: 'app-classification-decision-table-grid',
-    imports: [AgGridModule, AppSvgIconComponent, ButtonComponent, HelpTooltipComponent, MultiSelectComponent],
+    imports: [
+        AgGridModule,
+        AppSvgIconComponent,
+        ButtonComponent,
+        HelpTooltipComponent,
+        MultiSelectComponent,
+        ConditionGroupRowTooltipsDirective,
+    ],
     templateUrl: './classification-decision-table-grid.component.html',
     styleUrls: ['./classification-decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: { '[class.decision-grid--diff-rows]': 'rowChanges() !== null' },
 })
 export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public conditionGroups = input.required<ConditionGroup[]>();
@@ -183,6 +204,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public routePortIdsWithTarget = input<ReadonlySet<string>>(new Set<string>());
     public readonly = input<boolean>(false);
     public sections = input<CdtSection[]>([]);
+    /**
+     * Changes tab of a version preview: what a restore does to each row, and the groups it removes, shown as extra
+     * rows in their section (`withRemovedRows`). `null` anywhere else.
+     */
+    public readonly rowChanges = input<ConditionGroupGridRowChanges | null>(null);
 
     public conditionGroupsChange = output<ConditionGroup[]>();
     public sectionsChange = output<CdtSection[]>();
@@ -286,8 +312,17 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     // Precomputed set of group_name keys that should remain visible given collapse + enable filter state
     public visibleRowKeys = signal<Set<string>>(new Set<string>());
 
+    /** Whether the row marks are on: the columns change with it, the marks themselves only redraw the rows. */
+    private readonly isDiffShown = computed(() => this.rowChanges() !== null);
+
+    /** The table's rows with the groups a restore removes put in; those are never edited, emitted or saved. */
+    private readonly rowsWithRemoved = computed<ConditionGroup[]>(() => {
+        const removed = this.rowChanges()?.removed ?? [];
+        return removed.length > 0 ? withRemovedRows(this.rowData(), removed) : this.rowData();
+    });
+
     public displayedRowData = computed<ConditionGroup[]>(() => {
-        const rows = this.rowData();
+        const rows = this.rowsWithRemoved();
         const collapsed = this.collapsedGroups();
         const mode = this.enableFilterMode();
         return rows.filter((row) => {
@@ -774,9 +809,17 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         });
         effect(() => {
             this.readonly();
+            // Version diff: the name column tells the row status and the removed rows are locked. New row changes
+            // only redraw the rows.
+            this.isDiffShown();
             untracked(() => {
                 this.rebuildColumnDefs();
             });
+        });
+        effect(() => {
+            this.rowChanges();
+            // Row classes and the name cells' status are drawn with the rows.
+            untracked(() => this.gridApi?.redrawRows());
         });
     }
 
@@ -952,7 +995,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             checkboxes: false,
             headerCheckbox: false,
             enableClickSelection: false,
+            isRowSelectable: (node) => !isRemovedGroupRow(node.data),
         },
+        getRowClass: (params) => rowMarkClass(this.rowChanges(), params.data),
         context: {
             onManualRowReorder: (source: IRowNode, over: IRowNode) => this.handleManualRowReorder(source, over),
         },
@@ -1736,6 +1781,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             cellClassRules: {
                 'cell-required-invalid': (p) => String(p.value ?? '').trim().length === 0,
             },
+            ...this.rowStatusRenderer(),
         };
 
         // Expression section
@@ -1984,7 +2030,17 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             if (this.manipParamsFirst()) groupsAfterCol.reverse();
             result.push(...groupsAfterCol);
         }
-        return readOnly ? this.stripEditability(result) : result;
+        const defs = readOnly ? this.stripEditability(result) : result;
+        return this.isDiffShown() ? lockRemovedRows(defs) : defs;
+    }
+
+    /** Changes tab: the Condition Name tells screen readers what a restore does to the row before the name. */
+    private rowStatusRenderer(): Pick<ColDef, 'cellRenderer' | 'cellRendererParams'> {
+        if (!this.isDiffShown()) return {};
+        const params: ConditionGroupNameCellParams = {
+            statusOf: (data) => rowStatusText(this.rowChanges(), data),
+        };
+        return { cellRenderer: ConditionGroupNameCellRendererComponent, cellRendererParams: params };
     }
 
     /**
@@ -2583,7 +2639,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     onCellValueChanged(event: CellValueChangedEvent): void {
         // Guard against recursive loops triggered by programmatic cell writes
         if (this.isSyncing) return;
-        if (this.readonly()) return;
+        if (this.readonly() || isRemovedGroupRow(event.data)) return;
 
         const colId: string = event.colDef.colId ?? '';
         const rowData = event.data as ConditionGroup;

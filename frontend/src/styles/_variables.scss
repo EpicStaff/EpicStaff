@@ -684,6 +684,17 @@
     --color-error: #f54242;
     --color-findings: #f5a623;
     --color-key-value: #14b8a6; // Key-Value node + session message accent (matches NODE_COLORS)
+    // Version diff on the flow canvas: what a restore of the version adds, removes or changes
+    // (node borders and badges, edges), and the marker of a node whose version lost a reference.
+    --color-diff-added: var(--color-ks-status-new);
+    --color-diff-deleted: var(--color-ks-status-failed);
+    --color-diff-changed: var(--color-ks-status-warning);
+    --color-diff-missing-reference: var(--color-ks-status-processing);
+    // A hovered added / removed edge (or an edge of the hovered node): the diff colour, brighter.
+    --color-diff-added-highlight: color-mix(in srgb, var(--color-diff-added) 65%, var(--white));
+    --color-diff-deleted-highlight: color-mix(in srgb, var(--color-diff-deleted) 65%, var(--white));
+    // What a restore removes (node content, edges, decision table rows) is drawn faded. Same in both themes.
+    --diff-deleted-opacity: 0.4;
     // JSON value colours: app-json-viewer (styles/json-viewer.scss) + Key-Value message previews
     --color-json-key: #e83e8c;
     --color-json-value: #17a2b8;
@@ -776,4 +787,7 @@
     // LEGACY overrides — see :root block above
     --color-nodes-actionbar-bg: #f8fafc;
     --color-nodes-sidepanel-bg: #ffffff;
+    // A hovered diff edge must get stronger on the light canvas, so the highlight darkens instead of lightening.
+    --color-diff-added-highlight: color-mix(in srgb, var(--color-diff-added) 70%, var(--black));
+    --color-diff-deleted-highlight: color-mix(in srgb, var(--color-diff-deleted) 70%, var(--black));
 }

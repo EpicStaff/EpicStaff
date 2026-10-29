@@ -18,15 +18,17 @@
                         [style.flex-basis.px]="leftColumnWidth.width()"
                     >
                         <div class="field-isolated">
-                            <app-custom-input
-                                label="Node Name"
-                                [required]="true"
-                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                                formControlName="node_name"
-                                placeholder="Enter node name"
-                                [activeColor]="activeColor"
-                                [readonly]="isReadOnly()"
-                            ></app-custom-input>
+                            <app-diff-field-mark [diffField]="'node_name'">
+                                <app-custom-input
+                                    label="Node Name"
+                                    [required]="true"
+                                    tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                    formControlName="node_name"
+                                    placeholder="Enter node name"
+                                    [activeColor]="activeColor"
+                                    [readonly]="isReadOnly()"
+                                ></app-custom-input>
+                            </app-diff-field-mark>
                             <app-validation-errors [control]="form.get('node_name')!" />
                         </div>
 
@@ -39,37 +41,43 @@
                                     size="18px"
                                 />
                             </div>
-                            <app-select-dropdown
-                                mode="list"
-                                selectionMode="single"
-                                searchPlaceholder="Search agent..."
-                                emptyText="No agents available"
-                                [items]="agentItems()"
-                                [selected]="selectedAgentValue()"
-                                [readonly]="isReadOnly()"
-                                (selectionChange)="onAgentSelectionChange($event)"
+                            <app-diff-field-mark
+                                [diffField]="'agent_definition'"
+                                [diffFormat]="agentNameFormat"
                             >
-                                <button
-                                    type="button"
-                                    appSelectDropdownTrigger
-                                    class="dropdown-trigger"
-                                    [class.dropdown-trigger--readonly]="isReadOnly()"
-                                    [class.dropdown-trigger--invalid]="agentInvalid()"
+                                <app-select-dropdown
+                                    mode="list"
+                                    selectionMode="single"
+                                    searchPlaceholder="Search agent..."
+                                    emptyText="No agents available"
+                                    [items]="agentItems()"
+                                    [selected]="selectedAgentValue()"
+                                    [readonly]="isReadOnly()"
+                                    (selectionChange)="onAgentSelectionChange($event)"
                                 >
-                                    <span
-                                        class="dropdown-trigger__label"
-                                        [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                    <button
+                                        type="button"
+                                        appSelectDropdownTrigger
+                                        class="dropdown-trigger"
+                                        [class.dropdown-trigger--readonly]="isReadOnly()"
+                                        [class.dropdown-trigger--invalid]="agentInvalid()"
                                     >
-                                        {{ selectedAgentName() || 'Select agent' }}
-                                    </span>
-                                    <app-svg-icon
-                                        *appIfFlowEditable
-                                        icon="chevron-down-filled"
-                                        size="8px"
-                                    />
-                                </button>
-                            </app-select-dropdown>
+                                        <span
+                                            class="dropdown-trigger__label"
+                                            [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                        >
+                                            {{ selectedAgentName() || 'Select agent' }}
+                                        </span>
+                                        <app-svg-icon
+                                            *appIfFlowEditable
+                                            icon="chevron-down-filled"
+                                            size="8px"
+                                        />
+                                    </button>
+                                </app-select-dropdown>
+                            </app-diff-field-mark>
                             <app-validation-errors [control]="form.get('agent_definition')!" />
+                            <app-missing-reference-note [fields]="['agent_definition']" />
                         </div>
 
                         <div class="field">
@@ -82,27 +90,32 @@
                                 />
                             </div>
                             <div class="surface-row">
-                                <app-multi-select
+                                <app-diff-field-mark
                                     class="surface-row__select"
-                                    color="white"
-                                    [grouped]="true"
-                                    [label]="surfaceSummaryLabel()"
-                                    [readonlyView]="isReadOnly()"
-                                    searchPlaceholder="Search item..."
-                                    emptyText="No surfaces available"
-                                    checkboxPosition="left"
-                                    [items]="surfaceMultiSelectItems()"
-                                    [selectedValues]="surfaceSelectedValues()"
-                                    (selectionChange)="onSurfacesChange($event)"
-                                    [groupIcons]="surfaceGroupIcons"
-                                    [groupActionIcon]="surfaceGroupActionIcon()"
-                                    (groupAction)="onCreateLocalSurface()"
-                                    (itemAction)="onEditLocalSurface()"
-                                    [showGroupCounts]="true"
-                                    [uppercaseGroupLabels]="false"
-                                    [showClearFilter]="true"
-                                    saveLabel="Save"
-                                ></app-multi-select>
+                                    [diffChange]="surfaceChange()"
+                                >
+                                    <app-multi-select
+                                        class="surface-row__select"
+                                        color="white"
+                                        [grouped]="true"
+                                        [label]="surfaceSummaryLabel()"
+                                        [readonlyView]="isReadOnly()"
+                                        searchPlaceholder="Search item..."
+                                        emptyText="No surfaces available"
+                                        checkboxPosition="left"
+                                        [items]="surfaceMultiSelectItems()"
+                                        [selectedValues]="surfaceSelectedValues()"
+                                        (selectionChange)="onSurfacesChange($event)"
+                                        [groupIcons]="surfaceGroupIcons"
+                                        [groupActionIcon]="surfaceGroupActionIcon()"
+                                        (groupAction)="onCreateLocalSurface()"
+                                        (itemAction)="onEditLocalSurface()"
+                                        [showGroupCounts]="true"
+                                        [uppercaseGroupLabels]="false"
+                                        [showClearFilter]="true"
+                                        saveLabel="Save"
+                                    ></app-multi-select>
+                                </app-diff-field-mark>
                                 <button
                                     type="button"
                                     class="view-summary-btn"
@@ -116,12 +129,14 @@
                                     View Summary
                                 </button>
                             </div>
+                            <app-missing-reference-note [fields]="['surface_list', 'inline_surface']" />
                         </div>
 
                         <div class="input-map">
                             <app-input-map
                                 [activeColor]="activeColor"
                                 [readonly]="isReadOnly()"
+                                [rowChanges]="inputMapRowChanges()"
                             ></app-input-map>
                         </div>
 
@@ -131,14 +146,16 @@
                             (insert)="insertInputToInstructions($event)"
                         />
 
-                        <app-custom-input
-                            label="Output Variable Path"
-                            tooltipText="Path where the Agent node output will be stored in flow variables."
-                            formControlName="output_variable_path"
-                            placeholder="Enter output variable path (leave empty for null)"
-                            [activeColor]="activeColor"
-                            [readonly]="isReadOnly()"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'output_variable_path'">
+                            <app-custom-input
+                                label="Output Variable Path"
+                                tooltipText="Path where the Agent node output will be stored in flow variables."
+                                formControlName="output_variable_path"
+                                placeholder="Enter output variable path (leave empty for null)"
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
 
                         <div class="field task-section">
                             <div class="field__label-row">
@@ -157,6 +174,7 @@
                                 [showValidation]="tasksTouched()"
                                 [variableNames]="inputMapKeys()"
                                 [readonly]="isReadOnly()"
+                                [rowChanges]="taskRowChanges()"
                                 (tasksChange)="onTasksChange($event)"
                                 (cellSelect)="onCellSelect($event)"
                                 (instructionsFocus)="onInstructionsFocus($event)"
@@ -197,6 +215,14 @@
                     >
                         @if (!selectedTask()) {
                             <div class="main-editor-pane__empty">Add a task to edit its instructions</div>
+                        } @else if (selectedTaskSchemaDiff(); as outputSchema) {
+                            <!-- Version diff (Changes tab): the selected task's changed schema, as a diff of its JSON. -->
+                            <app-code-diff-view
+                                class="output-schema-diff"
+                                language="json"
+                                [current]="outputSchema.current"
+                                [version]="outputSchema.version"
+                            />
                         } @else if (effectiveRightPane()?.field === 'schema') {
                             <app-json-editor
                                 [jsonData]="rightSchemaText()"
@@ -280,15 +306,17 @@
             } @else {
                 <div class="form-layout collapsed">
                     <div class="field-isolated">
-                        <app-custom-input
-                            label="Node Name"
-                            [required]="true"
-                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [readonly]="isReadOnly()"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'node_name'">
+                            <app-custom-input
+                                label="Node Name"
+                                [required]="true"
+                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
 
@@ -301,37 +329,43 @@
                                 size="18px"
                             />
                         </div>
-                        <app-select-dropdown
-                            mode="list"
-                            selectionMode="single"
-                            searchPlaceholder="Search agent..."
-                            emptyText="No agents available"
-                            [items]="agentItems()"
-                            [selected]="selectedAgentValue()"
-                            [readonly]="isReadOnly()"
-                            (selectionChange)="onAgentSelectionChange($event)"
+                        <app-diff-field-mark
+                            [diffField]="'agent_definition'"
+                            [diffFormat]="agentNameFormat"
                         >
-                            <button
-                                type="button"
-                                appSelectDropdownTrigger
-                                class="dropdown-trigger"
-                                [class.dropdown-trigger--invalid]="agentInvalid()"
-                                [class.dropdown-trigger--readonly]="isReadOnly()"
+                            <app-select-dropdown
+                                mode="list"
+                                selectionMode="single"
+                                searchPlaceholder="Search agent..."
+                                emptyText="No agents available"
+                                [items]="agentItems()"
+                                [selected]="selectedAgentValue()"
+                                [readonly]="isReadOnly()"
+                                (selectionChange)="onAgentSelectionChange($event)"
                             >
-                                <span
-                                    class="dropdown-trigger__label"
-                                    [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                <button
+                                    type="button"
+                                    appSelectDropdownTrigger
+                                    class="dropdown-trigger"
+                                    [class.dropdown-trigger--invalid]="agentInvalid()"
+                                    [class.dropdown-trigger--readonly]="isReadOnly()"
                                 >
-                                    {{ selectedAgentName() || 'Select agent' }}
-                                </span>
-                                <app-svg-icon
-                                    *appIfFlowEditable
-                                    icon="chevron-down-filled"
-                                    size="8px"
-                                />
-                            </button>
-                        </app-select-dropdown>
+                                    <span
+                                        class="dropdown-trigger__label"
+                                        [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                    >
+                                        {{ selectedAgentName() || 'Select agent' }}
+                                    </span>
+                                    <app-svg-icon
+                                        *appIfFlowEditable
+                                        icon="chevron-down-filled"
+                                        size="8px"
+                                    />
+                                </button>
+                            </app-select-dropdown>
+                        </app-diff-field-mark>
                         <app-validation-errors [control]="form.get('agent_definition')!" />
+                        <app-missing-reference-note [fields]="['agent_definition']" />
                     </div>
 
                     <div class="field">
@@ -344,27 +378,32 @@
                             />
                         </div>
                         <div class="surface-row">
-                            <app-multi-select
+                            <app-diff-field-mark
                                 class="surface-row__select"
-                                color="white"
-                                [grouped]="true"
-                                [label]="surfaceSummaryLabel()"
-                                searchPlaceholder="Search item..."
-                                emptyText="No surfaces available"
-                                checkboxPosition="left"
-                                [readonlyView]="isReadOnly()"
-                                [items]="surfaceMultiSelectItems()"
-                                [selectedValues]="surfaceSelectedValues()"
-                                (selectionChange)="onSurfacesChange($event)"
-                                [groupIcons]="surfaceGroupIcons"
-                                [groupActionIcon]="surfaceGroupActionIcon()"
-                                (groupAction)="onCreateLocalSurface()"
-                                (itemAction)="onEditLocalSurface()"
-                                [showGroupCounts]="true"
-                                [uppercaseGroupLabels]="false"
-                                [showClearFilter]="true"
-                                saveLabel="Save"
-                            ></app-multi-select>
+                                [diffChange]="surfaceChange()"
+                            >
+                                <app-multi-select
+                                    class="surface-row__select"
+                                    color="white"
+                                    [grouped]="true"
+                                    [label]="surfaceSummaryLabel()"
+                                    searchPlaceholder="Search item..."
+                                    emptyText="No surfaces available"
+                                    checkboxPosition="left"
+                                    [readonlyView]="isReadOnly()"
+                                    [items]="surfaceMultiSelectItems()"
+                                    [selectedValues]="surfaceSelectedValues()"
+                                    (selectionChange)="onSurfacesChange($event)"
+                                    [groupIcons]="surfaceGroupIcons"
+                                    [groupActionIcon]="surfaceGroupActionIcon()"
+                                    (groupAction)="onCreateLocalSurface()"
+                                    (itemAction)="onEditLocalSurface()"
+                                    [showGroupCounts]="true"
+                                    [uppercaseGroupLabels]="false"
+                                    [showClearFilter]="true"
+                                    saveLabel="Save"
+                                ></app-multi-select>
+                            </app-diff-field-mark>
                             <button
                                 type="button"
                                 class="view-summary-btn"
@@ -378,12 +417,14 @@
                                 View Summary
                             </button>
                         </div>
+                        <app-missing-reference-note [fields]="['surface_list', 'inline_surface']" />
                     </div>
 
                     <div class="input-map">
                         <app-input-map
                             [activeColor]="activeColor"
                             [readonly]="isReadOnly()"
+                            [rowChanges]="inputMapRowChanges()"
                         ></app-input-map>
                     </div>
 
@@ -393,14 +434,16 @@
                         (insert)="insertInputToInstructions($event)"
                     />
 
-                    <app-custom-input
-                        label="Output Variable Path"
-                        tooltipText="Path where the Agent node output will be stored in flow variables."
-                        formControlName="output_variable_path"
-                        placeholder="Enter output variable path (leave empty for null)"
-                        [activeColor]="activeColor"
-                        [readonly]="isReadOnly()"
-                    ></app-custom-input>
+                    <app-diff-field-mark [diffField]="'output_variable_path'">
+                        <app-custom-input
+                            label="Output Variable Path"
+                            tooltipText="Path where the Agent node output will be stored in flow variables."
+                            formControlName="output_variable_path"
+                            placeholder="Enter output variable path (leave empty for null)"
+                            [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
+                        ></app-custom-input>
+                    </app-diff-field-mark>
 
                     <div class="field task-section">
                         <div class="field__label-row">
@@ -419,6 +462,7 @@
                             [showValidation]="tasksTouched()"
                             [variableNames]="inputMapKeys()"
                             [readonly]="isReadOnly()"
+                            [rowChanges]="taskRowChanges()"
                             (tasksChange)="onTasksChange($event)"
                             (cellSelect)="onCellSelect($event)"
                             (instructionsFocus)="onInstructionsFocus($event)"

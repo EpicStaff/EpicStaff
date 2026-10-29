@@ -1,3 +1,5 @@
+@use '../../../../../../styles/diff-value-mark' as diff-value-mark;
+
 :host {
     display: block;
     height: 100%;
@@ -55,6 +57,11 @@
 }
 
 :host ::ng-deep {
+    // Version diff (Changes tab): the rows a restore changes, adds or removes. The row number cell holds the badge.
+    .decision-grid {
+        @include diff-value-mark.grid-row-marks('.ag-cell[col-id="index"]');
+    }
+
     .decision-grid {
         flex: 1;
         min-height: 0;

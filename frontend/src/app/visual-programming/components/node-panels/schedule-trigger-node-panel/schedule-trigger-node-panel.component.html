@@ -12,50 +12,57 @@
                 <div class="form-fields">
                     <!-- Node Name -->
                     <div class="field-isolated">
-                        <app-custom-input
-                            label="Node Name"
-                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [readonly]="isReadOnly()"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'node_name'">
+                            <app-custom-input
+                                label="Node Name"
+                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
 
                     <!-- Start section -->
                     <div class="section">
                         <div class="section-header">Start</div>
-                        <div class="date-time-row">
-                            <div
-                                class="field-col"
-                                [class.has-row-error]="startRowError()"
-                            >
-                                <div class="field-label">
-                                    Start time
-                                    <app-help-tooltip text="The time of day when the schedule first runs." />
+                        <app-diff-field-mark
+                            [diffField]="'start_date_time'"
+                            [diffGroup]="true"
+                        >
+                            <div class="date-time-row">
+                                <div
+                                    class="field-col"
+                                    [class.has-row-error]="startRowError()"
+                                >
+                                    <div class="field-label">
+                                        Start time
+                                        <app-help-tooltip text="The time of day when the schedule first runs." />
+                                    </div>
+                                    <app-time-picker
+                                        formControlName="start_time"
+                                        placeholder="Select start time"
+                                        [readonly]="isReadOnly()"
+                                    />
                                 </div>
-                                <app-time-picker
-                                    formControlName="start_time"
-                                    placeholder="Select start time"
-                                    [readonly]="isReadOnly()"
-                                />
-                            </div>
-                            <div
-                                class="field-col"
-                                [class.has-row-error]="startRowError()"
-                            >
-                                <div class="field-label">
-                                    Start date
-                                    <app-help-tooltip text="The date when the schedule first runs." />
+                                <div
+                                    class="field-col"
+                                    [class.has-row-error]="startRowError()"
+                                >
+                                    <div class="field-label">
+                                        Start date
+                                        <app-help-tooltip text="The date when the schedule first runs." />
+                                    </div>
+                                    <app-date-picker
+                                        formControlName="start_date"
+                                        placeholder="Select start date"
+                                        [allowPastDates]="true"
+                                        [readonly]="isReadOnly()"
+                                    />
                                 </div>
-                                <app-date-picker
-                                    formControlName="start_date"
-                                    placeholder="Select start date"
-                                    [allowPastDates]="true"
-                                    [readonly]="isReadOnly()"
-                                />
                             </div>
-                        </div>
+                        </app-diff-field-mark>
                         @if (startRowError()) {
                             <div class="row-error">{{ startRowError() }}</div>
                         }
@@ -77,10 +84,12 @@
                                     text="Sets which local time this schedule follows. For example, 09:00 with Europe/Kyiv means the flow runs at 09:00 Kyiv time."
                                 />
                             </div>
-                            <app-timezone-selector
-                                [readonly]="isReadOnly()"
-                                formControlName="timezone"
-                            />
+                            <app-diff-field-mark [diffField]="'timezone'">
+                                <app-timezone-selector
+                                    [readonly]="isReadOnly()"
+                                    formControlName="timezone"
+                                />
+                            </app-diff-field-mark>
                             @if (timezoneError()) {
                                 <div class="row-error">{{ timezoneError() }}</div>
                             }
@@ -96,9 +105,15 @@
                             />
                         </div>
                         @if (isReadOnly()) {
-                            <div class="next-run-row next-run-row--readonly">
-                                <span class="next-run-value">{{ runModeLabel() }}</span>
-                            </div>
+                            <app-diff-field-mark
+                                [diffField]="'run_mode'"
+                                [diffFormat]="runModeFormat"
+                                [diffGroup]="true"
+                            >
+                                <div class="next-run-row next-run-row--readonly">
+                                    <span class="next-run-value">{{ runModeLabel() }}</span>
+                                </div>
+                            </app-diff-field-mark>
                         } @else {
                             <app-radio-button
                                 [mod]="'segmented'"
@@ -121,19 +136,26 @@
                                     <app-help-tooltip text="How often the flow should repeat." />
                                 </div>
                                 <div class="repeat-row">
-                                    <app-number-stepper
-                                        formControlName="repeat_every"
-                                        [min]="minRepeatEvery()"
-                                        [max]="999999"
-                                        [integer]="true"
-                                        [readonly]="isReadOnly()"
-                                    />
-                                    <app-select
-                                        formControlName="repeat_unit"
-                                        [items]="repeatUnitItems"
-                                        placeholder="Unit"
-                                        [readonly]="isReadOnly()"
-                                    />
+                                    <app-diff-field-mark [diffField]="'interval_every'">
+                                        <app-number-stepper
+                                            formControlName="repeat_every"
+                                            [min]="minRepeatEvery()"
+                                            [max]="999999"
+                                            [integer]="true"
+                                            [readonly]="isReadOnly()"
+                                        />
+                                    </app-diff-field-mark>
+                                    <app-diff-field-mark
+                                        [diffField]="'interval_unit'"
+                                        [diffFormat]="repeatUnitFormat"
+                                    >
+                                        <app-select
+                                            formControlName="repeat_unit"
+                                            [items]="repeatUnitItems"
+                                            placeholder="Unit"
+                                            [readonly]="isReadOnly()"
+                                        />
+                                    </app-diff-field-mark>
                                 </div>
                             </div>
 
@@ -148,16 +170,21 @@
                                         Repeat on
                                         <app-help-tooltip text="The days of the week when the flow should run." />
                                     </div>
-                                    <div class="weekday-row">
-                                        @for (wd of weekdays; track wd.value) {
-                                            <app-round-button
-                                                [label]="wd.label"
-                                                [selected]="repeatDays().includes(wd.value)"
-                                                [tooltip]="wd.tooltip"
-                                                (click)="toggleDay(wd.value)"
-                                            />
-                                        }
-                                    </div>
+                                    <app-diff-field-mark
+                                        [diffChange]="weekdaysChange()"
+                                        [diffGroup]="true"
+                                    >
+                                        <div class="weekday-row">
+                                            @for (wd of weekdays; track wd.value) {
+                                                <app-round-button
+                                                    [label]="wd.label"
+                                                    [selected]="repeatDays().includes(wd.value)"
+                                                    [tooltip]="wd.tooltip"
+                                                    (click)="toggleDay(wd.value)"
+                                                />
+                                            }
+                                        </div>
+                                    </app-diff-field-mark>
                                 </div>
                             }
 
@@ -170,9 +197,15 @@
                                     />
                                 </div>
                                 @if (isReadOnly()) {
-                                    <div class="next-run-row next-run-row--readonly">
-                                        <span class="next-run-value">{{ endModeLabel() }}</span>
-                                    </div>
+                                    <app-diff-field-mark
+                                        [diffField]="'end_type'"
+                                        [diffFormat]="endModeFormat"
+                                        [diffGroup]="true"
+                                    >
+                                        <div class="next-run-row next-run-row--readonly">
+                                            <span class="next-run-value">{{ endModeLabel() }}</span>
+                                        </div>
+                                    </app-diff-field-mark>
                                 } @else {
                                     <app-radio-button
                                         [mod]="'segmented'"
@@ -189,38 +222,45 @@
                                     animate.leave="panel-leave"
                                     class="section"
                                 >
-                                    <div class="date-time-row">
-                                        <div
-                                            class="field-col"
-                                            [class.has-row-error]="endRowError()"
-                                        >
-                                            <div class="field-label">
-                                                End time
-                                                <app-help-tooltip
-                                                    text="The time of day when the schedule stops repeating."
+                                    <app-diff-field-mark
+                                        [diffField]="'end_date_time'"
+                                        [diffGroup]="true"
+                                    >
+                                        <div class="date-time-row">
+                                            <div
+                                                class="field-col"
+                                                [class.has-row-error]="endRowError()"
+                                            >
+                                                <div class="field-label">
+                                                    End time
+                                                    <app-help-tooltip
+                                                        text="The time of day when the schedule stops repeating."
+                                                    />
+                                                </div>
+                                                <app-time-picker
+                                                    formControlName="end_time"
+                                                    placeholder="hh:mm"
+                                                    [readonly]="isReadOnly()"
                                                 />
                                             </div>
-                                            <app-time-picker
-                                                formControlName="end_time"
-                                                placeholder="hh:mm"
-                                                [readonly]="isReadOnly()"
-                                            />
-                                        </div>
-                                        <div
-                                            class="field-col"
-                                            [class.has-row-error]="endRowError()"
-                                        >
-                                            <div class="field-label">
-                                                End date
-                                                <app-help-tooltip text="The date when the schedule stops repeating." />
+                                            <div
+                                                class="field-col"
+                                                [class.has-row-error]="endRowError()"
+                                            >
+                                                <div class="field-label">
+                                                    End date
+                                                    <app-help-tooltip
+                                                        text="The date when the schedule stops repeating."
+                                                    />
+                                                </div>
+                                                <app-date-picker
+                                                    formControlName="end_date"
+                                                    placeholder="dd.mm.yyyy"
+                                                    [readonly]="isReadOnly()"
+                                                />
                                             </div>
-                                            <app-date-picker
-                                                formControlName="end_date"
-                                                placeholder="dd.mm.yyyy"
-                                                [readonly]="isReadOnly()"
-                                            />
                                         </div>
-                                    </div>
+                                    </app-diff-field-mark>
                                     @if (endRowError()) {
                                         <div class="row-error">{{ endRowError() }}</div>
                                     }
@@ -240,13 +280,15 @@
                                             text="The maximum number of times the flow will run before stopping."
                                         />
                                     </div>
-                                    <app-number-stepper
-                                        formControlName="max_runs"
-                                        [min]="1"
-                                        [max]="999999"
-                                        [integer]="true"
-                                        [readonly]="isReadOnly()"
-                                    />
+                                    <app-diff-field-mark [diffField]="'max_runs'">
+                                        <app-number-stepper
+                                            formControlName="max_runs"
+                                            [min]="1"
+                                            [max]="999999"
+                                            [integer]="true"
+                                            [readonly]="isReadOnly()"
+                                        />
+                                    </app-diff-field-mark>
                                     <div
                                         class="next-run-row"
                                         [class.next-run-row--readonly]="isReadOnly()"
@@ -260,20 +302,27 @@
                     }
 
                     <!-- Active toggle -->
-                    <div class="toggle-stack">
-                        <div class="section-header">
-                            Is active
-                            <app-help-tooltip
-                                text="Turn the schedule on or off. When inactive, the flow will not run automatically."
-                            />
+                    <app-diff-field-mark
+                        [diffField]="'is_active'"
+                        [diffGroup]="true"
+                    >
+                        <div class="toggle-stack">
+                            <div class="section-header">
+                                Is active
+                                <app-help-tooltip
+                                    text="Turn the schedule on or off. When inactive, the flow will not run automatically."
+                                />
+                            </div>
+                            <div [class.toggle-inactive]="!hasStartDateTime()">
+                                <app-toggle-switch formControlName="is_active" />
+                            </div>
+                            @if (!hasStartDateTime()) {
+                                <div class="toggle-hint">
+                                    Set a start date and time before activating this schedule.
+                                </div>
+                            }
                         </div>
-                        <div [class.toggle-inactive]="!hasStartDateTime()">
-                            <app-toggle-switch formControlName="is_active" />
-                        </div>
-                        @if (!hasStartDateTime()) {
-                            <div class="toggle-hint">Set a start date and time before activating this schedule.</div>
-                        }
-                    </div>
+                    </app-diff-field-mark>
                 </div>
             </div>
         </form>

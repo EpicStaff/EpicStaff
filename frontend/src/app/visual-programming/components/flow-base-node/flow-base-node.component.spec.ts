@@ -9,15 +9,21 @@ import { KeyValueTablesStorageService } from '../../../features/key-value-tables
 import { KeyValueMode } from '../../core/models/key-value-node.model';
 import { NodeModel } from '../../core/models/node.model';
 import { FlowService } from '../../services/flow.service';
+import { FlowDiffStateService } from '../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
+import { NodeDiffStatus } from '../../utils/diff';
+import { mapDecisionTableNodeToModel } from '../../utils/load/nodes/decision-table-node.mapper';
+import { mapGraphNoteToModel } from '../../utils/load/nodes/graph-note.mapper';
 import { mapKeyValueNodeToModel } from '../../utils/load/nodes/key-value-node.mapper';
 import { mapStartNodeToModel } from '../../utils/load/nodes/start-node.mapper';
+import { liveDecisionTable, liveNote } from '../../utils/testing/live-graph.fixture';
 import { FlowBaseNodeComponent } from './flow-base-node.component';
 
 const KEY_VALUE_NODE = {
     ...mapKeyValueNodeToModel({
         id: 12,
+        uuid: '00000000-0000-4000-8000-000000000012',
         graph: 1,
         node_number: 1,
         node_name: 'Key-Value',
@@ -139,6 +145,7 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         render({
             ...mapStartNodeToModel({
                 id: 1,
+                uuid: '00000000-0000-4000-8000-000000000001',
                 created_at: '2026-01-01T00:00:00Z',
                 graph: 1,
                 node_name: '__start__',
@@ -305,5 +312,132 @@ describe('FlowBaseNodeComponent node number', () => {
         render(tableNode, { otherNodes: [fetchNode, { ...fetchNode, id: 'fetch-again', nodeNumber: 9 }] });
 
         expect(text('.decision-table__group .group-status')).toBe('(Fetch #4)');
+    });
+});
+
+describe('FlowBaseNodeComponent on a version diff canvas', () => {
+    let fixture: ComponentFixture<FlowBaseNodeComponent>;
+
+    const NUMBERED_NODE = { ...KEY_VALUE_NODE, id: 'key-value-node' };
+    const host = (): HTMLElement => fixture.nativeElement;
+    const badge = (): HTMLElement | null => host().querySelector('.diff-badge');
+    const missingReferencesMarker = (): HTMLElement | null => host().querySelector('.missing-references-marker');
+
+    function render(node: NodeModel, state: { status: NodeDiffStatus } | null, hasMissingReferences = false): void {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(true) } },
+                { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
+                { provide: LlmConfigStorageService, useValue: { isConfigsLoaded: signal(false), configs: signal([]) } },
+                { provide: KeyValueTablesStorageService, useValue: { tables: signal([]), loadTables: () => of([]) } },
+            ],
+        });
+        TestBed.inject(FlowDiffStateService).setMissingReferenceNodeIds(new Set(hasMissingReferences ? [node.id] : []));
+        TestBed.inject(FlowDiffStateService).setState(
+            state && {
+                nodes: new Map([[node.id, { ...state, fields: [], missingReferences: [] }]]),
+                connections: new Map(),
+                versionOnlyPortIds: new Set(),
+                currentOnlyRoutePortIds: new Set(),
+                nodeIdByKey: new Map(),
+            }
+        );
+        fixture = TestBed.createComponent(FlowBaseNodeComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+    }
+
+    const BADGES: { status: NodeDiffStatus; label: string | null }[] = [
+        { status: 'added', label: 'Restore adds this node' },
+        { status: 'deleted', label: 'Restore removes this node' },
+        { status: 'changed', label: 'Restore changes this node' },
+        { status: 'unchanged', label: null },
+    ];
+    for (const { status, label } of BADGES) {
+        it(`marks a ${status} node with one status class and ${label ? `a "${label}" badge` : 'no badge'}`, () => {
+            render(NUMBERED_NODE, { status });
+
+            const statusClasses = Array.from(host().classList).filter((name) => name.startsWith('diff-'));
+            expect(statusClasses).toEqual([`diff-${status}`]);
+            expect(badge()?.getAttribute('aria-label') ?? null).toBe(label);
+            expect(badge()?.title ?? null).toBe(label);
+        });
+    }
+
+    const NODES_OF_EVERY_LAYOUT: { layout: string; node: NodeModel }[] = [
+        { layout: 'a note', node: { ...mapGraphNoteToModel(liveNote), ports: null } },
+        { layout: 'a decision table', node: { ...mapDecisionTableNodeToModel(liveDecisionTable), ports: null } },
+    ];
+    for (const { layout, node } of NODES_OF_EVERY_LAYOUT) {
+        it(`marks ${layout} too`, () => {
+            render(node, { status: 'deleted' });
+
+            expect(host().classList).toContain('diff-deleted');
+            expect(badge()?.getAttribute('aria-label')).toBe('Restore removes this node');
+        });
+    }
+
+    it('lets the badge give way to the summary tab of a Key-Value node, which takes the top-left corner', () => {
+        render(NUMBERED_NODE, { status: 'added' });
+
+        expect(badge()!.classList).toContain('diff-badge--yields-to-tab');
+    });
+
+    it('keeps the badge of a node without a summary tab always shown', () => {
+        render({ ...mapGraphNoteToModel(liveNote), ports: null, nodeNumber: 3 }, { status: 'added' });
+
+        expect(badge()!.classList).not.toContain('diff-badge--yields-to-tab');
+    });
+
+    it('flags missing references apart from the status, on an unchanged node too', () => {
+        render(NUMBERED_NODE, { status: 'unchanged' }, true);
+
+        expect(badge()).toBeNull();
+        expect(missingReferencesMarker()!.getAttribute('aria-label')).toBe(
+            'This version uses items that no longer exist'
+        );
+    });
+
+    // jsdom has no layout: the classes pick the spot, the positions are checked by eye.
+    it.each([
+        { kind: 'an added node', state: { status: 'added' as const }, besideBadge: true },
+        { kind: 'a changed node', state: { status: 'changed' as const }, besideBadge: true },
+        { kind: 'an unchanged node', state: { status: 'unchanged' as const }, besideBadge: false },
+        { kind: 'a node on the Preview tab', state: null, besideBadge: false },
+    ])('puts the missing-reference marker beside the badge only when $kind has one', ({ state, besideBadge }) => {
+        render({ ...mapGraphNoteToModel(liveNote), ports: null }, state, true);
+
+        expect(missingReferencesMarker()!.classList.contains('missing-references-marker--beside-badge')).toBe(
+            besideBadge
+        );
+    });
+
+    it('lets the marker give way to the summary tab of a Key-Value node, as the badge does', () => {
+        render(NUMBERED_NODE, { status: 'changed' }, true);
+
+        expect(missingReferencesMarker()!.classList).toContain('missing-references-marker--yields-to-tab');
+        expect(badge()!.classList).toContain('diff-badge--yields-to-tab');
+    });
+
+    it('keeps the marker of a node without a summary tab always shown', () => {
+        render({ ...mapGraphNoteToModel(liveNote), ports: null }, null, true);
+
+        expect(missingReferencesMarker()!.classList).not.toContain('missing-references-marker--yields-to-tab');
+    });
+
+    it('flags missing references on a plain version canvas, with no status mark', () => {
+        render(NUMBERED_NODE, null, true);
+
+        expect(missingReferencesMarker()).not.toBeNull();
+        expect(badge()).toBeNull();
+        expect(Array.from(host().classList).filter((name) => name.startsWith('diff-'))).toEqual([]);
+    });
+
+    it('shows no diff marks off a diff canvas, as in the live editor', () => {
+        render(NUMBERED_NODE, null);
+
+        expect(Array.from(host().classList).filter((name) => name.startsWith('diff-'))).toEqual([]);
+        expect(badge()).toBeNull();
+        expect(missingReferencesMarker()).toBeNull();
     });
 });

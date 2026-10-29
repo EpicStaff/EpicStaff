@@ -25,32 +25,39 @@
                 >
                     <div class="form-fields">
                         <div class="field-isolated">
-                            <app-custom-input
-                                label="Trigger Name"
-                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                                formControlName="node_name"
-                                placeholder="Enter node name"
-                                [required]="true"
-                                [activeColor]="activeColor"
-                                [readonly]="isReadOnly()"
-                            ></app-custom-input>
+                            <app-diff-field-mark [diffField]="'node_name'">
+                                <app-custom-input
+                                    label="Trigger Name"
+                                    tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                    formControlName="node_name"
+                                    placeholder="Enter node name"
+                                    [required]="true"
+                                    [activeColor]="activeColor"
+                                    [readonly]="isReadOnly()"
+                                ></app-custom-input>
+                            </app-diff-field-mark>
                             <app-validation-errors [control]="form.get('node_name')!" />
                         </div>
 
                         <div>
-                            <app-select
-                                formControlName="telegram_bot_api_key_secret_id"
-                                label="Telegram bot key"
-                                variant="boxed"
-                                tooltipText="The stored secret holding this bot's Telegram API key"
-                                placeholder="Select a secret"
-                                [required]="true"
-                                [items]="secretItems()"
-                                [showSearch]="true"
-                                [readonly]="isReadOnly()"
-                                searchPlaceholder="Search a secret..."
-                                (changed)="notifyExternalChange()"
-                            />
+                            <app-diff-field-mark
+                                [diffField]="'telegram_bot_api_key_secret_id'"
+                                [diffFormat]="secretNameFormat"
+                            >
+                                <app-select
+                                    formControlName="telegram_bot_api_key_secret_id"
+                                    label="Telegram bot key"
+                                    variant="boxed"
+                                    tooltipText="The stored secret holding this bot's Telegram API key"
+                                    placeholder="Select a secret"
+                                    [required]="true"
+                                    [items]="secretItems()"
+                                    [showSearch]="true"
+                                    [readonly]="isReadOnly()"
+                                    searchPlaceholder="Search a secret..."
+                                    (changed)="notifyExternalChange()"
+                                />
+                            </app-diff-field-mark>
                             <!-- How to pick a secret: only useful while the key can be changed. -->
                             @if (!isReadOnly() && !form.get('telegram_bot_api_key_secret_id')?.value) {
                                 <app-hint-message>
@@ -62,19 +69,29 @@
                                 [selected]="form.get('telegram_bot_api_key_secret_id')?.value"
                                 [readonly]="isReadOnly()"
                             />
+                            <app-missing-reference-note
+                                class="missing-reference-note"
+                                [fields]="['telegram_bot_api_key_secret_id']"
+                            />
                             <app-validation-errors [control]="form.get('telegram_bot_api_key_secret_id')!" />
                         </div>
                     </div>
 
                     <div class="webhook-section">
-                        <app-webhook-trigger-select
-                            formControlName="webhook_trigger"
-                            [disallowedProviderTypes]="['localhost']"
-                            [disallowedAuthKinds]="['webhook', 'twilio']"
-                            [readonly]="isReadOnly()"
-                            disallowedProviderMessage="This trigger is not supported for Telegram. Use an ngrok trigger with Telegram auth."
-                            (triggerResolved)="onTriggerResolved($event)"
-                        ></app-webhook-trigger-select>
+                        <app-diff-field-mark
+                            [diffField]="'webhook_trigger'"
+                            [diffFormat]="triggerNameFormat"
+                        >
+                            <app-webhook-trigger-select
+                                formControlName="webhook_trigger"
+                                [disallowedProviderTypes]="['localhost']"
+                                [disallowedAuthKinds]="['webhook', 'twilio']"
+                                [readonly]="isReadOnly()"
+                                disallowedProviderMessage="This trigger is not supported for Telegram. Use an ngrok trigger with Telegram auth."
+                                (triggerResolved)="onTriggerResolved($event)"
+                            ></app-webhook-trigger-select>
+                        </app-diff-field-mark>
+                        <app-missing-reference-note [fields]="['webhook_trigger']" />
 
                         <!-- No box without a live trigger: an empty status would still show its padding. -->
                         @if (webhookStatusDisplay()) {
@@ -124,30 +141,33 @@
 
                             <span class="output-fields__count"> {{ selectedFields().length }} selected </span>
                         </label>
-                        <div class="output-fields__container">
-                            <div class="output-fields__items">
-                                @for (item of selectedFields(); track $index) {
-                                    <div class="output-fields__item">
-                                        <span>
-                                            {{ item.field_name }}
-                                        </span>
-                                        <span class="output-fields__item-tip">
-                                            {{ item.field_type }}
-                                        </span>
-                                    </div>
-                                } @empty {
-                                    <span>No fields selected</span>
+                        <!-- One mark on the whole list: the tooltip lists the canvas fields, those a restore removes struck. -->
+                        <app-diff-field-mark [diffChange]="fieldsChange()">
+                            <div class="output-fields__container">
+                                <div class="output-fields__items">
+                                    @for (item of selectedFields(); track $index) {
+                                        <div class="output-fields__item">
+                                            <span>
+                                                {{ item.field_name }}
+                                            </span>
+                                            <span class="output-fields__item-tip">
+                                                {{ item.field_type }}
+                                            </span>
+                                        </div>
+                                    } @empty {
+                                        <span>No fields selected</span>
+                                    }
+                                </div>
+                                @if (!isReadOnly()) {
+                                    <app-button
+                                        type="primary"
+                                        (click)="onEditing()"
+                                    >
+                                        Editing
+                                    </app-button>
                                 }
                             </div>
-                            @if (!isReadOnly()) {
-                                <app-button
-                                    type="primary"
-                                    (click)="onEditing()"
-                                >
-                                    Editing
-                                </app-button>
-                            }
-                        </div>
+                        </app-diff-field-mark>
                         <p class="output-fields__info">
                             <app-help-tooltip
                                 text="Open Telegram field model documentation"

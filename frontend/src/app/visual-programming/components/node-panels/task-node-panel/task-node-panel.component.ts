@@ -6,7 +6,9 @@ import {
     inject,
     Injector,
     input,
+    linkedSignal,
     signal,
+    untracked,
     viewChild,
     viewChildren,
 } from '@angular/core';
@@ -43,13 +45,16 @@ import {
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
 import { ToastService } from '../../../../services/notifications';
+import { CODE_DIFF_HINT_EXPAND_EDITOR } from '../../../core/constants/code-diff-hints';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { TaskNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InlineSurface } from '../../../core/models/task-node.model';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { jsonChangeFor, linkedEntityFormat, mapFieldRowChanges } from '../../../utils/diff';
 import {
     computeApplyLocalSurfaceResult,
     computeAutoSelectResult,
@@ -61,8 +66,12 @@ import {
     OUTPUT_SCHEMA_JSON_ERROR,
     OUTPUT_SCHEMA_RULE_ERROR,
 } from '../../../utils/validation/output-schema.validator';
+import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { surfaceFieldChange } from '../shared/diff/surface-field-change';
 import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
 import {
     InstructionsView,
@@ -94,6 +103,9 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ColumnResizeDividerComponent,
         InputsYouCanUseComponent,
         IfFlowEditableDirective,
+        MissingReferenceNoteComponent,
+        DiffFieldMarkComponent,
+        CodeDiffViewComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -108,7 +120,17 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     public readonly agentDefinitionId = signal<number | null>(null);
     public readonly selectedSurfaceIds = signal<number[]>([]);
     public readonly inlineSurface = signal<InlineSurface | null>(null);
-    public readonly outputSchemaExpanded = signal<boolean>(false);
+    /**
+     * Changes tab of a version preview: the changed output schema, as a diff of its JSON, which only the big editor of
+     * the widened panel shows; the small editor gets the field mark, with a hint where to see the changes.
+     */
+    protected readonly outputSchemaDiff = computed(() => jsonChangeFor(this.panelDiff(), 'output_schema'));
+    private readonly outputSchemaChanged = computed(() => this.outputSchemaDiff() !== null);
+    /**
+     * Open when a restore changes the schema (Changes tab), so the mark on its editor shows without a click. Linked to
+     * a boolean, so a new diff object with the same answer does not re-open a section the user collapsed.
+     */
+    public readonly outputSchemaExpanded = linkedSignal<boolean>(() => this.outputSchemaChanged());
     private readonly pendingAutoSelectAgentId = signal<number | null>(null);
 
     public readonly isFormCollapsed = signal<boolean>(false);
@@ -117,6 +139,8 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     public readonly mainView = signal<'instructions' | 'schema'>('instructions');
     public readonly instructionsView = signal<InstructionsView>('preview');
     public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
+    // Both small schema editors have an expand button that shows the big one.
+    protected readonly outputSchemaDiffHint = CODE_DIFF_HINT_EXPAND_EDITOR;
     private readonly surfaceMultiSelects = viewChildren(MultiSelectComponent);
 
     private readonly instructionsTextareaSchemaView = viewChild<VariableHighlightTextareaComponent>(
@@ -226,12 +250,37 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         return parts.join(' + ');
     });
 
+    /** Changes tab of a version preview: what a restore does to each Input List row; `null` anywhere else. */
+    protected readonly inputMapRowChanges = computed(() => mapFieldRowChanges(this.panelDiff(), 'input_map'));
+    /**
+     * Changes tab of a version preview: the surface field shows the surfaces picked and the local surface as one
+     * value, so one mark covers both; `null` anywhere else or when a restore changes neither.
+     */
+    protected readonly surfaceChange = computed(() =>
+        surfaceFieldChange(
+            this.panelDiff(),
+            { surfaceList: this.selectedSurfaceIds(), inlineSurface: this.inlineSurface() },
+            this.surfaceNameFormat
+        )
+    );
+
     public readonly surfaceGroupIcons: Record<string, string> = {
         'Local surface': 'local-surface',
         'Agent Surfaces': 'ti ti-robot',
         'Shared Surfaces': 'surfaces-tab',
     };
 
+    /** The loaded agents name a changed agent in the mark's tooltip; one not loaded (or gone): `agent #id`. */
+    protected readonly agentNameFormat = linkedEntityFormat(
+        'agent',
+        (id) => this.agentDefinitions().find((agent) => agent.id === id)?.name
+    );
+
+    private readonly surfaceNameFormat = linkedEntityFormat(
+        'surface',
+        (id) => this.surfacesById().get(id as number)?.name
+    );
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly injector: Injector = inject(Injector);
     private readonly nodeSurfaceCombineApi: NodeSurfaceCombineApiService = inject(NodeSurfaceCombineApiService);
@@ -464,7 +513,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         this.agentDefinitionId.set(data.agent_definition ?? null);
         this.selectedSurfaceIds.set(data.surface_list ?? []);
         this.inlineSurface.set(data.inline_surface ?? null);
-        this.outputSchemaExpanded.set(false);
+        this.outputSchemaExpanded.set(untracked(() => this.outputSchemaChanged()));
         this.mainView.set('instructions');
         this.instructionsView.set((data.instructions || '').trim() ? 'preview' : 'edit');
 

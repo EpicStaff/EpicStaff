@@ -1,3 +1,5 @@
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
+
 :host {
     display: block;
     width: 100%;
@@ -142,3 +144,7 @@
         opacity: 0.9;
     }
 }
+
+// Version diff (flow editor node panel, Changes tab): a yellow frame just inside the text box's edge. A page may give
+// the host its own rounded, clipping border, so the mark around it draws the badge and the focus ring.
+@include diff-value-mark.marked-frame('.template-textarea');

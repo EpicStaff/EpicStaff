@@ -40,34 +40,57 @@
                         class="panel-node-header"
                         [class.panel-node-header--collapsed]="headerCollapsed()"
                     >
-                        <app-custom-input
-                            label="Name"
-                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
-                            formControlName="node_name"
-                            placeholder="Node name"
-                            [readonly]="isReadOnly()"
-                            [transparent]="true"
-                        ></app-custom-input>
+                        <app-diff-field-mark [diffField]="'node_name'">
+                            <app-custom-input
+                                label="Name"
+                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
+                                formControlName="node_name"
+                                placeholder="Node name"
+                                [readonly]="isReadOnly()"
+                                [transparent]="true"
+                            ></app-custom-input>
+                        </app-diff-field-mark>
 
-                        <app-select
-                            label="Default Next Node"
-                            tooltipText="Fallback route when no condition matches"
-                            placeholder="Select Node"
-                            formControlName="default_next_node"
-                            [items]="availableNodeItems()"
-                            [readonly]="isReadOnly()"
-                            [transparent]="true"
-                        />
+                        <app-diff-field-mark
+                            [diffField]="'default_next_node'"
+                            [diffFormat]="routeTargetFormat"
+                        >
+                            <app-select
+                                label="Default Next Node"
+                                tooltipText="Fallback route when no condition matches"
+                                placeholder="Select Node"
+                                formControlName="default_next_node"
+                                [items]="availableNodeItems()"
+                                [readonly]="isReadOnly()"
+                                [transparent]="true"
+                            />
+                        </app-diff-field-mark>
 
-                        <app-select
-                            label="Error Next Node"
-                            tooltipText="Route taken if evaluation fails"
-                            placeholder="Select Node"
-                            formControlName="next_error_node"
-                            [items]="availableNodeItems()"
-                            [readonly]="isReadOnly()"
-                            [transparent]="true"
-                        />
+                        <app-diff-field-mark
+                            [diffField]="'next_error_node'"
+                            [diffFormat]="routeTargetFormat"
+                        >
+                            <app-select
+                                label="Error Next Node"
+                                tooltipText="Route taken if evaluation fails"
+                                placeholder="Select Node"
+                                formControlName="next_error_node"
+                                [items]="availableNodeItems()"
+                                [readonly]="isReadOnly()"
+                                [transparent]="true"
+                            />
+                        </app-diff-field-mark>
+
+                        <!-- Changes tab only, when a restore changes it: the panel has no control for it. -->
+                        @if (defaultLlmChanged()) {
+                            <app-diff-field-mark
+                                class="default-llm-mark"
+                                [diffField]="'default_llm_config'"
+                                [diffFormat]="llmFormat"
+                            >
+                                <p class="default-llm-line">Default LLM: {{ defaultLlmName() }}</p>
+                            </app-diff-field-mark>
+                        }
                     </div>
 
                     <!-- Tabs row -->
@@ -90,6 +113,13 @@
                                 type="button"
                             >
                                 Pre-computation
+                                @if (preComputationChanged()) {
+                                    <span
+                                        class="tab-link__changed-dot"
+                                        aria-hidden="true"
+                                    ></span>
+                                    <span class="visually-hidden">(restore changes this tab)</span>
+                                }
                             </button>
                             <span class="tab-separator">/</span>
                             <button
@@ -99,6 +129,13 @@
                                 type="button"
                             >
                                 Post-computation
+                                @if (postComputationChanged()) {
+                                    <span
+                                        class="tab-link__changed-dot"
+                                        aria-hidden="true"
+                                    ></span>
+                                    <span class="visually-hidden">(restore changes this tab)</span>
+                                }
                             </button>
                             <span class="tab-separator">/</span>
                             <button
@@ -108,6 +145,13 @@
                                 type="button"
                             >
                                 Prompt library
+                                @if (promptsChanged()) {
+                                    <span
+                                        class="tab-link__changed-dot"
+                                        aria-hidden="true"
+                                    ></span>
+                                    <span class="visually-hidden">(restore changes this tab)</span>
+                                }
                             </button>
                         </div>
                     </div>
@@ -132,6 +176,7 @@
                             [domainKeys]="domainKeys()"
                             [routePortIdsWithTarget]="routePortIdsWithTarget()"
                             [readonly]="isReadOnly()"
+                            [rowChanges]="rowChanges()"
                             (conditionGroupsChange)="onConditionGroupsChange($event)"
                             (sectionsChange)="onSectionsChange($event)"
                             (enableContinueRequest)="onEnableContinueRequest($event)"
@@ -140,6 +185,11 @@
                             (promptAdd)="onPromptAdd($event.id, $event.config)"
                             (openPromptLibrary)="onOpenPromptLibrary($event)"
                             (gridVerticalScroll)="onGridVerticalScroll($event)"
+                        />
+                        <!-- Under the grid, not in a cell: a note in a cell would break the grid's rows. -->
+                        <app-missing-reference-note
+                            class="routes-missing-reference-note"
+                            [fields]="routeDiffFields"
                         />
                     </div>
                 }
@@ -160,37 +210,52 @@
                                     <app-input-map
                                         [activeColor]="activeColor"
                                         [readonly]="isReadOnly()"
+                                        [rowChanges]="preInputMapRowChanges()"
                                     ></app-input-map>
                                 </div>
                             </ng-container>
-                            <app-node-secrets-field
-                                [activeColor]="activeColor"
-                                [value]="preSelectedSecretIds()"
-                                [readonly]="!canEditSecrets()"
-                                [names]="preSecretNames()"
-                                [tooltipText]="preSecretsTooltip()"
-                                panelWidth="346px"
-                                (valueChange)="onPreSecretsChange($event)"
-                            />
-                            <app-custom-input
-                                label="Output Variable Path"
-                                tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
-                                formControlName="pre_output_variable_path"
-                                placeholder="Enter output variable path (leave empty for null)"
-                                [activeColor]="activeColor"
-                                [readonly]="isReadOnly()"
-                            ></app-custom-input>
-                            <app-execution-timeout-field
-                                [field]="preExecutionTimeout"
-                                [readonly]="isReadOnly()"
-                                label="Pre-computation execution timeout"
-                            />
-                            <app-node-storage-section
-                                [useStorage]="preUseStorage()"
-                                (onToggleChange)="onPreStorageToggle($event)"
-                                (onInsertCode)="insertPreStorageCode($event)"
-                                (onRemoveCode)="removePreStorageCode($event)"
-                            ></app-node-storage-section>
+                            <app-diff-field-mark [diffField]="'pre_computation.secret_names'">
+                                <app-node-secrets-field
+                                    [activeColor]="activeColor"
+                                    [value]="preSelectedSecretIds()"
+                                    [readonly]="!canEditSecrets()"
+                                    [names]="preSecretNames()"
+                                    [tooltipText]="preSecretsTooltip()"
+                                    panelWidth="346px"
+                                    [diffField]="'pre_computation.secret_names'"
+                                    (valueChange)="onPreSecretsChange($event)"
+                                />
+                            </app-diff-field-mark>
+                            <app-diff-field-mark [diffField]="'pre_computation.output_variable_path'">
+                                <app-custom-input
+                                    label="Output Variable Path"
+                                    tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
+                                    formControlName="pre_output_variable_path"
+                                    placeholder="Enter output variable path (leave empty for null)"
+                                    [activeColor]="activeColor"
+                                    [readonly]="isReadOnly()"
+                                ></app-custom-input>
+                            </app-diff-field-mark>
+                            <!-- A table without its own timeout shows the default, so the tooltip does too. -->
+                            <app-diff-field-mark
+                                [diffField]="'pre_computation.execution_timeout'"
+                                [diffDefaultValue]="preExecutionTimeout.limits.defaultSeconds"
+                            >
+                                <app-execution-timeout-field
+                                    [field]="preExecutionTimeout"
+                                    [readonly]="isReadOnly()"
+                                    label="Pre-computation execution timeout"
+                                />
+                            </app-diff-field-mark>
+                            <app-diff-field-mark [diffField]="'pre_use_storage'">
+                                <app-node-storage-section
+                                    [readonly]="isReadOnly()"
+                                    [useStorage]="preUseStorage()"
+                                    (onToggleChange)="onPreStorageToggle($event)"
+                                    (onInsertCode)="insertPreStorageCode($event)"
+                                    (onRemoveCode)="removePreStorageCode($event)"
+                                ></app-node-storage-section>
+                            </app-diff-field-mark>
                         </div>
                         <app-column-resize-divider
                             ariaLabel="Resize inputs and code columns"
@@ -202,18 +267,33 @@
                             [minWidth]="350"
                             [(collapsed)]="isSidebarCollapsed"
                         />
-                        <div
-                            #preCodeColumn
-                            class="code-editor-section"
+                        <!-- Around the column, which clips: marked only in the narrow panel, the widened one shows the diff. -->
+                        <app-diff-field-mark
+                            class="code-editor-mark"
+                            [diffField]="preCodeMarkField()"
+                            [diffHint]="codeDiffHint"
+                            [diffDrawsBadge]="true"
                         >
-                            <app-code-editor
-                                [pythonCode]="preCode"
-                                [secretNames]="preSecretNames()"
-                                [inputMapKeys]="preInputMapKeys()"
-                                [readOnly]="isReadOnly()"
-                                (pythonCodeChange)="onPreCodeChange($event)"
-                            ></app-code-editor>
-                        </div>
+                            <div
+                                #preCodeColumn
+                                class="code-editor-section"
+                            >
+                                @if (preCodeDiff(); as code) {
+                                    <app-code-diff-view
+                                        [current]="code.current"
+                                        [version]="code.version"
+                                    />
+                                } @else {
+                                    <app-code-editor
+                                        [pythonCode]="preCode"
+                                        [secretNames]="preSecretNames()"
+                                        [inputMapKeys]="preInputMapKeys()"
+                                        [readOnly]="isReadOnly()"
+                                        (pythonCodeChange)="onPreCodeChange($event)"
+                                    ></app-code-editor>
+                                }
+                            </div>
+                        </app-diff-field-mark>
                     </div>
                 }
 
@@ -233,37 +313,52 @@
                                     <app-input-map
                                         [activeColor]="activeColor"
                                         [readonly]="isReadOnly()"
+                                        [rowChanges]="postInputMapRowChanges()"
                                     ></app-input-map>
                                 </div>
                             </ng-container>
-                            <app-node-secrets-field
-                                [activeColor]="activeColor"
-                                [value]="postSelectedSecretIds()"
-                                [readonly]="!canEditSecrets()"
-                                [names]="postSecretNames()"
-                                [tooltipText]="postSecretsTooltip()"
-                                panelWidth="346px"
-                                (valueChange)="onPostSecretsChange($event)"
-                            />
-                            <app-custom-input
-                                label="Output Variable Path"
-                                tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
-                                formControlName="post_output_variable_path"
-                                placeholder="Enter output variable path (leave empty for null)"
-                                [activeColor]="activeColor"
-                                [readonly]="isReadOnly()"
-                            ></app-custom-input>
-                            <app-execution-timeout-field
-                                [field]="postExecutionTimeout"
-                                [readonly]="isReadOnly()"
-                                label="Post-computation execution timeout"
-                            />
-                            <app-node-storage-section
-                                [useStorage]="postUseStorage()"
-                                (onToggleChange)="onPostStorageToggle($event)"
-                                (onInsertCode)="insertPostStorageCode($event)"
-                                (onRemoveCode)="removePostStorageCode($event)"
-                            ></app-node-storage-section>
+                            <app-diff-field-mark [diffField]="'post_computation.secret_names'">
+                                <app-node-secrets-field
+                                    [activeColor]="activeColor"
+                                    [value]="postSelectedSecretIds()"
+                                    [readonly]="!canEditSecrets()"
+                                    [names]="postSecretNames()"
+                                    [tooltipText]="postSecretsTooltip()"
+                                    panelWidth="346px"
+                                    [diffField]="'post_computation.secret_names'"
+                                    (valueChange)="onPostSecretsChange($event)"
+                                />
+                            </app-diff-field-mark>
+                            <app-diff-field-mark [diffField]="'post_computation.output_variable_path'">
+                                <app-custom-input
+                                    label="Output Variable Path"
+                                    tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
+                                    formControlName="post_output_variable_path"
+                                    placeholder="Enter output variable path (leave empty for null)"
+                                    [activeColor]="activeColor"
+                                    [readonly]="isReadOnly()"
+                                ></app-custom-input>
+                            </app-diff-field-mark>
+                            <!-- A table without its own timeout shows the default, so the tooltip does too. -->
+                            <app-diff-field-mark
+                                [diffField]="'post_computation.execution_timeout'"
+                                [diffDefaultValue]="postExecutionTimeout.limits.defaultSeconds"
+                            >
+                                <app-execution-timeout-field
+                                    [field]="postExecutionTimeout"
+                                    [readonly]="isReadOnly()"
+                                    label="Post-computation execution timeout"
+                                />
+                            </app-diff-field-mark>
+                            <app-diff-field-mark [diffField]="'post_use_storage'">
+                                <app-node-storage-section
+                                    [readonly]="isReadOnly()"
+                                    [useStorage]="postUseStorage()"
+                                    (onToggleChange)="onPostStorageToggle($event)"
+                                    (onInsertCode)="insertPostStorageCode($event)"
+                                    (onRemoveCode)="removePostStorageCode($event)"
+                                ></app-node-storage-section>
+                            </app-diff-field-mark>
                         </div>
                         <app-column-resize-divider
                             ariaLabel="Resize inputs and code columns"
@@ -275,18 +370,33 @@
                             [minWidth]="350"
                             [(collapsed)]="isSidebarCollapsed"
                         />
-                        <div
-                            #postCodeColumn
-                            class="code-editor-section"
+                        <!-- Around the column, which clips: marked only in the narrow panel, the widened one shows the diff. -->
+                        <app-diff-field-mark
+                            class="code-editor-mark"
+                            [diffField]="postCodeMarkField()"
+                            [diffHint]="codeDiffHint"
+                            [diffDrawsBadge]="true"
                         >
-                            <app-code-editor
-                                [pythonCode]="postCode"
-                                [secretNames]="postSecretNames()"
-                                [inputMapKeys]="postInputMapKeys()"
-                                [readOnly]="isReadOnly()"
-                                (pythonCodeChange)="onPostCodeChange($event)"
-                            ></app-code-editor>
-                        </div>
+                            <div
+                                #postCodeColumn
+                                class="code-editor-section"
+                            >
+                                @if (postCodeDiff(); as code) {
+                                    <app-code-diff-view
+                                        [current]="code.current"
+                                        [version]="code.version"
+                                    />
+                                } @else {
+                                    <app-code-editor
+                                        [pythonCode]="postCode"
+                                        [secretNames]="postSecretNames()"
+                                        [inputMapKeys]="postInputMapKeys()"
+                                        [readOnly]="isReadOnly()"
+                                        (pythonCodeChange)="onPostCodeChange($event)"
+                                    ></app-code-editor>
+                                }
+                            </div>
+                        </app-diff-field-mark>
                     </div>
                 }
 
@@ -316,20 +426,37 @@
                             </div>
 
                             <!-- Prompt List -->
-                            <div class="prompts-list">
-                                @if (promptEntries().length === 0) {
+                            <div
+                                class="prompts-list"
+                                [class.prompts-list--diff]="promptsChanged()"
+                            >
+                                @if (promptEntries().length === 0 && removedPrompts().length === 0) {
                                     <p class="empty-state">
                                         No prompts defined yet. Add a prompt above to get started.
                                     </p>
                                 } @else {
                                     @for (prompt of promptEntries(); track prompt.id) {
+                                        @let cardMark = promptCardMark(prompt.id);
+                                        <!-- Version diff (Changes tab): the header carries the card's mark and its tooltip, so the
+                                             marks of the fields inside an opened card show their own tooltips alone. -->
                                         <div
                                             class="prompt-card"
                                             [class.expanded]="editingPromptId() === prompt.id"
+                                            [class.prompt-card--changed]="cardMark.change !== null"
+                                            [class.prompt-card--added]="cardMark.added"
+                                            [attr.title]="cardMark.added ? 'Restore adds this prompt' : null"
                                         >
+                                            @if (cardMark.added) {
+                                                <span class="visually-hidden">Restore adds this prompt: </span>
+                                            }
                                             <div
                                                 class="prompt-card-header"
+                                                appDiffFieldMark
+                                                [diffChange]="cardMark.change"
+                                                [diffHint]="cardMark.hint"
                                                 (click)="toggleEditPrompt(prompt.id)"
+                                                (keydown.enter)="toggleEditPrompt(prompt.id)"
+                                                (keydown.space)="$event.preventDefault(); toggleEditPrompt(prompt.id)"
                                             >
                                                 <div class="prompt-card-title">
                                                     <app-svg-icon
@@ -387,28 +514,41 @@
                                                         <label class="field-label"
                                                             >LLM Override <span class="required-star">*</span></label
                                                         >
-                                                        <app-llm-model-selector
-                                                            [ngModel]="getLlmIdAsNumber(prompt.llm_config)"
-                                                            [ngModelOptions]="{ standalone: true }"
-                                                            [readonly]="isReadOnly()"
-                                                            (modelSelected)="onPromptLlmChange(prompt.id, $event)"
-                                                            placeholder="Inherit default LLM"
-                                                        ></app-llm-model-selector>
+                                                        <app-diff-field-mark
+                                                            class="prompt-field-mark prompt-field-mark--frame"
+                                                            [diffField]="'prompts[].llm_config'"
+                                                            [diffPath]="promptFieldPath(prompt.id, 'llm_config')"
+                                                            [diffFormat]="llmFormat"
+                                                        >
+                                                            <app-llm-model-selector
+                                                                [ngModel]="getLlmIdAsNumber(prompt.llm_config)"
+                                                                [ngModelOptions]="{ standalone: true }"
+                                                                [readonly]="isReadOnly()"
+                                                                (modelSelected)="onPromptLlmChange(prompt.id, $event)"
+                                                                placeholder="Inherit default LLM"
+                                                            ></app-llm-model-selector>
+                                                        </app-diff-field-mark>
                                                     </div>
 
                                                     <div class="prompt-field">
                                                         <label class="field-label">Result Variable</label>
-                                                        <input
-                                                            type="text"
-                                                            class="field-input"
-                                                            [ngModel]="prompt.result_variable"
-                                                            [ngModelOptions]="{ standalone: true }"
-                                                            [readonly]="isReadOnly()"
-                                                            (ngModelChange)="
-                                                                updatePrompt(prompt.id, 'result_variable', $event)
-                                                            "
-                                                            placeholder="e.g. classification"
-                                                        />
+                                                        <app-diff-field-mark
+                                                            class="prompt-field-mark prompt-field-mark--frame"
+                                                            [diffField]="'prompts[].result_variable'"
+                                                            [diffPath]="promptFieldPath(prompt.id, 'result_variable')"
+                                                        >
+                                                            <input
+                                                                type="text"
+                                                                class="field-input"
+                                                                [ngModel]="prompt.result_variable"
+                                                                [ngModelOptions]="{ standalone: true }"
+                                                                [readonly]="isReadOnly()"
+                                                                (ngModelChange)="
+                                                                    updatePrompt(prompt.id, 'result_variable', $event)
+                                                                "
+                                                                placeholder="e.g. classification"
+                                                            />
+                                                        </app-diff-field-mark>
                                                     </div>
 
                                                     @if (
@@ -426,26 +566,32 @@
                                                                     (click)="openSideEditor(prompt.id, 'prompt')"
                                                                 />
                                                             </div>
-                                                            <div class="prompt-textarea-wrapper">
-                                                                <div
-                                                                    class="prompt-highlight-overlay"
-                                                                    aria-hidden="true"
-                                                                    [innerHTML]="
-                                                                        getHighlightedPromptText(prompt.prompt_text)
-                                                                    "
-                                                                ></div>
-                                                                <textarea
-                                                                    class="prompt-textarea prompt-textarea--transparent"
-                                                                    rows="8"
-                                                                    [ngModel]="prompt.prompt_text"
-                                                                    [readonly]="isReadOnly()"
-                                                                    [ngModelOptions]="{ standalone: true }"
-                                                                    (ngModelChange)="
-                                                                        onPromptTextChange(prompt.id, $event)
-                                                                    "
-                                                                    placeholder="Enter prompt template. Use curly braces for variable interpolation."
-                                                                ></textarea>
-                                                            </div>
+                                                            <app-diff-field-mark
+                                                                class="prompt-field-mark prompt-field-mark--frame"
+                                                                [diffField]="'prompts[].prompt_text'"
+                                                                [diffPath]="promptFieldPath(prompt.id, 'prompt_text')"
+                                                            >
+                                                                <div class="prompt-textarea-wrapper">
+                                                                    <div
+                                                                        class="prompt-highlight-overlay"
+                                                                        aria-hidden="true"
+                                                                        [innerHTML]="
+                                                                            getHighlightedPromptText(prompt.prompt_text)
+                                                                        "
+                                                                    ></div>
+                                                                    <textarea
+                                                                        class="prompt-textarea prompt-textarea--transparent"
+                                                                        rows="8"
+                                                                        [ngModel]="prompt.prompt_text"
+                                                                        [readonly]="isReadOnly()"
+                                                                        [ngModelOptions]="{ standalone: true }"
+                                                                        (ngModelChange)="
+                                                                            onPromptTextChange(prompt.id, $event)
+                                                                        "
+                                                                        placeholder="Enter prompt template. Use curly braces for variable interpolation."
+                                                                    ></textarea>
+                                                                </div>
+                                                            </app-diff-field-mark>
                                                         </div>
                                                     }
 
@@ -455,19 +601,30 @@
                                                     ) {
                                                         <div class="prompt-field">
                                                             <label class="field-label">Output Schema</label>
-                                                            <app-json-editor
-                                                                [jsonData]="
-                                                                    getPromptSchemaText(prompt.id, prompt.output_schema)
-                                                                "
-                                                                (jsonChange)="onSchemaChange(prompt.id, $event)"
-                                                                [showHeader]="true"
-                                                                [allowCopy]="true"
-                                                                [allowExpand]="true"
-                                                                (expand)="openSideEditor(prompt.id, 'schema')"
-                                                                [editorHeight]="220"
-                                                                [exampleHint]="outputSchemaExampleHint"
-                                                                [readonly]="isReadOnly()"
-                                                            ></app-json-editor>
+                                                            <!-- The editor draws the border; its expand button opens the JSON diff. -->
+                                                            <app-diff-field-mark
+                                                                class="prompt-field-mark"
+                                                                [diffField]="'prompts[].output_schema'"
+                                                                [diffPath]="promptFieldPath(prompt.id, 'output_schema')"
+                                                                [diffHint]="schemaDiffHint"
+                                                            >
+                                                                <app-json-editor
+                                                                    [jsonData]="
+                                                                        getPromptSchemaText(
+                                                                            prompt.id,
+                                                                            prompt.output_schema
+                                                                        )
+                                                                    "
+                                                                    (jsonChange)="onSchemaChange(prompt.id, $event)"
+                                                                    [showHeader]="true"
+                                                                    [allowCopy]="true"
+                                                                    [allowExpand]="true"
+                                                                    (expand)="openSideEditor(prompt.id, 'schema')"
+                                                                    [editorHeight]="220"
+                                                                    [exampleHint]="outputSchemaExampleHint"
+                                                                    [readonly]="isReadOnly()"
+                                                                ></app-json-editor>
+                                                            </app-diff-field-mark>
                                                             @if (getPromptSchemaError(prompt.id)) {
                                                                 <div class="prompt-schema-error">
                                                                     {{ getPromptSchemaError(prompt.id) }}
@@ -477,6 +634,23 @@
                                                     }
                                                 </div>
                                             }
+                                        </div>
+                                    }
+                                    <!-- Version diff (Changes tab): the canvas prompts a restore removes, read-only. -->
+                                    @for (removed of removedPrompts(); track removed.id) {
+                                        <div
+                                            class="prompt-card prompt-card--removed"
+                                            title="Restore removes this prompt"
+                                        >
+                                            <span class="visually-hidden">Restore removes this prompt: </span>
+                                            <div class="prompt-card-header">
+                                                <div class="prompt-card-title">
+                                                    <span class="prompt-id">{{ removed.id }}</span>
+                                                    @if (removed.resultVariable) {
+                                                        <span class="result-badge">{{ removed.resultVariable }}</span>
+                                                    }
+                                                </div>
+                                            </div>
                                         </div>
                                     }
                                 }
@@ -538,7 +712,13 @@
                                     </div>
                                 </div>
                                 <div class="side-editor-pane-body">
-                                    @if (sideEditorView() === 'schema') {
+                                    @if (sideSchemaDiff(); as schema) {
+                                        <app-code-diff-view
+                                            language="json"
+                                            [current]="schema.current"
+                                            [version]="schema.version"
+                                        />
+                                    } @else if (sideEditorView() === 'schema') {
                                         <app-json-editor
                                             [jsonData]="getPromptSchemaText(prompt.id, prompt.output_schema)"
                                             (jsonChange)="onSchemaChange(prompt.id, $event)"
@@ -554,21 +734,27 @@
                                         }
                                     } @else {
                                         <div class="side-editor-prompt-text">
-                                            <div class="prompt-textarea-wrapper">
-                                                <div
-                                                    class="prompt-highlight-overlay"
-                                                    aria-hidden="true"
-                                                    [innerHTML]="getHighlightedPromptText(prompt.prompt_text)"
-                                                ></div>
-                                                <textarea
-                                                    class="prompt-textarea prompt-textarea--transparent"
-                                                    [ngModel]="prompt.prompt_text"
-                                                    [readonly]="isReadOnly()"
-                                                    [ngModelOptions]="{ standalone: true }"
-                                                    (ngModelChange)="onPromptTextChange(prompt.id, $event)"
-                                                    placeholder="Enter prompt template. Use curly braces for variable interpolation."
-                                                ></textarea>
-                                            </div>
+                                            <app-diff-field-mark
+                                                class="prompt-field-mark prompt-field-mark--frame"
+                                                [diffField]="'prompts[].prompt_text'"
+                                                [diffPath]="promptFieldPath(prompt.id, 'prompt_text')"
+                                            >
+                                                <div class="prompt-textarea-wrapper">
+                                                    <div
+                                                        class="prompt-highlight-overlay"
+                                                        aria-hidden="true"
+                                                        [innerHTML]="getHighlightedPromptText(prompt.prompt_text)"
+                                                    ></div>
+                                                    <textarea
+                                                        class="prompt-textarea prompt-textarea--transparent"
+                                                        [ngModel]="prompt.prompt_text"
+                                                        [readonly]="isReadOnly()"
+                                                        [ngModelOptions]="{ standalone: true }"
+                                                        (ngModelChange)="onPromptTextChange(prompt.id, $event)"
+                                                        placeholder="Enter prompt template. Use curly braces for variable interpolation."
+                                                    ></textarea>
+                                                </div>
+                                            </app-diff-field-mark>
                                         </div>
                                     }
                                 </div>

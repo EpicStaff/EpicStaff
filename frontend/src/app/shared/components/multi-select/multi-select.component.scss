@@ -1,3 +1,5 @@
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
+
 .multi-select {
     width: 100%;
     position: relative;
@@ -275,3 +277,6 @@
         }
     }
 }
+
+// Version diff: the value of a changed field, on the trigger (a hidden trigger has none to mark).
+@include diff-value-mark.marked('.multi-select__btn');

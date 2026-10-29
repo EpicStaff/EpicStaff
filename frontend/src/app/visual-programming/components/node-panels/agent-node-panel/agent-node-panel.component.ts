@@ -51,8 +51,10 @@ import { AgentNodeTaskUi } from '../../../core/models/agent-node.model';
 import { AgentNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InlineSurface } from '../../../core/models/task-node.model';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { keyedItemJsonChangeFor, linkedEntityFormat, mapFieldRowChanges } from '../../../utils/diff';
 import {
     computeApplyLocalSurfaceResult,
     computeAutoSelectResult,
@@ -64,8 +66,12 @@ import {
     OUTPUT_SCHEMA_JSON_ERROR,
     OUTPUT_SCHEMA_RULE_ERROR,
 } from '../../../utils/validation/output-schema.validator';
+import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { surfaceFieldChange } from '../shared/diff/surface-field-change';
 import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
 import {
     InstructionsView,
@@ -73,6 +79,7 @@ import {
 } from '../shared/instructions-view-toggle/instructions-view-toggle.component';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
 import { VariableHighlightTextareaComponent } from '../shared/variable-highlight-textarea/variable-highlight-textarea.component';
+import { agentTaskRowChanges } from './agent-tasks-table/agent-task-row-changes';
 import { AgentTasksTableComponent } from './agent-tasks-table/agent-tasks-table.component';
 
 type RightPaneSelection = { taskIndex: number; field: 'instructions' | 'schema' };
@@ -99,6 +106,9 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ColumnResizeDividerComponent,
         InputsYouCanUseComponent,
         IfFlowEditableDirective,
+        MissingReferenceNoteComponent,
+        DiffFieldMarkComponent,
+        CodeDiffViewComponent,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -227,6 +237,22 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         return parts.join(' + ');
     });
 
+    /** Changes tab of a version preview: what a restore does to each Input List row; `null` anywhere else. */
+    protected readonly inputMapRowChanges = computed(() => mapFieldRowChanges(this.panelDiff(), 'input_map'));
+    /**
+     * Changes tab of a version preview: the surface field shows the surfaces picked and the local surface as one
+     * value, so one mark covers both; `null` anywhere else or when a restore changes neither.
+     */
+    protected readonly surfaceChange = computed(() =>
+        surfaceFieldChange(
+            this.panelDiff(),
+            { surfaceList: this.selectedSurfaceIds(), inlineSurface: this.inlineSurface() },
+            this.surfaceNameFormat
+        )
+    );
+    /** Changes tab of a version preview: what a restore does to each task row; `null` anywhere else. */
+    protected readonly taskRowChanges = computed(() => agentTaskRowChanges(this.panelDiff(), this.tasks().length));
+
     public readonly surfaceGroupIcons: Record<string, string> = {
         'Local surface': 'local-surface',
         'Agent Surfaces': 'ti ti-robot',
@@ -249,6 +275,18 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         return this.tasks()[pane.taskIndex] ?? null;
     });
 
+    /**
+     * Changes tab of a version preview: the change of the selected task's Output Schema when the right pane shows it and
+     * a restore keeps the task but changes its schema, for the inline JSON diff; `null` anywhere else (the JSON editor
+     * shows).
+     */
+    protected readonly selectedTaskSchemaDiff = computed(() => {
+        const pane = this.effectiveRightPane();
+        if (pane?.field !== 'schema') return null;
+        // Tasks are diffed by position, the same as the rows of the table.
+        return keyedItemJsonChangeFor(this.panelDiff(), 'tasks', String(pane.taskIndex + 1), 'output_schema');
+    });
+
     public readonly selectedTaskNumber = computed<number>(() => (this.effectiveRightPane()?.taskIndex ?? 0) + 1);
 
     public readonly rightInstructionsValue = computed<string>(() => this.selectedTask()?.instructions ?? '');
@@ -257,6 +295,17 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         () => this.instructionsViewByTask()[this.selectedTask()?.tempId ?? ''] ?? 'preview'
     );
 
+    /** The loaded agents name a changed agent in the mark's tooltip; one not loaded (or gone): `agent #id`. */
+    protected readonly agentNameFormat = linkedEntityFormat(
+        'agent',
+        (id) => this.agentDefinitions().find((agent) => agent.id === id)?.name
+    );
+
+    private readonly surfaceNameFormat = linkedEntityFormat(
+        'surface',
+        (id) => this.surfacesById().get(id as number)?.name
+    );
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly injector: Injector = inject(Injector);
     private readonly nodeSurfaceCombineApi: NodeSurfaceCombineApiService = inject(NodeSurfaceCombineApiService);

@@ -139,6 +139,7 @@ function cloneNodesWithFreshIds(nodes: NodeModel[], oldIdToNewId: Map<string, st
             ...node,
             id: newId,
             backendId: null,
+            nodeUuid: generateUuid(),
             data: clonedData,
             input_map: clonedInputMap,
             ports: newPorts,
@@ -262,6 +263,7 @@ function createSubflowStartNode(selectedNodes: NodeModel[], entryPointNodeIds: S
     return {
         id: generateUuid(),
         backendId: null,
+        nodeUuid: generateUuid(),
         type: NodeType.START,
         node_name: '__start__',
         data: { initialState: {} },
@@ -593,6 +595,7 @@ function createSubGraphNode(
     return {
         id: nodeId,
         backendId: null,
+        nodeUuid: generateUuid(),
         type: NodeType.SUBGRAPH,
         node_name: '',
         nodeNumber,

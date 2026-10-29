@@ -10,6 +10,7 @@ const dto: PythonNode = {
     graph: 1,
     node_name: 'Python #1',
     node_number: 1,
+    uuid: '00000000-0000-4000-8000-000000000007',
     python_code: {
         id: 3,
         code: 'def main():\n    return 1',
