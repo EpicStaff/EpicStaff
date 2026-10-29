@@ -1603,7 +1603,13 @@ class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     queryset = AgentNodeTask.objects.all()
     serializer_class = AgentNodeTaskSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["agent_node"]
+
+    class AgentNodeTaskFilter(FilterSet):
+        # Plain number, not ModelChoiceFilter: that validates against every org's
+        # agent nodes, so a foreign id (200, empty) would be distinguishable from a missing one (400).
+        agent_node = NumberFilter(field_name="agent_node_id")
+
+    filterset_class = AgentNodeTaskFilter
 
     def _clean_and_save(self, serializer):
         instance = serializer.save()

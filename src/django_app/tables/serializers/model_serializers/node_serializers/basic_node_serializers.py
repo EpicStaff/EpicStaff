@@ -683,6 +683,19 @@ class AgentNodeSerializer(
 
 
 class AgentNodeTaskSerializer(serializers.ModelSerializer):
+    agent_node = OrgScopedPrimaryKeyRelatedField(
+        queryset=AgentNode.objects.all(),
+        org_lookup="graph__org_id",
+        help_text="Parent AgentNode this task belongs to.",
+    )
+    context_tasks = OrgScopedPrimaryKeyRelatedField(
+        queryset=AgentNodeTask.objects.all(),
+        many=True,
+        required=False,
+        org_lookup="agent_node__graph__org_id",
+        help_text="Earlier sibling tasks whose outputs are injected as context for this task.",
+    )
+
     class Meta:
         model = AgentNodeTask
         fields = [
