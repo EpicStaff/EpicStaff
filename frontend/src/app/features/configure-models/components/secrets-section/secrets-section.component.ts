@@ -63,6 +63,8 @@ const USED_BY_FILTER_ITEMS: SelectItem[] = [
     { name: 'Unused', value: 'unused' },
 ];
 
+const GENERIC_FAILURE_REASON = 'Something went wrong.';
+
 /** What happens to the resources that use a deleted secret: their link is kept while it's in the bin. */
 const KEPT_LINKS_NOTE =
     "They stop working while it's in the recycle bin, and work again if you restore it. " +
@@ -349,12 +351,11 @@ export class SecretsSectionComponent implements OnInit {
         }
     }
 
-    /** The server's reason when every failure is the same kind of error; mixed ones have no single reason to show. */
+    /** The server's reason when every failure gives the same one; different reasons have no single one to show. */
     private failureReason(failed: Extract<BulkDeleteOutcome, { result: 'failed' }>[]): string {
-        const sameStatus = failed.every((outcome) => outcome.error.status === failed[0].error.status);
-        if (!sameStatus) return 'Something went wrong.';
-        const reason = extractHttpErrorMessage(failed[0].error, 'Something went wrong.').trim();
-        return /[.!?]$/.test(reason) ? reason : `${reason}.`;
+        const reasons = failed.map((outcome) => extractHttpErrorMessage(outcome.error, GENERIC_FAILURE_REASON).trim());
+        if (reasons.some((reason) => reason !== reasons[0])) return GENERIC_FAILURE_REASON;
+        return /[.!?]$/.test(reasons[0]) ? reasons[0] : `${reasons[0]}.`;
     }
 
     private joinNames(outcomes: BulkDeleteOutcome[]): string {

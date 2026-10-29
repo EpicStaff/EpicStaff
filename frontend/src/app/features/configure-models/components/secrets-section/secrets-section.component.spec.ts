@@ -197,6 +197,33 @@ describe('SecretsSectionComponent bulk delete', () => {
         http.verify();
     });
 
+    it('shows a generic reason when two failures of the same status give different reasons', () => {
+        const { fixture, http, toasts } = render();
+        fixture.detectChanges();
+        answerListLoad(http, [OPENAI, ANTHROPIC]);
+        fixture.detectChanges();
+        selectAllRows(fixture);
+
+        bulkDeleteButton(fixture)!.click();
+        http.expectOne({ method: 'DELETE', url: `${SECRETS_URL}1/` }).flush(
+            { message: 'This secret is locked.' },
+            { status: 400, statusText: 'Bad Request' }
+        );
+        http.expectOne({ method: 'DELETE', url: `${SECRETS_URL}2/` }).flush(
+            { message: 'This secret is managed by an integration.' },
+            { status: 400, statusText: 'Bad Request' }
+        );
+
+        expect(toasts.shown).toEqual([
+            {
+                type: 'error',
+                message: "Couldn't delete 2 secrets. Something went wrong. Not deleted: OpenAI key, Anthropic key.",
+            },
+        ]);
+        answerListLoad(http, [OPENAI, ANTHROPIC]);
+        http.verify();
+    });
+
     it('shows a generic reason when the failures are of different kinds', () => {
         const { fixture, http, toasts } = render();
         fixture.detectChanges();
