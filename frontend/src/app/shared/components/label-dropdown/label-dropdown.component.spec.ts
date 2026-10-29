@@ -31,15 +31,16 @@ const SUPPORT = label(2, 'Support');
 
 function open(
     mode: 'multi' | 'single',
-    selectedLabelIds: number[] = []
+    selectedLabelIds: number[] = [],
+    labels: LabelTreeNode[] = [SALES, SUPPORT]
 ): { fixture: ComponentFixture<LabelDropdownComponent>; panel: HTMLElement; emitted: number[][] } {
     TestBed.configureTestingModule({
         providers: [
             {
                 provide: LABELS_STORE,
                 useValue: {
-                    labels: signal([SALES, SUPPORT]),
-                    labelTree: signal([SALES, SUPPORT]),
+                    labels: signal(labels),
+                    labelTree: signal(labels),
                     loadLabels: () => of([]),
                     createLabel: (name: string) => of(label(3, name)),
                 },
@@ -56,6 +57,19 @@ function open(
     fixture.componentInstance.open();
     fixture.detectChanges();
     return { fixture, panel: TestBed.inject(OverlayContainer).getContainerElement(), emitted };
+}
+
+/** `count` labels named Group 1, Group 2… */
+const manyLabels = (count: number): LabelTreeNode[] =>
+    Array.from({ length: count }, (_, index) => label(10 + index, `Group ${index + 1}`));
+
+function pressEscape(): void {
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+}
+
+function typeInto(input: HTMLInputElement, value: string): void {
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
 }
 
 function click(panel: HTMLElement, selector: string, text: string): void {
@@ -87,23 +101,40 @@ describe('LabelDropdownComponent', () => {
             expect(emitted).toEqual([[]]);
         });
 
-        it('lists the empty option first and "+ New" last, below the labels', () => {
+        it('lists the empty option first, then the labels, as the options of a listbox named for the labels', () => {
             const { panel } = open('single');
 
-            const rows = Array.from(panel.querySelectorAll<HTMLElement>('.labels-list > button'));
-
-            expect(rows.map((row) => row.textContent?.trim())).toEqual([
-                'Ungrouped',
-                'Sales',
-                'Support',
-                '+ New label',
+            const listbox = panel.querySelector('[role="listbox"]')!;
+            const children = Array.from(listbox.children).map((child) => [
+                child.getAttribute('role'),
+                child.textContent?.trim(),
             ]);
+
+            expect(listbox.getAttribute('aria-label')).toBe('Labels');
+            expect(children).toEqual([
+                ['option', 'Ungrouped'],
+                ['option', 'Sales'],
+                ['option', 'Support'],
+            ]);
+        });
+
+        it('shows "+ New" after the listbox, outside it', () => {
+            const { panel } = open('single');
+
+            const addButton = panel.querySelector('.add-in-place-btn')!;
+
+            expect(addButton.textContent?.trim()).toBe('+ New label');
+            expect(addButton.closest('[role="listbox"]')).toBeNull();
+            expect(
+                panel.querySelector('[role="listbox"]')!.compareDocumentPosition(addButton) &
+                    Node.DOCUMENT_POSITION_FOLLOWING
+            ).toBeTruthy();
         });
 
         it('creates a label in place of the "+ New" row and picks it', () => {
             const { fixture, panel, emitted } = open('single');
 
-            click(panel, '.labels-list > button', '+ New label');
+            click(panel, '.add-in-place-btn', '+ New label');
             fixture.detectChanges();
             const input = panel.querySelector<HTMLInputElement>('.labels-list .add-label-row input')!;
             input.value = 'Ops';
@@ -136,6 +167,59 @@ describe('LabelDropdownComponent', () => {
             }
 
             expect(document.activeElement?.textContent?.trim()).toBe(focused);
+        });
+
+        it.each([
+            { count: 7, searchShown: false },
+            { count: 8, searchShown: true },
+        ])('with $count labels, the search box is shown: $searchShown', ({ count, searchShown }) => {
+            const { panel } = open('single', [], manyLabels(count));
+
+            expect(panel.querySelector('.labels-search__input') !== null).toBe(searchShown);
+        });
+
+        it('Escape closes without picking and returns focus to the trigger', () => {
+            const { fixture, emitted } = open('single', [SUPPORT.id]);
+            const trigger = (fixture.nativeElement as HTMLElement).querySelector('.trigger-btn');
+
+            pressEscape();
+            fixture.detectChanges();
+
+            expect(emitted).toEqual([]);
+            expect(fixture.componentInstance.isOpen()).toBe(false);
+            expect(document.activeElement).toBe(trigger);
+        });
+
+        it('Escape in a non-empty search clears it first, and closes only once it is empty', () => {
+            const { fixture, panel } = open('single', [], manyLabels(8));
+            const search = panel.querySelector<HTMLInputElement>('.labels-search__input')!;
+            typeInto(search, 'Group 1');
+            fixture.detectChanges();
+
+            pressEscape();
+            fixture.detectChanges();
+            const afterFirst = { open: fixture.componentInstance.isOpen(), search: search.value };
+            pressEscape();
+            fixture.detectChanges();
+
+            expect(afterFirst).toEqual({ open: true, search: '' });
+            expect(fixture.componentInstance.isOpen()).toBe(false);
+        });
+
+        it('Escape in the new label input cancels the add and puts focus back on "+ New"', () => {
+            const { fixture, panel } = open('single');
+            click(panel, '.add-in-place-btn', '+ New label');
+            fixture.detectChanges();
+            const input = panel.querySelector<HTMLInputElement>('.add-label-row--in-place input')!;
+            input.focus();
+
+            pressEscape();
+            fixture.detectChanges();
+            TestBed.tick();
+
+            expect(fixture.componentInstance.isOpen()).toBe(true);
+            expect(panel.querySelector('.add-label-row--in-place')).toBeNull();
+            expect(document.activeElement?.textContent?.trim()).toBe('+ New label');
         });
 
         it('has no checkboxes and no Save footer', () => {

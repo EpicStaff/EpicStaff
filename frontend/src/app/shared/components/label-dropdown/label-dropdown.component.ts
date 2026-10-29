@@ -3,6 +3,7 @@ import { TemplatePortal } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
@@ -11,6 +12,7 @@ import {
     ElementRef,
     HostListener,
     inject,
+    Injector,
     input,
     OnInit,
     output,
@@ -37,6 +39,8 @@ interface FlatLabelNode {
 }
 
 const SINGLE_MODE_SEARCH_FROM = 8;
+/** Single mode: the rows arrow keys walk, in on-screen order — the options, then the "+ New" row. */
+const SINGLE_MODE_ROWS = '.labels-listbox > [role="option"], .labels-list > .add-in-place-btn';
 
 /**
  * Feature-agnostic labels picker. Consumers must have LABELS_STORE provided in
@@ -107,6 +111,7 @@ export class LabelDropdownComponent implements OnInit {
     private readonly overlayPositionBuilder = inject(OverlayPositionBuilder);
     private readonly vcr = inject(ViewContainerRef);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     readonly isOpen = signal<boolean>(false);
     readonly localCheckedIds = signal<Set<number>>(new Set());
@@ -261,10 +266,7 @@ export class LabelDropdownComponent implements OnInit {
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe((event) => {
                     if (this.moveOptionFocus(event)) return;
-                    // Escape in the "new label" input only cancels the add (its own keyup handler).
-                    if (event.key !== 'Escape' || this.addingRoot()) return;
-                    event.preventDefault();
-                    this.close();
+                    if (event.key === 'Escape') this.onSingleModeEscape(event);
                 });
             // Without a search box (a short list), focus starts on the current choice instead.
             const panel = this.overlayRef.overlayElement;
@@ -276,6 +278,28 @@ export class LabelDropdownComponent implements OnInit {
     }
 
     /**
+     * Single mode, innermost first: Escape cancels an in-place add (focus back on "+ New"), then clears a
+     * non-empty search it was pressed in, and only then closes the panel.
+     */
+    private onSingleModeEscape(event: KeyboardEvent): void {
+        event.preventDefault();
+        if (this.addingRoot()) {
+            this.cancelAdd();
+            afterNextRender(
+                () => this.overlayRef?.overlayElement.querySelector<HTMLElement>('.add-in-place-btn')?.focus(),
+                { injector: this.injector }
+            );
+            return;
+        }
+        const inSearch = document.activeElement?.classList.contains('labels-search__input') ?? false;
+        if (inSearch && this.searchTerm()) {
+            this.searchTerm.set('');
+            return;
+        }
+        this.close();
+    }
+
+    /**
      * Single mode: Up/Down/Home/End walk the rows ("+ New" included); Down from the search box enters
      * the list. True when the key was handled. Keys typed into the "new label" input are left alone.
      */
@@ -283,7 +307,7 @@ export class LabelDropdownComponent implements OnInit {
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || this.addingRoot()) return false;
         const panel = this.overlayRef?.overlayElement;
         if (!panel) return false;
-        const rows = Array.from(panel.querySelectorAll<HTMLElement>('.labels-list > button'));
+        const rows = Array.from(panel.querySelectorAll<HTMLElement>(SINGLE_MODE_ROWS));
         if (!rows.length) return false;
         const current = rows.indexOf(document.activeElement as HTMLElement);
         const inSearch = document.activeElement?.classList.contains('labels-search__input') ?? false;

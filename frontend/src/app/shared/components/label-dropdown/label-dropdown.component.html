@@ -133,36 +133,42 @@
         <div
             class="labels-list"
             [class.labels-list--single]="isSingle()"
-            [attr.role]="isSingle() ? 'listbox' : null"
         >
             @if (isSingle()) {
-                <button
-                    type="button"
-                    role="option"
-                    class="tree-row tree-row--single"
-                    [class.selected]="localCheckedIds().size === 0"
-                    [attr.aria-selected]="localCheckedIds().size === 0"
-                    (click)="selectSingle(null)"
+                <!-- Only the choices are options; the "+ New" row and its input follow the listbox. -->
+                <div
+                    class="labels-listbox"
+                    role="listbox"
+                    [attr.aria-label]="pluralTitle()"
                 >
-                    <span class="label-dot label-dot--empty"></span>
-                    <span class="label-name">{{ emptyOptionLabel() }}</span>
-                </button>
-                @for (item of flatTree(); track item.node.id) {
                     <button
                         type="button"
                         role="option"
                         class="tree-row tree-row--single"
-                        [class.selected]="isSelected(item.node.id)"
-                        [attr.aria-selected]="isSelected(item.node.id)"
-                        (click)="selectSingle(item.node.id)"
+                        [class.selected]="localCheckedIds().size === 0"
+                        [attr.aria-selected]="localCheckedIds().size === 0"
+                        (click)="selectSingle(null)"
                     >
-                        <span
-                            class="label-dot"
-                            [style.background-color]="labelColor(item.node)"
-                        ></span>
-                        <span class="label-name">{{ item.node.name }}</span>
+                        <span class="label-dot label-dot--empty"></span>
+                        <span class="label-name">{{ emptyOptionLabel() }}</span>
                     </button>
-                }
+                    @for (item of flatTree(); track item.node.id) {
+                        <button
+                            type="button"
+                            role="option"
+                            class="tree-row tree-row--single"
+                            [class.selected]="isSelected(item.node.id)"
+                            [attr.aria-selected]="isSelected(item.node.id)"
+                            (click)="selectSingle(item.node.id)"
+                        >
+                            <span
+                                class="label-dot"
+                                [style.background-color]="labelColor(item.node)"
+                            ></span>
+                            <span class="label-name">{{ item.node.name }}</span>
+                        </button>
+                    }
+                </div>
                 @if (addingRoot()) {
                     <div class="add-label-row add-label-row--in-place">
                         <input
@@ -173,7 +179,6 @@
                             [placeholder]="'Enter ' + noun() + ' name...'"
                             [attr.aria-label]="'New ' + noun() + ' name'"
                             (keyup.enter)="confirmAdd()"
-                            (keyup.escape)="cancelAdd()"
                         />
                         <app-label-color-picker
                             [selectedColor]="newLabelColor()"

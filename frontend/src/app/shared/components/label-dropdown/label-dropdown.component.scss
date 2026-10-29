@@ -420,6 +420,14 @@
     max-height: min(420px, 50vh);
 }
 
+// The options inside `.labels-list--single`, spaced like the rows that follow them.
+.labels-listbox {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 4px;
+}
+
 // Single-select mode: each row is a button that picks one label.
 .tree-row--single {
     width: 100%;
