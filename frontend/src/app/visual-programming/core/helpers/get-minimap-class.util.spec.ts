@@ -9,8 +9,6 @@ function makeNode(type: NodeType): NodeModel {
         backendId: null,
         type,
         node_name: 'test',
-        color: '#000',
-        icon: 'icon',
         ports: null,
         position: { x: 0, y: 0 },
         size: { width: 100, height: 60 },

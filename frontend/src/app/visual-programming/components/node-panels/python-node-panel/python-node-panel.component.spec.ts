@@ -48,8 +48,6 @@ const pythonNode = {
     test_input: {},
     position: { x: 0, y: 0 },
     ports: null,
-    color: '',
-    icon: '',
     size: { width: 200, height: 100 },
     input_map: {},
     output_variable_path: null,

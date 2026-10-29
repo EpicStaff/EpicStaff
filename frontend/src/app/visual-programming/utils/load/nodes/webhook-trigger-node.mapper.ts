@@ -28,8 +28,6 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
         },
         position: ui.position,
         ports: null,
-        color: ui.color,
-        icon: ui.icon,
         input_map: wn.input_map ?? {},
         output_variable_path: wn.output_variable_path,
         size: ui.size,

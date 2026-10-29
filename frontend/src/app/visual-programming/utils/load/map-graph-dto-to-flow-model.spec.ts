@@ -1,4 +1,4 @@
-import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+import { NodeType } from '@shared/models';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
 import { FlowModel } from '../../core/models/flow.model';
@@ -159,8 +159,8 @@ describe('mapGraphDtoToFlowModel node style', () => {
 
         const node = loadedNode(graph, ID.agent);
 
-        expect(node.color).toBe(NODE_COLORS[NodeType.AGENT]);
-        expect(node.icon).toBe(NODE_ICONS[NodeType.AGENT]);
+        expect(node).not.toHaveProperty('color');
+        expect(node).not.toHaveProperty('icon');
         expect(node.size).toEqual({ width: 330, height: 60 });
         expect(node.position).toEqual({ x: 10, y: 20 });
     });
@@ -228,8 +228,6 @@ describe('mapGraphDtoToFlowModel node style', () => {
             ...loaded,
             nodes: loaded.nodes.map((node) => ({
                 ...node,
-                color: STALE_METADATA.color,
-                icon: STALE_METADATA.icon,
                 size: STALE_METADATA.size,
             })),
         };
@@ -240,10 +238,6 @@ describe('mapGraphDtoToFlowModel node style', () => {
             expect(nodeDiff.toCreate).toEqual([]);
             expect(nodeDiff.toUpdate).toEqual([]);
             expect(nodeDiff.toDelete).toEqual([]);
-        }
-        for (const node of loaded.nodes) {
-            expect(node.color).toBe(NODE_COLORS[node.type]);
-            expect(node.icon).toBe(NODE_ICONS[node.type]);
         }
     });
 });

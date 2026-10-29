@@ -1,18 +1,24 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NODE_COLORS, NodeType } from '@shared/models';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { of } from 'rxjs';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
+import { GraphDto } from '../../../features/flows/models/graph.model';
+import { GraphVersionSnapshot } from '../../../features/flows/models/graph-version-preview.model';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { KeyValueMode } from '../../core/models/key-value-node.model';
 import { NodeModel } from '../../core/models/node.model';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
+import { mapGraphDtoToFlowModel } from '../../utils/load/map-graph-dto-to-flow-model';
 import { mapKeyValueNodeToModel } from '../../utils/load/nodes/key-value-node.mapper';
 import { mapStartNodeToModel } from '../../utils/load/nodes/start-node.mapper';
+import { buildPreviewFlowModel } from '../../utils/load/snapshot/map-snapshot-to-graph-dto';
+import { liveGraph, livePython } from '../../utils/testing/live-graph.fixture';
+import { normalizedCssColor, WRONG_APPEARANCE } from '../../utils/testing/node-appearance.fixture';
 import { FlowBaseNodeComponent } from './flow-base-node.component';
 
 const KEY_VALUE_NODE = {
@@ -106,7 +112,7 @@ describe('FlowBaseNodeComponent key-value summary', () => {
                 icon: 'ti ti-database-x',
                 color: '#000000',
                 data: { ...KEY_VALUE_NODE.data, mode },
-            });
+            } as NodeModel);
             const icon: HTMLElement = fixture.nativeElement.querySelector('.icon-wrapper i');
             const typeColor = document.createElement('i');
             typeColor.style.color = NODE_COLORS[NodeType.KEY_VALUE];
@@ -305,5 +311,78 @@ describe('FlowBaseNodeComponent node number', () => {
         render(tableNode, { otherNodes: [fetchNode, { ...fetchNode, id: 'fetch-again', nodeNumber: 9 }] });
 
         expect(text('.decision-table__group .group-status')).toBe('(Fetch #4)');
+    });
+});
+
+describe('FlowBaseNodeComponent header', () => {
+    function renderHeaderIcon(node: NodeModel): HTMLElement {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(false) } },
+                { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
+                { provide: LlmConfigStorageService, useValue: { isConfigsLoaded: signal(false), configs: signal([]) } },
+                { provide: KeyValueTablesStorageService, useValue: { tables: signal([]), loadTables: () => of([]) } },
+            ],
+        });
+        const fixture = TestBed.createComponent(FlowBaseNodeComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+        return fixture.nativeElement.querySelector('.icon-wrapper i');
+    }
+
+    function expectTypeAppearance(icon: HTMLElement, type: NodeType): void {
+        expect(icon.className).toBe(NODE_ICONS[type]);
+        expect(icon.style.color).toBe(normalizedCssColor(NODE_COLORS[type]));
+    }
+
+    it("renders the type colour and icon, not the node's own", () => {
+        const agentNode = {
+            id: 'agent',
+            backendId: null,
+            type: NodeType.AGENT,
+            node_name: 'Agent',
+            data: { name: 'Agent', agent_definition: null, surface_list: [], inline_surface: null, tasks: [] },
+            position: { x: 0, y: 0 },
+            ports: [],
+            ...WRONG_APPEARANCE,
+            size: { width: 300, height: 200 },
+            input_map: {},
+            output_variable_path: null,
+        } as unknown as NodeModel;
+
+        const icon = renderHeaderIcon(agentNode);
+
+        expect(icon.className).toBe('ti ti-robot');
+        expectTypeAppearance(icon, NodeType.AGENT);
+    });
+
+    it('shows the type colour and icon for a loaded node whose backend metadata holds another colour and icon', () => {
+        const staleGraph = {
+            ...liveGraph,
+            python_node_list: [{ ...livePython, metadata: { position: { x: 1, y: 2 }, ...WRONG_APPEARANCE } }],
+        } as unknown as GraphDto;
+        const loaded = mapGraphDtoToFlowModel(staleGraph).nodes.find((node) => node.type === NodeType.PYTHON)!;
+
+        expectTypeAppearance(renderHeaderIcon(loaded), NodeType.PYTHON);
+    });
+
+    it('shows the type colour and icon for a version-preview node whose snapshot metadata holds another colour and icon', () => {
+        const staleSnapshot = {
+            nodes: [
+                {
+                    ...livePython,
+                    node_type: 'PythonNode',
+                    metadata: { position: { x: 1, y: 2 }, ...WRONG_APPEARANCE },
+                },
+            ],
+            edge_list: [],
+            metadata: {},
+            secret_declarations: { nodes: {}, telegram: {} },
+        } as unknown as GraphVersionSnapshot;
+        const { flow } = buildPreviewFlowModel(staleSnapshot, new Map(), []);
+        const previewed = flow.nodes.find((node) => node.type === NodeType.PYTHON)!;
+
+        // Ports are drawn through foblex directives that need a flow canvas; the header does not depend on them.
+        expectTypeAppearance(renderHeaderIcon({ ...previewed, ports: [] }), NodeType.PYTHON);
     });
 });

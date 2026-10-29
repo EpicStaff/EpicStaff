@@ -96,6 +96,8 @@ export class FlowBaseNodeComponent implements OnInit {
     @Output() portMouseleave = new EventEmitter<void>();
 
     public NodeType = NodeType;
+    protected readonly nodeColors = NODE_COLORS;
+    protected readonly nodeIcons = NODE_ICONS;
     public readonly eResizeHandleType = EFResizeHandleType;
 
     public portConnections = computed((): Record<string, CustomPortId[]> => {

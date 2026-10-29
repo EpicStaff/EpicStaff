@@ -31,6 +31,7 @@ import {
     GetLlmConfigRequest,
     GraphSessionStatus,
     isTerminalSessionStatus,
+    NODE_COLORS,
     NodeType,
     ResourceCode,
 } from '@shared/models';
@@ -260,7 +261,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     );
     /** Read-only node id to node-type colour lookup for the snake-game intro; only evaluated while a game runs. */
     protected readonly snakeGameNodeColors = computed<ReadonlyMap<string, string>>(
-        () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
+        () => new Map(this.flowService.nodes().map((node) => [node.id, NODE_COLORS[node.type]]))
     );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly keymap = inject(KeymapService);

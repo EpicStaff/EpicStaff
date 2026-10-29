@@ -11,8 +11,6 @@ function makeDtNode(overrides: Partial<DecisionTableNodeModel> = {}): DecisionTa
         node_name: 'My DT',
         position: { x: 100, y: 200 },
         size: { width: 330, height: 300 },
-        color: '#old-color',
-        icon: 'old-icon',
         ports: null,
         input_map: { key: 'value' },
         output_variable_path: 'some.path',

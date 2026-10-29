@@ -19,8 +19,6 @@ export function mapKnowledgeRetrieverNodeToModel(kr: GetKnowledgeRetrieverNodeRe
         data: kr,
         position: ui.position,
         ports: null,
-        color: ui.color,
-        icon: ui.icon,
         input_map: kr.input_map ?? {},
         output_variable_path: kr.output_variable_path,
         size: ui.size,

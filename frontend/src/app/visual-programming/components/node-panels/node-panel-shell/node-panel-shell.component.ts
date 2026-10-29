@@ -16,7 +16,7 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
 import { COMPACT_HEADER_NODE_TYPES, PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
@@ -61,8 +61,8 @@ interface PanelInstanceView {
                 >
                     <div class="icon-and-title">
                         <i
-                            [class]="node()!.icon"
-                            [style.color]="node()!.color || '#685fff'"
+                            [class]="nodeIcons[node()!.type]"
+                            [style.color]="nodeColors[node()!.type] || '#685fff'"
                         ></i>
                         <span class="title-with-number">
                             <span class="title">{{ nodeNameToDisplay() }}</span>
@@ -167,6 +167,8 @@ interface PanelInstanceView {
 })
 export class NodePanelShellComponent {
     public readonly node = input<NodeModel | null>(null);
+    protected readonly nodeColors = NODE_COLORS;
+    protected readonly nodeIcons = NODE_ICONS;
     public readonly currentFlowId = input<number | null>(null);
     public readonly save = output<NodeModel>();
     public readonly autosave = output<NodeModel>();
