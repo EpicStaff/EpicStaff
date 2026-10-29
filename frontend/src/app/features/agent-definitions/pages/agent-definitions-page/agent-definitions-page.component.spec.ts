@@ -122,7 +122,10 @@ function savingSignal(fixture: ComponentFixture<AgentDefinitionsPageComponent>):
     return fixture.debugElement.injector.get(AgentsPageStore).saving as WritableSignal<boolean>;
 }
 
+// Focused first, as a real click or Enter leaves it: the menu's focus trap hands the focus back to whatever had it
+// when the menu opened, and a test must not depend on what an earlier spec left focused.
 function openMenu(fixture: ComponentFixture<AgentDefinitionsPageComponent>): void {
+    moreButton(fixture.nativeElement)!.focus();
     moreButton(fixture.nativeElement)!.click();
     fixture.detectChanges();
 }
