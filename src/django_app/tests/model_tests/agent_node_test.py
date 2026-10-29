@@ -419,6 +419,118 @@ def test_bulk_save_creates_agent_node_with_tasks_and_inline_surface(
 
 
 # ---------------------------------------------------------------------------
+# 6b. Task ids must belong to the node being saved
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_bulk_save_rejects_stale_task_id_instead_of_failing_on_commit(
+    client, graph, agent_node
+):
+    kept_task = AgentNodeTask.objects.create(
+        agent_node=agent_node, name="kept", order=0
+    )
+    deleted_task = AgentNodeTask.objects.create(
+        agent_node=agent_node, name="deleted", order=1
+    )
+    stale_id = deleted_task.id
+    deleted_task.delete()
+
+    payload = {
+        "save_version": graph.save_version,
+        "agent_node_list": [
+            {
+                "id": agent_node.id,
+                "graph": graph.id,
+                "node_name": agent_node.node_name,
+                "tasks": [
+                    {"id": stale_id, "name": "deleted", "order": 0},
+                    {
+                        "name": "after",
+                        "order": 1,
+                        "id": None,
+                        "context_task_ids": [stale_id],
+                    },
+                ],
+            },
+        ],
+    }
+
+    response = client.post(f"/api/graphs/{graph.id}/save/", payload, format="json")
+
+    assert response.status_code == 400, response.content
+    assert str([stale_id]) in str(response.data)
+    assert list(agent_node.tasks.values_list("id", flat=True)) == [kept_task.id]
+
+
+@pytest.mark.django_db
+def test_update_rejects_task_id_owned_by_another_agent_node(graph, agent_node):
+    other_node = AgentNode.objects.create(graph=graph, node_name="agent-node-other")
+    foreign_task = AgentNodeTask.objects.create(
+        agent_node=other_node, name="foreign", order=0
+    )
+
+    data = {
+        "tasks": [
+            {"id": foreign_task.id, "name": "foreign", "order": 0},
+        ]
+    }
+
+    serializer = _make_serializer(data, instance=agent_node)
+
+    assert not serializer.is_valid()
+    assert str([foreign_task.id]) in str(serializer.errors["tasks"])
+    assert agent_node.tasks.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_rejects_any_task_id(graph, org, org_request):
+    data = {
+        "graph": graph.pk,
+        "node_name": "agent-node-create-with-id",
+        "tasks": [{"id": 13, "name": "task-a", "order": 0}],
+    }
+
+    serializer = _make_serializer(
+        data, context={"organization": org, "request": org_request}
+    )
+
+    assert not serializer.is_valid()
+    assert str([13]) in str(serializer.errors["tasks"])
+
+
+@pytest.mark.django_db
+def test_update_resolves_context_links_by_id_and_temp_id(agent_node):
+    existing_task = AgentNodeTask.objects.create(
+        agent_node=agent_node, name="existing", order=0
+    )
+    new_temp_id = uuid.uuid4()
+    data = {
+        "tasks": [
+            {"id": existing_task.id, "name": "existing", "order": 0},
+            {"temp_id": str(new_temp_id), "name": "created", "order": 1},
+            {
+                "name": "last",
+                "order": 2,
+                "context_task_ids": [existing_task.id],
+                "context_task_temp_ids": [str(new_temp_id)],
+            },
+        ]
+    }
+
+    serializer = _make_serializer(data, instance=agent_node)
+    assert serializer.is_valid(), serializer.errors
+    serializer.save()
+
+    created_task = AgentNodeTask.objects.get(agent_node=agent_node, name="created")
+    last_task = AgentNodeTask.objects.get(agent_node=agent_node, name="last")
+    assert set(last_task.context_tasks.values_list("id", flat=True)) == {
+        existing_task.id,
+        created_task.id,
+    }
+
+
+# ---------------------------------------------------------------------------
 # 7. AgentNodePayloadService.build_agent_node_data
 # ---------------------------------------------------------------------------
 
