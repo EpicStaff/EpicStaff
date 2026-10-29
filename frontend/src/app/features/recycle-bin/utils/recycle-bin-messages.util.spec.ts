@@ -39,7 +39,7 @@ function binItem(source: RecycleBinItem['source'], name: string): RecycleBinItem
 describe('recycle bin messages', () => {
     it('says an item was restored, without its links', () => {
         expect(restoreSuccessMessage({ source: 'flow', name: 'Report', renamedFrom: null, linksRestored: false })).toBe(
-            `"Report" restored. Its links to other items aren't restored.`
+            `"Report" restored. Links from other items, if any, aren't restored.`
         );
     });
 
@@ -67,14 +67,14 @@ describe('recycle bin messages', () => {
                 ],
                 failed: [],
             })
-        ).toBe(`2 restored. Their links to other items aren't restored.`);
+        ).toBe(`2 restored. Links from other items, if any, aren't restored.`);
     });
 
     it('names the new name when the restore had to rename', () => {
         expect(
             restoreSuccessMessage({ source: 'flow', name: 'Report #2', renamedFrom: 'Report', linksRestored: false })
         ).toBe(
-            `"Report" restored as "Report #2", because that name was taken. Its links to other items aren't restored.`
+            `"Report" restored as "Report #2", because that name was taken. Links from other items, if any, aren't restored.`
         );
     });
 
@@ -177,13 +177,13 @@ describe('recycle bin messages', () => {
                     ],
                     failed: [],
                 })
-            ).toBe(`5 restored, 1 renamed: Report → Report #2. Their links to other items aren't restored.`);
+            ).toBe(`5 restored, 1 renamed: Report → Report #2. Links from other items, if any, aren't restored.`);
             expect(
                 restoreResultMessage({
                     restored: [{ source: 'flow', name: 'a', renamedFrom: null, linksRestored: false }],
                     failed: [],
                 })
-            ).toBe(`"a" restored. Its links to other items aren't restored.`);
+            ).toBe(`"a" restored. Links from other items, if any, aren't restored.`);
             expect(restoreResultMessage({ restored: [], failed: [] })).toBeNull();
         });
 

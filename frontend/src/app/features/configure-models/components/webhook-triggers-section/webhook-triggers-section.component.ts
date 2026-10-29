@@ -16,6 +16,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode, WebhookTriggerModel } from '@shared/models';
 import { WebhookTriggerService } from '@shared/services';
+import { movedToRecycleBinMessage } from '@shared/utils';
 import { finalize } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
@@ -176,7 +177,9 @@ export class WebhookTriggersSectionComponent implements OnInit {
                     .subscribe({
                         next: () => {
                             this.triggers.update((list) => list.filter((t) => t.id !== id));
-                            this.toastService.success(`Webhook trigger "${trigger.path}" deleted`);
+                            this.toastService.success(
+                                movedToRecycleBinMessage(1, 'webhook trigger', 'webhook triggers')
+                            );
                         },
                         error: () => this.toastService.error('Failed to delete webhook trigger'),
                     });

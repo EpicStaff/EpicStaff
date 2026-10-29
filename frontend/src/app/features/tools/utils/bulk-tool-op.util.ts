@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, WritableSignal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogData, ConfirmationDialogService } from '@shared/components';
-import { recycleBinNotice } from '@shared/utils';
+import { escapeHtml, movedToRecycleBinMessage, pluralize, recycleBinNotice } from '@shared/utils';
 import { Observable } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
@@ -65,7 +65,9 @@ export function runBulkDeleteWithConfirm<T extends { id: number }>(
         dialogData: ConfirmationDialogData;
         /** Human-readable noun used in the toast messages (e.g. 'custom tool', 'MCP tool'). */
         entityLabel: string;
-        /** Scope word rendered in the success toast (e.g. 'unused', 'selected'). */
+        /** Plural of `entityLabel` (e.g. 'custom tools', 'MCP tools'). */
+        entityLabelPlural: string;
+        /** Scope word rendered in the failure toast (e.g. 'unused', 'selected'). */
         scopeLabel: 'unused' | 'selected';
         /** Called when the delete request fails, so callers can refetch the list to stay in sync. */
         onError?: () => void;
@@ -84,7 +86,9 @@ export function runBulkDeleteWithConfirm<T extends { id: number }>(
                         const idSet = new Set(ids);
                         opts.allTools.update((list) => list.filter((t) => !idSet.has(t.id)));
                         opts.viewState.clearSelection();
-                        opts.toast.success(`Deleted ${response.deleted} ${opts.scopeLabel} ${opts.entityLabel}(s).`);
+                        opts.toast.success(
+                            movedToRecycleBinMessage(response.deleted, opts.entityLabel, opts.entityLabelPlural)
+                        );
                     },
                     error: (err: HttpErrorResponse) => {
                         opts.toast.error(
@@ -148,8 +152,14 @@ export function runDeleteUnused<T extends { id: number }>(
                     allTools: opts.allTools,
                     bulkDelete: opts.bulkDelete,
                     entityLabel: opts.entityLabel,
+                    entityLabelPlural: opts.entityLabelPlural,
                     scopeLabel: 'unused',
-                    dialogData: buildUnusedDeleteDialog(unusedIds.length, opts.entityLabelPlural, opts.retentionDays),
+                    dialogData: buildUnusedDeleteDialog(
+                        unusedIds.length,
+                        opts.entityLabel,
+                        opts.entityLabelPlural,
+                        opts.retentionDays
+                    ),
                     onError: opts.onError,
                 });
             },
@@ -161,17 +171,24 @@ export function runDeleteUnused<T extends { id: number }>(
 }
 
 // Delete-confirmation dialog builders
-function pluralise(count: number, singular: string, plural: string): string {
-    return count === 1 ? singular : plural;
+
+interface ToolUsageCounts {
+    agentSurfaceCount: number;
+    sharedSurfaceCount: number;
+    inlineSurfaceCount: number;
 }
 
-function escapeHtml(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+function totalUsage(tool: ToolUsageCounts): number {
+    return tool.agentSurfaceCount + tool.sharedSurfaceCount + tool.inlineSurfaceCount;
+}
+
+/** `<strong>1 agent tool surface</strong>, <strong>0 shared tool surfaces</strong>, and <strong>2 inline usages</strong>` */
+function usageCounts(tool: ToolUsageCounts): string {
+    return (
+        `<strong>${pluralize(tool.agentSurfaceCount, 'agent tool surface', 'agent tool surfaces')}</strong>, ` +
+        `<strong>${pluralize(tool.sharedSurfaceCount, 'shared tool surface', 'shared tool surfaces')}</strong>, ` +
+        `and <strong>${pluralize(tool.inlineSurfaceCount, 'inline usage', 'inline usages')}</strong>`
+    );
 }
 
 /**
@@ -179,14 +196,14 @@ function escapeHtml(value: string): string {
  */
 export function buildUnusedDeleteDialog(
     count: number,
+    entityLabel: string,
     entityLabelPlural: string,
     retentionDays: number | null
 ): ConfirmationDialogData {
-    const title = count === 1 ? 'Deleting Tool?' : 'Deleting Tools?';
     return {
-        title,
+        title: count === 1 ? 'Delete unused tool?' : 'Delete unused tools?',
         message:
-            `You are about to delete <strong>${count} ${entityLabelPlural}</strong> ` +
+            `You are about to delete <strong>${pluralize(count, entityLabel, entityLabelPlural)}</strong> ` +
             `that aren't connected to any agents or projects. ${recycleBinNotice(retentionDays, count)}`,
         confirmText: 'Delete',
         cancelText: 'Cancel',
@@ -206,15 +223,13 @@ export function buildSingleDeleteWithUsageDialog(
     retentionDays: number | null
 ): ConfirmationDialogData {
     const safeName = escapeHtml(toolName);
+    const counts = usageCounts({ agentSurfaceCount, sharedSurfaceCount, inlineSurfaceCount: inlineCount });
     return {
         title: 'Delete Tool?',
         message: `You are about to delete <strong>${safeName}</strong>. ${recycleBinNotice(retentionDays)}`,
         cautionTitle: 'Caution',
         caution:
-            `This tool is currently connected to ` +
-            `<strong>${agentSurfaceCount} ${pluralise(agentSurfaceCount, 'agent tool surface', 'agent tool surfaces')}</strong>, ` +
-            `<strong>${sharedSurfaceCount} ${pluralise(sharedSurfaceCount, 'shared tool surface', 'shared tool surfaces')}</strong>, ` +
-            `and <strong>${inlineCount} ${pluralise(inlineCount, 'inline usage', 'inline usages')}</strong>. ` +
+            `This tool is currently connected to ${counts}. ` +
             `If deleted, it's removed from all of these surfaces, and restoring it won't reconnect them.`,
         confirmText: 'Delete',
         cancelText: 'Cancel',
@@ -223,47 +238,38 @@ export function buildSingleDeleteWithUsageDialog(
 }
 
 /**
- * Bulk selected delete when at least one tool has usages.
- * Tools are sorted by total usage descending so the heaviest dependencies
- * surface first in the collapsible list.
+ * Bulk selected delete. Only the tools that are used get the dependency warning and a usage line,
+ * sorted by total usage descending so the heaviest dependencies come first in the collapsible list.
+ * A selection of unused tools gets a plain confirmation.
  */
 export function buildBulkSelectedDeleteDialog(
-    tools: {
-        id: number;
-        name: string;
-        agentSurfaceCount: number;
-        sharedSurfaceCount: number;
-        inlineSurfaceCount: number;
-    }[],
+    tools: ({ id: number; name: string } & ToolUsageCounts)[],
     retentionDays: number | null
 ): ConfirmationDialogData {
     const count = tools.length;
-    const total = (t: { agentSurfaceCount: number; sharedSurfaceCount: number; inlineSurfaceCount: number }) =>
-        t.agentSurfaceCount + t.sharedSurfaceCount + t.inlineSurfaceCount;
-    const sorted = [...tools].sort((a, b) => total(b) - total(a));
-    const listItems = sorted
-        .map((t) => {
-            const safeName = escapeHtml(t.name);
-            return (
-                `<li><strong>${safeName}</strong> is connected to ` +
-                `<strong>${t.agentSurfaceCount} ${pluralise(t.agentSurfaceCount, 'agent tool surface', 'agent tool surfaces')}</strong>, ` +
-                `<strong>${t.sharedSurfaceCount} ${pluralise(t.sharedSurfaceCount, 'shared tool surface', 'shared tool surfaces')}</strong>, ` +
-                `and <strong>${t.inlineSurfaceCount} ${pluralise(t.inlineSurfaceCount, 'inline usage', 'inline usages')}</strong>.</li>`
-            );
-        })
-        .join('');
-
-    return {
-        title: 'Delete Tools?',
-        message:
-            'This breaks existing dependencies across multiple agent, shared, and inline tool surfaces. ' +
-            "Restoring the tools won't reconnect them.",
-        caution:
-            `<details open><summary>You are about to delete <strong>${count} tools</strong>. ` +
-            `${recycleBinNotice(retentionDays, count)}</summary>` +
-            `<ul>${listItems}</ul></details>`,
+    const deleteSentence =
+        `You are about to delete <strong>${pluralize(count, 'tool', 'tools')}</strong>. ` +
+        recycleBinNotice(retentionDays, count);
+    const dialog: ConfirmationDialogData = {
+        title: count === 1 ? 'Delete Tool?' : 'Delete Tools?',
+        message: deleteSentence,
         confirmText: 'Delete',
         cancelText: 'Cancel',
         type: 'danger',
+    };
+
+    const used = tools.filter((tool) => totalUsage(tool) > 0).sort((a, b) => totalUsage(b) - totalUsage(a));
+    if (used.length === 0) return dialog;
+
+    const listItems = used
+        .map((tool) => `<li><strong>${escapeHtml(tool.name)}</strong> is connected to ${usageCounts(tool)}.</li>`)
+        .join('');
+    const usedNote = used.length < count ? ` ${used.length} of them ${used.length === 1 ? 'is' : 'are'} in use.` : '';
+    return {
+        ...dialog,
+        message:
+            'This breaks existing dependencies across agent, shared, and inline tool surfaces. ' +
+            `Restoring ${count === 1 ? 'the tool' : 'the tools'} won't reconnect them.`,
+        caution: `<details open><summary>${deleteSentence}${usedNote}</summary><ul>${listItems}</ul></details>`,
     };
 }

@@ -39,6 +39,7 @@
         <button
             type="button"
             class="settings-btn"
+            aria-label="Bulk actions"
             [class.active]="selectedItems().length > 0"
             [class.open]="isBulkMenuOpen()"
             [disabled]="selectedItems().length === 0 || isBulkLoading()"
