@@ -35,6 +35,8 @@ Memberships are filtered to active organizations only and sorted by `joined_at` 
 
 For a **superadmin**, `memberships[]` lists **every active organization**, each with the built-in `Superadmin` role, so the org switcher can reach any org. Entries carry `id: null` and `joined_at: null` (there is no stored membership row), and are ordered by organization name.
 
+With a user API key, `memberships[]` holds the key's organization alone (a superadmin's key too): the key acts only there (see [api_keys.md](api_keys.md#mcp-style-usage-api-key-in-its-organization)).
+
 ### 2. Changing display name
 
 `PATCH /api/profile/` with `{"display_name": "Alice Doe"}`. Response is the full updated profile — re-render directly.
@@ -204,7 +206,9 @@ This pair is fresh and bound to the new password. Every other access and refresh
 - `active_organization_id`: int — echoes the header.
 - `active_permissions`: object — same shape as `GET /api/permissions/me/` (is_superadmin, role, permissions).
 
-When the header is absent OR points to an org the caller cannot access OR contains a non-integer value, both fields are `null` and the rest of the response is unchanged. The endpoint NEVER returns 403 for this case — it's the FE's boot endpoint and must remain reachable.
+When the header is absent OR points to an org the caller cannot access OR contains a non-integer value, both fields are `null` and the rest of the response is unchanged.
+
+With a personal API key the header is ignored: the active organization is always the key's organization. The endpoint NEVER returns 403 for this case — it's the FE's boot endpoint and must remain reachable.
 
 ## Switching organizations (FE flow)
 
