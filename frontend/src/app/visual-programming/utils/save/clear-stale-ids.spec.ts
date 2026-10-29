@@ -188,6 +188,7 @@ describe('clearStaleIds', () => {
             last_edited_by: null,
             last_edited_at: null,
             id: 50,
+            uuid: null,
             metadata: {},
             node_number: 1,
             node_name: 'Agent #1',
