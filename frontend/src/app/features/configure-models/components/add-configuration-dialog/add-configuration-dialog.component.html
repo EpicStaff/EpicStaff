@@ -55,6 +55,17 @@
             <section class="section">
                 <h3 class="section-title">MODEL INFORMATION</h3>
                 <div>
+                    <app-custom-input
+                        formControlName="custom_name"
+                        label="Configuration Name"
+                        placeholder="Enter a custom name"
+                        tooltipText="A friendly name to identify this configuration across the app"
+                        [required]="true"
+                        autocomplete="off"
+                    />
+                    <app-validation-errors [control]="llmForm.get('custom_name')!" />
+                </div>
+                <div>
                     <app-llm-model-selector
                         formControlName="model"
                         label="Provider"
@@ -85,16 +96,6 @@
                             Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
                         </app-hint-message>
                     }
-                </div>
-                <div>
-                    <app-custom-input
-                        formControlName="custom_name"
-                        label="Configuration Name"
-                        placeholder="Enter a custom name"
-                        [required]="true"
-                        autocomplete="off"
-                    />
-                    <app-validation-errors [control]="llmForm.get('custom_name')!" />
                 </div>
             </section>
 
@@ -246,6 +247,16 @@
             <section class="section">
                 <h3 class="section-title">MODEL INFORMATION</h3>
                 <div>
+                    <app-custom-input
+                        formControlName="custom_name"
+                        label="Configuration Name"
+                        placeholder="Enter a custom name"
+                        tooltipText="A friendly name to identify this configuration across the app"
+                        [required]="true"
+                    />
+                    <app-validation-errors [control]="embeddingForm.controls.custom_name" />
+                </div>
+                <div>
                     <app-llm-model-selector
                         formControlName="model"
                         label="Provider"
@@ -273,16 +284,6 @@
                         </app-hint-message>
                     }
                     <app-validation-errors [control]="embeddingForm.controls.api_key_secret_id" />
-                </div>
-                <div>
-                    <app-custom-input
-                        formControlName="custom_name"
-                        label="Configuration Name"
-                        placeholder="Enter a custom name"
-                        tooltipText="A friendly name to identify this configuration across the app"
-                        [required]="true"
-                    />
-                    <app-validation-errors [control]="embeddingForm.controls.custom_name" />
                 </div>
             </section>
 
