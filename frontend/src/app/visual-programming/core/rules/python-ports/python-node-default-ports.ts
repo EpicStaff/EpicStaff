@@ -1,3 +1,5 @@
+import { NODE_COLORS, NodeType } from '@shared/models';
+
 import { BasePort } from '../../models/port.model';
 
 export const DEFAULT_PYTHON_NODE_PORTS: BasePort[] = [
@@ -25,7 +27,7 @@ export const DEFAULT_PYTHON_NODE_PORTS: BasePort[] = [
             'key-value-out',
         ],
         position: 'left',
-        color: '#ffcf3f',
+        color: NODE_COLORS[NodeType.PYTHON],
     },
 
     {
@@ -47,7 +49,7 @@ export const DEFAULT_PYTHON_NODE_PORTS: BasePort[] = [
             'key-value-in',
         ],
         position: 'right',
-        color: '#ffcf3f',
+        color: NODE_COLORS[NodeType.PYTHON],
     },
 ];
 // MERGE_COMMENT: merged line 42. check and remove comment

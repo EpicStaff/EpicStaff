@@ -1,3 +1,5 @@
+import { NODE_COLORS, NodeType } from '@shared/models';
+
 import { BasePort } from '../../models/port.model';
 
 export const DEFAULT_TABLE_NODE_PORTS: BasePort[] = [
@@ -23,7 +25,7 @@ export const DEFAULT_TABLE_NODE_PORTS: BasePort[] = [
             'key-value-out',
         ],
         position: 'left',
-        color: '#00aaff',
+        color: NODE_COLORS[NodeType.TABLE],
     },
     {
         port_type: 'output',
@@ -44,6 +46,6 @@ export const DEFAULT_TABLE_NODE_PORTS: BasePort[] = [
             'key-value-in',
         ],
         position: 'right',
-        color: '#00aaff',
+        color: NODE_COLORS[NodeType.TABLE],
     },
 ];

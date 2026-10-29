@@ -1,3 +1,5 @@
+import { NODE_COLORS, NodeType } from '@shared/models';
+
 import { BasePort } from '../../models/port.model';
 
 // Simple Agent node (NodeType.AGENT) — single In/Out ports, mirrors the
@@ -27,7 +29,7 @@ export const DEFAULT_AGENT_NODE_PORTS: BasePort[] = [
             'key-value-out',
         ],
         position: 'left',
-        color: '#685fff',
+        color: NODE_COLORS[NodeType.AGENT],
     },
     {
         port_type: 'output',
@@ -48,6 +50,6 @@ export const DEFAULT_AGENT_NODE_PORTS: BasePort[] = [
             'key-value-in',
         ],
         position: 'right',
-        color: '#685fff',
+        color: NODE_COLORS[NodeType.AGENT],
     },
 ];

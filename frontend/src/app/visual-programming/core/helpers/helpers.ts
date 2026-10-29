@@ -1,4 +1,4 @@
-import { NodeType } from '@shared/models';
+import { NODE_COLORS, NodeType } from '@shared/models';
 
 import { isBackwardWire } from '../geometry/wire-direction';
 import { ConnectionModel } from '../models/connection.model';
@@ -9,6 +9,7 @@ import { obstacleRect } from '../routing/obstacles';
 import { DEFAULT_AGENT_NODE_PORTS } from '../rules/agent-ports/agent-node-default-ports';
 import { PORTS_DICTIONARY } from '../rules/all_ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
+import { DEFAULT_CLASSIFICATION_TABLE_NODE_PORTS } from '../rules/classification-table-ports/classification-table-ports';
 import { DEFAULT_END_NODE_PORTS } from '../rules/end-ports/end-ports-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from '../rules/file-extractor-ports/file-extractor-default-ports';
 import { DEFAULT_KEY_VALUE_NODE_PORTS } from '../rules/key-value-ports/key-value-default-ports';
@@ -65,7 +66,7 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
         case NodeType.TABLE:
             return DEFAULT_TABLE_NODE_PORTS;
         case NodeType.CLASSIFICATION_TABLE:
-            return DEFAULT_TABLE_NODE_PORTS;
+            return DEFAULT_CLASSIFICATION_TABLE_NODE_PORTS;
         case NodeType.FILE_EXTRACTOR:
             return DEFAULT_FILE_EXTRACTOR_NODE_PORTS;
         case NodeType.AUDIO_TO_TEXT:
@@ -339,7 +340,7 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
             label: 'In',
             allowedConnections: ['project-out', 'python-out', 'table-out', 'start-start', 'file-extractor-out'],
             position: 'left',
-            color: '#00aaff',
+            color: NODE_COLORS[NodeType.TABLE],
         }),
         id: `${nodeId}_table-in` as `${string}_${string}`,
     };
@@ -364,7 +365,7 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
                     'file-extractor-in',
                 ],
                 position: 'right',
-                color: '#00aaff',
+                color: NODE_COLORS[NodeType.TABLE],
                 multiple: false,
             }),
             role: `decision-out-${group.group_name}`,
@@ -536,7 +537,7 @@ export function generatePortsForClassificationDecisionTableNode(
     nodeId: string,
     conditionGroups: ConditionGroup[]
 ): ViewPort[] {
-    const inputPortConfig = DEFAULT_TABLE_NODE_PORTS.find((p) => p.port_type === 'input');
+    const inputPortConfig = DEFAULT_CLASSIFICATION_TABLE_NODE_PORTS.find((p) => p.port_type === 'input');
     const inputPort = {
         ...(inputPortConfig ?? {
             port_type: 'input',
@@ -545,7 +546,7 @@ export function generatePortsForClassificationDecisionTableNode(
             label: 'In',
             allowedConnections: ['project-out', 'python-out', 'table-out', 'start-start', 'file-extractor-out'],
             position: 'left',
-            color: '#00aaff',
+            color: NODE_COLORS[NodeType.CLASSIFICATION_TABLE],
         }),
         id: `${nodeId}_table-in` as `${string}_${string}`,
     };
@@ -561,7 +562,7 @@ export function generatePortsForClassificationDecisionTableNode(
             }
         });
 
-    const defaultOutputConfig = DEFAULT_TABLE_NODE_PORTS.find((p) => p.port_type === 'output');
+    const defaultOutputConfig = DEFAULT_CLASSIFICATION_TABLE_NODE_PORTS.find((p) => p.port_type === 'output');
 
     const outputPorts: ViewPort[] = Array.from(uniqueRouteCodes.keys()).map((routeCode) => {
         const normalizedRouteCode = slugifyPortName(routeCode);
@@ -578,7 +579,7 @@ export function generatePortsForClassificationDecisionTableNode(
                     'file-extractor-in',
                 ],
                 position: 'right',
-                color: '#00aaff',
+                color: NODE_COLORS[NodeType.CLASSIFICATION_TABLE],
                 multiple: false,
             }),
             role: `decision-route-${routeCode}`,
