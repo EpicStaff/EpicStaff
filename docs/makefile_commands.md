@@ -233,7 +233,9 @@ python scripts/envtool.py --setup         # production: asks URL, HTTPS, feature
 ```
 
 With an existing `src/.env`, `--setup` offers to change features (it rewrites only
-`CHAT_ENABLED`, `AUDIT_TRAIL_ENABLED` and `COMPOSE_PROFILES`), tune performance and limits
+`CHAT_ENABLED`, `AUDIT_TRAIL_ENABLED`, `PLUGINS_ENABLED` and `COMPOSE_PROFILES`; turning
+plugins on also fills unset plugin secrets, asks for `PLUGINS_BASE_DOMAIN` unless it is
+valid, and locally moves EpicStaff to `http://epicstaff.localhost`, the host plugins need), tune performance and limits
 (server size, the longest a code node may run, the log level of every service), add missing settings, or start
 over while keeping the existing credentials. It needs a terminal: in Docker, run it with
 `docker run -it`. After pulling new variables, `make env-update` (or
