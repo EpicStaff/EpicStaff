@@ -54,6 +54,7 @@ from tables.views.model_view_sets import (
     EmbeddingModelReadWriteViewSet,
     EndNodeModelViewSet,
     FileExtractorNodeViewSet,
+    FlowFilterPresetViewSet,
     GeminiRealtimeConfigViewSet,
     GraphLightViewSet,
     GraphNoteViewSet,
@@ -88,9 +89,9 @@ from tables.views.model_view_sets import (
     SecretViewSet,
     StartNodeModelViewSet,
     SubGraphNodeModelViewSet,
+    SystemOneConfigReadWriteViewSet,
     TaskNodeViewSet,
     TelegramTriggerNodeViewSet,
-    FlowFilterPresetViewSet,
     ToolFilterPresetViewSet,
     ToolLabelViewSet,
     TwilioChannelViewSet,
@@ -126,6 +127,7 @@ router = DefaultRouter()
 router.register(r"providers", ProviderReadWriteViewSet)
 router.register(r"llm-models", LLMModelReadWriteViewSet)
 router.register(r"llm-configs", LLMConfigReadWriteViewSet)
+router.register(r"system-one-configs", SystemOneConfigReadWriteViewSet)
 router.register(r"embedding-models", EmbeddingModelReadWriteViewSet)
 router.register(r"embedding-configs", EmbeddingConfigReadWriteViewSet)
 # DEPRECATED: agents/crews/tasks routes are deprecated. Use agentnodes/tasknodes instead.
