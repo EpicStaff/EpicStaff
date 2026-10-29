@@ -126,6 +126,7 @@ export class ApiKeysTabComponent {
             filterServerSide: true,
         },
         { key: 'name', label: 'NAME', width: 'minmax(140px, 1.5fr)' },
+        { key: 'orgName', label: 'ORGANIZATION', width: 'minmax(140px, 1.5fr)' },
         { key: 'key', label: 'KEY', width: 'minmax(140px, 1.2fr)' },
         { key: 'created', label: 'CREATED', width: 'minmax(110px, 1fr)' },
         { key: 'expires', label: 'EXPIRES', width: 'minmax(100px, 1fr)' },
@@ -162,7 +163,8 @@ export class ApiKeysTabComponent {
                 ownerAvatar: k.owner.avatar_url,
                 ownerName: k.owner.display_name || k.owner.email,
                 ownerEmail: k.owner.email,
-                orgIds: k.org_ids,
+                orgId: k.org_id,
+                orgName: k.org_name,
             }))
             .sort((a, b) => API_KEY_STATUS_ORDER.get(a.status)! - API_KEY_STATUS_ORDER.get(b.status)!)
     );
@@ -215,12 +217,7 @@ export class ApiKeysTabComponent {
     }
 
     canRetireRow(row: TableRow): boolean {
-        if (this.permissionsService.isSuperadmin) {
-            return true;
-        }
-
-        const orgIds = (row['orgIds'] as number[] | undefined) ?? [];
-        return orgIds.some((id) => this.permissionsService.canInOrg(id, ResourceCode.ApiKeys, ActionCode.Delete));
+        return this.permissionsService.canInOrg(row['orgId'] as number, ResourceCode.ApiKeys, ActionCode.Delete);
     }
 
     onOrgFilterChange(values: unknown[]): void {

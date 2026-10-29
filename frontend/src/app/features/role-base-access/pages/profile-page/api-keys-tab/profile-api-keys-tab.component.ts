@@ -19,6 +19,7 @@ import { getRelativeTime } from '@shared/utils';
 import { EMPTY, switchMap } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
+import { ActiveOrgService } from '../../../../../services/auth/active-org.service';
 import { ProfileService } from '../../../../../services/auth/profile.service';
 import { ToastService } from '../../../../../services/notifications';
 import { CreateApiKeyDialogComponent } from '../../../components/create-api-key-dialog/create-api-key-dialog.component';
@@ -58,14 +59,23 @@ export class ProfileApiKeysTabComponent implements OnInit {
     private dialog = inject(Dialog);
     private toast = inject(ToastService);
     private confirmation = inject(ConfirmationDialogService);
+    private activeOrgService = inject(ActiveOrgService);
 
     private readonly keys = this.apiKeysStorage.keys;
-    protected readonly activeCount = computed(() => this.keys().filter((k) => k.status === ApiKeyStatus.ACTIVE).length);
+    protected readonly hasActiveOrg = computed(() => this.activeOrgService.activeOrgId() !== null);
+    /** The key limit is per organization, so only the active organization's keys count towards it. */
+    protected readonly activeCount = computed(
+        () =>
+            this.keys().filter(
+                (k) => k.status === ApiKeyStatus.ACTIVE && k.org_id === this.activeOrgService.activeOrgId()
+            ).length
+    );
 
     protected readonly tableData = computed<TableRow[]>(() => {
         const items = this.keys().map((k) => ({
             id: k.id,
             name: k.name,
+            orgName: k.org_name,
             key: k.prefix + '...',
             created: k.created_at,
             expiresAt: k.expires_at,
@@ -78,12 +88,27 @@ export class ProfileApiKeysTabComponent implements OnInit {
         return items.sort((a, b) => API_KEY_STATUS_ORDER.get(a.status)! - API_KEY_STATUS_ORDER.get(b.status)!);
     });
 
+    /** A superadmin may work in an organization they are not a member of; its name is then unknown here. */
+    protected readonly activeOrgLabel = computed(() => {
+        const activeOrgId = this.activeOrgService.activeOrgId();
+        const membership = this.currentUserService
+            .currentUserSignal()
+            ?.memberships.find((m) => m.organization.id === activeOrgId);
+        return membership?.organization.name ?? 'this organization';
+    });
+
     protected readonly maxCountReached = computed(() => this.activeCount() >= this.MAX_PERSONAL_KEYS);
+    protected readonly canCreate = computed(() => this.hasActiveOrg() && !this.maxCountReached());
+    protected readonly createTooltip = computed(() => {
+        if (!this.hasActiveOrg()) return 'Select an organization to create a key';
+        return this.maxCountReached() ? 'Maximum active keys reached in this organization' : 'Create API key';
+    });
 
     protected readonly MAX_PERSONAL_KEYS = 5;
 
     protected readonly columns: AppTableColumnDef[] = [
         { key: 'name', label: 'NAME', width: 'minmax(140px, 2fr)' },
+        { key: 'orgName', label: 'ORGANIZATION', width: 'minmax(140px, 1.5fr)' },
         { key: 'key', label: 'KEY', width: 'minmax(120px, 1.2fr)' },
         { key: 'created', label: 'CREATED', width: 'minmax(110px, 1fr)' },
         { key: 'expires', label: 'EXPIRES', width: 'minmax(100px, 1fr)' },
