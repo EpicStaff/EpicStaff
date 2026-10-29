@@ -2,7 +2,8 @@
 
 Django performs on_delete=CASCADE / SET_NULL in Python; the database foreign keys do not.
 The manager therefore has to know every table reachable from tables_session, which these
-tests derive from the model metadata and compare with the shared contract.
+tests derive from the model metadata and compare with the shared contract, and its database
+role has to be granted every one of those tables.
 """
 
 from django.db import models
@@ -15,6 +16,7 @@ from src.shared.retention import (
     SessionTreeLink,
 )
 from tables.models import Session, SessionCallback
+from tables.service_db_grants import MANAGER_GRANTS
 from tables.services.session_callbacks.service import TERMINAL_STATUSES
 
 ACTIVE_SESSION_STATUSES = {"pending", "run", "wait_for_user"}
@@ -22,8 +24,7 @@ UNDELIVERED_CALLBACK_STATUSES = {"registered", "pending"}
 
 UPDATE_CONTRACT = (
     "Update src/shared/retention.py and the manager role's grants in "
-    "src/crewdb/custom-docker-entrypoint.sh (grant_manager_permissions, "
-    "auto_grant_table_permissions, REQUIRED_TABLES)."
+    "src/django_app/tables/service_db_grants.py (MANAGER_GRANTS)."
 )
 TEACH_REPOSITORY = (
     "The manager's raw delete (RetentionRepository) handles only CASCADE (deleted) and SET_NULL "
@@ -130,3 +131,18 @@ def test_final_callback_statuses_match_django():
 
     assert FINAL_SESSION_CALLBACK_STATUSES | UNDELIVERED_CALLBACK_STATUSES == every_status
     assert FINAL_SESSION_CALLBACK_STATUSES.isdisjoint(UNDELIVERED_CALLBACK_STATUSES)
+
+
+def test_manager_role_is_granted_every_retention_table():
+    # A table missing from the grants only shows up at night, as "permission denied" for
+    # every organization.
+    retention_tables = (
+        {"tables_session", "tables_graph", "rbac_organization", "rbac_organization_config"}
+        | {link.table for link in SESSION_CHILD_TABLES}
+        | {link.table for link in SESSION_SET_NULL_COLUMNS}
+    )
+    granted = {table_grant.table for table_grant in MANAGER_GRANTS.tables}
+
+    assert retention_tables <= granted, (
+        f"{sorted(retention_tables - granted)} not granted to the manager role. " + UPDATE_CONTRACT
+    )
