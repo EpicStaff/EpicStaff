@@ -33,6 +33,7 @@ function binItem(source: RecycleBinItem['source'], name: string): RecycleBinItem
         details: [],
         contents: [],
         contentsTotal: 0,
+        hiddenContentsCount: 0,
     };
 }
 
