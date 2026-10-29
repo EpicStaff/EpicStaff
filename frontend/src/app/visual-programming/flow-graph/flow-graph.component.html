@@ -167,6 +167,7 @@
                     [class.diff-added]="flowDiffState.connectionStatus(connection.id) === 'added'"
                     [class.diff-deleted]="flowDiffState.connectionStatus(connection.id) === 'deleted'"
                     [class.diff-unchanged]="flowDiffState.connectionStatus(connection.id) === 'unchanged'"
+                    [attr.title]="connectionDiffTitle(connection.id)"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()
                             ? nodeColorMap().get(connection.sourceNodeId) || '#555'

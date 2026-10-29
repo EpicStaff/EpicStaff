@@ -1438,6 +1438,36 @@ describe('FlowGraphComponent', () => {
 
             expect(tablePortIds()).not.toContain(canvasOnlyPortId);
         });
+
+        describe('the hover title of an edge (colour is not its only status cue)', () => {
+            const otherNote: GraphNoteModel = { ...noteNode(), id: 'note-2', position: { x: 0, y: 400 } };
+            const edge = createFlowConnection(KEPT_NOTE.id, otherNote.id, 'note-1_a', 'note-2_a');
+
+            function edgeTitle(diffState: FlowDiffCanvasState | null): string | null {
+                const component = mountDiff(
+                    { nodes: [KEPT_NOTE, otherNote], connections: [edge] },
+                    diffState
+                ).componentInstance;
+                return component['connectionDiffTitle'](edge.id);
+            }
+
+            const diffWithEdge = (status: EdgeDiffStatus): FlowDiffCanvasState => ({
+                ...DIFF_STATE,
+                connections: new Map([[edge.id, status]]),
+            });
+
+            it.each([
+                { status: 'added' as const, expected: 'Restore adds this connection' },
+                { status: 'deleted' as const, expected: 'Restore removes this connection' },
+                { status: 'unchanged' as const, expected: null },
+            ])('titles an $status edge "$expected"', ({ status, expected }) => {
+                expect(edgeTitle(diffWithEdge(status))).toBe(expected);
+            });
+
+            it('is none off a diff canvas', () => {
+                expect(edgeTitle(null)).toBeNull();
+            });
+        });
     });
 
     describe('Viewer (no Flows:Update) in the live editor', () => {

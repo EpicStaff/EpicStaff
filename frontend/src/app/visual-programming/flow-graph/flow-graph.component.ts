@@ -110,7 +110,7 @@ import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
-import { CodeChange, FlowDiffCanvasState, jsonChangeFor } from '../utils/diff';
+import { CodeChange, EdgeDiffStatus, FlowDiffCanvasState, jsonChangeFor } from '../utils/diff';
 import { buildImportedFlowModel, normalizeFlowPorts } from '../utils/load';
 import { FlowArrangeAnimatorService } from './flow-arrange-animator.service';
 import { FlowImportExportService } from './flow-import-export-handler.service';
@@ -120,6 +120,12 @@ import { FlowSelectionManagerService } from './flow-selection-manager.service';
 
 /** How long a refused reassignment — and the same refusal when drawing a connection — stays on screen. */
 const CONNECTION_REFUSED_TOAST_MS = 5000;
+
+/** The hover title of a diff edge: colour is not its only status cue. An unchanged edge gets none. */
+const EDGE_DIFF_TITLES: Partial<Record<EdgeDiffStatus, string>> = {
+    added: 'Restore adds this connection',
+    deleted: 'Restore removes this connection',
+};
 
 const CANVAS_PAN_STEP_PX = 40;
 
@@ -366,6 +372,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         // the node's `.f-selected` rule (z-index 1000 !important).
         if (this.flowDiffState.nodeStatus(node.id) === 'deleted') return 1;
         return Math.max(2, 500 - Math.floor(Math.max(0, node.position?.y ?? 0) / 10));
+    }
+
+    /** `null` (no title) for an unchanged edge and off a diff canvas. */
+    protected connectionDiffTitle(connectionId: string): string | null {
+        const status = this.flowDiffState.connectionStatus(connectionId);
+        return status ? (EDGE_DIFF_TITLES[status] ?? null) : null;
     }
 
     private readonly destroy$ = new Subject<void>();
