@@ -46,7 +46,9 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         # A graph of another org closes with the same code as a missing one, so the
         # close code never reveals that the graph exists.
         try:
-            await sync_to_async(assert_graph_readable)(user, self.graph_id)
+            await sync_to_async(assert_graph_readable)(
+                user, self.graph_id, api_key_org_id=self.scope.get("api_key_org_id")
+            )
         except GraphNotFoundError:
             await self.close(code=4404)
             return

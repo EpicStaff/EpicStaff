@@ -27,7 +27,13 @@ def assert_org_permission(user, org_id: int, resource_type, action: Permission) 
 
 
 def assert_row_org_permission(
-    user, owner_org_id: int, resource_type, action: Permission, *, not_found: APIException
+    user,
+    owner_org_id: int,
+    resource_type,
+    action: Permission,
+    *,
+    not_found: APIException,
+    api_key_org_id: int | None,
 ) -> None:
     """Assert `user` has `action` on `resource_type` over a row owned by `owner_org_id`.
 
@@ -38,10 +44,18 @@ def assert_row_org_permission(
     org, so its existence is no secret. Superadmin bypasses (handled in
     PermissionResolver).
 
+    Args:
+        api_key_org_id: The org of the caller's USER API key, or None for any other
+            credential. Required, so no caller can forget it. A key acts only in its
+            own org, so a row of any other org is `not_found` even for a member or a
+            superadmin.
+
     Raises:
         not_found: caller is not a member of `owner_org_id` (or the org is inactive).
         PermissionDenied (403): the caller's role lacks `action` on `resource_type`.
     """
+    if api_key_org_id is not None and owner_org_id != api_key_org_id:
+        raise not_found
     try:
         effective = _resolver.resolve(user=user, org_id=owner_org_id)
     except OrgMembershipRequiredError:

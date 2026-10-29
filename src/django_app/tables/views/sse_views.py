@@ -272,10 +272,13 @@ class RunSessionSSEView(SSEMixin):
 
     async def authorize(self, request, *args, **kwargs):
         """The SSE ticket only proves identity; gate the stream by the org that
-        owns the session's graph (org membership + FLOWS READ). Superadmin
-        passes. Returns a JSON error response on denial, else None."""
+        owns the session's graph (org membership + FLOWS READ), and by the key's
+        org for a USER API key ticket. Superadmin passes the membership check.
+        Returns a JSON error response on denial, else None."""
         try:
-            await sync_to_async(get_accessible_session)(self.user, self.kwargs.get("session_id"))
+            await sync_to_async(get_accessible_session)(
+                self.user, self.kwargs.get("session_id"), api_key_org_id=self.api_key_org_id
+            )
         except APIException as exc:
             return self.refuse(exc)
         return None

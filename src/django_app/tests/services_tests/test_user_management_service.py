@@ -19,7 +19,7 @@ from django.contrib.auth import get_user_model
 
 from tables.graph_versioning.services import GraphVersioningService
 from tables.models.graph_models import Graph, GraphNote, GraphVersion
-from rbac.models import Organization, OrganizationUser, Role
+from rbac.models import ApiKey, Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from rbac.exceptions import (
     InvalidVerificationPhraseError,
@@ -677,6 +677,63 @@ def test_revoke_after_promotion_releases_authorship_in_every_org(
     assert flow_a.created_by_id is None
     assert flow_b.created_by_id is None
     assert note_b.created_by_id is None
+
+
+@pytest.mark.django_db
+def test_promotion_keeps_api_keys_although_memberships_are_purged(
+    service, active_superadmin, authorship_orgs, django_user_model, issue_api_key
+):
+    org_a, _ = authorship_orgs
+    member_role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    promoted = django_user_model.objects.create_user(
+        email="promoted-key-owner@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=promoted, org=org_a, role=member_role)
+    _, key = issue_api_key(user=promoted, org=org_a)
+
+    service.grant_superadmin(actor=active_superadmin, target_user_id=promoted.pk)
+
+    assert not OrganizationUser.objects.filter(user=promoted).exists()
+    assert ApiKey.objects.filter(pk=key.pk, org=org_a).exists()
+
+
+@pytest.mark.django_db
+def test_revoke_after_promotion_deletes_the_keys_the_user_can_no_longer_use(
+    service, active_superadmin, authorship_orgs, django_user_model, issue_api_key
+):
+    org_a, org_b = authorship_orgs
+    member_role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    promoted = django_user_model.objects.create_user(
+        email="promoted-then-revoked@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=promoted, org=org_a, role=member_role)
+    _, member_key = issue_api_key(user=promoted, org=org_a)
+    service.grant_superadmin(actor=active_superadmin, target_user_id=promoted.pk)
+    _, superadmin_key = issue_api_key(user=promoted, org=org_b)
+
+    service.revoke_superadmin(actor=active_superadmin, target_user_id=promoted.pk)
+
+    assert not ApiKey.objects.filter(pk__in=[member_key.pk, superadmin_key.pk]).exists()
+
+
+@pytest.mark.django_db
+def test_revoke_keeps_keys_where_membership_remains_and_other_users_keys(
+    service, active_superadmin, second_active_superadmin, authorship_orgs, issue_api_key
+):
+    org_a, org_b = authorship_orgs
+    member_role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    OrganizationUser.objects.create(user=second_active_superadmin, org=org_a, role=member_role)
+    _, kept_key = issue_api_key(user=second_active_superadmin, org=org_a)
+    _, deleted_key = issue_api_key(user=second_active_superadmin, org=org_b)
+    _, bystander_key = issue_api_key(user=active_superadmin, org=org_b)
+
+    service.revoke_superadmin(
+        actor=active_superadmin, target_user_id=second_active_superadmin.pk
+    )
+
+    remaining = set(ApiKey.objects.values_list("pk", flat=True))
+    assert {kept_key.pk, bystander_key.pk} <= remaining
+    assert deleted_key.pk not in remaining
 
 
 @pytest.mark.django_db

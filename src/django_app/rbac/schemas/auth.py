@@ -22,7 +22,8 @@ API_KEY_VALIDATE_GET = {
     "summary": "Validate the current API key",
     "description": (
         "Requires an API key. Returns metadata about the calling key "
-        "including the owning user's id (null for env-seeded system keys). "
+        "including the owning user's id and the org a USER key acts in "
+        "(both null for env-seeded system keys). "
         "Permissions come from the owning user's live RBAC role, not a "
         "per-key scope list — the response carries no `scopes` field."
     ),
@@ -38,6 +39,7 @@ API_KEY_VALIDATE_GET = {
                         "name": "my-key",
                         "prefix": "es-abc12345",
                         "owner_user_id": 3,
+                        "org_id": 1,
                     },
                     response_only=True,
                 ),

@@ -11,6 +11,7 @@ from rbac.authorship import (
     resolve_author,
     user_summaries_by_id,
 )
+from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status
@@ -152,7 +153,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
     def _assert_cross_org_superadmin(self, request, src_org_id) -> bool:
         """True when this is a cross-org transfer; such transfers require
-        superadmin (operating across organizations is a platform action).
+        superadmin (operating across organizations is a platform action) signed
+        in with a session: an API key acts only in its own org.
 
         The transfer serializer guarantees both org ids or neither, and that they differ.
         """
@@ -161,6 +163,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         # CREATE in dst_org_id, Part of cross-org RBAC feature
         if cross_org and not getattr(request.user, "is_superadmin", False):
             raise PermissionDenied("Cross-organization file transfer requires superadmin.")
+        if cross_org and isinstance(request.auth, ApiKey):
+            raise PermissionDenied("Cross-organization file transfer is not available to API keys.")
         return cross_org
 
     @extend_schema(**STORAGE_LIST_SWAGGER)

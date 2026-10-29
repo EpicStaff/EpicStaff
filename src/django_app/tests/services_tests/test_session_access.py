@@ -104,17 +104,17 @@ def test_get_accessible_session(request, caller, target_org, make_session, outco
     session_id = make_session(request.getfixturevalue(target_org))
 
     if outcome == "granted":
-        assert get_accessible_session(user, session_id).pk == session_id
+        assert get_accessible_session(user, session_id, api_key_org_id=None).pk == session_id
     else:
         with pytest.raises(outcome):
-            get_accessible_session(user, session_id)
+            get_accessible_session(user, session_id, api_key_org_id=None)
 
 
 @pytest.mark.django_db
 def test_accessible_session_loads_only_id_and_status(member_a, org_a):
     session = _session(org_a)
 
-    accessible = get_accessible_session(member_a, session.pk)
+    accessible = get_accessible_session(member_a, session.pk, api_key_org_id=None)
 
     assert accessible.status == Session.SessionStatus.PENDING
     assert {"variables", "status_data"} <= accessible.get_deferred_fields()
@@ -142,10 +142,10 @@ def test_get_runnable_graph(request, lookup, caller, target_org, outcome):
         key = graph.pk if lookup == "graph_id" else graph.uuid
 
     if outcome == "granted":
-        assert get_runnable_graph(user, **{lookup: key}).pk == graph.pk
+        assert get_runnable_graph(user, **{lookup: key}, api_key_org_id=None).pk == graph.pk
     else:
         with pytest.raises(outcome):
-            get_runnable_graph(user, **{lookup: key})
+            get_runnable_graph(user, **{lookup: key}, api_key_org_id=None)
 
 
 # ── flows:USE ────────────────────────────────────────────────────────────────
@@ -168,10 +168,10 @@ def test_running_a_graph_needs_flows_use(request, caller, target_org, outcome):
     graph = Graph.objects.create(name="H run flow", org=request.getfixturevalue(target_org))
 
     if outcome == "granted":
-        assert get_runnable_graph(user, graph_id=graph.pk).pk == graph.pk
+        assert get_runnable_graph(user, graph_id=graph.pk, api_key_org_id=None).pk == graph.pk
     else:
         with pytest.raises(outcome):
-            get_runnable_graph(user, graph_id=graph.pk)
+            get_runnable_graph(user, graph_id=graph.pk, api_key_org_id=None)
 
 
 @pytest.mark.django_db
@@ -193,10 +193,10 @@ def test_session_access_for_use_needs_flows_use(request, caller, target_org, act
     arguments = (user, session_id) if action is None else (user, session_id, action)
 
     if outcome == "granted":
-        assert get_accessible_session(*arguments).pk == session_id
+        assert get_accessible_session(*arguments, api_key_org_id=None).pk == session_id
     else:
         with pytest.raises(outcome):
-            get_accessible_session(*arguments)
+            get_accessible_session(*arguments, api_key_org_id=None)
 
 
 # ── graph co-editing: flows:READ on the graph's own org ─────────────────────
@@ -268,7 +268,7 @@ def test_assert_graph_readable(request, org_a, org_b, caller, make_graph, outcom
     graph_id = make_graph(org_a, org_b)
 
     if outcome == "granted":
-        assert_graph_readable(user, graph_id)
+        assert_graph_readable(user, graph_id, api_key_org_id=None)
     else:
         with pytest.raises(outcome):
-            assert_graph_readable(user, graph_id)
+            assert_graph_readable(user, graph_id, api_key_org_id=None)

@@ -280,7 +280,11 @@ def _api_key_client(raw_key, org):
 
 @pytest.fixture
 def api_key_client_as(issue_api_key):
-    """Factory: a client authenticated by a new USER API key of `user`, with `org` as the active org."""
+    """Factory: a client with a new USER API key of `user` that sends `org` as `X-Organization-Id`.
+
+    The key belongs to `user`'s first org (see `issue_api_key`) and acts only there: the
+    header is ignored, so `org` is the active org only when it is that first org.
+    """
 
     def _make(user, org):
         raw_key, _ = issue_api_key(user=user)
@@ -531,16 +535,14 @@ def test_import_from_storage_system_api_key_imports_and_records_no_editor(
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("credential", ["session", "user_api_key"])
 def test_import_from_storage_header_naming_an_org_the_caller_is_not_in_is_403(
-    credential, django_user_model, api_key_client_as, storage_manager, org_a, org_b
+    django_user_model, storage_manager, org_a, org_b
 ):
     admin_of_a = _user(django_user_model, org_a, BuiltInRole.ORG_ADMIN, "ks-admin-a@example.com")
-    client_as = {"session": _client, "user_api_key": api_key_client_as}[credential]
     their_collection = _collection(org_b, "theirs")
     their_file = _stored_file(storage_manager, org_b, "theirs.txt")
 
-    resp = _import(client_as(admin_of_a, org_b), their_collection, [their_file.id])
+    resp = _import(_client(admin_of_a, org_b), their_collection, [their_file.id])
 
     assert resp.status_code == 403
     assert resp.data == {
@@ -548,6 +550,21 @@ def test_import_from_storage_header_naming_an_org_the_caller_is_not_in_is_403(
         "code": "org_membership_required",
         "message": "You are not a member of this organization.",
     }
+    assert not DocumentMetadata.objects.exists()
+
+
+@pytest.mark.django_db
+def test_import_from_storage_user_api_key_ignores_header_and_finds_no_foreign_collection(
+    django_user_model, api_key_client_as, storage_manager, org_a, org_b
+):
+    # The key acts in its own org A, so org B's collection is simply not found there.
+    admin_of_a = _user(django_user_model, org_a, BuiltInRole.ORG_ADMIN, "ks-admin-a@example.com")
+    their_collection = _collection(org_b, "theirs")
+    their_file = _stored_file(storage_manager, org_b, "theirs.txt")
+
+    resp = _import(api_key_client_as(admin_of_a, org_b), their_collection, [their_file.id])
+
+    assert resp.status_code == 404
     assert not DocumentMetadata.objects.exists()
 
 

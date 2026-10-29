@@ -17,8 +17,9 @@ from django.db.models import Count
 from django.http import Http404
 from django.utils import timezone
 from rbac.access.asserts import assert_org_permission
-from rbac.access.gates import DenyPluginCredential, IsSuperadmin
+from rbac.access.gates import DenyApiKeyAuth, DenyPluginCredential, IsSuperadmin
 from rbac.access.org_context import OrgContextService
+from rbac.access.principals import user_api_key_org_id
 from rbac.identity.tickets import sse_ticket_service
 from rbac.models.enums import Permission, ResourceType
 from rest_framework import status
@@ -270,7 +271,9 @@ class FlowAssistantSendMessageView(APIView):
         service.append_user_message(conversation, message)
         service.apply_title_if_missing(conversation, message)
 
-        ticket, _ttl = sse_ticket_service.issue(request.user)
+        ticket, _ttl = sse_ticket_service.issue(
+            request.user, api_key_org_id=user_api_key_org_id(request)
+        )
         stream_url = request.build_absolute_uri(
             f"/api/flow-assistants/{graph_id}/conversations/{conversation_id}/stream/"
             f"?ticket={ticket}"
@@ -310,7 +313,10 @@ class FlowAssistantStreamView(SSEMixin):
         """
         try:
             self.conversation = await sync_to_async(get_streamable_conversation)(
-                self.user, self.kwargs["graph_id"], self.kwargs["conversation_id"]
+                self.user,
+                self.kwargs["graph_id"],
+                self.kwargs["conversation_id"],
+                api_key_org_id=self.api_key_org_id,
             )
         except APIException as exc:
             return self.refuse(exc)
@@ -396,7 +402,7 @@ class FlowAssistantAuditView(APIView):
       include_deleted       bool  — include soft-deleted rows (default false)
     """
 
-    permission_classes = [IsAuthenticated, DenyPluginCredential, IsSuperadmin]
+    permission_classes = [IsAuthenticated, DenyApiKeyAuth, IsSuperadmin]
     pagination_class = LimitOffsetPagination
 
     def get(self, request):

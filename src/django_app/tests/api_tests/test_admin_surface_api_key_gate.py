@@ -26,9 +26,9 @@ def system_key_client(issue_api_key):
 
 
 @pytest.fixture
-def user_key_client(issue_api_key):
+def user_key_client(issue_api_key, acme):
     def _make(user):
-        raw_key, _ = issue_api_key(user=user, name="user-admin-surface")
+        raw_key, _ = issue_api_key(user=user, org=acme, name="user-admin-surface")
         client = APIClient()
         client.credentials(HTTP_X_API_KEY=raw_key)
         return client
