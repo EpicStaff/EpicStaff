@@ -122,7 +122,7 @@ for service in es_plugins plugin_sdk; do
   if ES_PLUGINS_TEST_PG_HOST=127.0.0.1 ES_PLUGINS_TEST_PG_PORT=$port \
     ES_PLUGINS_TEST_PG_ADMIN_PASSWORD=$PLUGINS_DB_ADMIN_PASSWORD \
     ES_PLUGINS_TEST_PG_BACKUP_PASSWORD=$PLUGINS_DB_BACKUP_PASSWORD \
-    make -C "$repository" --no-print-directory "$service-tests" ARGS="-m postgres"; then
+    make -C "$repository" --no-print-directory "$service-tests" ARGS="-m postgres -v"; then
     pass "$service: every test marked postgres passes against plugins_db"
   else
     fail "$service: tests marked postgres (output above)"

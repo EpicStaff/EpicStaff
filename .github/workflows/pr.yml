@@ -671,6 +671,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.plugins_db == 'true'
     runs-on: ubuntu-latest
+    # A normal run takes under two minutes; a hang fails here instead of after six hours.
+    timeout-minutes: 10
     env:
       # Matches the service Dockerfiles: without this uv may fetch its own
       # interpreter instead of the one set up below.
