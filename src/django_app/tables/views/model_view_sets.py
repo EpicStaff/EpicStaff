@@ -2859,8 +2859,8 @@ class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
         # Build paths in memory (one extra lightweight query) to avoid N+1
         # and to correctly resolve parents that may be filtered out. Scoped to
-        # the active org and this tree's scope (the label tree never crosses
-        # orgs or Flow/Tool scopes).
+        # the active org and this tree's scope (a label tree never crosses
+        # orgs or the Flow, Tool and agent-group scopes).
         id_to_row = {
             row["id"]: row
             for row in Label.objects.filter(

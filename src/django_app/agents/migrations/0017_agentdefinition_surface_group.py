@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('agents', '0016_recycle_bin_soft_delete'),
-        ('tables', '0286_label_agent_scope'),
+        ('tables', '0287_label_agent_scope'),
     ]
 
     operations = [

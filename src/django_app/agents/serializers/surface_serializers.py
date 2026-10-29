@@ -498,7 +498,6 @@ class SurfaceWriteSerializer(AuthorStampingSerializerMixin, serializers.Serializ
         )
 
     def validate(self, attrs):
-        self._validate_group(attrs)
         SurfaceService.validate_surface_data(
             instance=self.instance,
             org_id=self.context["org_id"],
@@ -510,18 +509,6 @@ class SurfaceWriteSerializer(AuthorStampingSerializerMixin, serializers.Serializ
         SurfaceValidator.validate_knowledge(attrs.get("knowledge", []))
 
         return attrs
-
-    def _validate_group(self, attrs):
-        """Only shared surfaces may be grouped; a surface that is or becomes owned loses its group."""
-        if "owner_agent" in attrs:
-            owner_agent = attrs["owner_agent"]
-        else:
-            owner_agent = self.instance.owner_agent_id if self.instance is not None else None
-        if owner_agent is None:
-            return
-        if attrs.get("group") is not None:
-            raise serializers.ValidationError({"group": "Only shared surfaces can be in a group."})
-        attrs["group"] = None
 
     def create(self, validated_data):
         return SurfaceService.create_surface(

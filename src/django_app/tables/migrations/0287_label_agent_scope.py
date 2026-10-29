@@ -5,14 +5,14 @@ class Migration(migrations.Migration):
     """Add the flat `agent` label scope used to group agents and shared surfaces."""
 
     dependencies = [
-        ('tables', '0285_tool_filter_preset'),
+        ('tables', '0286_rename_filter_preset_org_indexes'),
     ]
 
     operations = [
         migrations.AlterField(
             model_name='label',
             name='scope',
-            field=models.CharField(choices=[('flow', 'Flow'), ('tool', 'Tool'), ('agent', 'Agent')], db_index=True, default='flow', help_text='Which independent label tree this label belongs to (Flow labels and Tool labels never share instances, even with the same name/parent).', max_length=10),
+            field=models.CharField(choices=[('flow', 'Flow'), ('tool', 'Tool'), ('agent', 'Agent')], db_index=True, default='flow', help_text='Which independent label tree this label belongs to: Flow labels, Tool labels or agent groups (flat, shared by agents and shared surfaces). Trees never share instances, even with the same name/parent.', max_length=10),
         ),
         migrations.AddConstraint(
             model_name='label',

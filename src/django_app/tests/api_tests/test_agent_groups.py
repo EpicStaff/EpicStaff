@@ -7,8 +7,11 @@ un-groups its items instead of deleting them.
 
 import pytest
 
+from agents.exceptions import SurfaceValidationError
 from agents.models import AgentDefinition
 from agents.models.surface_models import Surface
+from agents.services.surface_service import SurfaceService
+from rbac.models import OrganizationUser
 from tables.models.label_models import Label
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -24,6 +27,15 @@ def acme_client(client_as, admin_acme, acme):
     client = client_as(admin_acme)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
     return client
+
+
+@pytest.fixture
+def viewer_acme(db, django_user_model, acme, role_viewer):
+    user = django_user_model.objects.create_user(
+        email="viewer-agent-groups@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=acme, role=role_viewer)
+    return user
 
 
 @pytest.fixture
@@ -66,16 +78,49 @@ def test_list_agent_labels_shows_only_agent_scope_of_active_org(acme_client, acm
     assert beta_group.id not in shown_ids
 
 
-def test_rename_and_delete_agent_label(acme_client, acme_group):
-    rename = acme_client.patch(
+def test_rename_agent_label(acme_client, acme_group):
+    response = acme_client.patch(
         f"{AGENT_LABELS_URL}{acme_group.id}/", {"name": "Marketing"}, format="json"
     )
-    delete = acme_client.delete(f"{AGENT_LABELS_URL}{acme_group.id}/")
 
-    assert rename.status_code == 200
-    assert rename.data["name"] == "Marketing"
-    assert delete.status_code == 204
+    assert response.status_code == 200
+    assert response.data["name"] == "Marketing"
+    acme_group.refresh_from_db()
+    assert acme_group.name == "Marketing"
+
+
+def test_delete_agent_label(acme_client, acme_group):
+    response = acme_client.delete(f"{AGENT_LABELS_URL}{acme_group.id}/")
+
+    assert response.status_code == 204
     assert not Label.objects.filter(pk=acme_group.id).exists()
+
+
+# Built-in roles: Viewer has agents:read only; Member has agents create/read/update
+# but not delete.
+@pytest.mark.parametrize(
+    ("user_fixture", "method", "on_detail", "body", "expected_status"),
+    [
+        ("viewer_acme", "get", True, None, 200),
+        ("viewer_acme", "post", False, {"name": "Support"}, 403),
+        ("viewer_acme", "patch", True, {"name": "Marketing"}, 403),
+        ("viewer_acme", "delete", True, None, 403),
+        ("member_only", "delete", True, None, 403),
+    ],
+)
+def test_agent_label_permissions_by_builtin_role(
+    request, client_as, acme, acme_group, user_fixture, method, on_detail, body, expected_status
+):
+    client = client_as(request.getfixturevalue(user_fixture))
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+    url = f"{AGENT_LABELS_URL}{acme_group.id}/" if on_detail else AGENT_LABELS_URL
+
+    response = getattr(client, method)(url, body, format="json")
+
+    assert response.status_code == expected_status
+    acme_group.refresh_from_db()
+    assert acme_group.name == "Sales"
+    assert list(Label.objects.filter(org=acme, scope=Label.Scope.AGENT)) == [acme_group]
 
 
 def test_nested_agent_label_is_400(acme_client, acme_group):
@@ -234,6 +279,22 @@ def test_patch_shared_surface_without_group_keeps_it(acme_client, acme, acme_gro
 
     assert response.status_code == 200
     assert response.data["group"] == acme_group.id
+
+
+def test_grouping_surface_owned_since_validation_is_rejected(acme, acme_group):
+    surface = Surface.objects.create(name="playbook", org=acme)
+    stale_surface = Surface.objects.get(pk=surface.pk)
+    agent = AgentDefinition.objects.create(name="closer", org=acme)
+    Surface.objects.filter(pk=surface.pk).update(owner_agent=agent)
+
+    with pytest.raises(SurfaceValidationError):
+        SurfaceService.update_surface(
+            instance=stale_surface, validated_data={"group": acme_group}, partial=True
+        )
+
+    surface.refresh_from_db()
+    assert surface.owner_agent_id == agent.id
+    assert surface.group_id is None
 
 
 def test_surface_group_from_another_org_is_invalid_pk(acme_client, acme, beta_group):
