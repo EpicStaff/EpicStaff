@@ -77,6 +77,9 @@ class BinResource:
         after_restore: Reconnects what the restore can't bring back by itself
             (a webhook trigger's Telegram bots). Called with the restored root
             once the restore has committed.
+        before_purge: Deletes, in bounded batches, rows the purge's one cascade
+            would load all at once (a flow's sessions). Called with the root inside
+            the purge's transaction, before the root is purged.
     """
 
     model: type[Model]
@@ -91,6 +94,7 @@ class BinResource:
     global_names: bool = field(default=False)
     before_restore: Callable[[Model, uuid.UUID], None] | None = field(default=None)
     after_restore: Callable[[Model], None] | None = field(default=None)
+    before_purge: Callable[[Model], None] | None = field(default=None)
 
     @property
     def keeps_references(self) -> bool:
@@ -112,13 +116,16 @@ def bin_resources() -> dict[RecycleBinSource, BinResource]:
     )
     from tables.models.mcp_models import McpTool
     from tables.models.python_models import PythonCodeTool
+    from tables.services.recycle_bin.purge_hooks import delete_flow_sessions
     from tables.services.recycle_bin.restore_hooks import (
         drop_taken_phone_number,
         register_telegram_bots,
     )
 
     return {
-        RecycleBinSource.FLOW: BinResource(Graph, "name", "org", ResourceType.FLOWS),
+        RecycleBinSource.FLOW: BinResource(
+            Graph, "name", "org", ResourceType.FLOWS, before_purge=delete_flow_sessions
+        ),
         RecycleBinSource.PYTHON_TOOL: BinResource(
             PythonCodeTool, "name", "org", ResourceType.TOOLS, also_taken=Q(built_in=True)
         ),

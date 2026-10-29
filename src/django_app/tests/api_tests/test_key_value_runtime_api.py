@@ -231,3 +231,19 @@ def test_delete_with_one_invalid_key_deletes_no_valid_key(system_client, running
     assert response.data["code"] == "key_value_entry_key_invalid"
     assert "values" not in response.data
     assert KeyValueTableEntry.objects.filter(table=table, key="valid").exists()
+
+
+@pytest.mark.django_db
+def test_run_of_a_flow_binned_mid_way_can_no_longer_use_its_tables(
+    system_client, running_session, table, graph
+):
+    # The flow's key-value nodes went to the bin with it, so the run no longer
+    # has access to the table: the write is refused and nothing is stored.
+    graph.delete()
+
+    response = system_client.post(
+        _url(running_session.id, table.id, "write"), {"entries": {"a": 1}}, format="json"
+    )
+
+    assert response.status_code == 404, response.content
+    assert not KeyValueTableEntry.objects.filter(table=table, key="a").exists()

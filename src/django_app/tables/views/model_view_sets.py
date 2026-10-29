@@ -134,6 +134,7 @@ from tables.models import (
     PythonNode,
     RealtimeModel,
     Secret,
+    Session,
     StartNode,
     SubGraphNode,
     TaskNode,
@@ -141,7 +142,6 @@ from tables.models import (
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.flow_filter_preset_models import FlowFilterPreset
-from tables.models.tool_filter_preset_models import ToolFilterPreset
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     Condition,
@@ -173,6 +173,7 @@ from tables.models.realtime_models import (
     RealtimeAgentDefinition,
     RealtimeSessionItem,
 )
+from tables.models.tool_filter_preset_models import ToolFilterPreset
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     ProviderType,
@@ -202,6 +203,7 @@ from tables.serializers.model_serializers import (
     ElevenLabsRealtimeConfigSerializer,
     EndNodeSerializer,
     FileExtractorNodeSerializer,
+    FlowFilterPresetSerializer,
     GeminiRealtimeConfigSerializer,
     GraphLightSerializer,
     GraphNoteSerializer,
@@ -236,7 +238,6 @@ from tables.serializers.model_serializers import (
     TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
     TelegramWebhookInfoSerializer,
-    FlowFilterPresetSerializer,
     ToolFilterPresetSerializer,
     TwilioChannelSerializer,
     WebhookTriggerFlowsSerializer,
@@ -1667,7 +1668,8 @@ class GraphSessionMessageReadOnlyViewSet(OrgScopedChildViewSetMixin, ReadOnlyMod
     filterset_class = GraphSessionMessageFilter
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # The messages of a session hidden with its binned flow (Session.visible) are hidden too.
+        qs = super().get_queryset().filter(session__in=Session.objects.visible())
         if not self.request.query_params.get("parent_subgraph_execution_id"):
             qs = qs.filter(parent_subgraph_execution_id__isnull=True)
         return qs
