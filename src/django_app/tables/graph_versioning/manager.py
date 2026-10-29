@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Q
+from proxies.sandbox.models import SandboxVenvBinding
 from rbac.authorship import (
     RecordedLastEdit,
     record_last_edit,
@@ -13,7 +14,6 @@ from rbac.authorship import (
     restore_last_edits,
 )
 from rbac.authorship.user_summary import USER_SUMMARY_FIELDS
-from proxies.sandbox.models import SandboxVenvBinding
 from rbac.models import AuthorModel, LastEditTrackedModel, ResourceLastEdit
 from rbac.scoping.fields import org_visible_q
 from utils.logger import logger
@@ -938,6 +938,10 @@ class GraphVersioningManager:
                         "type": "venv_ref_cleared",
                         "node_name": node.get("node_name") or node.get("node_type"),
                         "node_id": node.get("id"),
+                        # The code slot and the venv it lost, so the preview can show which
+                        # code of a node loses which venv.
+                        "field": code_field,
+                        "missing_id": venv_id,
                         "reason": "venv not found or not in org",
                     }
                 )
