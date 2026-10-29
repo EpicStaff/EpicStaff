@@ -201,7 +201,7 @@ export function buildUnusedDeleteDialog(
     retentionDays: number | null
 ): ConfirmationDialogData {
     return {
-        title: count === 1 ? 'Delete unused tool?' : 'Delete unused tools?',
+        title: count === 1 ? 'Delete Unused Tool?' : 'Delete Unused Tools?',
         message:
             `You are about to delete <strong>${pluralize(count, entityLabel, entityLabelPlural)}</strong> ` +
             `that aren't connected to any agents or projects. ${recycleBinNotice(retentionDays, count)}`,
