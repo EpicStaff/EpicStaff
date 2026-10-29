@@ -91,6 +91,11 @@ services:
       DJANGO_PORT: ${DJANGO_PORT:?}
       DB_USER: ${DB_USER:?}
       DB_PASSWORD: ${DB_PASSWORD:?}
+      # Role names only: apply_service_grants grants these roles, which crewdb creates,
+      # their table privileges after migrate.
+      MANAGER_DB_USER: ${MANAGER_DB_USER:?}
+      KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
+      REALTIME_DB_USER: ${REALTIME_DB_USER:?}
       DJANGO_SGI_WORKERS: ${DJANGO_SGI_WORKERS:?}
       DJANGO_SGI_THREADS: ${DJANGO_SGI_THREADS:?}
       DJANGO_SGI_MAX_REQUESTS: ${DJANGO_SGI_MAX_REQUESTS:?}
@@ -205,7 +210,7 @@ services:
           - django
     depends_on:
       crewdb:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_healthy
       storage:
@@ -1139,14 +1144,10 @@ services:
     # Not django_app: it is the other way round now. A django_app data migration
     # moves the libraries Python code used to carry into venvs through this API,
     # so this service and its own migrations have to be up before django_app runs.
-    # crewdb only has to be running, not healthy, for the same reason: it reports
-    # healthy at the end of a setup phase that itself waits for django_app's
-    # migrations, so waiting for it here would deadlock all three. The role and the
-    # schema this service needs are created in crewdb's first phase, and the
-    # entrypoint waits for them.
+    # crewdb is healthy once it has created this service's role and schema.
     depends_on:
       crewdb:
-        condition: service_started
+        condition: service_healthy
       storage:
         condition: service_healthy
       redis:

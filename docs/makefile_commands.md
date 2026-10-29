@@ -118,9 +118,12 @@ make django-migrate ARGS=tables
 make django-migrate ARGS="tables 0010"
 ```
 
-`migrate` does not apply the built-in roles — in Docker, `entrypoint.sh` runs
+`migrate` neither grants the service database roles their table privileges nor applies
+the built-in roles — in Docker, `entrypoint.sh` runs `apply_service_grants` and then
 `seed_builtin_roles` right after it. Running Django locally, follow it with
+`make django-manage CMD="apply_service_grants"` and
 `make django-manage CMD="seed_builtin_roles"` (see
+[CREWDB_ENTRYPOINT.md](db/CREWDB_ENTRYPOINT.md) and
 [DEV_rbac_backend_guide.md](rbac/DEV_rbac_backend_guide.md) §2.2).
 
 ### `make django-manage CMD=<command>`
