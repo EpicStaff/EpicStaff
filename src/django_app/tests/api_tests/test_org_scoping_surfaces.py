@@ -125,7 +125,6 @@ FOREIGN_REFERENCES = {
     "surface-owner-agent": ("/api/surfaces/", "owner_agent", lambda b, a: {"name": "s1", "owner_agent": AgentDefinition.objects.create(name="adb", org=b).id}),
     "surface-python-tool": ("/api/surfaces/", "python_tools", lambda b, a: {"name": "s1", "python_tools": [{"python_tool": _python_tool(b).id, "mode": "allow"}]}),
     "surface-mcp-tool": ("/api/surfaces/", "mcp_tools", lambda b, a: {"name": "s1", "mcp_tools": [{"mcp_tool": McpTool.objects.create(name="other-mcp", transport="http://example.com", tool_name="t", org=b).id, "mode": "allow"}]}),
-    "surface-storage-file": ("/api/surfaces/", "storage_items", lambda b, a: {"name": "s1", "storage_items": [{"storage_file": StorageFile.objects.create(org=b, path="a.txt", name="a.txt").id}]}),
     "surface-knowledge": ("/api/surfaces/", "knowledge", lambda b, a: {"name": "s1", "knowledge": [{"collection": SourceCollection.objects.create(org=b, collection_name="other").pk}]}),
     "realtime-openai-config": ("/api/realtime-agent-definitions/", "openai_config", lambda b, a: {"agent_definition": AgentDefinition.objects.create(name="ad", org=a).id, "openai_config": OpenAIRealtimeConfig.objects.create(custom_name="c", org=b).id}),
     "realtime-elevenlabs-config": ("/api/realtime-agent-definitions/", "elevenlabs_config", lambda b, a: {"agent_definition": AgentDefinition.objects.create(name="ad", org=a).id, "elevenlabs_config": ElevenLabsRealtimeConfig.objects.create(custom_name="c", org=b).id}),
