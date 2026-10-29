@@ -7,10 +7,11 @@ import {
     DestroyRef,
     inject,
     input,
+    OnDestroy,
     OnInit,
     signal,
     TemplateRef,
-    ViewChild,
+    viewChild,
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -28,7 +29,7 @@ import {
 } from '@shared/components';
 import { OverflowBadgeDirective, OverflowItemDirective, OverflowItemsDirective } from '@shared/directives';
 import { ActionCode, FullMembership, Organization, ResourceCode, UserRole } from '@shared/models';
-import { catchError, forkJoin, of, take } from 'rxjs';
+import { catchError, forkJoin, of } from 'rxjs';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { RolesService } from '../../../../services/admin/roles.service';
@@ -66,31 +67,20 @@ interface RoleChip {
         OverlayModule,
     ],
 })
-export class StepAssignToOrgComponent implements OnInit {
-    private rolesService = inject(RolesService);
-    private permissionsService = inject(PermissionsService);
-    private destroyRef = inject(DestroyRef);
-    private overlay = inject(Overlay);
-    private overlayPositionBuilder = inject(OverlayPositionBuilder);
-    private vcr = inject(ViewContainerRef);
-
-    @ViewChild(OverflowItemsDirective) private overflowDir?: OverflowItemsDirective;
-    @ViewChild('overflowDropdown') private overflowDropdown!: TemplateRef<unknown>;
-    private overflowOverlayRef: OverlayRef | null = null;
-    /** Role names seeded from existingMemberships so chips display correctly before roles API responds. */
-    private roleNames = new Map<number, string>();
-
+export class StepAssignToOrgComponent implements OnInit, OnDestroy {
     organizations = input.required<Organization[]>();
     existingMemberships = input<FullMembership[]>([]);
     isEditMode = input.required<boolean>();
     disabled = input<boolean>(false);
+
+    private readonly overflowDir = viewChild(OverflowItemsDirective);
+    private readonly overflowDropdown = viewChild.required<TemplateRef<unknown>>('overflowDropdown');
 
     organizationsTableData = signal<TableRow[]>([]);
     searchTerm = signal('');
     isOrgsLoading = signal<boolean>(false);
     selectedOrganizations = signal<TableRow[]>([]);
     private roleItemsByOrg = signal<Map<number, SelectItem[]>>(new Map());
-    private recentlyRemovedOrgIds = new Set<number>();
     /** Built-in roles only: custom roles belong to one org, so they stay a per-row choice. */
     readonly bulkRoleItems = signal<SelectItem[]>([]);
     bulkRoleId = signal<number | null>(null);
@@ -124,7 +114,7 @@ export class StepAssignToOrgComponent implements OnInit {
 
     /** The subset of roleChips hidden by the overflow container — shown in the overflow dropdown. */
     readonly hiddenChips = computed<RoleChip[]>(() => {
-        const count = this.overflowDir?.overflowCount() ?? 0;
+        const count = this.overflowDir()?.overflowCount() ?? 0;
         const chips = this.roleChips();
         return chips.slice(chips.length - count);
     });
@@ -139,10 +129,34 @@ export class StepAssignToOrgComponent implements OnInit {
         return (row) => (row['name'] as string)?.toLowerCase().includes(term);
     });
 
+    /** Tooltip text per chip: comma-joined org names currently assigned to that role. */
+    readonly chipTooltips = computed<Map<number, string>>(() => {
+        const tooltips = new Map<number, string>();
+        for (const row of this.selectedOrganizations()) {
+            const roleId = row['role'] as number | null;
+            if (roleId == null) continue;
+            const existing = tooltips.get(roleId);
+            const orgName = row['name'] as string;
+            tooltips.set(roleId, existing ? `${existing}, ${orgName}` : orgName);
+        }
+        return tooltips;
+    });
+
     readonly columns: AppTableColumnDef[] = [
         { key: 'organization', label: 'Organization', width: '1fr' },
         { key: 'role', label: 'Role', width: '1fr' },
     ];
+
+    private rolesService = inject(RolesService);
+    private permissionsService = inject(PermissionsService);
+    private destroyRef = inject(DestroyRef);
+    private overlay = inject(Overlay);
+    private overlayPositionBuilder = inject(OverlayPositionBuilder);
+    private vcr = inject(ViewContainerRef);
+    private overflowOverlayRef: OverlayRef | null = null;
+    private recentlyRemovedOrgIds = new Set<number>();
+    /** Role names seeded from existingMemberships so chips display correctly before roles API responds. */
+    private roleNames = new Map<number, string>();
 
     ngOnInit(): void {
         const memberships = this.existingMemberships();
@@ -266,14 +280,11 @@ export class StepAssignToOrgComponent implements OnInit {
         this.selectedOrganizations.update((rows) => withRole(rows, idsToAssign, value));
     }
 
-    chipTooltip(chip: RoleChip): string {
-        return this.selectedOrganizations()
-            .filter((row) => row['role'] === chip.roleId)
-            .map((row) => row['name'] as string)
-            .join(', ');
+    ngOnDestroy(): void {
+        this.closeOverflowMenu();
     }
 
-    removeChip(roleId: number): void {
+    protected removeChip(roleId: number): void {
         const orgIdsToRemove = new Set(
             this.selectedOrganizations()
                 .filter((r) => r['role'] === roleId)
@@ -283,7 +294,7 @@ export class StepAssignToOrgComponent implements OnInit {
         this.selectedOrganizations.update((rows) => rows.filter((r) => !orgIdsToRemove.has(r['id'] as number)));
     }
 
-    openOverflowMenu(origin: HTMLElement): void {
+    protected openOverflowMenu(origin: HTMLElement): void {
         if (this.overflowOverlayRef) {
             this.closeOverflowMenu();
             return;
@@ -306,13 +317,13 @@ export class StepAssignToOrgComponent implements OnInit {
 
         this.overflowOverlayRef
             .backdropClick()
-            .pipe(take(1))
+            .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.closeOverflowMenu());
 
-        this.overflowOverlayRef.attach(new TemplatePortal(this.overflowDropdown, this.vcr));
+        this.overflowOverlayRef.attach(new TemplatePortal(this.overflowDropdown(), this.vcr));
     }
 
-    closeOverflowMenu(): void {
+    protected closeOverflowMenu(): void {
         this.overflowOverlayRef?.detach();
         this.overflowOverlayRef?.dispose();
         this.overflowOverlayRef = null;

@@ -76,19 +76,21 @@
             white-space: nowrap;
             flex-shrink: 0;
             cursor: pointer;
+            background: none;
+            border: none;
 
             &:hover {
                 background: var(--purple-alpha-8);
+            }
+
+            &:focus-visible {
+                outline: 2px solid var(--accent-color);
+                outline-offset: 2px;
             }
         }
 
         .bulk-role-select {
             flex: 0 0 12.5rem;
-        }
-
-        .select-wrapper {
-            font-size: 0.875rem;
-            color: var(--text-secondary-60);
         }
 
         .search {
@@ -102,6 +104,8 @@
 }
 
 .chip-close {
+    display: inline-flex;
+    align-items: center;
     background: none;
     border: none;
     color: var(--text);
@@ -109,9 +113,11 @@
     padding: 0;
     font-size: 1.25rem;
     line-height: 1;
+    border-radius: 2px;
 
-    &:hover {
-        color: var(--text);
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
     }
 }
 
