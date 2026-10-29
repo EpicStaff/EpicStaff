@@ -1,4 +1,4 @@
-import { NodeType } from '@shared/models';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import {
     GraphVersionSnapshot,
@@ -448,5 +448,22 @@ describe('toLocalNaiveIso (schedule datetimes)', () => {
 
     it('passes null through', () => {
         expect(toLocalNaiveIso(null, 'UTC')).toBeNull();
+    });
+});
+
+describe('buildPreviewFlowModel (node style)', () => {
+    it('draws a node with the colour of its type, not the one in the exported metadata', () => {
+        const styled = {
+            ...snapshot,
+            nodes: snapshot.nodes.map((node) =>
+                node.id === ID.python ? { ...node, metadata: { color: '#ff0000', icon: 'ti ti-bug' } } : node
+            ),
+        } as GraphVersionSnapshot;
+
+        const { flow, snapshotIdToNodeUuid } = buildPreviewFlowModel(styled, secretsByName, availableFlows);
+        const python = nodeWithSnapshotId(flow, snapshotIdToNodeUuid, ID.python);
+
+        expect(python.color).toBe(NODE_COLORS[NodeType.PYTHON]);
+        expect(python.icon).toBe(NODE_ICONS[NodeType.PYTHON]);
     });
 });
