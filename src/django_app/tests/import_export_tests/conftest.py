@@ -1,8 +1,10 @@
 import uuid
+from unittest.mock import patch
 
 import pytest
 
 from tests.fixtures import *  # noqa: F401,F403
+from tests.import_export_tests.venv_fakes import SANDBOX_CLIENT, FakeSandbox
 
 from tables.models import (
     Agent,
@@ -31,6 +33,13 @@ from agents.models import (
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.registry import entity_registry
+
+
+@pytest.fixture
+def sandbox():
+    fake = FakeSandbox()
+    with patch(SANDBOX_CLIENT, fake):
+        yield fake
 
 
 @pytest.fixture
