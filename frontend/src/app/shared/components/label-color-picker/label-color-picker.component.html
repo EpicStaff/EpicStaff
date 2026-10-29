@@ -2,6 +2,8 @@
     <button
         type="button"
         class="color-trigger-btn"
+        cdkOverlayOrigin
+        #trigger="cdkOverlayOrigin"
         (click)="toggle($event)"
         title="Select color"
     >
@@ -27,10 +29,17 @@
         </svg>
     </button>
 
-    @if (isOpen()) {
+    <!-- An overlay, so a scrolling container around the picker (e.g. a dropdown list) cannot clip it. -->
+    <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="trigger"
+        [cdkConnectedOverlayOpen]="isOpen()"
+        [cdkConnectedOverlayPositions]="positions"
+        (detach)="isOpen.set(false)"
+        (overlayOutsideClick)="onOutsideClick($event)"
+    >
         <div
             class="color-options-panel"
-            [class.open-upward]="openUpward()"
             (click)="$event.stopPropagation()"
         >
             @for (option of colorOptions; track option.id) {
@@ -54,5 +63,5 @@
                 </button>
             }
         </div>
-    }
+    </ng-template>
 </div>

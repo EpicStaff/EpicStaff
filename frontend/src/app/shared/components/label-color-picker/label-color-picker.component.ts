@@ -1,9 +1,9 @@
+import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
     ElementRef,
-    HostListener,
     inject,
     Input,
     OnChanges,
@@ -14,7 +14,7 @@ import { getLabelColorOption, LABEL_COLOR_OPTIONS, LabelColor, LabelColorOption 
 
 @Component({
     selector: 'app-label-color-picker',
-    imports: [CommonModule],
+    imports: [CommonModule, CdkConnectedOverlay, CdkOverlayOrigin],
     templateUrl: './label-color-picker.component.html',
     styleUrls: ['./label-color-picker.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -26,16 +26,20 @@ export class LabelColorPickerComponent implements OnChanges {
     private readonly elementRef = inject(ElementRef);
 
     readonly isOpen = signal<boolean>(false);
-    readonly openUpward = signal<boolean>(false);
     readonly colorOptions = LABEL_COLOR_OPTIONS;
+    /** Below the trigger, centered; above it when there is no room below. */
+    readonly positions: ConnectedPosition[] = [
+        { originX: 'center', originY: 'bottom', overlayX: 'center', overlayY: 'top', offsetY: 4 },
+        { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom', offsetY: -4 },
+    ];
     currentOption: LabelColorOption = getLabelColorOption(LabelColor.Default);
 
     ngOnChanges(): void {
         this.currentOption = getLabelColorOption(this.selectedColor);
     }
 
-    @HostListener('document:click', ['$event'])
-    onDocumentClick(event: MouseEvent): void {
+    /** The trigger is outside the overlay too; its own click toggles, so it is skipped here. */
+    onOutsideClick(event: MouseEvent): void {
         if (!this.elementRef.nativeElement.contains(event.target)) {
             this.isOpen.set(false);
         }
@@ -43,12 +47,6 @@ export class LabelColorPickerComponent implements OnChanges {
 
     toggle(event: MouseEvent): void {
         event.stopPropagation();
-        const willOpen = !this.isOpen();
-        if (willOpen) {
-            const rect = this.elementRef.nativeElement.getBoundingClientRect();
-            const spaceBelow = window.innerHeight - rect.bottom;
-            this.openUpward.set(spaceBelow < 220);
-        }
         this.isOpen.update((v) => !v);
     }
 

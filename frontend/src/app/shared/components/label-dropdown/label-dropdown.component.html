@@ -40,9 +40,9 @@
                     size="1.125rem"
                     class="section-label-icon"
                 />
-                <span>Labels</span>
+                <span>{{ pluralTitle() }}</span>
             </div>
-            @if (!addingRoot()) {
+            @if (!addingRoot() && !isSingle()) {
                 <button
                     type="button"
                     class="add-root-btn"
@@ -52,44 +52,46 @@
                         icon="plus"
                         size="0.6rem"
                     />
-                    <span>Add label</span>
+                    <span>{{ addButtonText() }}</span>
                 </button>
             }
         </div>
 
-        <div class="labels-search">
-            <input
-                class="labels-search__input"
-                type="text"
-                placeholder="Search labels..."
-                [ngModel]="searchTerm()"
-                (ngModelChange)="searchTerm.set($event)"
-                (keyup.escape)="searchTerm.set('')"
-            />
-            @if (searchTerm()) {
-                <button
-                    type="button"
-                    class="labels-search__clear"
-                    (click)="searchTerm.set('')"
-                    matTooltip="Clear search"
-                    matTooltipPosition="above"
-                >
-                    <app-svg-icon
-                        icon="x"
-                        size="1rem"
-                    />
-                </button>
-            }
-        </div>
+        @if (showSearch()) {
+            <div class="labels-search">
+                <input
+                    class="labels-search__input"
+                    type="text"
+                    [placeholder]="'Search ' + noun() + 's...'"
+                    [ngModel]="searchTerm()"
+                    (ngModelChange)="searchTerm.set($event)"
+                    (keyup.escape)="searchTerm.set('')"
+                />
+                @if (searchTerm()) {
+                    <button
+                        type="button"
+                        class="labels-search__clear"
+                        (click)="searchTerm.set('')"
+                        matTooltip="Clear search"
+                        matTooltipPosition="above"
+                    >
+                        <app-svg-icon
+                            icon="x"
+                            size="1rem"
+                        />
+                    </button>
+                }
+            </div>
+        }
 
-        @if (addingRoot()) {
+        @if (addingRoot() && !isSingle()) {
             <div class="add-label-row">
                 <input
                     class="label-input"
                     [class.has-error]="addLabelError()"
                     [ngModel]="newLabelName()"
                     (ngModelChange)="newLabelName.set($event); onNewLabelInput()"
-                    placeholder="Enter label name..."
+                    [placeholder]="'Enter ' + noun() + ' name...'"
                     (keyup.enter)="confirmAdd()"
                     (keyup.escape)="cancelAdd()"
                     autofocus
@@ -128,69 +130,50 @@
             }
         }
 
-        <div class="labels-list">
-            @if (labelTree().length === 0 && !addingRoot()) {
-                <div class="empty-text">No labels yet. Add label to mark the flow</div>
-            }
-
-            @for (item of flatTree(); track item.node.id) {
-                <div
-                    class="tree-row"
-                    [class.selected]="isSelected(item.node.id)"
-                    [style.paddingLeft]="getIndentPadding(item.depth)"
-                    (click)="toggleSelection(item.node.id)"
+        <div
+            class="labels-list"
+            [class.labels-list--single]="isSingle()"
+            [attr.role]="isSingle() ? 'listbox' : null"
+        >
+            @if (isSingle()) {
+                <button
+                    type="button"
+                    role="option"
+                    class="tree-row tree-row--single"
+                    [class.selected]="localCheckedIds().size === 0"
+                    [attr.aria-selected]="localCheckedIds().size === 0"
+                    (click)="selectSingle(null)"
                 >
+                    <span class="label-dot label-dot--empty"></span>
+                    <span class="label-name">{{ emptyOptionLabel() }}</span>
+                </button>
+                @for (item of flatTree(); track item.node.id) {
                     <button
                         type="button"
-                        class="toggle-btn"
-                        (click)="$event.stopPropagation(); toggleExpand(item.node.id)"
-                        [style.visibility]="item.node.children.length > 0 ? 'visible' : 'hidden'"
-                        [matTooltip]="isExpanded(item.node.id) ? 'Collapse' : 'Expand'"
-                        matTooltipPosition="above"
+                        role="option"
+                        class="tree-row tree-row--single"
+                        [class.selected]="isSelected(item.node.id)"
+                        [attr.aria-selected]="isSelected(item.node.id)"
+                        (click)="selectSingle(item.node.id)"
                     >
-                        <app-svg-icon
-                            icon="expand"
-                            size="0.6rem"
-                            class="expand-icon"
-                            [class.expanded]="isExpanded(item.node.id)"
-                        />
+                        <span
+                            class="label-dot"
+                            [style.background-color]="labelColor(item.node)"
+                        ></span>
+                        <span class="label-name">{{ item.node.name }}</span>
                     </button>
-
-                    <app-checkbox
-                        [checked]="isSelected(item.node.id)"
-                        [indeterminate]="isIndeterminate(item.node.id)"
-                    />
-
-                    <span class="label-name">{{ item.node.name }}</span>
-
-                    <button
-                        type="button"
-                        class="add-child-btn"
-                        (click)="$event.stopPropagation(); startAddChild(item.node.id)"
-                        matTooltip="Add sublabel"
-                        matTooltipPosition="above"
-                    >
-                        <app-svg-icon
-                            icon="plus"
-                            size="0.8rem"
-                        />
-                    </button>
-                </div>
-
-                @if (addingChildOf() === item.node.id) {
-                    <div
-                        class="add-label-row child-add"
-                        [style.paddingLeft]="getIndentPadding(item.depth + 1)"
-                    >
+                }
+                @if (addingRoot()) {
+                    <div class="add-label-row add-label-row--in-place">
                         <input
                             class="label-input"
                             [class.has-error]="addLabelError()"
                             [ngModel]="newLabelName()"
                             (ngModelChange)="newLabelName.set($event); onNewLabelInput()"
-                            placeholder="Enter sublabel name..."
+                            [placeholder]="'Enter ' + noun() + ' name...'"
+                            [attr.aria-label]="'New ' + noun() + ' name'"
                             (keyup.enter)="confirmAdd()"
                             (keyup.escape)="cancelAdd()"
-                            autofocus
                         />
                         <app-label-color-picker
                             [selectedColor]="newLabelColor()"
@@ -200,7 +183,8 @@
                             type="button"
                             class="cancel-btn-icon"
                             (click)="cancelAdd()"
-                            title="Cancel"
+                            matTooltip="Cancel"
+                            matTooltipPosition="above"
                         >
                             <app-svg-icon
                                 icon="x"
@@ -211,7 +195,8 @@
                             type="button"
                             class="confirm-btn"
                             (click)="confirmAdd()"
-                            title="Confirm"
+                            matTooltip="Confirm"
+                            matTooltipPosition="above"
                         >
                             <app-svg-icon
                                 icon="check"
@@ -220,30 +205,136 @@
                         </button>
                     </div>
                     @if (addLabelError()) {
-                        <div class="label-error">{{ addLabelError() }}</div>
+                        <div class="label-error label-error--in-place">{{ addLabelError() }}</div>
+                    }
+                } @else {
+                    <button
+                        type="button"
+                        class="add-in-place-btn text-body-small"
+                        (click)="startAddRoot()"
+                    >
+                        + {{ addButtonText() }}
+                    </button>
+                }
+            } @else {
+                @if (labelTree().length === 0 && !addingRoot()) {
+                    <div class="empty-text">No labels yet. Add label to mark the flow</div>
+                }
+
+                @for (item of flatTree(); track item.node.id) {
+                    <div
+                        class="tree-row"
+                        [class.selected]="isSelected(item.node.id)"
+                        [style.paddingLeft]="getIndentPadding(item.depth)"
+                        (click)="toggleSelection(item.node.id)"
+                    >
+                        <button
+                            type="button"
+                            class="toggle-btn"
+                            (click)="$event.stopPropagation(); toggleExpand(item.node.id)"
+                            [style.visibility]="item.node.children.length > 0 ? 'visible' : 'hidden'"
+                            [matTooltip]="isExpanded(item.node.id) ? 'Collapse' : 'Expand'"
+                            matTooltipPosition="above"
+                        >
+                            <app-svg-icon
+                                icon="expand"
+                                size="0.6rem"
+                                class="expand-icon"
+                                [class.expanded]="isExpanded(item.node.id)"
+                            />
+                        </button>
+
+                        <app-checkbox
+                            [checked]="isSelected(item.node.id)"
+                            [indeterminate]="isIndeterminate(item.node.id)"
+                        />
+
+                        <span class="label-name">{{ item.node.name }}</span>
+
+                        <button
+                            type="button"
+                            class="add-child-btn"
+                            (click)="$event.stopPropagation(); startAddChild(item.node.id)"
+                            matTooltip="Add sublabel"
+                            matTooltipPosition="above"
+                        >
+                            <app-svg-icon
+                                icon="plus"
+                                size="0.8rem"
+                            />
+                        </button>
+                    </div>
+
+                    @if (addingChildOf() === item.node.id) {
+                        <div
+                            class="add-label-row child-add"
+                            [style.paddingLeft]="getIndentPadding(item.depth + 1)"
+                        >
+                            <input
+                                class="label-input"
+                                [class.has-error]="addLabelError()"
+                                [ngModel]="newLabelName()"
+                                (ngModelChange)="newLabelName.set($event); onNewLabelInput()"
+                                placeholder="Enter sublabel name..."
+                                (keyup.enter)="confirmAdd()"
+                                (keyup.escape)="cancelAdd()"
+                                autofocus
+                            />
+                            <app-label-color-picker
+                                [selectedColor]="newLabelColor()"
+                                (colorChange)="newLabelColor.set($event)"
+                            ></app-label-color-picker>
+                            <button
+                                type="button"
+                                class="cancel-btn-icon"
+                                (click)="cancelAdd()"
+                                title="Cancel"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="0.85rem"
+                                />
+                            </button>
+                            <button
+                                type="button"
+                                class="confirm-btn"
+                                (click)="confirmAdd()"
+                                title="Confirm"
+                            >
+                                <app-svg-icon
+                                    icon="check"
+                                    size="0.85rem"
+                                />
+                            </button>
+                        </div>
+                        @if (addLabelError()) {
+                            <div class="label-error">{{ addLabelError() }}</div>
+                        }
                     }
                 }
             }
         </div>
 
-        <div class="dropdown-footer">
-            <app-button
-                type="outline-primary"
-                (click)="clear()"
-                >Clear filter</app-button
-            >
-            <div class="footer-right">
+        @if (!isSingle()) {
+            <div class="dropdown-footer">
                 <app-button
                     type="outline-primary"
-                    (click)="close()"
-                    >Cancel</app-button
+                    (click)="clear()"
+                    >Clear filter</app-button
                 >
-                <app-button
-                    type="primary"
-                    (click)="save()"
-                    >Save changes</app-button
-                >
+                <div class="footer-right">
+                    <app-button
+                        type="outline-primary"
+                        (click)="close()"
+                        >Cancel</app-button
+                    >
+                    <app-button
+                        type="primary"
+                        (click)="save()"
+                        >Save changes</app-button
+                    >
+                </div>
             </div>
-        </div>
+        }
     </div>
 </ng-template>
