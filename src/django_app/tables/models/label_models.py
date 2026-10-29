@@ -9,6 +9,9 @@ class Label(OrgScopedModel, MetadataMixin):
     class Scope(models.TextChoices):
         FLOW = "flow", "Flow"
         TOOL = "tool", "Tool"
+        # One scope shared by agents AND shared surfaces, so a single group
+        # ("Sales") holds both kinds of item. Groups are flat (no parent).
+        AGENT = "agent", "Agent"
 
     name = models.CharField(max_length=100)
     scope = models.CharField(
@@ -34,6 +37,10 @@ class Label(OrgScopedModel, MetadataMixin):
                 fields=["org", "scope", "name"],
                 condition=models.Q(parent__isnull=True),
                 name="unique_top_level_label_name_per_org",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(scope="agent") | models.Q(parent__isnull=True),
+                name="agent_label_has_no_parent",
             ),
         ]
 

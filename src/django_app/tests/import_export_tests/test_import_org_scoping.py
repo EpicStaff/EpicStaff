@@ -9,7 +9,7 @@ from tables.models import (
     WebhookTrigger,
     WebhookTriggerNode,
 )
-from agents.models import AgentDefinition
+from agents.models import AgentDefinition, Surface
 from tables.models.label_models import Label
 from rbac.models import Organization
 from tables.models.realtime_models import OpenAIRealtimeConfig
@@ -159,6 +159,68 @@ class TestMcpAndLabelCrossOrg:
         new_graph_label_names = set(new_graph.labels.values_list("name", flat=True))
         assert "flow-label" in new_graph_label_names
         assert "tool-label" not in new_graph_label_names
+
+
+@pytest.mark.django_db
+class TestAgentGroupNeverTravels:
+    """A group is an org-local agent-scope label: exports never carry it, imports
+    never create one."""
+
+    @pytest.fixture
+    def group(self, default_org):
+        return Label.objects.create(name="Sales", org=default_org, scope=Label.Scope.AGENT)
+
+    def test_exported_agent_carries_no_group_and_imports_ungrouped(
+        self, export_service, default_org, org_b, group
+    ):
+        agent = AgentDefinition.objects.create(name="grouped-agent", org=default_org, group=group)
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
+
+        id_mapper, _ = _import(export_data, org_b.id)
+
+        assert "group" not in export_data[EntityType.AGENT_DEFINITION][0]
+        imported = AgentDefinition.objects.get(
+            id=id_mapper.get_created_ids(EntityType.AGENT_DEFINITION)[0]
+        )
+        assert imported.group_id is None
+
+    def test_exported_shared_surface_carries_no_group_and_imports_ungrouped(
+        self, export_service, default_org, org_b, group
+    ):
+        surface = Surface.objects.create(name="grouped-surface", org=default_org, group=group)
+        export_data = export_service.export_entities(
+            EntityType.SURFACE, [surface.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
+
+        id_mapper, _ = _import(export_data, org_b.id)
+
+        assert "group" not in export_data[EntityType.SURFACE][0]
+        imported = Surface.objects.get(id=id_mapper.get_created_ids(EntityType.SURFACE)[0])
+        assert imported.group_id is None
+
+    def test_agent_scope_label_in_a_file_is_imported_as_flow_label(self, org_b):
+        export_data = {
+            "main_entity": EntityType.GRAPH,
+            EntityType.LABEL: [
+                {"id": 901, "name": "outer", "parent": None, "metadata": {}, "scope": "agent"},
+                {"id": 902, "name": "inner", "parent": 901, "metadata": {}, "scope": "agent"},
+            ],
+            EntityType.GRAPH: [],
+        }
+
+        id_mapper, _ = ImportService(entity_registry).import_data(
+            export_data,
+            EntityType.GRAPH,
+            settings=ImportSettings(import_labels=True),
+            org_id=org_b.id,
+        )
+
+        created = Label.objects.filter(id__in=id_mapper.get_created_ids(EntityType.LABEL))
+        assert {label.name for label in created} == {"outer", "inner"}
+        assert {label.scope for label in created} == {Label.Scope.FLOW}
+        assert not Label.objects.filter(org=org_b, scope=Label.Scope.AGENT).exists()
 
 
 @pytest.mark.django_db

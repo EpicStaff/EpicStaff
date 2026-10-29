@@ -31,6 +31,7 @@ class SurfaceService:
             "name",
             "instructions",
             "owner_agent",
+            "group",
         ):
             if field_name in attrs:
                 setattr(candidate, field_name, attrs[field_name])

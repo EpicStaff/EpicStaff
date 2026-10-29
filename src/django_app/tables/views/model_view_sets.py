@@ -2831,8 +2831,9 @@ class GraphNoteViewSet(
 
 
 class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
-    """Shared behavior for the two independent label trees — Flow labels
-    (`LabelViewSet`) and Tool labels (`ToolLabelViewSet`). Each tree is a
+    """Shared behavior for the three independent label trees — Flow labels
+    (`LabelViewSet`), Tool labels (`ToolLabelViewSet`) and agent groups
+    (`AgentLabelViewSet`, flat, shared by agents and shared surfaces). Each tree is a
     disjoint subset of `Label` partitioned by `Label.scope`; concrete
     subclasses set `label_scope` and a `queryset` pre-filtered to it.
     """
@@ -2910,6 +2911,13 @@ class ToolLabelViewSet(BaseLabelViewSet):
     rbac_resource_type = ResourceType.TOOLS
     label_scope = Label.Scope.TOOL
     queryset = Label.objects.filter(scope=Label.Scope.TOOL)
+
+
+class AgentLabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.AGENTS
+    label_scope = Label.Scope.AGENT
+    queryset = Label.objects.filter(scope=Label.Scope.AGENT)
 
 
 class SecretViewSet(

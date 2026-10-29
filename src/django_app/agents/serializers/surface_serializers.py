@@ -48,6 +48,7 @@ from tables.constants.knowledge_constants import (
 )
 from tables.models.graph_models import StorageFile
 from tables.models.knowledge_models.collection_models import SourceCollection
+from tables.models.label_models import Label
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool
 from tables.validators.finite_number_validator import validate_finite_number
@@ -458,6 +459,7 @@ class SurfaceReadSerializer(LastEditFieldsSerializerMixin, serializers.ModelSeri
             "name",
             "instructions",
             "owner_agent",
+            "group",
             "python_tools",
             "mcp_tools",
             "storage_items",
@@ -488,8 +490,15 @@ class SurfaceWriteSerializer(AuthorStampingSerializerMixin, serializers.Serializ
             allow_null=True,
             default=None,
         )
+        # No default: a PATCH that omits `group` must leave it untouched.
+        self.fields["group"] = OrgScopedPrimaryKeyRelatedField(
+            queryset=Label.objects.filter(scope=Label.Scope.AGENT),
+            required=False,
+            allow_null=True,
+        )
 
     def validate(self, attrs):
+        self._validate_group(attrs)
         SurfaceService.validate_surface_data(
             instance=self.instance,
             org_id=self.context["org_id"],
@@ -501,6 +510,18 @@ class SurfaceWriteSerializer(AuthorStampingSerializerMixin, serializers.Serializ
         SurfaceValidator.validate_knowledge(attrs.get("knowledge", []))
 
         return attrs
+
+    def _validate_group(self, attrs):
+        """Only shared surfaces may be grouped; a surface that is or becomes owned loses its group."""
+        if "owner_agent" in attrs:
+            owner_agent = attrs["owner_agent"]
+        else:
+            owner_agent = self.instance.owner_agent_id if self.instance is not None else None
+        if owner_agent is None:
+            return
+        if attrs.get("group") is not None:
+            raise serializers.ValidationError({"group": "Only shared surfaces can be in a group."})
+        attrs["group"] = None
 
     def create(self, validated_data):
         return SurfaceService.create_surface(

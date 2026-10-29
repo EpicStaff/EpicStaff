@@ -8,6 +8,16 @@ from tables.import_export.serializers.label import LabelImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.models.label_models import Label
 
+# Only flow and tool labels travel in export files. Agent groups are never exported, so
+# any other scope in a file is crafted or corrupt and is read as a flow label; trusting
+# it would let a file create a nested agent label, which the database rejects.
+_IMPORTABLE_SCOPES = {Label.Scope.FLOW, Label.Scope.TOOL}
+
+
+def _imported_scope(data: dict) -> str:
+    scope = data.get("scope")
+    return scope if scope in _IMPORTABLE_SCOPES else Label.Scope.FLOW
+
 
 class LabelStrategy(EntityImportExportStrategy):
     entity_type = EntityType.LABEL
@@ -39,7 +49,7 @@ class LabelStrategy(EntityImportExportStrategy):
         parent_id = (
             id_mapper.get_or_none(EntityType.LABEL, old_parent_id) if old_parent_id else None
         )
-        scope = data.get("scope") or Label.Scope.FLOW
+        scope = _imported_scope(data)
         return (
             Label.objects.filter(name=data["name"], parent_id=parent_id, scope=scope)
             .filter(self.get_org_scope_q(org_id))
@@ -57,7 +67,7 @@ class LabelStrategy(EntityImportExportStrategy):
         parent_id = (
             id_mapper.get_or_none(EntityType.LABEL, old_parent_id) if old_parent_id else None
         )
-        scope = data.get("scope") or Label.Scope.FLOW
+        scope = _imported_scope(data)
         label, _ = Label.objects.get_or_create(
             name=data["name"],
             parent_id=parent_id,
