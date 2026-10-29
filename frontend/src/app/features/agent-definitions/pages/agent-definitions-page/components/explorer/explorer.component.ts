@@ -212,7 +212,9 @@ export class ExplorerComponent {
         if (target) this.treeMenuAction.emit({ ...target, action });
     }
 
+    /** Focus goes back to the ⋮ first, so an action that moves focus elsewhere (rename, a dialog) still wins. */
     closeMenu(): void {
+        this.menuTarget?.trigger.focus();
         this.menuOpen.set(false);
         this.menuTarget = null;
     }

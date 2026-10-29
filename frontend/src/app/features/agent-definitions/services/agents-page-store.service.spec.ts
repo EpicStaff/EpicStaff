@@ -6,7 +6,7 @@ import { of } from 'rxjs';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ToastService } from '../../../services/notifications';
-import { AgentDefinition } from '../models/agent-definition.model';
+import { AgentDefinition, CreateAgentDefinitionRequest } from '../models/agent-definition.model';
 import { Surface } from '../models/surface.model';
 import { BranchTreeNode, ExplorerGroupBlock } from '../models/tree-node.model';
 import { AgentDefinitionsApiService } from './agent-definitions-api.service';
@@ -37,17 +37,39 @@ function surface(id: number, name: string, groupId: number | null, ownerAgentId:
     return { id, name, group: groupId, owner_agent: ownerAgentId } as Partial<Surface> as Surface;
 }
 
-/** The real store over fake HTTP edges, loaded with the given rows. */
+/**
+ * The real store over fake HTTP edges, loaded with the given rows. Like the API, PATCH and POST answer
+ * with the saved row, and a group DELETE succeeds.
+ */
 function loadStore(rows: { agents: AgentDefinition[]; surfaces?: Surface[]; groups?: LabelDto[] }): AgentsPageStore {
+    const surfaces = rows.surfaces ?? [];
     TestBed.configureTestingModule({
         providers: [
             AgentsPageStore,
-            { provide: AgentDefinitionsApiService, useValue: { getAgentDefinitions: () => of(rows.agents) } },
-            { provide: SurfacesApiService, useValue: { getSurfaces: () => of(rows.surfaces ?? []) } },
-            { provide: AgentGroupsApiService, useValue: { getLabels: () => of(rows.groups ?? []) } },
+            {
+                provide: AgentDefinitionsApiService,
+                useValue: {
+                    getAgentDefinitions: () => of(rows.agents),
+                    partialUpdate: (id: number, body: Partial<AgentDefinition>) =>
+                        of({ ...rows.agents.find((row) => row.id === id)!, ...body }),
+                    create: (body: CreateAgentDefinitionRequest) => of(agent(99, body.name, body.group ?? null)),
+                },
+            },
+            {
+                provide: SurfacesApiService,
+                useValue: {
+                    getSurfaces: () => of(surfaces),
+                    partialUpdate: (id: number, body: Partial<Surface>) =>
+                        of({ ...surfaces.find((row) => row.id === id)!, ...body }),
+                },
+            },
+            {
+                provide: AgentGroupsApiService,
+                useValue: { getLabels: () => of(rows.groups ?? []), deleteLabel: () => of(undefined) },
+            },
             { provide: PermissionsService, useValue: { can: () => true } },
             { provide: ProfileService, useValue: { currentUserSignal: signal({ id: 7 }) } },
-            { provide: ToastService, useValue: {} },
+            { provide: ToastService, useValue: { success: () => undefined, error: () => undefined } },
             { provide: SurfaceCatalogsStore, useValue: {} },
         ],
     });
@@ -168,4 +190,111 @@ describe('AgentsPageStore group blocks', () => {
 
         expect(outline(store.agentGroupBlocks())).toEqual(expected);
     });
+});
+
+/** Each agent and surface as `<name>: <group id>`. */
+const membership = (store: AgentsPageStore): string[] => [
+    ...store.agents().map((row) => `${row.name}: ${row.group}`),
+    ...store.surfaces().map((row) => `${row.name}: ${row.group}`),
+];
+
+describe('AgentsPageStore moveSelectionToGroup (the breadcrumb group crumb)', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it.each<[string, (store: AgentsPageStore) => void, string[]]>([
+        [
+            'an agent moves the agent',
+            (store) => store.selectAgent(1),
+            ['Lead qualifier: 2', 'CRM access: null', 'Qualify in chat: null'],
+        ],
+        [
+            "an agent's instruction moves the agent",
+            (store) => store.selectAgentDoc(1, 0),
+            ['Lead qualifier: 2', 'CRM access: null', 'Qualify in chat: null'],
+        ],
+        [
+            'an owned surface moves its agent',
+            (store) => store.selectSurface(12, 1),
+            ['Lead qualifier: 2', 'CRM access: null', 'Qualify in chat: null'],
+        ],
+        [
+            'a shared surface opened under an agent moves that agent',
+            (store) => store.selectSurface(10, 1),
+            ['Lead qualifier: 2', 'CRM access: null', 'Qualify in chat: null'],
+        ],
+        [
+            'a shared surface moves the surface',
+            (store) => store.selectSurface(10),
+            ['Lead qualifier: null', 'CRM access: 2', 'Qualify in chat: null'],
+        ],
+    ])('with %s open', (_description, open, expected) => {
+        vi.useFakeTimers();
+        const leadQualifier = agent(1, 'Lead qualifier', null, [12]);
+        leadQualifier.instruction_list = [{ name: 'Qualify', content: 'Qualify leads' }];
+        const store = loadStore({
+            agents: [leadQualifier],
+            surfaces: [surface(10, 'CRM access', null), surface(12, 'Qualify in chat', null, 1)],
+            groups: [group(SALES, 'Sales'), group(SUPPORT, 'Support')],
+        });
+        open(store);
+
+        store.moveSelectionToGroup(SUPPORT);
+        // Surface edits are sent debounced.
+        vi.advanceTimersByTime(1000);
+
+        expect(membership(store)).toEqual(expected);
+    });
+});
+
+describe('AgentsPageStore deleteGroup', () => {
+    beforeEach(() => localStorage.clear());
+    afterEach(() => localStorage.clear());
+
+    function storeWithSalesAndSupport(): AgentsPageStore {
+        return loadStore({
+            agents: [agent(1, 'Lead qualifier', SALES), agent(2, 'Tier-1 bot', SUPPORT)],
+            surfaces: [surface(10, 'CRM access', SALES)],
+            groups: [group(SALES, 'Sales'), group(SUPPORT, 'Support')],
+        });
+    }
+
+    it('ungroups the members of the deleted group only', () => {
+        const store = storeWithSalesAndSupport();
+
+        store.deleteGroup(SALES);
+
+        expect(membership(store)).toEqual(['Lead qualifier: null', 'Tier-1 bot: 2', 'CRM access: null']);
+        expect(outline(store.agentGroupBlocks())).toEqual(['Support: Tier-1 bot', 'Ungrouped: Lead qualifier']);
+    });
+
+    it("forgets the deleted group's collapsed state and keeps the others'", () => {
+        const store = storeWithSalesAndSupport();
+        store.toggleGroupCollapsed('agents', SALES);
+        store.toggleGroupCollapsed('surfaces', SALES);
+        store.toggleGroupCollapsed('agents', SUPPORT);
+
+        store.deleteGroup(SALES);
+
+        expect([
+            store.isGroupCollapsed('agents', SALES),
+            store.isGroupCollapsed('surfaces', SALES),
+            store.isGroupCollapsed('agents', SUPPORT),
+        ]).toEqual([false, false, true]);
+    });
+
+    it.each([
+        { draftGroup: SALES, savedGroup: null },
+        { draftGroup: SUPPORT, savedGroup: SUPPORT },
+    ])(
+        'a new agent drafted into group $draftGroup is saved into $savedGroup after Sales is deleted',
+        ({ draftGroup, savedGroup }) => {
+            const store = storeWithSalesAndSupport();
+            store.beginCreateAgent(draftGroup);
+
+            store.deleteGroup(SALES);
+            store.saveNewAgent({ name: 'Closer' });
+
+            expect(store.agents().find((row) => row.name === 'Closer')?.group).toBe(savedGroup);
+        }
+    );
 });

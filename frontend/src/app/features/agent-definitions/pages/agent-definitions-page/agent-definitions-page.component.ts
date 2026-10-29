@@ -522,24 +522,6 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         this.guardUnsaved(() => this.applyExplorerTreeMenu(event));
     }
 
-    /** The breadcrumb group picker of the selected agent or shared surface. */
-    /**
-     * The group crumb belongs to whoever owns the group of what is open: the agent itself, the agent of an
-     * instruction or an owned surface (those follow their agent), or a shared surface.
-     */
-    onGroupChange(groupId: number | null): void {
-        const agent =
-            this.store.selectedAgent() ??
-            this.store.selectedAgentDoc()?.agent ??
-            this.store.selectedSurfaceView()?.ownerAgent;
-        if (agent) {
-            this.store.moveAgentToGroup(agent.id, groupId);
-            return;
-        }
-        const surface = this.store.selectedSurface();
-        if (surface) this.store.moveSurfaceToGroup(surface.id, groupId);
-    }
-
     /**
      * Applies a group item of an explorer menu; false when the action is not one. Only "New agent in
      * <group>" changes the selection, so only it asks about unsaved changes.

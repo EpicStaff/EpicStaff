@@ -1,8 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+    afterRenderEffect,
     ChangeDetectionStrategy,
     Component,
-    effect,
     ElementRef,
     inject,
     linkedSignal,
@@ -41,18 +41,17 @@ export class AgentsSectionComponent {
 
     protected readonly newGroupError = signal<string | null>(null);
     protected readonly creatingGroup = signal<boolean>(false);
-
-    private readonly focusNewGroupInput = effect(() => this.newGroupInput()?.nativeElement.focus());
-
-    readonly trackByKey = (_: number, n: BranchTreeNode) => nodeKey(n);
-
-    protected readonly store: AgentsPageStore = inject(AgentsPageStore);
-
     /** Each new draft suggests the next color in turn; the picker can change it. */
     protected readonly newGroupColor = linkedSignal<LabelColor>(() => {
         this.store.newGroupDraft();
         return labelColorInTurn(this.store.groups().length);
     });
+
+    private readonly focusNewGroupInput = afterRenderEffect(() => this.newGroupInput()?.nativeElement.focus());
+
+    readonly trackByKey = (_: number, n: BranchTreeNode) => nodeKey(n);
+
+    protected readonly store: AgentsPageStore = inject(AgentsPageStore);
 
     onSelect(node: BranchTreeNode): void {
         this.selectNode.emit(node);
@@ -94,8 +93,8 @@ export class AgentsSectionComponent {
     }
 
     /**
-     * Focus moving to the color picker (its trigger, or its options in the overlay) is still
-     * editing the draft, so only leaving for anything else counts as leaving the field.
+     * Focus moving to the color picker (its trigger, or its options in the overlay, which takes focus
+     * on open) is still editing the draft, so only leaving for anything else counts as leaving the field.
      */
     protected onNewGroupFocusOut(event: FocusEvent, name: string): void {
         const next = event.relatedTarget as HTMLElement | null;
@@ -110,6 +109,11 @@ export class AgentsSectionComponent {
         this.newGroupInput()?.nativeElement.focus();
     }
 
+    protected cancelNewGroup(): void {
+        this.newGroupError.set(null);
+        this.store.cancelNewGroup();
+    }
+
     /**
      * Leaving the input saves a typed name and cancels an empty one. While an error is
      * shown the draft stays as is, so blur never resubmits a name the server just rejected.
@@ -121,10 +125,5 @@ export class AgentsSectionComponent {
             return;
         }
         this.createGroup(name, false);
-    }
-
-    protected cancelNewGroup(): void {
-        this.newGroupError.set(null);
-        this.store.cancelNewGroup();
     }
 }

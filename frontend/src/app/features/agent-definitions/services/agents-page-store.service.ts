@@ -705,6 +705,11 @@ export class AgentsPageStore {
                 next.delete(groupBlockKey('surfaces', groupId));
                 this.setCollapsedGroups(next);
                 if (this.renamingGroupId() === groupId) this.renamingGroupId.set(null);
+                // A new agent being drafted into the deleted group would otherwise be created into a missing group.
+                const selected = this.selectedNode();
+                if (selected.kind === 'draft-agent' && selected.groupId === groupId) {
+                    this.selectedNode.set({ ...selected, groupId: null });
+                }
                 this.toast.success(`Group "${name}" deleted`);
             },
             error: (err) => this.toast.error(this.extractError(err, 'Failed to delete group')),
@@ -714,6 +719,20 @@ export class AgentsPageStore {
     moveToGroup(target: GroupAssignTarget, groupId: number | null): void {
         if (target.kind === 'agent') this.moveAgentToGroup(target.id, groupId);
         else this.moveSurfaceToGroup(target.id, groupId);
+    }
+
+    /**
+     * The breadcrumb group crumb belongs to whoever owns the group of what is open: the agent itself, the
+     * agent of an instruction or of a surface opened under it (those follow their agent), or a shared surface.
+     */
+    moveSelectionToGroup(groupId: number | null): void {
+        const agent = this.selectedAgent() ?? this.selectedAgentDoc()?.agent ?? this.selectedSurfaceView()?.ownerAgent;
+        if (agent) {
+            this.moveAgentToGroup(agent.id, groupId);
+            return;
+        }
+        const surface = this.selectedSurface();
+        if (surface) this.moveSurfaceToGroup(surface.id, groupId);
     }
 
     moveAgentToGroup(agentId: number, groupId: number | null): void {

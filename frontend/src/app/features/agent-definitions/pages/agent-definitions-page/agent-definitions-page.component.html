@@ -60,7 +60,7 @@
                     (save)="store.updateInstructionContent(doc.agent.id, doc.instructionIndex, $event)"
                     (openAgent)="store.selectAgent($event)"
                     (openAgentInstructions)="store.selectAgentInstructions($event)"
-                    (groupChange)="onGroupChange($event)"
+                    (groupChange)="store.moveSelectionToGroup($event)"
                 />
             } @else if (store.selectedSurfaceView()) {
                 <app-detail-header
@@ -68,7 +68,7 @@
                     [crumbs]="surfaceCrumbs()"
                     (toggleSidebar)="store.toggleSidebar()"
                     (navAgent)="store.selectAgent($event)"
-                    (groupChange)="onGroupChange($event)"
+                    (groupChange)="store.moveSelectionToGroup($event)"
                     (navAgentSurfaces)="store.selectAgentSurfaces($event)"
                 >
                     <button
@@ -129,7 +129,7 @@
                     [crumbs]="agentCrumbs()"
                     (toggleSidebar)="store.toggleSidebar()"
                     (navAgent)="store.selectAgent($event)"
-                    (groupChange)="onGroupChange($event)"
+                    (groupChange)="store.moveSelectionToGroup($event)"
                 >
                     @if ((store.selectedAgent() || store.selectedSurface()) && canOpenHeaderMenu()) {
                         <button

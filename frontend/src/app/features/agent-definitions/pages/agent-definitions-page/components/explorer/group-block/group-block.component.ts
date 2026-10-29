@@ -1,4 +1,14 @@
-import { Component, computed, effect, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
+import {
+    afterRenderEffect,
+    Component,
+    computed,
+    ElementRef,
+    inject,
+    input,
+    linkedSignal,
+    output,
+    viewChild,
+} from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
@@ -41,8 +51,6 @@ export class ExplorerGroupBlockComponent {
 
     private readonly renameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput');
 
-    protected readonly dropActive = signal<boolean>(false);
-
     protected readonly collapsed = computed<boolean>(() =>
         this.store.isGroupCollapsed(this.section(), this.block().groupId)
     );
@@ -67,6 +75,15 @@ export class ExplorerGroupBlockComponent {
         return surface ? { kind: 'surface', id: surface.id } : null;
     });
 
+    /**
+     * A drag is over this block. Reset whenever a drag starts or ends anywhere, so a drag cancelled
+     * over the block (no drop, no dragleave) does not leave the highlight on.
+     */
+    protected readonly dropActive = linkedSignal<boolean>(() => {
+        this.droppable();
+        return false;
+    });
+
     /** An empty Ungrouped is hidden, except as a drop target while an item is dragged. */
     protected readonly hidden = computed<boolean>(() => {
         const block = this.block();
@@ -78,7 +95,7 @@ export class ExplorerGroupBlockComponent {
         return this.section() === 'agents' && block.groupId !== null && block.memberCount === 0;
     });
 
-    private readonly focusRenameInput = effect(() => {
+    private readonly focusRenameInput = afterRenderEffect(() => {
         const input = this.renameInput()?.nativeElement;
         if (!input) return;
         input.focus();

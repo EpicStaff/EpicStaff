@@ -151,12 +151,15 @@ describe('AgentsSectionComponent new group input', () => {
         leave(fixture, input()!, pickerTrigger);
         expect(api.createdNames).toEqual([]);
 
+        // Opening the picker moves focus from its trigger into the overlay, outside this field's DOM.
+        pickerTrigger.focus();
         pickerTrigger.click();
         fixture.detectChanges();
-        TestBed.inject(OverlayContainer)
-            .getContainerElement()
-            .querySelector<HTMLButtonElement>(`.color-option-btn[title="${LabelColor.Green}"]`)!
-            .click();
+        const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+        expect(overlay.contains(document.activeElement)).toBe(true);
+        expect(api.createdNames).toEqual([]);
+
+        overlay.querySelector<HTMLButtonElement>(`.color-option-btn[title="${LabelColor.Green}"]`)!.click();
         fixture.detectChanges();
         leave(fixture, input()!);
 

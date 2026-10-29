@@ -8,6 +8,7 @@
     // Sticks to the top of the section body, which is the scroll container.
     position: sticky;
     top: 0;
+    // Above the rows scrolling under it, whose hover actions sit at z-index 2 (tree-node).
     z-index: 3;
     display: flex;
     align-items: center;

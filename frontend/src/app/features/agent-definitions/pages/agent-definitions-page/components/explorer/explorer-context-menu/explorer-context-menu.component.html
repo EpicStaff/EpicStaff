@@ -9,38 +9,70 @@
         role="menu"
         [style.left.px]="placement().x"
         [style.top.px]="placement().y"
-        (keydown.escape)="close.emit()"
+        (keydown)="onMenuKeydown($event)"
     >
-        @for (row of rows(); track row.item.id) {
+        @for (item of items(); track item.id) {
             <button
+                #rowButton
                 type="button"
                 role="menuitem"
+                tabindex="-1"
                 class="explorer-menu__item"
-                [class.explorer-menu__item--nested]="row.nested"
-                [class.explorer-menu__item--disabled]="row.item.disabled"
-                [class.explorer-menu__item--danger]="row.item.danger"
-                [disabled]="row.item.disabled"
-                [attr.aria-haspopup]="row.item.children ? 'menu' : null"
-                [attr.aria-expanded]="row.item.children ? expandedId() === row.item.id : null"
-                (click)="onRowClick(row.item)"
+                [class.explorer-menu__item--disabled]="item.disabled"
+                [class.explorer-menu__item--danger]="item.danger"
+                [disabled]="item.disabled"
+                [attr.aria-expanded]="item.children ? expandedId() === item.id : null"
+                [attr.aria-controls]="item.children && expandedId() === item.id ? groupId(item) : null"
+                (click)="onRowClick(item)"
             >
-                @if (row.item.dotColor !== undefined) {
+                @if (item.dotColor !== undefined) {
                     <span
                         class="explorer-menu__dot"
-                        [class.explorer-menu__dot--empty]="row.item.dotColor === null"
-                        [style.background-color]="row.item.dotColor"
+                        [class.explorer-menu__dot--empty]="item.dotColor === null"
+                        [style.background-color]="item.dotColor"
                     ></span>
                 }
-                <span class="explorer-menu__label">{{ row.item.label }}</span>
-                @if (row.item.children) {
+                <span class="explorer-menu__label">{{ item.label }}</span>
+                @if (item.children) {
                     <app-svg-icon
                         class="explorer-menu__chevron"
-                        [class.explorer-menu__chevron--open]="expandedId() === row.item.id"
+                        [class.explorer-menu__chevron--open]="expandedId() === item.id"
                         icon="chevron-down-filled"
                         size="8px"
                     />
                 }
             </button>
+            <!-- A sub-list opens inline under its row (a disclosure), not as a submenu popup. -->
+            @if (item.children && expandedId() === item.id) {
+                <div
+                    role="group"
+                    [id]="groupId(item)"
+                    [attr.aria-label]="item.label"
+                >
+                    @for (child of item.children; track child.id) {
+                        <button
+                            #rowButton
+                            type="button"
+                            role="menuitem"
+                            tabindex="-1"
+                            class="explorer-menu__item explorer-menu__item--nested"
+                            [class.explorer-menu__item--disabled]="child.disabled"
+                            [class.explorer-menu__item--danger]="child.danger"
+                            [disabled]="child.disabled"
+                            (click)="onRowClick(child)"
+                        >
+                            @if (child.dotColor !== undefined) {
+                                <span
+                                    class="explorer-menu__dot"
+                                    [class.explorer-menu__dot--empty]="child.dotColor === null"
+                                    [style.background-color]="child.dotColor"
+                                ></span>
+                            }
+                            <span class="explorer-menu__label">{{ child.label }}</span>
+                        </button>
+                    }
+                </div>
+            }
         }
     </div>
 }
