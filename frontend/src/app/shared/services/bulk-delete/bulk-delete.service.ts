@@ -11,6 +11,7 @@ import {
 import { buildBulkDeletePreview, extractHttpErrorMessage } from '@shared/utils';
 import { catchError, EMPTY, forkJoin, map, Observable, of, switchMap } from 'rxjs';
 
+import { wasHandledByForbiddenInterceptor } from '../../../core/interceptors/forbidden-interceptor-handled.util';
 import { ToastService } from '../../../services/notifications';
 // Relative import, not the `@shared/components` barrel: `shared/services` importing the
 // `@shared/components` barrel would create a `@shared/services` <-> `@shared/components` barrel
@@ -111,8 +112,8 @@ export class BulkDeleteService {
     }
 
     private reportPreviewError(error: unknown): void {
+        if (wasHandledByForbiddenInterceptor(error)) return;
         if (error instanceof HttpErrorResponse) {
-            if (error.status === 403) return;
             this.toast.error(extractHttpErrorMessage(error, 'Could not check what can be deleted.'));
             return;
         }
@@ -169,7 +170,7 @@ export class BulkDeleteService {
         }
 
         const singleError = errors.length === 1 ? errors[0].error : undefined;
-        if (singleError instanceof HttpErrorResponse && singleError.status === 403) return;
+        if (wasHandledByForbiddenInterceptor(singleError)) return;
 
         if (errors.length === 1) {
             const fallback = movesToRecycleBin ? 'Failed to move to the recycle bin.' : 'Failed to delete.';
