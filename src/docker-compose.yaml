@@ -20,6 +20,15 @@ x-storage-env: &storage-env
   STORAGE_PORT: ${STORAGE_PORT:?}
   STORAGE_BUCKET: ${STORAGE_BUCKET:?}
 
+x-retention-env: &retention-env
+  RETENTION_SESSIONS_DAYS: ${RETENTION_SESSIONS_DAYS:?}
+  RETENTION_SESSION_MAX_DAYS: ${RETENTION_SESSION_MAX_DAYS:?}
+  RETENTION_CONVERSATIONS_DAYS: ${RETENTION_CONVERSATIONS_DAYS:?}
+  RETENTION_CONVERSATION_MAX_DAYS: ${RETENTION_CONVERSATION_MAX_DAYS:?}
+  RETENTION_AUDIT_DAYS: ${RETENTION_AUDIT_DAYS:?}
+  RETENTION_AUDIT_MAX_DAYS: ${RETENTION_AUDIT_MAX_DAYS:?}
+  RETENTION_AUDIT_MIN_DAYS: ${RETENTION_AUDIT_MIN_DAYS:?}
+
 x-communication-env: &communication-env
   CODE_RESULT_CHANNEL: ${CODE_RESULT_CHANNEL:?}
   CODE_EXEC_CHANNEL: ${CODE_EXEC_CHANNEL:?}
@@ -77,7 +86,7 @@ services:
     hostname: django_app
     command: ./entrypoint.sh
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *retention-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DB_USER: ${DB_USER:?}
@@ -259,13 +268,16 @@ services:
       dockerfile: ./manager/Dockerfile.man
     container_name: manager_container
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *communication-env, *retention-env]
       MANAGER_DB_USER: ${MANAGER_DB_USER:?}
       MANAGER_DB_PASSWORD: ${MANAGER_DB_PASSWORD:?}
       MANAGER_LOG_LEVEL: ${MANAGER_LOG_LEVEL:?}
       AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:?}
       AUDITOR_EXPORT_DATA_DIR: ${AUDITOR_EXPORT_DATA_DIR:?}
       AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS: ${AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS:?}
+      CHAT_ENABLED: ${CHAT_ENABLED:?}
+      CHAT_UPSTREAM_URL: ${CHAT_UPSTREAM_URL:?}
+      CHAT_INTERNAL_API_KEY: ${CHAT_INTERNAL_API_KEY:?}
     networks:
       - backend-network
     volumes:
@@ -573,6 +585,8 @@ services:
       NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?}
       NGINX_SSL_MODE: ${NGINX_SSL_MODE:?}
       NGINX_HSTS_ENABLED: ${NGINX_HSTS_ENABLED:?}
+      # The load balancer whose X-Forwarded-Proto nginx passes on, or none.
+      NGINX_TRUSTED_PROXIES: ${NGINX_TRUSTED_PROXIES:?}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       FRONTEND_HOST: ${FRONTEND_HOST:?}
@@ -632,6 +646,12 @@ services:
       - type: bind
         source: ./nginx/docker-entrypoint.d/17-normalize-hsts-enabled.envsh
         target: /docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/18-check-trusted-proxies.envsh
+        target: /docker-entrypoint.d/18-check-trusted-proxies.envsh
         read_only: true
         bind:
           create_host_path: false
@@ -865,6 +885,7 @@ services:
       CHAT_CALLBACK_URL: ${CHAT_CALLBACK_URL:?}
       CHAT_TRUSTED_PROXIES: ${CHAT_TRUSTED_PROXIES:?}
       CHAT_DJANGO_TIMEOUT: ${CHAT_DJANGO_TIMEOUT:?}
+      CHAT_INTERNAL_API_KEY: ${CHAT_INTERNAL_API_KEY:?}
       CHAT_IP_MESSAGE_RATE: ${CHAT_IP_MESSAGE_RATE:?}
       CHAT_IP_CONVERSATION_RATE: ${CHAT_IP_CONVERSATION_RATE:?}
       CHAT_RECONCILE_INTERVAL: ${CHAT_RECONCILE_INTERVAL:?}

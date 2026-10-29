@@ -99,6 +99,21 @@
     }
 }
 
+// Filled red of a destructive action (bulk delete). No hover/active tokens exist for the error red,
+// so both darken it, as .btn-primary's hover and active steps darken the accent.
+.btn-danger {
+    background: var(--color-error);
+    border: 1px solid transparent;
+
+    &:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--color-error) 92%, black);
+    }
+
+    &:active:not(:disabled) {
+        background: color-mix(in srgb, var(--color-error) 84%, black);
+    }
+}
+
 .btn-outline-secondary {
     background: transparent;
     color: var(--color-ks-text);

@@ -1,7 +1,7 @@
 """The knowledge payloads carry credentials by the <field>_secret_id convention.
 
-A carrier field must be excluded from every dump, so no Secret id reaches
-Session.graph_schema or a Redis payload, and every carrier must have its paired
+A carrier field must be excluded from every dump, so no Secret id reaches a
+Redis payload or anything persisted from it, and every carrier must have its paired
 plaintext slot or SecretResolver raises.
 """
 

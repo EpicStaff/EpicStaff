@@ -49,6 +49,11 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
     per-service state beyond the start-input cache, which exists so the
     eventual "Finish"/"Error" event can carry the node's input too.
 
+    Every add_* method requires the session's audit `retention_days` (0 keeps
+    forever) and stamps it on each event it writes, so auditor can store the
+    event for that long. It is required, not defaulted: a caller that forgot
+    it would silently keep its events forever.
+
     Both nodes and sessions follow the same write-once/append-only shape
     (audit_events is never edited - see _emit_node_or_event's docstring):
     a `kind="node"`/`kind="session"` wrapper doc is written once, early,
@@ -87,6 +92,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         execution_order: int,
         input_: dict,
         event_id: str,
+        retention_days: int,
         node_type: str = "",
     ) -> None:
         """
@@ -118,11 +124,13 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
             node_type=node_type,
             status=None,
             event_time=datetime.now(UTC),
+            retention_days=retention_days,
         )
         await self._emit(wrapper)
 
         await self._emit_node_or_event(
             event_id=event_id,
+            retention_days=retention_days,
             parent_id=node_audit_id,
             session_id=session_id,
             org_id=org_id,
@@ -164,6 +172,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         execution_order: int,
         output: dict,
         event_id: str,
+        retention_days: int,
         node_type: str = "",
         additional_data: dict | None = None,
     ) -> None:
@@ -177,6 +186,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         node_audit_id = _derive_node_id(session_id, node_name, execution_order)
         await self._emit_node_or_event(
             event_id=event_id,
+            retention_days=retention_days,
             parent_id=node_audit_id,
             session_id=session_id,
             org_id=org_id,
@@ -200,6 +210,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         execution_order: int,
         error: Exception | str,
         event_id: str,
+        retention_days: int,
         node_type: str = "",
     ) -> None:
         """
@@ -217,6 +228,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         node_audit_id = _derive_node_id(session_id, node_name, execution_order)
         await self._emit_node_or_event(
             event_id=event_id,
+            retention_days=retention_days,
             parent_id=node_audit_id,
             session_id=session_id,
             org_id=org_id,
@@ -240,6 +252,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         execution_order: int,
         details: dict,
         event_id: str,
+        retention_days: int,
     ) -> None:
         """
         kind='event' rows - every message type other than start/finish/error
@@ -252,6 +265,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         node_audit_id = _derive_node_id(session_id, node_name, execution_order)
         await self._emit_node_or_event(
             event_id=event_id,
+            retention_days=retention_days,
             parent_id=node_audit_id,
             session_id=session_id,
             org_id=org_id,
@@ -279,6 +293,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         output: dict | None = None,
         error: str | None = None,
         details: dict | None = None,
+        retention_days: int,
     ) -> None:
         """
         event_id/parent_id are always supplied by the caller now, never derived
@@ -299,6 +314,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
             node_type=node_type,
             status=status,
             event_time=datetime.now(UTC),
+            retention_days=retention_days,
             input=_as_object(input_),
             output=_as_object(output),
             error=error,
@@ -313,6 +329,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         org_id: int,
         flow_name: str,
         event_id: str,
+        retention_days: int,
         run_type: str = "",
     ) -> None:
         """
@@ -345,10 +362,12 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
             run_type=run_type,
             status=None,
             event_time=datetime.now(UTC),
+            retention_days=retention_days,
         )
         await self._emit(identity_event)
         await self._emit_node_or_event(
             event_id=event_id,
+            retention_days=retention_days,
             parent_id=session_audit_id,
             session_id=session_id,
             org_id=org_id,
@@ -367,6 +386,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         name: str = "Session End",
         flow_name: str,
         event_id: str,
+        retention_days: int,
         status: str,
         session_message_id: str | None = None,
         output: dict | None = None,
@@ -397,6 +417,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
             run_type=run_type,
             status=status,
             event_time=datetime.now(UTC),
+            retention_days=retention_days,
             output=_as_object(output),
             details={**(details or {}), "message_type": "session_end"},
         )

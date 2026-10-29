@@ -23,7 +23,7 @@ SENTINEL = "sk-SENTINEL-must-never-be-persisted-9f3a"
 
 @pytest.fixture
 def org(db):
-    return Organization.objects.create(name="Org GraphSchemaLeak")
+    return Organization.objects.create(name="Org SessionPayloadLeak")
 
 
 @pytest.fixture
@@ -56,8 +56,8 @@ def graph_with_secret_backed_llm(org):
 
 
 @pytest.mark.django_db
-class TestGraphSchemaNeverHoldsPlaintext:
-    def test_sentinel_absent_from_graph_schema_and_present_on_the_wire(
+class TestSessionPayloadSecrets:
+    def test_wire_carries_the_plaintext_key_but_no_secret_id(
         self, graph_with_secret_backed_llm, monkeypatch
     ):
         graph, secret = graph_with_secret_backed_llm
@@ -70,21 +70,14 @@ class TestGraphSchemaNeverHoldsPlaintext:
             lambda channel, message: published.append((channel, message)) or 2,
         )
 
-        session_id = service.run_session(
-            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
-        )
-        session = Session.objects.get(pk=session_id)
+        service.run_session(graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual())
 
-        stored = json.dumps(session.graph_schema)
-        assert SENTINEL not in stored, "plaintext key was persisted to graph_schema"
-        assert (
-            "api_key_secret_id" not in stored
-        ), "Secret id leaked into graph_schema; carrier must be exclude=True"
-
-        # The inverse matters just as much: proving the leak closed is worthless
-        # if crew no longer receives a usable key.
         wire = "".join(message for _, message in published)
         assert SENTINEL in wire, "crew received no plaintext key"
+        assert (
+            "api_key_secret_id" not in wire
+        ), "Secret id leaked into the Redis payload; carrier must be exclude=True"
+        assert SENTINEL not in _stored_sessions(graph), "plaintext key was persisted"
 
     def test_original_payload_object_is_not_mutated_by_publishing(
         self, graph_with_secret_backed_llm, monkeypatch
@@ -107,47 +100,6 @@ class TestGraphSchemaNeverHoldsPlaintext:
 
         assert SENTINEL not in session_data.model_dump_json()
 
-    def test_storage_credentials_secret_key_not_in_graph_schema(
-        self, graph_with_secret_backed_llm, monkeypatch
-    ):
-        """Verify that storage_credentials secret_key (if issued) never reaches graph_schema.
-
-        storage_credentials is ephemeral and only flows to crew via the resolved
-        published message, never into Session.graph_schema persistence."""
-        graph, _ = graph_with_secret_backed_llm
-        service = SessionManagerService()
-        monkeypatch.setattr(
-            service.redis_service.redis_client,
-            "publish",
-            lambda channel, message: 2,
-        )
-
-        # Mock issue_for_session to return dummy credentials
-        from unittest.mock import patch
-        mock_creds = {"access_key": "test_access", "secret_key": "SHOULD_NOT_BE_STORED"}
-        with patch(
-            "storage_credentials.services.session_credential_service."
-            "session_credential_service.issue_for_session"
-        ) as mock_issue:
-            from src.shared.models.storage_scope import StorageCredentials
-            mock_issue.return_value = StorageCredentials(
-                access_key="test_access", secret_key="SHOULD_NOT_BE_STORED"
-            )
-
-            session_id = service.run_session(
-                graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
-            )
-            session = Session.objects.get(pk=session_id)
-
-            # Verify secret_key is not in persisted graph_schema
-            stored = json.dumps(session.graph_schema)
-            assert "SHOULD_NOT_BE_STORED" not in stored, (
-                "storage_credentials secret_key leaked into graph_schema persistence"
-            )
-            assert "secret_key" not in stored or "storage_credentials" not in stored, (
-                "graph_schema must never contain storage_credentials"
-            )
-
     def test_run_session_forwards_issued_credentials_to_the_wire(
         self, graph_with_secret_backed_llm, monkeypatch
     ):
@@ -169,7 +121,7 @@ class TestGraphSchemaNeverHoldsPlaintext:
                 access_key="AK-run-session", secret_key="SK-run-session"
             ),
         ):
-            session_id = service.run_session(
+            service.run_session(
                 graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
             )
 
@@ -177,8 +129,7 @@ class TestGraphSchemaNeverHoldsPlaintext:
             "access_key": "AK-run-session",
             "secret_key": "SK-run-session",
         }
-        session = Session.objects.get(pk=session_id)
-        assert "SK-run-session" not in json.dumps(session.graph_schema)
+        assert "SK-run-session" not in _stored_sessions(graph), "storage secret key was persisted"
 
     def test_storage_credentials_live_only_on_the_published_copy(
         self, graph_with_secret_backed_llm, monkeypatch
@@ -208,8 +159,8 @@ class TestGraphSchemaNeverHoldsPlaintext:
         )
 
         assert session_data.storage_credentials is None, (
-            "publish_session_data mutated the caller's object; those credentials "
-            "would be persisted with the session"
+            "publish_session_data mutated the caller's object; the credentials "
+            "must exist only on the published copy"
         )
         payload = json.loads(published[0])
         assert payload["storage_credentials"] == {
@@ -312,38 +263,60 @@ def graph_with_secret_declaring_python_node(org):
 
 @pytest.mark.django_db
 class TestDeclaredNodeSecretsNeverPersist:
-    def test_no_plaintext_reaches_graph_schema(
+    def test_run_session_publishes_the_secret_and_stores_none_of_it(
         self, graph_with_secret_declaring_python_node, monkeypatch
     ):
         graph, secret = graph_with_secret_declaring_python_node
         published = []
-
         service = SessionManagerService()
         monkeypatch.setattr(
             service.redis_service.redis_client,
             "publish",
-            lambda channel, message: published.append((channel, message)) or 2,
+            lambda channel, message: published.append(message) or 2,
         )
 
-        session_id = service.run_session(
-            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+        service.run_session(graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual())
+
+        assert NODE_SENTINEL in "".join(published), "crew received no resolved secret"
+        assert NODE_SENTINEL not in _stored_sessions(graph), "declared secret's plaintext persisted"
+
+    def test_plaintext_reaches_only_the_published_copy(
+        self, graph_with_secret_declaring_python_node, monkeypatch
+    ):
+        graph, secret = graph_with_secret_declaring_python_node
+        published = []
+        service = SessionManagerService()
+        monkeypatch.setattr(
+            service.redis_service.redis_client,
+            "publish",
+            lambda channel, message: published.append(message) or 2,
         )
-        session = Session.objects.get(pk=session_id)
+        start_node = StartNode.objects.get(graph=graph)
+        session = service.create_session(
+            graph=graph, start_node=start_node, variables={}, trigger=TriggerSpec.manual()
+        )
+        session_data = service.create_session_data(session=session, start_node=start_node)
 
-        stored = json.dumps(session.graph_schema)
-        assert NODE_SENTINEL not in stored, "declared secret's plaintext persisted"
-        assert "secret_names" not in stored, "name carrier must be exclude=True"
+        service.redis_service.publish_session_data(
+            session_data=session_data, org_id=graph.org_id
+        )
 
-        # secrets is a plain (non-excluded) field, so it appears in graph_schema
-        # as a key — but it must always be empty there. graph_schema is built
-        # from the unresolved original, never from resolve_payload()'s copy, so
-        # a non-empty value here would mean resolution leaked into persistence.
-        for value in _find_values_by_key(session.graph_schema, "secrets"):
-            assert value == {}, "resolved plaintext must never reach graph_schema"
-
-        # The inverse: the sandbox is useless if crew never receives the value.
-        wire = "".join(message for _, message in published)
+        wire = published[0]
         assert NODE_SENTINEL in wire, "crew received no resolved secret"
+        assert "secret_names" not in wire, "name carrier must be exclude=True"
+
+        # `secrets` is a plain field, so the caller's dump has the key, but resolution
+        # happens on a copy: a non-empty value here means it ran in place.
+        caller_dump = json.loads(session_data.model_dump_json())
+        assert NODE_SENTINEL not in json.dumps(caller_dump)
+        caller_secrets = list(_find_values_by_key(caller_dump, "secrets"))
+        assert caller_secrets, "the python node's secrets field is missing from the dump"
+        assert all(value == {} for value in caller_secrets)
+
+
+def _stored_sessions(graph) -> str:
+    """Every column of every session row of the graph, as one string."""
+    return json.dumps(list(Session.objects.filter(graph=graph).values()), default=str)
 
 
 def _find_values_by_key(node, key):

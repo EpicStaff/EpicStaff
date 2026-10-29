@@ -27,6 +27,7 @@ from tables.import_export.schemas import ImportSettings
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.models import PythonCode, PythonCodeTool
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 # Both the strategy and the rollback reach the sandbox through the same service.
 SANDBOX_CLIENT = "proxies.sandbox.services.VenvService.client_class"
@@ -67,7 +68,7 @@ class FakeSandbox:
     def retrieve(self, venv_id: str) -> dict:
         return self.venvs[int(venv_id)]
 
-    def list(self, ids, limit=None, offset=None) -> dict:
+    def list(self, *, ids, search=None, order=None, limit=None, offset=None) -> dict:
         wanted = {int(venv_id) for venv_id in ids}
         return {"result": [v for key, v in self.venvs.items() if key in wanted]}
 
@@ -106,9 +107,13 @@ def tool_in(org, binding, *, name="Fetch orders", code="def main(): return 1"):
 
 
 def export_tool(tool, org):
-    return ExportService(entity_registry).export_entities(
-        EntityType.PYTHON_CODE_TOOL, [tool.id], org_id=org.id
+    export_result = ExportService(entity_registry).export_entities(
+        EntityType.PYTHON_CODE_TOOL,
+        [tool.id],
+        org_id=org.id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
     )
+    return export_result.data
 
 
 def import_into(export_data, org, user=None, effective_permissions=None):

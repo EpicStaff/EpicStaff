@@ -32,8 +32,8 @@
                 <span class="count">{{ uniqueRoles().length }}</span>
             </h3>
             <div class="role-tags">
-                @for (role of uniqueRoles(); track role) {
-                    <span class="role-tag">{{ role }}</span>
+                @for (role of uniqueRoles(); track role.id) {
+                    <span class="role-tag">{{ role.label }}</span>
                 }
             </div>
         </div>
@@ -72,7 +72,14 @@
                         </div>
 
                         <div class="right">
-                            <span class="org-role">{{ roleLabel(item.role) }}</span>
+                            <button
+                                class="org-role"
+                                type="button"
+                                [attr.aria-label]="rolePermissionsLabel(item)"
+                                (click)="openRolePermissions(item)"
+                            >
+                                {{ roleLabel(item.role) }}
+                            </button>
                         </div>
                     </app-list-row>
                 </ng-template>

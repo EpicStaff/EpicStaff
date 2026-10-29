@@ -28,12 +28,12 @@ frontend → django_app POST /api/audit/token/ (RBAC) → JWT → auditor GET/PO
 This is the seam the whole `auditor` service is built around — swapping backends should never touch `crew`, `django_app`, or the shared client/model at all.
 
 1. **Write a new repository**: `src/auditor/app/repositories/<newdb>_repository.py`, implementing `AuditRepository` (`repositories/base.py`):
-   - `write_batch(events: list[T])` — must be idempotent by `event.id` (re-sending the same id overwrites, never duplicates — this is what makes the client's retry-on-failure path safe).
+   - `write_batch(events: list[T])` — must be idempotent by `event.id` (re-sending the same id overwrites, never duplicates — this is what makes the client's retry-on-failure path safe). On OpenSearch this holds within one receive month: a retry received after midnight UTC on the 1st lands in the next month's index, next to the first copy (see "Cross-month retry duplicates" below).
    - `query(query: dict, cursor, size)` — `query` is a fully-compiled, backend-native query clause (the output of `repositories/compiler.py::QueryCompiler.compile()` plus the always-injected org_id/retention_days scoping); translate it into the new DB's native query shape. Return `(events, next_cursor | None)`.
    - `close()`.
 2. **Write a client wrapper**: `src/auditor/app/db/<newdb>_client.py`, mirroring `db/opensearch_client.py` — built during `lifespan` (`app/main.py`), never at import time.
 3. **Register it**: add one entry to `_BACKEND_BUILDERS` in `repositories/factory.py`, keyed by whatever value `AUDIT_STORAGE_BACKEND` should be set to.
-4. **Replace `index_setup/`** with the new DB's schema-init equivalent (or delete it if the new DB is schemaless) — this runs from `entrypoint.sh` on every boot today (`python -m app.index_setup.runner`), idempotently, looping `app.domains.registry.DOMAINS` and creating one index per domain's `IndexSpec`.
+4. **Replace `index_setup/`** with the new DB's schema-init equivalent (or delete it if the new DB is schemaless) — this runs from `entrypoint.sh` on every boot today (`python -m app.index_setup.runner`), idempotently: it installs the ISM retention policies, puts the `audit_events` index template, and drops the legacy single index (see "How audit events are stored and expired" below). The new DB needs its own answer to per-tier expiry, not just schema init.
 5. **Update compose**: swap the `opensearch` service block for the new DB's in `docker-compose.yaml`/`.dev.yaml`/`.override.yaml`; update the auditor service's env vars.
 6. `controllers/{ingest,query,export}_routes.py` need **zero changes** — they only ever call the `AuditRepository` interface (`repositories/base.py`), never a concrete backend class.
 
@@ -45,19 +45,34 @@ Also re-derive the type-drift answer for `input`/`output`/`details`: these hold 
 
 ---
 
+## How audit events are stored and expired
+
+- **Per-tier monthly indices.** Every event is written to `audit_events-{tier}-{yyyy.mm}`, e.g. `audit_events-90d-2026.10` or `audit_events-unlimited-2026.10`. The tier is the event's `retention_days` (stamped by `crew` from the organization's effective audit retention): `30d`, `90d`, `180d`, `365d`, or `unlimited` for 0. A value outside those choices is stored as `unlimited` and logged — never in a shorter tier.
+- **Receive-time routing.** The month is when `auditor` received the event, in UTC — the same instant stamped as `record_time` — never `event_time`. A sender's clock skew or a late delivery therefore cannot route an event into a month that is already read-only. Routing lives in `app/repositories/index_routing.py::index_name_for(index, event, received_at)`; `OpenSearchAuditRepository.write_batch` calls it per event with its domain's `IndexSpec`.
+- **Read pattern.** Every search and export reads `audit_events-*` (`IndexSpec.read_pattern`) and still filters on `event_time`. The pattern needs the hyphen, so it never matches the legacy `audit_events`.
+- **ISM policies.** One policy per tier, `audit-retention-{tier}`, attached through its `ism_template` to `audit_events-{tier}-*`. An index stays `open` (writable) for 33 days from creation, then goes `read_only` (writes blocked, still searchable — deliberately not *closed*, which would make it unsearchable), then is deleted at `retention + 33` days (`30d` → 63d, `90d` → 123d, `180d` → 213d, `365d` → 398d). `unlimited` has no delete state and stays `read_only` forever. A whole month expires at once, so an event can outlive its tier by up to about a month.
+- **Runner order** (`app/index_setup/runner.py::setup_indices`, every boot, once per domain in `app.domains.registry.DOMAINS`; each domain's `IndexSpec` supplies the index prefix, the mapping and the ISM policy id prefix): (1) ISM policies — first, because an `ism_template` only attaches to indices created after the policy exists; an unchanged policy is left alone, a changed one is re-PUT with `if_seq_no`/`if_primary_term`; (2) the composable index template `audit_events` over `audit_events-*`, built from `app/domains/sessions/mappings/0001_audit_events.json`; (3) the legacy single index `audit_events` is deleted if it still exists (logged as a warning with its doc count; an alias of that name is left alone). Indices are never pre-created: the first write of a month auto-creates that month's index from the template, so `action.auto_create_index` must stay enabled for `audit_events-*`. During a rolling deploy, a replica still on the old version can recreate `audit_events` (its boot-time runner creates it, and its writes go there); the next boot of a new replica drops it again, and the events written there in the meantime are lost with it.
+- **Replicas booting together.** Every step tolerates another replica doing the same work at the same moment: a policy written between our GET and conditional PUT is a 409 that is accepted, the template PUT simply overwrites with the same body, and the legacy index vanishing at any point of the exists/get/count/delete sequence counts as dropped. Replicas of *different* versions are not converged: during a rolling deploy they overwrite each other's ISM policy on every boot until all run the new version, and an index created in that window attaches whichever policy version was stored then — move it afterwards with `change_policy`.
+- **Changing a policy.** Bump `_POLICY_REVISION` in `app/index_setup/retention.py` with every change to the policy body: the runner compares only the keys it sends, so a change that only removes a key is otherwise never detected.
+- **Changing a policy does not touch existing indices.** The runner updates the stored policy, but every managed index keeps the version it started with; move existing ones with `POST _plugins/_ism/change_policy/audit_events-<tier>-*` and `{"policy_id": "audit-retention-<tier>"}`.
+
+- **Cross-month retry duplicates.** A re-send of an event received in a later month than the first copy (a retry across midnight UTC on the 1st) is written to that month's index, so the event is stored twice with the same `id`. A search can return both copies, and because both have the same sort values (`event_time`, `id`), `search_after` paging can skip one of them at a page boundary. Export de-duplicates by `id`, so an export file contains one copy.
+
+---
+
 ## How to change the OpenSearch mapping (while staying on OpenSearch)
 
-- **Adding a field** is additive and safe — extend `app/domains/sessions/mappings/0001_audit_events.json` and issue a plain `PUT audit_events/_mapping` against the live index (the idempotent-create runner won't do this for you; it only creates the index if it's missing).
-- **Changing an existing field's type is not a live operation.** OpenSearch cannot reinterpret already-indexed data. You need: a new index with the new mapping → `_reindex` (with a Painless script if the shape changes, not just the type) → alias swap. Never attempt an in-place type change — it's rejected, and the idempotent runner won't notice the drift because the index already exists.
-- **No reindex/alias-swap tooling exists yet** in `index_setup/runner.py` (it only does idempotent create-if-missing, once per domain in `app.domains.registry.DOMAINS`). The `flat_object` fix applied earlier in this refactor used a dev-only delete+recreate because there was no real data to preserve — do **not** do that once real data exists; build the reindex+alias-swap path first.
-- Full field-format rationale (why `error` is `text`+`wildcard`, why `flat_object` for `input`/`output`/`details`, why `event_time` not `record_time`) lives in `app/domains/sessions/mappings/README.md` — read it before changing any field's type, not just this doc.
+- **Adding a field** is additive and safe — extend `app/domains/sessions/mappings/0001_audit_events.json`. The template change reaches only indices created after the next boot; for the existing monthly indices issue a plain `PUT audit_events-*/_mapping` (the runner won't do this for you).
+- **Changing an existing field's type is not a live operation.** OpenSearch cannot reinterpret already-indexed data. Indices created after the template change get the new type, but existing months keep the old one, and a search over `audit_events-*` then sees one field with two types. Fixing existing months needs a `_reindex` into new indices (with a Painless script if the shape changes, not just the type). Never attempt an in-place type change — it's rejected.
+- **No reindex tooling exists yet** in `index_setup/`. The `flat_object` fix applied earlier in this refactor used a dev-only delete+recreate because there was no real data to preserve — do **not** do that once real data exists; build the reindex path first.
+- Full field-format rationale (why `error` is `text`+`wildcard`, why `flat_object` for `input`/`output`/`details`, why `event_time` not `record_time`, why one shard) lives in `app/domains/sessions/mappings/README.md` — read it before changing any field's type, not just this doc.
 
 ---
 
 ## How to add a new field to `SessionAuditEvent`
 
 1. Add the field to `src/shared/models/audit/session_audit.py`.
-2. Add it to the OpenSearch mapping (`app/domains/sessions/mappings/0001_audit_events.json`) — additive, so a live `PUT _mapping` is enough, no migration needed.
+2. Add it to the OpenSearch mapping (`app/domains/sessions/mappings/0001_audit_events.json`) — additive, so no migration is needed: new monthly indices pick it up from the template, and a `PUT audit_events-*/_mapping` adds it to the existing ones.
 3. Populate it from wherever it's sourced — most likely `SessionAuditWriter` (`src/shared/audit/writers/session_writer.py`) if it's a session/node-level field, or inline at `django_app`'s HITL call site if it's specific to that path.
 4. If it should be exportable, it's already covered — `export_routes.py::_to_csv` derives its CSV columns from `SessionAuditEvent.model_fields`, not from the first row, so a new field appears in every export automatically (including an all-empty column on a zero-result export, rather than a broken zero-byte file).
 
@@ -185,7 +200,7 @@ and will self-expire).
 
 ## How to trace one node/session end-to-end for debugging
 
-Both session and node ids are **deterministic** — you can compute the expected id locally and `GET` it directly by `_id`, sidestepping any search-relevance ambiguity:
+Both session and node ids are **deterministic** — you can compute the expected id locally and look it up with an `ids` query, sidestepping any search-relevance ambiguity:
 
 ```bash
 # session identity doc id
@@ -194,13 +209,14 @@ python -c "import uuid; ns = uuid.UUID('c6e6a7c0-6b3b-4c2b-9f2e-8e6a2a2b6b3a'); 
 # node wrapper doc id
 python -c "import uuid; ns = uuid.UUID('c6e6a7c0-6b3b-4c2b-9f2e-8e6a2a2b6b3a'); print(str(uuid.uuid5(ns, '<session_id>:<node_name>:<execution_order>')))"
 
-curl -u admin:<password> "https://localhost:9200/audit_events/_doc/<id>"
+# the month (and tier) of the doc is not known up front, so search the pattern by id
+curl -u admin:<password> "https://localhost:9200/audit_events-*/_search" -H 'content-type: application/json' -d '{"query": {"ids": {"values": ["<id>"]}}}'
 ```
 
 Then range-scan everything else in that session/node with `parent_id`/`session_id`:
 
 ```bash
-curl -u admin:<password> "https://localhost:9200/audit_events/_search" -H 'content-type: application/json' -d '{"query": {"term": {"parent_id": "<node_or_session_id>"}}}'
+curl -u admin:<password> "https://localhost:9200/audit_events-*/_search" -H 'content-type: application/json' -d '{"query": {"term": {"parent_id": "<node_or_session_id>"}}}'
 ```
 
 Remember `kind="session"`/`kind="node"` wrapper docs always have `status: null` — that's permanent, not a sign anything's stuck. The real outcome is on the sibling `kind="event"` row ("Finish"/"Error"/"Session End").
@@ -253,7 +269,7 @@ factory following the same shape. Pick the right auth dependency:
 - `src/django_app/tables/views/audit_token_views.py` — token minting.
 - `src/auditor/app/main.py`, `controllers/*.py`, `core/security.py` — the service itself.
 - `src/auditor/app/domains/base.py`, `domains/registry.py` — the audit-domain abstraction (`AuditDomain`, `ApiSpec`, `ScopingPolicy`, the per-domain registry; see `wiki/services/auditor.md` for the full code map).
-- `src/auditor/app/domains/sessions/` — the `sessions` domain: `fields.py` (field catalog), `computed.py` (`duration`), `expansion.py` (match-scope), `index.py`/`mappings/` (OpenSearch index), `domain.py` (assembles the `AuditDomain`), `docs.py` (sessions-specific swagger content).
+- `src/auditor/app/domains/sessions/` — the `sessions` domain: `fields.py` (field catalog), `computed.py` (`duration`), `expansion.py` (match-scope), `index.py`/`mappings/` (OpenSearch index family and template mapping), `domain.py` (assembles the `AuditDomain`), `docs.py` (sessions-specific swagger content).
 - `src/auditor/app/repositories/{base,opensearch_repository,factory}.py` — the backend-swap seam.
 - `src/auditor/app/repositories/compiler.py` — `QueryCompiler`: FilterNode AST → OpenSearch DSL.
 - `src/auditor/app/filtering/{ast.py,query_language.py,computed.py,constants.py}` — the shared FilterNode AST, its text-query parser (see [`Filtering_And_Query_Language.md`](./Filtering_And_Query_Language.md)), computed-leaf splitting, and shared op-set constants.
@@ -261,4 +277,6 @@ factory following the same shape. Pick the right auth dependency:
 - `src/auditor/app/services/{matching.py,duration_filter.py}` — match-scope expansion orchestration + `filter_matched` flagging, and computed-field (`duration`) over-fetch filtering.
 - `src/auditor/app/services/export_job_service.py`, `src/shared/audit/export_jobs.py` — export job Redis bookkeeping (see "How the export job lifecycle works" above).
 - `src/manager/services/audit_export_cleanup_service.py` — the TTL sweep that deletes expired export jobs/files.
-- `src/auditor/app/index_setup/runner.py` — idempotent per-domain index creation on boot.
+- `src/auditor/app/index_setup/runner.py` — boot-time index setup: ISM policies, then the index template, then the legacy-index drop.
+- `src/auditor/app/index_setup/retention.py` — the per-tier ISM policies and the index template of a domain's `IndexSpec`.
+- `src/auditor/app/repositories/index_routing.py` — `index_name_for`: which tiered monthly index an event is written to.

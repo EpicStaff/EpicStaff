@@ -84,6 +84,8 @@ KEY_INDEXES = {
     "ix_conversation_mine_test": "(org_id, assigned_operator_id, last_message_at DESC, id DESC) WHERE ((assigned_operator_id IS NOT NULL) AND is_test AND (last_message_at IS NOT NULL))",
     "ix_conversation_mine_closed": "(org_id, assigned_operator_id, closed_at DESC, id DESC) WHERE ((assigned_operator_id IS NOT NULL) AND (closed_at IS NOT NULL) AND (last_message_at IS NOT NULL) AND (NOT is_test))",
     "ix_conversation_binding_id_open_activity": "(binding_id, last_message_at, id) WHERE ((closed_at IS NULL) AND (last_message_at IS NOT NULL) AND (NOT is_test) AND ((run_state)::text = 'idle'::text))",
+    # The retention purge: an org's closed conversations by last activity, oldest first.
+    "ix_conversation_org_id_closed_activity": "(org_id, COALESCE(last_message_at, created_at)) WHERE (closed_at IS NOT NULL)",
     # conversation_id leads: a conversation's delete cascades to its events through it.
     "ix_event_conversation_seq": "(conversation_id, stream, seq)",
     "ix_conversation_org_id_signed_subject": "(org_id, lower((subject)::text) text_pattern_ops) WHERE is_signed",

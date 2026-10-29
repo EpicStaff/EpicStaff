@@ -2,13 +2,14 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { NgZone } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { GetMeResponse, ShortcutSettings } from '@shared/models';
+import { ActionCode, GetMeResponse, ResourceCode, ShortcutSettings } from '@shared/models';
 
 import { GetGraphLightRequest } from '../../../../../../features/flows/models/graph.model';
 import { ProfileService } from '../../../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../../../services/config';
 import { ToastMessage, ToastService } from '../../../../../../services/notifications';
 import { KeymapService, PLATFORM_IS_MAC } from '../../../../../../visual-programming/services/keymap.service';
+import { grantPermissions } from '../../../../../../visual-programming/utils/testing/permissions.fixture';
 import { ShortcutsModalComponent } from './shortcuts-modal.component';
 
 const PROFILE_URL = '/api/profile/';
@@ -46,7 +47,41 @@ const NODE_LABELS_AND_LETTERS: readonly (readonly [string, string])[] = [
     ['End', 'E'],
 ];
 
-const BASE_SECTIONS = ['Editing', 'Navigating', 'Selection', 'Zoom', 'Nodes'];
+const BASE_SECTIONS = ['Editing', 'Navigating', 'Selection', 'Zoom', 'Flow actions', 'Nodes'];
+
+const FLOW_ROWS_WINDOWS: readonly RenderedRow[] = [
+    { label: 'Run', chords: [['Ctrl', 'Enter']] },
+    { label: 'Stop session', chords: [['Ctrl', 'Shift', 'Enter']] },
+    { label: 'Sessions', chords: [['Alt', 'S']] },
+    { label: 'Open / close chat', chords: [['Alt', 'C']] },
+    { label: 'Get cURL', chords: [['Alt', 'K']] },
+    { label: 'Auto arrange', chords: [['Alt', 'L']] },
+    { label: 'Add files', chords: [['Alt', 'U']] },
+    { label: 'Export / Import menu', chords: [['Alt', 'X']] },
+    { label: 'Extract to Subflow', chords: [['Alt', 'G']] },
+    { label: 'Flow settings', chords: [['Alt', ',']] },
+    { label: 'Domain', chords: [['Alt', 'M']] },
+];
+
+const FLOW_ROWS_MAC: readonly RenderedRow[] = [
+    { label: 'Run', chords: [['⌘', '↩']] },
+    { label: 'Stop session', chords: [['⌘', '⇧', '↩']] },
+    { label: 'Sessions', chords: [['⌥', 'S']] },
+    { label: 'Open / close chat', chords: [['⌥', 'C']] },
+    { label: 'Get cURL', chords: [['⌥', 'K']] },
+    { label: 'Auto arrange', chords: [['⌥', 'L']] },
+    { label: 'Add files', chords: [['⌥', 'U']] },
+    { label: 'Export / Import menu', chords: [['⌥', 'X']] },
+    { label: 'Extract to Subflow', chords: [['⌥', 'G']] },
+    { label: 'Flow settings', chords: [['⌥', ',']] },
+    { label: 'Domain', chords: [['⌥', 'M']] },
+];
+
+/** Every permission a flow toolbar button checks, so every Flow actions row shows. */
+const EVERY_FLOW_PERMISSION: Partial<Record<ResourceCode, ActionCode[]>> = {
+    [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Use, ActionCode.Export],
+    [ResourceCode.Files]: [ActionCode.Read],
+};
 
 interface RenderedRow {
     label: string;
@@ -111,6 +146,7 @@ describe('ShortcutsModalComponent', () => {
             ],
         });
         httpMock = TestBed.inject(HttpTestingController);
+        grantPermissions(EVERY_FLOW_PERMISSION);
         toasts = [];
         TestBed.inject(ToastService).toasts$.subscribe((current) => (toasts = current));
     }
@@ -304,11 +340,32 @@ describe('ShortcutsModalComponent', () => {
         expect(text(root().querySelector('.shortcuts__header-title')!)).toBe('Command & Shortcuts');
     });
 
-    it('shows the sections in order, Nodes last', () => {
+    it('shows the sections in order, Flow actions just before Nodes', () => {
         setUp();
         openModal();
 
         expect(sectionTitles()).toEqual(BASE_SECTIONS);
+    });
+
+    // The columns can only keep a heading with its rows when both sit in one unbreakable box; the rest of
+    // the rows stay outside it so a long section can still continue in the next column.
+    it('keeps every section heading in one box with its first row only', () => {
+        setUp();
+        loadUser([
+            { action: 'node.agent', keys: 'Alt+KeyB' },
+            { action: 'editing.save', keys: null },
+        ]);
+        openModal();
+
+        const headingBoxes = [...BASE_SECTIONS, 'Additional'].map((title) => {
+            const [firstRow, secondRow] = rowElementsOf(title);
+            const box = cardOf(title).querySelector('.shortcuts__card-title')!.parentElement!;
+            return { title, holdsFirstRow: box.contains(firstRow), holdsSecondRow: box.contains(secondRow) };
+        });
+
+        expect(headingBoxes).toEqual(
+            [...BASE_SECTIONS, 'Additional'].map((title) => ({ title, holdsFirstRow: true, holdsSecondRow: false }))
+        );
     });
 
     it('keeps the same height when minimized', () => {
@@ -399,6 +456,20 @@ describe('ShortcutsModalComponent', () => {
         ]);
     });
 
+    it('draws one-character keys as square keycaps and keeps word keys wide', () => {
+        setUp(true);
+        openModal();
+
+        const searchRow = rowElementsOf('Navigating').find((row) => readRow(row).label === 'Node search')!;
+        const squareKeys = Array.from(searchRow.querySelectorAll('.shortcuts__key'), (key) =>
+            key.classList.contains('shortcuts__key--square')
+        );
+        expect(squareKeys).toEqual([true, true]); // ⌘ and F
+
+        const deleteRow = rowElementsOf('Editing').find((row) => readRow(row).label === 'Delete')!;
+        expect(deleteRow.querySelector('.shortcuts__key--square')).toBeNull();
+    });
+
     it.each([
         ['Windows/Linux', false, [['Ctrl', 'click']], [['Shift', 'drag']]],
         ['macOS', true, [['⌘', 'click']], [['⇧', 'drag']]],
@@ -409,17 +480,186 @@ describe('ShortcutsModalComponent', () => {
         expect(rowsOf('Selection')).toEqual([
             { label: 'Add/remove selection', chords: toggleChords },
             { label: 'Zone selection', chords: zoneChords },
+            { label: 'Move selected nodes', chords: [['Arrow keys']] },
+            { label: 'Move selected nodes faster', chords: [[zoneChords[0][0], 'Arrow keys']] },
         ]);
     });
 
-    it('shows the zoom gestures', () => {
+    it('shows the zoom keys and gestures', () => {
         setUp();
         openModal();
 
         expect(rowsOf('Zoom')).toEqual([
-            { label: 'Zoom in', chords: [['Mouse wheel up']] },
-            { label: 'Zoom out', chords: [['Mouse wheel down']] },
+            { label: 'Zoom in', chords: [['Ctrl', '+'], ['Mouse wheel up']] },
+            { label: 'Zoom out', chords: [['Ctrl', '-'], ['Mouse wheel down']] },
         ]);
+    });
+
+    it.each([
+        ['Windows/Linux', false, FLOW_ROWS_WINDOWS],
+        ['macOS', true, FLOW_ROWS_MAC],
+    ])('lists every flow toolbar action with its key on %s', (_platform, isMac, expected) => {
+        setUp(isMac);
+        openModal();
+
+        expect(rowsOf('Flow actions')).toEqual(expected);
+    });
+
+    describe('flow actions the user may not use', () => {
+        const FLOW_LABELS = FLOW_ROWS_WINDOWS.map((row) => row.label);
+
+        function flowRowLabels(): string[] {
+            return rowsOf('Flow actions').map((row) => row.label);
+        }
+
+        function pickableFlowActions(): string[] {
+            startAdding();
+            const input = actionPicker();
+            input.value = '';
+            input.dispatchEvent(new Event('input'));
+            render();
+            const options = Array.from(editor()!.querySelectorAll('[role="option"]'), text);
+            click(buttonNamed('Cancel', editor()!));
+            return options.filter((label) => FLOW_LABELS.includes(label));
+        }
+
+        function without(...hidden: string[]): string[] {
+            return FLOW_LABELS.filter((label) => !hidden.includes(label));
+        }
+
+        it.each([
+            [
+                'no access to files',
+                { [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Use, ActionCode.Export] },
+                ['Add files'],
+            ],
+            [
+                'no Use on flows',
+                {
+                    [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Export],
+                    [ResourceCode.Files]: [ActionCode.Read],
+                },
+                ['Run', 'Stop session', 'Get cURL'],
+            ],
+            [
+                'neither Export nor Update on flows',
+                { [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Use], [ResourceCode.Files]: [ActionCode.Read] },
+                ['Export / Import menu'],
+            ],
+            [
+                'Export without Update on flows',
+                {
+                    [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Use, ActionCode.Export],
+                    [ResourceCode.Files]: [ActionCode.Read],
+                },
+                [],
+            ],
+            [
+                'Update without Export on flows',
+                {
+                    [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Use],
+                    [ResourceCode.Files]: [ActionCode.Read],
+                },
+                [],
+            ],
+        ])(
+            'with %s, leaves the actions whose buttons are hidden out of the list and the picker',
+            (_user, permissions, hidden) => {
+                setUp();
+                grantPermissions(permissions);
+                openModal();
+
+                expect(flowRowLabels()).toEqual(without(...hidden));
+                expect(pickableFlowActions()).toEqual(without(...hidden));
+            }
+        );
+
+        it('shows the rows once the permission arrives while the list is open', () => {
+            setUp();
+            loadUser([{ action: 'flow.add-files', keys: 'Alt+KeyJ' }]);
+            grantPermissions({ [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Export] });
+            openModal();
+            expect(flowRowLabels()).toEqual(without('Run', 'Stop session', 'Get cURL', 'Add files'));
+            expect(sectionTitles()).toEqual(BASE_SECTIONS);
+
+            grantPermissions(EVERY_FLOW_PERMISSION);
+            render();
+
+            expect(flowRowLabels()).toEqual(FLOW_LABELS);
+            expect(customRows()).toEqual([{ label: 'Add files', keys: 'Alt J' }]);
+        });
+
+        it('hides a saved Additional row for such an action but keeps it in what is saved', () => {
+            setUp();
+            loadUser([
+                { action: 'flow.run', keys: 'Alt+KeyJ' },
+                { action: 'node.task', keys: 'Alt+KeyB' },
+            ]);
+            grantPermissions({ [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update] });
+            openModal();
+            expect(customRows()).toEqual([{ label: 'Task Node', keys: 'Alt B' }]);
+
+            click(buttonNamed('Delete Task Node shortcut'));
+
+            expect(sectionTitles()).toEqual(BASE_SECTIONS);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { overrides: {}, custom: [{ action: 'flow.run', keys: 'Alt+KeyJ' }] },
+            });
+        });
+
+        it('treats the key of an action the user cannot see as free, and saving takes it from that action', () => {
+            setUp();
+            loadUser([]);
+            grantPermissions({ [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update] });
+            openModal();
+
+            startAdding();
+            pickAction('Save');
+            record({ key: 'u', code: 'KeyU', altKey: true });
+
+            expect(feedback()).toBe('');
+            click(saveButton());
+            expect(customRows()).toEqual([{ label: 'Save', keys: 'Alt U' }]);
+            const patch = nextPatch();
+            expect(patch.body).toEqual({
+                custom_shortcuts: { overrides: {}, custom: [{ action: 'editing.save', keys: 'Alt+KeyU' }] },
+            });
+            patch.succeed();
+
+            grantPermissions(EVERY_FLOW_PERMISSION);
+            render();
+            const addFiles = rowElementsOf('Flow actions').find((row) => readRow(row).label === 'Add files')!;
+            expect(text(addFiles.querySelector('.shortcuts__keys')!)).toBe('Not set');
+        });
+
+        it('refuses a key a hidden Additional row holds without naming that row', () => {
+            setUp();
+            loadUser([{ action: 'flow.add-files', keys: 'Alt+KeyJ' }]);
+            grantPermissions({ [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update] });
+            openModal();
+
+            startAdding();
+            pickAction('Save');
+            record({ key: 'j', code: 'KeyJ', altKey: true });
+
+            expect(feedback()).toBe('Alt+J is already in use');
+            expect(saveButton().disabled).toBe(true);
+        });
+
+        it('counts a hidden Additional row among the keys Reset to defaults clears, as it changes what is saved', () => {
+            setUp();
+            loadUser([{ action: 'flow.add-files', keys: 'Shift+KeyP' }]);
+            grantPermissions({ [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update] });
+            openModal();
+
+            click(buttonNamed('Reset to defaults'));
+            const dialog = document.querySelector('app-confirmation-dialog')!;
+
+            expect(text(dialog.querySelector('.dialog-message')!)).toBe(
+                '1 additional shortcut will lose its key. Every node and flow action gets its own key back.'
+            );
+            click(buttonNamed('Cancel', dialog));
+        });
     });
 
     describe('base rows', () => {
@@ -441,12 +681,12 @@ describe('ShortcutsModalComponent', () => {
             expect(nodeRow('Agent Node')).toBe('Shift A');
         });
 
-        it('have no controls outside Nodes', () => {
+        it('have no controls outside Flow actions and Nodes', () => {
             setUp();
             loadUser([{ action: 'node.agent', keys: 'Shift+KeyP' }]);
             openModal();
 
-            for (const title of BASE_SECTIONS.filter((section) => section !== 'Nodes')) {
+            for (const title of BASE_SECTIONS.filter((section) => section !== 'Flow actions' && section !== 'Nodes')) {
                 expect(cardOf(title).querySelectorAll('button')).toHaveLength(0);
             }
         });
@@ -710,7 +950,7 @@ describe('ShortcutsModalComponent', () => {
             press(actionPicker(), { key: 'ArrowDown', code: 'ArrowDown' });
             press(actionPicker(), { key: 'Enter', code: 'Enter' });
 
-            expect(actionPicker().value).toBe('Classification Decision Table');
+            expect(actionPicker().value).toBe('Stop session');
             expect(editor()!.querySelector('[role="listbox"]')).toBeNull();
             expect(document.activeElement).toBe(keysBox());
         });
@@ -725,7 +965,7 @@ describe('ShortcutsModalComponent', () => {
 
             startAdding();
             pickAction('Task Node');
-            record({ key: 'm', code: 'KeyM', altKey: true });
+            record({ key: 'y', code: 'KeyY', altKey: true });
 
             expect(feedback()).toBe(message);
             expect(saveButton().disabled).toBe(message !== '');
@@ -879,14 +1119,14 @@ describe('ShortcutsModalComponent', () => {
             loadUser([
                 { action: 'node.agent', keys: 'Shift+KeyP' },
                 { action: 'node.task', keys: 'Shift+KeyA' },
-                { action: 'editing.save', keys: 'Alt+KeyS' },
+                { action: 'editing.save', keys: 'Alt+KeyO' },
             ]);
             openModal();
 
             click(buttonNamed('Reset to defaults'));
             const dialog = document.querySelector('app-confirmation-dialog')!;
             expect(text(dialog.querySelector('.dialog-message')!)).toBe(
-                '2 additional shortcuts will lose their keys. Every node gets its own key back.'
+                '2 additional shortcuts will lose their keys. Every node and flow action gets its own key back.'
             );
 
             click(buttonNamed('Reset', dialog));
@@ -896,7 +1136,7 @@ describe('ShortcutsModalComponent', () => {
             expect(customRows()).toEqual([
                 { label: 'Agent Node', keys: 'Not set' },
                 { label: 'Task Node', keys: 'Not set' },
-                { label: 'Save', keys: 'Alt S' },
+                { label: 'Save', keys: 'Alt O' },
             ]);
             expect(hasButton('Reset to defaults')).toBe(false);
             const patch = nextPatch();
@@ -906,7 +1146,7 @@ describe('ShortcutsModalComponent', () => {
                     custom: [
                         { action: 'node.agent', keys: null },
                         { action: 'node.task', keys: null },
-                        { action: 'editing.save', keys: 'Alt+KeyS' },
+                        { action: 'editing.save', keys: 'Alt+KeyO' },
                     ],
                 },
             });
@@ -921,7 +1161,7 @@ describe('ShortcutsModalComponent', () => {
             click(buttonNamed('Reset to defaults'));
             const dialog = document.querySelector('app-confirmation-dialog')!;
             expect(text(dialog.querySelector('.dialog-message')!)).toBe(
-                '1 additional shortcut will lose its key. Every node gets its own key back.'
+                '1 additional shortcut will lose its key. Every node and flow action gets its own key back.'
             );
             click(buttonNamed('Cancel', dialog));
 
@@ -1077,7 +1317,7 @@ describe('ShortcutsModalComponent', () => {
             openModalWithFlows([THIS_FLOW]);
 
             startAdding();
-            expect(actionOptions('Sub')).toEqual([]);
+            expect(actionOptions('Subg')).toEqual([]);
             click(buttonNamed('Cancel', editor()!));
 
             expect(customRows()).toEqual([{ label: 'Subgraph: Flow not available', keys: 'Alt 1' }]);
@@ -1841,7 +2081,9 @@ describe('ShortcutsModalComponent', () => {
 
             click(buttonNamed('Reset to defaults'));
             const dialog = document.querySelector('app-confirmation-dialog')!;
-            expect(text(dialog.querySelector('.dialog-message')!)).toBe('Every node gets its own key back.');
+            expect(text(dialog.querySelector('.dialog-message')!)).toBe(
+                'Every node and flow action gets its own key back.'
+            );
             click(buttonNamed('Reset', dialog));
 
             expect(nodeRow('Python Code Node')).toBe('Shift P');
@@ -1859,6 +2101,147 @@ describe('ShortcutsModalComponent', () => {
             expect(editor()).toBeNull();
             expect(document.activeElement).toBe(buttonNamed('Edit Python Code Node key'));
             expect(closedCount).toBe(0);
+        });
+    });
+
+    describe('flow keys', () => {
+        function loadSettings(settings: unknown): void {
+            TestBed.inject(ProfileService).getCurrentUser().subscribe();
+            httpMock.expectOne({ method: 'GET', url: PROFILE_URL }).flush({ ...BASE_USER, custom_shortcuts: settings });
+        }
+
+        function flowRow(label: string): string {
+            const row = rowElementsOf('Flow actions').find((candidate) => readRow(candidate).label === label)!;
+            return text(row.querySelector('.shortcuts__keys')!);
+        }
+
+        it('offers an edit button on every flow row', () => {
+            setUp();
+            openModal();
+
+            for (const { label } of FLOW_ROWS_WINDOWS) {
+                expect(hasButton(`Edit ${label} key`, cardOf('Flow actions'))).toBe(true);
+            }
+        });
+
+        it('edits only the key of a flow row, saves the override and returns focus to its edit button', () => {
+            setUp();
+            openModal();
+
+            click(buttonNamed('Edit Open / close chat key'));
+
+            expect(editor()!.querySelector('input[role="combobox"]')).toBeNull();
+            press(keysBox(), { key: 'j', code: 'KeyJ', altKey: true });
+            press(keysBox(), { key: 'Enter', code: 'Enter' });
+
+            expect(editor()).toBeNull();
+            expect(flowRow('Open / close chat')).toBe('Alt J');
+            expect(hasButton('Reset Open / close chat key')).toBe(true);
+            expect(document.activeElement).toBe(buttonNamed('Edit Open / close chat key'));
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [], overrides: { 'flow.chat': 'Alt+KeyJ' } },
+            });
+        });
+
+        it('says Not set on the chat row when an Additional shortcut already uses Alt+C', () => {
+            setUp();
+            loadUser([{ action: 'editing.save', keys: 'Alt+KeyC' }]);
+            openModal();
+
+            expect(flowRow('Open / close chat')).toBe('Not set');
+            expect(customRows()).toEqual([{ label: 'Save', keys: 'Alt C' }]);
+        });
+
+        it('gives a flow action its own key back with its reset button', () => {
+            setUp();
+            loadSettings({ custom: [], overrides: { 'flow.chat': 'Alt+KeyJ' } });
+            openModal();
+
+            expect(hasButton('Reset Run key')).toBe(false);
+            click(buttonNamed('Reset Open / close chat key'));
+
+            expect(flowRow('Open / close chat')).toBe('Alt C');
+            expect(hasButton('Reset Open / close chat key')).toBe(false);
+            expect(nextPatch().body).toEqual({ custom_shortcuts: { custom: [], overrides: {} } });
+        });
+
+        it('edits the Stop session key and saves the override', () => {
+            setUp();
+            openModal();
+
+            click(buttonNamed('Edit Stop session key'));
+            press(keysBox(), { key: 'j', code: 'KeyJ', altKey: true });
+            press(keysBox(), { key: 'Enter', code: 'Enter' });
+
+            expect(flowRow('Stop session')).toBe('Alt J');
+            expect(hasButton('Reset Stop session key')).toBe(true);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [], overrides: { 'flow.stop-session': 'Alt+KeyJ' } },
+            });
+        });
+
+        it('gives Stop session Ctrl+Shift+Enter back with its reset button', () => {
+            setUp();
+            loadSettings({ custom: [], overrides: { 'flow.stop-session': 'Alt+KeyJ' } });
+            openModal();
+
+            click(buttonNamed('Reset Stop session key'));
+
+            expect(flowRow('Stop session')).toBe('Ctrl Shift Enter');
+            expect(hasButton('Reset Stop session key')).toBe(false);
+            expect(nextPatch().body).toEqual({ custom_shortcuts: { custom: [], overrides: {} } });
+        });
+
+        it('gives changed flow keys back on Reset to defaults and clears the Additional key on one of them', () => {
+            setUp();
+            loadSettings({
+                custom: [{ action: 'editing.save', keys: 'Alt+KeyC' }],
+                overrides: { 'flow.run': 'Alt+KeyR' },
+            });
+            openModal();
+
+            click(buttonNamed('Reset to defaults'));
+            const dialog = document.querySelector('app-confirmation-dialog')!;
+            expect(text(dialog.querySelector('.dialog-message')!)).toBe(
+                '1 additional shortcut will lose its key. Every node and flow action gets its own key back.'
+            );
+            click(buttonNamed('Reset', dialog));
+
+            expect(flowRow('Run')).toBe('Ctrl Enter');
+            expect(flowRow('Open / close chat')).toBe('Alt C');
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [{ action: 'editing.save', keys: null }], overrides: {} },
+            });
+        });
+
+        it('records Alt+, on French AZERTY as the Flow settings key, not the Domain key', () => {
+            setUp();
+            openModal();
+            startAdding();
+
+            pickAction('Save');
+            record({ key: ',', code: 'KeyM', altKey: true });
+
+            expect(feedback()).toBe(
+                "Alt+, is Flow settings's key — saving moves it here; Flow settings will have no key"
+            );
+        });
+
+        it('offers the flow actions in the Additional action picker', () => {
+            setUp();
+            openModal();
+            startAdding();
+            const groupTitles = Array.from(editor()!.querySelectorAll('.shortcut-picker__group-title'), text);
+            expect(groupTitles[0]).toBe('Flow actions');
+
+            pickAction('Get cURL');
+            record({ key: 'j', code: 'KeyJ', altKey: true });
+            click(saveButton());
+
+            expect(customRows()).toEqual([{ label: 'Get cURL', keys: 'Alt J' }]);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [{ action: 'flow.curl', keys: 'Alt+KeyJ' }], overrides: {} },
+            });
         });
     });
 });

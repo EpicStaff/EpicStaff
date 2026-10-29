@@ -109,6 +109,8 @@
         gap: 24px;
         padding: 24px 40px;
         overflow-y: auto;
+        // Reserve the scrollbar's width up front, so expanding a section does not shift the content sideways.
+        scrollbar-gutter: stable;
     }
 
     .readonly-field {
@@ -251,8 +253,48 @@
         }
     }
 
+    .description-section,
     .parameters-section {
         gap: 8px;
+    }
+
+    // Same disclosure look as the shared section header: a small filled chevron before a clickable label.
+    .collapse-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        font-size: var(--text-body-medium-size);
+        line-height: 18px;
+        font-weight: var(--text-body-medium-weight);
+        color: var(--gray-213);
+        cursor: pointer;
+
+        &:hover {
+            color: var(--white);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+
+        &__chevron {
+            flex-shrink: 0;
+            color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
+            transition: transform 0.15s ease;
+
+            &--rotated {
+                transform: rotate(-90deg);
+            }
+        }
+
+        &__required {
+            color: var(--color-required-asterisk);
+            margin-left: 4px;
+        }
     }
 
     .parameters-header {

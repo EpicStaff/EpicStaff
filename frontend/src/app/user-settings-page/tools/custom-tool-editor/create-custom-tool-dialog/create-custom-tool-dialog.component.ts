@@ -55,8 +55,10 @@ import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
 import { CustomToolsService } from '../../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../features/tools/services/tools-events.service';
-import { Venv } from '../../../../features/virtual-environments/models/venv.model';
+import { BUILDING_STATUSES, Venv } from '../../../../features/virtual-environments/models/venv.model';
 import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
+import { confirmBuildingVenv } from '../../../../features/virtual-environments/utils/confirm-building-venv';
+import { toVenvSelectItems } from '../../../../features/virtual-environments/utils/venv-select-items';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { NodeSecretsFieldComponent } from '../../../../visual-programming/components/node-secrets-field/node-secrets-field.component';
@@ -116,10 +118,27 @@ const DEFAULT_PYTHON_CODE = `# Replace this comment with your implementation.
 const BUILT_IN_SAVE_TOOLTIP =
     'Built-in tools are read-only. Create an editable copy to make changes; the original stays untouched.';
 
-const EXECUTION_TIMEOUT_HINT = 'Agents stop waiting after their own tool timeout.';
-
 const VARIABLES_SCHEMA_TOOLTIP =
     'Variables must be a JSON array. Each item defines one parameter: name, type, description, input_type, required, and default_value. input_type can be agent_input (agent supplies it), user_input (configured/default value, hidden from the agent), or mixed (agent may override configured/default value).';
+
+/** The user's last Parameters mode (table or JSON), stored as 'true' (table) or 'false' (JSON). */
+const PARAMETERS_TABLE_MODE_STORAGE_KEY = 'tools:parametersTableMode';
+
+function readParametersTableModeFromStorage(): boolean {
+    try {
+        return localStorage.getItem(PARAMETERS_TABLE_MODE_STORAGE_KEY) !== 'false';
+    } catch {
+        return true;
+    }
+}
+
+function writeParametersTableModeToStorage(enabled: boolean): void {
+    try {
+        localStorage.setItem(PARAMETERS_TABLE_MODE_STORAGE_KEY, String(enabled));
+    } catch {
+        /* ignore storage errors (e.g. private mode / quota) */
+    }
+}
 
 @Component({
     selector: 'app-create-custom-tool-dialog',
@@ -230,16 +249,58 @@ export class CreateCustomToolDialogComponent {
 
     public readonly venvs = signal<Venv[]>([]);
     public readonly loadingVenvs = signal<boolean>(false);
+    /** Reloaded when the picker opens: a build that finished since the dialog was opened
+     *  must not still be shown as running. */
+    public onVenvDropdownOpened(): void {
+        this.loadVenvs();
+    }
+
+    public onVenvChanged(value: unknown): void {
+        const venv = this.venvs().find((item) => item.id === value);
+        if (!venv || !BUILDING_STATUSES.has(venv.status)) {
+            this.acceptedVenvId = (value as number | null) ?? null;
+            return;
+        }
+        confirmBuildingVenv(this.confirmDialog, venv.name)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((confirmed) => {
+                // The picker has written the value already, so declining puts the previous
+                // one back rather than preventing anything.
+                if (confirmed) this.acceptedVenvId = venv.id;
+                else this.form.controls.venvId.setValue(this.acceptedVenvId);
+            });
+    }
+
+    private loadVenvs(): void {
+        this.loadingVenvs.set(true);
+        this.venvsApiService
+            .getVenvs()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (list) => {
+                    this.venvs.set(list);
+                    this.loadingVenvs.set(false);
+                },
+                error: () => this.loadingVenvs.set(false),
+            });
+    }
+
     public readonly venvItems = computed<SelectItem[]>(() => [
+        // Outside the groups, so it stays the first row rather than sinking under a heading.
         { name: 'No venv', value: null },
-        ...this.venvs().map((venv) => ({ name: venv.name, value: venv.id })),
+        ...toVenvSelectItems(this.venvs()),
     ]);
+
+    /** The venv the user last settled on, to go back to when a warning is declined. */
+    private acceptedVenvId: number | null = this.selectedTool()?.python_code?.venv_id ?? null;
 
     public readonly activeEditor = signal<ActiveEditor>(ActiveEditor.Python);
     public readonly pythonSectionExpanded = signal(false);
-    public readonly jsonSectionExpanded = signal(false);
-    public readonly parametersTableMode = signal(true);
-    public readonly parametersSwitchOn = signal(true);
+    public readonly descriptionExpanded = signal(true);
+    /** A new tool always starts in table mode; an existing one opens in the mode the user last picked. */
+    public readonly parametersTableMode = signal(this.isEditMode() ? readParametersTableModeFromStorage() : true);
+    public readonly parametersSwitchOn = signal(this.parametersTableMode());
+    public readonly jsonSectionExpanded = signal(!this.parametersTableMode());
     public readonly isJsonValid = signal(true);
     public readonly jsonIssues = signal<JsonError[]>([]);
     public readonly lastValidJson = signal('');
@@ -256,7 +317,6 @@ export class CreateCustomToolDialogComponent {
      * new tool, which then gets the backend default.
      */
     protected readonly executionTimeout = signal<ExecutionTimeoutFormField | null>(null);
-    protected readonly executionTimeoutHint = EXECUTION_TIMEOUT_HINT;
     private tableImportWasInvalid = false;
 
     private initialSnapshot = '';
@@ -271,17 +331,7 @@ export class CreateCustomToolDialogComponent {
             }
         });
 
-        this.loadingVenvs.set(true);
-        this.venvsApiService
-            .getVenvs()
-            .pipe(takeUntilDestroyed())
-            .subscribe({
-                next: (list) => {
-                    this.venvs.set(list);
-                    this.loadingVenvs.set(false);
-                },
-                error: () => this.loadingVenvs.set(false),
-            });
+        this.loadVenvs();
 
         const parsedDefault = parseToolVariablesJson(this.form.controls.variablesJson.value);
         this.tableVariables.set(parsedDefault.valid ? parsedDefault.variables : []);
@@ -403,6 +453,7 @@ export class CreateCustomToolDialogComponent {
     }
 
     private applyDisableTableMode(): void {
+        writeParametersTableModeToStorage(false);
         this.parametersTableMode.set(false);
         this.parametersSwitchOn.set(false);
         if (!this.isBuiltIn()) {
@@ -421,6 +472,7 @@ export class CreateCustomToolDialogComponent {
     }
 
     private applyEnableTableMode(variables: ToolVariable[]): void {
+        writeParametersTableModeToStorage(true);
         this.tableVariables.set(variables);
         this.parametersTableMode.set(true);
         this.parametersSwitchOn.set(true);

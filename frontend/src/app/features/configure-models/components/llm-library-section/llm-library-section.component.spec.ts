@@ -2,7 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { DebugElement, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shared/components';
+import { AuthorshipDetailsDialogService } from '@shared/components';
 import {
     ActionCode,
     ElevenLabsRealtimeConfig,
@@ -16,8 +16,13 @@ import {
     ResourceCode,
     UserSummary,
 } from '@shared/models';
-import { EmbeddingConfigStorageService, LlmConfigStorageService, LLMLibraryService } from '@shared/services';
-import { of } from 'rxjs';
+import {
+    BulkDeleteService,
+    EmbeddingConfigStorageService,
+    LlmConfigStorageService,
+    LLMLibraryService,
+} from '@shared/services';
+import { EMPTY, of } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -142,17 +147,18 @@ function providerGroup(configType: ModelTypes, models: LlmLibraryModel[]): LlmLi
     return { id: `openai-${configType}`, providerName: 'OpenAI', providerIconPath: 'openai', models, configType };
 }
 
-/** An in-memory voice config storage: deleting a config removes it from `configs`, as the real one does. */
-function realtimeStorageFake(initial: VoiceConfig[] = []): object {
-    const configs = signal(initial);
-    return {
-        configs,
-        getAllConfigs: () => of(configs()),
-        deleteConfig: (id: number) => {
-            configs.update((list) => list.filter((config) => config.id !== id));
-            return of(undefined);
-        },
-    };
+// The header buttons collapse on overflow and observe their size; jsdom has no ResizeObserver.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
+function realtimeStorageStub(configs: VoiceConfig[] = []): object {
+    return { configs: signal(configs), getAllConfigs: () => of(configs) };
 }
 
 function render(
@@ -162,9 +168,11 @@ function render(
     fixture: ComponentFixture<LlmLibrarySectionComponent>;
     open: ReturnType<typeof vi.fn>;
     openDialog: ReturnType<typeof vi.fn>;
+    runBulkDelete: ReturnType<typeof vi.fn>;
 } {
     const open = vi.fn();
     const openDialog = vi.fn();
+    const runBulkDelete = vi.fn(() => EMPTY);
     const libraryService = {
         providerGroups: signal(
             [ModelTypes.LLM, ModelTypes.EMBEDDING].map((type) =>
@@ -186,18 +194,18 @@ function render(
             { provide: EmbeddingConfigStorageService, useValue: { configs: signal([EMBEDDING_CONFIG]) } },
             {
                 provide: OpenAIRealtimeConfigStorageService,
-                useValue: realtimeStorageFake(voiceConfigs.filter((config) => config === OPENAI_VOICE_CONFIG)),
+                useValue: realtimeStorageStub(voiceConfigs.filter((config) => config === OPENAI_VOICE_CONFIG)),
             },
             {
                 provide: ElevenLabsRealtimeConfigStorageService,
-                useValue: realtimeStorageFake(voiceConfigs.filter((config) => config === ELEVENLABS_VOICE_CONFIG)),
+                useValue: realtimeStorageStub(voiceConfigs.filter((config) => config === ELEVENLABS_VOICE_CONFIG)),
             },
             {
                 provide: GeminiRealtimeConfigStorageService,
-                useValue: realtimeStorageFake(voiceConfigs.filter((config) => config === GEMINI_VOICE_CONFIG)),
+                useValue: realtimeStorageStub(voiceConfigs.filter((config) => config === GEMINI_VOICE_CONFIG)),
             },
             { provide: AuthorshipDetailsDialogService, useValue: { open } },
-            { provide: ConfirmationDialogService, useValue: { confirmDelete: () => of(true) } },
+            { provide: BulkDeleteService, useValue: { run: runBulkDelete } },
             { provide: DefaultModelsStorageService, useValue: {} },
             { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
             { provide: Dialog, useValue: { open: openDialog } },
@@ -209,7 +217,7 @@ function render(
     });
     const fixture = TestBed.createComponent(LlmLibrarySectionComponent);
     fixture.detectChanges();
-    return { fixture, open, openDialog };
+    return { fixture, open, openDialog, runBulkDelete };
 }
 
 /** Fires the card's "View Details" output, as choosing the menu item does; returns the card's ⋮ trigger. */
@@ -250,6 +258,95 @@ describe('LlmLibrarySectionComponent "View Details"', () => {
         viewDetailsOn(fixture, staleModel);
 
         expect(open).not.toHaveBeenCalled();
+    });
+});
+
+describe('LlmLibrarySectionComponent select mode', () => {
+    function headerButtonLabels(fixture: ComponentFixture<LlmLibrarySectionComponent>): string[] {
+        return Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll('.header-right > app-button'),
+            (button) => button.textContent?.trim() ?? ''
+        );
+    }
+
+    function enterSelectMode(fixture: ComponentFixture<LlmLibrarySectionComponent>): void {
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('app-bulk-select-dropdown .bulk-select__main')!
+            .click();
+        fixture.detectChanges();
+    }
+
+    it('swaps "Add Configuration" for a red "Delete" with a trash icon next to the select dropdown', () => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+            grantedActions: [ActionCode.Create, ActionCode.Delete],
+        });
+        expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
+
+        enterSelectMode(fixture);
+
+        expect(fixture.componentInstance.selectMode()).toBe(true);
+        expect(headerButtonLabels(fixture)).toEqual(['Delete']);
+        const deleteButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+            '.header-right > app-button button'
+        )!;
+        expect(deleteButton.classList).toContain('btn-danger');
+        expect(deleteButton.querySelector('app-svg-icon.btn-icon.left use')?.getAttribute('href')).toBe('#icon-trash');
+        expect(deleteButton.disabled).toBe(true);
+    });
+
+    it('gives LLM, embedding and voice cards a secondary (light box, dark tick) selection checkbox', () => {
+        const { fixture } = render(
+            [libraryModel(ModelTypes.LLM, SHARED_ID), libraryModel(ModelTypes.EMBEDDING, SHARED_ID)],
+            { voiceConfigs: [OPENAI_VOICE_CONFIG], grantedActions: [ActionCode.Delete] }
+        );
+        enterSelectMode(fixture);
+
+        const checkboxes = Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll('.llm-card__checkbox app-checkbox input')
+        );
+        expect(checkboxes).toHaveLength(3);
+        checkboxes.forEach((checkbox) => expect(checkbox.classList).toContain('secondary'));
+    });
+
+    it('selects both an LLM and an embedding card sharing an id with "Select All"', () => {
+        const { fixture } = render(
+            [libraryModel(ModelTypes.LLM, SHARED_ID), libraryModel(ModelTypes.EMBEDDING, SHARED_ID)],
+            { grantedActions: [ActionCode.Delete] }
+        );
+        enterSelectMode(fixture);
+
+        document.querySelector<HTMLButtonElement>('.bulk-select-menu__item')!.click();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.selectedKeys()).toEqual(
+            new Set([`llm:${SHARED_ID}`, `embedding:${SHARED_ID}`])
+        );
+        expect(fixture.componentInstance.allVisibleSelected()).toBe(true);
+    });
+
+    it('offers no select dropdown without the delete permission', () => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], { grantedActions: [ActionCode.Create] });
+
+        expect((fixture.nativeElement as HTMLElement).querySelector('app-bulk-select-dropdown')).toBeNull();
+    });
+
+    it('orders the header as search, Select, capabilities, then Add Configuration or Delete', () => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+            grantedActions: [ActionCode.Create, ActionCode.Delete],
+        });
+        /** Header items in DOM order: buttons by their label, the filter by its class, the rest by tag. */
+        const headerOrder = (): string[] =>
+            Array.from((fixture.nativeElement as HTMLElement).querySelector('.header-right')!.children, (child) => {
+                if (child.classList.contains('filter')) return 'filter';
+                if (child.tagName === 'APP-BUTTON') return child.textContent?.trim() ?? '';
+                return child.tagName.toLowerCase();
+            });
+
+        expect(headerOrder()).toEqual(['app-search', 'app-bulk-select-dropdown', 'filter', 'Add Configuration']);
+
+        enterSelectMode(fixture);
+
+        expect(headerOrder()).toEqual(['app-search', 'app-bulk-select-dropdown', 'filter', 'Delete']);
     });
 });
 
@@ -328,8 +425,8 @@ describe('LlmLibrarySectionComponent voice config cards', () => {
         }
     );
 
-    it('removes only the deleted voice card once the deletion is confirmed', () => {
-        const { fixture } = render([], {
+    it('sends only the clicked voice config to the bulk delete flow', () => {
+        const { fixture, runBulkDelete } = render([], {
             voiceConfigs: Object.values(VOICE_CONFIGS),
             grantedActions: [ActionCode.Delete],
         });
@@ -338,11 +435,13 @@ describe('LlmLibrarySectionComponent voice config cards', () => {
             voiceCard(fixture, ELEVENLABS_VOICE_CONFIG)!,
             `Delete ${ELEVENLABS_VOICE_CONFIG.custom_name}`
         ).click();
-        fixture.detectChanges();
 
-        expect(voiceCard(fixture, ELEVENLABS_VOICE_CONFIG)).toBeUndefined();
-        expect(voiceCard(fixture, OPENAI_VOICE_CONFIG)).toBeDefined();
-        expect(voiceCard(fixture, GEMINI_VOICE_CONFIG)).toBeDefined();
+        expect(runBulkDelete).toHaveBeenCalledExactlyOnceWith([
+            expect.objectContaining({
+                target: TestBed.inject(ElevenLabsRealtimeConfigStorageService),
+                items: [{ id: ELEVENLABS_VOICE_CONFIG.id, name: ELEVENLABS_VOICE_CONFIG.custom_name }],
+            }),
+        ]);
     });
 
     it('offers only the ⋮ button to a user who can only read configurations', () => {

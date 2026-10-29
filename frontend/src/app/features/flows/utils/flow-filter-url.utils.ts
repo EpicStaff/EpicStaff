@@ -1,5 +1,6 @@
 import { Params } from '@angular/router';
 
+import { createAuditConditionGroup } from '../../audit/models/audit-filter.models';
 import {
     CustomFilterCondition,
     CustomFilterScope,
@@ -10,7 +11,7 @@ import {
     LogicalCombinator,
 } from '../models/flow-filter.model';
 
-const SORT_VALUES: FlowSortOrder[] = ['default', 'name_asc', 'name_desc'];
+const SORT_VALUES: FlowSortOrder[] = ['default', 'name_asc', 'name_desc', 'last_modified'];
 const SCOPE_VALUES: CustomFilterScope[] = ['flow_name', 'label_name'];
 const COMBINATOR_VALUES: LogicalCombinator[] = ['AND', 'OR'];
 
@@ -71,6 +72,7 @@ export function parseFilterFromParams(params: Params): FlowsFilterState {
         sortOrder,
         includedFlowIds: parseIdList(params['flows'] as string | undefined),
         includedLabelIds: parseIdList(params['labels'] as string | undefined),
+        customConditions: [createAuditConditionGroup()],
         customFilter: parseCustomFilter(params['cf'] as string | undefined),
     };
 }

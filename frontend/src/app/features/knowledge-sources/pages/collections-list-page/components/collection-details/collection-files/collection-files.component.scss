@@ -9,6 +9,10 @@
         justify-content: space-between;
         font-size: 0.75rem;
         column-gap: 1rem;
+
+        &--previewable {
+            cursor: pointer;
+        }
     }
 
     &__name-column {

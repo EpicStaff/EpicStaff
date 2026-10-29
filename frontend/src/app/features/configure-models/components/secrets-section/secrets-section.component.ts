@@ -30,7 +30,14 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage, getRelativeTime, recycleBinNotice } from '@shared/utils';
+import {
+    escapeHtml,
+    extractHttpErrorMessage,
+    getRelativeTime,
+    movedToRecycleBinMessage,
+    pluralize,
+    recycleBinNotice,
+} from '@shared/utils';
 import { forkJoin } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
@@ -96,6 +103,7 @@ export class SecretsSectionComponent implements OnInit {
     public readonly usedByFilterItems = USED_BY_FILTER_ITEMS;
     public readonly usedByFilter = signal<UsedByFilter>(null);
     public readonly selectedRows = signal<TableRow[]>([]);
+    protected readonly bulkDeleteLabel = computed(() => `Delete selected (${this.selectedRows().length})`);
 
     public readonly status = signal<LoadingState>(LoadingState.IDLE);
 
@@ -130,6 +138,7 @@ export class SecretsSectionComponent implements OnInit {
                 name: secret.name,
                 preview: this.secretsStorageService.maskTail(secret.tail),
                 usedByReadable: secret.usage_count.readable,
+                usedByReadableLabel: pluralize(secret.usage_count.readable, 'resource', 'resources'),
                 usedByHidden: secret.usage_count.hidden,
                 updatedLabel: getRelativeTime(new Date(secret.updated_at)),
             })
@@ -210,7 +219,7 @@ export class SecretsSectionComponent implements OnInit {
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: () => {
-                            this.toastService.success('Secret deleted');
+                            this.toastService.success(movedToRecycleBinMessage(1, 'secret', 'secrets'));
                         },
                         error: (err: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(err)),
                     });
@@ -226,7 +235,7 @@ export class SecretsSectionComponent implements OnInit {
         this.confirmationDialogService
             .confirm({
                 title: 'Delete Secrets',
-                message: `You're about to delete <strong>${rows.length} secret${rows.length === 1 ? '' : 's'}</strong>. ${recycleBinNotice(this.recycleBinSettings.retentionDays(), rows.length)}`,
+                message: `You're about to delete <strong>${pluralize(rows.length, 'secret', 'secrets')}</strong>. ${recycleBinNotice(this.recycleBinSettings.retentionDays(), rows.length)}`,
                 caution: referencedCount
                     ? `<strong>${referencedCount}</strong> of the selected secrets are still referenced by other resources. ${KEPT_LINKS_NOTE}`
                     : undefined,
@@ -244,7 +253,7 @@ export class SecretsSectionComponent implements OnInit {
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: () => {
-                            this.toastService.success(`${ids.length} secret${ids.length === 1 ? '' : 's'} deleted`);
+                            this.toastService.success(movedToRecycleBinMessage(ids.length, 'secret', 'secrets'));
                             this.selectedRows.set([]);
                         },
                         error: (err: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(err)),
@@ -288,7 +297,7 @@ export class SecretsSectionComponent implements OnInit {
         if (readable === 0 && hidden === 0) return undefined;
 
         const parts: string[] = [];
-        if (readable > 0) parts.push(`<strong>${readable} resources</strong> you can see`);
+        if (readable > 0) parts.push(`<strong>${pluralize(readable, 'resource', 'resources')}</strong> you can see`);
         if (hidden > 0) parts.push(`<strong>some resources</strong> you don't have permission to view`);
 
         return `This secret is still referenced by ${parts.join(' and ')}. ${KEPT_LINKS_NOTE}`;

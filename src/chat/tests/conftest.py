@@ -1,4 +1,6 @@
+import asyncio
 import os
+import sys
 from pathlib import Path
 
 # Settings are read at import time by main.py; give tests a complete environment first.
@@ -20,6 +22,7 @@ for name, value in {
     "CHAT_DJANGO_URL": "http://django_app:8000",
     "CHAT_DJANGO_HOST_HEADER": "localhost",
     "DJANGO_API_KEY": "system-key-for-tests-0123456789ab",
+    "CHAT_INTERNAL_API_KEY": "internal-key-for-tests-0123456789",
     "CHAT_PUBLIC_BASE_URL": "http://localhost",
     "CHAT_WIDGET_URL": "https://cdn.example.test/epicchat/embed.js",
     "CHAT_CALLBACK_URL": "http://chat:8200/chat/internal/v1/session-callbacks",
@@ -63,6 +66,11 @@ from sqlalchemy import text
 from main import create_app
 from settings import Settings, load_settings
 from tests.fake_django import FakeDjango
+
+# Async psycopg cannot run on Windows' default proactor loop, which both pytest-asyncio and
+# alembic's asyncio.run would otherwise create; the service itself only runs on Linux.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 TABLES = ("visitor_token", "callback_receipt", "daily_usage", "conversation_event", "message", "conversation", "visitor_number_counter", "operator_profile", "operator_alias", "binding")
