@@ -1,5 +1,6 @@
 from django.dispatch import receiver
 from rbac.signals import profile_updated
+
 from tables.graph_collab.notifications import GraphEditNotifier
 
 

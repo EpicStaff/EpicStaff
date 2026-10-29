@@ -2,6 +2,7 @@ from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 from loguru import logger
+
 from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import WebhookTriggerAuthKind
 from tables.services.recycle_bin.restoring import is_restoring
