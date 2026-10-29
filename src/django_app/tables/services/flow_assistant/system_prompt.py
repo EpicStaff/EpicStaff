@@ -9,6 +9,7 @@ _PROMPTS_DIR = Path(__file__).parent / "prompts"
 _personality: str | None = None
 _instructions_template: Template | None = None
 _rich_format: str | None = None
+_rich_format_anthropic: str | None = None
 
 
 def _load_personality() -> str:
@@ -33,6 +34,15 @@ def _load_rich_format() -> str:
     return _rich_format
 
 
+def _load_rich_format_anthropic() -> str:
+    global _rich_format_anthropic
+    if _rich_format_anthropic is None:
+        _rich_format_anthropic = (_PROMPTS_DIR / "rich_format_anthropic.md").read_text(
+            encoding="utf-8"
+        )
+    return _rich_format_anthropic
+
+
 @dataclass
 class SystemPromptInputs:
     flow_name: str
@@ -45,8 +55,12 @@ class SystemPromptInputs:
     subflow_summary: str
 
 
-def build_system_prompt(inputs: SystemPromptInputs) -> str:
-    """Assemble the Flow Assistant persona system prompt from pre-computed inputs."""
+def build_system_prompt(inputs: SystemPromptInputs, *, anthropic_tables: bool = False) -> str:
+    """Assemble the Flow Assistant persona system prompt from pre-computed inputs.
+
+    ``anthropic_tables`` swaps the table-format section for the ``columns`` + ``cells``
+    variant that matches the Anthropic output schema.
+    """
     personality = _load_personality()
     instructions = _load_instructions_template().substitute(
         flow_name=inputs.flow_name,
@@ -58,4 +72,5 @@ def build_system_prompt(inputs: SystemPromptInputs) -> str:
         nodes_section=inputs.nodes_section,
         subflow_summary=inputs.subflow_summary,
     )
-    return f"{personality}\n\n{instructions}\n\n{_load_rich_format()}"
+    rich_format = _load_rich_format_anthropic() if anthropic_tables else _load_rich_format()
+    return f"{personality}\n\n{instructions}\n\n{rich_format}"
