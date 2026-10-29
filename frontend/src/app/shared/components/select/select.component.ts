@@ -30,10 +30,22 @@ export interface SelectItem<T = unknown> {
     value: T;
     group?: string;
     icon?: string;
+    /** Shown, but not selectable: an option the user may not pick, such as a venv whose build failed. */
+    disabled?: boolean;
+    /** Secondary text between the name and `tip`, muted and truncated: what the option carries,
+     *  such as the libraries a venv installs. */
+    meta?: string;
+    /** CSS color for `tip`, where the text carries a state of its own (a build still running). */
+    tipColor?: string;
     /** CSS color (e.g. `var(--success-color)`) of a dot shown before the name, in the trigger, options and readonly value. */
     dotColor?: string;
     /** app-svg-icon id for an optional trailing action button rendered at the end of the item row (e.g. edit-pencil). */
     trailingActionIcon?: string;
+}
+
+interface SelectItemGroup {
+    group: string | null;
+    items: SelectItem[];
 }
 
 export type SelectVariant = 'default' | 'boxed';
@@ -69,6 +81,11 @@ export class SelectComponent implements ControlValueAccessor {
     panelClass = input<string | string[]>('');
     variant = input<SelectVariant>('default');
     showSearch = input<boolean>(false);
+    /**
+     * Render each item under a heading taken from its `group`. Off by default: panels that
+     * already set `group` on their items were written before any heading was rendered.
+     */
+    grouped = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
     transparent = input<boolean>(false);
     /** When true, the selected item's tip is shown at the end of the closed trigger too, not only in the list. */
@@ -107,6 +124,40 @@ export class SelectComponent implements ControlValueAccessor {
         if (!term) return this.items();
         return this.items().filter((i) => i.name.toLowerCase().includes(term));
     });
+    /**
+     * The options as the panel lays them out: one headingless group when grouping is off, so
+     * the template has a single shape to render.
+     *
+     * Items without a `group` come first and keep no heading -- a picker's leading row, such
+     * as a "none" option. They are fixed rows: the search narrows the groups under them and
+     * leaves them where they are, so the way out of a search is always on screen.
+     *
+     * Groups follow in the order they first appear, and the order inside each one is the
+     * order of `items`, so a sort the caller applied survives the split. They are built from
+     * `filteredItems`, so a search narrows within the groups instead of collapsing them.
+     */
+    protected readonly groupedItems = computed<SelectItemGroup[]>(() => {
+        const items = this.filteredItems();
+        if (!this.grouped()) return [{ group: null, items }];
+
+        const pinned = this.items().filter((item) => !item.group);
+        const buckets = new Map<string, SelectItem[]>();
+        for (const item of items) {
+            if (!item.group) continue;
+            const bucket = buckets.get(item.group);
+            if (bucket) bucket.push(item);
+            else buckets.set(item.group, [item]);
+        }
+        return [
+            ...(pinned.length ? [{ group: null, items: pinned }] : []),
+            ...[...buckets].map(([group, bucketItems]) => ({ group, items: bucketItems })),
+        ];
+    });
+
+    /** Whether the panel has a row to show. Not `filteredItems`: in a grouped panel the fixed
+     *  rows survive a search, and an "empty" notice under them would contradict them. */
+    protected readonly hasVisibleItems = computed(() => this.groupedItems().some((group) => group.items.length > 0));
+
     protected readonly triggerId = `app-select-trigger-${nextSelectId++}`;
     protected readonly triggerLabelledBy = computed(() => {
         const labelId = this.ariaLabelledby();
@@ -225,6 +276,9 @@ export class SelectComponent implements ControlValueAccessor {
     }
 
     select(item: SelectItem) {
+        // Guarded here rather than only in the template: every other path into a selection,
+        // `commitCustomValue` among them, goes through this method.
+        if (item.disabled) return;
         if (this.isDisabled() || this.readonly()) return;
         this.onChange(item.value);
         this.onTouched();

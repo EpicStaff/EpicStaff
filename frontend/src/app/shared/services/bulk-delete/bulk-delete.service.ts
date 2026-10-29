@@ -4,13 +4,15 @@ import { inject, Injectable } from '@angular/core';
 import {
     BULK_DELETE_MAX_IDS,
     BulkDeleteGroup,
+    BulkDeleteLabel,
     BulkDeleteOutcome,
     BulkDeletePreviewGroup,
     BulkDeleteResponse,
 } from '@shared/models';
-import { buildBulkDeletePreview, extractHttpErrorMessage } from '@shared/utils';
+import { buildBulkDeletePreview, extractHttpErrorMessage, movedToRecycleBinMessage, pluralize } from '@shared/utils';
 import { catchError, EMPTY, forkJoin, map, Observable, of, switchMap } from 'rxjs';
 
+import { wasHandledByForbiddenInterceptor } from '../../../core/interceptors/forbidden-interceptor-handled.util';
 import { ToastService } from '../../../services/notifications';
 // Relative import, not the `@shared/components` barrel: `shared/services` importing the
 // `@shared/components` barrel would create a `@shared/services` <-> `@shared/components` barrel
@@ -91,7 +93,7 @@ export class BulkDeleteService {
         const requestedByGroup = new Map(
             toDelete.map((preview): [BulkDeleteGroup, number] => [preview.group, preview.response.deletable_ids.length])
         );
-        const nounFor = (count: number): string => this.resultNoun(previews, count);
+        const label = this.resultLabel(previews);
         const movesToRecycleBin =
             toDelete.length > 0 && toDelete.every((preview) => preview.group.recycleBin !== undefined);
 
@@ -104,27 +106,24 @@ export class BulkDeleteService {
             )
         ).pipe(
             map((outcomes) => {
-                this.showResultToast(outcomes, requestedByGroup, requested, nounFor, movesToRecycleBin);
+                this.showResultToast(outcomes, requestedByGroup, requested, label, movesToRecycleBin);
                 return outcomes;
             })
         );
     }
 
     private reportPreviewError(error: unknown): void {
+        if (wasHandledByForbiddenInterceptor(error)) return;
         if (error instanceof HttpErrorResponse) {
-            if (error.status === 403) return;
             this.toast.error(extractHttpErrorMessage(error, 'Could not check what can be deleted.'));
             return;
         }
         this.toast.error('Could not check what can be deleted.');
     }
 
-    private resultNoun(previews: GroupPreview[], count: number): string {
-        if (previews.length === 1) {
-            const { label } = previews[0].group;
-            return count === 1 ? label.singular : label.plural;
-        }
-        return count === 1 ? 'item' : 'items';
+    private resultLabel(previews: GroupPreview[]): BulkDeleteLabel {
+        if (previews.length === 1) return previews[0].group.label;
+        return { singular: 'item', plural: 'items' };
     }
 
     /**
@@ -138,7 +137,7 @@ export class BulkDeleteService {
         outcomes: BulkDeleteOutcome[],
         requestedByGroup: ReadonlyMap<BulkDeleteGroup, number>,
         requested: number,
-        nounFor: (count: number) => string,
+        label: BulkDeleteLabel,
         movesToRecycleBin: boolean
     ): void {
         const errors = outcomes.filter((outcome) => outcome.error !== undefined);
@@ -153,8 +152,8 @@ export class BulkDeleteService {
 
         if (failed === 0) {
             const success = movesToRecycleBin
-                ? `Moved ${deleted} ${nounFor(deleted)} to the recycle bin.`
-                : `Deleted ${deleted} ${nounFor(deleted)}.`;
+                ? movedToRecycleBinMessage(deleted, label.singular, label.plural)
+                : `Deleted ${pluralize(deleted, label.singular, label.plural)}.`;
             this.toast.success(deleted === 0 && done > 0 ? 'Already deleted.' : success);
             return;
         }
@@ -162,14 +161,14 @@ export class BulkDeleteService {
         if (done > 0) {
             this.toast.warning(
                 movesToRecycleBin
-                    ? `Moved ${deleted} of ${requested} ${nounFor(requested)} to the recycle bin. ${failed} couldn't be moved.`
-                    : `Deleted ${deleted} of ${requested} ${nounFor(requested)}. ${failed} couldn't be deleted.`
+                    ? `Moved ${deleted} of ${pluralize(requested, label.singular, label.plural)} to the recycle bin. ${failed} couldn't be moved.`
+                    : `Deleted ${deleted} of ${pluralize(requested, label.singular, label.plural)}. ${failed} couldn't be deleted.`
             );
             return;
         }
 
         const singleError = errors.length === 1 ? errors[0].error : undefined;
-        if (singleError instanceof HttpErrorResponse && singleError.status === 403) return;
+        if (wasHandledByForbiddenInterceptor(singleError)) return;
 
         if (errors.length === 1) {
             const fallback = movesToRecycleBin ? 'Failed to move to the recycle bin.' : 'Failed to delete.';

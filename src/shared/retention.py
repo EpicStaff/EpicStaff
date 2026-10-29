@@ -196,8 +196,8 @@ class SessionTreeLink:
 # foreign keys are NO ACTION (deferred), except tables_graphsessionmessage.session_id, which a
 # migration turned into ON DELETE CASCADE. A raw delete must therefore do that work itself.
 # Pinned by django_app's test_session_retention_contract.py, which fails when a model relation
-# changes without this contract, and by the manager's test_crewdb_grants.py, which fails when
-# the manager role's grants in src/crewdb/custom-docker-entrypoint.sh miss a table.
+# changes without this contract or when the manager role's grants in
+# src/django_app/tables/service_db_grants.py miss one of its tables.
 
 # Subflow sessions point at their parent through this column; deleting a session deletes
 # its whole subtree, which the job expands with a recursive query.

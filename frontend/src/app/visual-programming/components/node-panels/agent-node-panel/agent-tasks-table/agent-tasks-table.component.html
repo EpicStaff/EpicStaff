@@ -82,6 +82,7 @@
                         <div
                             class="att-cell att-cell--instructions"
                             [class.att-cell--selected]="isCellSelected(i, 'instructions')"
+                            (focusin)="onInstructionsFocus(i)"
                         >
                             <app-variable-highlight-textarea
                                 class="att-textarea-highlight"

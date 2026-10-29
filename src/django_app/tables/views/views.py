@@ -75,6 +75,7 @@ from tables.serializers.quickstart_serializers import (
 )
 from tables.serializers.serializers import (
     BulkExportSerializer,
+    BulkIdsSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
     ProcessRagIndexingEstimateSerializer,
@@ -239,8 +240,8 @@ class SessionViewSet(
         return SessionSerializer
 
     def get_queryset(self):
-        qs = Session.objects.select_related("graph", "trigger", "principal", "callback").filter(
-            graph__org_id=self.get_active_org_id()
+        qs = Session.objects.visible_in_org(self.get_active_org_id()).select_related(
+            "graph", "trigger", "principal", "callback"
         )
         detailed = self.request.query_params.get("detailed", "true").lower()
 
@@ -296,9 +297,11 @@ class SessionViewSet(
         serializer.is_valid(raise_exception=True)
         entity_ids = serializer.validated_data["ids"]
 
-        existing_ids = Session.objects.filter(
-            id__in=entity_ids, graph__org_id=self.get_active_org_id()
-        ).values_list("id", flat=True)
+        existing_ids = (
+            Session.objects.visible_in_org(self.get_active_org_id())
+            .filter(id__in=entity_ids)
+            .values_list("id", flat=True)
+        )
         if len(existing_ids) != len(entity_ids):
             return Response(
                 {"message": "Some entity IDs do not exist"},
@@ -334,7 +337,7 @@ class SessionViewSet(
         ):
             raise NotFound(f"Graph {data['graph_id']} not found")
 
-        qs = Session.objects.filter(parent_session_id=None, graph__org_id=active_org_id)
+        qs = Session.objects.visible_in_org(active_org_id).filter(parent_session_id=None)
 
         if "graph_id" in data:
             qs = qs.filter(graph_id=data["graph_id"])
@@ -397,12 +400,10 @@ class SessionViewSet(
     @extend_schema(**SESSION_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk_delete")
     def bulk_delete(self, request):
-        ids = request.data.get("ids", [])
-        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
-            return Response(
-                {"detail": "ids must be a list of integers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = BulkIdsSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        ids = body.validated_data["ids"]
 
         # Count the requested sessions before deleting: delete() also counts the
         # sub-sessions removed by the parent_session cascade. The row lock keeps a
@@ -410,8 +411,9 @@ class SessionViewSet(
         # the count matches what this request deleted.
         with transaction.atomic():
             owned_session_ids = list(
-                Session.objects.select_for_update(of=("self",))
-                .filter(id__in=ids, graph__org_id=self.get_active_org_id())
+                Session.objects.visible_in_org(self.get_active_org_id())
+                .select_for_update(of=("self",))
+                .filter(id__in=ids)
                 .order_by("id")
                 .values_list("id", flat=True)
             )
@@ -495,7 +497,7 @@ class RunSession(APIView):
             else TriggerSpec.manual()
         )
         api_key = request.auth if isinstance(request.auth, ApiKey) else None
-        # Running needs only FLOWS READ, but a payload value at a declared org path
+        # Running needs FLOWS USE, but a payload value at a declared org path
         # is written back to the flow's shared memory: overriding one is managing
         # the flow's persistent variables, which takes FLOWS UPDATE. A sub-flow
         # payload is built by the parent's agent from whoever started the chain,

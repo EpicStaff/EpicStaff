@@ -1,5 +1,4 @@
 from django.db.models import Q
-from proxies.sandbox.models import SandboxVenvBinding
 from rbac.authorship import resolve_author
 
 from tables.import_export.constants import MAX_REUSE_CANDIDATES
@@ -18,6 +17,7 @@ from tables.import_export.utils import (
     ensure_unique_identifier,
     filter_by_name_or_renamed_copy,
     import_values,
+    python_code_venv_ids,
     remap_python_code_venv,
 )
 from tables.models import PythonCode, PythonCodeTool, User
@@ -58,7 +58,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
     def extract_dependencies_from_instance(self, instance) -> dict[str, list[int]]:
         return {
             EntityType.LABEL: list(instance.labels.values_list("id", flat=True)),
-            EntityType.VENV: self._venv_dependency(instance),
+            EntityType.VENV: python_code_venv_ids(instance.python_code),
         }
 
     def extract_org_scoped_dependencies(
@@ -68,27 +68,8 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
             EntityType.LABEL: list(
                 instance.labels.filter(org_id=org_id).values_list("id", flat=True)
             ),
-            EntityType.VENV: self._venv_dependency(instance, org_id=org_id),
+            EntityType.VENV: python_code_venv_ids(instance.python_code, org_id=org_id),
         }
-
-    @staticmethod
-    def _venv_dependency(instance: PythonCodeTool, org_id: int | None = None) -> list[int]:
-        """The environment the tool's code runs in, empty when it uses the default one.
-
-        A built-in tool is one row shared by every organization, so the environment
-        on it can belong to a different tenant than the one exporting. With an
-        `org_id` the reference is dropped unless its binding is that org's, which
-        keeps another org's environment name and library list out of the file.
-        """
-        venv_id = instance.python_code.venv_id
-        if not venv_id:
-            return []
-        if (
-            org_id is not None
-            and not SandboxVenvBinding.objects.filter(pk=venv_id, org_id=org_id).exists()
-        ):
-            return []
-        return [venv_id]
 
     def export_entity(self, instance: PythonCodeTool) -> dict:
         """Export the tool without configs: with no org known, none can be attributed to the caller."""

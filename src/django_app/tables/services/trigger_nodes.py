@@ -2,17 +2,17 @@
 
 Which node types are triggers is declared once, by `starts_runs` in the bulk-save
 NODE_TYPE_REGISTRY; everything here derives from it. A trigger node starts flow runs
-by itself, so writing one — directly, or by copying, importing or restoring a flow
-that holds one — requires USE on flows (`TriggerNodeAccess`, shared as
-`trigger_node_access`). `TriggerNodeInspector` answers whether a source holds a
-trigger node, and which flows hold one on a webhook trigger. The module-level
-functions answer whether running a piece of code needs USE because a trigger node
-owns it.
+by itself, so writing one — directly, by copying, importing or restoring a flow
+that holds one, or by restoring a recycle-bin item that brings one back — requires
+USE on flows (`TriggerNodeAccess`, shared as `trigger_node_access`).
+`TriggerNodeInspector` answers whether a source holds a trigger node, and which
+flows hold one on a webhook trigger. The module-level functions answer whether
+running a piece of code needs USE because a trigger node owns it.
 """
 
 from collections.abc import Iterable
 
-from django.db.models import Q, QuerySet
+from django.db.models import Model, Q, QuerySet
 from rbac.access.effective import EffectivePermissions
 from rbac.access.resolver import PermissionResolver
 from rbac.models.enums import Permission, ResourceType
@@ -77,6 +77,20 @@ class TriggerNodeAccess:
         """Resolve `user` in `org_id`, then apply `assert_may_recreate`."""
         self.assert_may_recreate(self._resolver.resolve(user=user, org_id=org_id))
 
+    def assert_user_may_restore(self, user, org_id: int, root: Model) -> None:
+        """Assert `user` may restore the recycle-bin `root` of `org_id`.
+
+        Call it on the binned row, before restoring it. A restore that brings no
+        trigger node back or live (`TriggerNodeInspector.restore_brings_back_any`)
+        resolves nothing and always passes.
+
+        Raises:
+            FlowWithTriggerNodesRequiresUsePermissionError (403): the restore brings
+                trigger nodes back and the role lacks USE on flows.
+        """
+        if TriggerNodeInspector.restore_brings_back_any(root):
+            self.assert_user_may_recreate(user, org_id)
+
 
 trigger_node_access = TriggerNodeAccess()
 
@@ -108,6 +122,26 @@ class TriggerNodeInspector:
         return any(
             getattr(graph, relation_name).exists() for relation_name in TRIGGER_NODE_LIST_KEYS
         )
+
+    @classmethod
+    def restore_brings_back_any(cls, root: Model) -> bool:
+        """Return whether restoring the binned `root` brings a trigger node back or live.
+
+        Two ways: a trigger node binned in the root's batch comes back with it (a
+        flow's own nodes, which `has_any_in_graph` can't see while they are binned),
+        and a webhook trigger reconnects the live trigger nodes that kept their link
+        to it, as updating it would. One EXISTS query per trigger node type, plus
+        `has_any_attached_to_webhook_trigger` for a webhook trigger.
+        """
+        batch = root.soft_delete_batch
+        # A root binned before batches existed can't be restored (NotInRecycleBinError),
+        # and filtering on a null batch would match every such row.
+        if batch is not None and any(
+            model.all_objects.filter(soft_delete_batch=batch, active=False).exists()
+            for model in TRIGGER_NODE_MODELS
+        ):
+            return True
+        return isinstance(root, WebhookTrigger) and cls.has_any_attached_to_webhook_trigger(root)
 
     @staticmethod
     def has_any_attached_to_webhook_trigger(webhook_trigger: WebhookTrigger) -> bool:

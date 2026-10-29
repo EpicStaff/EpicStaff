@@ -177,6 +177,7 @@
                                 [rowChanges]="taskRowChanges()"
                                 (tasksChange)="onTasksChange($event)"
                                 (cellSelect)="onCellSelect($event)"
+                                (instructionsFocus)="onInstructionsFocus($event)"
                             ></app-agent-tasks-table>
 
                             <button
@@ -464,6 +465,7 @@
                             [rowChanges]="taskRowChanges()"
                             (tasksChange)="onTasksChange($event)"
                             (cellSelect)="onCellSelect($event)"
+                            (instructionsFocus)="onInstructionsFocus($event)"
                         ></app-agent-tasks-table>
 
                         <button
