@@ -40,6 +40,15 @@
         >
             Embedding
         </button>
+        <span class="tab-divider">/</span>
+        <button
+            class="tab"
+            [class.active]="activeTab() === 'system_one'"
+            (click)="setActiveTab('system_one')"
+            type="button"
+        >
+            System One
+        </button>
     </div>
 
     <app-error-banner
@@ -235,6 +244,11 @@
     <!-- Hidden, not removed, on other tabs: the form owns its values and any save in flight. -->
     <app-realtime-config-form
         [hidden]="activeTab() !== 'realtime'"
+        (saved)="dialogRef.close(true)"
+    />
+
+    <app-system-one-config-form
+        [hidden]="activeTab() !== 'system_one'"
         (saved)="dialogRef.close(true)"
     />
 

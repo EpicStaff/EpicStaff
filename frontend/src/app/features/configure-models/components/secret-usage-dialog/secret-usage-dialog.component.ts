@@ -23,6 +23,7 @@ import {
     LlmConfigStorageService,
     RealtimeConfigStorageService,
     SecretsApiService,
+    SystemOneConfigStorageService,
     TranscriptionConfigStorageService,
 } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
@@ -42,6 +43,7 @@ import {
     SecretUsageSummary,
     toSecretUsageSummary,
 } from '../../models/secret-usage.model';
+import { SystemOneConfigDialogComponent } from '../system-one-config-dialog/system-one-config-dialog.component';
 
 export interface SecretUsageDialogData {
     secretId: number;
@@ -60,6 +62,7 @@ const CONFIG_TYPE_LABELS = new Map<SecretUsageResourceType, string>([
     ['embedding_config', 'Embedding'],
     ['realtime_config', 'Voice'],
     ['realtime_transcription_config', 'Transcription'],
+    ['system_one_config', 'System One'],
 ]);
 
 @Component({
@@ -89,6 +92,7 @@ export class SecretUsageDialogComponent implements OnInit {
     private readonly embeddingConfigStorageService = inject(EmbeddingConfigStorageService);
     private readonly realtimeConfigStorageService = inject(RealtimeConfigStorageService);
     private readonly transcriptionConfigStorageService = inject(TranscriptionConfigStorageService);
+    private readonly systemOneConfigStorageService = inject(SystemOneConfigStorageService);
     private readonly mcpToolsService = inject(McpToolsService);
     private readonly customToolsService = inject(CustomToolsService);
 
@@ -214,6 +218,11 @@ export class SecretUsageDialogComponent implements OnInit {
                 return {
                     configs: () => this.transcriptionConfigStorageService.getAllConfigs(),
                     dialog: TranscriptionModelConfigDialogComponent,
+                };
+            case 'system_one_config':
+                return {
+                    configs: () => this.systemOneConfigStorageService.getAllConfigs(),
+                    dialog: SystemOneConfigDialogComponent,
                 };
             default:
                 return null;

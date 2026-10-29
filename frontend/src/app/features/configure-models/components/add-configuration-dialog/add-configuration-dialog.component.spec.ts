@@ -12,6 +12,7 @@ import {
     LlmModelsStorageService,
     LlmProvidersStorageService,
     SecretsStorageService,
+    SystemOneConfigStorageService,
 } from '@shared/services';
 import { EMPTY, Observable, of, Subject, throwError } from 'rxjs';
 
@@ -242,6 +243,8 @@ function getCachedModelById(id: number): Observable<LLMModel> {
 interface TabStorages {
     embeddingConfigStorage?: object;
     openaiRealtimeStorage?: object;
+    systemOneStorage?: object;
+    secretItems?: { name: string; value: number }[];
 }
 
 async function render(
@@ -277,7 +280,7 @@ async function render(
                     secrets: signal([]),
                     getSecrets: () => of([]),
                     maskTail: () => '',
-                    selectItems: () => [],
+                    selectItems: () => tabStorages.secretItems ?? [],
                     isBinned: () => false,
                 } as unknown as SecretsStorageService,
             },
@@ -286,6 +289,7 @@ async function render(
             { provide: OpenAIRealtimeConfigStorageService, useValue: tabStorages.openaiRealtimeStorage ?? {} },
             { provide: ElevenLabsRealtimeConfigStorageService, useValue: {} },
             { provide: GeminiRealtimeConfigStorageService, useValue: {} },
+            { provide: SystemOneConfigStorageService, useValue: tabStorages.systemOneStorage ?? {} },
             { provide: ToastService, useValue: { success: vi.fn(), error: toastError } as unknown as ToastService },
         ],
     });
@@ -610,6 +614,60 @@ describe('AddConfigurationDialogComponent embedding and realtime save errors', (
         const fixture = await submitRealtime(SERVER_ERROR);
 
         expect(bannerText(fixture)).toBe('Failed to save configuration.');
+    });
+});
+
+describe('AddConfigurationDialogComponent System One tab', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    function typeSystemOneName(fixture: ComponentFixture<AddConfigurationDialogComponent>, value: string): void {
+        const field = Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll('app-system-one-config-form app-custom-input')
+        ).find((element) => element.textContent!.includes('Configuration Name'))!;
+        const nameInput = field.querySelector('input')!;
+        nameInput.value = value;
+        nameInput.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    it('labels the submit button "Add System One" on its tab', async () => {
+        const { fixture } = await render();
+
+        fixture.componentInstance.setActiveTab('system_one');
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.submitLabel()).toBe('Add System One');
+        expect(
+            (fixture.nativeElement as HTMLElement).querySelector('.footer app-button:last-child')!.textContent
+        ).toContain('Add System One');
+    });
+
+    it('shows the server refusal of a System One config in the banner', async () => {
+        const refusal = new HttpErrorResponse({
+            status: 400,
+            error: { status_code: 400, code: 'invalid', message: 'api_key_secret_id: This field is required.' },
+        });
+        const { fixture } = await render(undefined, undefined, {
+            systemOneStorage: { createConfig: () => throwError(() => refusal) },
+            secretItems: [{ name: 'Jev key', value: 5 }],
+        });
+        fixture.componentInstance.setActiveTab('system_one');
+        fixture.detectChanges();
+        typeSystemOneName(fixture, 'Jev prod');
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>(
+                'app-system-one-config-form app-select[formcontrolname="api_key_secret_id"] .selector__btn'
+            )!
+            .click();
+        fixture.detectChanges();
+        document.querySelector<HTMLElement>('.selector__option')!.click();
+        fixture.detectChanges();
+
+        fixture.componentInstance.onSubmit();
+        fixture.detectChanges();
+
+        expect(bannerText(fixture)).toBe('API key secret: This field is required.');
     });
 });
 
