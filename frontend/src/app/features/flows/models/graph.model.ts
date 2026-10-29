@@ -159,6 +159,8 @@ export interface GraphVersionUpdateRequest {
  * - `secret_declaration_dropped`: `field` (`python_code`, `pre_python_code`, `post_python_code` or
  *   `telegram_bot_api_key_secret`) and `missing_name`;
  * - `secret_in_recycle_bin`: `field` (as above); the secret is linked, but it is in the recycle bin.
+ * - `venv_ref_cleared`: `field` (`python_code`, `pre_python_code` or `post_python_code`) and `missing_id` (the
+ *   venv); the venv is not available in this organization, so a restore leaves that code without one.
  *
  * The version preview adds `key_value_table_unbound` entries itself (`field`, `missing_name`): a Key-Value
  * table the version named that no usable table has now. The backend re-binds tables without a warning.
@@ -170,6 +172,7 @@ export interface RestoreWarning {
         | 'secret_declaration_dropped'
         | 'secret_in_recycle_bin'
         | 'key_value_table_unbound'
+        | 'venv_ref_cleared'
         | string;
     node_name?: string;
     node_type?: string;
@@ -184,7 +187,7 @@ export interface RestoreWarning {
      * (`python_code`, `telegram_bot_api_key_secret`; `secret_declaration_dropped`, `secret_in_recycle_bin`).
      */
     field?: string;
-    /** Id of the missing entity (agent, trigger, subflow, surface, tool). */
+    /** Id of the missing entity (agent, trigger, subflow, surface, tool, venv). */
     missing_id?: number;
     /** Id of the missing node a decision-table route pointed at (`decision_table_ref_cleared`). */
     missing_node_id?: number;

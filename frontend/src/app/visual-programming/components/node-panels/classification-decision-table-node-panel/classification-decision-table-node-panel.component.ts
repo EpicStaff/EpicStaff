@@ -1034,8 +1034,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         const exportData = this.cdtExportImportService.buildExportData({
             nodeName: this.form.value.node_name ?? '',
             preCode: this.preCode,
-            // Always empty: libraries now live only on the venv, and the export
-            // carries no venv. See the note on CdtExportImportService.
+            // Always empty: libraries now live only on the venv, and this CSV
+            // export carries no venv. See the note on CdtExportImportService.
             preLibraries: [],
             preExecutionTimeout: this.preExecutionTimeout.value,
             preInputMap: this.serializeInputMap('pre_input_map'),

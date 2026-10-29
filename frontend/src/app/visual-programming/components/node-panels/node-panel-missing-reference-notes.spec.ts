@@ -82,14 +82,28 @@ const PANEL_CASES: PanelCase[] = [
         panel: 'Python',
         component: PythonNodePanelComponent,
         type: NodeType.PYTHON,
-        references: [missingReference('python_code.secret_names', 'DB_PASS')],
-        notes: [{ text: 'This version uses the secret DB_PASS; it no longer exists.', placement: SECRETS_PICKER }],
+        references: [
+            missingReference('python_code.secret_names', 'DB_PASS'),
+            missingReference('python_code.venv_id', 31),
+        ],
+        notes: [
+            { text: 'This version uses the secret DB_PASS; it no longer exists.', placement: SECRETS_PICKER },
+            {
+                text: 'This version uses venv #31; it no longer exists.',
+                placement: { after: 'app-select[label="Venv"]' },
+            },
+        ],
     },
     {
         panel: 'Webhook trigger',
         component: WebhookTriggerNodePanelComponent,
         type: NodeType.WEBHOOK_TRIGGER,
-        references: [missingReference('webhook_trigger', 8), missingReference('python_code.secret_names', 'DB_PASS')],
+        // Its venv has no field here: the canvas marker and the warnings dialog show a cleared one.
+        references: [
+            missingReference('webhook_trigger', 8),
+            missingReference('python_code.secret_names', 'DB_PASS'),
+            missingReference('python_code.venv_id', 31),
+        ],
         notes: [
             { text: 'This version uses trigger #8; it no longer exists.', placement: TRIGGER_PICKER },
             { text: 'This version uses the secret DB_PASS; it no longer exists.', placement: SECRETS_PICKER },
@@ -122,6 +136,13 @@ const PANEL_CASES: PanelCase[] = [
             references: [
                 missingReference('pre_computation.secret_names', 'PRE_KEY'),
                 missingReference('post_computation.secret_names', 'POST_KEY'),
+                // No venv field: the canvas marker and the warnings dialog show a cleared one.
+                {
+                    path: `${stage}_computation.venv_id`,
+                    field: `${stage}_computation.venv_id`,
+                    missing: 31,
+                    source: 'warning',
+                },
             ],
             notes: [
                 {

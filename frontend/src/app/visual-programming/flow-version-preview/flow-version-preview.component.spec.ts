@@ -30,8 +30,8 @@ import { ScheduleTriggerRuntimeService } from '../services/schedule-trigger-runt
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { buildPreviewFlowModel } from '../utils/load';
-import { liveKeyValue } from '../utils/testing/live-graph.fixture';
-import { exported } from '../utils/testing/version-snapshot.fixture';
+import { liveClassificationTable, liveKeyValue, livePython, liveWebhook } from '../utils/testing/live-graph.fixture';
+import { exported, liveGraphSnapshot } from '../utils/testing/version-snapshot.fixture';
 import { FlowVersionPreviewComponent } from './flow-version-preview.component';
 
 const EDITOR_SERVICES: Type<unknown>[] = [
@@ -134,6 +134,26 @@ function snapshotWithUnboundTable(pythonNodeName: string): GraphVersionSnapshot 
     });
     return { ...snapshot, nodes: [...snapshot.nodes, keyValueNode] };
 }
+
+/** A `venv_ref_cleared` warning on a node of `liveGraphSnapshot`, for the venv of the code `field` names. */
+function clearedVenvWarning(nodeId: number, nodeName: string, field: string): RestoreWarning {
+    return {
+        type: 'venv_ref_cleared',
+        node_id: nodeId,
+        node_name: nodeName,
+        field,
+        missing_id: 31,
+        reason: 'venv not found or not in org',
+    };
+}
+
+/** Venv warnings on each node type whose code has one: only the Python panel shows the venv field. */
+const CLEARED_VENV_WARNINGS: RestoreWarning[] = [
+    clearedVenvWarning(livePython.id, 'Python', 'python_code'),
+    clearedVenvWarning(liveWebhook.id, 'Webhook', 'python_code'),
+    clearedVenvWarning(liveClassificationTable.id, 'Classify', 'pre_python_code'),
+    clearedVenvWarning(liveClassificationTable.id, 'Classify', 'post_python_code'),
+];
 
 const BINNED_SECRET_WARNING: RestoreWarning = {
     type: 'secret_in_recycle_bin',
@@ -743,6 +763,23 @@ describe('FlowVersionPreviewComponent', () => {
             expect(flowGraph().diffState()).toBeNull();
         });
 
+        // The webhook and table panels have no venv field, so this marker and the warnings dialog are where
+        // their cleared venv shows.
+        it.each<{ steps: string; tabs: PreviewTab[] }>([
+            { steps: 'Preview', tabs: [] },
+            { steps: 'Changes', tabs: ['Changes'] },
+        ])('on $steps, marks every node whose venv is gone, with or without a venv field', async ({ tabs }) => {
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respondWith(1, liveGraphSnapshot, CLEARED_VENV_WARNINGS);
+
+            tabs.forEach(openTab);
+
+            expect(markedNodeTypes().sort()).toEqual(
+                [NodeType.PYTHON, NodeType.WEBHOOK_TRIGGER, NodeType.CLASSIFICATION_TABLE].sort()
+            );
+        });
+
         it('does not mark a node whose secret is only in the recycle bin', async () => {
             fixture = TestBed.createComponent(FlowVersionPreviewComponent);
             await render(1);
@@ -860,6 +897,20 @@ describe('FlowVersionPreviewComponent', () => {
             expect(openWarnings().map(warningText)).toEqual([
                 'In node Python, Secret "API_KEY" is in the recycle bin.',
                 'In node Remember, Key-Value table "Customers" no longer exists or cannot be used, so the node has no table.',
+            ]);
+        });
+
+        it('lists a cleared venv with the backend reason, for every node type', async () => {
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respondWith(1, liveGraphSnapshot, CLEARED_VENV_WARNINGS);
+
+            const reason = 'venv not found or not in org';
+            expect(openWarnings().map(warningText)).toEqual([
+                `In node Python, ${reason}`,
+                `In node Webhook, ${reason}`,
+                `In node Classify, ${reason}`,
+                `In node Classify, ${reason}`,
             ]);
         });
 

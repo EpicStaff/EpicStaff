@@ -58,6 +58,8 @@ function describeMissingReference(reference: MissingReference): string {
             return usesNumbered('trigger', 'a trigger', missing);
         case 'subgraph':
             return usesNumbered('flow', 'a flow', missing);
+        case 'python_code.venv_id':
+            return usesNumbered('venv', 'a venv', missing);
         case 'surface_list':
             return usesNumbered('surface', 'a surface', missing);
         // The warning names the tool's id only, not whether it is a Python or an MCP tool.

@@ -34,6 +34,7 @@ import { codeChangeFor, linkedEntityFormat, mapFieldRowChanges } from '../../../
 import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
@@ -74,6 +75,7 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
         SelectComponent,
         ExecutionTimeoutFieldComponent,
         DiffFieldMarkComponent,
+        MissingReferenceNoteComponent,
         CodeDiffViewComponent,
     ],
     templateUrl: './python-node-panel.component.html',

@@ -91,6 +91,30 @@ describe('buildVersionWarningReferences', () => {
         expect(references).toEqual(new Map());
     });
 
+    it.each([
+        ['python_code', 'python_code.venv_id'],
+        ['pre_python_code', 'pre_computation.venv_id'],
+        ['post_python_code', 'post_computation.venv_id'],
+    ])('turns a cleared venv of `%s` into a missing reference on `%s`, by venv id', (backendField, path) => {
+        const references = buildVersionWarningReferences(
+            [warning('venv_ref_cleared', { node_id: 5, field: backendField, missing_id: 31 })],
+            snapshotIdToCanvasId
+        );
+
+        expect(references).toEqual(
+            new Map([['node-a-canvas-id', [{ path, field: path, missing: 31, source: 'warning' }]]])
+        );
+    });
+
+    it('skips a cleared venv whose code field it does not know', () => {
+        const references = buildVersionWarningReferences(
+            [warning('venv_ref_cleared', { node_id: 5, field: 'other_code', missing_id: 31 })],
+            snapshotIdToCanvasId
+        );
+
+        expect(references).toEqual(new Map());
+    });
+
     // The backend nulls exactly these foreign keys today (its `NullFkHandler` subclasses). A new handler
     // must be added here, and its field must be a projected `FieldName`, or its reference gets no label.
     const BACKEND_FK_NULLED_FIELDS = [

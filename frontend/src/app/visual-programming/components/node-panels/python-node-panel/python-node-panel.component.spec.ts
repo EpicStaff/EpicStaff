@@ -1,6 +1,6 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormArray, ReactiveFormsModule } from '@angular/forms';
@@ -693,6 +693,18 @@ interface DrawnBox {
 }
 
 describe('PythonNodePanelComponent on the Changes tab of a version preview', () => {
+    /** The one venv the organisation lists. */
+    const DATA_SCIENCE_VENV: Venv = {
+        id: 3,
+        name: 'data-science',
+        libs: [],
+        status: 'completed',
+        error: null,
+        owner: null,
+        created_at: null,
+        is_favorite: false,
+    };
+
     let fixture: ComponentFixture<PythonNodePanelComponent>;
 
     afterEach(() => fixture.destroy());
@@ -720,6 +732,7 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
                 { provide: PythonCodeRunService, useValue: {} },
                 { provide: GraphSessionService, useValue: {} },
                 { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+                { provide: VenvsApiService, useValue: { getVenvs: () => of([DATA_SCIENCE_VENV]) } },
                 ...(onChangesTab ? [provideChangesTabDiff({ status, fields })] : []),
             ],
         });
@@ -903,28 +916,12 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
     );
 
     describe('a changed venv', () => {
-        /** Answers the panel's venv list request with venv 3, "data-science". */
-        function respondWithVenvs(): void {
-            TestBed.inject(HttpTestingController)
-                .expectOne((request) => request.url.endsWith('venvs/'))
-                .flush({
-                    count: 1,
-                    limit: 100,
-                    offset: 0,
-                    next: null,
-                    previous: null,
-                    result: [{ id: 3, name: 'data-science' }],
-                });
-            fixture.detectChanges();
-        }
-
         it.each([
             { kind: 'a listed venv by its name', current: 3, version: null, shown: '[data-science]' },
             { kind: 'a venv the list does not hold by its id', current: 9, version: 3, shown: '[venv #9]' },
             { kind: 'no venv as empty', current: null, version: 3, shown: '[empty]' },
         ])('names $kind in the tooltip', ({ current, version, shown }) => {
             const root = open('changed', [change('python_code.venv_id', current, version)]);
-            respondWithVenvs();
 
             expect(hoverTooltip(root)).toBe(shown);
         });

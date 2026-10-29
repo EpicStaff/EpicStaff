@@ -19,6 +19,17 @@ const SECRET_DECLARATION_PATHS: ReadonlyMap<string, FieldName> = new Map<string,
 ]);
 
 /**
+ * Backend code field of a `venv_ref_cleared` warning → projected path of its venv. Only the Python panel shows a
+ * venv field (`python_code.venv_id`; a webhook panel has no venv note). The table paths match no panel field: the
+ * reference marks the node on the canvas, and the warnings dialog gives the backend reason.
+ */
+const VENV_PATHS: ReadonlyMap<string, string> = new Map<string, string>([
+    ['python_code', 'python_code.venv_id' satisfies FieldName],
+    ['pre_python_code', 'pre_computation.venv_id'],
+    ['post_python_code', 'post_computation.venv_id'],
+]);
+
+/**
  * The references the preview filtering removed from the version, by version canvas node id. A restore
  * runs the same filter and name lookup, so these cannot come back. Only node-anchored warnings count;
  * the others (`edge_dropped`, `node_type_unsupported`) belong to the warnings banner.
@@ -27,6 +38,7 @@ const SECRET_DECLARATION_PATHS: ReadonlyMap<string, FieldName> = new Map<string,
  * - `surface_dropped`: `surface_list` and the surface id
  * - `inline_tool_dropped`: the whole `inline_surface` (the warning names no field) and the tool id
  * - `secret_declaration_dropped`: the secret field of the code (or bot key) it names and `missing_name`
+ * - `venv_ref_cleared`: the venv of the code it names and `missing_id`
  *
  * `secret_in_recycle_bin` is deliberately not a missing reference: a restore links the binned secret.
  */
@@ -74,6 +86,10 @@ function referenceOf(warning: RestoreWarning): MissingReference | null {
         case 'secret_declaration_dropped': {
             const path = warning.field ? SECRET_DECLARATION_PATHS.get(warning.field) : undefined;
             return path ? fromWarning(path, path, warning.missing_name) : null;
+        }
+        case 'venv_ref_cleared': {
+            const path = warning.field ? VENV_PATHS.get(warning.field) : undefined;
+            return path ? fromWarning(path, path, warning.missing_id) : null;
         }
         default:
             return null;

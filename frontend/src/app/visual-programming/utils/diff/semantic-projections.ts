@@ -125,7 +125,7 @@ export const SEMANTIC_PROJECTIONS = {
     [NodeType.PYTHON]: {
         project: (node) => ({
             node_name: nodeName(node),
-            // Only here: the webhook and table panels have no venv control, and their models do not carry one.
+            // Only here: the webhook and table load mappers drop the venv, so their models never hold one.
             python_code: { ...pythonCode(node.data), venv_id: node.data.venv_id ?? null },
             use_storage: node.data.use_storage ?? false,
             ...inputOutput(node),

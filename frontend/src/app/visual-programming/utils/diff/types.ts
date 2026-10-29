@@ -49,7 +49,10 @@ export type MissingReferenceSource = 'warning' | 'keyValueTable';
 export interface MissingReference {
     /** Projected path of the field that held the reference, like `FieldChange.path`. */
     path: string;
-    /** `path` without item keys: the key into `FIELD_DISPLAY`. */
+    /**
+     * `path` without item keys: the key into `FIELD_DISPLAY`. A field that is not a `FieldName` (a venv of table
+     * code) anchors no panel note: the reference only marks the node on the canvas.
+     */
     field: string;
     /** The id (entity or node) or the name (secret, table) the version had; `null` when the warning lacks it. */
     missing: number | string | null;

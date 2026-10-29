@@ -96,6 +96,7 @@
                                 (changed)="onVenvChanged($event)"
                             />
                         </app-diff-field-mark>
+                        <app-missing-reference-note [fields]="['python_code.venv_id']" />
                     </div>
 
                     <!-- A node without its own timeout shows the default, so the tooltip does too. -->
