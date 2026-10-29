@@ -458,6 +458,7 @@ class AgentNodeSerializer(
 
     def validate(self, attrs):
         if "tasks" in attrs:
+            self._validate_task_ids_belong_to_node(attrs["tasks"])
             self._validate_tasks(attrs["tasks"])
 
         if "surface_list" in attrs:
@@ -481,6 +482,25 @@ class AgentNodeSerializer(
         )
 
         return attrs
+
+    def _validate_task_ids_belong_to_node(self, tasks_data):
+        # A task id that is not one of this node's tasks (deleted, or owned by
+        # another node) would otherwise be created as a new row while its
+        # context links keep the stale id, breaking the FK or linking across nodes.
+        supplied_ids = {task["id"] for task in tasks_data if task.get("id")}
+        if not supplied_ids:
+            return
+
+        if self.instance is None:
+            known_ids = set()
+        else:
+            known_ids = set(self.instance.tasks.values_list("id", flat=True))
+
+        unknown_ids = sorted(supplied_ids - known_ids)
+        if unknown_ids:
+            raise serializers.ValidationError(
+                {"tasks": f"Unknown task id(s) for this agent node: {unknown_ids}"}
+            )
 
     @staticmethod
     def _validate_tasks(tasks_data):
