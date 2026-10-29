@@ -1,21 +1,24 @@
-@for (tab of visibleTabs(); track tab.routerLink) {
-    <a
-        [routerLink]="tab.routerLink"
-        routerLinkActive="active"
-        class="route-tab"
-        [attr.data-tour]="tab.tourAnchor ?? null"
-    >
-        @if (tab.icon) {
-            <app-svg-icon
-                size="18px"
-                [icon]="tab.icon"
-            />
-        } @else if (tab.iconClass) {
-            <i
-                [class]="'route-tab__icon-font ' + tab.iconClass"
-                aria-hidden="true"
-            ></i>
-        }
-        {{ tab.label }}
-    </a>
-}
+<div class="tabs-wrapper">
+    @for (tab of visibleTabs(); track tab.routerLink) {
+        <a
+            [routerLink]="tab.routerLink"
+            routerLinkActive="active"
+            class="route-tab"
+            [attr.data-tour]="tab.tourAnchor ?? null"
+        >
+            @if (tab.icon) {
+                <app-svg-icon
+                    size="18px"
+                    [icon]="tab.icon"
+                />
+            } @else if (tab.iconClass) {
+                <i
+                    [class]="'route-tab__icon-font ' + tab.iconClass"
+                    aria-hidden="true"
+                ></i>
+            }
+            {{ tab.label }}
+        </a>
+    }
+</div>
+<ng-content />
