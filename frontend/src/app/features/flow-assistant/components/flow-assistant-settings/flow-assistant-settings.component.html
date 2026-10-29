@@ -2,8 +2,10 @@
     <div class="settings-header">
         <span class="settings-title">Assistant Settings</span>
         <button
+            type="button"
             class="close-btn"
-            title="Close settings"
+            aria-label="Close settings"
+            matTooltip="Close settings"
             (click)="closePanel()"
         >
             <app-svg-icon
@@ -32,6 +34,7 @@
                 <select
                     id="llm-config-select"
                     class="form-select"
+                    matTooltip="LLM Configuration"
                     formControlName="llm_config"
                 >
                     <option [ngValue]="null">— Use default —</option>
@@ -46,9 +49,10 @@
             <button
                 type="submit"
                 class="btn btn--primary"
+                [matTooltip]="saveLabel()"
                 [disabled]="!isDirty || isSaving()"
             >
-                {{ isSaving() ? 'Saving…' : 'Save' }}
+                {{ saveLabel() }}
             </button>
         </div>
     </form>

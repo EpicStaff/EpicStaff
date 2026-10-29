@@ -1,9 +1,10 @@
 <div class="global-sessions-wrapper">
     <div class="global-sessions-header">
         <div class="flows-prefix">
-            <span
+            <a
                 class="flows-back"
                 routerLink="/flows"
+                matTooltip="Flows"
             >
                 <app-svg-icon
                     icon="arrow-left"
@@ -11,7 +12,7 @@
                     class="back-arrow"
                 />
                 <span>Flows</span>
-            </span>
+            </a>
             <span class="slash">/</span>
             <span class="current">All sessions</span>
         </div>
@@ -25,7 +26,9 @@
                 <div class="right-actions">
                     <button
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
+                        type="button"
                         class="delete-btn"
+                        matTooltip="Delete Selected"
                         [class.invisible]="selectedIds().size === 0"
                         (click)="onBulkDelete()"
                     >
@@ -88,6 +91,7 @@
                     <span>Sessions per page</span>
                     <app-select
                         mod="small"
+                        placeholder="Sessions per page"
                         [items]="pageSizeItems"
                         [selectedValue]="pageSize()"
                         (changed)="onPageSizeChange($any($event))"
@@ -111,9 +115,12 @@
             (mousedown)="isPanelOpen() && startResize($event)"
         >
             <button
+                type="button"
                 class="panel-toggle-btn"
+                [attr.aria-label]="isPanelOpen() ? 'Close panel' : 'Open panel'"
+                [attr.aria-expanded]="isPanelOpen()"
                 (click)="togglePanel(); $event.stopPropagation()"
-                [title]="isPanelOpen() ? 'Close panel' : 'Open panel'"
+                [matTooltip]="isPanelOpen() ? 'Close panel' : 'Open panel'"
             >
                 <app-svg-icon
                     [icon]="isPanelOpen() ? 'chevron-right' : 'chevron-left'"
@@ -152,9 +159,11 @@
                         <div class="preview-header-right">
                             <span class="preview-session-id-badge">#{{ session.id }}</span>
                             <button
+                                type="button"
                                 class="preview-open-btn"
+                                aria-label="Open session"
                                 (click)="onViewSession(session.id)"
-                                title="Open session"
+                                matTooltip="Open session"
                             >
                                 <app-svg-icon
                                     icon="arrow-up-right"

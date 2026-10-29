@@ -9,8 +9,14 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
     template: `
         <div class="help-tooltip-container">
             @if (iconClass) {
+                <!-- Focusable, so the keyboard reaches the help text too (the tooltip also describes the icon). Enter does
+                     nothing here, and marking it handled keeps a dialog around the icon from submitting. -->
                 <i
                     [class]="iconClass + ' help-icon-wrapper class-icon'"
+                    tabindex="0"
+                    role="img"
+                    aria-label="Help"
+                    (keydown.enter)="$event.preventDefault()"
                     [matTooltip]="text"
                     [matTooltipPosition]="tooltipPosition"
                     [matTooltipClass]="tooltipClass"
@@ -22,6 +28,10 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                     [width]="width()"
                     [height]="height()"
                     class="help-icon-wrapper"
+                    tabindex="0"
+                    role="img"
+                    aria-label="Help"
+                    (keydown.enter)="$event.preventDefault()"
                     [matTooltip]="text"
                     [matTooltipPosition]="tooltipPosition"
                     [matTooltipClass]="tooltipClass"
@@ -42,15 +52,20 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                outline: none;
                 color: var(--accent-color, #685fff);
                 transition: opacity 0.2s ease;
                 width: 16px;
                 height: 16px;
                 flex-shrink: 0;
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     opacity: 0.7;
+                }
+
+                // A round ring inside the icon box: labels, titles and selects it sits in often clip their content.
+                &:focus-visible {
+                    border-radius: 50%;
+                    outline-offset: -2px;
                 }
 
                 &.class-icon {

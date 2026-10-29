@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -8,6 +9,7 @@ import {
     Output,
     SimpleChanges,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 
@@ -18,7 +20,7 @@ const ALL_TRIGGER_TYPES: TriggerType[] = ['manual', 'schedule', 'webhook', 'tele
 
 @Component({
     selector: 'app-trigger-filter-dropdown',
-    imports: [ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
+    imports: [CdkTrapFocus, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
     styles: [
         `
@@ -44,9 +46,14 @@ const ALL_TRIGGER_TYPES: TriggerType[] = ['manual', 'schedule', 'webhook', 'tele
             [class.open]="open"
             [class.has-value]="hasValue"
             (appClickOutside)="onCancel()"
+            (keydown.escape)="closeOnEscape($event)"
         >
             <button
+                type="button"
                 class="dropdown-toggle"
+                aria-haspopup="dialog"
+                [attr.aria-expanded]="open"
+                matTooltip="Filter by trigger"
                 (click)="toggleDropdown($event)"
             >
                 <span class="selected-label">
@@ -59,14 +66,22 @@ const ALL_TRIGGER_TYPES: TriggerType[] = ['manual', 'schedule', 'webhook', 'tele
             </button>
 
             @if (open) {
-                <div class="dropdown-panel">
+                <!-- Takes the focus when it opens and hands it back to the toggle when it closes. -->
+                <div
+                    class="dropdown-panel"
+                    cdkTrapFocus
+                    [cdkTrapFocusAutoCapture]="true"
+                >
                     <ul class="dropdown-menu">
                         @for (type of ALL_TRIGGER_TYPES; track type) {
                             <li
                                 class="group-item"
                                 (click)="toggleType(type)"
                             >
-                                <app-checkbox [checked]="isChecked(type)"></app-checkbox>
+                                <app-checkbox
+                                    [checked]="isChecked(type)"
+                                    [ariaLabel]="getLabel(type)"
+                                ></app-checkbox>
                                 @if (getIcon(type)) {
                                     <i
                                         [class]="getIcon(type)"
@@ -80,19 +95,25 @@ const ALL_TRIGGER_TYPES: TriggerType[] = ['manual', 'schedule', 'webhook', 'tele
 
                     <div class="trigger-dropdown-footer">
                         <button
+                            type="button"
                             class="clear-filter-btn"
+                            matTooltip="Clear Filter"
                             (click)="onClear()"
                         >
                             Clear Filter
                         </button>
                         <button
+                            type="button"
                             class="cancel-btn"
+                            matTooltip="Cancel"
                             (click)="onCancel()"
                         >
                             Cancel
                         </button>
                         <button
+                            type="button"
                             class="save-btn"
+                            matTooltip="Save Changes"
                             (click)="onSave()"
                         >
                             Save Changes
@@ -162,6 +183,13 @@ export class TriggerFilterDropdownComponent implements OnChanges {
         this.draftValue = [];
         this.valueChange.emit([]);
         this.closeDropdown();
+    }
+
+    /** Escape closes the open panel without saving, and goes no further (it would close a dialog around it). */
+    public closeOnEscape(event: Event): void {
+        if (!this.open) return;
+        event.stopPropagation();
+        this.onCancel();
     }
 
     public onCancel(): void {

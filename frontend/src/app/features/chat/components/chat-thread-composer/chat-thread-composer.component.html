@@ -63,6 +63,7 @@
                 class="composer__extra-toggle text-body-small"
                 [attr.aria-expanded]="isExtraDataOpen()"
                 [attr.aria-controls]="extraDataId"
+                matTooltip="Extra data (JSON)"
                 (click)="isExtraDataOpen.set(!isExtraDataOpen())"
             >
                 Extra data (JSON)

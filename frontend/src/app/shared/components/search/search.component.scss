@@ -77,7 +77,7 @@
         cursor: pointer;
         color: var(--color-text-secondary);
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }

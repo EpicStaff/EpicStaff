@@ -4,3 +4,15 @@
 .visually-hidden {
     @include a11y-mixins.visually-hidden;
 }
+
+// Fields the user types into. They match :focus-visible on a mouse click too, so the ring would show for every mouse
+// user on top of the field's own focus state: each of them shows its focus with its own accent border instead.
+$text-entry-fields: 'input:not([type=checkbox], [type=radio], [type=range], [type=button], [type=submit], [type=reset], [type=file], [type=color], [type=image]), textarea, [contenteditable]:not([contenteditable=false])';
+
+// Keyboard focus ring for everything focusable but text fields. :focus-visible leaves it off after a mouse click on a
+// button; a component that draws its own focus state replaces it in its :focus-visible rule. :where() keeps the
+// exclusion out of the specificity, so those component rules still win.
+:focus-visible:not(:where(#{$text-entry-fields})) {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}

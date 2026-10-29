@@ -22,7 +22,7 @@
         text-align: left;
         overflow: hidden;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             border-color: var(--accent-color, #685fff);
         }
 
@@ -268,7 +268,9 @@
         overflow: hidden;
         transition: all 0.2s ease;
 
-        &:hover {
+        // Its select button has the keyboard focus: the row shows it as it shows the hover.
+        &:hover,
+        &:focus-within {
             border-color: var(--accent-color, #685fff);
             background: var(--purple-alpha-10);
         }
@@ -307,6 +309,11 @@
         &:disabled {
             cursor: not-allowed;
         }
+
+        // The row clips anything drawn outside it.
+        &:focus-visible {
+            outline-offset: -2px;
+        }
     }
 
     &__model-deprecated {
@@ -335,7 +342,7 @@
         cursor: pointer;
         transition: color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }

@@ -41,6 +41,8 @@
                 [class.selector__btn--open]="open()"
                 [class.selector__btn--placeholder]="!selectedItem() && !(allowCustomValue() && selectedValue())"
                 [class.selector__btn--transparent]="transparent()"
+                [attr.aria-expanded]="open()"
+                [matTooltip]="label() || placeholder()"
                 (click)="toggle()"
             >
                 @if (loading()) {
@@ -61,10 +63,7 @@
                             [style.background-color]="dotColor"
                         ></span>
                     }
-                    <span
-                        class="selector__text"
-                        [attr.title]="selectedItem()?.name || null"
-                    >
+                    <span class="selector__text">
                         {{ displayText() }}
                     </span>
                     @if (showTipInTrigger() && selectedItem()?.tip; as tip) {
@@ -103,6 +102,8 @@
 <ng-template #dropdownTemplate>
     <div
         class="selector__dropdown"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
         [attr.data-tour]="dropdownDataAnchor()"
         [class.selector__dropdown--boxed]="variant() === 'boxed'"
     >
@@ -115,6 +116,8 @@
                     (input)="search.set($any($event.target).value)"
                     (keydown.enter)="commitCustomValue()"
                     [placeholder]="searchPlaceholder()"
+                    [attr.aria-label]="searchPlaceholder()"
+                    [matTooltip]="searchPlaceholder()"
                 />
             </div>
         }
@@ -128,12 +131,15 @@
                     <div class="selector__group-label">{{ group.group }}</div>
                 }
                 @for (item of group.items; track item.name) {
-                    <div
+                    <button
+                        type="button"
                         class="selector__option selector__option--exists"
                         [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
                         [class.selector__option--selected]="item.value === selectedValue()"
                         [class.selector__option--disabled]="item.disabled"
-                        [attr.aria-disabled]="item.disabled ? true : null"
+                        [attr.aria-pressed]="item.value === selectedValue()"
+                        [disabled]="!!item.disabled"
+                        [matTooltip]="item.name"
                         (click)="select(item)"
                     >
                         @if (item.icon) {
@@ -148,12 +154,12 @@
                                 [style.background-color]="dotColor"
                             ></span>
                         }
-                        <div class="selector__option-body">
+                        <span class="selector__option-body">
                             <span class="selector__text">{{ item.name }}</span>
                             @if (item.subtitle && variant() === 'boxed') {
                                 <span class="selector__subtitle">{{ item.subtitle }}</span>
                             }
-                        </div>
+                        </span>
                         @if (item.meta) {
                             <span class="selector__meta">{{ item.meta }}</span>
                         }
@@ -164,20 +170,22 @@
                                 >{{ item.tip }}</span
                             >
                         }
-                    </div>
+                    </button>
                 }
             }
 
             @if (allowCustomValue() && search().trim() && !hasExactMatch()) {
-                <div
+                <button
+                    type="button"
                     class="selector__option selector__option--exists"
                     [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
+                    [matTooltip]="'Use ' + search().trim()"
                     (click)="commitCustomValue()"
                 >
-                    <div class="selector__option-body">
+                    <span class="selector__option-body">
                         <span class="selector__text">Use "{{ search().trim() }}"</span>
-                    </div>
-                </div>
+                    </span>
+                </button>
             }
 
             @if (!hasVisibleItems() && !(allowCustomValue() && search().trim())) {

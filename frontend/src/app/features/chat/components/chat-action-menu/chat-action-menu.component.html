@@ -4,8 +4,10 @@
     cdkOverlayOrigin
     type="button"
     class="chat-action-menu__trigger"
+    aria-haspopup="menu"
     [attr.aria-label]="label()"
     [attr.aria-expanded]="isOpen()"
+    [matTooltip]="label()"
     (click)="toggle()"
 >
     <app-svg-icon
@@ -24,6 +26,7 @@
 >
     <div
         class="chat-action-menu"
+        role="menu"
         cdkTrapFocus
         [cdkTrapFocusAutoCapture]="true"
     >
@@ -31,7 +34,9 @@
             <button
                 type="button"
                 class="chat-action-menu__item"
+                role="menuitem"
                 [disabled]="item.disabled"
+                [matTooltip]="item.label"
                 (click)="choose(item)"
             >
                 {{ item.label }}

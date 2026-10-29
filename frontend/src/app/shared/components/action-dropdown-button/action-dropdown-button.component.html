@@ -7,8 +7,10 @@
     [style.min-width]="buttonWidth() === null ? '0' : buttonWidth() + 'px'"
 >
     <button
+        type="button"
         class="adb__main"
         [disabled]="disabled() || loading()"
+        [matTooltip]="label()"
         (click)="onMainClick()"
     >
         @if (leftIcon()) {
@@ -20,10 +22,12 @@
         <span>{{ label() }}</span>
     </button>
     <button
+        type="button"
         class="adb__chevron"
         [disabled]="disabled() || loading()"
+        aria-label="More options"
+        [attr.aria-expanded]="isOpen()"
         matTooltip="More options"
-        matTooltipPosition="above"
         (click)="toggle($event)"
     >
         <app-svg-icon
@@ -51,10 +55,16 @@
     (overlayOutsideClick)="close()"
     (detach)="close()"
 >
-    <div class="action-dropdown-panel__inner">
+    <div
+        class="action-dropdown-panel__inner"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+    >
         @for (item of items(); track item.value) {
             <button
+                type="button"
                 class="action-dropdown-panel__item"
+                [matTooltip]="item.label"
                 (click)="onItemClick(item)"
             >
                 {{ item.label }}

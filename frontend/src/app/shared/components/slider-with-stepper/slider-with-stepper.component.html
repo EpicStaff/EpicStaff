@@ -12,6 +12,7 @@
 
             @if (optional()) {
                 <app-toggle-switch
+                    [ariaLabel]="label() ? 'Enable ' + label() : ''"
                     [checked]="enabled()"
                     (checkedChange)="onToggle($event)"
                 />
@@ -23,6 +24,8 @@
                 <button
                     type="button"
                     class="slider-stepper__btn slider-stepper__btn--minus"
+                    aria-label="Decrease"
+                    matTooltip="Decrease"
                     (click)="onStepDown()"
                     [disabled]="isDisabled() || (value() ?? min()) <= min()"
                 >
@@ -36,6 +39,8 @@
                     type="text"
                     inputmode="decimal"
                     class="slider-stepper__value slider-stepper__value-input"
+                    [attr.aria-label]="label() || null"
+                    [matTooltip]="label()"
                     [value]="displayValue()"
                     [disabled]="isDisabled()"
                     (keydown.enter)="onValueInputKeydown($event)"
@@ -45,6 +50,8 @@
                 <button
                     type="button"
                     class="slider-stepper__btn slider-stepper__btn--plus"
+                    aria-label="Increase"
+                    matTooltip="Increase"
                     (click)="onStepUp()"
                     [disabled]="isDisabled() || (value() ?? min()) >= max()"
                 >
@@ -69,6 +76,8 @@
             <input
                 type="range"
                 class="slider-stepper__slider"
+                [attr.aria-label]="label() || null"
+                [matTooltip]="label()"
                 [min]="min()"
                 [max]="max()"
                 step="any"

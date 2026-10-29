@@ -11,15 +11,20 @@
     class="voice-selector"
     appClickOutside
     (appClickOutside)="isOpen = false"
+    (keydown.escape)="isOpen = false"
 >
     <!-- <label *ngIf="label">{{ label }}</label> -->
-    <div
+    <button
+        type="button"
         class="selector"
         [class.disabled]="disabled()"
+        [disabled]="disabled()"
+        [attr.aria-expanded]="isOpen"
+        [matTooltip]="label() || 'Voice'"
         (click)="toggleDropdown()"
     >
-        <div class="selected-voice">{{ getSelectedVoiceName() }}</div>
-        <div
+        <span class="selected-voice">{{ getSelectedVoiceName() }}</span>
+        <span
             class="selector-arrow"
             [class.open]="isOpen"
         >
@@ -38,22 +43,25 @@
                     stroke-linejoin="round"
                 />
             </svg>
-        </div>
-    </div>
+        </span>
+    </button>
 
     @if (isOpen) {
         <div class="dropdown-menu">
             @for (voice of voices(); track voice.id) {
-                <div
+                <button
+                    type="button"
                     class="dropdown-item"
                     [class.selected]="voice.id === selectedVoice()"
+                    [attr.aria-pressed]="voice.id === selectedVoice()"
+                    [matTooltip]="voice.name"
                     (click)="selectVoice(voice.id)"
                 >
                     <span class="dropdown-item__name">{{ voice.name }}</span>
                     @if (voice.description) {
                         <span class="dropdown-item__desc">{{ voice.description }}</span>
                     }
-                </div>
+                </button>
             }
         </div>
     }

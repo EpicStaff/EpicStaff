@@ -46,8 +46,13 @@
             color: var(--color-input-text-placeholder);
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             border-color: var(--accent-color, #685fff);
+        }
+
+        // Drawn inside: the host and the selector clip the full-width button.
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         &--open {
@@ -314,8 +319,13 @@
         &--exists {
             cursor: pointer;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: var(--color-ks-hover-row);
+            }
+
+            // Inside the scrolling list, which clips anything drawn outside it.
+            &:focus-visible {
+                outline-offset: -2px;
             }
         }
 
@@ -334,7 +344,7 @@
             color: var(--color-input-text-placeholder);
             cursor: default;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: transparent;
             }
         }
@@ -353,4 +363,15 @@
     100% {
         transform: rotate(360deg);
     }
+}
+
+// Options are plain buttons, laid out like the rows they were. :where() keeps this reset below every option rule
+// (the row borders, the boxed background, the selected colour).
+:where(button.selector__option) {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
 }

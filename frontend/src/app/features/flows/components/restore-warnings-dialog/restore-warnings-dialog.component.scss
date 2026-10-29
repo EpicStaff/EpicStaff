@@ -41,7 +41,7 @@
         justify-content: center;
         border-radius: 4px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-secondary-btn-background-hover);
             color: var(--color-text-primary);
         }
@@ -89,11 +89,19 @@
         transition: color 0.15s ease;
     }
 
+    // A button drawn as the other warnings: only the left border, the text as theirs.
     &--clickable {
+        width: 100%;
+        border-top: none;
+        border-right: none;
+        border-bottom: none;
+        color: inherit;
+        font-family: inherit;
+        text-align: left;
         cursor: pointer;
         transition: background-color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--amber-alpha-12);
 
             .warning-item-arrow {

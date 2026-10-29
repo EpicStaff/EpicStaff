@@ -9,6 +9,8 @@
             class="checkbox-enum__search-input"
             type="text"
             placeholder="Search..."
+            aria-label="Search"
+            matTooltip="Search"
             [value]="searchTerm()"
             (input)="onSearchInput($event)"
         />
@@ -23,6 +25,7 @@
         <label class="checkbox-enum__option">
             <app-checkbox
                 [checked]="isSelected(option.value)"
+                [ariaLabel]="option.label"
                 (changed)="toggle(option.value)"
             />
             @if (option.icon) {

@@ -19,6 +19,7 @@ import {
     ValidationErrors,
     Validator,
 } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { generateUuid } from '@shared/utils';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -28,7 +29,7 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
     templateUrl: './input-number.component.html',
     styleUrls: ['./input-number.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FormsModule, NgClass, TooltipComponent],
+    imports: [FormsModule, NgClass, TooltipComponent, MatTooltip],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -104,6 +105,8 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
         return '';
     });
     protected readonly messageId = `input-number-message-${generateUuid()}`;
+    /** Shown as the input's tooltip. */
+    protected readonly fieldName = computed(() => this.label() || this.ariaLabel() || this.placeholder());
 
     onChange: (value: number | null) => void = () => {};
     onTouched: () => void = () => {};
@@ -170,6 +173,12 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     onKeyDown(event: KeyboardEvent) {
         const allowedKeys = ['Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End'];
         if (allowedKeys.includes(event.key)) return;
+        // The keyboard's step buttons: the ones beside the input are mouse-only.
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            event.preventDefault();
+            this.onStep(event.key === 'ArrowUp' ? 1 : -1);
+            return;
+        }
         if (this.allowDecimal() && event.key === '.') return;
 
         if (!/^\d$/.test(event.key)) {

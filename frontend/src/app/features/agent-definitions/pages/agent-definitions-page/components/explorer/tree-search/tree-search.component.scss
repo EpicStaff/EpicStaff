@@ -8,6 +8,11 @@
     border-radius: 4px;
     background-color: transparent;
 
+    // The input draws no border of its own, so the box shows its focus.
+    &:focus-within {
+        border-color: var(--accent-color);
+    }
+
     &__icon {
         color: var(--color-text-secondary);
         flex-shrink: 0;
@@ -40,7 +45,7 @@
         cursor: pointer;
         flex-shrink: 0;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }

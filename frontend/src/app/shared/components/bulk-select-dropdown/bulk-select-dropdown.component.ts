@@ -49,6 +49,9 @@ export class BulkSelectDropdownComponent {
     private readonly isPressedFromDefault = signal(false);
     protected readonly showsSelection = computed(() => this.selectMode() && !this.isPressedFromDefault());
     protected readonly menuItemLabel = computed(() => (this.allSelected() ? 'Deselect All' : 'Select All'));
+    protected readonly mainTooltip = computed(() =>
+        this.showsSelection() ? `Selected (${this.selectedCount()})` : 'Select'
+    );
     protected readonly isSmall = computed(() => this.mod() === 'small');
     protected readonly isOutline = computed(() => this.appearance() === 'outline');
     /** Icon boxes; the sprites draw their glyph inside a transparent inset (see the stylesheet). */

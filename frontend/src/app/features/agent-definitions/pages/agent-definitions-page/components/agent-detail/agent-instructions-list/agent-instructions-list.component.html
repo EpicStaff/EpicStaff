@@ -34,17 +34,19 @@
                         type="text"
                         class="instruction__rename"
                         aria-label="Instruction name"
+                        matTooltip="Instruction name"
                         maxlength="255"
                         [formControl]="renameControl"
                         (input)="renameError.set(null)"
-                        (keydown.enter)="$event.preventDefault(); commitRename(index)"
-                        (keydown.escape)="cancelRename()"
+                        (keydown.enter)="$event.preventDefault(); commitRenameByKey(index)"
+                        (keydown.escape)="cancelRenameByKey(index)"
                         (blur)="commitRename(index)"
                     />
                 } @else {
                     <button
                         type="button"
                         class="instruction__name"
+                        [matTooltip]="instruction.name"
                         (click)="openInstruction.emit({ index, edit: false })"
                     >
                         {{ instruction.name }}
@@ -57,9 +59,11 @@
 
                 @if (editable()) {
                     <button
+                        #renameButton
                         type="button"
                         class="instruction__action"
                         aria-label="Rename instruction"
+                        matTooltip="Rename instruction"
                         (click)="startRename(index)"
                     >
                         <app-svg-icon
@@ -71,6 +75,7 @@
                         type="button"
                         class="instruction__action"
                         aria-label="Delete instruction"
+                        matTooltip="Delete instruction"
                         (click)="onDelete(index)"
                     >
                         <app-svg-icon
@@ -107,8 +112,6 @@
             type="button"
             class="doc-actions__btn"
             matTooltip="Add a new .md instruction"
-            matTooltipPosition="above"
-            matTooltipClass="custom-tooltip"
             (click)="onCreateMarkdown()"
         >
             <app-svg-icon
@@ -123,8 +126,6 @@
                 type="button"
                 class="doc-actions__btn"
                 matTooltip="Add a text file from storage as an instruction"
-                matTooltipPosition="above"
-                matTooltipClass="custom-tooltip"
                 [disabled]="isCreating()"
                 (click)="onExtractFromStorage()"
             >
@@ -140,8 +141,6 @@
             type="button"
             class="doc-actions__btn"
             matTooltip="Add a text file from your computer as an instruction"
-            matTooltipPosition="above"
-            matTooltipClass="custom-tooltip"
             [disabled]="isCreating()"
             (click)="onExtractFromPc(pcInput)"
         >

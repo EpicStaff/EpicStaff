@@ -62,7 +62,7 @@
                         class="message__raw"
                         (toggle)="onRawToggle(message.id, $event)"
                     >
-                        <summary>Raw data</summary>
+                        <summary matTooltip="Raw data">Raw data</summary>
                         <!-- Mounted on open only: one Monaco editor per message would be heavy. -->
                         @if (openRawIds().has(message.id)) {
                             <app-json-editor
@@ -83,6 +83,7 @@
                             <a
                                 class="message__session"
                                 [routerLink]="link"
+                                [matTooltip]="'Open run #' + message.session_id"
                                 >run #{{ message.session_id }}</a
                             >
                         } @else {

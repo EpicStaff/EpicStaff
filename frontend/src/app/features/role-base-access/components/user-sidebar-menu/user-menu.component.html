@@ -14,17 +14,24 @@
         <div class="section-label text-body-small">Organizations</div>
         <ul class="org-list">
             @for (org of organizations(); track org.organization.id) {
-                <li
-                    class="org-row"
-                    [class.active]="activeOrgService.activeOrgId() === org.organization.id"
-                    [class.disabled]="switching()"
-                    (click)="onOrgClick(org.organization.id)"
-                >
-                    <app-org-avatar [name]="org.organization.name" />
-                    <div class="org-info">
-                        <div class="org-name text-body-small">{{ org.organization.name }}</div>
-                        <div class="org-role">{{ org.role.name }}</div>
-                    </div>
+                <li>
+                    <button
+                        type="button"
+                        class="org-row"
+                        [class.active]="activeOrgService.activeOrgId() === org.organization.id"
+                        [class.disabled]="switching()"
+                        [disabled]="switching()"
+                        [attr.aria-current]="activeOrgService.activeOrgId() === org.organization.id || null"
+                        [matTooltip]="org.organization.name"
+                        matTooltipPosition="right"
+                        (click)="onOrgClick(org.organization.id)"
+                    >
+                        <app-org-avatar [name]="org.organization.name" />
+                        <span class="org-info">
+                            <span class="org-name text-body-small">{{ org.organization.name }}</span>
+                            <span class="org-role">{{ org.role.name }}</span>
+                        </span>
+                    </button>
                 </li>
             }
         </ul>
@@ -34,8 +41,11 @@
         <div class="section-label text-body-small">Navigation</div>
         @if (canVisitWorkspace()) {
             <button
+                type="button"
                 class="nav-item"
                 [class.active]="isWorkspaceRoute()"
+                matTooltip="Workspace"
+                matTooltipPosition="right"
                 (click)="onWorkspaceClick()"
             >
                 <app-svg-icon
@@ -52,8 +62,11 @@
             </button>
         }
         <button
+            type="button"
             class="nav-item"
             [class.active]="isProfileRoute()"
+            matTooltip="My Profile"
+            matTooltipPosition="right"
             (click)="onProfileClick()"
         >
             <app-svg-icon
@@ -73,7 +86,10 @@
     <section class="menu-section">
         @for (tour of tours(); track tour.key) {
             <button
+                type="button"
                 class="nav-item"
+                [matTooltip]="tour.label"
+                matTooltipPosition="right"
                 (click)="onTourClick(tour.key)"
             >
                 <app-svg-icon
@@ -85,7 +101,10 @@
             </button>
         }
         <button
+            type="button"
             class="nav-item"
+            matTooltip="Sign out"
+            matTooltipPosition="right"
             (click)="onSignOutClick()"
         >
             <app-svg-icon

@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 @Component({
     selector: 'app-range-slider',
-    imports: [FormsModule],
+    imports: [FormsModule, MatTooltip],
     templateUrl: './range-slider.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./range-slider.component.scss'],

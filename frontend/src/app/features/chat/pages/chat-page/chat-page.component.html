@@ -24,8 +24,7 @@
                             type="button"
                             class="header-action header-action--ghost"
                             [attr.aria-label]="myNameLabel()"
-                            [matTooltip]="myNameTooltip()"
-                            [matTooltipDisabled]="!myNameTooltip()"
+                            [matTooltip]="myNameTooltip() || myNameLabel()"
                             [appCollapseOnOverflow]="true"
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
@@ -44,6 +43,7 @@
                             type="button"
                             class="header-action header-action--ghost"
                             aria-label="Settings"
+                            matTooltip="Settings"
                             [appCollapseOnOverflow]="true"
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
@@ -62,6 +62,7 @@
                             type="button"
                             class="header-action header-action--ghost"
                             aria-label="Delete"
+                            matTooltip="Delete"
                             [appCollapseOnOverflow]="true"
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
@@ -81,6 +82,7 @@
                             type="button"
                             class="header-action header-action--outline"
                             aria-label="Get snippet"
+                            matTooltip="Get snippet"
                             (click)="copySnippet()"
                         >
                             <span class="btn-label">Get snippet</span>
@@ -91,6 +93,7 @@
                             type="button"
                             class="header-action header-action--outline"
                             [attr.aria-label]="pauseLabel()"
+                            [matTooltip]="pauseLabel()"
                             [appCollapseOnOverflow]="true"
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
@@ -109,6 +112,7 @@
                             type="button"
                             class="header-action header-action--primary"
                             aria-label="Test"
+                            matTooltip="Test"
                             [appCollapseOnOverflow]="true"
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
@@ -153,6 +157,7 @@
                             type="button"
                             class="phone-bar__switcher"
                             [attr.aria-label]="deskSwitcherLabel()"
+                            [matTooltip]="deskSwitcherLabel()"
                             (click)="deskDrawer.open()"
                         >
                             <app-desk-avatar
@@ -182,6 +187,7 @@
                                 type="button"
                                 class="phone-bar__icon-button phone-bar__icon-button--primary"
                                 aria-label="Test"
+                                matTooltip="Test"
                                 [disabled]="!canStartTest()"
                                 (click)="startTest()"
                             >

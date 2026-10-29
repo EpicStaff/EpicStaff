@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 import { extractHttpErrorMessage } from '@shared/utils';
 
@@ -44,7 +45,7 @@ let nextDialogId = 0;
  */
 @Component({
     selector: 'app-my-desk-alias-dialog',
-    imports: [ReactiveFormsModule, AppSvgIconComponent, ButtonComponent],
+    imports: [ReactiveFormsModule, MatTooltip, AppSvgIconComponent, ButtonComponent],
     templateUrl: './my-desk-alias-dialog.component.html',
     styleUrl: './my-desk-alias-dialog.component.scss',
 })

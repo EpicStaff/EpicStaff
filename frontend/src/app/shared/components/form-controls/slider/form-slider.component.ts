@@ -7,10 +7,11 @@ import {
     Output,
     SimpleChanges,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 @Component({
     selector: 'app-form-slider',
-    imports: [],
+    imports: [MatTooltip],
     templateUrl: './form-slider.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./form-slider.component.scss'],

@@ -35,8 +35,13 @@
             cursor: pointer;
             transition: background-color 0.2s ease;
 
-            &:hover:not(:disabled) {
+            &:is(:hover, :focus-visible):not(:disabled) {
                 background: var(--accent-color, #685fff);
+            }
+
+            // Drawn inside: the controls clip the full-height buttons.
+            &:focus-visible {
+                outline-offset: -2px;
             }
 
             &:disabled {
@@ -109,6 +114,17 @@
 
         &.active {
             z-index: 2;
+        }
+
+        // Both sliders share the track, so a ring around one would mark both: the focused thumb gets it.
+        &:focus-visible {
+            &::-webkit-slider-thumb {
+                box-shadow: 0 0 0 2px var(--accent-color);
+            }
+
+            &::-moz-range-thumb {
+                box-shadow: 0 0 0 2px var(--accent-color);
+            }
         }
 
         &::-webkit-slider-thumb {

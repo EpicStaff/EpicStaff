@@ -50,7 +50,7 @@
             background 0.15s,
             color 0.15s;
 
-        &:hover:not(.active) {
+        &:is(:hover, :focus-visible):not(.active) {
             color: var(--color-text-primary);
         }
 
@@ -148,7 +148,8 @@
     width: max-content;
     min-width: 100%;
 
-    &:hover {
+    // A row is not focused itself: the checkbox in it is.
+    &:is(:hover, :focus-within) {
         border-color: var(--accent-color);
     }
 

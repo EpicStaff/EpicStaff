@@ -8,6 +8,7 @@
             type="button"
             class="bindings-dialog__icon-btn"
             aria-label="Close dialog"
+            matTooltip="Close dialog"
             (click)="close()"
         >
             <app-svg-icon
@@ -72,7 +73,9 @@
                 class="bindings-dialog__tab"
                 [hidden]="activeTab() !== 'general'"
             >
+                <!-- The dialog opens with the focus here, its first field. -->
                 <app-custom-input
+                    cdkFocusInitial
                     label="Name"
                     formControlName="name"
                     [required]="true"
@@ -120,6 +123,7 @@
                                 name="style"
                                 formControlName="style"
                                 [value]="option.value"
+                                [matTooltip]="'Style: ' + option.label"
                                 [attr.aria-labelledby]="styleTextId(option.value, 'name')"
                                 [attr.aria-describedby]="styleTextId(option.value, 'description')"
                             />

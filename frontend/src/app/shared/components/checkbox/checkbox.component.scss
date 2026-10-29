@@ -18,7 +18,7 @@ input[type='checkbox'] {
         background 0.15s;
 }
 
-input[type='checkbox']:hover:not(:checked):not(:indeterminate):not(:disabled) {
+input[type='checkbox']:is(:hover, :focus-visible):not(:checked):not(:indeterminate):not(:disabled) {
     border-color: var(--color-text-primary);
 }
 

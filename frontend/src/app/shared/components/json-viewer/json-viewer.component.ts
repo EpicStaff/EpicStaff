@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, input, OnChanges } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 interface Segment {
     // null for a root scalar drawn without its `(type)` key (showScalarType = false).
@@ -23,7 +24,7 @@ type SegmentType =
 
 @Component({
     selector: 'app-json-viewer',
-    imports: [],
+    imports: [MatTooltip],
     template: `
         <section class="json-viewer">
             @for (segment of segments; track segment.key) {
@@ -32,7 +33,13 @@ type SegmentType =
                         class="segment-main"
                         [class.expandable]="isExpandable(segment)"
                         [class.expanded]="segment.expanded"
+                        [attr.tabindex]="isExpandable(segment) ? 0 : null"
+                        [attr.role]="isExpandable(segment) ? 'button' : null"
+                        [attr.aria-expanded]="isExpandable(segment) ? segment.expanded : null"
+                        [matTooltip]="isExpandable(segment) ? (segment.expanded ? 'Collapse' : 'Expand') : ''"
                         (click)="toggle(segment)"
+                        (keydown.enter)="toggle(segment); $event.preventDefault()"
+                        (keydown.space)="toggle(segment); $event.preventDefault()"
                     >
                         @if (isExpandable(segment)) {
                             <div class="toggler"></div>
@@ -109,6 +116,11 @@ type SegmentType =
             .expandable,
             .expandable > .toggler {
                 cursor: pointer;
+            }
+
+            /* The viewer clips anything drawn outside it. */
+            .expandable:focus-visible {
+                outline-offset: 0;
             }
 
             .children {

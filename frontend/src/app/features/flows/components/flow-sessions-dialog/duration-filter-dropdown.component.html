@@ -3,9 +3,14 @@
     [class.open]="open"
     [class.has-value]="hasValue"
     (appClickOutside)="close()"
+    (keydown.escape)="closeOnEscape($event)"
 >
     <button
+        type="button"
         class="toggle-btn"
+        aria-haspopup="dialog"
+        [attr.aria-expanded]="open"
+        matTooltip="Filter by duration"
         (click)="toggle($event)"
     >
         <span>{{ label }}</span>
@@ -16,12 +21,20 @@
     </button>
 
     @if (open) {
-        <div class="dur-panel">
+        <!-- Takes the focus when it opens and hands it back to the toggle when it closes. -->
+        <div
+            class="dur-panel"
+            cdkTrapFocus
+            [cdkTrapFocusAutoCapture]="true"
+        >
             <div class="op-row">
                 @for (op of operators; track op.value) {
                     <button
+                        type="button"
                         class="op-btn"
                         [class.op-btn--active]="selectedOperator === op.value"
+                        [attr.aria-pressed]="selectedOperator === op.value"
+                        [matTooltip]="'Comparison: ' + op.label"
                         (click)="selectOperator(op.value)"
                     >
                         {{ op.label }}
@@ -32,8 +45,11 @@
             <div class="unit-row">
                 @for (u of units; track u.value) {
                     <button
+                        type="button"
                         class="unit-btn"
                         [class.unit-btn--active]="selectedUnit === u.value"
+                        [attr.aria-pressed]="selectedUnit === u.value"
+                        [matTooltip]="'Unit: ' + u.label"
                         (click)="selectUnit(u.value)"
                     >
                         {{ u.label }}
@@ -48,6 +64,8 @@
                     min="0"
                     step="1"
                     [placeholder]="selectedUnit"
+                    [attr.aria-label]="firstValueLabel"
+                    [matTooltip]="firstValueLabel"
                     [(ngModel)]="val1"
                     (keydown.enter)="apply()"
                 />
@@ -59,6 +77,8 @@
                         min="0"
                         step="1"
                         [placeholder]="selectedUnit"
+                        aria-label="To"
+                        matTooltip="To"
                         [(ngModel)]="val2"
                         (keydown.enter)="apply()"
                     />
@@ -67,14 +87,18 @@
 
             <div class="action-row">
                 <button
+                    type="button"
                     class="apply-btn"
+                    matTooltip="Apply"
                     (click)="apply()"
                 >
                     Apply
                 </button>
                 @if (value !== null) {
                     <button
+                        type="button"
                         class="clear-btn"
+                        matTooltip="Clear"
                         (click)="clear()"
                     >
                         Clear

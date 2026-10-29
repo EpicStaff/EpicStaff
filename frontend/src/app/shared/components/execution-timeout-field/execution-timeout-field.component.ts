@@ -1,4 +1,5 @@
 import { Component, computed, effect, input, linkedSignal, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import {
     executionTimeoutMinimumRule,
@@ -62,7 +63,7 @@ interface ClockCell {
  */
 @Component({
     selector: 'app-execution-timeout-field',
-    imports: [AppSvgIconComponent, TooltipComponent],
+    imports: [MatTooltip, AppSvgIconComponent, TooltipComponent],
     templateUrl: './execution-timeout-field.component.html',
     styleUrls: ['./execution-timeout-field.component.scss'],
 })

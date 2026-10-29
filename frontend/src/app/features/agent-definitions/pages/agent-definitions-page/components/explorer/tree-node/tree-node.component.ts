@@ -16,8 +16,7 @@ export interface ExplorerTreeMenuEvent {
     action: string;
     /**
      * The row's ⋮ button that opened the menu — where a dialog opened from the menu returns focus.
-     * It only takes focus while visible: `.row__hover-actions` is `visibility: hidden` once the row
-     * loses hover, so today focus falls back to <body> when the dialog closes.
+     * It stays focusable while hidden (`.row__hover-actions` is only transparent), so focus can return to it.
      */
     trigger: HTMLElement;
 }
@@ -149,6 +148,21 @@ export class TreeNodeComponent implements OnInit {
 
     onRowClick(): void {
         this.selectNode.emit(this.node());
+    }
+
+    /** Enter/Space select the focused row like a click; Right/Left arrows expand/collapse it. Keys from its buttons pass. */
+    onRowKeydown(event: KeyboardEvent): void {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            this.onRowClick();
+        } else if (event.key === 'ArrowRight' && this.hasChildren() && !this.isExpanded()) {
+            event.preventDefault();
+            this.expanded.set(true);
+        } else if (event.key === 'ArrowLeft' && this.hasChildren() && this.expanded()) {
+            event.preventDefault();
+            this.expanded.set(false);
+        }
     }
 
     /** While a storage item or shared surface is dragged over a row: reveal children and show the node in the preview. */

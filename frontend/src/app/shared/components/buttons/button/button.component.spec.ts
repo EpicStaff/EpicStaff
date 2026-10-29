@@ -1,5 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 
 import { ButtonComponent } from './button.component';
 
@@ -22,6 +24,14 @@ class ResizeObserverStub {
 class ButtonHostComponent {
     readonly isAriaDisabled = signal(false);
     readonly hostClicks = signal(0);
+}
+
+@Component({
+    imports: [ButtonComponent],
+    template: `<app-button>{{ label() }}</app-button>`,
+})
+class LabelHostComponent {
+    readonly label = signal('Save');
 }
 
 describe('ButtonComponent', () => {
@@ -105,5 +115,19 @@ describe('ButtonComponent', () => {
         expect(button.classList).toContain('btn--only-icon');
         expect(getComputedStyle(label).display).not.toBe('none');
         expect(getComputedStyle(label).position).toBe('absolute');
+    });
+
+    // A label that changes while the button is shown (Save → Saving…) names the tooltip at once, with no other change.
+    it('keeps its tooltip on the label it shows as the label changes', async () => {
+        const fixture = TestBed.createComponent(LabelHostComponent);
+        fixture.autoDetectChanges();
+        await fixture.whenStable();
+        const tooltip = (): string => fixture.debugElement.query(By.css('button')).injector.get(MatTooltip).message;
+        expect(tooltip()).toBe('Save');
+
+        fixture.componentInstance.label.set('Saving…');
+        await fixture.whenStable();
+
+        expect(tooltip()).toBe('Saving…');
     });
 });

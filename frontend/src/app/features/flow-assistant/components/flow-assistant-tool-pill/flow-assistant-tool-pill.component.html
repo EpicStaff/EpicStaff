@@ -4,6 +4,7 @@
         class="tool-pill__header"
         (click)="toggle()"
         [attr.aria-expanded]="expanded()"
+        [matTooltip]="expanded() ? 'Hide tools' : 'Show tools'"
     >
         <app-svg-icon
             [icon]="expanded() ? 'chevron-down' : 'chevron-right'"

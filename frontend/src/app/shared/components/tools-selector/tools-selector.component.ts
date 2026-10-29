@@ -11,6 +11,7 @@ import {
     Output,
 } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { GetMcpToolRequest, GetPythonCodeToolRequest } from '@shared/models';
 import { forkJoin, Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
@@ -21,22 +22,24 @@ import { TOOLS_SOURCE } from './tools-source.token';
 
 @Component({
     selector: 'app-tools-selector',
-    imports: [FormsModule, ReactiveFormsModule, IconButtonComponent, AppSvgIconComponent],
+    imports: [MatTooltip, FormsModule, ReactiveFormsModule, IconButtonComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <!-- Tools Selection Button -->
         <div class="tools-selector">
-            <div
+            <button
+                type="button"
                 class="tools-display"
+                matTooltip="Select tools"
                 (click)="openToolsDialog()"
             >
                 @if (totalSelectedTools === 0) {
-                    <div class="no-tools-selected">Select tools</div>
+                    <span class="no-tools-selected">Select tools</span>
                 }
                 @if (totalSelectedTools > 0) {
-                    <div class="tools-summary">{{ totalSelectedTools }} tool(s) selected</div>
+                    <span class="tools-summary">{{ totalSelectedTools }} tool(s) selected</span>
                 }
-                <div class="tools-selector-icon">
+                <span class="tools-selector-icon">
                     <svg
                         width="16"
                         height="16"
@@ -52,8 +55,8 @@ import { TOOLS_SOURCE } from './tools-source.token';
                             stroke-linejoin="round"
                         />
                     </svg>
-                </div>
-            </div>
+                </span>
+            </button>
         </div>
 
         <!-- Tools Dialog -->
@@ -83,16 +86,22 @@ import { TOOLS_SOURCE } from './tools-source.token';
                                 type="text"
                                 [(ngModel)]="toolsSearchTerm"
                                 placeholder="Search tools..."
+                                aria-label="Search tools"
+                                matTooltip="Search tools"
                             />
                         </div>
                         <div class="tools-tabs">
                             <button
+                                type="button"
+                                matTooltip="Custom Tools"
                                 [class.active]="currentToolType === 'python'"
                                 (click)="toggleToolType('python')"
                             >
                                 Custom Tools
                             </button>
                             <button
+                                type="button"
+                                matTooltip="MCP Tools"
                                 [class.active]="currentToolType === 'mcp'"
                                 (click)="toggleToolType('mcp')"
                             >
@@ -137,6 +146,8 @@ import { TOOLS_SOURCE } from './tools-source.token';
                                             <input
                                                 type="checkbox"
                                                 [checked]="selectedPythonToolIds.has(tool.id)"
+                                                [attr.aria-label]="tool.name"
+                                                [matTooltip]="tool.name"
                                                 (click)="$event.stopPropagation(); togglePythonTool(tool)"
                                             />
                                         </div>
@@ -168,6 +179,8 @@ import { TOOLS_SOURCE } from './tools-source.token';
                                             <input
                                                 type="checkbox"
                                                 [checked]="selectedMcpToolIds.has(tool.id)"
+                                                [attr.aria-label]="tool.name"
+                                                [matTooltip]="tool.name"
                                                 (click)="$event.stopPropagation(); toggleMcpTool(tool)"
                                             />
                                         </div>
@@ -179,13 +192,17 @@ import { TOOLS_SOURCE } from './tools-source.token';
                     <!-- Footer -->
                     <div class="tools-dialog-footer">
                         <button
+                            type="button"
                             class="cancel-btn"
+                            matTooltip="Cancel"
                             (click)="closeToolsDialog()"
                         >
                             Cancel
                         </button>
                         <button
+                            type="button"
                             class="save-btn"
+                            matTooltip="Save Selection"
                             (click)="saveToolSelection()"
                         >
                             Save Selection
@@ -214,8 +231,12 @@ import { TOOLS_SOURCE } from './tools-source.token';
                     align-items: center;
                     cursor: pointer;
                     transition: border-color 0.2s ease;
+                    width: 100%;
+                    color: inherit;
+                    font-family: inherit;
+                    text-align: left;
 
-                    &:hover {
+                    &:is(:hover, :focus-visible) {
                         border-color: var(--accent-color);
                     }
 
@@ -322,7 +343,7 @@ import { TOOLS_SOURCE } from './tools-source.token';
                             position: relative;
                             border-radius: 4px;
 
-                            &:hover {
+                            &:is(:hover, :focus-visible) {
                                 color: var(--color-text-primary);
                                 background-color: rgba(255, 255, 255, 0.05);
                             }
@@ -411,7 +432,9 @@ import { TOOLS_SOURCE } from './tools-source.token';
                             cursor: pointer;
                             border: 1px solid transparent;
 
-                            &:hover {
+                            // Its checkbox takes the keyboard focus; the row shows it as it shows the hover.
+                            &:hover,
+                            &:focus-within {
                                 border-color: var(--accent-color);
                                 background: rgba(104, 95, 255, 0.08);
                             }
@@ -470,7 +493,7 @@ import { TOOLS_SOURCE } from './tools-source.token';
                             border: 1px solid var(--color-divider);
                             color: var(--color-text-secondary);
 
-                            &:hover {
+                            &:is(:hover, :focus-visible) {
                                 border-color: var(--color-text-primary);
                                 color: var(--color-text-primary);
                             }
@@ -481,7 +504,7 @@ import { TOOLS_SOURCE } from './tools-source.token';
                             border: 1px solid var(--accent-color);
                             color: white;
 
-                            &:hover:not(:disabled) {
+                            &:is(:hover, :focus-visible):not(:disabled) {
                                 filter: brightness(1.1);
                             }
 

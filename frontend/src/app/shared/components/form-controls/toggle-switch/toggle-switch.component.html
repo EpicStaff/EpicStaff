@@ -13,7 +13,8 @@
 >
     <input
         type="checkbox"
-        [attr.aria-label]="ariaLabel() || label() || 'Toggle'"
+        [attr.aria-label]="fieldName()"
+        [matTooltip]="fieldName()"
         [checked]="checked"
         [disabled]="isDisabled()"
         (click)="$event.preventDefault(); onToggle()"

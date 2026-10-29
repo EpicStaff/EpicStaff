@@ -8,6 +8,7 @@ import {
     output,
     signal,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { ToastService } from '../../../services/notifications';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -20,7 +21,7 @@ export type CopyFieldInfoType = 'info' | 'warning';
     selector: 'app-copy-field',
     templateUrl: './copy-field.component.html',
     styleUrls: ['./copy-field.component.scss'],
-    imports: [AppSvgIconComponent, TooltipComponent, ButtonComponent],
+    imports: [AppSvgIconComponent, TooltipComponent, ButtonComponent, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CopyFieldComponent {

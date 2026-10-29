@@ -41,10 +41,15 @@
                 <app-checkbox formControlName="rememberMe" />
                 <span class="remember-label">Remember me</span>
                 @if (showAccountLinks) {
-                    <span
+                    <!-- mousedown keeps focus in the field: its blur would show validation errors, shift the layout and
+                         make the click miss. Enter stops here, so it opens the link instead of also submitting the form. -->
+                    <a
                         class="forgot-label"
-                        (mousedown)="navToForgotPassword()"
-                        >Forgot?</span
+                        routerLink="/forgot-password"
+                        matTooltip="Forgot password"
+                        (mousedown)="$event.preventDefault()"
+                        (keydown.enter)="$event.stopPropagation()"
+                        >Forgot?</a
                     >
                 }
             </div>
@@ -72,6 +77,13 @@
     </div>
 
     @if (showAccountLinks) {
-        <p class="prompt">Don't have an account yet? <span (click)="navToSignUp()">Sign Up</span></p>
+        <p class="prompt">
+            Don't have an account yet?
+            <a
+                routerLink="/sign-up"
+                matTooltip="Sign Up"
+                >Sign Up</a
+            >
+        </p>
     }
 </div>

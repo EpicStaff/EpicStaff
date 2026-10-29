@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
 import { ControlValueAccessor, FormControl, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -8,7 +9,7 @@ export type StepperSize = 'sm' | 'md' | 'lg';
 
 @Component({
     selector: 'app-number-stepper',
-    imports: [FormsModule, AppSvgIconComponent, TooltipComponent],
+    imports: [FormsModule, AppSvgIconComponent, TooltipComponent, MatTooltip],
     templateUrl: './number-stepper.component.html',
     styleUrls: ['./number-stepper.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,6 +47,9 @@ export class NumberStepperComponent implements ControlValueAccessor {
     onTouched: () => void = () => {};
     isDisabled = signal(false);
     hovered = signal(false);
+    /** Shown as the input's tooltip. */
+    protected readonly fieldName = computed(() => this.label() || this.ariaLabel() || '');
+
     showButtons = computed(
         () => !this.readonly() && (this.hovered() || this.size() === 'lg' || this.alwaysShowButtons())
     );
@@ -155,6 +159,14 @@ export class NumberStepperComponent implements ControlValueAccessor {
             'ArrowUp',
             'ArrowDown',
         ];
+
+        // The keyboard's step buttons: the ones beside the input are mouse-only.
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (event.key === 'ArrowUp') this.onStepUp();
+            else this.onStepDown();
+            return;
+        }
 
         if (allowedKeys.includes(event.key)) {
             return;

@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { EnterSubmitDirective } from '@shared/directives';
 import {
     CustomFilterCondition,
@@ -43,7 +44,7 @@ export interface AppCustomFilterDialogResult {
  */
 @Component({
     selector: 'app-custom-filter-dialog',
-    imports: [FormsModule, ButtonComponent, AppSvgIconComponent, EnterSubmitDirective],
+    imports: [MatTooltip, FormsModule, ButtonComponent, AppSvgIconComponent, EnterSubmitDirective],
     templateUrl: './app-custom-filter-dialog.component.html',
     styleUrls: ['./app-custom-filter-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

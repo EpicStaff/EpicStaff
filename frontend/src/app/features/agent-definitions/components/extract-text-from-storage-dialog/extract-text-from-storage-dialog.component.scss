@@ -38,7 +38,7 @@
         cursor: pointer;
         transition: background-color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-ghost-btn-hover);
         }
     }
@@ -137,8 +137,13 @@
             background-color: var(--color-ks-transparent-black-28);
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--purple-alpha-8);
+        }
+
+        // Drawn inside: the list scrolls and clips its rows.
+        &:focus-visible {
+            outline-offset: -2px;
         }
     }
 

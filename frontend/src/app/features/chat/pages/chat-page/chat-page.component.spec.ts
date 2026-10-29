@@ -648,9 +648,9 @@ describe('ChatPageComponent', () => {
                     .find((element) => element.nativeElement === action())!
                     .injector.get(MatTooltip);
             const tooltip = (): string => tooltipOf().message;
-            // Not known yet: no name at all, rather than the desk's while visitors may see an alias.
+            // Not known yet: only the action's name, rather than the desk's while visitors may see an alias.
             expect(action().getAttribute('aria-label')).toBe('My name');
-            expect(tooltipOf().disabled).toBe(true);
+            expect(tooltip()).toBe('My name');
 
             loadAliases();
             expect(action().getAttribute('aria-label')).toBe('My name: Support');

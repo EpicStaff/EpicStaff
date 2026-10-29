@@ -12,7 +12,7 @@
     white-space: nowrap;
     transition: color 0.15s;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--accent-color);
     }
 

@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentType, TemplatePortal } from '@angular/cdk/portal';
@@ -20,9 +21,11 @@ import {
 } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
 import { LLMLibraryService, ProviderWithModels } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
+import { filter } from 'rxjs';
 
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
@@ -48,6 +51,8 @@ const TOP_PROVIDERS = [
 @Component({
     selector: 'app-llm-model-selector',
     imports: [
+        CdkTrapFocus,
+        MatTooltip,
         FormsModule,
         OverlayModule,
         AppSvgIconComponent,
@@ -185,6 +190,10 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
             });
 
             this.overlayRef.backdropClick().subscribe(() => this.close());
+            this.overlayRef
+                .keydownEvents()
+                .pipe(filter((event) => event.key === 'Escape'))
+                .subscribe(() => this.close());
         }
 
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);

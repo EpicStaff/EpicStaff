@@ -15,6 +15,8 @@
     [class.llm-selector__trigger--placeholder]="!selectedModelInfo()"
     [class.llm-selector__trigger--disabled]="isDisabled()"
     [disabled]="isDisabled()"
+    [attr.aria-expanded]="open()"
+    [matTooltip]="label() || placeholder()"
     (click)="toggle()"
 >
     @if (selectedModelInfo(); as info) {
@@ -65,12 +67,18 @@
 }
 
 <ng-template #dropdownTemplate>
-    <div class="model-selector">
+    <div
+        class="model-selector"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+    >
         <div class="model-selector__search">
             <input
                 type="text"
                 class="model-selector__search-input"
                 placeholder="Search provider or model..."
+                aria-label="Search provider or model"
+                matTooltip="Search provider or model"
                 autocomplete="off"
                 [value]="searchQuery()"
                 (input)="onSearchChange($event)"
@@ -131,6 +139,7 @@
                                             type="button"
                                             class="model-selector__model-select"
                                             [disabled]="model.predefined && !model.is_visible"
+                                            [matTooltip]="model.name"
                                             (click)="selectModel(model, providerData.provider)"
                                         >
                                             <span class="model-selector__model-name">{{ model.name }}</span>
@@ -156,6 +165,9 @@
                                 <button
                                     type="button"
                                     class="model-selector__expand-btn"
+                                    [matTooltip]="
+                                        expandedProviders().has(providerData.provider.id) ? 'Show less' : 'Show more'
+                                    "
                                     (click)="toggleExpand(providerData.provider.id); $event.stopPropagation()"
                                 >
                                     @if (expandedProviders().has(providerData.provider.id)) {

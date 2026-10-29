@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
@@ -12,12 +13,14 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, DateRangePickerComponent } from '@shared/components';
 import { DateRangeFilter } from '@shared/models';
+import { filter } from 'rxjs/operators';
 
 @Component({
     selector: 'app-created-at-filter-dropdown',
-    imports: [OverlayModule, AppSvgIconComponent, DateRangePickerComponent],
+    imports: [CdkTrapFocus, OverlayModule, AppSvgIconComponent, DateRangePickerComponent, MatTooltip],
     templateUrl: './date-picker-dropdown.component.html',
     styleUrls: ['./date-picker-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.Eager,
@@ -85,6 +88,10 @@ export class DatePickerDropdownComponent {
         });
 
         this.overlayRef.backdropClick().subscribe(() => this.close());
+        this.overlayRef
+            .keydownEvents()
+            .pipe(filter((event) => event.key === 'Escape'))
+            .subscribe(() => this.close());
 
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);

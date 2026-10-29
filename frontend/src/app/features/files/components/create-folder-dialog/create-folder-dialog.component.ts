@@ -1,8 +1,22 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { hasModifierKey } from '@angular/cdk/keycodes';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, HostListener, inject, signal } from '@angular/core';
+import {
+    afterNextRender,
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    ElementRef,
+    HostListener,
+    inject,
+    Injector,
+    signal,
+    viewChild,
+    viewChildren,
+} from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -57,6 +71,7 @@ export interface CreateFolderDialogResult {
         Spinner2Component,
         MatTooltipModule,
         OverlayModule,
+        CdkTrapFocus,
         FileUploaderComponent,
         DragDropAreaComponent,
         EnterSubmitDirective,
@@ -74,6 +89,7 @@ export class CreateFolderDialogComponent {
     private confirmationDialogService = inject(ConfirmationDialogService);
     private toastService = inject(ToastService);
     private destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     private static readonly BLOCKED_EXTENSIONS = new Set([
         'exe',
@@ -108,6 +124,11 @@ export class CreateFolderDialogComponent {
         '7z',
     ]);
 
+    private readonly destinationTrigger = viewChild<ElementRef<HTMLButtonElement>>('destinationTrigger');
+    private readonly folderSearchInput = viewChild<ElementRef<HTMLInputElement>>('folderSearchInput');
+    private readonly fileRemoveButtons = viewChildren<ElementRef<HTMLButtonElement>>('fileRemoveButton');
+    private readonly fileUploader = viewChild(FileUploaderComponent);
+
     readonly folderName = signal('');
     readonly files = signal<File[]>([]);
     readonly viewAllOpen = signal(false);
@@ -141,8 +162,7 @@ export class CreateFolderDialogComponent {
     });
 
     get selectedFolderLabel(): string {
-        const path = this.selectedPath();
-        return path ? `/${path}` : '/';
+        return this.folderLabel(this.selectedPath());
     }
 
     readonly isUploading = signal(false);
@@ -195,6 +215,38 @@ export class CreateFolderDialogComponent {
     toggleDropdown(event: MouseEvent): void {
         event.stopPropagation();
         this.dropdownOpen.update((v) => !v);
+        if (this.dropdownOpen()) {
+            afterNextRender(() => this.folderSearchInput()?.nativeElement.focus(), { injector: this.injector });
+        }
+    }
+
+    /** Closes only the folder list: the dialog's own Escape handling never sees the key. */
+    onDestinationEscape(event: Event): void {
+        if (!this.dropdownOpen()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.dropdownOpen.set(false);
+        this.focusDestinationTrigger();
+    }
+
+    /** Right and Left arrows on a folder's name expand and collapse it, as in a tree. */
+    onFolderKeydown(event: KeyboardEvent, node: StorageFolderNode): void {
+        if (!this.canExpand(node)) return;
+        const expand = event.key === 'ArrowRight' && !node.isExpanded;
+        const collapse = event.key === 'ArrowLeft' && node.isExpanded;
+        if (expand || collapse) {
+            event.preventDefault();
+            this.toggleExpand(event, node);
+        }
+    }
+
+    folderLabel(path: string): string {
+        return path ? `/${path}` : '/';
+    }
+
+    /** Search shows a flat list of matches, so nothing expands while it is on. */
+    canExpand(node: StorageFolderNode): boolean {
+        return node.hasChildren && !this.searchQuery().trim();
     }
 
     stopPropagation(event: MouseEvent): void {
@@ -204,6 +256,8 @@ export class CreateFolderDialogComponent {
     selectFolder(path: string): void {
         this.selectedPath.set(path);
         this.dropdownOpen.set(false);
+        // The picked row leaves with the list; the selector keeps the focus inside the dialog.
+        this.focusDestinationTrigger();
     }
 
     isSelected(path: string): boolean {
@@ -230,8 +284,9 @@ export class CreateFolderDialogComponent {
         input.value = '';
     }
 
-    removeFile(index: number): void {
+    removeFile(index: number, removeButton: HTMLButtonElement): void {
         const removed = this.files()[index];
+        if (removeButton.matches(':focus')) this.keepFocusAfterRemoval(index);
         this.files.update((list) => list.filter((_, i) => i !== index));
         if (removed && this.fileServerErrors().has(removed.name)) {
             this.fileServerErrors.update((m) => {
@@ -419,6 +474,29 @@ export class CreateFolderDialogComponent {
             return;
         }
         this.addFiles(newFiles);
+    }
+
+    private focusDestinationTrigger(): void {
+        this.destinationTrigger()?.nativeElement.focus();
+    }
+
+    /**
+     * The removed row takes its focused Remove button along, which would drop the focus out of the dialog. It moves to
+     * the Remove button now in that place (or the last one), or to the file picker once the list is empty.
+     */
+    private keepFocusAfterRemoval(index: number): void {
+        afterNextRender(
+            () => {
+                const buttons = this.fileRemoveButtons();
+                const next = buttons[Math.min(index, buttons.length - 1)];
+                if (next) {
+                    next.nativeElement.focus();
+                    return;
+                }
+                this.fileUploader()?.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     private closeWithUploads(): void {

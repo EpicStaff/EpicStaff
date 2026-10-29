@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, HostBinding, input, output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    ElementRef,
+    HostBinding,
+    input,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
@@ -6,7 +16,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
     selector: 'app-file-uploader',
     templateUrl: './file-uploader.component.html',
     styleUrls: ['./file-uploader.component.scss'],
-    imports: [AppSvgIconComponent],
+    imports: [MatTooltip, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FileUploaderComponent {
@@ -24,6 +34,8 @@ export class FileUploaderComponent {
 
     filesUploaded = output<FileList>();
     filesRejected = output<void>();
+
+    private readonly chooseButton = viewChild.required<ElementRef<HTMLButtonElement>>('chooseButton');
 
     onDragOver(event: DragEvent): void {
         event.preventDefault();
@@ -62,6 +74,11 @@ export class FileUploaderComponent {
             accepted.forEach((f) => dt.items.add(f));
             this.filesUploaded.emit(dt.files);
         }
+    }
+
+    /** Moves the focus to its Choose files button. */
+    focus(): void {
+        this.chooseButton().nativeElement.focus();
     }
 
     private isAccepted(file: File): boolean {

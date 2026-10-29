@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
 import { ButtonComponent, HintMessageComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -27,7 +28,7 @@ let nextPanelId = 0;
  */
 @Component({
     selector: 'app-chat-contract-fix',
-    imports: [RouterLink, ButtonComponent, HintMessageComponent],
+    imports: [RouterLink, MatTooltip, ButtonComponent, HintMessageComponent],
     templateUrl: './chat-contract-fix.component.html',
     styleUrls: ['./chat-contract-fix.component.scss'],
 })

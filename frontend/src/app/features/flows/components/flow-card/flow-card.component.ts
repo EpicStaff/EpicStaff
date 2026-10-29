@@ -77,8 +77,7 @@ export class FlowCardComponent {
 
     getLabelFullPath(id: number): string {
         const label = this.labelsStorage.labels().find((l) => l.id === id);
-        if (!label || !label.parent) return '';
-        return label.full_path;
+        return label?.full_path ?? '';
     }
 
     getLabelChipStyles(id: number): { background: string; color: string } {

@@ -305,6 +305,14 @@ export class ImportResultDialogComponent implements AfterViewInit {
         this.expandedItems.set(next);
     }
 
+    /** Enter and Space open or close a focused row as they do a button (not when they come from its Open button). */
+    public onItemKeydown(event: KeyboardEvent, entityType: string, status: string, item: ImportResultItem): void {
+        if (!this.hasExpandableFields(entityType, item) || event.target !== event.currentTarget) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        this.toggleItem(entityType, status, item.id);
+    }
+
     public isItemExpanded(entityType: string, status: string, id: number | string): boolean {
         return this.expandedItems().has(this._itemKey(entityType, status, id));
     }

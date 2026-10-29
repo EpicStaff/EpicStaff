@@ -5,6 +5,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { GetMeResponse, ResourceCode } from '@shared/models';
@@ -23,7 +24,6 @@ import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
 import { LeftSidebarComponent } from './sidenav.component';
-import { TooltipComponent } from './tooltip/tooltip.component';
 
 const COLLAPSED_WIDTH = 60;
 const EXPANDED_WIDTH = 240;
@@ -153,17 +153,13 @@ describe('LeftSidebarComponent', () => {
         return Array.from(element.querySelectorAll('.sidenav-row-label')).map((label) => label.textContent!.trim());
     }
 
-    function hoverItem(label: string): void {
-        navLink(label)!.closest('li')!.dispatchEvent(new MouseEvent('mouseenter'));
-        fixture.detectChanges();
-    }
-
-    function visibleTooltipTexts(): string[] {
+    // The tooltips a hover or keyboard focus would show; Material does the showing.
+    function enabledTooltipTexts(): string[] {
         return fixture.debugElement
-            .queryAll(By.directive(TooltipComponent))
-            .map((tooltip) => tooltip.componentInstance as TooltipComponent)
-            .filter((tooltip) => tooltip.visible)
-            .map((tooltip) => tooltip.text);
+            .queryAll(By.directive(MatTooltip))
+            .map((host) => host.injector.get(MatTooltip))
+            .filter((tooltip) => !tooltip.disabled)
+            .map((tooltip) => tooltip.message);
     }
 
     function accountRow(): HTMLElement {
@@ -270,10 +266,8 @@ describe('LeftSidebarComponent', () => {
             expect(navLink('Recycle Bin')!.getAttribute('aria-label')).toBe('Recycle Bin');
         });
 
-        it('shows the label as a tooltip on hover', () => {
-            hoverItem('Flows');
-
-            expect(visibleTooltipTexts()).toContain('Flows');
+        it('shows the label as a tooltip', () => {
+            expect(enabledTooltipTexts()).toContain('Flows');
         });
     });
 
@@ -297,12 +291,9 @@ describe('LeftSidebarComponent', () => {
             expect(navLink('Recycle Bin')!.hasAttribute('aria-label')).toBe(false);
         });
 
-        it('suppresses the hover tooltips', () => {
-            hoverItem('Flows');
-            hoverItem('Recycle Bin');
-
-            expect(visibleTooltipTexts()).not.toContain('Flows');
-            expect(visibleTooltipTexts()).not.toContain('Recycle Bin');
+        it('suppresses the tooltips, the labels being on show', () => {
+            expect(enabledTooltipTexts()).not.toContain('Flows');
+            expect(enabledTooltipTexts()).not.toContain('Recycle Bin');
         });
 
         it('shows the active organization and the role in it on the account row, the full name as a title', () => {
@@ -582,11 +573,10 @@ describe('LeftSidebarComponent', () => {
             const row = listRow('Apps')!;
             expect(row.getAttribute('aria-label')).toBe('Apps');
 
-            hoverItem('Apps');
-            expect(visibleTooltipTexts()).toContain('Apps');
+            expect(enabledTooltipTexts()).toContain('Apps');
 
             await open(row);
-            expect(visibleTooltipTexts()).not.toContain('Apps');
+            expect(enabledTooltipTexts()).not.toContain('Apps');
         });
     });
 
@@ -709,15 +699,11 @@ describe('LeftSidebarComponent', () => {
                 'Reports',
             ]);
 
-            hoverItem('Projects');
-            expect(visibleTooltipTexts()).toContain('Projects');
-
-            listRow('Atlas, switch app')!.closest('li')!.dispatchEvent(new MouseEvent('mouseenter'));
-            fixture.detectChanges();
-            expect(visibleTooltipTexts()).toContain('Atlas, switch app');
+            expect(enabledTooltipTexts()).toContain('Projects');
+            expect(enabledTooltipTexts()).toContain('Atlas, switch app');
 
             await open(listRow('Atlas, switch app')!);
-            expect(visibleTooltipTexts()).not.toContain('Atlas, switch app');
+            expect(enabledTooltipTexts()).not.toContain('Atlas, switch app');
         });
     });
 });

@@ -34,13 +34,15 @@
     }
 
     &__add-btn {
+        display: inline-flex;
         cursor: pointer;
         padding: 4px;
         border-radius: 50%;
         border: 1px solid var(--accent-color);
+        background: transparent;
         color: var(--accent-color);
 
-        &:hover:not(.disabled) {
+        &:is(:hover, :focus-visible):not(.disabled) {
             background-color: var(--purple-alpha-12);
         }
 
@@ -281,6 +283,17 @@
         }
     }
 
+    // Borderless in the cell, which clips anything drawn outside it: the focus shows inside, as an accent border on
+    // the text field and as the ring on the select.
+    &__cell-input:focus {
+        box-shadow: inset 0 0 0 1px var(--accent-color);
+    }
+
+    &__cell-select:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+
     &__cell-select {
         cursor: pointer;
         appearance: none;
@@ -329,7 +342,7 @@
         padding: 0;
         transition: background-color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--purple-alpha-12);
         }
 
@@ -356,13 +369,13 @@
         cursor: pointer;
         transition: background-color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-ghost-btn-hover);
         }
 
+        // Inset: the cell clips anything drawn outside it.
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -1px;
+            outline-offset: -2px;
         }
 
         app-svg-icon {
@@ -402,7 +415,7 @@
             font-size: 1rem;
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
             background-color: var(--white-alpha-8);
         }

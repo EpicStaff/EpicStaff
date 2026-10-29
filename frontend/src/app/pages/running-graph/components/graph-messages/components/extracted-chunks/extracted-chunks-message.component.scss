@@ -98,9 +98,16 @@
         grid-template-rows 0.2s ease,
         margin-top 0.2s ease;
 
+    // Collapsed is only zero height, so its content would still take Tab focus while unseen: hidden once the collapse
+    // animation ends, shown at once on open.
     &.collapsed {
         grid-template-rows: 0fr;
         margin-top: 0;
+        visibility: hidden;
+        transition:
+            grid-template-rows 0.2s ease,
+            margin-top 0.2s ease,
+            visibility 0s linear 0.2s;
     }
 }
 

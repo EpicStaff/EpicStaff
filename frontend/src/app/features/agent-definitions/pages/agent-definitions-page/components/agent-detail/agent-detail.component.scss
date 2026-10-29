@@ -55,7 +55,7 @@ $section-gutter: 22px;
     color: var(--accent-color);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--color-ghost-btn-hover);
     }
 }

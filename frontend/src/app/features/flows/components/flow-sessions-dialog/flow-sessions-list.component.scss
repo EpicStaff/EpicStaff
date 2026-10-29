@@ -164,7 +164,6 @@
     background: var(--red-580) !important;
     color: var(--white) !important;
     border: none;
-    outline: none;
     height: 35px;
     padding: 0 14px;
     border-radius: 6px;
@@ -175,7 +174,7 @@
         background 0.18s,
         color 0.18s;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--red-700) !important;
         color: var(--white) !important;
     }

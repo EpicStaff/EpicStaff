@@ -215,7 +215,7 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
     }
 
     function clickMonday(fixture: ReturnType<typeof open>): void {
-        element(fixture, '[data-tooltip="Monday"]')!.click();
+        element(fixture, 'button[aria-label="Monday"]')!.click();
         fixture.detectChanges();
     }
 
@@ -225,7 +225,8 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
         expect(element(fixture, 'app-custom-input input')).not.toBeNull();
         expect(element(fixture, 'app-radio-button')).not.toBeNull();
         clickMonday(fixture);
-        expect(element(fixture, '[data-tooltip="Monday"]')!.classList).toContain('round-btn--active');
+        expect(element(fixture, 'button[aria-label="Monday"]')!.classList).toContain('round-btn--active');
+        expect(element(fixture, 'button[aria-label="Monday"]')!.getAttribute('aria-pressed')).toBe('true');
         fixture.destroy();
     });
 
@@ -236,7 +237,8 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
         expect(element(fixture, 'app-custom-input .readonly-value')!.textContent).toContain('Schedule #1');
         expect(element(fixture, 'app-radio-button')).toBeNull();
         clickMonday(fixture);
-        expect(element(fixture, '[data-tooltip="Monday"]')!.classList).not.toContain('round-btn--active');
+        expect(element(fixture, 'button[aria-label="Monday"]')!.classList).not.toContain('round-btn--active');
+        expect(element(fixture, 'button[aria-label="Monday"]')!.getAttribute('aria-pressed')).toBe('false');
         // What the panel shell and the canvas take on close, Ctrl+S and a full save.
         expect(fixture.componentInstance.onSave()).toBeNull();
         expect(fixture.componentInstance.captureForValidation()).toBeNull();

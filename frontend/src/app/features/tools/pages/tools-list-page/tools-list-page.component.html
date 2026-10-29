@@ -70,7 +70,9 @@
         <nav class="tabs">
             <div class="tabs-left">
                 @for (tab of tabs; track tab.link; let last = $last) {
+                    <!-- RouterLink makes a non-link host focusable; the tab's own button already takes Tab and Enter. -->
                     <app-tab-button
+                        tabindex="-1"
                         mod="sm"
                         routerLink="{{ tab.link }}"
                         routerLinkActive="active"

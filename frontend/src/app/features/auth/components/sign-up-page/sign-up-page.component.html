@@ -71,7 +71,14 @@
             </app-button>
         </div>
 
-        <p class="prompt">Already have an account? <span (click)="navToLogin()">Log in</span></p>
+        <p class="prompt">
+            Already have an account?
+            <a
+                routerLink="/login"
+                matTooltip="Log in"
+                >Log in</a
+            >
+        </p>
     } @else {
         <div class="card status">
             <app-svg-icon

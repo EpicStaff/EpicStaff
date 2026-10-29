@@ -49,6 +49,7 @@
                         class="breakdown-header"
                         [attr.aria-expanded]="isSectionOpen(section)"
                         [attr.aria-controls]="section.id"
+                        [matTooltip]="section.title"
                         (click)="toggleSection(section)"
                     >
                         <app-icon
@@ -110,6 +111,7 @@
             <button
                 type="button"
                 class="button close-text-button"
+                matTooltip="Close"
                 (click)="onClose()"
             >
                 Close
@@ -118,6 +120,7 @@
             <button
                 type="button"
                 class="button cancel-button"
+                matTooltip="Cancel"
                 (click)="onCancel()"
             >
                 Cancel

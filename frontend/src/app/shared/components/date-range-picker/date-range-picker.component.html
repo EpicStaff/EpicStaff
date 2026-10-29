@@ -10,6 +10,8 @@
                 class="drp_digit drp_digit--dd"
                 placeholder="dd"
                 [value]="startDay()"
+                aria-label="Start day"
+                matTooltip="Start day"
                 (input)="onDigitInput('start', 'day', $any($event.target).value, 0)"
             />
             <span class="drp_sep">/</span>
@@ -18,6 +20,8 @@
                 class="drp_digit drp_digit--mm"
                 placeholder="mm"
                 [value]="startMonth()"
+                aria-label="Start month"
+                matTooltip="Start month"
                 (input)="onDigitInput('start', 'month', $any($event.target).value, 1)"
             />
             <span class="drp_sep">/</span>
@@ -26,6 +30,8 @@
                 class="drp_digit drp_digit--yyyy"
                 placeholder="yyyy"
                 [value]="startYear()"
+                aria-label="Start year"
+                matTooltip="Start year"
                 (input)="onDigitInput('start', 'year', $any($event.target).value, 2)"
             />
         </div>
@@ -38,6 +44,8 @@
                 class="drp_digit drp_digit--dd"
                 placeholder="dd"
                 [value]="endDay()"
+                aria-label="End day"
+                matTooltip="End day"
                 (input)="onDigitInput('end', 'day', $any($event.target).value, 3)"
             />
             <span class="drp_sep">/</span>
@@ -46,6 +54,8 @@
                 class="drp_digit drp_digit--mm"
                 placeholder="mm"
                 [value]="endMonth()"
+                aria-label="End month"
+                matTooltip="End month"
                 (input)="onDigitInput('end', 'month', $any($event.target).value, 4)"
             />
             <span class="drp_sep">/</span>
@@ -54,6 +64,8 @@
                 class="drp_digit drp_digit--yyyy"
                 placeholder="yyyy"
                 [value]="endYear()"
+                aria-label="End year"
+                matTooltip="End year"
                 (input)="onDigitInput('end', 'year', $any($event.target).value, 5)"
             />
         </div>
@@ -65,6 +77,8 @@
                 <button
                     type="button"
                     class="drp_nav"
+                    aria-label="Previous months"
+                    matTooltip="Previous months"
                     (click)="prevPair()"
                 >
                     <svg
@@ -83,16 +97,24 @@
                     </svg>
                 </button>
                 <div class="drp_month-label">
-                    <span
+                    <button
+                        type="button"
                         class="drp_month-label-part"
+                        matTooltip="Choose month"
+                        [attr.aria-expanded]="activePicker()?.side === 'left' && activePicker()?.type === 'month'"
                         (click)="toggleMonthPicker('left', $event)"
-                        >{{ leftMonthName() }}</span
                     >
-                    <span
+                        {{ leftMonthName() }}
+                    </button>
+                    <button
+                        type="button"
                         class="drp_month-label-part"
+                        matTooltip="Choose year"
+                        [attr.aria-expanded]="activePicker()?.side === 'left' && activePicker()?.type === 'year'"
                         (click)="toggleYearPicker('left', $event)"
-                        >{{ leftYear() }}</span
                     >
+                        {{ leftYear() }}
+                    </button>
 
                     @if (activePicker()?.side === 'left' && activePicker()?.type === 'month') {
                         <div
@@ -104,6 +126,7 @@
                                     type="button"
                                     class="drp_picker-option"
                                     [class.drp_picker-option--active]="$index === leftMonthIndex()"
+                                    [matTooltip]="m"
                                     (click)="pickMonth('left', $index)"
                                 >
                                     {{ m }}
@@ -121,6 +144,7 @@
                                     type="button"
                                     class="drp_picker-option"
                                     [class.drp_picker-option--active]="y === leftYear()"
+                                    [matTooltip]="'' + y"
                                     (click)="pickYear('left', y)"
                                 >
                                     {{ y }}
@@ -138,16 +162,23 @@
             </div>
             <div class="drp_days">
                 @for (cell of leftCells(); track $index) {
-                    <div
-                        class="drp_day"
-                        [class.drp_day--empty]="cell.day === null"
-                        [class.drp_day--today]="cell.isToday"
-                        [class.drp_day--edge]="cell.isStart || cell.isEnd"
-                        [class.drp_day--in-range]="cell.inRange"
-                        (click)="selectDay(cell.date)"
-                    >
-                        {{ cell.day }}
-                    </div>
+                    @if (cell.date) {
+                        <button
+                            type="button"
+                            class="drp_day"
+                            [class.drp_day--today]="cell.isToday"
+                            [class.drp_day--edge]="cell.isStart || cell.isEnd"
+                            [class.drp_day--in-range]="cell.inRange"
+                            [attr.aria-pressed]="cell.isStart || cell.isEnd"
+                            [attr.aria-label]="cell.date | date: 'd MMMM y'"
+                            [matTooltip]="cell.date | date: 'd MMMM y'"
+                            (click)="selectDay(cell.date)"
+                        >
+                            {{ cell.day }}
+                        </button>
+                    } @else {
+                        <div class="drp_day drp_day--empty"></div>
+                    }
                 }
             </div>
         </div>
@@ -156,16 +187,24 @@
             <div class="drp_month-header">
                 <span class="drp_nav-spacer"></span>
                 <div class="drp_month-label">
-                    <span
+                    <button
+                        type="button"
                         class="drp_month-label-part"
+                        matTooltip="Choose month"
+                        [attr.aria-expanded]="activePicker()?.side === 'right' && activePicker()?.type === 'month'"
                         (click)="toggleMonthPicker('right', $event)"
-                        >{{ rightMonthName() }}</span
                     >
-                    <span
+                        {{ rightMonthName() }}
+                    </button>
+                    <button
+                        type="button"
                         class="drp_month-label-part"
+                        matTooltip="Choose year"
+                        [attr.aria-expanded]="activePicker()?.side === 'right' && activePicker()?.type === 'year'"
                         (click)="toggleYearPicker('right', $event)"
-                        >{{ rightYear() }}</span
                     >
+                        {{ rightYear() }}
+                    </button>
 
                     @if (activePicker()?.side === 'right' && activePicker()?.type === 'month') {
                         <div
@@ -177,6 +216,7 @@
                                     type="button"
                                     class="drp_picker-option"
                                     [class.drp_picker-option--active]="$index === rightMonthIndex()"
+                                    [matTooltip]="m"
                                     (click)="pickMonth('right', $index)"
                                 >
                                     {{ m }}
@@ -194,6 +234,7 @@
                                     type="button"
                                     class="drp_picker-option"
                                     [class.drp_picker-option--active]="y === rightYear()"
+                                    [matTooltip]="'' + y"
                                     (click)="pickYear('right', y)"
                                 >
                                     {{ y }}
@@ -205,6 +246,8 @@
                 <button
                     type="button"
                     class="drp_nav"
+                    aria-label="Next months"
+                    matTooltip="Next months"
                     (click)="nextPair()"
                 >
                     <svg
@@ -230,16 +273,23 @@
             </div>
             <div class="drp_days">
                 @for (cell of rightCells(); track $index) {
-                    <div
-                        class="drp_day"
-                        [class.drp_day--empty]="cell.day === null"
-                        [class.drp_day--today]="cell.isToday"
-                        [class.drp_day--edge]="cell.isStart || cell.isEnd"
-                        [class.drp_day--in-range]="cell.inRange"
-                        (click)="selectDay(cell.date)"
-                    >
-                        {{ cell.day }}
-                    </div>
+                    @if (cell.date) {
+                        <button
+                            type="button"
+                            class="drp_day"
+                            [class.drp_day--today]="cell.isToday"
+                            [class.drp_day--edge]="cell.isStart || cell.isEnd"
+                            [class.drp_day--in-range]="cell.inRange"
+                            [attr.aria-pressed]="cell.isStart || cell.isEnd"
+                            [attr.aria-label]="cell.date | date: 'd MMMM y'"
+                            [matTooltip]="cell.date | date: 'd MMMM y'"
+                            (click)="selectDay(cell.date)"
+                        >
+                            {{ cell.day }}
+                        </button>
+                    } @else {
+                        <div class="drp_day drp_day--empty"></div>
+                    }
                 }
             </div>
         </div>
@@ -250,6 +300,7 @@
             <button
                 type="button"
                 class="drp_preset"
+                matTooltip="Today"
                 (click)="applyPreset('today')"
             >
                 Today
@@ -257,6 +308,7 @@
             <button
                 type="button"
                 class="drp_preset"
+                matTooltip="Last 7 days"
                 (click)="applyPreset('last7')"
             >
                 Last 7 days
@@ -264,6 +316,7 @@
             <button
                 type="button"
                 class="drp_preset"
+                matTooltip="This month"
                 (click)="applyPreset('thisMonth')"
             >
                 This month
@@ -274,6 +327,7 @@
             <button
                 type="button"
                 class="drp_clear"
+                matTooltip="Clear"
                 (click)="onClear()"
             >
                 Clear
@@ -281,6 +335,7 @@
             <button
                 type="button"
                 class="drp_select"
+                matTooltip="Select"
                 [disabled]="!rangeStart()"
                 (click)="onSelect()"
             >

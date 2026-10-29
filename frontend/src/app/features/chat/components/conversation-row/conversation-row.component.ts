@@ -70,8 +70,6 @@ export class ConversationRowComponent {
 
     private readonly myUserId = computed(() => this.profileService.currentUserSignal()?.id ?? null);
     protected readonly name = computed(() => visitorName(this.conversation()));
-    /** A signed visitor's id can be long: the full value is in a tooltip. */
-    protected readonly isSigned = computed(() => !!this.conversation().chat_user_id);
     protected readonly isClosed = computed(() => isClosed(this.conversation()));
     /**
      * A closed row's time is its close, as Closed sorts by it; any other row's, its last message. A closed test stays

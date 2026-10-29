@@ -51,7 +51,7 @@
         color 0.15s ease,
         background-color 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
         background-color: var(--color-secondary-btn-background-hover);
     }
@@ -76,8 +76,13 @@
         border-top: 1px solid var(--ep-color-border-subtle);
     }
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--white-alpha-6);
+    }
+
+    // Drawn inside: the list scrolls and clips its rows.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &--active {
@@ -149,7 +154,7 @@
             color 0.15s ease,
             background-color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--ep-color-text);
             background-color: var(--ep-button-ghost-hover-bg);
         }

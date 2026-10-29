@@ -4,8 +4,10 @@
             #triggerBtn
             type="button"
             class="trigger-btn"
-            (click)="$event.stopPropagation(); toggle()"
             [class.open]="isOpen()"
+            [attr.aria-expanded]="isOpen()"
+            [matTooltip]="triggerLabel"
+            (click)="$event.stopPropagation(); toggle()"
         >
             <span class="trigger-text">{{ triggerLabel }}</span>
             <svg
@@ -31,6 +33,8 @@
 <ng-template #dropdownTemplate>
     <div
         class="dropdown-panel"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
         (click)="$event.stopPropagation()"
     >
         <div class="labels-section-header">
@@ -46,6 +50,7 @@
                 <button
                     type="button"
                     class="add-root-btn"
+                    matTooltip="Add label"
                     (click)="startAddRoot()"
                 >
                     <app-svg-icon
@@ -62,6 +67,8 @@
                 class="labels-search__input"
                 type="text"
                 placeholder="Search labels..."
+                aria-label="Search labels"
+                matTooltip="Search labels"
                 [ngModel]="searchTerm()"
                 (ngModelChange)="searchTerm.set($event)"
                 (keyup.escape)="searchTerm.set('')"
@@ -70,9 +77,9 @@
                 <button
                     type="button"
                     class="labels-search__clear"
-                    (click)="searchTerm.set('')"
+                    aria-label="Clear search"
                     matTooltip="Clear search"
-                    matTooltipPosition="above"
+                    (click)="searchTerm.set('')"
                 >
                     <app-svg-icon
                         icon="x"
@@ -90,6 +97,8 @@
                     [ngModel]="newLabelName()"
                     (ngModelChange)="newLabelName.set($event); onNewLabelInput()"
                     placeholder="Enter label name..."
+                    aria-label="Label name"
+                    matTooltip="Label name"
                     (keyup.enter)="confirmAdd()"
                     (keyup.escape)="cancelAdd()"
                     autofocus
@@ -101,9 +110,9 @@
                 <button
                     type="button"
                     class="cancel-btn-icon"
-                    (click)="cancelAdd()"
+                    aria-label="Cancel"
                     matTooltip="Cancel"
-                    matTooltipPosition="above"
+                    (click)="cancelAdd()"
                 >
                     <app-svg-icon
                         icon="x"
@@ -113,9 +122,9 @@
                 <button
                     type="button"
                     class="confirm-btn"
-                    (click)="confirmAdd()"
+                    aria-label="Confirm"
                     matTooltip="Confirm"
-                    matTooltipPosition="above"
+                    (click)="confirmAdd()"
                 >
                     <app-svg-icon
                         icon="check"
@@ -145,8 +154,9 @@
                         class="toggle-btn"
                         (click)="$event.stopPropagation(); toggleExpand(item.node.id)"
                         [style.visibility]="item.node.children.length > 0 ? 'visible' : 'hidden'"
+                        [attr.aria-expanded]="isExpanded(item.node.id)"
+                        [attr.aria-label]="(isExpanded(item.node.id) ? 'Collapse ' : 'Expand ') + item.node.name"
                         [matTooltip]="isExpanded(item.node.id) ? 'Collapse' : 'Expand'"
-                        matTooltipPosition="above"
                     >
                         <app-svg-icon
                             icon="expand"
@@ -159,6 +169,7 @@
                     <app-checkbox
                         [checked]="isSelected(item.node.id)"
                         [indeterminate]="isIndeterminate(item.node.id)"
+                        [ariaLabel]="item.node.name"
                     />
 
                     <span class="label-name">{{ item.node.name }}</span>
@@ -166,9 +177,9 @@
                     <button
                         type="button"
                         class="add-child-btn"
-                        (click)="$event.stopPropagation(); startAddChild(item.node.id)"
+                        [attr.aria-label]="'Add sublabel to ' + item.node.name"
                         matTooltip="Add sublabel"
-                        matTooltipPosition="above"
+                        (click)="$event.stopPropagation(); startAddChild(item.node.id)"
                     >
                         <app-svg-icon
                             icon="plus"
@@ -188,6 +199,8 @@
                             [ngModel]="newLabelName()"
                             (ngModelChange)="newLabelName.set($event); onNewLabelInput()"
                             placeholder="Enter sublabel name..."
+                            aria-label="Sublabel name"
+                            matTooltip="Sublabel name"
                             (keyup.enter)="confirmAdd()"
                             (keyup.escape)="cancelAdd()"
                             autofocus
@@ -199,8 +212,9 @@
                         <button
                             type="button"
                             class="cancel-btn-icon"
+                            aria-label="Cancel"
+                            matTooltip="Cancel"
                             (click)="cancelAdd()"
-                            title="Cancel"
                         >
                             <app-svg-icon
                                 icon="x"
@@ -210,8 +224,9 @@
                         <button
                             type="button"
                             class="confirm-btn"
+                            aria-label="Confirm"
+                            matTooltip="Confirm"
                             (click)="confirmAdd()"
-                            title="Confirm"
                         >
                             <app-svg-icon
                                 icon="check"

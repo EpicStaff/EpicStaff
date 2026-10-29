@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { EfTable, EfTableColumn } from '../../models/flow-assistant.model';
 
 @Component({
     selector: 'app-flow-assistant-table',
-    imports: [],
+    imports: [MatTooltip],
     templateUrl: './flow-assistant-table.component.html',
     styleUrls: ['./flow-assistant-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -79,5 +80,11 @@ export class FlowAssistantTableComponent {
 
     isSortable(): boolean {
         return this.table().isSortable !== false;
+    }
+
+    /** The header cell's `aria-sort`: only the sorted column says its direction. */
+    sortState(key: string): 'ascending' | 'descending' | null {
+        if (!this.isSortable() || !this.isSortActive(key)) return null;
+        return this.sortDir() === 'asc' ? 'ascending' : 'descending';
     }
 }

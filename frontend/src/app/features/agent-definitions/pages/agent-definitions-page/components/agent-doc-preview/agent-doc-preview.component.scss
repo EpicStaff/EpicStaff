@@ -32,13 +32,23 @@
     font-size: 0.8rem;
     cursor: pointer;
 
-    &:hover:not(&--active) {
+    &:is(:hover, :focus-visible):not(&--active) {
         background-color: var(--color-ghost-btn-hover);
+    }
+
+    // Drawn inside: the toggle clips its buttons.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &--active {
         background-color: var(--accent-color);
         color: var(--white);
+
+        // An accent ring would vanish on the accent fill.
+        &:focus-visible {
+            outline-color: var(--white);
+        }
     }
 }
 

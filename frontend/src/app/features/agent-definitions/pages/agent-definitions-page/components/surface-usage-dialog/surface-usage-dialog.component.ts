@@ -1,5 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 export type SurfaceUsagePlace = 'every-place' | 'flow' | 'chat' | 'realtime';
@@ -29,7 +30,7 @@ export interface SurfaceUsageDialogData {
 
 @Component({
     selector: 'app-surface-usage-dialog',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
     templateUrl: './surface-usage-dialog.component.html',
     styleUrls: ['./surface-usage-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -7,6 +7,7 @@
         <h2 class="create-folder-dialog__title">Add files</h2>
         <div class="create-folder-dialog__header-actions">
             <button
+                type="button"
                 class="create-folder-dialog__icon-btn create-folder-dialog__icon-btn--cancel"
                 aria-label="Cancel"
                 matTooltip="Cancel"
@@ -19,6 +20,7 @@
                 ></app-svg-icon>
             </button>
             <button
+                type="button"
                 class="create-folder-dialog__icon-btn create-folder-dialog__icon-btn--confirm"
                 aria-label="Add files"
                 [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
@@ -41,8 +43,11 @@
 
     <div class="create-folder-dialog__body">
         <div class="create-folder-dialog__settings">
-            <!-- Destination folder -->
-            <div class="create-folder-dialog__field create-folder-dialog__field--inline">
+            <!-- Destination folder. Escape here closes only the folder list, not the dialog. -->
+            <div
+                class="create-folder-dialog__field create-folder-dialog__field--inline"
+                (keydown.escape)="onDestinationEscape($event)"
+            >
                 <div class="create-folder-dialog__label-group">
                     <label class="create-folder-dialog__label">Destination folder</label>
                     <app-help-tooltip
@@ -53,10 +58,17 @@
                         [tooltipClass]="'dialog__label-tooltip'"
                     />
                 </div>
-                <div
+                <!-- The dialog opens with the focus here: the first choice the form asks for. -->
+                <button
+                    #destinationTrigger
+                    type="button"
                     class="create-folder-dialog__selector"
                     [class.create-folder-dialog__selector--filled]="selectedPath() !== ''"
                     [class.create-folder-dialog__selector--open]="dropdownOpen()"
+                    cdkFocusInitial
+                    [attr.aria-expanded]="dropdownOpen()"
+                    [attr.aria-label]="'Destination folder: ' + selectedFolderLabel"
+                    matTooltip="Destination folder"
                     (click)="toggleDropdown($event)"
                 >
                     <span class="create-folder-dialog__selector-text">{{ selectedFolderLabel }}</span>
@@ -66,11 +78,13 @@
                         class="create-folder-dialog__selector-chevron"
                         [class.create-folder-dialog__selector-chevron--open]="dropdownOpen()"
                     ></app-svg-icon>
-                </div>
+                </button>
 
                 @if (dropdownOpen()) {
+                    <!-- Tab cycles inside the open list; Escape or picking a folder hands the focus back to the selector. -->
                     <div
                         class="create-folder-dialog__dropdown"
+                        cdkTrapFocus
                         (click)="stopPropagation($event)"
                     >
                         <div class="create-folder-dialog__search">
@@ -80,11 +94,15 @@
                                 class="create-folder-dialog__search-icon"
                             ></app-svg-icon>
                             <input
+                                #folderSearchInput
                                 class="create-folder-dialog__search-input"
                                 type="text"
                                 placeholder="Search folder..."
+                                aria-label="Search folder"
+                                matTooltip="Search folder"
                                 [ngModel]="searchQuery()"
                                 (ngModelChange)="searchQuery.set($event)"
+                                (keydown.enter)="$event.preventDefault()"
                             />
                         </div>
                         <div class="create-folder-dialog__tree">
@@ -100,6 +118,7 @@
                                 >
                                     <span
                                         class="create-folder-dialog__chevron-btn create-folder-dialog__chevron-btn--open"
+                                        aria-hidden="true"
                                     >
                                         <app-svg-icon
                                             icon="expand"
@@ -111,7 +130,15 @@
                                         icon="folder-storage"
                                         size="12px"
                                     ></app-svg-icon>
-                                    <span class="create-folder-dialog__node-name">/</span>
+                                    <!-- Picks the folder, from the keyboard too; its click reaches the row's handler. -->
+                                    <button
+                                        type="button"
+                                        class="create-folder-dialog__node-name"
+                                        [attr.aria-pressed]="isSelected('')"
+                                        [matTooltip]="folderLabel('')"
+                                    >
+                                        /
+                                    </button>
                                 </div>
                                 @for (node of visibleNodes(); track node.path) {
                                     <div
@@ -120,10 +147,16 @@
                                         [style.padding-left.px]="32 + node.level * 20"
                                         (click)="selectFolder(node.path)"
                                     >
-                                        @if (node.hasChildren && !searchQuery().trim()) {
+                                        @if (canExpand(node)) {
                                             <button
+                                                type="button"
                                                 class="create-folder-dialog__chevron-btn"
                                                 [class.create-folder-dialog__chevron-btn--open]="node.isExpanded"
+                                                [attr.aria-expanded]="node.isExpanded"
+                                                [attr.aria-label]="
+                                                    (node.isExpanded ? 'Collapse ' : 'Expand ') + node.name
+                                                "
+                                                [matTooltip]="(node.isExpanded ? 'Collapse ' : 'Expand ') + node.name"
                                                 (click)="toggleExpand($event, node)"
                                             >
                                                 <app-svg-icon
@@ -140,7 +173,17 @@
                                             icon="folder-storage"
                                             size="12px"
                                         ></app-svg-icon>
-                                        <span class="create-folder-dialog__node-name">{{ node.name }}</span>
+                                        <!-- Picks the folder, from the keyboard too (its click reaches the row's handler);
+                                             Right and Left arrows expand and collapse it. -->
+                                        <button
+                                            type="button"
+                                            class="create-folder-dialog__node-name"
+                                            [attr.aria-pressed]="isSelected(node.path)"
+                                            [matTooltip]="folderLabel(node.path)"
+                                            (keydown)="onFolderKeydown($event, node)"
+                                        >
+                                            {{ node.name }}
+                                        </button>
                                         @if (node.isEmpty) {
                                             <span class="create-folder-dialog__empty-badge">Empty</span>
                                         }
@@ -168,6 +211,8 @@
                     class="create-folder-dialog__input"
                     type="text"
                     placeholder="Leave blank to use current"
+                    aria-label="Organize into folder"
+                    matTooltip="Organize into folder"
                     [ngModel]="folderName()"
                     (ngModelChange)="folderName.set($event)"
                 />
@@ -196,20 +241,25 @@
                         @if (hasBlockedFiles()) {
                             <span class="create-folder-dialog__file-validation-error">File validation errors</span>
                         }
-                        <label
+                        <!-- A button, so the keyboard reaches it; it opens the hidden file input. -->
+                        <button
+                            type="button"
                             class="create-folder-dialog__add-more-btn"
-                            [class.create-folder-dialog__add-more-btn--disabled]="isAddingFilesBlocked()"
+                            matTooltip="Add More Files"
+                            [disabled]="isAddingFilesBlocked()"
+                            [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
+                            (click)="addMoreFilesInput.click()"
                         >
                             + Add More Files
-                            <input
-                                type="file"
-                                multiple
-                                hidden
-                                [disabled]="isAddingFilesBlocked()"
-                                [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
-                                (change)="onFileInputChange($event)"
-                            />
-                        </label>
+                        </button>
+                        <input
+                            #addMoreFilesInput
+                            type="file"
+                            multiple
+                            hidden
+                            [disabled]="isAddingFilesBlocked()"
+                            (change)="onFileInputChange($event)"
+                        />
                     </div>
                     <ul class="create-folder-dialog__file-list">
                         @for (file of files(); track file.name; let i = $index) {
@@ -252,11 +302,12 @@
                                 </div>
                                 <span class="create-folder-dialog__file-size">{{ file.size | fileSize: 'auto' }}</span>
                                 <button
+                                    #fileRemoveButton
+                                    type="button"
                                     class="create-folder-dialog__file-remove"
-                                    aria-label="Remove file"
-                                    matTooltip="Remove"
-                                    matTooltipPosition="above"
-                                    (click)="removeFile(i)"
+                                    [attr.aria-label]="'Remove ' + file.name"
+                                    [matTooltip]="'Remove ' + file.name"
+                                    (click)="removeFile(i, fileRemoveButton)"
                                 >
                                     <app-svg-icon
                                         icon="x"
@@ -288,6 +339,8 @@
                 type="button"
                 class="create-folder-dialog__footer-view-all"
                 cdkOverlayOrigin
+                matTooltip="View all supported file formats"
+                [attr.aria-expanded]="viewAllOpen()"
                 (click)="toggleViewAll()"
             >
                 View All
@@ -320,8 +373,11 @@
             (backdropClick)="closeViewAll()"
             (detach)="closeViewAll()"
         >
+            <!-- Takes the focus on opening and hands it back to View All when it closes (Escape closes the overlay). -->
             <div
                 class="create-folder-dialog__formats-popover"
+                cdkTrapFocus
+                [cdkTrapFocusAutoCapture]="true"
                 (click)="$event.stopPropagation()"
             >
                 <div class="create-folder-dialog__formats-header">
@@ -330,6 +386,7 @@
                         type="button"
                         class="create-folder-dialog__formats-close"
                         aria-label="Close"
+                        matTooltip="Close"
                         (click)="closeViewAll()"
                     >
                         <app-svg-icon

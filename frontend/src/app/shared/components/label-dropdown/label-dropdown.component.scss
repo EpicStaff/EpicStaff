@@ -19,8 +19,7 @@
     transition: border-color 0.2s;
 
     &:hover,
-    &:focus {
-        outline: none;
+    &:focus-visible {
         border-color: var(--accent-color);
     }
 
@@ -91,7 +90,7 @@
     flex-shrink: 0;
     transition: background 0.15s;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--accent-color-hover, var(--accent-color));
         filter: brightness(1.1);
     }
@@ -140,7 +139,7 @@
         cursor: pointer;
         transition: color 0.1s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }
@@ -196,7 +195,9 @@
     transition: border-color 0.15s;
     min-width: max-content;
 
-    &:hover {
+    // Its checkbox and buttons take the keyboard focus; the row shows it as it shows the hover.
+    &:hover,
+    &:focus-within {
         border-color: var(--accent-color);
 
         .add-child-btn {
@@ -236,7 +237,7 @@
     width: 0.5rem;
     height: 0.5rem;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 }
@@ -273,13 +274,13 @@
         opacity 0.1s ease,
         background 0.1s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--accent-color-hover, var(--accent-color));
         opacity: 1;
     }
 }
 
-.tree-row:hover .add-child-btn {
+.tree-row:is(:hover, :focus-within) .add-child-btn {
     background: var(--accent-color);
     opacity: 1;
 }
@@ -334,7 +335,7 @@
         width: 26px;
         height: 26px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--accent-color-hover, var(--accent-color));
         }
     }
@@ -353,7 +354,7 @@
         width: 26px;
         height: 26px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--color-ghost-btn-hover);
         }
     }

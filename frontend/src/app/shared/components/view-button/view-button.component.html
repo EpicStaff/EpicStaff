@@ -3,6 +3,7 @@
     class="view-btn"
     [disabled]="disabled()"
     [matTooltip]="tooltip()"
+    [attr.aria-label]="tooltip()"
     (click)="triggered.emit()"
 >
     <app-svg-icon

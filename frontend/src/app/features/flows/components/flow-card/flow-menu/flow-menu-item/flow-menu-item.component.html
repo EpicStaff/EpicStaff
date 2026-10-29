@@ -1,7 +1,10 @@
-<div
+<button
+    type="button"
     class="menu-item"
+    role="menuitem"
     [ngClass]="{ 'delete-action': isDelete }"
+    [matTooltip]="label"
     (click)="onClick($event)"
 >
     <span>{{ label }}</span>
-</div>
+</button>

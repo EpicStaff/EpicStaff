@@ -2,6 +2,7 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { StorageItem } from '../../../files/models/storage.models';
@@ -35,7 +36,7 @@ interface TreeNode {
  */
 @Component({
     selector: 'app-extract-text-from-storage-dialog',
-    imports: [FormsModule, AppSvgIconComponent],
+    imports: [FormsModule, MatTooltip, AppSvgIconComponent],
     templateUrl: './extract-text-from-storage-dialog.component.html',
     styleUrls: ['./extract-text-from-storage-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -88,6 +89,13 @@ export class ExtractTextFromStorageDialogComponent implements OnInit {
             return;
         }
         this.dialogRef.close({ item: this.toStorageItem(node) });
+    }
+
+    /** Enter/Space on a focused row act as its click: a folder opens or closes, a file is picked. */
+    onNodeKeydown(event: KeyboardEvent, node: TreeNode): void {
+        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        this.onNodeClick(node);
     }
 
     onCancel(): void {

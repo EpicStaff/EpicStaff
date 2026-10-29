@@ -47,7 +47,7 @@
             border: 1.5px solid var(--accent-color);
             color: var(--accent-color);
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--color-ghost-btn-hover);
             }
         }
@@ -62,7 +62,7 @@
                 cursor: not-allowed;
             }
 
-            &:not(:disabled):hover {
+            &:not(:disabled):is(:hover, :focus-visible) {
                 background-color: var(--purple-alpha-85);
             }
         }
@@ -141,7 +141,7 @@
         text-decoration: underline;
         text-underline-offset: 2px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             opacity: 0.85;
         }
     }
@@ -199,7 +199,7 @@
         color: var(--text-secondary-60);
         border-radius: 4px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--text);
             background-color: var(--transparent-white-8);
         }
@@ -330,6 +330,7 @@
         align-items: center;
         height: 28px;
         padding: 6.5px 10px;
+        background: transparent;
         border: 1px solid var(--accent-color);
         border-radius: 0.375rem;
         font-size: var(--text-body-small-size);
@@ -338,18 +339,14 @@
         cursor: pointer;
         transition: background-color 0.15s ease;
 
-        &:hover {
+        &:not(:disabled):is(:hover, :focus-visible) {
             background-color: var(--indigo-alpha-10);
         }
 
         // Matches the dialog's disabled confirm button.
-        &--disabled {
+        &:disabled {
             opacity: 0.4;
             cursor: not-allowed;
-
-            &:hover {
-                background-color: transparent;
-            }
         }
     }
 
@@ -407,11 +404,13 @@
         background-color: var(--color-input-background);
         border: 1px solid var(--color-divider-regular);
         border-radius: 4px;
+        color: inherit;
+        text-align: left;
         cursor: pointer;
         flex-shrink: 1;
         transition: border-color 0.15s ease;
 
-        &:hover,
+        &:is(:hover, :focus-visible),
         &--open {
             border-color: var(--accent-color);
         }
@@ -467,6 +466,11 @@
         height: 40px;
         border-bottom: 1px solid var(--color-divider-subtle);
         flex-shrink: 0;
+
+        // The input draws no border of its own, so the box's divider shows its focus.
+        &:focus-within {
+            border-bottom-color: var(--accent-color);
+        }
     }
 
     &__search-icon {
@@ -516,8 +520,15 @@
         flex-shrink: 0;
         min-width: max-content;
 
-        &:hover:not(&--selected) {
+        &:is(:hover, :has(> .create-folder-dialog__node-name:focus-visible)):not(&--selected) {
             background-color: var(--fog-alpha-4);
+        }
+
+        // The name button picks the folder, so the row shows its keyboard focus; drawn inside, as the scrolling tree
+        // clips the full-width rows.
+        &:has(> .create-folder-dialog__node-name:focus-visible) {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
         }
 
         &--selected {
@@ -547,7 +558,7 @@
             transform: rotate(90deg);
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--transparent-white-8);
         }
     }
@@ -568,9 +579,20 @@
     }
 
     &__node-name {
+        padding: 0;
+        border: none;
+        background: none;
+        font-family: inherit;
         font-size: 0.875rem;
         color: var(--color-text-primary);
+        text-align: left;
         white-space: nowrap;
+        cursor: inherit;
+
+        // The row draws it.
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     &__empty-badge {
@@ -705,9 +727,14 @@
         color: var(--color-text-secondary);
         border-radius: 0.25rem;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
             background-color: var(--color-ghost-btn-hover);
+        }
+
+        // Drawn inside: the scrolling list clips its rows' edges.
+        &:focus-visible {
+            outline-offset: -2px;
         }
     }
 }

@@ -59,6 +59,7 @@
                 class="breakdown-header"
                 [attr.aria-expanded]="isBreakdownExpanded()"
                 [attr.aria-controls]="breakdownListId"
+                [matTooltip]="breakdown.title"
                 (click)="toggleBreakdown()"
             >
                 <app-icon
@@ -124,6 +125,7 @@
                 spellcheck="false"
                 cdkFocusInitial
                 [id]="verificationInputId"
+                [matTooltip]="'Type ' + verification.phrase + ' to confirm'"
                 [value]="typedPhrase()"
                 (input)="onPhraseInput($event)"
             />
@@ -144,6 +146,7 @@
         <button
             type="button"
             class="button cancel-button"
+            [matTooltip]="data.cancelText || 'Cancel'"
             (click)="onCancel()"
         >
             {{ data.cancelText || 'Cancel' }}
@@ -154,6 +157,7 @@
                 class="button confirm-button"
                 [ngClass]="data.type || 'info'"
                 [disabled]="isConfirmBlocked()"
+                [matTooltip]="data.confirmText || 'Confirm'"
                 (click)="onConfirm()"
             >
                 {{ data.confirmText || 'Confirm' }}

@@ -82,7 +82,7 @@
         font-size: 0.875rem;
         font-weight: 700;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             text-decoration: underline;
         }
     }
@@ -120,7 +120,7 @@
             background-color 0.2s,
             color 0.2s;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background: var(--accent-color-hover);
         }
 
@@ -194,9 +194,13 @@
         grid-template-rows: 1fr;
     }
 
+    // A collapsed section only has zero height, so its fields would still take Tab focus while unseen. Hidden after
+    // the collapse animation, shown at once on open.
     &__content {
         overflow: hidden;
         min-height: 0;
+        visibility: hidden;
+        transition: visibility 0s linear 0.25s;
 
         > .form-group,
         > .form-group-container {
@@ -209,5 +213,10 @@
         > .form-group-container > .form-group {
             margin-bottom: 0;
         }
+    }
+
+    &--open &__content {
+        visibility: visible;
+        transition-delay: 0s;
     }
 }

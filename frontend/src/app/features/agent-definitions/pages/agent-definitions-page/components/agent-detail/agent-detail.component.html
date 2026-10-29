@@ -11,6 +11,8 @@
             <button
                 type="button"
                 class="section__header"
+                matTooltip="Required Setup"
+                [attr.aria-expanded]="isOpen('basics')"
                 (click)="toggleSection('basics')"
             >
                 <app-svg-icon
@@ -28,8 +30,6 @@
                     class="section__settings"
                     aria-label="Additional Settings"
                     matTooltip="Additional Settings"
-                    matTooltipPosition="above"
-                    matTooltipClass="custom-tooltip"
                     (click)="openAdditionalSettings()"
                 >
                     <app-svg-icon
@@ -50,6 +50,8 @@
                             class="text-input"
                             formControlName="name"
                             placeholder="e.g. CV Processor"
+                            aria-label="Agent Name"
+                            matTooltip="Agent Name"
                             appEnterBlur
                             (blur)="autosaveName()"
                         />
@@ -75,6 +77,8 @@
                         formControlName="description"
                         appEnterBlur
                         placeholder="Describe this agent for your team..."
+                        aria-label="About this Agent"
+                        matTooltip="About this Agent"
                         rows="1"
                         (input)="adjustTextareaHeight(aboutTa, 400)"
                         (focus)="adjustTextareaHeight(aboutTa, 400)"
@@ -106,6 +110,8 @@
         <button
             type="button"
             class="section__header"
+            matTooltip="Surfaces"
+            [attr.aria-expanded]="isOpen('surfaces')"
             appHideInlineSubtitleOnOverflow
             overflowTitleSelector=".section__title"
             overflowInlineSelector=".section__title-hint"

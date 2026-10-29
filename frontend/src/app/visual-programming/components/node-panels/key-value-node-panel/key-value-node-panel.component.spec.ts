@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, signal, WritableSignal } from '@angular/core';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, getDebugNode, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
     AbstractControl,
@@ -9,6 +9,7 @@ import {
     NG_VALUE_ACCESSOR,
     ReactiveFormsModule,
 } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { SelectDropdownComponent, SelectDropdownTriggerDirective } from '@shared/components';
 import { ActionCode, KEY_VALUE_MODE_COLORS, NodeType } from '@shared/models';
 import { NEVER, Observable, of, Subject } from 'rxjs';
@@ -3159,7 +3160,7 @@ describe('KeyValueNodePanelComponent', () => {
             // Only the "+" shows; its name and tooltip still say what it does.
             expect(createButton()?.textContent!.trim()).toBe('');
             expect(createButton()?.getAttribute('aria-label')).toBe('Create table');
-            expect(createButton()?.title).toBe('Create table');
+            expect(getDebugNode(createButton())!.injector.get(MatTooltip).message).toBe('Create table');
             expect(createButton()?.querySelector('app-svg-icon')).not.toBeNull();
         });
 

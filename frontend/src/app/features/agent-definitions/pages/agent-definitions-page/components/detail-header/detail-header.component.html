@@ -3,7 +3,9 @@
         type="button"
         class="detail-header__toggle"
         [class.detail-header__toggle--active]="showSidebar()"
-        title="Toggle Branches"
+        aria-label="Toggle Branches"
+        matTooltip="Toggle Branches"
+        [attr.aria-pressed]="showSidebar()"
         (click)="toggleSidebar.emit()"
     >
         <app-svg-icon
@@ -18,6 +20,7 @@
                 <button
                     type="button"
                     class="crumbs__item crumbs__item--link"
+                    [matTooltip]="crumb.label"
                     (click)="navAgent.emit(crumb.navAgentId)"
                 >
                     {{ crumb.label }}
@@ -26,6 +29,7 @@
                 <button
                     type="button"
                     class="crumbs__item crumbs__item--link"
+                    [matTooltip]="crumb.label"
                     (click)="navAgentSurfaces.emit(crumb.navAgentSurfacesId)"
                 >
                     {{ crumb.label }}

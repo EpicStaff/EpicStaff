@@ -12,8 +12,10 @@ import {
     output,
     signal,
     viewChild,
+    viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService, SearchComponent } from '@shared/components';
 import { escapeHtml } from '@shared/utils';
 
@@ -33,7 +35,7 @@ interface FlowPresetCard {
 
 @Component({
     selector: 'app-flows-filter-presets',
-    imports: [AppSvgIconComponent, SearchComponent],
+    imports: [AppSvgIconComponent, SearchComponent, MatTooltip],
     templateUrl: './flows-filter-presets.component.html',
     styleUrls: ['./flows-filter-presets.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -44,6 +46,7 @@ export class FlowsFilterPresetsComponent implements OnInit {
 
     private readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('nameInput');
     private readonly renameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput');
+    private readonly presetButtons = viewChildren<ElementRef<HTMLButtonElement>>('presetButton');
 
     protected readonly presetName = signal('');
     protected readonly searchTerm = signal('');
@@ -120,21 +123,26 @@ export class FlowsFilterPresetsComponent implements OnInit {
         this.editingPresetName.set((event.target as HTMLInputElement).value);
     }
 
-    protected confirmRename(presetId: number): void {
+    /** Ends the rename; `returnFocus` (Enter) puts the focus back on the preset, as the field it was in goes away. */
+    protected confirmRename(presetId: number, returnFocus = false): void {
+        const focusPresetId = returnFocus ? presetId : null;
         const name = this.editingPresetName().trim();
         if (!name) {
-            this.cancelRename();
+            this.cancelRename(focusPresetId);
             return;
         }
         this.presetsStorage
             .updatePreset(presetId, { name })
             .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.cancelRename());
+            .subscribe(() => this.cancelRename(focusPresetId));
     }
 
-    protected cancelRename(): void {
+    protected cancelRename(focusPresetId: number | null = null): void {
         this.editingPresetId.set(null);
         this.editingPresetName.set('');
+        if (focusPresetId !== null) {
+            afterNextRender(() => this.focusPreset(focusPresetId), { injector: this.injector });
+        }
     }
 
     protected confirmDelete(preset: FlowFilterPreset): void {
@@ -166,5 +174,12 @@ export class FlowsFilterPresetsComponent implements OnInit {
             chips: chips.slice(0, MAX_CARD_CHIPS),
             hiddenChipCount: Math.max(chips.length - MAX_CARD_CHIPS, 0),
         };
+    }
+
+    private focusPreset(presetId: number): void {
+        const presetButton = this.presetButtons().find(
+            (button) => button.nativeElement.dataset['presetId'] === String(presetId)
+        );
+        presetButton?.nativeElement.focus();
     }
 }

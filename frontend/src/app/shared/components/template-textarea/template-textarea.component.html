@@ -38,6 +38,8 @@
                 spellcheck="false"
                 [attr.rows]="rows()"
                 [placeholder]="placeholder()"
+                [attr.aria-label]="fieldName()"
+                [matTooltip]="fieldName()"
                 [disabled]="isDisabled()"
                 [value]="value()"
                 (input)="handleInput($event)"

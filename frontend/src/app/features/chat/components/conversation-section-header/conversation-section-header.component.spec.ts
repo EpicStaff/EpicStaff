@@ -85,10 +85,14 @@ describe('ConversationSectionHeaderComponent', () => {
             expect(badge()).toBe(expected);
         });
 
-        it('keeps the label as its content, without a tooltip or a badge, while not compact', () => {
+        it('keeps the label as its content, still in a tooltip, without a badge, while not compact', () => {
             render({ isExpanded: true, count: 3 });
             expect(button().hasAttribute('aria-label')).toBe(false);
-            expect(tooltip().disabled).toBe(true);
+            expect(button().querySelector('.conversation-section-header__label')?.textContent?.trim()).toBe(
+                'Waiting for a person'
+            );
+            expect(tooltip().message).toBe('Waiting for a person, 3');
+            expect(tooltip().disabled).toBe(false);
             expect(badge()).toBeNull();
         });
 

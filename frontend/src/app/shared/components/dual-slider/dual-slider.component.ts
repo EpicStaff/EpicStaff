@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, input, model, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-dual-slider',
-    imports: [TooltipComponent, FormsModule],
+    imports: [TooltipComponent, FormsModule, MatTooltip],
     templateUrl: './dual-slider.component.html',
     styleUrls: ['./dual-slider.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -29,6 +30,10 @@ export class DualSliderComponent {
 
     firstValue = model.required<number>();
     secondValue = model.required<number>();
+
+    /** Names of the two values for their sliders and step buttons. */
+    protected readonly firstName = computed(() => this.firstLabel() || 'First value');
+    protected readonly secondName = computed(() => this.secondLabel() || 'Second value');
 
     firstPercentage = computed(() => {
         const val = this.firstValue();

@@ -56,9 +56,14 @@
     transition: all 0.15s;
     white-space: nowrap;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--blue-alpha-10);
         color: var(--color-text-primary);
+    }
+
+    // Drawn inside: the buttons sit 4px apart.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &--active {
@@ -84,9 +89,14 @@
     cursor: pointer;
     transition: all 0.15s;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--blue-alpha-10);
         color: var(--color-text-primary);
+    }
+
+    // Drawn inside: the buttons sit 4px apart.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &--active {
@@ -144,7 +154,7 @@
     font-weight: 500;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--accent-color-hover);
     }
 }
@@ -159,7 +169,7 @@
     font-weight: 500;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         border-color: var(--red-580);
         color: var(--red-580);
     }

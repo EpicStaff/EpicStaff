@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ConnectedPosition, Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
@@ -17,6 +18,8 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
+import { filter } from 'rxjs';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../buttons';
@@ -32,7 +35,7 @@ export type MultiSelectOrigin = HTMLElement | { x: number; y: number; width?: nu
 
 @Component({
     selector: 'app-multi-select',
-    imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent],
+    imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent, CdkTrapFocus, MatTooltip],
     templateUrl: './multi-select.component.html',
     styleUrls: ['./multi-select.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -72,6 +75,8 @@ export class MultiSelectComponent implements OnInit {
     /** Maps a group name to an app-svg-icon id, rendered as a trailing action button on that group's header row.
      *  Groups present here are "pinned": their header is always rendered, even when they have zero items. */
     groupActionIcon = input<Record<string, string>>({});
+    /** Maps a group name to the name (aria-label and tooltip) of its trailing action button, e.g. "Edit group". */
+    groupActionLabel = input<Record<string, string>>({});
     /** Show a "Clear Filter" button in the footer that deselects all items without saving. */
     showClearFilter = input<boolean>(false);
     /** Text of the primary (save) button. */
@@ -231,6 +236,14 @@ export class MultiSelectComponent implements OnInit {
         this.overlayRef
             .backdropClick()
             .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.close());
+
+        this.overlayRef
+            .keydownEvents()
+            .pipe(
+                filter((event) => event.key === 'Escape'),
+                takeUntilDestroyed(this.destroyRef)
+            )
             .subscribe(() => this.close());
 
         this.tempSelected.set([...(seedValues ?? this.selectedValues())]);

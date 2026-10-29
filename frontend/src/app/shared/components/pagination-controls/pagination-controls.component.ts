@@ -1,10 +1,10 @@
 // pagination-controls.component.ts
-
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 @Component({
     selector: 'app-pagination-controls',
-    imports: [],
+    imports: [MatTooltip],
     templateUrl: './pagination-controls.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./pagination-controls.component.scss'],

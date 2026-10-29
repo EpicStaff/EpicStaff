@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { FullLLMConfig, FullRealtimeConfig } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 
@@ -6,11 +7,14 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-llm-model-item',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
     template: `
-        <div
+        <button
+            type="button"
             class="model-item"
             [class.selected]="isSelected"
+            [attr.aria-pressed]="isSelected"
+            [matTooltip]="config.modelDetails?.name || 'Unknown Model'"
             (click)="onSelect()"
         >
             <app-svg-icon
@@ -19,18 +23,24 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
                 [ariaLabel]="config.providerDetails?.name || ''"
                 class="provider-icon"
             />
-            <div class="model-text">
+            <span class="model-text">
                 <span class="model-name">{{ config.modelDetails?.name || 'Unknown Model' }}</span>
                 @if (config.custom_name) {
                     <span class="custom-name"> ({{ config.custom_name }}) </span>
                 }
-            </div>
-        </div>
+            </span>
+        </button>
     `,
     styles: [
         `
             .model-item {
                 display: flex;
+                width: 100%;
+                border: none;
+                background: transparent;
+                color: inherit;
+                font-family: inherit;
+                text-align: left;
                 align-items: center;
                 gap: 10px;
                 padding: 8px 12px;
@@ -40,7 +50,7 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
                 border-radius: 4px;
             }
 
-            .model-item:hover {
+            .model-item:is(:hover, :focus-visible) {
                 background-color: rgba(104, 95, 255, 0.08);
             }
 

@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer, OverlayModule } from '@angular/cdk/overlay';
 import { CUSTOM_ELEMENTS_SCHEMA, signal, WritableSignal } from '@angular/core';
@@ -94,7 +95,7 @@ function render(canWrite: boolean): {
     // Only the editor header is under test: the explorer and editor panes stay unrendered custom elements.
     TestBed.overrideComponent(AgentDefinitionsPageComponent, {
         set: {
-            imports: [DetailHeaderComponent, AppSvgIconComponent, OverlayModule, HasPermissionDirective],
+            imports: [DetailHeaderComponent, AppSvgIconComponent, OverlayModule, CdkTrapFocus, HasPermissionDirective],
             providers: [
                 { provide: AgentsPageStore, useValue: agentSelectedStore() },
                 {

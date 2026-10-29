@@ -3,7 +3,9 @@
         @for (action of actions(); track $index) {
             @if (action.type === 'button') {
                 <button
+                    type="button"
                     class="action-btn"
+                    [matTooltip]="action.text"
                     (click)="executed.emit(action)"
                 >
                     {{ action.text }}
@@ -12,6 +14,7 @@
                 <a
                     class="action-link"
                     href="#"
+                    [matTooltip]="action.text"
                     (click)="executed.emit(action); $event.preventDefault()"
                 >
                     {{ action.text }}

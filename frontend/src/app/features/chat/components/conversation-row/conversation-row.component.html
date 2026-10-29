@@ -12,7 +12,6 @@
     [attr.aria-describedby]="isCompact() ? null : previewId()"
     [tabIndex]="isTabStop() ? 0 : -1"
     [matTooltip]="name()"
-    [matTooltipDisabled]="!isCompact()"
     (click)="selectRequested.emit()"
     (keydown)="onKeydown($event)"
 >
@@ -23,13 +22,7 @@
     @if (!isCompact()) {
         <span class="conversation-row__body">
             <span class="conversation-row__line">
-                <span
-                    class="conversation-row__name"
-                    matTooltipPosition="above"
-                    [matTooltip]="name()"
-                    [matTooltipDisabled]="!isSigned()"
-                    >{{ name() }}</span
-                >
+                <span class="conversation-row__name">{{ name() }}</span>
                 @if (conversation().is_test) {
                     <span class="conversation-row__test-chip">Test</span>
                 }

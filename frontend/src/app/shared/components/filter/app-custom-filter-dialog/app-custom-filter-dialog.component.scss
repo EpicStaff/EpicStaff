@@ -39,7 +39,7 @@
         padding: 0.25rem;
         border-radius: 4px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }
@@ -69,7 +69,7 @@
             color 0.15s,
             border-color 0.15s;
 
-        &:hover:not(.active) {
+        &:is(:hover, :focus-visible):not(.active) {
             color: var(--color-text-primary);
         }
 
@@ -124,6 +124,7 @@
         text-align: left;
 
         &:hover,
+        &:focus-visible,
         &.open {
             border-color: var(--accent-color);
         }
@@ -167,7 +168,7 @@
         text-align: left;
         cursor: pointer;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--color-ghost-btn-hover, rgba(255, 255, 255, 0.05));
         }
 
@@ -224,6 +225,11 @@
         &.active {
             background: var(--accent-color);
             color: var(--white);
+        }
+
+        // The toggle clips anything drawn outside it.
+        &:focus-visible {
+            outline-offset: -2px;
         }
     }
 }

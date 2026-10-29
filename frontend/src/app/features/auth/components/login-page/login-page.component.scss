@@ -32,9 +32,10 @@
                 color: var(--accent-color);
                 cursor: pointer;
                 margin-left: auto;
+                text-decoration: none;
                 transition: opacity 0.3s;
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     opacity: 0.7;
                 }
             }

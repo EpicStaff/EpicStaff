@@ -22,6 +22,9 @@
                 type="button"
                 class="number-stepper__btn number-stepper__btn--minus"
                 [class]="'number-stepper__btn--' + size()"
+                aria-label="Decrease"
+                matTooltip="Decrease"
+                tabindex="-1"
                 (mousedown)="onStepDown(); $event.preventDefault()"
                 [disabled]="isDisabled() || !canStepDown()"
             >
@@ -36,6 +39,7 @@
             [type]="integer() ? 'text' : 'number'"
             [attr.inputmode]="integer() ? 'numeric' : null"
             [attr.aria-label]="ariaLabel()"
+            [matTooltip]="fieldName()"
             class="number-stepper__input"
             [class]="'number-stepper__input--' + size()"
             [placeholder]="placeholder()"
@@ -52,6 +56,9 @@
                 type="button"
                 class="number-stepper__btn number-stepper__btn--plus"
                 [class]="'number-stepper__btn--' + size()"
+                aria-label="Increase"
+                matTooltip="Increase"
+                tabindex="-1"
                 (mousedown)="onStepUp(); $event.preventDefault()"
                 [disabled]="isDisabled() || !canStepUp()"
             >

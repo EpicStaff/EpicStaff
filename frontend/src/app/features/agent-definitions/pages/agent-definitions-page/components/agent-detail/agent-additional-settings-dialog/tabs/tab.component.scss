@@ -184,14 +184,21 @@
         transform: rotate(0deg);
     }
 
+    // Collapsed is only zero height, so its fields would still take Tab focus while unseen: hidden once the collapse
+    // animation ends, shown at once on open.
     &__content-wrapper {
         display: grid;
         grid-template-rows: 0fr;
-        transition: grid-template-rows 0.25s ease;
+        visibility: hidden;
+        transition:
+            grid-template-rows 0.25s ease,
+            visibility 0s linear 0.25s;
     }
 
     &--open &__content-wrapper {
         grid-template-rows: 1fr;
+        visibility: visible;
+        transition-delay: 0s;
     }
 
     &__content {

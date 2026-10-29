@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     ButtonComponent,
     CustomInputComponent,
@@ -83,6 +84,7 @@ const ROLES: { id: ChatComposerRole; label: string }[] = [
     selector: 'app-chat-thread-composer',
     imports: [
         ReactiveFormsModule,
+        MatTooltip,
         ButtonComponent,
         CustomInputComponent,
         HintMessageComponent,

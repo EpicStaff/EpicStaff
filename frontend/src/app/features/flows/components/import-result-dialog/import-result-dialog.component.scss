@@ -110,7 +110,7 @@
             color: var(--accent-color);
             cursor: pointer;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 border-color: var(--accent-color-hover);
                 color: var(--accent-color-hover);
             }
@@ -135,7 +135,7 @@
             color: var(--color-text-secondary);
             transition: color 0.2s ease;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 color: var(--color-text-primary);
             }
 
@@ -266,7 +266,7 @@
                 background 0.2s ease,
                 opacity 0.2s ease;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--graphite-750);
                 color: var(--color-text-primary);
             }
@@ -297,6 +297,10 @@
         }
 
         .summary-item {
+            border: none;
+            color: inherit;
+            font: inherit;
+            text-align: left;
             display: flex;
             gap: 0.5rem;
             padding: 1rem;
@@ -307,8 +311,13 @@
             cursor: pointer;
             transition: background-color 0.2s ease;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--graphite-740);
+            }
+
+            // The list scrolls sideways, so it would clip a ring drawn outside the item.
+            &:focus-visible {
+                outline-offset: -2px;
             }
             box-shadow: var(--shadow-raised);
 
@@ -377,6 +386,22 @@
             gap: 0.5rem;
             cursor: pointer;
             user-select: none;
+
+            // The header's button: drawn as the header itself.
+            .entity-type-toggle {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                width: 100%;
+                padding: 0;
+                border: none;
+                border-radius: 4px;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: pointer;
+            }
 
             .collapse-icon {
                 transition: transform 0.2s ease;
@@ -466,8 +491,13 @@
             padding: 0.8rem 1rem;
             transition: all 0.2s ease;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--color-input-background);
+            }
+
+            // Rows sit edge to edge in the list.
+            &:focus-visible {
+                outline-offset: -2px;
             }
 
             &.expandable {
@@ -541,7 +571,7 @@
                     transform: rotate(-45deg);
                 }
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     background-color: var(--color-input-background);
                     color: var(--purple-420);
                     border: 1px solid var(--purple-420);

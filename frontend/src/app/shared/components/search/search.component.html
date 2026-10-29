@@ -17,6 +17,7 @@
         [class.search__input--with-clear]="!!searchTerm()"
         [placeholder]="placeholder()"
         [attr.aria-label]="ariaLabel()"
+        [matTooltip]="ariaLabel() || placeholder()"
         [ngModel]="searchTerm()"
         (ngModelChange)="onSearchTermChange($event)"
     />
@@ -25,9 +26,8 @@
         <button
             type="button"
             class="search__clear-btn"
-            aria-label="Clear"
+            aria-label="Clear search"
             matTooltip="Clear search"
-            matTooltipPosition="above"
             (click)="clearSearch()"
         >
             <app-svg-icon

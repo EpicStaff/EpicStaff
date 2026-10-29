@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import {
     ChangeDetectionStrategy,
@@ -9,8 +10,10 @@ import {
     inject,
     signal,
     ViewChild,
+    viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { MarkdownComponent } from 'ngx-markdown';
 
@@ -39,6 +42,8 @@ type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
         FormsModule,
         MarkdownComponent,
         OverlayModule,
+        CdkTrapFocus,
+        MatTooltip,
         AppSvgIconComponent,
         FlowAssistantSettingsComponent,
         FlowAssistantSidebarComponent,
@@ -61,6 +66,7 @@ type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 export class FlowAssistantPanelComponent {
     @ViewChild('messagesContainer') messagesContainer?: ElementRef<HTMLDivElement>;
     @ViewChild('messageInput') messageInput?: ElementRef<HTMLTextAreaElement>;
+    private readonly kebabButton = viewChild<ElementRef<HTMLButtonElement>>('kebabOrigin');
 
     readonly assistantService = inject(FlowAssistantService);
 
@@ -240,6 +246,25 @@ export class FlowAssistantPanelComponent {
         if (!this.sidebarOpen()) return;
         this.sidebarOpen.set(false);
         this.persistSidebarOpen(false);
+    }
+
+    /** A picked session closes the list; the focus goes on to the message field instead of dropping to <body>. */
+    onSessionSelected(): void {
+        this.closeSidebar();
+        this.messageInput?.nativeElement.focus();
+    }
+
+    /** Escape closes the sessions list only, not what is around the panel; the focus goes back to the ⋮ menu. */
+    onSidebarEscape(event: Event): void {
+        event.stopPropagation();
+        this.closeSidebar();
+        this.kebabButton()?.nativeElement.focus();
+    }
+
+    /** The settings panel's buttons go away with it, so the focus goes back to the ⋮ menu it was opened from. */
+    onSettingsClosed(): void {
+        this.showSettings.set(false);
+        this.kebabButton()?.nativeElement.focus();
     }
 
     onChatBodyClick(): void {

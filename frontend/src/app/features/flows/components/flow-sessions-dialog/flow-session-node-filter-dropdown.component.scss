@@ -24,6 +24,11 @@
     padding: 8px 10px;
     border-bottom: 1px solid var(--color-divider-regular);
 
+    // The field draws no border of its own, so the box's divider shows its focus.
+    &:focus-within {
+        border-bottom-color: var(--accent-color);
+    }
+
     .search-icon {
         color: var(--color-text-secondary);
         flex-shrink: 0;
@@ -51,7 +56,7 @@
         display: flex;
         align-items: center;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }
@@ -80,7 +85,7 @@
             background 0.15s,
             color 0.15s;
 
-        &:hover {
+        &:is(:hover, :has(:focus-visible)) {
             background: var(--blue-alpha-18);
         }
 
@@ -120,7 +125,6 @@
     color: var(--color-text-primary);
     font-size: 1em;
     cursor: pointer;
-    outline: none;
     transition:
         border 0.18s,
         background 0.18s;
@@ -279,7 +283,7 @@
     cursor: pointer;
     transition: background 0.15s;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--blue-alpha-10);
     }
 }
@@ -303,7 +307,7 @@
     cursor: pointer;
     transition: background 0.15s;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--blue-alpha-10);
     }
 }

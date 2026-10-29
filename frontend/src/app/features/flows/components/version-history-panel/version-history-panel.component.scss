@@ -63,7 +63,7 @@
     border: 1.5px solid transparent;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--white-alpha-7);
     }
 
@@ -173,7 +173,7 @@
     cursor: pointer;
     transition: background 0.2s;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background: var(--accent-color-hover);
     }
 
@@ -186,7 +186,7 @@
 .action-dropdown-panel__item--danger {
     color: var(--red-560);
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--maroon-950);
         color: var(--red-470);
     }
