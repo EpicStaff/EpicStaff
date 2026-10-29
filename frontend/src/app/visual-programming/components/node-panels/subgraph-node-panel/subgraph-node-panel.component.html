@@ -56,6 +56,9 @@
                         [disabled]="!selectedFlowExists()"
                     ></app-go-to-button>
                 </div>
+                @if (missingFlowHint(); as hint) {
+                    <div class="missing-flow-hint">{{ hint }}</div>
+                }
             </div>
         </form>
     </div>

@@ -7,12 +7,13 @@ import { of } from 'rxjs';
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { KeyValueMode } from '../../core/models/key-value-node.model';
-import { NodeModel } from '../../core/models/node.model';
+import { NodeModel, SubGraphNodeModel } from '../../core/models/node.model';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
 import { mapKeyValueNodeToModel } from '../../utils/load/nodes/key-value-node.mapper';
 import { mapStartNodeToModel } from '../../utils/load/nodes/start-node.mapper';
+import { mapSubGraphNodeToModel } from '../../utils/load/nodes/subgraph-node.mapper';
 import { FlowBaseNodeComponent } from './flow-base-node.component';
 
 const KEY_VALUE_NODE = {
@@ -305,5 +306,94 @@ describe('FlowBaseNodeComponent node number', () => {
         render(tableNode, { otherNodes: [fetchNode, { ...fetchNode, id: 'fetch-again', nodeNumber: 9 }] });
 
         expect(text('.decision-table__group .group-status')).toBe('(Fetch #4)');
+    });
+});
+
+describe('FlowBaseNodeComponent subflow node whose flow was deleted', () => {
+    let fixture: ComponentFixture<FlowBaseNodeComponent>;
+
+    const element = (selector: string): HTMLElement | null => fixture.nativeElement.querySelector(selector);
+
+    // The backend nulls `subgraph` once the target flow is deleted; the loader then flags the node.
+    const BLOCKED_SUBFLOW_NODE: SubGraphNodeModel = {
+        ...mapSubGraphNodeToModel({
+            id: 21,
+            created_at: '2026-01-01T00:00:00Z',
+            node_number: 2,
+            node_name: 'Billing',
+            graph: 1,
+            subgraph: null,
+            subgraph_detail: null,
+            input_map: {},
+            output_variable_path: null,
+            metadata: {},
+            created_by: null,
+            last_edited_by: null,
+            last_edited_at: null,
+        }),
+        isBlocked: true,
+    };
+    const REATTACHED_SUBFLOW_NODE: SubGraphNodeModel = {
+        ...BLOCKED_SUBFLOW_NODE,
+        data: { id: 7, uuid: 'invoices-uuid', name: 'Invoices', description: '', tags: [] },
+        isBlocked: false,
+    };
+
+    function render(node: NodeModel): void {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(false) } },
+                { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
+                { provide: LlmConfigStorageService, useValue: { isConfigsLoaded: signal(false), configs: signal([]) } },
+                { provide: KeyValueTablesStorageService, useValue: { tables: signal([]), loadTables: () => of([]) } },
+            ],
+        });
+        fixture = TestBed.createComponent(FlowBaseNodeComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+    }
+
+    function clickNodeBody(): void {
+        const body = element('.interactive-node-body')!;
+        body.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 10 }));
+        body.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: 10 }));
+    }
+
+    it('opens its panel on a click, so another flow can be chosen', () => {
+        render(BLOCKED_SUBFLOW_NODE);
+        const opened: NodeModel[] = [];
+        fixture.componentInstance.editClicked.subscribe((node) => opened.push(node));
+
+        clickNodeBody();
+
+        expect(opened).toEqual([BLOCKED_SUBFLOW_NODE]);
+    });
+
+    it('keeps Unpack and Go to flow disabled and shows the missing-flow badge', () => {
+        render(BLOCKED_SUBFLOW_NODE);
+        let unpacked = 0;
+        fixture.componentInstance.unpackClicked.subscribe(() => unpacked++);
+
+        element('.unpack-button')!.click();
+
+        expect(unpacked).toBe(0);
+        expect(element('.unpack-button')!.classList).toContain('disabled');
+        expect(element('.go-to-flow')).toBeNull();
+        expect(element('.blocked-badge')!.textContent!.trim()).toBe('Missing flow');
+        expect(element('.title')!.textContent!.trim()).toBe('Deleted Flow');
+    });
+
+    it("an attached subflow node enables Unpack and Go to flow and shows its flow's name", () => {
+        render(REATTACHED_SUBFLOW_NODE);
+        let unpacked = 0;
+        fixture.componentInstance.unpackClicked.subscribe(() => unpacked++);
+
+        element('.unpack-button')!.click();
+
+        expect(unpacked).toBe(1);
+        expect(element('.unpack-button')!.classList).not.toContain('disabled');
+        expect(element('.go-to-flow a')!.getAttribute('href')).toBe('/flows/7');
+        expect(element('.blocked-badge')).toBeNull();
+        expect(element('.title')!.textContent!.trim()).toBe('Invoices');
     });
 });

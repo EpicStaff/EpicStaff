@@ -9,6 +9,7 @@ import {
     inject,
     input,
     output,
+    reflectComponentType,
     Signal,
     signal,
     TemplateRef,
@@ -218,15 +219,21 @@ export class NodePanelShellComponent {
 
     protected readonly outlet = viewChild(NgComponentOutlet);
     private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
+    /** The inputs the open panel declares: setting any other one is an error (NG0303). */
+    private readonly panelInputNames = computed(() => {
+        const component = this.panelComponent();
+        const inputs = component ? (reflectComponentType(component)?.inputs ?? []) : [];
+        return new Set(inputs.map((panelInput) => panelInput.templateName));
+    });
     protected readonly componentInputs = computed(() => {
-        const node = this.node();
-
-        return {
-            node,
+        const offered: Record<string, unknown> = {
+            node: this.node(),
             isExpanded: this.isExpanded(),
             graphId: this.currentFlowId(),
-            ...(node?.type === 'subgraph' ? { currentFlowId: this.currentFlowId() } : {}),
+            currentFlowId: this.currentFlowId(),
         };
+        const declared = this.panelInputNames();
+        return Object.fromEntries(Object.entries(offered).filter(([name]) => declared.has(name)));
     });
 
     protected readonly isShaking = signal(false);
