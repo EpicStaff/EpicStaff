@@ -1,5 +1,9 @@
 <div class="user-menu-panel">
-    <section class="menu-section user-header">
+    <section
+        class="menu-section user-header"
+        [class.active]="isProfileRoute()"
+        (click)="onProfileClick()"
+    >
         <app-user-avatar
             [name]="user().display_name || user().email"
             [avatarUrl]="user().avatar_url"
@@ -8,6 +12,28 @@
             <div class="user-name">{{ user().display_name || user().email }}</div>
             <div class="user-email">{{ user().email }}</div>
         </div>
+    </section>
+
+    <section class="menu-section">
+        @if (canVisitWorkspace()) {
+            <button
+                class="nav-item"
+                [class.active]="isWorkspaceRoute()"
+                (click)="onWorkspaceClick()"
+            >
+                <app-svg-icon
+                    size="16px"
+                    icon="workspace"
+                    class="nav-icon"
+                />
+                <span class="nav-label text-body-small-large">Workspace</span>
+                <app-svg-icon
+                    size="16px"
+                    icon="chevron-right"
+                    class="nav-chevron"
+                />
+            </button>
+        }
     </section>
 
     <section class="menu-section">
@@ -28,46 +54,6 @@
                 </li>
             }
         </ul>
-    </section>
-
-    <section class="menu-section">
-        <div class="section-label text-body-small">Navigation</div>
-        @if (canVisitWorkspace()) {
-            <button
-                class="nav-item"
-                [class.active]="isWorkspaceRoute()"
-                (click)="onWorkspaceClick()"
-            >
-                <app-svg-icon
-                    size="16px"
-                    icon="workspace"
-                    class="nav-icon"
-                />
-                <span class="nav-label text-body-small-large">Workspace</span>
-                <app-svg-icon
-                    size="16px"
-                    icon="chevron-right"
-                    class="nav-chevron"
-                />
-            </button>
-        }
-        <button
-            class="nav-item"
-            [class.active]="isProfileRoute()"
-            (click)="onProfileClick()"
-        >
-            <app-svg-icon
-                size="16px"
-                icon="profile"
-                class="nav-icon"
-            />
-            <span class="nav-label text-body-small-large">My Profile</span>
-            <app-svg-icon
-                size="16px"
-                icon="chevron-right"
-                class="nav-chevron"
-            />
-        </button>
     </section>
 
     <section class="menu-section">
