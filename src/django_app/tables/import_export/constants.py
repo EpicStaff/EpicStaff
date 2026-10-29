@@ -28,6 +28,7 @@ DEPENDENCY_ORDER = (
     EntityType.EMBEDDING_MODEL_TAG,
     EntityType.LLM_MODEL,
     EntityType.LLM_CONFIG,
+    EntityType.SYSTEM_ONE_CONFIG,
     EntityType.EMBEDDING_MODEL,
     EntityType.EMBEDDING_CONFIG,
     EntityType.REALTIME_MODEL,
