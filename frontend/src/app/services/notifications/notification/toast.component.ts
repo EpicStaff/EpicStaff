@@ -28,7 +28,11 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                                 size="20px"
                             ></app-svg-icon>
                         </div>
-                        <span class="toast-message">{{ toast.message }}</span>
+                        <span
+                            class="toast-message"
+                            [class.toast-message--full]="toast.fullText"
+                            >{{ toast.message }}</span
+                        >
                     </div>
                     <button
                         class="toast-close-btn"
@@ -146,6 +150,14 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                 max-height: 4.2em;
                 word-break: break-word;
                 min-width: 0;
+
+                // Opt-in (ToastOptions.fullText): the toast grows to fit the whole message.
+                &.toast-message--full {
+                    display: block;
+                    -webkit-line-clamp: unset;
+                    max-height: none;
+                    overflow: visible;
+                }
             }
 
             .toast-close-btn {

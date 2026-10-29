@@ -38,6 +38,7 @@ export class ValidationErrorsComponent {
             return `Max length is ${x.requiredLength}. Current length is ${x.actualLength}.`;
         },
         pattern: () => 'The value does not match the required pattern.',
+        venvName: () => 'Use only letters, digits, spaces, - and _.',
         email: () => 'Invalid email address.',
         emailWhitespace: () => 'Email must not contain whitespace.',
         emailLength: () => 'Must be at most 254 characters, with at most 64 before the @.',

@@ -152,8 +152,14 @@
                         placeholder="Select venv"
                         formControlName="venvId"
                         [items]="venvItems()"
+                        variant="boxed"
+                        [grouped]="true"
+                        [showSearch]="true"
+                        searchPlaceholder="Search by venv name..."
                         [loading]="loadingVenvs()"
                         [readonly]="isBuiltIn()"
+                        (opened)="onVenvDropdownOpened()"
+                        (changed)="onVenvChanged($event)"
                     />
                 </div>
 

@@ -179,3 +179,18 @@ async def test_search_rejects_out_of_range_size_with_422(size):
         response = await client.post(SEARCH_PATH, json={"size": size})
 
     assert response.status_code == 422
+
+
+async def test_search_results_leave_out_the_events_retention_days():
+    stored_event = SessionAuditEvent(
+        id="evt-tiered", parent_id="", session_id=100, kind="event",
+        status="completed", event_time=NOW, org_id=ORG_ID, retention_days=90,
+    )
+
+    async with _client(InMemoryFakeRepository([stored_event])) as client:
+        response = await client.post(SEARCH_PATH, json={})
+
+    assert response.status_code == 200
+    [item] = response.json()["items"]
+    assert item["id"] == "evt-tiered"
+    assert "retention_days" not in item

@@ -19,6 +19,8 @@ from utils.set_output_variables import set_output_variables
 
 
 class SubGraphNode:
+    TYPE = "SUBGRAPH"
+
     def __init__(
         self,
         session_id: int,
@@ -26,6 +28,7 @@ class SubGraphNode:
         unique_subgraph_list: list[SubGraphData],
         graph_builder: StateGraph,
         org_id: int,
+        audit_retention_days: int,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
         session_graph_builder=None,
         stop_event=None,
@@ -36,6 +39,7 @@ class SubGraphNode:
         self._graph_builder = graph_builder
         self.session_id = session_id
         self.org_id = org_id
+        self.audit_retention_days = audit_retention_days
         self.node_name = subgraph_node_data.node_name
         self.input_map = subgraph_node_data.input_map
         self.subgraph_data = self._get_graph_data(subgraph_node_data.subgraph_id)
@@ -80,6 +84,7 @@ class SubGraphNode:
             initial_state=initial_state,
             storage_credentials=self.storage_credentials,
             org_id=self.org_id,
+            audit_retention_days=self.audit_retention_days,
         )
 
     def _create_subgraph_builder(self):
@@ -178,6 +183,7 @@ class SubGraphNode:
             name=self.node_name,
             execution_order=execution_order,
             message_data=start_message_data,
+            node_type=self.TYPE,
         )
         writer(graph_message)
 
@@ -262,7 +268,7 @@ class SubGraphNode:
     def _create_state_history_item(self, subgraph_input, subgraph_output) -> dict:
         """Create state history item for subgraph execution."""
         return {
-            "type": "SUBGRAPH",
+            "type": self.TYPE,
             "name": self.node_name,
             "additional_data": {
                 "input_map": self.input_map,
@@ -291,6 +297,7 @@ class SubGraphNode:
             name=self.node_name,
             execution_order=execution_order,
             message_data=finish_message_data,
+            node_type=self.TYPE,
         )
         writer(graph_message)
 

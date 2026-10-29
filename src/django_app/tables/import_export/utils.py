@@ -3,6 +3,7 @@ from collections import Counter
 
 from django.conf import settings
 from django.db.models import Case, IntegerField, Q, QuerySet, Value, When
+from proxies.sandbox.models import SandboxVenvBinding
 from rbac.models import Organization
 from rest_framework.exceptions import ValidationError
 
@@ -249,6 +250,29 @@ def attach_tool_labels(instance, id_mapper: IDMapper, label_ids: list) -> None:
     new_label_ids = [id_mapper.get(EntityType.LABEL, old_id) for old_id in label_ids]
     if new_label_ids:
         instance.labels.add(*Label.objects.filter(id__in=new_label_ids, scope=Label.Scope.TOOL))
+
+
+def python_code_venv_ids(*python_codes, org_id: int | None = None) -> set[int]:
+    """The environments `python_codes` run in; empty for code on the default one.
+
+    `None` entries are skipped, so a node whose pre/post code is unset can be passed
+    straight in. With an `org_id` a binding is dropped unless it is that org's: rows
+    reachable from an org's own entity can point at another tenant's environment (a
+    built-in tool is one row shared by every organization), and the export must not
+    carry its name or library list.
+    """
+    venv_ids = {
+        python_code.venv_id
+        for python_code in python_codes
+        if python_code is not None and python_code.venv_id
+    }
+    if not venv_ids or org_id is None:
+        return venv_ids
+    return set(
+        SandboxVenvBinding.objects.filter(pk__in=venv_ids, org_id=org_id).values_list(
+            "pk", flat=True
+        )
+    )
 
 
 def remap_python_code_venv(python_code_data: dict | None, id_mapper: IDMapper) -> dict | None:

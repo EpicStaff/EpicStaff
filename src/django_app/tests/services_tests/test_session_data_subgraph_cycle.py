@@ -5,6 +5,7 @@ raising SubGraphValidationError instead of causing RecursionError or 500 errors.
 """
 
 import pytest
+from django.utils import timezone
 
 from tables.exceptions import SubGraphValidationError
 from tables.models import Edge, Graph, PythonCode, PythonNode, StartNode, SubGraphNode
@@ -229,38 +230,6 @@ def test_deep_chain_with_cycle_at_the_end(default_org, service):
 
 
 @pytest.mark.django_db
-def test_null_subgraph_is_ignored(default_org, service):
-    """Nullable subgraph field: subgraph=None should be skipped."""
-    graph_a = Graph.objects.create(name="Flow A", org=default_org)
-    graph_b = Graph.objects.create(name="Flow B", org=default_org)
-
-    start_a = StartNode.objects.create(graph=graph_a, variables={})
-    start_b = StartNode.objects.create(graph=graph_b, variables={})
-
-    # Create node with None subgraph and a valid one
-    SubGraphNode.objects.create(graph=graph_a, subgraph=None, node_number=1, node_name="null_ref")
-    node_valid_ref = SubGraphNode.objects.create(
-        graph=graph_a, subgraph=graph_b, node_number=2, node_name="valid_ref"
-    )
-    Edge.objects.create(graph=graph_a, start_node_id=start_a.pk, end_node_id=node_valid_ref.pk)
-    _add_leaf_node(graph_b, start_b)
-
-    session = Session.objects.create(
-        graph=graph_a, status=Session.SessionStatus.PENDING, variables={}
-    )
-    SessionPrincipal.objects.create(
-        session=session, kind=SessionPrincipal.ActionKind.TRIGGER
-    )
-
-    # Should not raise - null subgraph should be ignored
-    session_data = service.create_session_data(session=session, start_node=start_a)
-
-    # Only graph_b should be in unique_subgraphs
-    assert len(session_data.unique_subgraph_list) == 1
-    assert session_data.unique_subgraph_list[0].id == graph_b.id
-
-
-@pytest.mark.django_db
 def test_soft_deleted_node_does_not_count_as_edge(default_org, service):
     """Soft-deleted SubGraphNode should not create edges in cycle detection."""
     graph_a = Graph.objects.create(name="Flow A", org=default_org)
@@ -274,8 +243,11 @@ def test_soft_deleted_node_does_not_count_as_edge(default_org, service):
         graph=graph_a, subgraph=graph_b, node_number=1, node_name="ref_b"
     )
     back_ref = SubGraphNode.objects.create(graph=graph_b, subgraph=graph_a, node_number=1, node_name="back_to_a")
+    # Soft delete the cycle-creating edge: active and soft_deleted_at must flip together,
+    # or the model's soft-delete consistency CheckConstraint rejects the row.
     back_ref.active = False
-    back_ref.save(update_fields=["active"])  # Soft delete the cycle-creating edge
+    back_ref.soft_deleted_at = timezone.now()
+    back_ref.save(update_fields=["active", "soft_deleted_at"])
 
     Edge.objects.create(graph=graph_a, start_node_id=start_a.pk, end_node_id=node_ref_b.pk)
     # back_ref is soft-deleted, so B is now a leaf with no (active) subgraph reference.

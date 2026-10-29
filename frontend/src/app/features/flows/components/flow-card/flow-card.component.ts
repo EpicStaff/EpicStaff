@@ -1,8 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent } from '@shared/components';
-import { getLabelColorOption } from '@shared/models';
+import { LabelDropDirective } from '@shared/directives';
+import { getLabelColorOption, ResourceCode } from '@shared/models';
 
 import { GetGraphLightRequest, SubflowLightDto } from '../../models/graph.model';
 import { LabelsStorageService } from '../../services/labels-storage.service';
@@ -18,6 +19,11 @@ export interface FlowCardAction {
     trigger?: HTMLElement;
 }
 
+export interface FlowLabelDropEvent {
+    flow: GetGraphLightRequest;
+    labelIds: number[];
+}
+
 @Component({
     selector: 'app-flow-card',
     imports: [
@@ -27,22 +33,24 @@ export interface FlowCardAction {
         CheckboxComponent,
         AppSvgIconComponent,
         MatTooltipModule,
+        LabelDropDirective,
     ],
     templateUrl: './flow-card.component.html',
     styleUrls: ['./flow-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FlowCardComponent {
-    @Input({ required: true }) flow!: GetGraphLightRequest;
-    @Input() selectMode: boolean = false;
-    @Input() isSelected: boolean = false;
+    readonly flow = input.required<GetGraphLightRequest>();
+    readonly selectMode = input<boolean>(false);
+    readonly isSelected = input<boolean>(false);
     /** True while a bulk delete is in flight; disables the selection checkbox and stops
      *  selection from being toggled, so a run that is about to complete can't wipe a
      *  selection made while it's running. */
-    @Input() isDeleting: boolean = false;
-    @Output() selectionToggle = new EventEmitter<void>();
-    @Output() cardClick = new EventEmitter<GetGraphLightRequest>();
-    @Output() action = new EventEmitter<FlowCardAction>();
+    readonly isDeleting = input<boolean>(false);
+    readonly selectionToggle = output<void>();
+    readonly cardClick = output<GetGraphLightRequest>();
+    readonly action = output<FlowCardAction>();
+    readonly labelDrop = output<FlowLabelDropEvent>();
 
     private readonly labelsStorage = inject(LabelsStorageService);
 
@@ -50,8 +58,10 @@ export class FlowCardComponent {
     public isExpanded = signal<boolean>(false);
     public subflowMenuStates = new Map<number, boolean>();
 
+    protected readonly ResourceCode = ResourceCode;
+
     get hasSubflows(): boolean {
-        return !!this.flow?.subflows?.length;
+        return !!this.flow()?.subflows?.length;
     }
 
     toggleSubflows(event: MouseEvent): void {
@@ -118,7 +128,7 @@ export class FlowCardComponent {
     }
 
     onCardClick(): void {
-        this.cardClick.emit(this.flow);
+        this.cardClick.emit(this.flow());
     }
 
     onMenuToggle(isOpen: boolean): void {
@@ -131,14 +141,26 @@ export class FlowCardComponent {
 
     onSelectionToggle(event: MouseEvent): void {
         event.stopPropagation();
-        if (this.isDeleting) return;
+        if (this.isDeleting()) return;
         this.selectionToggle.emit();
+    }
+
+    onLabelDropped(labelId: number): void {
+        const currentIds = this.flow().label_ids ?? [];
+        if (currentIds.includes(labelId)) return;
+        this.labelDrop.emit({ flow: this.flow(), labelIds: [...currentIds, labelId] });
+    }
+
+    onSubflowLabelDropped(labelId: number, subflow: SubflowLightDto): void {
+        const currentIds = subflow.label_ids ?? [];
+        if (currentIds.includes(labelId)) return;
+        this.labelDrop.emit({ flow: this.toFlowLike(subflow), labelIds: [...currentIds, labelId] });
     }
 
     private emitAction(action: FlowAction, trigger: HTMLElement): void {
         this.action.emit({
             action,
-            flow: this.flow,
+            flow: this.flow(),
             trigger,
         });
     }

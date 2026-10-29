@@ -11,6 +11,11 @@ from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
 from tables.models.session_models import Session
 from tables.serializers.naive_rag_serializers import DocumentConfigEstimateOverrideSerializer
+from tables.serializers.utils.bulk_ids import (
+    BULK_DELETE_MAX_IDS,
+    BulkIdListField,
+    BulkIdListSerializer,
+)
 from tables.serializers.utils.list_fields import BoundedListField
 from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.delete_services.usage import SkipReason
@@ -256,7 +261,7 @@ class BulkDeleteRequestSerializer(serializers.Serializer):
     ids = BoundedListField(
         child=serializers.IntegerField(min_value=1),
         allow_empty=False,
-        max_length=500,
+        max_length=BULK_DELETE_MAX_IDS,
         help_text="List of entity IDs to delete",
     )
 
@@ -268,6 +273,12 @@ class BulkDeleteRequestSerializer(serializers.Serializer):
                 "The body takes only ids; dry_run is a query parameter."
             )
         return attrs
+
+
+class BulkIdsSerializer(BulkIdListSerializer):
+    """Request body of the bulk deletes outside BulkDeleteActionMixin: tools and sessions."""
+
+    ids = BulkIdListField(help_text="IDs to delete")
 
 
 class UsageRefSerializer(serializers.Serializer):

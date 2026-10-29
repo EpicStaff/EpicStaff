@@ -12,6 +12,7 @@ from tables.models.knowledge_models import (
     SourceCollection,
 )
 from tables.models.knowledge_models.collection_models import clean_collection_description
+from tables.serializers.utils.bulk_ids import BulkIdListField, BulkIdListSerializer
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
@@ -183,6 +184,10 @@ class DocumentUploadSerializer(serializers.Serializer):
         if not value:
             raise serializers.ValidationError("At least one file must be provided.")
         return value
+
+
+class SourceCollectionBulkDeleteSerializer(BulkIdListSerializer):
+    collection_ids = BulkIdListField(help_text="IDs of the collections to delete")
 
 
 class DocumentBulkDeleteSerializer(serializers.Serializer):

@@ -1,7 +1,7 @@
 ## OpenSearch Dashboards - LOCAL DEVELOPMENT ONLY.
 ##
 ## Config for an ad-hoc `opensearchproject/opensearch-dashboards` container, run
-## by hand against the `audit` stack so a developer can browse `audit_events` in
+## by hand against the `audit` stack so a developer can browse `audit_events-*` in
 ## a table view. There is deliberately no such service in docker-compose.yaml -
 ## the deployed stack's only read path into OpenSearch is `auditor`'s own
 ## query/export routes.

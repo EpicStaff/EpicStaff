@@ -31,7 +31,7 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
 
     def empty_session_data(session, start_node, token_budget=None, run_type=""):
         graph = GraphData(name="g", entrypoint="__end__", end_node=None)
-        return SessionData(id=session.id, org_id=session.graph.org_id, graph=graph)
+        return SessionData(id=session.id, org_id=session.graph.org_id, audit_retention_days=0, graph=graph)
 
     monkeypatch.setattr(sm, "create_session_data", empty_session_data)
     monkeypatch.setattr(sm.redis_service, "publish_session_data", lambda **kwargs: 2)

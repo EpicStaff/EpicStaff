@@ -68,7 +68,7 @@ class Library(ValueObject):
 
 class Venv(Entity):
     id: int | None = Field(default=None, frozen=True)
-    name: str = Field(min_length=1)
+    name: str = Field(min_length=1, pattern=r"^[A-Za-z0-9 _-]+$")
     libs: list[Library] = Field(default_factory=list)
     hash: str | None = None
     status: VenvStatus = VenvStatus.DECLARED

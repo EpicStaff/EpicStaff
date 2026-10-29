@@ -18,13 +18,15 @@ from app.domains.base import DEFAULT_SCOPING, BaseScopeArgs, ScopedQueryBuilder
 from app.domains.sessions.computed import SESSIONS_COMPUTED
 from app.domains.sessions.fields import SESSIONS_FIELDS
 from app.domains.sessions.index import SESSIONS_INDEX
-from app.index_setup import runner as index_setup_runner
+from app.index_setup.retention import ensure_index_template, ensure_ism_policies, ism_policy
+from app.repositories.index_routing import index_name_for
 from app.repositories.opensearch_repository import OpenSearchAuditRepository
 from app.repositories.compiler import QueryCompiler
 from app.filtering.computed import split_computed_leaves
 from app.filtering.query_language import parse_query
 from app.services.duration_filter import apply_duration_filter
 from src.shared.models import SessionAuditEvent
+from src.shared.retention import RETENTION_CHOICES
 
 _compiler = QueryCompiler(SESSIONS_FIELDS, DEFAULT_SCOPING)
 _DURATION_FIELD = SESSIONS_COMPUTED[0]
@@ -52,7 +54,9 @@ async def opensearch_client():
     if not reachable:
         await client.close()
         pytest.skip("OpenSearch is not reachable - bring up the dev stack first")
-    await index_setup_runner.ensure_index(client, SESSIONS_INDEX)
+    # The runner's legacy-index drop is deliberately not run from a test.
+    await ensure_ism_policies(client, SESSIONS_INDEX)
+    await ensure_index_template(client, SESSIONS_INDEX)
     yield client
     await client.close()
 
@@ -108,7 +112,7 @@ async def test_mixed_query_scopes_by_org_and_sorts_fixed(repository, opensearch_
         _event(org_id=ORG_B, name="OtherOrgNode", status="failed", event_time=now),
     ]
     await repository.write_batch(fixtures)
-    await opensearch_client.indices.refresh(index="audit_events")
+    await opensearch_client.indices.refresh(index=SESSIONS_INDEX.read_pattern)
 
     ast = parse_query('status = "failed" and Error : "AuthenticationError"')
     query = compile_filters(ast, org_id=ORG_A, retention_days=0)
@@ -152,7 +156,7 @@ async def test_duration_filter_includes_and_excludes_correctly(
         ),
     ]
     await repository.write_batch(fixtures)
-    await opensearch_client.indices.refresh(index="audit_events")
+    await opensearch_client.indices.refresh(index=SESSIONS_INDEX.read_pattern)
 
     ast = {"field": "duration", "op": "gt", "value": 1800}
     remainder, duration_cond = split_duration_filter(ast)
@@ -198,7 +202,7 @@ async def test_numeric_flattened_filter_matches_docs_above_threshold(
         _event(name="missing"),
     ]
     await repository.write_batch(fixtures)
-    await opensearch_client.indices.refresh(index="audit_events")
+    await opensearch_client.indices.refresh(index=SESSIONS_INDEX.read_pattern)
 
     ast = {"field": "details.tokens_used", "op": "gt", "value": 5000}
     query = compile_filters(ast, org_id=ORG_A, retention_days=0)
@@ -234,7 +238,7 @@ async def test_numeric_flattened_filter_matches_docs_at_deep_nesting(
         _event(name="missing-root"),
     ]
     await repository.write_batch(fixtures)
-    await opensearch_client.indices.refresh(index="audit_events")
+    await opensearch_client.indices.refresh(index=SESSIONS_INDEX.read_pattern)
 
     ast = {
         "field": "output.token_usage.completion_tokens",
@@ -271,7 +275,7 @@ async def test_key_exists_matches_docs_with_deeply_nested_key_present(
         _event(name="other-keys-only", output={"summary": "done", "retries": 2}),
     ]
     await repository.write_batch(fixtures)
-    await opensearch_client.indices.refresh(index="audit_events")
+    await opensearch_client.indices.refresh(index=SESSIONS_INDEX.read_pattern)
 
     ast = {"field": "output.token_usage.completion_tokens", "op": "key_exists"}
     query = compile_filters(ast, org_id=ORG_A, retention_days=0)
@@ -301,7 +305,7 @@ async def test_key_not_exists_matches_only_docs_missing_the_deeply_nested_key(
         _event(name="other-keys-only", output={"summary": "done", "retries": 2}),
     ]
     await repository.write_batch(fixtures)
-    await opensearch_client.indices.refresh(index="audit_events")
+    await opensearch_client.indices.refresh(index=SESSIONS_INDEX.read_pattern)
 
     ast = {"field": "output.token_usage.completion_tokens", "op": "key_not_exists"}
     query = compile_filters(ast, org_id=ORG_A, retention_days=0)
@@ -333,9 +337,11 @@ async def test_search_survives_a_document_with_out_of_literal_status(
     bad_source["status"] = "warning"
     bad_source["name"] = "bad-status-doc"
     await opensearch_client.index(
-        index="audit_events", id=bad_source["id"], body=bad_source
+        index=index_name_for(SESSIONS_INDEX, good, datetime.now(timezone.utc)),
+        id=bad_source["id"],
+        body=bad_source,
     )
-    await opensearch_client.indices.refresh(index="audit_events")
+    await opensearch_client.indices.refresh(index=SESSIONS_INDEX.read_pattern)
 
     ast = {"field": "name", "op": "contains", "value": "status-doc"}
     query = compile_filters(ast, org_id=ORG_A, retention_days=0)
@@ -363,7 +369,7 @@ async def test_free_text_matches_inside_flat_object_roots_and_names(
         _event(name="unrelated", input={"vendor": "Other"}),
     ]
     await repository.write_batch(fixtures)
-    await opensearch_client.indices.refresh(index="audit_events")
+    await opensearch_client.indices.refresh(index=SESSIONS_INDEX.read_pattern)
 
     ast = parse_query(f'text: "{token.upper()}"')
     query = compile_filters(ast, org_id=ORG_A, retention_days=0)
@@ -381,7 +387,7 @@ async def test_free_text_matches_inside_flat_object_roots_and_names(
 @pytest.mark.asyncio
 async def test_client_cannot_widen_org_scope(repository, opensearch_client):
     await repository.write_batch([_event(org_id=ORG_B, name="OrgBOnly")])
-    await opensearch_client.indices.refresh(index="audit_events")
+    await opensearch_client.indices.refresh(index=SESSIONS_INDEX.read_pattern)
 
     # A crafted org_id leaf isn't even a legal field (rejected upstream by
     # validate_filter_node in the real route) - here we confirm compile()
@@ -391,3 +397,45 @@ async def test_client_cannot_widen_org_scope(repository, opensearch_client):
     query = compile_filters(crafted, org_id=ORG_A, retention_days=0)
     events, _ = await repository.query(query, cursor=None, size=50)
     assert all(e.org_id == ORG_A for e in events)
+
+
+async def _policy_seq_nos(client) -> dict[str, int]:
+    seq_nos = {}
+    for days in RETENTION_CHOICES:
+        policy_id = ism_policy(SESSIONS_INDEX, days)["policy"]["policy_id"]
+        stored = await client.transport.perform_request(
+            "GET", f"/_plugins/_ism/policies/{policy_id}"
+        )
+        seq_nos[policy_id] = stored["_seq_no"]
+    return seq_nos
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_installing_unchanged_ism_policies_writes_nothing(opensearch_client):
+    seq_nos_before = await _policy_seq_nos(opensearch_client)
+
+    await ensure_ism_policies(opensearch_client, SESSIONS_INDEX)
+    await ensure_ism_policies(opensearch_client, SESSIONS_INDEX)
+
+    assert await _policy_seq_nos(opensearch_client) == seq_nos_before
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_written_events_index_is_managed_by_its_tiers_policy(repository, opensearch_client):
+    event = _event(retention_days=180)
+    expected_index = index_name_for(SESSIONS_INDEX, event, datetime.now(timezone.utc))
+
+    await repository.write_batch([event])
+
+    explained = await opensearch_client.transport.perform_request(
+        "GET", f"/_plugins/_ism/explain/{SESSIONS_INDEX.read_pattern}"
+    )
+    index_state = explained[expected_index]
+    # "policy_id" appears once the ISM job has initialized the index; the setting is
+    # there from creation.
+    assert {
+        index_state.get("index.plugins.index_state_management.policy_id"),
+        index_state.get("policy_id"),
+    } - {None} == {"audit-retention-180d"}

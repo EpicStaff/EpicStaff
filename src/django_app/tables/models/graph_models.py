@@ -365,8 +365,12 @@ class GraphSessionMessage(models.Model):
     name = models.CharField(default="")
     execution_order = models.IntegerField(default=0)
     message_data = models.JSONField()
-    # The emitting node's BaseNode.TYPE (e.g. "AGENT"); empty when the emitter is not a
-    # BaseNode and on rows saved before this field existed.
+    # The emitting node's TYPE (e.g. "AGENT"). A node's start and finish rows store it; its
+    # other rows (tool calls, end output) may leave it empty and take it from the same
+    # node's rows at export. Empty also on non-node rows (graph_end), on user messages
+    # (written by Django), and on rows saved before crew sent it that the migration
+    # backfill could not type: subflow-inner rows, subflow-session rows, and names
+    # missing from the session's old graph snapshot.
     node_type = models.CharField(default="", blank=True)
     uuid = models.UUIDField(null=False, editable=False, unique=True)
     parent_subgraph_execution_id = models.UUIDField(null=True, blank=True, db_index=True)

@@ -201,7 +201,12 @@ class FlatSearchResponse(BaseModel):
 FLAT_DOMAIN: AuditDomain[FlatAuditEvent] = AuditDomain(
     name="flat",
     event_model=FlatAuditEvent,
-    index=IndexSpec(name="flat_events", mapping_path=Path("unused.json"), sort_keys=()),
+    index=IndexSpec(
+        name="flat_events",
+        mapping_path=Path("unused.json"),
+        sort_keys=(),
+        ism_policy_prefix="flat-retention",
+    ),
     fields=FLAT_FIELDS,
     scoping=ScopingPolicy(),
     computed=(),

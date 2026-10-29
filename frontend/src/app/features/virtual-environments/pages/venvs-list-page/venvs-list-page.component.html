@@ -38,36 +38,35 @@
                     #filterTrigger="cdkOverlayOrigin"
                     cdkOverlayOrigin
                     type="button"
-                    class="filter-trigger"
-                    [class.active]="hasActiveFilter() || filterMenuOpen()"
+                    class="menu-trigger filter-trigger"
+                    [class.active]="filterMenuOpen() || activeFilterCount() > 0"
                     (click)="toggleFilterMenu()"
                 >
                     <app-svg-icon
                         icon="filter-outline"
-                        size="1rem"
+                        size="0.875rem"
                     />
-                    <span>Filter</span>
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="0.7rem"
-                        class="filter-chevron"
-                        [class.open]="filterMenuOpen()"
-                    />
+                    <span>
+                        Filter
+                        @if (activeFilterCount() > 0) {
+                            <span class="filter-count">({{ activeFilterCount() }})</span>
+                        }
+                    </span>
+                    @if (activeFilterCount() > 0) {
+                        <span
+                            class="filter-clear-inline"
+                            role="button"
+                            matTooltip="Clear all filters"
+                            matTooltipPosition="above"
+                            (click)="clearAllFilters($event)"
+                        >
+                            <app-svg-icon
+                                icon="x"
+                                size="0.875rem"
+                            />
+                        </span>
+                    }
                 </button>
-                @if (hasActiveFilter()) {
-                    <button
-                        type="button"
-                        class="filter-clear"
-                        matTooltip="Clear all filters"
-                        matTooltipPosition="above"
-                        (click)="clearAllFilters()"
-                    >
-                        <app-svg-icon
-                            icon="x"
-                            size="0.85rem"
-                        />
-                    </button>
-                }
                 <ng-template
                     cdkConnectedOverlay
                     [cdkConnectedOverlayOrigin]="filterTrigger"
@@ -75,32 +74,55 @@
                     [cdkConnectedOverlayHasBackdrop]="true"
                     cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
                     [cdkConnectedOverlayOffsetY]="6"
-                    [cdkConnectedOverlayPositions]="filterMenuPositions"
+                    [cdkConnectedOverlayPositions]="menuPositions"
                     (backdropClick)="closeFilterMenu()"
                     (detach)="closeFilterMenu()"
                 >
-                    <div
-                        class="filter-menu"
-                        role="menu"
-                    >
-                        <button
-                            type="button"
-                            class="menu-item"
-                            role="menuitem"
-                            (click)="applySort('name_asc')"
-                        >
-                            Sort from A to Z
-                        </button>
-                        <button
-                            type="button"
-                            class="menu-item"
-                            role="menuitem"
-                            (click)="applySort('name_desc')"
-                        >
-                            Sort from Z to A
-                        </button>
-                    </div>
+                    <app-venvs-filter-menu
+                        [initial]="filterState()"
+                        (save)="onFilterSave($event)"
+                        (cancel)="closeFilterMenu()"
+                        (clear)="onFilterClear()"
+                    />
                 </ng-template>
+
+                <button
+                    #sortTrigger="cdkOverlayOrigin"
+                    cdkOverlayOrigin
+                    type="button"
+                    class="menu-trigger"
+                    [class.active]="sortMenuOpen() || sortOrder() !== 'default'"
+                    (click)="toggleSortMenu()"
+                >
+                    <app-svg-icon
+                        icon="arrow-up-down"
+                        size="0.875rem"
+                    />
+                    <span>{{ sortTriggerLabel() }}</span>
+                    <app-svg-icon
+                        icon="chevron-down"
+                        size="0.875rem"
+                        class="menu-chevron"
+                        [class.open]="sortMenuOpen()"
+                    />
+                </button>
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="sortTrigger"
+                    [cdkConnectedOverlayOpen]="sortMenuOpen()"
+                    [cdkConnectedOverlayHasBackdrop]="true"
+                    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                    [cdkConnectedOverlayOffsetY]="6"
+                    [cdkConnectedOverlayPositions]="menuPositions"
+                    (backdropClick)="closeSortMenu()"
+                    (detach)="closeSortMenu()"
+                >
+                    <app-venvs-sort-menu
+                        [activeSort]="sortOrder()"
+                        (sortSelected)="onSortSelected($event)"
+                    />
+                </ng-template>
+
                 <app-search
                     class="search"
                     mod="small"
@@ -130,7 +152,7 @@
                     </div>
                 }
             </div>
-        } @else if (filteredVenvs().length === 0) {
+        } @else if (venvs().length === 0) {
             <div class="venvs-page__list">
                 <div class="venvs-page__empty text-body">
                     @if (searchTerm().trim()) {
@@ -142,13 +164,14 @@
             </div>
         } @else {
             <div class="venvs-page__list">
-                @for (venv of filteredVenvs(); track venv.id) {
+                @for (venv of venvs(); track venv.id) {
                     <app-venv-card
                         [venv]="venv"
                         [canEdit]="canUpdate()"
                         [canDelete]="canDelete()"
                         (editRequested)="onEdit(venv)"
                         (deleteRequested)="onDelete(venv)"
+                        (favoriteChange)="onFavoriteChange(venv, $event)"
                     />
                 }
             </div>
