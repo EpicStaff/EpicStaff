@@ -27,7 +27,7 @@
         </header>
         <nav class="tabs">
             <div class="tabs-left">
-                @for (tab of tabs; track tab.link; let last = $last) {
+                @for (tab of tabs; track tab.link) {
                     @if (tab.isPermitted()) {
                         <app-tab-button
                             mod="sm"
@@ -46,9 +46,6 @@
                         >
                             {{ tab.label }}
                         </app-tab-button>
-                        @if (!last) {
-                            <span class="tab-sep">/</span>
-                        }
                     }
                 }
             </div>
