@@ -10,6 +10,7 @@ from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService, ImportSettings
 from tables.import_export.services.inspect_service import InspectService
 from tables.import_export.version_conversions.base import VersionConverter
+from tables.import_export.version_conversions.exceptions import UnsupportedImportVersionError
 
 
 class ViewSetImportExportService:
@@ -73,7 +74,10 @@ class ViewSetImportExportService:
                 f"Provided wrong entity. Got: {main_entity}. Expected: {self.entity_type.value}"
             )
 
-        return VersionConverter.convert(data)
+        try:
+            return VersionConverter.convert(data)
+        except UnsupportedImportVersionError as e:
+            raise ValidationError(str(e)) from e
 
     def import_entity(self, file, user, settings: ImportSettings = None, org_id: int | None = None):
         data = self._parse_and_validate(file)
