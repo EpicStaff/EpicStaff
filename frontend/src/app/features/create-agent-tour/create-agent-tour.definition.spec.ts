@@ -133,6 +133,7 @@ describe('Create Agent tour definition', () => {
         ['cannot edit agents', [ActionCode.Read, ActionCode.Create], false],
         ['cannot create agents', [ActionCode.Read, ActionCode.Update], false],
         ['cannot read agents', [ActionCode.Create, ActionCode.Update], false],
+        ['only reads agents', [ActionCode.Read], false],
         ['has no permission on agents', [], false],
     ])('is offered only to a user who reads, creates and edits agents: one who %s', (_user, actions, isAvailable) => {
         agentActions.set(actions);
