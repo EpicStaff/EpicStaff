@@ -16,8 +16,8 @@ Base URL in examples: `http://localhost:8000`.
 | GET | `/api/auth/first-setup/` | public | Is initial setup needed? |
 | POST | `/api/auth/first-setup/` | public | Create first superadmin + default org |
 | POST | `/api/auth/login/` | public (throttled) | JWT login (email + password) |
-| POST | `/api/auth/refresh/` | public | Exchange refresh → new access + rotated refresh |
-| POST | `/api/auth/logout/` | Bearer JWT | Blacklist the caller's refresh token |
+| POST | `/api/auth/refresh/` | public (refresh cookie) | Exchange the refresh cookie → new access; the rotated refresh replaces the cookie |
+| POST | `/api/auth/logout/` | Bearer JWT | Blacklist the refresh token in the caller's cookie and clear the cookie |
 | POST | `/api/auth/sse-ticket/` | Bearer JWT | Issue a single-use SSE ticket (30-second TTL) |
 | ~~GET~~ | ~~`/api/auth/me/`~~ | — | **REMOVED in Story 6** → use `GET /api/profile/`, see [user_profile.md](user_profile.md) |
 | POST | `/api/auth/introspect/` | System ApiKey | Validate a JWT, return claims |
@@ -85,7 +85,8 @@ ApiKeyAuthentication]`:
 - Header: `Authorization: Bearer <access_token>`
 - Obtain via `POST /api/auth/login/` with `{ "email", "password" }`.
 - Access token lifetime: `ACCESS_TOKEN_LIFETIME`, env `DJANGO_JWT_ACCESS_LIFETIME` (default `15m`).
-- Refresh token lifetime: `REFRESH_TOKEN_LIFETIME`, env `DJANGO_JWT_REFRESH_LIFETIME` (default `7d`).
+- Refresh token lifetime: `REFRESH_TOKEN_LIFETIME`, env `DJANGO_JWT_REFRESH_LIFETIME` (default `7d`),
+  when the login asked for `remember_me`; otherwise 30 minutes (see "Refresh cookie" below).
 - Token carries custom claims: `user_id`, `email`, `is_superadmin`, and
   `hash_password` (`CHECK_REVOKE_TOKEN=True`): every token is bound to the
   user's password and is rejected with `401` once the password changes.
@@ -231,10 +232,11 @@ create_superadmin` workflow).
       "name": "Organization",
       "is_active": true
     },
-    "access":  "<jwt-access>",
-    "refresh": "<jwt-refresh>"
+    "access":  "<jwt-access>"
   }
   ```
+  The refresh token is not in the body: it is set as the refresh cookie
+  (30-minute session, first setup has no remember-me option).
 - **Errors:**
   - `400` — validation failure. Every failing field is aggregated into a
     structured `errors` list; passwords are redacted as `"***"`:
@@ -292,7 +294,10 @@ API listing; not revocable/deletable over HTTP).
 ### POST `/api/auth/login/`
 
 Standard simplejwt endpoint, customized to **accept `email` instead of
-`username`**. Returns access + refresh tokens.
+`username`**. Returns the access token in the body and sets the refresh token
+as an HttpOnly cookie (see "Refresh cookie" below). An optional
+`"remember_me": true` in the body makes the refresh last
+`REFRESH_TOKEN_LIFETIME`; without it the session lasts 30 minutes.
 
 ```bash
 curl -X POST http://localhost:8000/api/auth/login/ \
@@ -302,7 +307,7 @@ curl -X POST http://localhost:8000/api/auth/login/ \
 
 Response:
 ```json
-{ "access": "<jwt>", "refresh": "<jwt>" }
+{ "access": "<jwt>" }
 ```
 
 - The body must be JSON (`Content-Type: application/json`). Form-encoded,
@@ -322,13 +327,16 @@ Response:
 
 ### POST `/api/auth/refresh/`
 
-Body: `{ "refresh": "<jwt>" }` → returns a new `{access, refresh}` pair.
+No body: the refresh token is read from the refresh cookie (no cookie →
+`401 {"detail": "No refresh token."}`). Returns `{ "access": "<jwt>" }` and sets
+the rotated refresh token as the new cookie, keeping the original remember-me
+choice.
 
 - **Refresh-token rotation is on** (`ROTATE_REFRESH_TOKENS=True`,
   `BLACKLIST_AFTER_ROTATION=True`). Every successful refresh issues a **new**
   refresh token and blacklists the one you just sent.
-- Replaying an old refresh returns `401`. If your storage was tampered with
-  or the network duplicated the request, re-login.
+- Replaying an old refresh returns `401` and clears the cookie. If the
+  network duplicated the request, re-login.
 - A refresh token minted under a previous password — or before password
   binding was enabled, so it has no `hash_password` claim — returns `401`
   `{"detail": "Token is invalid or expired."}` and clears the refresh
@@ -338,12 +346,10 @@ Body: `{ "refresh": "<jwt>" }` → returns a new `{access, refresh}` pair.
 ### POST `/api/auth/logout/`
 
 - **Auth:** `IsAuthenticated` via JWT.
-- **Body:**
-  ```json
-  { "refresh": "<jwt-refresh>" }
-  ```
-- **Success:** `205 Reset Content` with `{ "detail": "Logged out." }`. The
-  refresh token is blacklisted so it can no longer be rotated.
+- **Body:** none. The refresh token is read from the refresh cookie.
+- **Success:** `205 Reset Content` with `{ "detail": "Logged out." }` and the
+  refresh cookie cleared. The refresh token is blacklisted so it can no longer
+  be rotated. A request without the cookie also gets `205`.
 - **Error:** `400` with
   ```json
   { "status_code": 400, "code": "invalid_or_expired_refresh",
@@ -358,6 +364,24 @@ Body: `{ "refresh": "<jwt>" }` → returns a new `{access, refresh}` pair.
 - The short-lived **access** token continues to work until its own expiry
   (`ACCESS_TOKEN_LIFETIME`, env `DJANGO_JWT_ACCESS_LIFETIME`, default `15m`).
   Keep access TTL short.
+
+### Refresh cookie
+
+The refresh token never appears in a response body. Login, first setup,
+refresh, reset-user and the password-change confirm set it as a cookie, and
+refresh and logout read it from there (`rbac/identity/refresh_cookie.py`):
+
+| `DJANGO_REFRESH_COOKIE_SECURE` | Name | Path | Attributes |
+|---|---|---|---|
+| `true` (HTTPS) | `__Host-auth.refresh` | `/` | `HttpOnly`, `Secure`, `SameSite=Lax`, no `Domain` |
+| `false` (plain http) | `auth.refresh` | `/api/auth/` | `HttpOnly`, `SameSite=Lax`, no `Domain` |
+
+- `Max-Age` is `REFRESH_TOKEN_LIFETIME` with remember-me, 30 minutes without
+  (the token's own `exp` is cut to 30 minutes too).
+- JavaScript cannot read the cookie. The frontend keeps only the access token,
+  in memory, and sends its auth requests with `withCredentials: true`.
+- A request that carries the cookie name twice is treated as having no
+  refresh token.
 
 ---
 
@@ -660,22 +684,22 @@ curl -s http://localhost:8000/api/graphs/ -H "Authorization: Bearer $ACCESS" | j
 | Area | Change |
 |---|---|
 | Login form | Field label must send **`email`** (not `username`) in the request body to `POST /api/auth/login/` (previously `/api/auth/token/`) and `POST /api/auth/swagger-token/`. Field in request JSON is literally `"email"`. |
-| Logout flow | New — call `POST /api/auth/logout/` with `{refresh}` before dropping tokens from storage. 205 on success, 400 if the refresh is already dead. |
-| Refresh rotation | Each call to `POST /api/auth/refresh/` (renamed from `/api/auth/token/refresh/`) returns a **new** refresh in addition to the access token — overwrite local storage with both values. The previous refresh is blacklisted; replaying it → 401. |
+| Logout flow | New — call `POST /api/auth/logout/` with no body and `withCredentials: true`, then drop the in-memory access token. The server blacklists the refresh token from the cookie and clears the cookie. 205 on success, 400 if the cookie's refresh is already dead. |
+| Refresh rotation | Call `POST /api/auth/refresh/` (renamed from `/api/auth/token/refresh/`) with no body and `withCredentials: true`. It returns only `{access}`; the rotated refresh replaces the HttpOnly cookie, which JS never reads or stores. The previous refresh is blacklisted; replaying it → 401. |
 | Login throttling | 6th credential attempt within the bucket window returns `429` with a `Retry-After` header. Surface a "too many attempts, retry in N seconds" message instead of generic error. |
 | SSE streams | EventSource can no longer connect directly. Fetch a ticket via `POST /api/auth/sse-ticket/`, then connect with `?ticket=<value>`. On `onerror` / reconnect, fetch a **fresh** ticket first. Full migration guide: [`sse_auth.md`](./sse_auth.md). |
-| First-setup screen | Call `GET /api/auth/first-setup/` on boot; if `needs_setup: true`, show the setup form. POST payload is `{ email, password }` — the organization name is sourced from the `DEFAULT_ORGANIZATION_NAME` setting on the server, not the request body. Response returns `access` + `refresh` — persist them and skip the login screen on success. |
+| First-setup screen | Call `GET /api/auth/first-setup/` on boot; if `needs_setup: true`, show the setup form. POST payload is `{ email, password }` — the organization name is sourced from the `DEFAULT_ORGANIZATION_NAME` setting on the server, not the request body. Response returns `access` (keep it in memory) and sets the refresh cookie — skip the login screen on success. |
 | Idempotency | A repeated `POST /api/auth/first-setup/` returns **409** with `{"detail": "Setup has already been completed"}`. Handle this explicitly (e.g. redirect to login). |
 | Current-user endpoint | `/api/auth/me/` is **removed**. Use `GET /api/profile/` instead. Response is a strict superset of the old `/me/` payload. See [user_profile.md](user_profile.md) § "Migrating from `/api/auth/me/`". |
 | JWT claims | Access token now carries `email` and `is_superadmin` in addition to `user_id`. FE may decode the access token locally to short-circuit UI gating without hitting `/api/profile/`. |
 | 401 handling | Unchanged in shape — `{status_code: 401, code: "not_authenticated", message: ...}`. On 401 during a session, prompt re-login. |
 | 409 on setup | New status code to handle on the setup flow. |
-| `reset_user` web call | Payload is `{ email, password }` (was `{ username, password, email }`). Response returns only `access` + `refresh` — **no** `api_key`. Personal API keys are created separately via `POST /api/profile/api-keys/`, see [api_keys.md](api_keys.md). |
+| `reset_user` web call | Payload is `{ email, password }` (was `{ username, password, email }`). Response returns only `access` (the refresh token is set as the cookie) — **no** `api_key`. Personal API keys are created separately via `POST /api/profile/api-keys/`, see [api_keys.md](api_keys.md). |
 | Token introspection / API key validation | Only used by internal services; the FE typically does not call these. `POST /api/auth/introspect/` requires the SYSTEM API key specifically (JWT and USER keys get 403); `GET /api/auth/api-key/validate/` accepts any API key but not JWT. |
 | Admin UI (`/admin/`) | **Removed.** `django.contrib.admin` was dropped because our custom `User` has no `is_staff` field. Anything that linked to `/admin/` must be removed or redirected. |
-| Active organization | Not wired up yet. `X-Organization-Id` header + active-org resolution on `/api/profile/` is Story 7. Until then, the FE can pick an org from `memberships[]` and display it, but there's no backend filtering by header. |
+| Active organization | The FE picks an org from `memberships[]` and sends it as `X-Organization-Id` on every request; `/api/profile/` with the header returns `active_organization_id` and `active_permissions`, and active-context endpoints scope by it. See "Active-organization header" above and [user_profile.md](user_profile.md) § "Switching organizations". |
 | Active org header | `X-Organization-Id` required from this story onward on active-context endpoints. See [`roles_and_permissions.md`](roles_and_permissions.md). |
-| Permissions UI | All Story-2 endpoints effectively require `IsAuthenticated`; the bitmask permission checks land in later stories (9 / 13). Until then the FE gates UI actions purely on `is_superadmin` / role name. |
+| Permissions UI | Endpoints check the role's permission bitmask in the active organization (403 when the action is missing). The FE gates UI actions on `active_permissions` from `/api/profile/` (or `GET /api/permissions/me/`), not on the role name. See [roles_and_permissions.md](roles_and_permissions.md) and [DEV_FE_roles_and_permissions.md](DEV_FE_roles_and_permissions.md). |
 | Personal API keys | New self-service surface: `GET/POST /api/profile/api-keys/`, `DELETE /api/profile/api-keys/{id}/`, `POST /api/profile/api-keys/{id}/revoke/`. JWT-only — calling these with an API key gets 403. The raw key is only ever shown once, in the create response. See [api_keys.md](api_keys.md). |
 
 ### Renamed / removed fields the FE must no longer reference
@@ -692,11 +716,11 @@ curl -s http://localhost:8000/api/graphs/ -H "Authorization: Bearer $ACCESS" | j
 | Endpoint | Before | After |
 |---|---|---|
 | `/api/auth/token/` → **`/api/auth/login/`** | `{username, password}` | `{email, password}` (renamed path) |
-| `/api/auth/token/refresh/` → **`/api/auth/refresh/`** | returns `{access}` only | returns `{access, refresh}` (rotation on) |
-| `/api/auth/logout/` | *did not exist* | new — `{refresh}` → 205 |
+| `/api/auth/token/refresh/` → **`/api/auth/refresh/`** | returns `{access}` only | no body; reads the refresh cookie, returns `{access}` and sets the rotated refresh as the cookie (rotation on) |
+| `/api/auth/logout/` | *did not exist* | new — no body; blacklists the cookie's refresh, clears the cookie → 205 |
 | `/api/auth/sse-ticket/` | *did not exist* | new — JWT-authed; returns `{ticket, expires_in}` |
 | `/api/auth/first-setup/` POST request | `{username, password, email?}` | `{email, password}` (org name comes from `DEFAULT_ORGANIZATION_NAME`) |
-| `/api/auth/first-setup/` POST response | `{access, refresh, api_key}` | `{user, organization, access, refresh}` |
+| `/api/auth/first-setup/` POST response | `{access, refresh, api_key}` | `{user, organization, access}` + refresh cookie |
 | ~~`/api/auth/me/`~~ | `{id, username, email}` | **Removed** — replaced by `GET /api/profile/`, see [user_profile.md](user_profile.md). |
 | `/api/auth/introspect/` response | `{active, user_id, username, scopes}` | `{active, user_id, email, scopes}` |
 | `/api/auth/api-key/validate/` response | `{active, name, prefix, scopes}` | `{active, name, prefix, owner_user_id}` (no `scopes`) |
