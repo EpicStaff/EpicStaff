@@ -8,19 +8,6 @@
     font-size: 13px;
 }
 
-.audit-browser__header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 16px 20px 12px;
-}
-
-.audit-browser__title {
-    color: var(--color-text-primary);
-    font-size: var(--text-h1-size);
-    font-weight: var(--text-h1-weight);
-}
-
 .audit-browser__body {
     display: flex;
     flex: 1;

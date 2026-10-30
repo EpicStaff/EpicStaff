@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ConfigService } from '../../services/config';
@@ -13,7 +14,11 @@ class SessionsStubComponent {}
 @Component({ template: 'actions-page' })
 class ActionsStubComponent {}
 
-async function openAudit(isSessionAuditEnabled: boolean, isUserAuditEnabled: boolean): Promise<RouterTestingHarness> {
+async function openAudit(
+    isSessionAuditEnabled: boolean,
+    isUserAuditEnabled: boolean,
+    unreadable: ResourceCode[] = []
+): Promise<RouterTestingHarness> {
     const [pageRoute] = AUDIT_ROUTES;
     const [indexRoute, sessionsRoute, actionsRoute] = pageRoute.children!;
     TestBed.configureTestingModule({
@@ -33,7 +38,10 @@ async function openAudit(isSessionAuditEnabled: boolean, isUserAuditEnabled: boo
             { provide: ConfigService, useValue: { isSessionAuditEnabled, isUserAuditEnabled } },
             {
                 provide: PermissionsService,
-                useValue: { can: () => true, resolveDefaultRoute: () => '/agents' },
+                useValue: {
+                    can: (resource: ResourceCode) => !unreadable.includes(resource),
+                    resolveDefaultRoute: () => '/agents',
+                },
             },
         ],
     });
@@ -65,6 +73,36 @@ describe('audit page', () => {
         await openAudit(false, true);
 
         expect(TestBed.inject(Router).url).toBe('/audit/actions');
+    });
+
+    it('shows sessions only, without tabs, when the role cannot read user audit', async () => {
+        const harness = await openAudit(true, true, [ResourceCode.UserAudit]);
+
+        expect(TestBed.inject(Router).url).toBe('/audit/sessions');
+        expect(tabLabels(harness.routeNativeElement!)).toEqual([]);
+    });
+
+    it('shows user actions only when the role cannot read session audit', async () => {
+        const harness = await openAudit(true, true, [ResourceCode.Audit]);
+
+        expect(TestBed.inject(Router).url).toBe('/audit/actions');
+        expect(tabLabels(harness.routeNativeElement!)).toEqual([]);
+    });
+
+    it('keeps a role without user audit out of the actions tab', async () => {
+        const harness = await openAudit(true, true, [ResourceCode.UserAudit]);
+
+        await harness.navigateByUrl('/audit/actions');
+
+        expect(TestBed.inject(Router).url).not.toBe('/audit/actions');
+    });
+
+    it('keeps a role without session audit out of the sessions tab', async () => {
+        const harness = await openAudit(true, true, [ResourceCode.Audit]);
+
+        await harness.navigateByUrl('/audit/sessions');
+
+        expect(TestBed.inject(Router).url).not.toBe('/audit/sessions');
     });
 
     it('sends the caller to the default route when no tab is allowed', async () => {

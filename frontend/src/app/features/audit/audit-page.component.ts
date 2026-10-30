@@ -5,8 +5,9 @@ import { RouteTab, RouteTabsComponent } from '@shared/components';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ConfigService } from '../../services/config';
 import { auditTabsFor } from './guards/audit-domain-enabled.guard';
+import { AuditDomainName } from './models/audit-domain.models';
 
-const TABS: Record<string, RouteTab> = {
+const TABS: Record<AuditDomainName, RouteTab> = {
     sessions: { routerLink: 'sessions', label: 'Sessions', isPermitted: () => true },
     user_actions: { routerLink: 'actions', label: 'User actions', isPermitted: () => true },
 };
