@@ -43,7 +43,6 @@ export interface NoteEditDialogData {
                     </div>
                     <div class="header-actions">
                         <div class="close-action">
-                            <span class="esc-label">ESC</span>
                             <app-svg-icon
                                 icon="x"
                                 (click)="close()"
@@ -125,16 +124,6 @@ export interface NoteEditDialogData {
                 display: flex;
                 align-items: center;
                 gap: 0.5rem;
-            }
-
-            .esc-label {
-                font-size: var(--text-body-small-large-size);
-                color: #666;
-                font-weight: var(--text-body-small-large-weight);
-                padding: 0.15rem 0.3rem;
-                border: 1px solid #444;
-                border-radius: 4px;
-                background: #2a2a2a;
             }
 
             .header-actions app-svg-icon {

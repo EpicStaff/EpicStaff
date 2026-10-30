@@ -116,7 +116,6 @@ interface PanelInstanceView {
                             </button>
                         }
                         <div class="close-action">
-                            <span class="esc-label">ESC</span>
                             <button
                                 class="close-btn"
                                 aria-label="Close dialog"
