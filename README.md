@@ -12,7 +12,7 @@
    
 [![GitHub Stars](https://img.shields.io/github/stars/EpicStaff/EpicStaff?style=social)](https://github.com/EpicStaff/EpicStaff/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/EpicStaff/EpicStaff?style=social)](https://github.com/EpicStaff/EpicStaff/network/members)
-[![License](https://img.shields.io/github/license/EpicStaff/EpicStaff)](https://github.com/EpicStaff/EpicStaff/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/EpicStaff/EpicStaff)](https://github.com/EpicStaff/EpicStaff/blob/main/LICENSE.md)
 [![Last Commit](https://img.shields.io/github/last-commit/EpicStaff/EpicStaff)](https://github.com/EpicStaff/EpicStaff/commits/main)
 [![Open Issues](https://img.shields.io/github/issues/EpicStaff/EpicStaff)](https://github.com/EpicStaff/EpicStaff/issues)
 
@@ -269,6 +269,18 @@ EpicStaff accepts contributions on GitHub. Pull requests, issues, and new tool c
 
 * **⭐ Star the repository** if EpicStaff solves a problem you recognise.
 * **🤝 Contribute** — see [CONTRIBUTING.md](CONTRIBUTING.md) to add a feature, fix a bug, or build a new tool.
+
+## License
+
+This repository is licensed under the *PolyForm Perimeter License 1.0.0*.
+
+Licensor: HYS Enterprise B.V. Full text: [LICENSE.md](LICENSE.md).
+
+In short - and the licence text governs, not this summary: you may use, modify
+and redistribute EpicStaff for any purpose, including commercially and inside
+your own organisation. The one exception is competition: you may not provide
+others a product that competes with EpicStaff, and a product can compete even
+if it is given away free. If you redistribute, pass these terms on.
 
 ## 🙏 Special Thanks
 
