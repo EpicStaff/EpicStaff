@@ -45,6 +45,10 @@
     }
 }
 
+.panel-header__title {
+    color: var(--color-text-secondary);
+}
+
 .panel-header__actions {
     display: flex;
     align-items: center;
@@ -183,11 +187,10 @@
     }
 }
 
-.action-dropdown-panel__item--danger {
-    color: var(--red-560);
+.action-dropdown-panel__inner {
+    width: 260px;
+}
 
-    &:hover {
-        background-color: var(--maroon-950);
-        color: var(--red-470);
-    }
+.action-dropdown-panel__separator {
+    background: var(--color-divider-subtle);
 }

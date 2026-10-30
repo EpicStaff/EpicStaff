@@ -211,7 +211,7 @@ describe('VersionHistoryPanelComponent', () => {
     it('does not offer Preview in the options menu', () => {
         openMenu(0);
 
-        expect(menuItemLabels()).toContain('Restore');
+        expect(menuItemLabels()).toContain('Restore this version');
         expect(menuItemLabels()).not.toContain('Preview');
     });
 
@@ -435,7 +435,7 @@ describe('VersionHistoryPanelComponent', () => {
             expect(fixture.nativeElement.querySelector('app-bulk-select-dropdown')).toBeNull();
             expect(fixture.nativeElement.querySelector('.footer-delete-button')).toBeNull();
             openMenu(0);
-            expect(menuItemLabels()).toContain('Restore');
+            expect(menuItemLabels()).toContain('Restore this version');
             expect(menuItemLabels()).not.toContain('Delete');
         });
     });
