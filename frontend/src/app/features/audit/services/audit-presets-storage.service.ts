@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable, ReplaySubject, tap } from 'rxjs';
 
 import { ImportResult } from '../../../core/models/import-result.model';
+import { AuditDomainName } from '../models/audit-domain.models';
 import { AuditPreset, AuditPresetBody, AuditPresetChanges, AuditPresetScope } from '../models/audit-preset.models';
 import { AuditPresetsApiService } from './audit-presets-api.service';
 
@@ -17,6 +18,8 @@ export class AuditPresetsStorageService {
     public readonly presets = this.presetsSignal.asReadonly();
     public readonly isLoading = this.isLoadingSignal.asReadonly();
     public readonly loadError = this.loadErrorSignal.asReadonly();
+    // The filters panel is only used by the sessions page for now; the user actions page sets its own domain.
+    public readonly domain: AuditDomainName = 'sessions';
 
     private readonly presetsApi = inject(AuditPresetsApiService);
     private readonly destroyRef = inject(DestroyRef);
@@ -24,7 +27,7 @@ export class AuditPresetsStorageService {
     public load(): void {
         this.loadErrorSignal.set(false);
         this.presetsApi
-            .getPresets()
+            .getPresets(this.domain)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (presets) => {
@@ -46,19 +49,19 @@ export class AuditPresetsStorageService {
     }
 
     public createPreset(name: string, filterBody: AuditPresetBody, isShared: boolean): Observable<AuditPreset> {
-        return this.run(this.presetsApi.createPreset(name, filterBody, isShared), (created) =>
+        return this.run(this.presetsApi.createPreset(this.domain, name, filterBody, isShared), (created) =>
             this.presetsSignal.update((presets) => [created, ...presets])
         );
     }
 
     public updatePreset(id: number, changes: AuditPresetChanges): Observable<AuditPreset> {
-        return this.run(this.presetsApi.updatePreset(id, changes), (saved) =>
+        return this.run(this.presetsApi.updatePreset(this.domain, id, changes), (saved) =>
             this.presetsSignal.update((presets) => presets.map((preset) => (preset.id === saved.id ? saved : preset)))
         );
     }
 
     public duplicatePreset(id: number, isShared = false): Observable<AuditPreset> {
-        return this.run(this.presetsApi.duplicatePreset(id, isShared), (copy) =>
+        return this.run(this.presetsApi.duplicatePreset(this.domain, id, isShared), (copy) =>
             this.presetsSignal.update((presets) => {
                 const index = presets.findIndex((preset) => preset.id === id);
                 return [...presets.slice(0, index + 1), copy, ...presets.slice(index + 1)];
@@ -67,14 +70,14 @@ export class AuditPresetsStorageService {
     }
 
     public deletePreset(id: number): Observable<void> {
-        return this.run(this.presetsApi.deletePreset(id), () =>
+        return this.run(this.presetsApi.deletePreset(this.domain, id), () =>
             this.presetsSignal.update((presets) => presets.filter((preset) => preset.id !== id))
         );
     }
 
     // Imported presets get server-made names and ids, so the list is reloaded rather than patched.
     public importPresets(file: File): Observable<ImportResult> {
-        return this.run(this.presetsApi.importPresets(file), () => this.load());
+        return this.run(this.presetsApi.importPresets(this.domain, file), () => this.load());
     }
 
     // Subscribes here, tied to the panel, and replays the outcome so a caller may listen with a shorter lifetime.

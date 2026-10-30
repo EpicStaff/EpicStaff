@@ -1,0 +1,11 @@
+<div class="audit-page">
+    @if (routeTabs().length > 1) {
+        <app-route-tabs
+            class="audit-page__tabs"
+            [tabs]="routeTabs()"
+        />
+    }
+    <section class="audit-page__body">
+        <router-outlet></router-outlet>
+    </section>
+</div>

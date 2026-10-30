@@ -54,7 +54,12 @@ import { AuditFiltersPanelComponent } from './components/audit-filters-panel/aud
 import { AuditHighlightComponent } from './components/audit-highlight/audit-highlight.component';
 import { AuditValueViewerComponent } from './components/audit-value-viewer/audit-value-viewer.component';
 import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
-import { AuditExportRequest, AuditSessionEvent } from './models/audit-session.models';
+import {
+    AuditExportRequest,
+    AuditSessionEvent,
+    SessionSearchRequest,
+    SessionSearchResponse,
+} from './models/audit-session.models';
 import { AuditJsonPipe } from './pipes/audit-json.pipe';
 import { AuditApiService } from './services/audit-api.service';
 import {
@@ -399,7 +404,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
         }
 
         this.searchSubscription = this.auditApiService
-            .searchSessions({
+            .search<SessionSearchRequest, SessionSearchResponse>('sessions', {
                 filters,
                 query,
                 match_scope: matchScope,
@@ -515,11 +520,11 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.exportingFormat.set(format);
 
         this.auditApiService
-            .startExport(request)
+            .startExport('sessions', request)
             .pipe(
                 switchMap(({ job_id }) =>
                     timer(0, EXPORT_POLL_INTERVAL_MS).pipe(
-                        exhaustMap(() => this.auditApiService.getExportFile(job_id)),
+                        exhaustMap(() => this.auditApiService.getExportFile('sessions', job_id)),
                         first((response) => response.status === 200)
                     )
                 ),

@@ -368,14 +368,20 @@ export class AuditPresetsComponent implements OnInit {
 
     protected exportSelected(): void {
         this.isExporting.set(true);
-        this.download(this.presetsApi.exportPresets(this.selectedInScope()), `audit-presets-export-${Date.now()}.json`)
+        this.download(
+            this.presetsApi.exportPresets(this.presetsStorage.domain, this.selectedInScope()),
+            `audit-presets-export-${Date.now()}.json`
+        )
             .pipe(finalize(() => this.isExporting.set(false)))
             .subscribe(() => this.stopSelecting());
     }
 
     protected exportPreset(preset: AuditPreset): void {
         this.closeMenu(preset.id);
-        this.download(this.presetsApi.exportPreset(preset.id), `${preset.name}.json`).subscribe();
+        this.download(
+            this.presetsApi.exportPreset(this.presetsStorage.domain, preset.id),
+            `${preset.name}.json`
+        ).subscribe();
     }
 
     protected importFile(event: Event): void {

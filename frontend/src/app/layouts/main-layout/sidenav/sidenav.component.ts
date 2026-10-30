@@ -28,6 +28,7 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { isPlainPrimaryClick } from '@shared/utils';
 import { filter, map } from 'rxjs/operators';
 
+import { auditTabsFor } from '../../../features/audit/guards/audit-domain-enabled.guard';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { AppsListComponent } from '../../../features/plugins/components/apps-list/apps-list.component';
 import { PluginIconComponent } from '../../../features/plugins/components/plugin-icon/plugin-icon.component';
@@ -330,9 +331,7 @@ export class LeftSidebarComponent {
                 activePaths: ['/audit'],
                 icon: 'audit',
                 label: 'Audit',
-                isPermitted: () =>
-                    this.configService.isAuditTrailEnabled &&
-                    this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
+                isPermitted: () => auditTabsFor(this.configService, this.permissionService).length > 0,
                 showTooltip: false,
                 separatedAbove: true,
             },

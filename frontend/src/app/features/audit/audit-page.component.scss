@@ -1,0 +1,19 @@
+.audit-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background-color: var(--color-background-body);
+
+    &__tabs {
+        padding: 4px 20px 0;
+        border-bottom: 1px solid var(--color-divider-subtle);
+    }
+
+    &__body {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+    }
+}
