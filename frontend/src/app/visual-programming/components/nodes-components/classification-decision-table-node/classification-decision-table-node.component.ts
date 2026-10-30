@@ -4,12 +4,13 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
 import { MATERIAL_FORMS } from '@shared/material-forms';
-import { LlmConfigStorageService } from '@shared/services';
+import { LlmConfigStorageService, SystemOneConfigStorageService } from '@shared/services';
 import { formatNodeLabel } from '@shared/utils';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
 import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { CDT_HEADER_HEIGHT, CDT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
+import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { ViewPort } from '../../../core/models/port.model';
@@ -30,6 +31,7 @@ export class ClassificationDecisionTableNodeComponent {
 
     private flowService = inject(FlowService);
     private readonly llmConfigStorageService = inject(LlmConfigStorageService);
+    private readonly systemOneConfigStorage = inject(SystemOneConfigStorageService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
@@ -39,6 +41,7 @@ export class ClassificationDecisionTableNodeComponent {
 
     constructor() {
         this.llmConfigStorageService.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.systemOneConfigStorage.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     get conditionGroups(): ConditionGroup[] {
@@ -137,6 +140,7 @@ export class ClassificationDecisionTableNodeComponent {
     get errorMessages(): string[] {
         const errors: string[] = [];
         if (this.hasMissingLlmConfig) errors.push('LLM config is missing or was deleted');
+        if (this.hasMissingSystemOneConfig) errors.push('A System One entry needs a config');
         if (this.hasEmptyConditionName) errors.push('One or more condition groups have an empty Condition Name');
         return errors;
     }
@@ -150,6 +154,19 @@ export class ClassificationDecisionTableNodeComponent {
         return n === 1 ? '1 issue' : `${n} issues`;
     }
 
+    private get promptEntries(): PromptConfig[] {
+        return Object.values(this.node.data.table?.prompts ?? {}) as PromptConfig[];
+    }
+
+    get hasMissingSystemOneConfig(): boolean {
+        const entries = this.promptEntries.filter((prompt) => prompt.kind === 'system_one');
+        if (entries.some((prompt) => prompt.system_one_config == null)) return true;
+
+        if (!this.systemOneConfigStorage.isConfigsLoaded()) return false;
+        const availableIds = new Set(this.systemOneConfigStorage.configs().map((config) => config.id));
+        return entries.some((prompt) => !availableIds.has(prompt.system_one_config as number));
+    }
+
     get hasMissingLlmConfig(): boolean {
         const table = this.node.data.table;
         if (!table) return false;
@@ -157,8 +174,8 @@ export class ClassificationDecisionTableNodeComponent {
         // A prompt with no LLM config selected is always considered missing,
         // regardless of whether the available-configs list has loaded yet.
         if (table.prompts) {
-            for (const prompt of Object.values(table.prompts) as Array<{ llm_config: number | null }>) {
-                if (prompt.llm_config == null) return true;
+            for (const prompt of this.promptEntries) {
+                if (prompt.kind !== 'system_one' && prompt.llm_config == null) return true;
             }
         }
 
@@ -170,8 +187,9 @@ export class ClassificationDecisionTableNodeComponent {
             return true;
         }
         if (table.prompts) {
-            for (const prompt of Object.values(table.prompts) as Array<{ llm_config: number | null }>) {
-                if (prompt.llm_config != null && !availableIds.has(prompt.llm_config)) return true;
+            for (const prompt of this.promptEntries) {
+                if (prompt.kind !== 'system_one' && prompt.llm_config != null && !availableIds.has(prompt.llm_config))
+                    return true;
             }
         }
         return false;

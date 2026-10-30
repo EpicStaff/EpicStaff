@@ -46,6 +46,9 @@ export interface InputMapKeyChanges {
     removed: string[];
 }
 
+const DEFAULT_TOOLTIP =
+    "Maps function arguments to domain variables using key-value pairs. For example, 'project_id' = 'current_project' maps the function parameter 'project_id' to the flow variable 'current_project'.";
+
 @Component({
     selector: 'app-input-map',
     imports: [
@@ -64,22 +67,26 @@ export interface InputMapKeyChanges {
     ],
     template: `
         <div class="input-map-container">
-            <div class="input-map-header">
-                <label>Input List</label>
-                <app-help-tooltip
-                    position="right"
-                    text="Maps function arguments to domain variables using key-value pairs. For example, 'project_id' = 'current_project' maps the function parameter 'project_id' to the flow variable 'current_project'."
-                ></app-help-tooltip>
-                @if (showTestMode && !readonly()) {
-                    <div class="test-mode-header">
-                        <span>Test mode</span>
-                        <app-toggle-switch
-                            [checked]="testMode"
-                            (checkedChange)="onTestModeToggle($event)"
-                        />
-                    </div>
-                }
-            </div>
+            @if (label() || (showTestMode && !readonly())) {
+                <div class="input-map-header">
+                    @if (label()) {
+                        <label>{{ label() }}</label>
+                        <app-help-tooltip
+                            position="right"
+                            [text]="tooltipText()"
+                        ></app-help-tooltip>
+                    }
+                    @if (showTestMode && !readonly()) {
+                        <div class="test-mode-header">
+                            <span>Test mode</span>
+                            <app-toggle-switch
+                                [checked]="testMode"
+                                (checkedChange)="onTestModeToggle($event)"
+                            />
+                        </div>
+                    }
+                </div>
+            }
 
             @if (readonly()) {
                 @if (hasNoMeaningfulPairs()) {
@@ -127,7 +134,7 @@ export interface InputMapKeyChanges {
                                     <input
                                         type="text"
                                         formControlName="key"
-                                        placeholder="Function Argument Name"
+                                        [placeholder]="keyPlaceholder()"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                         (keydown.enter)="onEnterKey($event, i)"
@@ -138,7 +145,7 @@ export interface InputMapKeyChanges {
                                     <input
                                         type="text"
                                         formControlName="value"
-                                        placeholder="Domain Variable Name"
+                                        [placeholder]="valuePlaceholder()"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                         role="combobox"
@@ -195,7 +202,7 @@ export interface InputMapKeyChanges {
                                     <input
                                         type="text"
                                         formControlName="key"
-                                        placeholder="Function Argument Name"
+                                        [placeholder]="keyPlaceholder()"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                     />
@@ -541,6 +548,11 @@ export class InputMapComponent implements OnInit, OnChanges {
     @Input() testRunning: boolean = false;
     @Input() testInputDirty: boolean = false;
     readonly = input<boolean>(false);
+    /** The header above the rows; an empty string hides it (and its tooltip). */
+    readonly label = input<string>('Input List');
+    readonly tooltipText = input<string>(DEFAULT_TOOLTIP);
+    readonly keyPlaceholder = input<string>('Function Argument Name');
+    readonly valuePlaceholder = input<string>('Domain Variable Name');
     readonly nodeNumber = input<number | undefined>();
     /** Why the owning panel cannot run the test now (e.g. its stored code is not the panel's), or null. */
     readonly runTestBlocker = input<string | null>(null);

@@ -33,6 +33,7 @@ import {
     isTerminalSessionStatus,
     NodeType,
     ResourceCode,
+    SystemOnePromptKind,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, LABELS_STORE, LlmConfigStorageService } from '@shared/services';
 import { escapeHtml, extractHttpErrorMessage, formatNodeLabel, generateUuid } from '@shared/utils';
@@ -1860,7 +1861,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     data?: {
                         table?: {
                             default_llm_config?: number | null;
-                            prompts?: Record<string, { llm_config: number | null }>;
+                            prompts?: Record<string, { llm_config: number | null; kind?: SystemOnePromptKind }>;
                         };
                     };
                 }
@@ -1870,7 +1871,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             // Any prompt with no LLM config selected counts as missing.
             if (table.prompts) {
                 for (const prompt of Object.values(table.prompts)) {
-                    if (prompt.llm_config == null) return true;
+                    if (prompt.kind !== 'system_one' && prompt.llm_config == null) return true;
                 }
             }
             // Deleted-config references also count as missing.
@@ -1879,7 +1880,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }
             if (table.prompts) {
                 for (const prompt of Object.values(table.prompts)) {
-                    if (prompt.llm_config != null && !availableIds.has(prompt.llm_config)) return true;
+                    if (
+                        prompt.kind !== 'system_one' &&
+                        prompt.llm_config != null &&
+                        !availableIds.has(prompt.llm_config)
+                    )
+                        return true;
                 }
             }
             return false;

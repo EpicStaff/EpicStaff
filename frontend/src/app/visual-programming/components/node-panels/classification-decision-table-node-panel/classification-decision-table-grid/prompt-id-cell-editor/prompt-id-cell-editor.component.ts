@@ -1,9 +1,10 @@
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { SystemOneConfigStorageService } from '@shared/services';
 import { ICellEditorParams } from 'ag-grid-community';
 
 import { PromptConfig } from '../../../../../core/models/classification-decision-table.model';
-import { resolveLlmLabel } from '../../cdt-llm-label.util';
+import { resolvePromptModelLabel } from '../../cdt-llm-label.util';
 import { filterByQuery } from '../../cdt-search-filter.util';
 import { BaseCellEditor } from '../shared/base-cell-editor';
 
@@ -67,7 +68,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                                 }
                             </div>
                             <div class="pe-item-right">
-                                <span class="pe-item-llm">{{ resolveLlmLabel(p.config.llm_config) }}</span>
+                                <span class="pe-item-llm">{{ modelLabel(p.config) }}</span>
                                 <button
                                     class="pe-item-open-btn"
                                     type="button"
@@ -300,6 +301,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
 })
 export class PromptIdCellEditorComponent extends BaseCellEditor<PromptIdEditorParams> implements AfterViewInit {
     private cdr = inject(ChangeDetectorRef);
+    private readonly systemOneConfigs = inject(SystemOneConfigStorageService);
 
     public value: string = '';
     public searchText: string = '';
@@ -381,7 +383,7 @@ export class PromptIdCellEditorComponent extends BaseCellEditor<PromptIdEditorPa
         this.cdr.markForCheck();
     }
 
-    resolveLlmLabel(llmId: number | null | undefined): string {
-        return resolveLlmLabel(llmId, this.llmOptions);
+    modelLabel(config: PromptConfig): string {
+        return resolvePromptModelLabel(config, this.llmOptions, this.systemOneConfigs.configs());
     }
 }

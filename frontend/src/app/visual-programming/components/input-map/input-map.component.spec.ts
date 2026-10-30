@@ -322,3 +322,67 @@ describe('InputMapComponent last successful session lookup', () => {
         expect(searchedNodeNames()).toEqual(['Py #2 #42']);
     });
 });
+
+@Component({
+    imports: [ReactiveFormsModule, InputMapComponent],
+    template: `<form [formGroup]="form">
+        <app-input-map
+            [label]="label()"
+            [keyPlaceholder]="keyPlaceholder()"
+            [valuePlaceholder]="valuePlaceholder()"
+        />
+    </form>`,
+})
+class CopyHostComponent {
+    readonly label = signal('');
+    readonly keyPlaceholder = signal('');
+    readonly valuePlaceholder = signal('');
+    readonly form: FormGroup = new FormBuilder().group({
+        input_map: new FormArray([new FormBuilder().group({ key: [''], value: [''] })]),
+        test_input: new FormArray([]),
+    });
+}
+
+describe('InputMapComponent copy', () => {
+    let fixture: ComponentFixture<PythonPanelHostComponent | CopyHostComponent>;
+    const text = (): string => fixture.nativeElement.textContent;
+    const placeholders = (): string[] =>
+        Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('input'), (input) => input.placeholder);
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowService, useValue: { startNodeInitialState: signal(STATE) } },
+                { provide: PythonCodeRunService, useValue: {} },
+                { provide: GraphSessionService, useValue: {} },
+                { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+                { provide: SidePanelService, useValue: {} },
+            ],
+        });
+        TestBed.overrideComponent(InputMapComponent, {
+            set: { imports: [ReactiveFormsModule], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        });
+    });
+
+    afterEach(() => fixture.destroy());
+
+    it('keeps the Input List header and placeholders for callers that set nothing', () => {
+        fixture = TestBed.createComponent(PythonPanelHostComponent);
+        fixture.detectChanges();
+
+        expect(text()).toContain('Input List');
+        expect(placeholders()).toEqual(['Function Argument Name', 'Domain Variable Name']);
+    });
+
+    it('takes its own header and placeholders, and shows no header for an empty label', () => {
+        const host = TestBed.createComponent(CopyHostComponent);
+        fixture = host;
+        host.componentInstance.keyPlaceholder.set('Name');
+        host.componentInstance.valuePlaceholder.set('Flow variable');
+        host.detectChanges();
+
+        expect(text()).not.toContain('Input List');
+        expect(fixture.nativeElement.querySelector('.input-map-header')).toBeNull();
+        expect(placeholders()).toEqual(['Name', 'Flow variable']);
+    });
+});

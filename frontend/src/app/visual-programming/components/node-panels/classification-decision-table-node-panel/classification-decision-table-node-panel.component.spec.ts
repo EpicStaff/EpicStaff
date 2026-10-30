@@ -756,3 +756,132 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         expect(fields().postExecutionTimeout.control.disabled).toBe(true);
     });
 });
+
+describe('ClassificationDecisionTableNodePanelComponent — System One entries in the Prompt Library', () => {
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+    let panel: ClassificationDecisionTableNodePanelComponent;
+
+    function open(prompts: ClassificationDecisionTableNodeModel['data']['table']['prompts'] = {}): void {
+        configurePanelTestBed();
+        const node = tableNode();
+        const flowService = TestBed.inject(FlowService);
+        flowService.setFlow({
+            nodes: [{ ...node, data: { ...node.data, table: { ...node.data.table, prompts } } }],
+            connections: [],
+        });
+        TestBed.inject(SavedFlowStateService).setSavedFlow(flowService.getFlowState());
+
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', flowService.nodes()[0]);
+        fixture.detectChanges();
+        panel = fixture.componentInstance;
+        panel.activeTab.set('prompts');
+        fixture.detectChanges();
+    }
+
+    function headerButton(label: string): HTMLButtonElement {
+        const button = [
+            ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+                '.prompt-section-header button'
+            ),
+        ].find((candidate) => candidate.textContent?.trim() === label);
+        if (!button) throw new Error(`no header button ${label}`);
+        return button;
+    }
+
+    function click(button: HTMLElement): void {
+        button.click();
+        fixture.detectChanges();
+    }
+
+    function sentPromptConfigs(): Record<string, unknown>[] {
+        const node = panel.onSaveSilently()!;
+        const current: FlowModel = { nodes: [node], connections: [] };
+        const idMap = buildUuidToBackendIdMap(current.nodes);
+        const payload = buildBulkSavePayload(
+            1,
+            getNodeDiff({ nodes: [], connections: [] }, current),
+            getConnectionDiff({ nodes: [], connections: [] }, current, idMap),
+            current,
+            idMap,
+            1
+        );
+        const [item] = payload['classification_decision_table_node_list'] as Record<string, unknown>[];
+        return item['prompt_configs'] as Record<string, unknown>[];
+    }
+
+    it('offers both kinds of entry, with the LLM button keeping its behaviour', () => {
+        open();
+
+        // Not through `click()`: it would render the LLM card, whose JSON editor needs Monaco.
+        headerButton('LLM prompt').click();
+
+        expect(Object.keys(panel.prompts())).toEqual(['prompt_1']);
+        expect(panel.prompts()['prompt_1'].kind).toBeUndefined();
+    });
+
+    it('adds a System One entry with the empty System One shape, named after the first free number', () => {
+        open({
+            system_one_1: {
+                prompt_text: '',
+                llm_config: null,
+                output_schema: null,
+                result_variable: 'system_one_1',
+                variable_mappings: {},
+                kind: 'system_one',
+            },
+        });
+
+        click(headerButton('System One'));
+
+        expect(panel.prompts()['system_one_2']).toEqual({
+            kind: 'system_one',
+            system_one_config: null,
+            questions: {},
+            input_map: {},
+            prompt_text: '',
+            llm_config: null,
+            output_schema: null,
+            result_variable: 'system_one_2',
+            variable_mappings: {},
+        });
+        expect(panel.editingPromptId()).toBe('system_one_2');
+    });
+
+    it('sends the new System One entry as a System One entry, with no config and no questions yet', () => {
+        open();
+
+        click(headerButton('System One'));
+
+        expect(sentPromptConfigs()).toEqual([
+            expect.objectContaining({
+                prompt_key: 'system_one_1',
+                kind: 'system_one',
+                system_one_config: null,
+                questions: {},
+                input_map: {},
+                llm_config: null,
+            }),
+        ]);
+    });
+
+    it('shows the new entry as a System One card with its own body instead of the LLM fields', () => {
+        open();
+
+        click(headerButton('System One'));
+        const card = (fixture.nativeElement as HTMLElement).querySelector('.prompt-card')!;
+
+        expect(card.querySelector('.prompt-kind-tag')?.textContent?.trim()).toBe('S1');
+        expect(card.querySelector('app-cdt-system-one-entry')).not.toBeNull();
+        expect(card.textContent).not.toContain('LLM Override');
+    });
+
+    it('stores what the System One card emits on the entry', () => {
+        open();
+        click(headerButton('System One'));
+
+        panel.updatePromptFields('system_one_1', { system_one_config: 7 });
+
+        expect(sentPromptConfigs()[0]).toMatchObject({ system_one_config: 7 });
+    });
+});

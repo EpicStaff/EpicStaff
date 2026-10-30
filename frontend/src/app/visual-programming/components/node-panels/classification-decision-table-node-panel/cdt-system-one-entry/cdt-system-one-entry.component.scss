@@ -1,0 +1,68 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    &__label {
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
+    }
+}
+
+.question {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--graphite-750);
+    border: 1px solid var(--fog-alpha-8);
+    border-radius: 8px;
+
+    &__header {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    &__name {
+        flex: 1;
+        min-width: 0;
+    }
+
+    &__type {
+        width: 8.5rem;
+        flex-shrink: 0;
+    }
+
+    app-help-tooltip,
+    app-delete-button {
+        margin-top: 0.5rem;
+        flex-shrink: 0;
+    }
+
+    &__meanings {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+
+    &__note {
+        margin: 0;
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+    }
+}
+
+.add-question {
+    align-self: flex-start;
+}
