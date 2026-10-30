@@ -380,4 +380,32 @@ describe('nudgePaths', () => {
 
         expect(nudgePaths(paths, [])).toEqual(nudgePaths(paths, []));
     });
+
+    it.each([
+        ['1e20', 1e20],
+        ['Infinity', Infinity],
+    ])('returns every path when two risers overlap at x = %s instead of hanging', (_label, far) => {
+        const paths = [
+            path('a', [
+                { x: 335, y: 30 },
+                { x: far, y: 30 },
+                { x: far, y: 330 },
+                { x: 795, y: 330 },
+            ]),
+            path('b', [
+                { x: 335, y: 100 },
+                { x: far, y: 100 },
+                { x: far, y: 400 },
+                { x: 795, y: 400 },
+            ]),
+        ];
+
+        const nudged = nudgePaths(paths, []);
+
+        expect(nudged).toHaveLength(2);
+        for (const point of nudged.flatMap((routed) => routed.points)) {
+            expect(typeof point.x).toBe('number');
+            expect(typeof point.y).toBe('number');
+        }
+    });
 });
