@@ -305,9 +305,15 @@
         --save-status-background: var(--sky-alpha-6);
     }
 
-    &--unsaved {
+    &--unsaved,
+    &--reconnecting {
         --save-status-color: var(--color-text-primary);
         --save-status-background: var(--fog-alpha-8);
+    }
+
+    &--connection-lost {
+        --save-status-color: var(--orange-500);
+        --save-status-background: var(--orange-alpha-6);
     }
 }
 

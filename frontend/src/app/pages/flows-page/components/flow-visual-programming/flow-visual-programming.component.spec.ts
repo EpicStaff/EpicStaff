@@ -340,6 +340,7 @@ describe('FlowVisualProgrammingComponent', () => {
                     provide: GraphCollaborationWsService,
                     useValue: {
                         editors: signal([]),
+                        connectionStatus: signal('connected'),
                         graphSaved$: new Subject(),
                         connect: vi.fn(),
                         disconnect: vi.fn(),

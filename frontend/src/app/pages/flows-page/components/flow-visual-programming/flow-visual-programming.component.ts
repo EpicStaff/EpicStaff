@@ -351,6 +351,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     protected readonly saveStatus = computed<FlowSaveStatus | null>(() => {
         if (this.isPreviewing()) return null;
         if (this.isSaving() || this.sidePanelService.savingNodeId() !== null) return 'saving';
+        const connection = this.wsService.connectionStatus();
+        if (connection === 'lost') return 'connection-lost';
+        if (connection === 'reconnecting') return 'reconnecting';
         return this.hasUnsavedChangesSignal() ? 'unsaved' : 'saved';
     });
     /** Live canvas pan/zoom captured on entering a preview, handed back when the live canvas re-mounts. */
