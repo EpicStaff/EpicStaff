@@ -3,6 +3,7 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 from loguru import logger
+from src.shared.models import UserAction
 from src.shared.retention import DataType
 
 from rbac.exceptions import OrganizationNotFoundError
@@ -95,4 +96,8 @@ class OrganizationRetentionService(CrossOrgResourceService):
             actor.pk,
             fields,
         )
+        # Imported here: the recorder imports this module for the retention read.
+        from user_audit.recorder import record_user_action
+
+        record_user_action(action=UserAction.UPDATED, org_id=org_id, target=config.org)
         return config

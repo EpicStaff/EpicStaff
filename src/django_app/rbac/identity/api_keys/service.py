@@ -5,6 +5,9 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import Token
+from src.shared.models import UserAction
+from user_audit.actor import Actor
+from user_audit.recorder import record_for_user_orgs
 
 from rbac.exceptions import (
     ApiKeyLimitExceededError,
@@ -22,6 +25,10 @@ MAX_ACTIVE_KEYS = 5
 class IssuedKey:
     api_key: ApiKey
     raw_key: str
+
+
+def _owner_actor(user) -> Actor:
+    return Actor(user_id=user.pk, email=user.email, api_key_name=None)
 
 
 class ApiKeyService:
@@ -81,6 +88,7 @@ class ApiKeyService:
             created_by=owner,
             expires_at=expires_at,
         )
+        record_for_user_orgs(action=UserAction.CREATED, actor=_owner_actor(owner), target=api_key)
         return IssuedKey(api_key=api_key, raw_key=generated.raw_key)
 
     def list_keys(self, user):
@@ -93,6 +101,7 @@ class ApiKeyService:
         if key.revoked_at is None:
             key.revoked_at = timezone.now()
             key.save(update_fields=["revoked_at"])
+            record_for_user_orgs(action=UserAction.UPDATED, actor=_owner_actor(user), target=key)
         return key
 
     def delete_key(self, user, key_id) -> None:

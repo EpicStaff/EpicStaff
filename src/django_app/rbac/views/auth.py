@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed, UnsupportedMediaType
@@ -9,6 +10,10 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from src.shared.models import UserAction
+from user_audit.actor import Actor, actor_from_request
+from user_audit.recorder import record_for_user_orgs
+from user_audit.targets import TargetDescription
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.exceptions import (
@@ -82,6 +87,14 @@ def _require_json_body(request) -> None:
         raise UnsupportedMediaType(request.content_type)
 
 
+def _user_actor(user) -> Actor:
+    return Actor(user_id=user.pk, email=user.email, api_key_name=None)
+
+
+def _user_target(user) -> TargetDescription:
+    return TargetDescription(type="user", id=str(user.pk), name=user.email)
+
+
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
     throttle_classes = [LoginThrottle, LoginIpThrottle]
@@ -95,14 +108,27 @@ class LoginView(TokenObtainPairView):
         # Shape-check both fields and aggregate missing/blank errors
         # before delegating to simplejwt. Wrong-credential errors stay a
         # flat 401 to avoid user-enumeration leaks.
-        self._validator.validate_login(request.data)
-        response = super().post(request, *args, **kwargs)
+        cleaned = self._validator.validate_login(request.data)
+        try:
+            response = super().post(request, *args, **kwargs)
+        except AuthenticationFailed:
+            self._record_sign_in(cleaned["email"], UserAction.SIGN_IN_FAILED)
+            raise
         if response.status_code == 200:
+            self._record_sign_in(cleaned["email"], UserAction.SIGNED_IN)
             refresh_token = response.data.pop("refresh", None)
             if refresh_token:
                 remember_me = bool(request.data.get("remember_me", False))
                 set_refresh_cookie(response, refresh_token, remember_me=remember_me)
         return response
+
+    @staticmethod
+    def _record_sign_in(login: str, action: str) -> None:
+        # The login is read only to find the account, the way the serializer's backend
+        # does; an unknown login records nothing, and the password is never read.
+        user = get_user_model().objects.filter(**{get_user_model().USERNAME_FIELD: login}).first()
+        if user is not None:
+            record_for_user_orgs(action=action, actor=_user_actor(user))
 
 
 class LogoutView(APIView):
@@ -128,6 +154,9 @@ class LogoutView(APIView):
             status=status.HTTP_205_RESET_CONTENT,
         )
         clear_refresh_cookie(response)
+        actor = actor_from_request(request)
+        if actor is not None:
+            record_for_user_orgs(action=UserAction.SIGNED_OUT, actor=actor)
         return response
 
 
@@ -381,7 +410,12 @@ class PasswordResetConfirmView(APIView):
     )
     def post(self, request):
         cleaned = self._validator.validate_password_reset_confirm(request.data)
-        self._service.confirm_reset(cleaned["token"], cleaned["new_password"])
+        user = self._service.confirm_reset(cleaned["token"], cleaned["new_password"])
+        record_for_user_orgs(
+            action=UserAction.PASSWORD_RESET,
+            actor=_user_actor(user),
+            target_description=_user_target(user),
+        )
         return Response(
             {"detail": "Password has been reset."},
             status=status.HTTP_200_OK,
@@ -418,10 +452,16 @@ class AdminPasswordResetView(APIView):
     )
     def post(self, request):
         cleaned = self._validator.validate_admin_password_reset(request.data)
-        self._service.admin_reset(
+        target = self._service.admin_reset(
             request.user,
             cleaned["user_id"],
             cleaned["new_password"],
+        )
+        record_for_user_orgs(
+            action=UserAction.PASSWORD_RESET,
+            actor=actor_from_request(request),
+            target_description=_user_target(target),
+            org_user_id=target.pk,
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
 

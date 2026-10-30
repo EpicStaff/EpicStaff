@@ -4,6 +4,10 @@ from datetime import datetime
 from django.db.models import F, Q, QuerySet
 from django.utils import timezone
 from loguru import logger
+from src.shared.models import UserAction
+from user_audit.actor import actor_from_request
+from user_audit.context import current_context
+from user_audit.recorder import record_for_user_orgs
 
 from rbac.access.cross_org_resolver import OrgScope
 from rbac.exceptions import ApiKeyNotFoundError
@@ -12,6 +16,16 @@ from rbac.models import ApiKey, OrganizationUser
 from rbac.models.enums import Permission, ResourceType
 
 OWNER_ORG_PATH = "created_by__organization_memberships__org_id"
+
+
+def _record_revoked(key: ApiKey) -> None:
+    """Record the revoke in each org of the key's owner, as the requester."""
+    context = current_context()
+    actor = actor_from_request(context.request) if context is not None else None
+    if actor is not None:
+        record_for_user_orgs(
+            action=UserAction.UPDATED, actor=actor, target=key, org_user_id=key.created_by_id
+        )
 
 
 class ApiKeyManagementService(CrossOrgResourceService):
@@ -61,6 +75,7 @@ class ApiKeyManagementService(CrossOrgResourceService):
         if key.revoked_at is None:
             key.revoked_at = timezone.now()
             key.save(update_fields=["revoked_at"])
+            _record_revoked(key)
         logger.info(
             "ApiKeyManagementService.revoke_key actor={a} key={k} owner={o}",
             a=getattr(actor, "email", "system"),

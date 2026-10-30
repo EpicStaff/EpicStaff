@@ -88,11 +88,22 @@ def _retention_days(org_id: int, context: UserActionContext | None) -> int:
     return retention_days
 
 
-def record_for_user_orgs(*, action: str, actor: Actor, target: models.Model | None = None) -> None:
+def record_for_user_orgs(
+    *,
+    action: str,
+    actor: Actor,
+    target: models.Model | None = None,
+    target_description: TargetDescription | None = None,
+    org_user_id: int | None = None,
+) -> None:
     """Record the action once in every active organization `actor` is a member of.
 
     For actions that belong to no single org, such as signing in. Best-effort like
     `record_user_action`.
+
+    Args:
+        org_user_id: Fan out over this user's organizations instead of the actor's, for an
+            action one user takes on another, such as an administrator resetting a password.
     """
     if not settings.USER_AUDIT_TRAIL_ENABLED:
         return
@@ -101,10 +112,16 @@ def record_for_user_orgs(*, action: str, actor: Actor, target: models.Model | No
         with transaction.atomic():
             org_ids = list(
                 OrganizationUser.objects.filter(
-                    user_id=actor.user_id, org__is_active=True
+                    user_id=org_user_id or actor.user_id, org__is_active=True
                 ).values_list("org_id", flat=True)
             )
         for org_id in org_ids:
-            record_user_action(action=action, org_id=org_id, target=target, actor=actor)
+            record_user_action(
+                action=action,
+                org_id=org_id,
+                target=target,
+                target_description=target_description,
+                actor=actor,
+            )
     except Exception:
         logger.exception("Failed to record user action {} for user {}", action, actor.user_id)

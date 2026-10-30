@@ -4,6 +4,9 @@ from django.db.models import Prefetch, Q
 from django.db.models.functions import Lower
 from loguru import logger
 from rest_framework.exceptions import PermissionDenied
+from src.shared.models import UserAction
+from user_audit.recorder import record_user_action
+from user_audit.targets import TargetDescription
 
 from rbac.access.asserts import assert_within_ceiling
 from rbac.access.effective import EffectivePermissions
@@ -25,6 +28,11 @@ from rbac.governance.guards import UserManagementGuards
 from rbac.governance.role_assignment_checks import assert_role_assignment_allowed
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
+
+
+def _member_description(membership, user) -> TargetDescription:
+    # A membership has no name of its own; a reader knows it by the member's email.
+    return TargetDescription(type="member", id=str(membership.pk), name=user.email)
 
 
 class MembershipManagementService(CrossOrgResourceService):
@@ -164,6 +172,11 @@ class MembershipManagementService(CrossOrgResourceService):
             o=org_id,
             r=role.name,
         )
+        record_user_action(
+            action=UserAction.CREATED,
+            org_id=org_id,
+            target_description=_member_description(membership, target),
+        )
         return self._refetch(membership.pk)
 
     # ---- update role ----
@@ -187,7 +200,9 @@ class MembershipManagementService(CrossOrgResourceService):
         UserManagementGuards.assert_role_is_assignable(new_role, org_id=membership.org_id)
         assert_within_ceiling(effective, EffectivePermissions.bits_of(new_role))
         assert_role_assignment_allowed(effective=effective, role=new_role, org_id=membership.org_id)
-        if membership.role_id != new_role.pk:
+        previous_role_name = membership.role.name
+        role_changed = membership.role_id != new_role.pk
+        if role_changed:
             membership.role = new_role
             membership.save(update_fields=["role"])
         logger.info(
@@ -196,6 +211,13 @@ class MembershipManagementService(CrossOrgResourceService):
             m=membership_id,
             r=new_role.name,
         )
+        if role_changed:
+            record_user_action(
+                action=UserAction.UPDATED,
+                org_id=membership.org_id,
+                target_description=_member_description(membership, membership.user),
+                previous_name=previous_role_name,
+            )
         return self._refetch(membership.pk)
 
     # ---- delete ----
@@ -230,6 +252,11 @@ class MembershipManagementService(CrossOrgResourceService):
             m=membership_id,
             r=released,
             v=scrubbed_snapshots,
+        )
+        record_user_action(
+            action=UserAction.DELETED,
+            org_id=membership.org_id,
+            target_description=_member_description(membership, membership.user),
         )
 
     # ---- internals ----
