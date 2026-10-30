@@ -538,7 +538,12 @@ class GraphBulkSaveService:
         for config in [*EDGE_DELETE_CONFIGS, *NODE_TYPE_REGISTRY]:
             ids = deleted_data.get(config.delete_key) or []
             if ids:
-                deleted, _ = config.model_class.objects.filter(id__in=ids, graph=graph).delete()
+                rows = config.model_class.objects.filter(id__in=ids, graph=graph)
+                if self._last_edit_tracker is not None:
+                    # Watched before the delete: a deleted row's name can no longer be read.
+                    for row in rows:
+                        self._last_edit_tracker.watch_delete(row)
+                deleted, _ = rows.delete()
                 deleted_count += deleted
         return deleted_count
 

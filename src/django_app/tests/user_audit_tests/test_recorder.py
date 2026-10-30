@@ -10,7 +10,7 @@ from rbac.access.org_context import cache_active_org_id
 from rbac.identity.authentication import JwtOrApiKeyAuthentication
 from rbac.models import OrganizationConfig, OrganizationUser
 from src.shared.models import UserAction
-from tables.models import Graph, PythonCode, PythonNode
+from tables.models import Graph, PythonCode, PythonNode, SourceCollection, WebhookTrigger
 from user_audit import recorder
 from user_audit.actor import Actor, actor_from_request
 from user_audit.context import user_action_context
@@ -209,6 +209,15 @@ def test_describe_uses_verbose_name_and_node_name(python_node):
     assert describe(python_node) == TargetDescription(
         type="python node", id=str(python_node.id), name="Fetch invoices"
     )
+
+
+@pytest.mark.django_db
+def test_describe_names_a_collection_and_a_webhook_trigger_by_their_own_fields(acme):
+    collection = SourceCollection.objects.create(org=acme, collection_name="Invoices")
+    trigger = WebhookTrigger.objects.create(org=acme, path="invoice-paid")
+
+    assert describe(collection).name == "Invoices"
+    assert describe(trigger).name == "invoice-paid"
 
 
 def test_cache_active_org_id_sets_underlying_http_request():

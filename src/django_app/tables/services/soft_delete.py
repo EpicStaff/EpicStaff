@@ -13,8 +13,10 @@ from django.db.models.deletion import (
 from django.db.models.fields.reverse_related import ManyToManyRel
 from django.db.models.signals import post_save
 from django.utils import timezone
+from src.shared.models import UserAction
 from tables.models.base_models import SoftDeleteFields
 from tables.services.cascade_org_guard import CascadeOrgGuard
+from user_audit.recorder import record_user_action
 
 
 def keeps_references(model: type[models.Model]) -> bool:
@@ -116,7 +118,9 @@ class DeleteService:
         obj: models.Model,
         using: str | None = None,
     ) -> uuid.UUID | None:
-        """Delete `obj` and its dependents.
+        """Delete `obj` and its dependents, and record the deletion of `obj` as a user action.
+
+        Only `obj` is recorded, not the rows binned with it: one record per item deleted.
 
         Returns:
             The batch id stamped on every row this call soft-deleted, or None
@@ -148,6 +152,10 @@ class DeleteService:
             context = _DeleteContext(org_guard=CascadeOrgGuard.for_root(obj, using), using=using)
             context.delete(obj)
             context.finish()
+            if context.org_guard.org_id is not None:
+                record_user_action(
+                    action=UserAction.DELETED, org_id=context.org_guard.org_id, target=obj
+                )
             return context.batch
 
 

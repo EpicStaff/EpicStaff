@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from django.db import models
 
 # The first of these a model has, and has filled, names the target.
-TARGET_NAME_FIELDS = ("name", "node_name", "custom_name")
+TARGET_NAME_FIELDS = ("name", "node_name", "custom_name", "collection_name", "path")
 # Labels a reader knows a model by, where its verbose_name is an internal word.
 TARGET_TYPE_LABELS = {"graph": "flow"}
 

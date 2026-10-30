@@ -12,7 +12,7 @@ from rest_framework import serializers
 from src.shared.models import UserAction
 from user_audit.context import current_context
 from user_audit.recorder import record_user_action
-from user_audit.targets import TARGET_NAME_FIELDS
+from user_audit.targets import TARGET_NAME_FIELDS, TargetDescription, describe
 
 from rbac.authorship.policy import resolve_author
 from rbac.models.last_edit import LastEditTrackedModel, ResourceLastEdit
@@ -131,6 +131,8 @@ class _EditAction:
     action: UserAction
     target: models.Model
     previous_name: str | None = None
+    # Read before a deletion, while the row still has its primary key.
+    target_description: TargetDescription | None = None
 
 
 class LastEditTracker:
@@ -143,10 +145,10 @@ class LastEditTracker:
     owner; never an edit of the row itself).
 
     `finish()` also records a user action per named row (see `TARGET_NAME_FIELDS`) that
-    really changed: `created`, `updated`, or `renamed` when its name changed. An owner is
-    recorded once as `updated` when it was edited on its rows' canvas fields (a moved node)
-    or through an unnamed row (an edge), unless one of its named rows was recorded.
-    Deletions and rows passed to `mark_edited` record nothing here.
+    really changed: `created`, `updated`, `renamed` when its name changed, or `deleted`. An
+    owner is recorded once as `updated` when it was edited on its rows' canvas fields (a
+    moved node) or through an unnamed row (an edge), unless one of its named rows was
+    recorded. Rows passed to `mark_edited` record nothing here.
     """
 
     def __init__(self, user: object):
@@ -154,6 +156,7 @@ class LastEditTracker:
         self._watched: dict[tuple[type[models.Model], Any], _WatchedWrite] = {}
         self._edited_owner_references: set[OwnerReference] = set()
         self._marked_edited: list[LastEditTrackedModel] = []
+        self._deletions: list[_EditAction] = []
         # A tracked write records its own user actions, so the request's fallback
         # record must not describe it again, even when nothing changed.
         context = current_context()
@@ -178,8 +181,14 @@ class LastEditTracker:
         self._watched.setdefault(_identity(instance), _WatchedWrite(instance))
 
     def watch_delete(self, instance: models.Model) -> None:
-        """Remember that `instance` is being deleted; a deletion edits its owner."""
+        """Remember that `instance` is being deleted; a deletion edits its owner.
+
+        Call it before the delete: `instance` is described now, while it has its primary key.
+        """
         self._add_owner_reference(_owner_reference(instance))
+        self._deletions.append(
+            _EditAction(UserAction.DELETED, instance, target_description=describe(instance))
+        )
 
     def mark_edited(self, resource: LastEditTrackedModel) -> None:
         """Record `resource` as edited by a write this tracker did not watch."""
@@ -216,11 +225,13 @@ class LastEditTracker:
             ):
                 edited.append(watched.instance)
                 actions.append(_update_action(watched))
+        actions.extend(self._deletions)
         edited.extend(self._marked_edited)
         edited.extend(_load_owners(self._edited_owner_references, known=edited))
         self._watched.clear()
         self._edited_owner_references.clear()
         self._marked_edited.clear()
+        self._deletions.clear()
         record_last_edits(
             [instance for instance in edited if isinstance(instance, LastEditTrackedModel)],
             self._user,
@@ -284,6 +295,7 @@ def _record_user_actions(actions: list[_EditAction], edited: list[models.Model])
                 action=action.action,
                 org_id=org_id,
                 target=action.target,
+                target_description=action.target_description,
                 previous_name=action.previous_name,
                 parent=owner,
             )
