@@ -3,7 +3,7 @@ import { BoardNodeSnapshot, PixelRect } from './pixel-explosion';
 const NODE_SELECTOR = '.f-node';
 /** Attribute foblex renders from `[fNodeId]` on every node host. */
 const NODE_ID_ATTRIBUTE = 'data-f-node-id';
-/** The node-type icon, whose colour is bound to `node.color` in the base-node template. */
+/** The node-type icon, whose colour is looked up by node type in the base-node template. */
 const NODE_ICON_SELECTOR = '.icon-wrapper i';
 
 /** Reads the on-screen rect of every node visible inside `boardElement` and resolves its node-type colour. */

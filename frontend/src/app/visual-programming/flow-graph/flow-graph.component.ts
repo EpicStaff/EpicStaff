@@ -45,7 +45,7 @@ import {
     ICurrentSelection,
 } from '@foblex/flow';
 import { AppSvgIconComponent, AuthorshipDetailsSource } from '@shared/components';
-import { NodeType, ShortcutParams } from '@shared/models';
+import { NODE_COLORS, NodeType, ShortcutParams } from '@shared/models';
 import { fromEvent, Subject } from 'rxjs';
 
 import { GetGraphLightRequest, GraphContentDto } from '../../features/flows/models/graph.model';
@@ -271,7 +271,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
         const map = new Map<string, string>();
         for (const node of this.flowService.nodes()) {
-            map.set(node.id, node.color);
+            map.set(node.id, NODE_COLORS[node.type]);
         }
         return map;
     });

@@ -416,7 +416,10 @@ class ContentHashMixin(models.Model):
 
 
 # Keys of a node's or edge's canvas `metadata` whose change is an edit of the graph.
-# Everything else in it (size, color, icon, badge number, edge waypoints) is
+# The frontend writes `position` for every node, plus `size` and `backgroundColor` for a
+# note, `explanations` for a classification decision table and `waypoints` for an edge.
+# A node's colour, icon and (except a note's) size come from frontend constants; older
+# rows may still hold them, and nothing reads them. Everything but `position` is
 # presentation and is no edit at all.
 GRAPH_EDIT_METADATA_KEYS = ("position",)
 

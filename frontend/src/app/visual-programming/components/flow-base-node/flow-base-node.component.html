@@ -92,8 +92,8 @@
                         ></i>
                     } @else {
                         <i
-                            [class]="node.icon"
-                            [style.color]="node.color"
+                            [class]="nodeIcons[node.type]"
+                            [style.color]="nodeColors[node.type]"
                         ></i>
                     }
                 </div>

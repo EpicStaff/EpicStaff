@@ -450,3 +450,20 @@ describe('toLocalNaiveIso (schedule datetimes)', () => {
         expect(toLocalNaiveIso(null, 'UTC')).toBeNull();
     });
 });
+
+describe('buildPreviewFlowModel (node style)', () => {
+    it('does not carry the colour and icon in the exported metadata onto the node', () => {
+        const styled = {
+            ...snapshot,
+            nodes: snapshot.nodes.map((node) =>
+                node.id === ID.python ? { ...node, metadata: { color: '#ff0000', icon: 'ti ti-bug' } } : node
+            ),
+        } as GraphVersionSnapshot;
+
+        const { flow, snapshotIdToNodeUuid } = buildPreviewFlowModel(styled, secretsByName, availableFlows);
+        const python = nodeWithSnapshotId(flow, snapshotIdToNodeUuid, ID.python);
+
+        expect(python).not.toHaveProperty('color');
+        expect(python).not.toHaveProperty('icon');
+    });
+});

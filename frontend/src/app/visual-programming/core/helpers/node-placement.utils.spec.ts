@@ -18,8 +18,6 @@ function makeNode(overrides: Partial<NodeModel> & { id: string; position: { x: n
         backendId: null,
         type: NodeType.AGENT,
         node_name: 'test',
-        color: '#000',
-        icon: 'icon',
         ports: null,
         input_map: {},
         output_variable_path: null,

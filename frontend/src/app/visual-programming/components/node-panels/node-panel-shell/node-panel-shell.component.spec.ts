@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, Validators } from '@angular/forms';
 import { AuthorshipDetailsDialogService, AuthorshipDetailsSource } from '@shared/components';
-import { NodeType, ResourceCode } from '@shared/models';
+import { NODE_COLORS, NODE_ICONS, NodeType, ResourceCode } from '@shared/models';
 import { of } from 'rxjs';
 
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
@@ -24,6 +24,7 @@ import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { VersionPreviewNodeAuthorshipStore } from '../../../services/version-preview-node-authorship.store';
 import { liveEnd, liveGraph, livePython, liveSubgraph } from '../../../utils/testing/live-graph.fixture';
+import { normalizedCssColor, WRONG_APPEARANCE } from '../../../utils/testing/node-appearance.fixture';
 import { FLOW_ACTIONS_WITHOUT_USE, grantPermissions } from '../../../utils/testing/permissions.fixture';
 import { EndNodePanelComponent } from '../end-node-panel/end-node-panel.component';
 import { PythonNodePanelComponent } from '../python-node-panel/python-node-panel.component';
@@ -41,8 +42,6 @@ const endNode: EndNodeModel = {
     data: { output_map: { answer: 'variables.answer' } },
     position: { x: 0, y: 0 },
     ports: null,
-    color: '',
-    icon: '',
     size: { width: 200, height: 100 },
     input_map: {},
     output_variable_path: null,
@@ -351,8 +350,6 @@ describe('NodePanelShellComponent', () => {
             },
             position: { x: 0, y: 0 },
             ports: null,
-            color: '',
-            icon: '',
             size: { width: 200, height: 100 },
             input_map: {},
             output_variable_path: null,
@@ -508,8 +505,6 @@ describe('NodePanelShellComponent', () => {
             test_input: {},
             position: { x: 0, y: 0 },
             ports: null,
-            color: '',
-            icon: '',
             size: { width: 200, height: 100 },
             input_map: {},
             output_variable_path: null,
@@ -664,6 +659,19 @@ describe('NodePanelShellComponent', () => {
             detailsButton(fixture)!.click();
 
             expect(open).toHaveBeenCalledWith('Node Details', UNKNOWN, detailsButton(fixture));
+        });
+    });
+
+    describe('header', () => {
+        it("shows the type icon and colour, not the node's own", async () => {
+            const fixture = await mount(false);
+            fixture.componentRef.setInput('node', { ...endNode, ...WRONG_APPEARANCE } as unknown as NodeModel);
+            fixture.detectChanges();
+
+            const icon: HTMLElement = fixture.nativeElement.querySelector('.icon-and-title i');
+
+            expect(icon.className).toBe(NODE_ICONS[NodeType.END]);
+            expect(icon.style.color).toBe(normalizedCssColor(NODE_COLORS[NodeType.END]));
         });
     });
 });

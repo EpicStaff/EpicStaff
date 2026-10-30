@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
 import { MATERIAL_FORMS } from '@shared/material-forms';
+import { NODE_COLORS, NODE_ICONS } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { formatNodeLabel } from '@shared/utils';
 
@@ -33,6 +34,9 @@ export class ClassificationDecisionTableNodeComponent {
     private readonly destroyRef = inject(DestroyRef);
     private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
+
+    protected readonly nodeColors = NODE_COLORS;
+    protected readonly nodeIcons = NODE_ICONS;
 
     public readonly headerHeightPx = CDT_HEADER_HEIGHT;
     public readonly rowHeightPx = CDT_ROW_HEIGHT;

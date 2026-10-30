@@ -1,27 +1,23 @@
-import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+import { NodeType } from '@shared/models';
 
+import { getDefaultNodeSize, readNoteSize } from '../../core/helpers/node-size.util';
 import { NodeDtoMetadata } from '../../core/models/node-metadata.model';
 
-const DEFAULT_SIZE = { width: 330, height: 60 };
-
+/**
+ * Size comes from frontend constants, so stale values stored in the backend
+ * metadata are ignored. Only the position is read, plus a note's own size.
+ */
 export function mapNodeDtoMetadataToFlowNodeMetadata(
     metadata: Record<string, unknown> | undefined | null,
     nodeType: NodeType
 ): NodeDtoMetadata {
-    const m = metadata ?? {};
-    const position = m['position'] as { x?: number; y?: number } | undefined;
-    const size = m['size'] as { width?: number; height?: number } | undefined;
+    const position = metadata?.['position'] as { x?: number; y?: number } | undefined;
 
     return {
         position: {
             x: position?.x ?? 0,
             y: position?.y ?? 0,
         },
-        color: typeof m['color'] === 'string' ? m['color'] : NODE_COLORS[nodeType],
-        icon: typeof m['icon'] === 'string' ? m['icon'] : NODE_ICONS[nodeType],
-        size: {
-            width: size?.width ?? DEFAULT_SIZE.width,
-            height: size?.height ?? DEFAULT_SIZE.height,
-        },
+        size: nodeType === NodeType.NOTE ? readNoteSize(metadata) : getDefaultNodeSize(nodeType),
     };
 }

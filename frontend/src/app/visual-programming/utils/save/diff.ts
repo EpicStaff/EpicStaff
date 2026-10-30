@@ -25,7 +25,7 @@ import {
 } from '../../core/models/node.model';
 import { toStoredCdtExplanations } from '../cdt-explanations';
 import { hasPersistedWaypoints, waypointsChanged } from './edge-waypoints.helpers';
-import { toNodeMetadata } from './metadata';
+import { toNodeMetadata, toNoteMetadata } from './metadata';
 import { ConnectionDiff, NodeDiff, NodeDiffByType } from './types';
 
 function areEqual(left: unknown, right: unknown): boolean {
@@ -261,7 +261,7 @@ function toNoteComparable(node: GraphNoteModel): unknown {
     return {
         node_name: node.node_name,
         content: node.data.content,
-        metadata: { ...toNodeMetadata(node), backgroundColor: node.data.backgroundColor ?? null },
+        metadata: toNoteMetadata(node),
     };
 }
 

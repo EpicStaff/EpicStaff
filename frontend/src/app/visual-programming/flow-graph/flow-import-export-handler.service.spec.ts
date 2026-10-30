@@ -24,8 +24,6 @@ function node(id: string, type: NodeType, backendId: number | null): NodeModel {
         data: {},
         position: { x: 0, y: 0 },
         ports: [],
-        color: '',
-        icon: '',
         size: { width: 100, height: 100 },
         input_map: {},
         output_variable_path: null,

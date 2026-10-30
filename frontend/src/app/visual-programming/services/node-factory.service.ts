@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
 import { DEFAULT_NODE_DATA } from '../core/constants/default-node-data';
@@ -27,8 +27,6 @@ export class NodeFactoryService {
         if (type === NodeType.SCHEDULE_TRIGGER && nodeData) {
             (nodeData as ScheduleTriggerNodeData).timezone = this.flowSettings.timezone();
         }
-        const color = NODE_COLORS[type] || '#ddd';
-        const icon = NODE_ICONS[type] || 'ti ti-help';
         const size = getDefaultNodeSize(type, nodeData);
         const ports: ViewPort[] = type === NodeType.NOTE ? [] : generatePortsForNode(id, type, nodeData);
         const nodeNumber = isNumberedNodeType(type) ? this.flowService.getNextNodeNumber() : undefined;
@@ -46,8 +44,6 @@ export class NodeFactoryService {
             node_name: nodeName,
             nodeNumber,
             data: nodeData,
-            color,
-            icon,
             input_map: {},
             output_variable_path: null,
             size,

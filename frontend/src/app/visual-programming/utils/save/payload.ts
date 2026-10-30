@@ -21,7 +21,7 @@ import {
 import { toStoredCdtExplanations } from '../cdt-explanations';
 import { isPythonCodeBlockSaved } from './cdt-python-code-block';
 import { hasPersistedWaypoints, mergeWaypointsIntoMetadata } from './edge-waypoints.helpers';
-import { toNodeMetadata } from './metadata';
+import { toNodeMetadata, toNoteMetadata } from './metadata';
 import { ConnectionDiff, CreatedNodeItemKeys, NodeDiff, NodeDiffByType } from './types';
 
 function resolveNodeRef(
@@ -468,7 +468,7 @@ export function buildBulkSavePayload(
             node_name: n.node_name,
             graph: graphId,
             content: n.data.content,
-            metadata: { ...toNodeMetadata(n), backgroundColor: n.data.backgroundColor ?? null },
+            metadata: toNoteMetadata(n),
         })),
         classification_decision_table_node_list: nodeItems(nodeDiff.classificationDecisionTableNodes, (n) =>
             buildCdtNodePayload(n, graphId, current.nodes, idMap, current.connections)
