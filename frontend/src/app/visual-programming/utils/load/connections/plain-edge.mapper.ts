@@ -7,11 +7,19 @@ import { NodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';
 import { createFlowConnection } from '../../connection.factory';
 import { getInputPortRole, getOutputPortRole } from '../../node-port-roles';
+import { clampPosition, isFiniteNumber } from '../metadata-bounds';
 
 function extractPersistedWaypoints(metadata: Record<string, unknown>): IPoint[] | undefined {
     const raw = metadata?.['waypoints'];
     if (!Array.isArray(raw) || raw.length === 0) return undefined;
-    return raw as IPoint[];
+    const waypoints: IPoint[] = [];
+    for (const entry of raw as unknown[]) {
+        if (typeof entry !== 'object' || entry === null) return undefined;
+        const { x, y } = entry as { x?: unknown; y?: unknown };
+        if (!isFiniteNumber(x) || !isFiniteNumber(y)) return undefined;
+        waypoints.push({ x: clampPosition(x), y: clampPosition(y) });
+    }
+    return waypoints;
 }
 
 /**
