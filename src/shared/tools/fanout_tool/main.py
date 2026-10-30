@@ -23,9 +23,10 @@
 # seeded as tool CONFIG variables (set once when the tool is configured for
 # an agent) rather than agent-callable arguments — mirrors subflow_tool.
 #
-# `session_id` is injected by the crew engine for every built-in
-# python-code tool call (see `global_kwargs["session_id"]` in
-# src/crew/services/graph/nodes/crew_node.py). This tool reuses it exactly
+# `session_id` is injected into globals for every built-in python-code tool
+# call (see `global_kwargs["session_id"]` in
+# src/agent/app/tools/executors/python_code.py and
+# src/crew/services/run_python_code_service.py). This tool reuses it exactly
 # as subflow_tool does:
 #   1. As `parent_session_id` on each child sub-flow run, so the new
 #      sub-session links back to the calling session via the existing
