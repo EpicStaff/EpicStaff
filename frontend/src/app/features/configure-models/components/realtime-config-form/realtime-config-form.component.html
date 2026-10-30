@@ -2,6 +2,17 @@
     <section class="section">
         <h3 class="section-title">MODEL INFORMATION</h3>
         <div>
+            <app-custom-input
+                formControlName="custom_name"
+                label="Configuration Name"
+                placeholder="Enter a custom name"
+                tooltipText="A friendly name to identify this configuration across the app"
+                [required]="true"
+                autocomplete="off"
+            />
+            <app-validation-errors [control]="activeForm().controls.custom_name" />
+        </div>
+        <div>
             <div class="provider-label">
                 <span>Provider</span>
                 <span class="required">*</span>
@@ -46,17 +57,6 @@
                     Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
                 </app-hint-message>
             }
-        </div>
-        <div>
-            <app-custom-input
-                formControlName="custom_name"
-                label="Configuration Name"
-                placeholder="Enter a custom name"
-                tooltipText="A friendly name to identify this configuration across the app"
-                [required]="true"
-                autocomplete="off"
-            />
-            <app-validation-errors [control]="activeForm().controls.custom_name" />
         </div>
         <div>
             <app-custom-input
