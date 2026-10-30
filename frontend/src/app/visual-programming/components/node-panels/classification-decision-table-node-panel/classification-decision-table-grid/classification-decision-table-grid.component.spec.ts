@@ -1,9 +1,11 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ColDef, ColGroupDef } from 'ag-grid-community';
 
+import { ToastService } from '../../../../../services/notifications';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
-import { CDT_ROUTE_CONTINUE_COPY } from '../cdt.constants';
+import { CDT_FREEZE_COPY, CDT_FREEZE_MAX_WIDTH_RATIO, CDT_ROUTE_CONTINUE_COPY } from '../cdt.constants';
 import {
     CdtEnableContinueRequest,
     CdtRuleIdentityEdit,
@@ -123,6 +125,15 @@ describe(
             );
             fixture.componentRef.setInput('readonly', options.readonly ?? false);
             await settle();
+            // jsdom lays nothing out, so the table would be 0px wide and refuse every freeze.
+            setTableWidth(1_000_000);
+        }
+
+        /** The width the freeze guard measures the table at. */
+        function setTableWidth(px: number): void {
+            const table = host.querySelector('ag-grid-angular');
+            if (!table) throw new Error('no grid');
+            Object.defineProperty(table, 'clientWidth', { configurable: true, value: px });
         }
 
         function cell(rowIndex: number, colId: string): HTMLElement {
@@ -385,6 +396,414 @@ describe(
 
                 expect(cell(ROW.ignored, 'route_code').classList).toContain('cell-required-invalid');
                 expect(cell(ROW.ignored, 'route_code').querySelector('.cdt-route-code-cell__code--ignored')).toBeNull();
+            });
+        });
+
+        describe('freezing columns from a column header menu', () => {
+            /** Opens the header menu of `colId` and returns its freeze items, by label. */
+            async function openFreezeItems(colId: string): Promise<Map<string, HTMLElement>> {
+                const chevron = host.querySelector<HTMLElement>(`.ag-header-cell[col-id="${colId}"] .chm-chevron`);
+                if (!chevron) throw new Error(`no menu on the ${colId} header`);
+                chevron.click();
+                await settle();
+                const items = Array.from(document.querySelectorAll<HTMLElement>('.chm-dropdown .chm-menu-item'));
+                return new Map(
+                    items.map((item) => [item.textContent!.trim(), item] as const).filter(([label]) => label !== 'Hide')
+                );
+            }
+
+            async function choose(colId: string, label: string): Promise<void> {
+                const item = (await openFreezeItems(colId)).get(label);
+                if (!item) throw new Error(`no "${label}" in the ${colId} menu`);
+                item.click();
+                await settle();
+            }
+
+            function pinned(side: 'left' | 'right'): string[] {
+                return Array.from(
+                    host.querySelectorAll(`.ag-header .ag-grid-pinned-${side}-cells .ag-header-cell[col-id]`)
+                ).map((headerCell) => headerCell.getAttribute('col-id')!);
+            }
+
+            function savedState(): { freezeAnchor: unknown; freezeSide: unknown; pinned: string[] } {
+                return JSON.parse(localStorage.getItem(`cdt-grid-state-${NODE_ID}`) ?? '{}');
+            }
+
+            it('offers both sides while nothing is frozen', async () => {
+                await render();
+
+                const items = await openFreezeItems('prompt_id');
+
+                expect([...items.keys()]).toEqual(['Freeze All Left', 'Freeze All Right']);
+                items.forEach((item) => expect(item.getAttribute('aria-disabled')).toBeNull());
+            });
+
+            it('Freeze All Left pins the column and everything to its left', async () => {
+                await render();
+
+                await choose('group_name', 'Freeze All Left');
+
+                expect(pinned('left')).toEqual(['selection', 'dock_visible', 'group_name']);
+                expect(pinned('right')).toEqual([]);
+                await vi.advanceTimersByTimeAsync(300);
+                expect(savedState()).toEqual(
+                    expect.objectContaining({ freezeAnchor: 'group_name', freezeSide: 'left' })
+                );
+            });
+
+            it('Freeze All Right pins the column and everything to its right, the actions column too', async () => {
+                await render();
+
+                await choose('route_code', 'Freeze All Right');
+
+                expect(pinned('right')).toEqual(['route_code', 'continue_flag', 'actions']);
+                expect(pinned('left')).toEqual([]);
+                await vi.advanceTimersByTimeAsync(300);
+                expect(savedState()).toEqual(
+                    expect.objectContaining({ freezeAnchor: 'route_code', freezeSide: 'right' })
+                );
+            });
+
+            it('offers Unfreeze Left on the anchor, and it clears the left freeze', async () => {
+                await render();
+                await choose('group_name', 'Freeze All Left');
+
+                await choose('group_name', 'Unfreeze Left');
+
+                expect(pinned('left')).toEqual([]);
+                await vi.advanceTimersByTimeAsync(300);
+                expect(savedState()).toEqual(expect.objectContaining({ freezeAnchor: null, freezeSide: null }));
+            });
+
+            it('offers Unfreeze Right on the anchor, and it clears the right freeze', async () => {
+                await render();
+                await choose('route_code', 'Freeze All Right');
+
+                await choose('route_code', 'Unfreeze Right');
+
+                expect(pinned('right')).toEqual([]);
+            });
+
+            it('moves the left anchor from another column', async () => {
+                await render();
+                await choose('group_name', 'Freeze All Left');
+
+                await choose('prompt_id', 'Freeze All Left');
+
+                expect(pinned('left')).toContain('prompt_id');
+                expect(pinned('left')[0]).toBe('selection');
+            });
+
+            it('disables the right side while the left is frozen, with the reason as its tooltip', async () => {
+                await render();
+                await choose('group_name', 'Freeze All Left');
+
+                const right = (await openFreezeItems('route_code')).get('Freeze All Right')!;
+                expect(right.getAttribute('aria-disabled')).toBe('true');
+                expect(right.getAttribute('title')).toBe('Unfreeze Left first');
+
+                right.click();
+                await settle();
+                expect(pinned('right')).toEqual([]);
+            });
+
+            it('disables the left side while the right is frozen, with the reason as its tooltip', async () => {
+                await render();
+                await choose('route_code', 'Freeze All Right');
+
+                const left = (await openFreezeItems('group_name')).get('Freeze All Left')!;
+                expect(left.getAttribute('aria-disabled')).toBe('true');
+                expect(left.getAttribute('title')).toBe('Unfreeze Right first');
+
+                left.click();
+                await settle();
+                expect(pinned('left')).toEqual([]);
+            });
+
+            it('restores a freeze saved before there were two sides as a left freeze', async () => {
+                localStorage.setItem(
+                    `cdt-grid-state-${NODE_ID}`,
+                    JSON.stringify({ pinned: ['selection', 'dock_visible', 'group_name'], freezeAnchor: 'group_name' })
+                );
+                await render();
+
+                expect(pinned('left')).toEqual(['selection', 'dock_visible', 'group_name']);
+                expect([...(await openFreezeItems('group_name')).keys()]).toEqual(['Unfreeze Left']);
+            });
+
+            it('restores a saved right freeze', async () => {
+                localStorage.setItem(
+                    `cdt-grid-state-${NODE_ID}`,
+                    JSON.stringify({
+                        pinned: ['route_code', 'continue_flag', 'actions'],
+                        freezeAnchor: 'route_code',
+                        freezeSide: 'right',
+                    })
+                );
+                await render();
+
+                expect(pinned('right')).toEqual(['route_code', 'continue_flag', 'actions']);
+                expect([...(await openFreezeItems('route_code')).keys()]).toEqual(['Unfreeze Right']);
+            });
+
+            describe('which sides a column offers', () => {
+                beforeEach(() => render());
+
+                it('offers only Left on a left-only column (Condition Name)', async () => {
+                    expect([...(await openFreezeItems('group_name')).keys()]).toEqual(['Freeze All Left']);
+                });
+
+                it('offers only Right on a right-only column (Route Code)', async () => {
+                    expect([...(await openFreezeItems('route_code')).keys()]).toEqual(['Freeze All Right']);
+                });
+
+                it('offers both sides on Manipulation', async () => {
+                    expect([...(await openFreezeItems('manipulation')).keys()]).toEqual([
+                        'Freeze All Left',
+                        'Freeze All Right',
+                    ]);
+                });
+
+                it('gives Continue a menu with only Freeze All Right, and no Hide', async () => {
+                    expect(host.querySelector('.ag-header-cell[col-id="continue_flag"] .chm-label')?.textContent).toBe(
+                        'Continue'
+                    );
+
+                    await choose('continue_flag', 'Freeze All Right');
+
+                    expect(pinned('right')).toEqual(['continue_flag', 'actions']);
+                    await openFreezeItems('continue_flag');
+                    const labels = Array.from(document.querySelectorAll('.chm-dropdown .chm-menu-item')).map((item) =>
+                        item.textContent!.trim()
+                    );
+                    expect(labels).toEqual(['Unfreeze Right']);
+                });
+            });
+
+            describe('the table width limit', () => {
+                let warnings: ReturnType<typeof vi.spyOn>;
+
+                beforeEach(async () => {
+                    await render();
+                    warnings = vi.spyOn(TestBed.inject(ToastService), 'warning');
+                });
+
+                /** Total width of the columns Freeze All Left on Condition Name would pin, as the grid sized them. */
+                function leftOfConditionNameWidth(): number {
+                    return ['selection', 'dock_visible', 'group_name']
+                        .map((colId) =>
+                            parseFloat(
+                                host.querySelector<HTMLElement>(`.ag-header-cell[col-id="${colId}"]`)!.style.width
+                            )
+                        )
+                        .reduce((sum, width) => sum + width, 0);
+                }
+
+                it('refuses a freeze wider than 90% of the table, and says why', async () => {
+                    const width = leftOfConditionNameWidth();
+                    expect(width).toBeGreaterThan(0);
+                    setTableWidth(Math.floor(width / CDT_FREEZE_MAX_WIDTH_RATIO) - 1);
+
+                    await choose('group_name', 'Freeze All Left');
+
+                    expect(pinned('left')).toEqual([]);
+                    expect(fixture.componentInstance.freezeState()).toBeNull();
+                    expect(warnings).toHaveBeenCalledWith(CDT_FREEZE_COPY.tooWide, undefined, 'bottom-right');
+                });
+
+                it('freezes up to exactly 90% of the table', async () => {
+                    setTableWidth(Math.ceil(leftOfConditionNameWidth() / CDT_FREEZE_MAX_WIDTH_RATIO));
+
+                    await choose('group_name', 'Freeze All Left');
+
+                    expect(pinned('left')).toEqual(['selection', 'dock_visible', 'group_name']);
+                    expect(warnings).not.toHaveBeenCalled();
+                });
+            });
+
+            describe('with Params columns', () => {
+                /** Rows with Expression params `a`, `b` and Manipulation param `x`, so both Params groups show. */
+                function rowsWithParams(): ConditionGroup[] {
+                    return rows().map((row) => ({
+                        ...row,
+                        field_expressions: { a: '', b: '' },
+                        field_manipulations: { x: '' },
+                    }));
+                }
+
+                /** Opens the Params group header menu of `owner` and clicks `label`. */
+                async function chooseInGroup(owner: 'Expression' | 'Manipulation', label: string): Promise<void> {
+                    const header = Array.from(host.querySelectorAll<HTMLElement>('app-params-group-header')).find(
+                        (element) => element.textContent?.includes(owner)
+                    );
+                    const chevron = header?.querySelector<HTMLElement>('.chevron-btn');
+                    if (!chevron) throw new Error(`no ${owner} Params group menu`);
+                    chevron.click();
+                    await settle();
+                    const item = Array.from(document.querySelectorAll<HTMLElement>('.params-dropdown-item')).find(
+                        (element) => element.textContent?.trim() === label
+                    );
+                    if (!item) throw new Error(`no "${label}" in the ${owner} Params menu`);
+                    item.click();
+                    await settle();
+                }
+
+                beforeEach(() => render({ groups: rowsWithParams() }));
+
+                it('pins left a column added inside a left freeze, and Unfreeze Left unpins it', async () => {
+                    await choose('prompt_id', 'Freeze All Left');
+
+                    fixture.componentInstance.addFieldColumn('c');
+                    await settle();
+
+                    expect(pinned('left')).toEqual(expect.arrayContaining(['field_a', 'field_b', 'field_c']));
+                    await vi.advanceTimersByTimeAsync(300);
+                    expect(savedState().pinned).toContain('field_c');
+
+                    await choose('prompt_id', 'Unfreeze Left');
+
+                    expect(pinned('left')).toEqual([]);
+                });
+
+                it('pins right a column added inside a right freeze, and Unfreeze Right unpins it', async () => {
+                    await choose('manipulation', 'Freeze All Right');
+
+                    fixture.componentInstance.addManipFieldColumn('y');
+                    await settle();
+
+                    expect(pinned('right')).toEqual(expect.arrayContaining(['manip_x', 'manip_y', 'route_code']));
+
+                    await choose('manipulation', 'Unfreeze Right');
+
+                    expect(pinned('right')).toEqual([]);
+                });
+
+                it('drops a removed column from the frozen set', async () => {
+                    await choose('prompt_id', 'Freeze All Left');
+
+                    fixture.componentInstance.removeFieldColumn('a');
+                    await settle();
+                    await vi.advanceTimersByTimeAsync(300);
+
+                    expect(pinned('left')).toEqual(expect.arrayContaining(['field_b', 'prompt_id']));
+                    expect(pinned('left')).not.toContain('field_a');
+                    expect(savedState().pinned).not.toContain('field_a');
+                });
+
+                it('locks the children of a Params group in place while the group anchors the freeze', async () => {
+                    /** `suppressMovable` of each Expression Params child, as the grid was last given them. */
+                    function childrenLocked(): (boolean | undefined)[] {
+                        const group = fixture.componentInstance.columnDefs.find(
+                            (def): def is ColGroupDef => 'groupId' in def && def.groupId === 'expr-params-group'
+                        );
+                        if (!group) throw new Error('no Expression Params group');
+                        return (group.children as ColDef[]).map((child) => child.suppressMovable);
+                    }
+                    expect(childrenLocked()).not.toContain(true);
+
+                    await chooseInGroup('Expression', 'Freeze All Left');
+                    expect(childrenLocked()).toEqual([true, true]);
+
+                    await chooseInGroup('Expression', 'Unfreeze Left');
+                    expect(childrenLocked()).not.toContain(true);
+                });
+
+                describe('frozen from a Params group header', () => {
+                    /** How many header cells the `owner` Params group has: two once ag-grid splits it across a freeze. */
+                    function groupHeaderCount(owner: 'Expression' | 'Manipulation'): number {
+                        return Array.from(host.querySelectorAll('app-params-group-header')).filter((element) =>
+                            element.textContent?.includes(owner)
+                        ).length;
+                    }
+
+                    it('freezes left through the last child, and a field added to the group is frozen with it', async () => {
+                        await chooseInGroup('Expression', 'Freeze All Left');
+                        expect(fixture.componentInstance.freezeState()).toEqual({
+                            side: 'left',
+                            anchorColId: 'expr-params-group',
+                        });
+
+                        fixture.componentInstance.addFieldColumn('c');
+                        await settle();
+
+                        expect(pinned('left')).toEqual(
+                            expect.arrayContaining(['expression', 'field_a', 'field_b', 'field_c'])
+                        );
+                        expect(pinned('left')).not.toContain('prompt_id');
+                        expect(groupHeaderCount('Expression')).toBe(1);
+                    });
+
+                    it('freezes right from the first child, and a field added to the group is frozen with it', async () => {
+                        await chooseInGroup('Manipulation', 'Freeze All Right');
+
+                        fixture.componentInstance.addManipFieldColumn('y');
+                        await settle();
+
+                        expect(pinned('right')).toEqual(
+                            expect.arrayContaining(['manip_x', 'manip_y', 'route_code', 'actions'])
+                        );
+                        expect(pinned('right')).not.toContain('manipulation');
+                        expect(groupHeaderCount('Manipulation')).toBe(1);
+                    });
+
+                    it('keeps the freeze when one of its fields is removed', async () => {
+                        await chooseInGroup('Expression', 'Freeze All Left');
+
+                        fixture.componentInstance.removeFieldColumn('b');
+                        await settle();
+
+                        expect(fixture.componentInstance.freezeState()).toEqual({
+                            side: 'left',
+                            anchorColId: 'expr-params-group',
+                        });
+                        expect(pinned('left')).toEqual(expect.arrayContaining(['expression', 'field_a']));
+                        expect(pinned('left')).not.toContain('field_b');
+                    });
+
+                    it('clears the freeze once the group has no fields left', async () => {
+                        await chooseInGroup('Expression', 'Freeze All Left');
+
+                        fixture.componentInstance.removeFieldColumn('a');
+                        fixture.componentInstance.removeFieldColumn('b');
+                        await settle();
+                        await vi.advanceTimersByTimeAsync(300);
+
+                        expect(fixture.componentInstance.freezeState()).toBeNull();
+                        expect(pinned('left')).toEqual([]);
+                        expect(savedState()).toEqual(expect.objectContaining({ freezeAnchor: null, pinned: [] }));
+                    });
+
+                    it('Unfreeze from the group header unpins all its children, an added one too', async () => {
+                        await chooseInGroup('Expression', 'Freeze All Left');
+                        fixture.componentInstance.addFieldColumn('c');
+                        await settle();
+
+                        await chooseInGroup('Expression', 'Unfreeze Left');
+
+                        expect(fixture.componentInstance.freezeState()).toBeNull();
+                        expect(pinned('left')).toEqual([]);
+                    });
+
+                    it('restores a saved anchor on a field, as saved before, as a freeze of its group', async () => {
+                        localStorage.setItem(
+                            `cdt-grid-state-${NODE_ID}`,
+                            JSON.stringify({
+                                pinned: ['selection', 'dock_visible', 'group_name', 'expression', 'field_a', 'field_b'],
+                                freezeAnchor: 'field_b',
+                            })
+                        );
+                        await render({ groups: rowsWithParams() });
+
+                        expect(fixture.componentInstance.freezeState()).toEqual({
+                            side: 'left',
+                            anchorColId: 'expr-params-group',
+                        });
+                        fixture.componentInstance.addFieldColumn('c');
+                        await settle();
+                        expect(pinned('left')).toEqual(expect.arrayContaining(['field_a', 'field_b', 'field_c']));
+                        expect(groupHeaderCount('Expression')).toBe(1);
+                    });
+                });
             });
         });
     }

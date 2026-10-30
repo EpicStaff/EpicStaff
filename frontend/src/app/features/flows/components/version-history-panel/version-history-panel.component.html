@@ -148,7 +148,7 @@
                                     class="action-dropdown-panel__item"
                                     (click)="restoreVersion(version, $event)"
                                 >
-                                    Restore
+                                    Restore this version
                                 </button>
                                 <button
                                     class="action-dropdown-panel__item"
@@ -156,6 +156,7 @@
                                 >
                                     Create flow from this
                                 </button>
+                                <div class="action-dropdown-panel__separator"></div>
                                 <button
                                     class="action-dropdown-panel__item"
                                     (click)="startEdit(version, 'name')"
@@ -168,13 +169,15 @@
                                 >
                                     Change Description
                                 </button>
-                                <button
-                                    *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
-                                    class="action-dropdown-panel__item action-dropdown-panel__item--danger"
-                                    (click)="deleteVersion(version, $event)"
-                                >
-                                    Delete
-                                </button>
+                                <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]">
+                                    <div class="action-dropdown-panel__separator"></div>
+                                    <button
+                                        class="action-dropdown-panel__item"
+                                        (click)="deleteVersion(version, $event)"
+                                    >
+                                        Delete
+                                    </button>
+                                </ng-container>
                             </div>
                         </ng-template>
                     </div>

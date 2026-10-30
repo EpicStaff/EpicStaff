@@ -54,6 +54,7 @@ import {
     ValueSetterParams,
 } from 'ag-grid-community';
 
+import { ToastService } from '../../../../../services/notifications';
 import {
     CDT_SECTION_LEGACY_WHITE_COLOR,
     CdtSection,
@@ -78,10 +79,14 @@ import {
 import {
     CDT_COLUMN_KIND,
     CDT_ENABLE_CONTINUE_DIALOG_WIDTH,
+    CDT_EXPR_PARAMS_GROUP_ID,
     CDT_FIELD_PREFIX,
+    CDT_FREEZE_COPY,
+    CDT_FREEZE_MAX_WIDTH_RATIO,
     CDT_GRID_HEADER_HEIGHT,
     CDT_GRID_ROW_HEIGHT,
     CDT_GROUP_TOGGLE_ANIMATION_MS,
+    CDT_MANIP_PARAMS_GROUP_ID,
     CDT_MANIP_PREFIX,
     CDT_OVERLAY_ROW_HEIGHT,
     CDT_ROUTE_CONTINUE_COPY,
@@ -109,6 +114,7 @@ import { PromptTooltipRendererComponent } from './prompt-tooltip-renderer/prompt
 import { RouteCodeCellRendererComponent } from './route-code-cell-renderer/route-code-cell-renderer.component';
 import { SelectionCellRendererComponent } from './selection-cell-renderer/selection-cell-renderer.component';
 import { SelectionCountHeaderComponent } from './selection-count-header/selection-count-header.component';
+import { buildFreezeMenuItems, CdtFreezeSide, CdtFreezeState } from './shared/column-freeze.util';
 import { NoDragGhostComponent } from './shared/no-drag-ghost.component';
 import { OverlayMenuController } from './shared/overlay-menu.util';
 
@@ -214,6 +220,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     private overlay = inject(Overlay);
     private vcr = inject(ViewContainerRef);
     private confirmDialog = inject(ConfirmationDialogService);
+    private toastService = inject(ToastService);
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
     private injector = inject(Injector);
@@ -247,9 +254,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     private preDragExprAnchor: string | null = null;
     private preDragManipAnchor: string | null = null;
 
-    // Frozen column IDs (pinned left)
-    public frozenColIds = signal<Set<string>>(new Set());
-    public freezeAnchorColId = signal<string | null>(null);
+    // The frozen side and its anchor; which columns that pins is derived (`frozenColIdsFor`).
+    public freezeState = signal<CdtFreezeState | null>(null);
 
     // User-hidden column IDs
     public hiddenColIds = signal<Set<string>>(new Set());
@@ -852,10 +858,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 widths,
                 order: this.movableColumnOrder(),
                 manipOrder: this.manipColumnOrder(),
-                pinned: [...this.frozenColIds()],
+                pinned: this.frozenColIdsFor(this.freezeState()),
                 hiddenColIds: [...this.hiddenColIds()],
                 hiddenColumnGroups: [...this.hiddenColumnGroups()],
-                freezeAnchor: this.freezeAnchorColId(),
+                freezeAnchor: this.freezeState()?.anchorColId ?? null,
+                freezeSide: this.freezeState()?.side ?? null,
                 collapsedGroups: [...this.collapsedGroups()],
                 enableFilterMode: this.enableFilterMode(),
                 exprParamsAfter: this.exprParamsAfter(),
@@ -882,9 +889,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
             if (state.manipOrder?.length > 0) {
                 this.manipColumnOrder.set(state.manipOrder);
-            }
-            if (Array.isArray(state.pinned) && state.pinned.length > 0) {
-                this.frozenColIds.set(new Set(state.pinned as string[]));
             }
             if (Array.isArray(state.hiddenColIds) && state.hiddenColIds.length > 0) {
                 this.hiddenColIds.set(new Set(state.hiddenColIds as string[]));
@@ -916,7 +920,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 this.fixedColumnOrder.set(state.fixedColumnOrder);
             }
             if (typeof state.freezeAnchor === 'string') {
-                this.freezeAnchorColId.set(state.freezeAnchor);
+                // State saved before right freeze existed has no side: it was a left freeze.
+                const side: CdtFreezeSide = state.freezeSide === 'right' ? 'right' : 'left';
+                this.freezeState.set({ side, anchorColId: this.toFreezeAnchor(state.freezeAnchor) });
             } else if (Array.isArray(state.pinned) && state.pinned.length > 0) {
                 const fullOrder = this.getFullColOrder();
                 let anchor: string | null = null;
@@ -928,7 +934,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                         anchorIdx = idx;
                     }
                 }
-                if (anchor) this.freezeAnchorColId.set(anchor);
+                if (anchor) this.freezeState.set({ side: 'left', anchorColId: this.toFreezeAnchor(anchor) });
             }
         } catch {}
     }
@@ -1014,53 +1020,98 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         return {
             label,
             colId,
-            onFreezeToggle: (id: string) => this.toggleFreeze(id),
             onHide: (id: string) => this.hideColumn(id),
-            isPinned: () => this.freezeAnchorColId() === colId,
+            ...this.makeFreezeMenuParams(colId),
         };
     }
 
-    public toggleFreeze(colId: string): void {
-        const fullOrder = this.getFullColOrder();
-        const targetIdx = fullOrder.indexOf(colId);
-        if (targetIdx === -1) return;
+    /** Header params for the freeze items of `anchorId`: a column id, or a Params group id. */
+    private makeFreezeMenuParams(anchorId: string): object {
+        return {
+            getFreezeMenuItems: () => buildFreezeMenuItems(this.freezeState(), anchorId),
+            onFreezeToggle: (side: CdtFreezeSide) => this.toggleFreeze(side, anchorId),
+        };
+    }
 
-        const isAnchor = this.freezeAnchorColId() === colId;
+    /**
+     * Freezes `colId` (a column or a Params group) and every column on its `side` (left: from the
+     * first column; right: through the actions column), or clears the freeze when `colId` already
+     * anchors it. Ignored while the other side is frozen; refused, with a toast, when the columns
+     * would take up too much of the table width.
+     */
+    public toggleFreeze(side: CdtFreezeSide, colId: string): void {
+        const current = this.freezeState();
+        if (current && current.side !== side) return;
+        // Not a column of this grid: nothing to freeze from.
+        if (this.frozenColIdsFor({ side, anchorColId: colId }).length === 0) return;
 
-        // Determine the new frozen prefix
-        let newFrozenIds: string[];
-        if (isAnchor) {
-            // Unfreeze: clear the entire frozen set
-            newFrozenIds = [];
-            this.freezeAnchorColId.set(null);
-        } else {
-            // Freeze: pin every column from index 0 up to and including targetIdx
-            newFrozenIds = fullOrder.slice(0, targetIdx + 1);
-            this.freezeAnchorColId.set(colId);
+        const next: CdtFreezeState | null = current?.anchorColId === colId ? null : { side, anchorColId: colId };
+        if (next && this.isTooWideToFreeze(next)) {
+            this.toastService.warning(CDT_FREEZE_COPY.tooWide, undefined, 'bottom-right');
+            return;
         }
-
-        const newFrozenSet = new Set(newFrozenIds);
-
-        // Build state updates: set pinned:'left' for new frozen set, null for previously frozen cols no longer in set
-        const stateUpdates: { colId: string; pinned: 'left' | null }[] = [];
-        const previouslyFrozen = this.frozenColIds();
-        for (const id of fullOrder) {
-            const shouldBeFrozen = newFrozenSet.has(id);
-            const wasPinned = previouslyFrozen.has(id);
-            if (shouldBeFrozen && !wasPinned) {
-                stateUpdates.push({ colId: id, pinned: 'left' });
-            } else if (!shouldBeFrozen && wasPinned) {
-                stateUpdates.push({ colId: id, pinned: null });
-            }
-        }
-
-        this.frozenColIds.set(newFrozenSet);
-        if (stateUpdates.length > 0) {
-            this.gridApi?.applyColumnState({ state: stateUpdates });
-        }
-        this.gridApi?.refreshHeader();
+        this.freezeState.set(next);
+        // A rebuild, not just a re-pin: whether a Params group's children may move is set in the
+        // column defs. It re-applies the freeze (`reapplyColumnState`) and keeps the widths.
+        this.rebuildColumnDefs();
         this.saveGridState();
         this.cdr.markForCheck();
+    }
+
+    /** True when the visible columns `freeze` would pin are wider than the allowed share of the table. */
+    private isTooWideToFreeze(freeze: CdtFreezeState): boolean {
+        const tableWidth = this.gridElementRef()?.nativeElement.clientWidth ?? 0;
+        const frozen = new Set(this.frozenColIdsFor(freeze));
+        const frozenWidth = (this.gridApi?.getColumnState() ?? [])
+            .filter((column) => !column.hide && frozen.has(column.colId))
+            .reduce((sum, column) => sum + (column.width ?? 0), 0);
+        return frozenWidth > tableWidth * CDT_FREEZE_MAX_WIDTH_RATIO;
+    }
+
+    /**
+     * The columns `freeze` pins, in grid order: left from the first column through the anchor,
+     * right from the anchor through the actions column. A Params group anchor covers the children
+     * it has now, so a field added to it is frozen with it. Empty when the anchor is not in the grid.
+     */
+    private frozenColIdsFor(freeze: CdtFreezeState | null): string[] {
+        if (!freeze) return [];
+        // The actions column is not in the full order, but sits at the right edge.
+        const order = [...this.getFullColOrder(), 'actions'];
+        const group = this.columnDefs.find(
+            (def): def is ColGroupDef => 'groupId' in def && def.groupId === freeze.anchorColId
+        );
+        const children = (group?.children ?? []) as ColDef[];
+        const anchorColId = group
+            ? (freeze.side === 'left' ? children.at(-1) : children[0])?.colId
+            : freeze.anchorColId;
+        const anchorIdx = anchorColId ? order.indexOf(anchorColId) : -1;
+        if (anchorIdx === -1) return [];
+        return freeze.side === 'left' ? order.slice(0, anchorIdx + 1) : order.slice(anchorIdx);
+    }
+
+    /**
+     * A saved anchor in a Params group's field (the only way one was saved, before the group itself
+     * became the anchor) means that group.
+     */
+    private toFreezeAnchor(colId: string): string {
+        if (colId.startsWith(CDT_FIELD_PREFIX)) return CDT_EXPR_PARAMS_GROUP_ID;
+        if (colId.startsWith(CDT_MANIP_PREFIX)) return CDT_MANIP_PARAMS_GROUP_ID;
+        return colId;
+    }
+
+    /** Pins exactly the columns the current freeze covers, against the current columns, and unpins the rest. */
+    private applyFreeze(): void {
+        if (!this.gridApi) return;
+        const freeze = this.freezeState();
+        const frozen = new Set(this.frozenColIdsFor(freeze));
+        const pinnedSide = (colId: string): CdtFreezeSide | null => (freeze && frozen.has(colId) ? freeze.side : null);
+        const state = this.gridApi
+            .getColumnState()
+            .filter((column) => (column.pinned ?? null) !== pinnedSide(column.colId))
+            .map((column) => ({ colId: column.colId, pinned: pinnedSide(column.colId) }));
+        if (state.length > 0) {
+            this.gridApi.applyColumnState({ state });
+        }
     }
 
     public hideColumn(colId: string): void {
@@ -1177,39 +1228,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.saveGridState();
         this.ensureColumnsFitViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
-        this.cdr.markForCheck();
-    }
-
-    /** Freeze all columns from index 0 through the last colId in childColIds. */
-    public freezeThroughLastChild(childColIds: string[]): void {
-        if (childColIds.length === 0) return;
-        const fullOrder = this.getFullColOrder();
-        const lastChild = childColIds[childColIds.length - 1];
-        const targetIdx = fullOrder.indexOf(lastChild);
-        if (targetIdx === -1) return;
-
-        const newFrozenIds = fullOrder.slice(0, targetIdx + 1);
-        const newFrozenSet = new Set(newFrozenIds);
-        const previouslyFrozen = this.frozenColIds();
-
-        const stateUpdates: { colId: string; pinned: 'left' | null }[] = [];
-        for (const id of fullOrder) {
-            const shouldBeFrozen = newFrozenSet.has(id);
-            const wasPinned = previouslyFrozen.has(id);
-            if (shouldBeFrozen && !wasPinned) {
-                stateUpdates.push({ colId: id, pinned: 'left' });
-            } else if (!shouldBeFrozen && wasPinned) {
-                stateUpdates.push({ colId: id, pinned: null });
-            }
-        }
-
-        this.frozenColIds.set(newFrozenSet);
-        this.freezeAnchorColId.set(lastChild);
-        if (stateUpdates.length > 0) {
-            this.gridApi?.applyColumnState({ state: stateUpdates });
-        }
-        this.gridApi?.refreshHeader();
-        this.saveGridState();
         this.cdr.markForCheck();
     }
 
@@ -1356,6 +1374,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             if (allowed.has(order[i])) return order[i];
         }
         return CDT_COLUMN_KIND.EXPRESSION;
+    }
+
+    /** True when `anchorId` (a column or a Params group) anchors the freeze. */
+    private isFreezeAnchor(anchorId: string): boolean {
+        return this.freezeState()?.anchorColId === anchorId;
     }
 
     // Compute the full ordered list of all colIds (excluding structural ones like 'actions')
@@ -1746,8 +1769,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const hasFieldCols = visibleFieldCols.length > 0;
         const expressionCol = this.buildExpressionColDef();
 
-        const exprGroupIsPinned =
-            hasFieldCols && this.freezeAnchorColId() === visibleFieldCols[visibleFieldCols.length - 1].colId;
+        const exprGroupIsPinned = hasFieldCols && this.isFreezeAnchor(CDT_EXPR_PARAMS_GROUP_ID);
         const exprGroupChildren: ColDef[] = exprGroupIsPinned
             ? visibleFieldCols.map((c) => ({ ...c, suppressMovable: true }))
             : visibleFieldCols;
@@ -1755,34 +1777,21 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         let exprGroupDef: ColGroupDef | null = null;
         if (hasFieldCols) {
             exprGroupDef = {
-                groupId: 'expr-params-group',
+                groupId: CDT_EXPR_PARAMS_GROUP_ID,
                 marryChildren: true,
                 headerGroupComponent: ParamsGroupHeaderComponent,
                 headerGroupComponentParams: {
                     mode: 'full',
                     ownerLabel: 'Expression',
                     onAdd: (event: MouseEvent) => this.toggleFieldPicker(event),
-                    onFreeze: () => {
-                        const ids = visibleFieldCols.map((c) => c.colId!);
-                        if (ids.length === 0) return;
-                        const lastChild = ids[ids.length - 1];
-                        if (this.freezeAnchorColId() === lastChild) {
-                            this.toggleFreeze(lastChild);
-                        } else {
-                            this.freezeThroughLastChild(ids);
-                        }
-                    },
+                    ...this.makeFreezeMenuParams(CDT_EXPR_PARAMS_GROUP_ID),
                     onHide: () =>
                         this.hideColumnGroup(
-                            'expr-params-group',
+                            CDT_EXPR_PARAMS_GROUP_ID,
                             'Params',
                             visibleFieldCols.map((c) => c.colId!)
                         ),
-                    isPinned: () => {
-                        const ids = visibleFieldCols.map((c) => c.colId!);
-                        if (ids.length === 0) return false;
-                        return this.freezeAnchorColId() === ids[ids.length - 1];
-                    },
+                    isPinned: () => this.isFreezeAnchor(CDT_EXPR_PARAMS_GROUP_ID),
                 },
                 children: exprGroupChildren,
             } as ColGroupDef;
@@ -1838,8 +1847,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const manipCol = this.buildManipulationColDef();
 
         // Freeze guard — see the equivalent comment above the expr group.
-        const manipGroupIsPinned =
-            hasManipCols && this.freezeAnchorColId() === visibleManipCols[visibleManipCols.length - 1].colId;
+        const manipGroupIsPinned = hasManipCols && this.isFreezeAnchor(CDT_MANIP_PARAMS_GROUP_ID);
         const manipGroupChildren: ColDef[] = manipGroupIsPinned
             ? visibleManipCols.map((c) => ({ ...c, suppressMovable: true }))
             : visibleManipCols;
@@ -1847,34 +1855,21 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         let manipGroupDef: ColGroupDef | null = null;
         if (hasManipCols) {
             manipGroupDef = {
-                groupId: 'manip-params-group',
+                groupId: CDT_MANIP_PARAMS_GROUP_ID,
                 marryChildren: true,
                 headerGroupComponent: ParamsGroupHeaderComponent,
                 headerGroupComponentParams: {
                     mode: 'full',
                     ownerLabel: 'Manipulation',
                     onAdd: (event: MouseEvent) => this.toggleManipFieldPicker(event),
-                    onFreeze: () => {
-                        const ids = visibleManipCols.map((c) => c.colId!);
-                        if (ids.length === 0) return;
-                        const lastChild = ids[ids.length - 1];
-                        if (this.freezeAnchorColId() === lastChild) {
-                            this.toggleFreeze(lastChild);
-                        } else {
-                            this.freezeThroughLastChild(ids);
-                        }
-                    },
+                    ...this.makeFreezeMenuParams(CDT_MANIP_PARAMS_GROUP_ID),
                     onHide: () =>
                         this.hideColumnGroup(
-                            'manip-params-group',
+                            CDT_MANIP_PARAMS_GROUP_ID,
                             'Params',
                             visibleManipCols.map((c) => c.colId!)
                         ),
-                    isPinned: () => {
-                        const ids = visibleManipCols.map((c) => c.colId!);
-                        if (ids.length === 0) return false;
-                        return this.freezeAnchorColId() === ids[ids.length - 1];
-                    },
+                    isPinned: () => this.isFreezeAnchor(CDT_MANIP_PARAMS_GROUP_ID),
                 },
                 children: manipGroupChildren,
             } as ColGroupDef;
@@ -1912,6 +1907,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const skipCol: ColDef = {
             colId: 'continue_flag',
             headerName: 'Continue',
+            // A menu with the freeze items only: the column is not hideable, so no `onHide`.
+            headerComponent: ColumnHeaderMenuComponent,
+            headerComponentParams: {
+                label: 'Continue',
+                colId: 'continue_flag',
+                ...this.makeFreezeMenuParams('continue_flag'),
+            },
             field: 'continue_flag',
             editable: true,
             minWidth: 80,
@@ -2116,18 +2118,22 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         });
     }
 
-    /** Re-applies the stored pinned/hidden state to the live grid after a column defs rebuild. */
+    /**
+     * Re-applies the freeze and hidden state to the live grid after a column defs rebuild. The
+     * frozen columns are worked out again, so a column added inside the freeze is pinned and a
+     * removed one drops out; a freeze whose anchor column was removed is cleared.
+     */
     private reapplyColumnState(): void {
-        const frozen = this.frozenColIds();
+        const freeze = this.freezeState();
+        if (freeze && this.frozenColIdsFor(freeze).length === 0) {
+            this.freezeState.set(null);
+            this.saveGridState();
+        }
+        this.applyFreeze();
+
         const hidden = this.hiddenColIds();
-        if (frozen.size === 0 && hidden.size === 0) return;
-
-        const stateUpdates: { colId: string; pinned?: 'left' | null; hide?: boolean }[] = [];
-
-        frozen.forEach((colId) => stateUpdates.push({ colId, pinned: 'left' }));
-        hidden.forEach((colId) => stateUpdates.push({ colId, hide: true }));
-
-        this.gridApi.applyColumnState({ state: stateUpdates });
+        if (hidden.size === 0) return;
+        this.gridApi.applyColumnState({ state: [...hidden].map((colId) => ({ colId, hide: true })) });
         setTimeout(() => this.updateBadgePositions(), 50);
     }
 

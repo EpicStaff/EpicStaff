@@ -29,22 +29,89 @@
                         size="16px"
                     />
                 </button>
-                @if (hasUnsavedChanges) {
-                    <span
-                        class="unsaved-indicator"
-                        matTooltip="Unsaved changes"
-                        matTooltipPosition="below"
-                        [appCollapseOnOverflow]="true"
-                        collapseOnOverflowTarget=".unsaved-text"
-                        collapseOnOverflowClass="unsaved-indicator--icon-only"
-                        collapseOnOverflowRequireSelector="app-svg-icon"
-                    >
-                        <app-svg-icon
-                            icon="circle"
-                            size="10px"
-                        />
-                        <span class="unsaved-text">Unsaved changes</span>
-                    </span>
+                @switch (saveStatus()) {
+                    @case ('unsaved') {
+                        <span
+                            class="save-status-chip save-status-chip--unsaved"
+                            matTooltip="Unsaved changes"
+                            matTooltipPosition="below"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".save-status-chip__label"
+                            collapseOnOverflowClass="save-status-chip--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                        >
+                            <app-svg-icon
+                                icon="timer-zero"
+                                size="20px"
+                            />
+                            <span class="save-status-chip__label">Unsaved changes</span>
+                        </span>
+                    }
+                    @case ('saved') {
+                        <span
+                            class="save-status-chip save-status-chip--saved"
+                            matTooltip="All changes saved"
+                            matTooltipPosition="below"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".save-status-chip__label"
+                            collapseOnOverflowClass="save-status-chip--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                        >
+                            <app-svg-icon
+                                icon="checkmark-filled"
+                                size="20px"
+                            />
+                            <span class="save-status-chip__label">Saved</span>
+                        </span>
+                    }
+                    @case ('saving') {
+                        <span
+                            class="save-status-chip save-status-chip--saving"
+                            matTooltip="Saving changes"
+                            matTooltipPosition="below"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".save-status-chip__label"
+                            collapseOnOverflowClass="save-status-chip--icon-only"
+                            collapseOnOverflowRequireSelector=".save-status-chip__spinner"
+                        >
+                            <span class="save-status-chip__spinner"></span>
+                            <span class="save-status-chip__label">Saving…</span>
+                        </span>
+                    }
+                    @case ('reconnecting') {
+                        <span
+                            class="save-status-chip save-status-chip--reconnecting"
+                            matTooltip="Reconnecting to the server. Changes by other editors will show up once the connection is back."
+                            matTooltipPosition="below"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".save-status-chip__label"
+                            collapseOnOverflowClass="save-status-chip--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                        >
+                            <app-svg-icon
+                                icon="reconnecting"
+                                size="20px"
+                            />
+                            <span class="save-status-chip__label">Reconnecting…</span>
+                        </span>
+                    }
+                    @case ('connection-lost') {
+                        <span
+                            class="save-status-chip save-status-chip--connection-lost"
+                            matTooltip="Connection to the server was lost. Reload the page to see changes by other editors."
+                            matTooltipPosition="below"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".save-status-chip__label"
+                            collapseOnOverflowClass="save-status-chip--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                        >
+                            <app-svg-icon
+                                icon="connection-lost"
+                                size="20px"
+                            />
+                            <span class="save-status-chip__label">Connection lost</span>
+                        </span>
+                    }
                 }
                 @if (runStatus(); as status) {
                     <app-status-badge [sessionStatus]="status" />

@@ -12,15 +12,19 @@ import { IHeaderGroupAngularComp } from 'ag-grid-angular';
 import { IHeaderGroupParams } from 'ag-grid-community';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CdtFreezeMenuItem, CdtFreezeSide } from '../shared/column-freeze.util';
 import { OverlayMenuController } from '../shared/overlay-menu.util';
 
 export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
     mode?: 'add-only' | 'full';
     ownerLabel?: string;
     onAdd?: (event: MouseEvent) => void;
-    onFreeze?: () => void;
+    onFreezeToggle?: (side: CdtFreezeSide) => void;
     onHide?: () => void;
+    /** True while the group anchors the freeze; hides the drag grip. */
     isPinned?: () => boolean;
+    /** The freeze items as they stand when the menu opens */
+    getFreezeMenuItems?: () => CdtFreezeMenuItem[];
 }
 
 @Component({
@@ -72,16 +76,17 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
 
         <ng-template #menuTemplate>
             <div class="params-dropdown">
-                <div
-                    class="params-dropdown-item"
-                    (click)="handleFreeze()"
-                >
-                    @if (isPinned && isPinned()) {
-                        Unfreeze All Columns
-                    } @else {
-                        Freeze Up to This Column
-                    }
-                </div>
+                @for (item of freezeMenuItems; track item.side) {
+                    <div
+                        class="params-dropdown-item"
+                        [class.params-dropdown-item--disabled]="item.disabledReason"
+                        [attr.title]="item.disabledReason"
+                        [attr.aria-disabled]="item.disabledReason ? true : null"
+                        (click)="handleFreeze(item)"
+                    >
+                        {{ item.label }}
+                    </div>
+                }
                 <div
                     class="params-dropdown-item"
                     (click)="handleHide()"
@@ -203,6 +208,12 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             .params-dropdown-item:hover {
                 background: rgba(104, 95, 255, 0.2);
             }
+            .params-dropdown-item--disabled,
+            .params-dropdown-item--disabled:hover {
+                background: transparent;
+                color: var(--color-text-disabled);
+                cursor: not-allowed;
+            }
         `,
     ],
 })
@@ -213,9 +224,11 @@ export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDe
     mode: 'add-only' | 'full' = 'full';
     ownerLabel = '';
     private onAdd: ((event: MouseEvent) => void) | undefined;
-    private onFreeze: (() => void) | undefined;
+    private onFreezeToggle: ((side: CdtFreezeSide) => void) | undefined;
     private onHide: (() => void) | undefined;
+    private getFreezeMenuItems: (() => CdtFreezeMenuItem[]) | undefined;
     isPinned: (() => boolean) | undefined;
+    freezeMenuItems: CdtFreezeMenuItem[] = [];
 
     private overlay = inject(Overlay);
     private vcr = inject(ViewContainerRef);
@@ -225,9 +238,10 @@ export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDe
         this.mode = params.mode ?? 'full';
         this.ownerLabel = params.ownerLabel ?? '';
         this.onAdd = params.onAdd;
-        this.onFreeze = params.onFreeze;
+        this.onFreezeToggle = params.onFreezeToggle;
         this.onHide = params.onHide;
         this.isPinned = params.isPinned;
+        this.getFreezeMenuItems = params.getFreezeMenuItems;
     }
 
     refresh(): boolean {
@@ -241,12 +255,14 @@ export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDe
 
     toggleMenu(event: MouseEvent): void {
         event.stopPropagation();
+        this.freezeMenuItems = this.getFreezeMenuItems?.() ?? [];
         this.menuCtrl.toggle(event.currentTarget as HTMLElement, this.menuTemplate);
     }
 
-    handleFreeze(): void {
+    handleFreeze(item: CdtFreezeMenuItem): void {
+        if (item.disabledReason) return;
         this.menuCtrl.close();
-        this.onFreeze?.();
+        this.onFreezeToggle?.(item.side);
     }
 
     handleHide(): void {
