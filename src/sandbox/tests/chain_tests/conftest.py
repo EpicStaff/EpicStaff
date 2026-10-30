@@ -234,7 +234,8 @@ def make_execute_context(base_dir: Path, **overrides: Any) -> dict[str, Any]:
     exec_dir = _exec_dir(base_dir)
     home_path = exec_dir / "home"
     tmp_path = exec_dir / "tmp"
-    for directory in (exec_dir, home_path, tmp_path):
+    work_dir = exec_dir / "work"
+    for directory in (exec_dir, home_path, tmp_path, work_dir):
         directory.mkdir(parents=True, exist_ok=True)
 
     context: dict[str, Any] = {
@@ -243,7 +244,7 @@ def make_execute_context(base_dir: Path, **overrides: Any) -> dict[str, Any]:
         "result_file_path": exec_dir / "output.txt",
         "home_path": str(home_path),
         "tmp_path": str(tmp_path),
-        "work_dir": str(exec_dir),
+        "work_dir": str(work_dir),
         "code": "def main():\n    return 1",
         "entrypoint": "main",
         "func_kwargs": {},

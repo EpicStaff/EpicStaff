@@ -42,6 +42,7 @@ REQUIRED = {
     "CHAT_DJANGO_URL": "http://django_app:8000",
     "CHAT_DJANGO_HOST_HEADER": "localhost",
     "DJANGO_API_KEY": "k" * 32,
+    "CHAT_INTERNAL_API_KEY": "i" * 32,
     "CHAT_PUBLIC_BASE_URL": "http://localhost",
     "CHAT_WIDGET_URL": "https://cdn.example.test/epicchat/embed.js",
     "CHAT_CALLBACK_URL": "http://chat:8200/chat/internal/v1/session-callbacks",
@@ -158,7 +159,7 @@ def test_every_setting_is_required_with_no_code_default(environ, name):
         load_settings(Env())
 
 
-@pytest.mark.parametrize("name", ["DJANGO_API_KEY", "CHAT_DB_PASSWORD"])
+@pytest.mark.parametrize("name", ["DJANGO_API_KEY", "CHAT_DB_PASSWORD", "CHAT_INTERNAL_API_KEY"])
 @pytest.mark.parametrize("value", ["", "   ", "none", "NONE"])
 def test_secrets_refuse_empty_or_none(load, name, value):
     with pytest.raises(EnvironmentBlankError, match=name):

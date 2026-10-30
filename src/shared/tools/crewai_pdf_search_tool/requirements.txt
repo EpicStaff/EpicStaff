@@ -1,4 +1,0 @@
-pydantic
-pdfplumber
-openai
-numpy

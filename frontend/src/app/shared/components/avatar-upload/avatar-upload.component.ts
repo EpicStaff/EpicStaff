@@ -7,13 +7,14 @@ import { ToastService } from '../../../services/notifications';
 import { FileSizePipe } from '../../pipes/file-size.pipe';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { FileUploaderComponent } from '../file-uploader/file-uploader.component';
+import { UserAvatarComponent } from '../user-avatar/user-avatar.component';
 import { ImageCropperDialogComponent } from './image-cropper-dialog/image-cropper-dialog.component';
 
 @Component({
     selector: 'app-avatar-upload',
     templateUrl: './avatar-upload.component.html',
     styleUrls: ['./avatar-upload.component.scss'],
-    imports: [FileUploaderComponent, AppSvgIconComponent, MatTooltipModule, FileSizePipe],
+    imports: [FileUploaderComponent, AppSvgIconComponent, MatTooltipModule, FileSizePipe, UserAvatarComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AvatarUploadComponent {

@@ -14,6 +14,7 @@ from loguru import logger
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.llm.client import LLMChunk
+from app.logging_utils import format_exception_for_log
 from app.usage import TokenUsageAccumulator
 from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import LoopResult, ToolResult
@@ -71,7 +72,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
                 "failed to publish live {} correlation_id={} error={}",
                 event_type,
                 self._correlation_id,
-                error,
+                format_exception_for_log(error),
             )
 
     async def on_task_start(self, task_name: str, task_order: int) -> None:

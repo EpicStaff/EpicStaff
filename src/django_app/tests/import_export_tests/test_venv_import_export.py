@@ -2,16 +2,14 @@
 
 The environment itself lives in the sandbox service and only its binding lives
 here, so this is the one entity whose import writes outside the transaction. The
-sandbox is the external boundary and the only thing replaced: `FakeSandbox` stands
-in for it and records what it was asked to create and remove.
+sandbox is the external boundary and the only thing replaced: the `sandbox` fixture
+stands in for it and records what it was asked to create and remove.
 
 Two numbers are deliberately kept apart throughout: a binding's pk, which is what
 the file and the rest of django use, and the id the sandbox knows the environment
 under. Confusing them would run code in the wrong environment, so no test lets
 them coincide.
 """
-
-from unittest.mock import patch
 
 import pytest
 from proxies.sandbox.models import SandboxVenvBinding
@@ -27,75 +25,13 @@ from tables.import_export.schemas import ImportSettings
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.models import PythonCode, PythonCodeTool
-
-STRATEGY_CLIENT = "tables.import_export.strategies.venv.SandboxVenvClient"
-IMPORT_CLIENT = "tables.import_export.services.import_service.SandboxVenvClient"
-
-
-class FakeSandbox:
-    """The sandbox service, as far as import/export can see it.
-
-    Holds the environments it was told about, hands out ids of its own, and records
-    every removal so a rollback can be checked.
-    """
-
-    def __init__(self, venvs: dict | None = None):
-        self.venvs = dict(venvs or {})
-        self.removed: list[str] = []
-        self._next_id = 9000
-
-    def __call__(self, *args, **kwargs):
-        return self
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc_info):
-        return False
-
-    def create(self, data: dict) -> dict:
-        self._next_id += 1
-        venv = {
-            "id": self._next_id,
-            "name": data["name"],
-            "libs": data["libs"],
-            "status": "declared",
-        }
-        self.venvs[self._next_id] = venv
-        return venv
-
-    def retrieve(self, venv_id: str) -> dict:
-        return self.venvs[int(venv_id)]
-
-    def list(self, ids, limit=None, offset=None) -> dict:
-        wanted = {int(venv_id) for venv_id in ids}
-        return {"result": [v for key, v in self.venvs.items() if key in wanted]}
-
-    def remove(self, venv_id: str) -> None:
-        self.removed.append(venv_id)
-
-
-@pytest.fixture
-def sandbox():
-    fake = FakeSandbox()
-    with patch(STRATEGY_CLIENT, fake), patch(IMPORT_CLIENT, fake):
-        yield fake
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
+from tests.import_export_tests.venv_fakes import upstream_venv
 
 
 @pytest.fixture
 def target_org(db):
     return Organization.objects.create(name="Org venv import target")
-
-
-def upstream_venv(sandbox, org, *, name="scraper-venv", libs=None, status="completed", venv_id):
-    """An environment the sandbox already has, bound to `org`."""
-    sandbox.venvs[venv_id] = {
-        "id": venv_id,
-        "name": name,
-        "libs": libs if libs is not None else [{"name": "httpx", "specification": ">=0.28"}],
-        "status": status,
-    }
-    return SandboxVenvBinding.objects.create(org_id=org.id, resource_id=str(venv_id))
 
 
 def tool_in(org, binding, *, name="Fetch orders", code="def main(): return 1"):
@@ -106,9 +42,13 @@ def tool_in(org, binding, *, name="Fetch orders", code="def main(): return 1"):
 
 
 def export_tool(tool, org):
-    return ExportService(entity_registry).export_entities(
-        EntityType.PYTHON_CODE_TOOL, [tool.id], org_id=org.id
+    export_result = ExportService(entity_registry).export_entities(
+        EntityType.PYTHON_CODE_TOOL,
+        [tool.id],
+        org_id=org.id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
     )
+    return export_result.data
 
 
 def import_into(export_data, org, user=None, effective_permissions=None):

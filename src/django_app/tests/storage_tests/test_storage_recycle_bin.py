@@ -10,8 +10,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
-from rbac.models import OrganizationUser, Role, RolePermission
-from rbac.models.enums import Permission, ResourceType
+from rbac.models.enums import Permission
 from tables.exceptions import NotInRecycleBinError, StorageRestoreConflictError
 from tables.models import StorageFile
 from tables.services.storage_service.manager import StorageManager
@@ -202,20 +201,6 @@ def real_manager():
         yield storage_manager
 
 
-@pytest.fixture
-def client_with_files_bits(client_as, django_user_model, acme):
-    def _make(bits: Permission) -> APIClient:
-        role = Role.objects.create(name=f"Files {int(bits)}", org=acme, is_built_in=False)
-        RolePermission.objects.create(role=role, resource_type=ResourceType.FILES.value, permissions=int(bits))
-        user = django_user_model.objects.create_user(email=f"files-{int(bits)}@example.com", password="StrongPass123!")
-        OrganizationUser.objects.create(user=user, org=acme, role=role)
-        client = client_as(user)
-        client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-        return client
-
-    return _make
-
-
 def _binned(manager, org, path, content=b"x") -> StorageFile:
     seed_file(manager._backend, org.id, path, content)
     manager.delete(org.id, path, user=None)
@@ -256,6 +241,7 @@ class TestStorageBinApi:
             "days_left",
             "details",
             "contents",
+            "hidden_contents",
             "contents_total",
         }
         folder_details = {detail["label"]: detail["value"] for detail in entries[0]["details"]}
@@ -472,6 +458,7 @@ class TestStorageBinApi:
         assert response.status_code == 200, response.content
         assert response.json() == {
             "contents": [{"name": f"f{index}.txt", "kind": "file"} for index in range(3)],
+            "hidden_contents": [],
             "contents_total": 3,
         }
         assert admin_client.get(f"{BIN}{child.pk}/contents/").status_code == 404

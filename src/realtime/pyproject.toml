@@ -19,6 +19,7 @@ dependencies = [
     "openai==1.58.1",
     "pydantic[email]==2.13.4",
     "python-dotenv==1.2.2",
+    "python-multipart==0.0.32",
     "redis==5.3.1",
     "sqlalchemy==2.0.51",
     "tiktoken==0.9.0",

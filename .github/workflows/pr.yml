@@ -35,6 +35,7 @@ jobs:
       nginx_plugin_labs: ${{ steps.filter.outputs.nginx_plugin_labs }}
       plugin_node_lab: ${{ steps.filter.outputs.plugin_node_lab }}
       py_services: ${{ steps.filter.outputs.py_services }}
+      retention: ${{ steps.filter.outputs.retention }}
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -155,6 +156,14 @@ jobs:
           # database helpers with the Weather sample, against plugins_db as
           # src/docker-compose.yaml defines it (image, init script, pg_hba.conf).
           filter plugins_db "^(src/es_plugins/|src/plugins_db/|src/plugin_sdk/|plugin-samples/weather/database/|plugin-samples/weather/backend/|src/docker-compose\.yaml$|$backend_wide)"
+
+          # The manager suite and the contract between its session purge and the
+          # Django schema it deletes from: any app's models (a new foreign key to
+          # Session, a changed table), the callback statuses the contract test
+          # compares, the manager role's grant matrix it checks, Django's
+          # settings, dependencies and test set-up (the contract test loads them),
+          # and the env file the job generates.
+          filter retention "^(src/manager/|src/django_app/tables/service_db_grants\.py$|src/django_app/[^/]+/(models/|models\.py$)|src/django_app/tables/services/session_callbacks/|src/django_app/django_app/settings/|src/django_app/(pyproject\.toml|uv\.lock)$|src/django_app/tests/[^/]+\.py$|src/django_app/tests/model_tests/test_session_retention_contract\.py$|src/env\.yaml$|scripts/envtool\.py$|$backend_wide)"
 
   # Deliberately NOT gated on vars.CLA_ENFORCED, unlike check-cla below. That
   # toggle controls signature enforcement; this is repo hygiene. An edit to
@@ -628,6 +637,80 @@ jobs:
       - name: Unit tests
         run: make chat-tests
 
+  # The manager suite, which runs nowhere else and needs neither a database nor Redis,
+  # and django_app's session retention contract. The manager's nightly purge deletes
+  # sessions with raw SQL, so Django's cascade never runs; the contract test fails when a
+  # new foreign key to Session is missing from src/shared/retention.py, or a table the
+  # purge touches is not granted to the manager role in
+  # src/django_app/tables/service_db_grants.py. Neither runs the purge SQL against a
+  # database. The contract test reads only model metadata and the grant matrix, so
+  # pytest-django creates no test database, but every django test clears the Redis cache
+  # first (the autouse clear_cache fixture in tests/fixtures.py), hence the redis service.
+  retention-purge-tests:
+    needs: changes
+    if: needs.changes.outputs.retention == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      redis:
+        # The stack runs the unpinned `redis` image with an ACL user, set on its command
+        # line, which a service container cannot override; this one runs without a
+        # password, and REDIS_USER and REDIS_PASSWORD are empty below to match.
+        image: redis:8.10.2@sha256:97ec88159e6d7cfb5ddef9015386087d58a912de80112f06ebdfa78fa5989901
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # Matches the service Dockerfiles: without this uv may fetch its own
+      # interpreter instead of the one set up below.
+      UV_PYTHON_DOWNLOADS: never
+      # Both settings modules read src/.env, but a variable already in the process
+      # environment wins (Env.read_env never overrides). These point django_app at the
+      # redis service container, which runs without a password.
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      REDIS_USER: ""
+      REDIS_PASSWORD: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install uv
+        run: python -m pip install --no-cache-dir uv==0.11.21
+
+      - name: Cache uv downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-retention-${{ hashFiles('src/manager/uv.lock', 'src/django_app/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-retention-
+
+      # Same reason as the matrix job: settings read src/.env at import time.
+      - name: Generate dev env from env.yaml
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/envtool.py --dev
+
+      # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
+      # rather than silently resolving to something the Docker build never saw.
+      - name: Install manager and django_app dependencies
+        run: |
+          make uv-sync svc=manager
+          make uv-sync svc=django_app
+
+      - name: Manager tests
+        run: make manager-tests
+
+      # Runs even when the manager tests failed, so one never hides the other.
+      - name: Session retention contract
+        if: ${{ !cancelled() }}
+        run: make django-tests ARGS="tests/model_tests/test_session_retention_contract.py"
+
   # The tests marked `postgres` of es_plugins and plugin_sdk, which skip in
   # backend-tests, against a throwaway plugins_db that src/plugins_db/lab/run.sh
   # starts as src/docker-compose.yaml defines it, with the real init script and
@@ -638,6 +721,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.plugins_db == 'true'
     runs-on: ubuntu-latest
+    # A normal run takes under two minutes; a hang fails here instead of after six hours.
+    timeout-minutes: 10
     env:
       # Matches the service Dockerfiles: without this uv may fetch its own
       # interpreter instead of the one set up below.
@@ -858,7 +943,8 @@ jobs:
   # 2026-09-21 three separate circular-import bugs reached main and left the
   # Django app unable to start, and the build job below stayed green through all
   # three, because it only builds the images and never imports the application.
-  # This is meant to be temporary.
+  # This is meant to be temporary. The one exception is the session retention
+  # contract file, which retention-purge-tests runs above.
 
   build:
     needs: [changes, check-cla, check-external-urls, check-rbac-boundary, check-backend-notices, frontend-checks]
@@ -895,6 +981,7 @@ jobs:
       - sandbox-tests
       - sandbox-new-import-contracts
       - chat-tests
+      - retention-purge-tests
       - es-plugins-database-tests
       - plugin-sdk-checks
       - nginx-templates

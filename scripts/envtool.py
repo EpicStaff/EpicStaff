@@ -10,16 +10,27 @@ Requires: PyYAML  (pip install pyyaml)
 """
 
 import argparse
+import os
 import re
+import secrets
+import shutil
+import string
 import sys
+import tempfile
 import textwrap
+from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
+from urllib.parse import urlsplit
 
 import yaml
 
 BASE_DIR = Path(__file__).resolve().parents[1] / "src"
+# Reuse the services' boolean words instead of a copy that could drift.
+sys.path.insert(0, str(BASE_DIR.parent))
+from src.shared import humanize
+from src.shared.envtools import Env
 
 BANNER = """
 # ==================================================================================================
@@ -37,6 +48,19 @@ BANNER = """
 # `# NAME=<enter your value>` are REQUIRED and have no default. Uncomment them and
 # set a value. Every uncommented variable already has a working default.
 """
+SETUP_BANNER = """
+# ==================================================================================================
+# EpicStaff environment configuration
+# ==================================================================================================
+# GENERATED FROM: {schema_file}
+# GENERATED AT: {timestamp}
+#
+# Written by `python scripts/envtool.py --setup`. It holds the credentials the databases were
+# created with: keep it private and back it up. Run `--setup` again to turn features on or off,
+# add missing settings, or start over while keeping these credentials.
+#
+# Running `envtool.py` without `--setup` overwrites this file and its credentials.
+"""
 GROUP_TITLE_PATTERN = """
 # ==================================================================================================
 # {group}
@@ -47,6 +71,167 @@ DEFAULT_VARIABLE_PATTERN = "{name}={default}\n"
 UPDATE_HEADER = "\n# Added by envtool --update on {day} ({target} defaults)\n"
 # `NAME=...` or `export NAME=...`; a commented line never matches, so it counts as not set.
 SET_VARIABLE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=", re.MULTILINE)
+# One active assignment line, split so the value can be replaced without touching the rest.
+ASSIGNMENT_LINE = re.compile(
+    r"(?P<head>\s*(?:export\s+)?(?P<name>[A-Za-z_]\w*)\s*=\s*)"
+    r"(?P<value>\"(?:[^\"\\]|\\.)*\"|'[^']*'|.*?)"
+    r"(?P<comment>\s+#.*)?"
+)
+
+
+class Feature(NamedTuple):
+    label: str
+    flag: str
+    profile: str
+    services: tuple[str, ...]
+    settings: tuple[str, ...]  # tuned only while the feature is on
+
+
+# A feature is on only when its flag is true AND its compose profile is active; the wizard
+# writes both together so they cannot drift apart.
+FEATURES = (
+    Feature("Chat", "CHAT_ENABLED", "chat", ("chat", "chatdb"), ("CHAT_WORKERS", "CHAT_LOG_LEVEL")),
+    Feature(
+        "Audit trail",
+        "AUDIT_TRAIL_ENABLED",
+        "auditor",
+        ("auditor", "opensearch"),
+        ("AUDITOR_LOG_LEVEL",),
+    ),
+    Feature(
+        "Plugins", "PLUGINS_ENABLED", "plugins", ("es_plugins", "plugins_db", "plugins_egress"), ()
+    ),
+)
+# Default none in every target: django_app, nginx, es_plugins and plugins_db refuse none while
+# plugins are on, so the wizard generates them even for local files.
+PLUGIN_SECRETS = (
+    "PLUGINS_GATEWAY_SECRET",
+    "PLUGINS_NODE_KEY",
+    "PLUGINS_DB_SUPERUSER_PASSWORD",
+    "PLUGINS_DB_ADMIN_PASSWORD",
+    "PLUGINS_DB_BACKUP_PASSWORD",
+)
+GENERATED_SECRETS = (
+    "DB_PASSWORD",
+    "REDIS_PASSWORD",
+    "STORAGE_PASSWORD",
+    "DJANGO_SECRET_KEY",
+    "DJANGO_API_KEY",
+    "REALTIME_DB_PASSWORD",
+    "MANAGER_DB_PASSWORD",
+    "KNOWLEDGE_DB_PASSWORD",
+    "SANDBOX_DB_PASSWORD",
+    "CHAT_DB_PASSWORD",
+    "AUDITOR_INGEST_API_KEY",
+    "AUDIT_JWT_SECRET",
+    "OPENSEARCH_PASSWORD",
+    "AVATAR_URL_SIGNING_SECRET",
+    *PLUGIN_SECRETS,
+)
+PRODUCTION_USERNAMES = {
+    "DB_USER": "epicstaff",
+    "REDIS_USER": "epicstaff",
+    "STORAGE_USER": "epicstaff",
+    "REALTIME_DB_USER": "epicstaff_realtime",
+    "MANAGER_DB_USER": "epicstaff_manager",
+    "KNOWLEDGE_DB_USER": "epicstaff_knowledge",
+    "SANDBOX_DB_USER": "epicstaff_sandbox",
+}
+# Letters and digits only: several secrets end up inside URLs (redis://user:password@host)
+# and compose expands `$`.
+# Regenerated on every start over: nothing stored depends on them (the system API key row is
+# reseeded on restart), and older installs ran with publicly known values.
+ROTATED_KEYS = ("DJANGO_API_KEY", "AUDITOR_INGEST_API_KEY", "AUDIT_JWT_SECRET")
+# Credentials that earlier EpicStaff templates published; never carried into production.
+PUBLISHED_VALUES = frozenset(
+    {
+        "akunamatata",
+        "epicstaff_realtime_api_key",
+        "es_debug_only_system_key_change_me",
+        "knowledge_db_password",
+        "manager_db_password",
+        "realtime_db_password",
+        "redis_password",
+        "root_password",
+    }
+)
+SECRET_ALPHABET = string.ascii_letters + string.digits
+SECRET_LENGTH = 32
+SERVING_MODES = {
+    "nginx-tls": {
+        "NGINX_SSL_MODE": "on",
+        "NGINX_HSTS_ENABLED": "true",
+        "DJANGO_REFRESH_COOKIE_SECURE": "true",
+    },
+    "proxy-tls": {
+        "NGINX_SSL_MODE": "off",
+        "NGINX_HSTS_ENABLED": "true",
+        "DJANGO_REFRESH_COOKIE_SECURE": "true",
+    },
+    "http": {
+        "NGINX_SSL_MODE": "off",
+        "NGINX_HSTS_ENABLED": "false",
+        "DJANGO_REFRESH_COOKIE_SECURE": "false",
+    },
+}
+SERVING_MODE_CHOICES = {
+    "nginx-tls": "HTTPS, nginx holds the certificate (in src/nginx/certs)",
+    "proxy-tls": "HTTPS, a load balancer or proxy in front holds the certificate",
+    "http": "Plain HTTP (LAN or VPN, no domain)",
+}
+SETUP_ACTIONS = {
+    "change-features": "Change features",
+    "tune": "Tune performance and limits",
+    "add-missing": "Add missing settings",
+    "start-over": "Start over",
+    "quit": "Quit",
+}
+SERVER_SIZES = {
+    "small": "Small: 1-3 CPU cores (the defaults)",
+    "medium": "Medium: 4-7 CPU cores",
+    "large": "Large: 8 or more CPU cores",
+}
+# Postgres has ~97 usable connections and the other services take ~40; django_app holds up to
+# DJANGO_SGI_WORKERS x DJANGO_DB_POOL_MAX_SIZE + 4. chatdb is a separate Postgres (6 workers max).
+SERVER_SIZE_VALUES = {
+    "small": {"DJANGO_SGI_WORKERS": "1", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "1"},
+    "medium": {"DJANGO_SGI_WORKERS": "2", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "2"},
+    "large": {"DJANGO_SGI_WORKERS": "3", "DJANGO_DB_POOL_MAX_SIZE": "12", "CHAT_WORKERS": "4"},
+}
+# Sandbox limit -> (description, how long crew waits for the result). Crew must wait longer than
+# the sandbox may run, with room for library installation.
+CODE_TIME_LIMITS = {
+    "5m": ("5 minutes", "15m"),
+    "30m": ("30 minutes (the default)", "40m"),
+    "2h": ("2 hours (flows also need a time to live above 2 hours)", "130m"),
+}
+# Only the levels every service accepts: Django has no TRACE or SUCCESS, uvicorn (auditor,
+# webhook) no BENCH. TRACE, BENCH and SUCCESS stay per-service settings in the file.
+LOG_CHOICES = {
+    "debug": (
+        "DEBUG: for troubleshooting only; logs conversation text, flow messages, webhook "
+        "bodies, code results and tool-call arguments of every organization"
+    ),
+    "info": "INFO: the default",
+    "warning": "WARNING: only problems",
+    "error": "ERROR: only failures",
+    "critical": "CRITICAL: only failures that stop a service",
+}
+DEBUG_REMINDER = "Verbose logging is on: set the *_LOG_LEVEL values back to INFO when you are done."
+CLEAR_SCREEN = "\033[2J\033[H"
+BOLD, DIM, RED, GREEN, YELLOW, CYAN = "1", "2", "31", "32", "33", "36"
+# The rules django_app's plugin start-up checks apply: a lower-case DNS label, and a last label
+# browsers read as a number makes the host an IP address.
+DNS_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
+NUMERIC_LABEL = re.compile(r"[0-9]+|0[xX][0-9A-Fa-f]*")
+# The local host the plugin development guide uses: bare localhost is refused with plugins on.
+LOCAL_PLUGINS_HOST = {
+    "NGINX_SERVER_NAME": "epicstaff.localhost",
+    "DJANGO_FRONTEND_BASE_URL": "http://epicstaff.localhost",
+}
+FIXED_PRODUCTION_VALUES = {
+    "DJANGO_AUTH_URL": "http://django:8000",
+}
 
 
 def load_schema(schema_file: Path) -> dict:
@@ -70,6 +255,141 @@ def resolve_default(declaration: dict, target: Literal["prod", "dev"]):
     return default.get(target) if isinstance(default, dict) else default
 
 
+def target_defaults(schema: dict, target: Literal["prod", "dev"]) -> dict:
+    return {
+        name: resolve_default(declaration, target)
+        for variables in schema["groups"].values()
+        for name, declaration in variables["vars"].items()
+    }
+
+
+def generate_secret(name: str) -> str:
+    if name == "AVATAR_URL_SIGNING_SECRET":
+        return secrets.token_hex(32)  # nginx pastes it literally into its config: hex only
+    characters = [secrets.choice(SECRET_ALPHABET) for _ in range(SECRET_LENGTH)]
+    if name == "OPENSEARCH_PASSWORD":
+        # OpenSearch's strength policy wants upper, lower, digit and special characters.
+        required = [
+            secrets.choice(string.ascii_uppercase),
+            secrets.choice(string.ascii_lowercase),
+            secrets.choice(string.digits),
+            "_",
+        ]
+        positions = secrets.SystemRandom().sample(range(SECRET_LENGTH), len(required))
+        for index, character in zip(positions, required, strict=True):
+            characters[index] = character
+    return "".join(characters)
+
+
+def parse_profiles(value: str) -> list[str]:
+    profiles = [profile.strip() for profile in value.split(",")]
+    return [profile for profile in profiles if profile and profile.lower() != "none"]
+
+
+def feature_values(enabled: dict[str, bool], current_profiles: str, local: bool) -> dict[str, str]:
+    """Flag values plus the matching COMPOSE_PROFILES, keeping profiles the wizard does not own."""
+    owned = {feature.profile for feature in FEATURES} | {"dev"}
+    profiles = [profile for profile in parse_profiles(current_profiles) if profile not in owned]
+    if local:
+        profiles.append("dev")
+    profiles += [feature.profile for feature in FEATURES if enabled[feature.flag]]
+    values = {feature.flag: "true" if enabled[feature.flag] else "false" for feature in FEATURES}
+    values["COMPOSE_PROFILES"] = ",".join(profiles) or "none"
+    return values
+
+
+def normalize_public_url(url: str) -> str:
+    parts = urlsplit(url.strip())
+    scheme = parts.scheme.lower()
+    if scheme not in ("http", "https") or not parts.hostname:
+        raise ValueError("Enter the full URL with its scheme, e.g. https://epicstaff.example.com")
+    if parts.path not in ("", "/") or parts.query or parts.fragment:
+        raise ValueError("Enter only the origin: no path, query or fragment.")
+    port = f":{parts.port}" if parts.port else ""
+    return f"{scheme}://{parts.hostname}{port}"
+
+
+def check_scheme_matches(public_url: str, serving_mode: str) -> None:
+    secure = urlsplit(public_url).scheme == "https"
+    if secure != (serving_mode != "http"):
+        expected = "https" if serving_mode != "http" else "http"
+        raise ValueError(
+            f"{public_url} does not match this choice: it should start with {expected}://."
+        )
+
+
+def validate_image_tag(tag: str) -> str:
+    tag = tag.strip()
+    if not tag or tag.lower() == "latest":
+        raise ValueError(
+            "Enter a release tag such as v1.3.0; `latest` changes under you on every pull."
+        )
+    return tag
+
+
+def plugins_host_problem(public_url: str) -> str | None:
+    """Why django_app would refuse plugins with EpicStaff served at `public_url`, if it would."""
+    parts = urlsplit(public_url)
+    host = parts.hostname or ""
+    if not host or NUMERIC_LABEL.fullmatch(host.rsplit(".", 1)[-1]):
+        return "plugins need EpicStaff served under a host name, not an IP address"
+    if parts.scheme != "https" and not host.endswith(".localhost"):
+        return "plugins need HTTPS; plain HTTP works only for a .localhost host"
+    return None
+
+
+def validate_plugins_domain(domain: str, public_url: str) -> str:
+    domain = domain.strip().lower().rstrip(".")
+    labels = domain.split(".")
+    if len(labels) < 2 or len(domain) > 253 or not all(map(DNS_LABEL.fullmatch, labels)):
+        raise ValueError("Enter a domain name such as plugins.example.com.")
+    if domain.endswith(".invalid"):
+        raise ValueError(f"{domain} is a placeholder: enter the real domain.")
+    parts = urlsplit(public_url)
+    if parts.scheme != "https" and not domain.endswith(".localhost"):
+        raise ValueError("Over plain HTTP the plugin domain must end in .localhost.")
+    host = parts.hostname or ""
+    if host == domain or host.endswith(f".{domain}"):
+        # A plugin identifier could then name EpicStaff's own host.
+        raise ValueError(
+            f"{host} is under {domain}: use a domain beside it, such as plugins.example.com "
+            "for epicstaff.example.com."
+        )
+    return domain
+
+
+def production_values(public_url: str, serving_mode: str, image_tag: str) -> dict[str, str]:
+    """Every production value that follows from the wizard's answers (secrets and features aside)."""
+    public_url = normalize_public_url(public_url)
+    check_scheme_matches(public_url, serving_mode)
+    return {
+        "DJANGO_FRONTEND_BASE_URL": public_url,
+        "CHAT_PUBLIC_BASE_URL": public_url,
+        "DJANGO_CORS_ALLOWED_ORIGINS": public_url,
+        "NGINX_SERVER_NAME": urlsplit(public_url).hostname,
+        **SERVING_MODES[serving_mode],
+        "IMAGE_TAG": validate_image_tag(image_tag),
+        **FIXED_PRODUCTION_VALUES,
+        **PRODUCTION_USERNAMES,
+    }
+
+
+def production_required(schema: dict) -> list[str]:
+    return [
+        name
+        for variables in schema["groups"].values()
+        for name, declaration in variables["vars"].items()
+        if resolve_default(declaration, "prod") is None
+    ]
+
+
+def production_coverage_gaps(schema: dict) -> list[str]:
+    """Production-required variables the wizard neither generates, asks for nor fills."""
+    covered = set(GENERATED_SECRETS) | {feature.flag for feature in FEATURES}
+    covered |= production_values("https://host", "nginx-tls", "v1").keys()
+    return [name for name in production_required(schema) if name not in covered]
+
+
 def render_variable(name: str, declaration: dict, default) -> str:
     description = declaration.get("description")
     text = render_description(description) if description else ""
@@ -78,11 +398,22 @@ def render_variable(name: str, declaration: dict, default) -> str:
     return text + DEFAULT_VARIABLE_PATTERN.format(name=name, default=default)
 
 
+def pick_default(name: str, declaration: dict, target, overrides: dict[str, str] | None):
+    if overrides and name in overrides:
+        return overrides[name]
+    return resolve_default(declaration, target)
+
+
 def generate_env_file(
-    schema: dict, target: Literal["prod", "dev"], schema_file: Path, env_file: Path
+    schema: dict,
+    target: Literal["prod", "dev"],
+    schema_file: Path,
+    env_file: Path,
+    overrides: dict[str, str] | None = None,
+    banner: str = BANNER,
 ):
     content = [
-        BANNER.format(
+        banner.format(
             schema_file=schema_file.relative_to(BASE_DIR.parent),
             timestamp=datetime.now().astimezone(),
         )
@@ -91,14 +422,19 @@ def generate_env_file(
         content.append(GROUP_TITLE_PATTERN.format(group=group.title()))
 
         for name, declaration in variables["vars"].items():
-            content.append(render_variable(name, declaration, resolve_default(declaration, target)))
+            default = pick_default(name, declaration, target, overrides)
+            content.append(render_variable(name, declaration, default))
 
     content = "".join(content)
     env_file.write_text(content, encoding="utf-8", newline="\n")
 
 
 def update_env_file(
-    schema: dict, target: Literal["prod", "dev"], env_file: Path, day: date
+    schema: dict,
+    target: Literal["prod", "dev"],
+    env_file: Path,
+    day: date,
+    overrides: dict[str, str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Append the variables `env_file` does not set yet, leaving every existing line as it is.
 
@@ -116,7 +452,7 @@ def update_env_file(
         for name, declaration in variables["vars"].items():
             if name in already_set:
                 continue
-            default = resolve_default(declaration, target)
+            default = pick_default(name, declaration, target, overrides)
             if default is None:
                 needs_value.append(name)
                 placeholder = rf"^#\s*(?:export\s+)?{re.escape(name)}=<enter your value>\s*$"
@@ -135,6 +471,75 @@ def update_env_file(
     return added, needs_value
 
 
+def read_env_values(text: str) -> dict[str, str]:
+    """Values of the active assignments in `.env` text, as compose would read them."""
+    values = {}
+    for line in text.lstrip("﻿").splitlines():
+        match = ASSIGNMENT_LINE.fullmatch(line)
+        if not match:
+            continue
+        value = match["value"].strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        values[match["name"]] = value
+    return values
+
+
+def rewrite_env_values(env_file: Path, values: dict[str, str]) -> None:
+    """Set `values` in `env_file`, touching only their value text; other bytes stay as they are.
+
+    A name with no active line replaces its `# NAME=<enter your value>` placeholder, or is
+    appended when there is none.
+    """
+    env_file = env_file.resolve()  # edit a symlinked `.env` in place instead of replacing the link
+    raw = env_file.read_bytes()
+    byte_order_mark = raw.startswith(b"\xef\xbb\xbf")
+    original = raw.decode("utf-8-sig")
+    newline = "\r\n" if "\r\n" in original else "\n"
+    remaining = dict(values)
+    lines = original.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        body = line.rstrip("\r\n")
+        ending = line[len(body) :]
+        match = ASSIGNMENT_LINE.fullmatch(body)
+        if match and match["name"] in values:
+            lines[index] = match["head"] + values[match["name"]] + (match["comment"] or "") + ending
+            remaining.pop(match["name"], None)
+    for name in list(remaining):
+        placeholder = re.compile(rf"\s*#\s*(?:export\s+)?{re.escape(name)}=<enter your value>\s*")
+        for index, line in enumerate(lines):
+            body = line.rstrip("\r\n")
+            if placeholder.fullmatch(body):
+                lines[index] = f"{name}={remaining.pop(name)}{line[len(body) :]}"
+                break
+    if remaining:
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] += newline
+        lines += [f"{name}={value}{newline}" for name, value in remaining.items()]
+    content = ("﻿" if byte_order_mark else "") + "".join(lines)
+    # Write an owner-only sibling and swap it in, so an interrupted write never leaves half a
+    # `.env`; the `.env` suffix keeps a leftover under the `*.env` gitignore rule.
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=env_file.parent, prefix=f".{env_file.name}.", suffix=".env"
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as file:
+            file.write(content.encode("utf-8"))
+        shutil.copymode(env_file, temporary)  # keep the file's own mode, e.g. a hardened 0600
+        os.replace(temporary, env_file)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def write_private(path: Path, data: bytes) -> None:
+    """Write `data` to a file that is owner-only from the moment it exists."""
+    path.unlink(missing_ok=True)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as file:
+        file.write(data)
+
+
 def update_summary(added: list[str], needs_value: list[str]) -> str:
     parts = []
     if added:
@@ -142,6 +547,448 @@ def update_summary(added: list[str], needs_value: list[str]) -> str:
     if needs_value:
         parts.append(f"needs a value: {', '.join(needs_value)}")
     return "; ".join(parts) or "nothing to add"
+
+
+def is_terminal() -> bool:
+    return sys.stdout.isatty()
+
+
+def style(text: str, code: str) -> str:
+    """Wrap `text` in an ANSI colour code, unless output is not a terminal or NO_COLOR is set."""
+    colours = is_terminal() and "NO_COLOR" not in os.environ and os.environ.get("TERM") != "dumb"
+    return f"\033[{code}m{text}\033[0m" if colours else text
+
+
+def print_panel(title: str, lines: list[str], code: str = CYAN) -> None:
+    print()
+    print(style(f"┃ {title}", f"1;{code}"))
+    for line in lines:
+        print(f"{style('┃', code)} {line}")
+
+
+class Screen:
+    """Redraws the wizard before every question: a title, the answers so far, then any notes."""
+
+    def __init__(self, title: str):
+        self.title = title
+        self.answers: list[tuple[str, str]] = []
+        self.notes: list[str] = []
+
+    def draw(self, error: str | None = None) -> None:
+        if is_terminal():
+            print(CLEAR_SCREEN, end="")
+        print(style(f" EpicStaff setup · {self.title} ", "1;7"))
+        print()
+        for label, value in self.answers:
+            print(f"  {style('✓', GREEN)} {label}: {style(value, BOLD)}")
+        for note in self.notes:
+            print(style(note, YELLOW))
+        if self.answers or self.notes:
+            print()
+        if error:
+            print(style(error, RED))
+
+    def ask(
+        self,
+        label: str,
+        question: str,
+        choices: dict[str, str] | None = None,
+        validate: Callable[[str], str] | None = None,
+    ) -> str:
+        """Prompt until the answer is usable. `choices` maps each answer to its description and
+        accepts the answer itself or its number."""
+        error = None
+        while True:
+            self.draw(error)
+            print(style(question, BOLD))
+            if choices:
+                for number, description in enumerate(choices.values(), start=1):
+                    print(f"  {style(str(number), CYAN)}  {description}")
+            answer = input(style("> ", CYAN)).strip()
+            if not answer:
+                error = None
+                continue
+            if choices:
+                keys = list(choices)
+                if answer.isdigit() and 1 <= int(answer) <= len(keys):
+                    answer = keys[int(answer) - 1]
+                elif answer.lower() in keys:
+                    answer = answer.lower()
+                else:
+                    error = f"Type a number from 1 to {len(keys)}."
+                    continue
+            try:
+                answer = validate(answer) if validate else answer
+            except ValueError as problem:
+                error = str(problem)
+                continue
+            self.answers.append((label, choices[answer] if choices else answer))
+            return answer
+
+    def ask_yes_no(self, label: str, question: str, default: bool) -> bool:
+        error = None
+        while True:
+            self.draw(error)
+            hint = style("Y/n" if default else "y/N", DIM)
+            answer = input(f"{style(question, BOLD)} {hint} {style('>', CYAN)} ").strip().lower()
+            if answer in ("", "y", "yes", "n", "no"):
+                enabled = default if not answer else answer.startswith("y")
+                self.answers.append((label, "yes" if enabled else "no"))
+                return enabled
+            error = "Type y or n."
+
+
+def ask_features(screen: Screen, current: dict[str, bool]) -> dict[str, bool]:
+    return {
+        feature.flag: screen.ask_yes_no(
+            feature.label, f"Enable {feature.label.lower()}?", current[feature.flag]
+        )
+        for feature in FEATURES
+    }
+
+
+def ask_plugins_domain(screen: Screen, public_url: str) -> str:
+    return screen.ask(
+        "Plugin domain",
+        "Parent domain of the plugin hosts, served with a wildcard DNS record *.<domain>, "
+        "e.g. plugins.example.com for epicstaff.example.com",
+        validate=lambda domain: validate_plugins_domain(domain, public_url),
+    )
+
+
+def plugins_allowed(screen: Screen, public_url: str) -> bool:
+    problem = plugins_host_problem(public_url)
+    if problem:
+        screen.notes.append(f"Plugins stay off: {problem}.")
+    return problem is None
+
+
+def missing_plugin_secrets(current: dict[str, str]) -> dict[str, str]:
+    """Generated values for the plugin secrets `current` leaves empty or none; set ones stay,
+    as plugins_db was initialised with them."""
+    return {
+        name: generate_secret(name)
+        for name in PLUGIN_SECRETS
+        if current.get(name, "").strip().lower() in ("", Env.NONE_VALUE)
+    }
+
+
+def ask_production_values(
+    screen: Screen, schema: dict
+) -> tuple[dict[str, str], dict[str, bool], str]:
+    public_url = screen.ask(
+        "Public URL",
+        "Public URL of this deployment, e.g. https://epicstaff.example.com",
+        validate=normalize_public_url,
+    )
+
+    def matching_mode(serving_mode: str) -> str:
+        check_scheme_matches(public_url, serving_mode)
+        return serving_mode
+
+    serving_mode = screen.ask(
+        "Served", "How do users reach it?", choices=SERVING_MODE_CHOICES, validate=matching_mode
+    )
+    enabled = ask_features(screen, {feature.flag: False for feature in FEATURES})
+    enabled["PLUGINS_ENABLED"] = enabled["PLUGINS_ENABLED"] and plugins_allowed(screen, public_url)
+    plugins_domain = ask_plugins_domain(screen, public_url) if enabled["PLUGINS_ENABLED"] else None
+    image_tag = screen.ask(
+        "Release", "Release tag to pull (IMAGE_TAG), e.g. v1.3.0", validate=validate_image_tag
+    )
+    values = production_values(public_url, serving_mode, image_tag)
+    if plugins_domain:
+        values["PLUGINS_BASE_DOMAIN"] = plugins_domain
+    if screen.ask_yes_no(
+        "Advanced", "Adjust advanced settings (server size, code time limit, logging)?", False
+    ):
+        values |= ask_advanced(screen, schema, enabled)
+    return values, enabled, serving_mode
+
+
+def advanced_values(
+    size: str | None,
+    code_limit: str | None,
+    log_level: str | None,
+    enabled: dict[str, bool],
+    schema: dict,
+    current: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Values for the chosen size, code time limit and log level; None keeps that group as is.
+
+    Settings of a disabled feature are never written.
+    """
+    current = current or {}
+    values: dict[str, str] = {}
+    if size:
+        values |= SERVER_SIZE_VALUES[size]
+    if code_limit:
+        values["SANDBOX_MAX_EXECUTION_TIMEOUT"] = code_limit
+        values["CREW_CODE_RESULT_TIMEOUT"] = CODE_TIME_LIMITS[code_limit][1]
+        default = current.get("SANDBOX_DEFAULT_EXECUTION_TIMEOUT", "")
+        # django_app and sandbox refuse to start when the default exceeds the maximum.
+        if (
+            default
+            and default.lower() != Env.NONE_VALUE
+            and humanize.to_time(default) > humanize.to_time(code_limit)
+        ):
+            values["SANDBOX_DEFAULT_EXECUTION_TIMEOUT"] = code_limit
+    if log_level:
+        for name in target_defaults(schema, "prod"):
+            if name.endswith("_LOG_LEVEL"):
+                values[name] = log_level
+    for feature in FEATURES:
+        if not enabled[feature.flag]:
+            for name in feature.settings:
+                values.pop(name, None)
+    return values
+
+
+def ask_advanced(
+    screen: Screen, schema: dict, enabled: dict[str, bool], current: dict[str, str] | None = None
+) -> dict[str, str]:
+    """Ask the three advanced questions; with `current` (an existing file) each can keep its value."""
+    keep = {}
+    if current is not None:
+        workers = f"{current.get('DJANGO_SGI_WORKERS')} Django workers"
+        pool = current.get("DJANGO_DB_POOL_MAX_SIZE")
+        keep = {
+            "size": {"keep": f"Keep current ({workers}, pool {pool})"},
+            "code": {"keep": f"Keep current ({current.get('SANDBOX_MAX_EXECUTION_TIMEOUT')})"},
+            "log": {"keep": f"Keep current (Django logs at {current.get('DJANGO_LOG_LEVEL')})"},
+        }
+    size = screen.ask(
+        "Server size", "How big is the server?", choices=keep.get("size", {}) | SERVER_SIZES
+    )
+    code_limit = screen.ask(
+        "Code time limit",
+        "Longest a code node may run?",
+        choices=keep.get("code", {})
+        | {limit: description for limit, (description, _) in CODE_TIME_LIMITS.items()},
+    )
+    log_level = screen.ask(
+        "Logging", "Log level for every service?", choices=keep.get("log", {}) | LOG_CHOICES
+    )
+    return advanced_values(
+        None if size == "keep" else size,
+        None if code_limit == "keep" else code_limit,
+        None if log_level == "keep" else log_level.upper(),
+        enabled,
+        schema,
+        current,
+    )
+
+
+def carried_over(
+    old: dict[str, str], schema: dict, target: Literal["prod", "dev"]
+) -> tuple[dict[str, str], list[str]]:
+    """Credentials to keep from an old file: the data volumes were initialised with them.
+
+    Returns the values to keep and, for production, the names dropped because they still hold
+    their public development default.
+    """
+    development = target_defaults(schema, "dev")
+    production = target_defaults(schema, "prod")
+    kept, dropped = {}, []
+    for name in (*GENERATED_SECRETS, *PRODUCTION_USERNAMES, "CHAT_DB_USER"):
+        value = old.get(name, "")
+        if name in ROTATED_KEYS or not value or value.lower() == Env.NONE_VALUE:
+            continue
+        is_development_value = value in PUBLISHED_VALUES or (
+            value == str(development.get(name)) and production.get(name) != development.get(name)
+        )
+        if target == "prod" and is_development_value:
+            dropped.append(name)
+        else:
+            kept[name] = value
+    return kept, dropped
+
+
+def create_env_file(
+    screen: Screen,
+    schema: dict,
+    target: Literal["prod", "dev"],
+    env_file: Path,
+    schema_file: Path,
+    carried: dict[str, str],
+) -> None:
+    if target == "dev":
+        overrides = missing_plugin_secrets({})
+        defaults = target_defaults(schema, "dev")
+        enabled = ask_features(
+            screen,
+            {
+                feature.flag: str(defaults[feature.flag]).lower() in Env.BOOLEAN_TRUE_VALUES
+                for feature in FEATURES
+            },
+        )
+        if enabled["PLUGINS_ENABLED"]:
+            overrides |= LOCAL_PLUGINS_HOST
+    else:
+        overrides, enabled, serving_mode = ask_production_values(screen, schema)
+        overrides |= {name: generate_secret(name) for name in GENERATED_SECRETS}
+    overrides |= feature_values(enabled, "none", local=target == "dev")
+    overrides |= carried
+    screen.draw()
+    if env_file.exists():
+        # The old file may hold the only copy of the credentials the volumes were created with.
+        # The `.env` suffix keeps the backup under the `*.env` gitignore rule.
+        backup = env_file.with_name(f"{env_file.name}.backup.env")
+        write_private(backup, env_file.read_bytes())
+        print(style(f"Saved the previous file as {backup}.", DIM))
+    # Holds every credential: create it readable by its owner only.
+    env_file.touch(mode=0o600)
+    env_file.chmod(0o600)
+    generate_env_file(schema, target, schema_file, env_file, overrides, banner=SETUP_BANNER)
+    print(f"{style('✓', GREEN)} Wrote {style(str(env_file), BOLD)}")
+    if target == "prod":
+        steps = [
+            "It holds every generated password and key: keep it private and back it up.",
+            "After `docker compose up`, create the first superadmin:",
+            "  docker compose exec django_app python manage.py create_superadmin",
+        ]
+        if serving_mode == "nginx-tls":
+            steps.append("Put the TLS certificate in src/nginx/certs (see docs/setup/ssl.md).")
+        if serving_mode == "proxy-tls":
+            steps += [
+                "If your load balancer adds X-Forwarded-For, set DJANGO_NUM_PROXIES=2 in the",
+                "file; otherwise login throttling treats every user as the balancer.",
+            ]
+        plugins_domain = overrides.get("PLUGINS_BASE_DOMAIN", "")
+        if enabled["PLUGINS_ENABLED"] and not plugins_domain.endswith(".localhost"):
+            steps.append(
+                f"Point *.{plugins_domain} at this server (wildcard DNS record and certificate)."
+            )
+        if overrides.get("DJANGO_LOG_LEVEL") == "DEBUG":
+            steps.append(DEBUG_REMINDER)
+        print_panel("Next steps", steps)
+    elif enabled["PLUGINS_ENABLED"]:
+        url = LOCAL_PLUGINS_HOST["DJANGO_FRONTEND_BASE_URL"]
+        print_panel("Next steps", [f"Open EpicStaff at {url}: plugins need a .localhost host."])
+
+
+def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev"]) -> None:
+    old = read_env_values(env_file.read_bytes().decode("utf-8-sig"))
+    profiles = parse_profiles(old.get("COMPOSE_PROFILES", ""))
+    current, was_on = {}, {}
+    for feature in FEATURES:
+        flag_on = old.get(feature.flag, "").strip().lower() in Env.BOOLEAN_TRUE_VALUES
+        profile_on = feature.profile in profiles
+        if flag_on != profile_on:
+            screen.notes.append(
+                f"{feature.label} is out of sync: {feature.flag} is "
+                f"{'on' if flag_on else 'off'} but the {feature.profile} profile is "
+                f"{'on' if profile_on else 'off'}."
+            )
+        current[feature.flag] = flag_on and profile_on
+        was_on[feature.flag] = flag_on or profile_on
+    enabled = ask_features(screen, current)
+    plugin_values: dict[str, str] = {}
+    if enabled["PLUGINS_ENABLED"]:
+        public_url = old.get("DJANGO_FRONTEND_BASE_URL", "")
+        if target == "dev" and plugins_host_problem(public_url):
+            plugin_values |= LOCAL_PLUGINS_HOST
+            public_url = LOCAL_PLUGINS_HOST["DJANGO_FRONTEND_BASE_URL"]
+        enabled["PLUGINS_ENABLED"] = plugins_allowed(screen, public_url)
+    if enabled["PLUGINS_ENABLED"]:
+        plugin_values |= missing_plugin_secrets(old)
+        old_domain = old.get("PLUGINS_BASE_DOMAIN", "")
+        try:
+            domain = validate_plugins_domain(old_domain, public_url)
+        except ValueError:
+            domain = ask_plugins_domain(screen, public_url)
+        if domain != old_domain:
+            plugin_values["PLUGINS_BASE_DOMAIN"] = domain
+    values = feature_values(enabled, old.get("COMPOSE_PROFILES", ""), local=target == "dev")
+    values |= plugin_values
+    screen.draw()
+    rewrite_env_values(env_file, values)
+    print(f"{style('✓', GREEN)} Updated {style(str(env_file), BOLD)}")
+    commands = ["cd src", "docker compose up -d"]
+    for feature in FEATURES:
+        if was_on[feature.flag] and not enabled[feature.flag]:
+            # `up -d` leaves containers of a deactivated profile running.
+            commands.append(f"docker compose stop {' '.join(feature.services)}")
+    print_panel("Apply it with", commands)
+
+
+def tune_settings(screen: Screen, env_file: Path, schema: dict) -> None:
+    old = read_env_values(env_file.read_bytes().decode("utf-8-sig"))
+    profiles = parse_profiles(old.get("COMPOSE_PROFILES", ""))
+    enabled = {
+        feature.flag: old.get(feature.flag, "").strip().lower() in Env.BOOLEAN_TRUE_VALUES
+        and feature.profile in profiles
+        for feature in FEATURES
+    }
+    values = ask_advanced(screen, schema, enabled, current=old)
+    screen.draw()
+    # Rewrite only what actually changes, so hand-tuned neighbours stay byte-identical.
+    changed = {name: value for name, value in values.items() if old.get(name) != value}
+    if changed:
+        rewrite_env_values(env_file, changed)
+    print(f"{style('✓', GREEN)} Updated {style(str(env_file), BOLD)}")
+    print_panel("Apply it with", ["cd src", "docker compose up -d"])
+    if values.get("DJANGO_LOG_LEVEL") == "DEBUG":
+        print(style(DEBUG_REMINDER, YELLOW))
+
+
+def start_over(
+    screen: Screen, schema: dict, target: Literal["prod", "dev"], env_file: Path, schema_file: Path
+) -> None:
+    regenerate = screen.ask_yes_no(
+        "New credentials",
+        "Generate new credentials for everything? Existing database volumes will stop working",
+        default=False,
+    )
+    carried, dropped = {}, []
+    if not regenerate:
+        old = read_env_values(env_file.read_bytes().decode("utf-8-sig"))
+        carried, dropped = carried_over(old, schema, target)
+    if dropped:
+        screen.notes.append(
+            "These still hold public development values and will be replaced: "
+            + ", ".join(dropped)
+            + ".\nThe existing data volumes were created with them and must be recreated."
+        )
+        if not screen.ask_yes_no("Replace them", "Continue?", default=False):
+            sys.exit("Cancelled, nothing written.")
+    create_env_file(screen, schema, target, env_file, schema_file, carried)
+
+
+def run_setup(
+    schema: dict,
+    target: Literal["prod", "dev"],
+    env_file: Path,
+    schema_file: Path = BASE_DIR / "env.yaml",
+) -> None:
+    if os.name == "nt":
+        os.system("")  # turns on ANSI escape handling in the Windows console
+    screen = Screen("Production" if target == "prod" else "Local")
+    try:
+        if not env_file.exists():
+            create_env_file(screen, schema, target, env_file, schema_file, carried={})
+            return
+        action = screen.ask(
+            "Action", f"{env_file} already exists. What do you want to do?", choices=SETUP_ACTIONS
+        )
+        if action == "change-features":
+            change_features(screen, env_file, target)
+        elif action == "tune":
+            tune_settings(screen, env_file, schema)
+        elif action == "add-missing":
+            overrides = (
+                {name: generate_secret(name) for name in GENERATED_SECRETS}
+                if target == "prod"
+                else missing_plugin_secrets({})
+            )
+            day = datetime.now().astimezone().date()
+            added, needs_value = update_env_file(schema, target, env_file, day, overrides)
+            screen.draw()
+            print(f"{style('✓', GREEN)} {env_file}: {update_summary(added, needs_value)}")
+        elif action == "start-over":
+            start_over(screen, schema, target, env_file, schema_file)
+    except (KeyboardInterrupt, EOFError):
+        print()
+        sys.exit("Cancelled, nothing written.")
 
 
 def main(argv: list[str] | None = None):
@@ -152,10 +999,16 @@ def main(argv: list[str] | None = None):
         action="store_true",
         help="Generate `.env` with variable defaults for development.",
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--update",
         action="store_true",
         help="Append only the variables the env file lacks; never change existing lines.",
+    )
+    mode.add_argument(
+        "--setup",
+        action="store_true",
+        help="Ask questions to create the env file or change its features (production unless --dev).",
     )
     parser.add_argument("--env-file", default=".env", help="Env file path.")
     parser.add_argument("--schema-file", default="env.yaml", help="Schema file path.")
@@ -164,6 +1017,14 @@ def main(argv: list[str] | None = None):
     target = "prod" if not args.dev else "dev"
     schema_file = BASE_DIR / args.schema_file
     env_file = BASE_DIR / args.env_file
+
+    if args.setup:
+        if not sys.stdin.isatty():
+            sys.exit(
+                "--setup asks questions: run it in a terminal, with `docker run -it` in Docker."
+            )
+        run_setup(load_schema(schema_file), target, env_file, schema_file)
+        return
 
     if args.update:
         if not env_file.is_file():

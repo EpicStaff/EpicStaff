@@ -24,6 +24,15 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [],
 }
 
+# Avatars go to local disk under MEDIA_ROOT, never to the bucket; the URLs are the
+# unsigned `/media/<name>` (AvatarStorage's signing is covered by
+# storage_tests/test_avatar_storage.py). Set here, not with override_settings: the
+# avatar field resolves its storage once, when models load.
+STORAGES = {
+    **STORAGES,
+    "avatars": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+}
+
 # The existing first-setup API tests exercise the browser flow, so the test
 # suite runs in `open` mode. Tests for the gate itself opt in explicitly with
 # @override_settings(FIRST_SETUP_MODE="cli_only").

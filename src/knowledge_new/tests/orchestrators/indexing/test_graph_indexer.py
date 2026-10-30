@@ -742,3 +742,24 @@ async def test_run_without_model_calls_records_no_usage(monkeypatch):
     await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
 
     assert repo.usage_runs == []
+
+
+async def test_build_index_never_enables_graphrag_verbose_logging(monkeypatch):
+    rag = _new_rag()
+    doc = _text_document(1, text="test")
+    config = _make_config()
+    repo = FakeGraphRagRepo(rag=rag, config=config, documents=[doc])
+    uow = FakeUoW(repo)
+
+    captured = {}
+
+    async def fake_build_index(**kwargs):
+        captured.update(kwargs)
+        return [_result("extract_graph")]
+
+    monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
+
+    request = _make_request(frozenset({1}))
+    await GraphIndexOrchestrator(uow).execute(request)
+
+    assert captured.get("verbose", False) is False

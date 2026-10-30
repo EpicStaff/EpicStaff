@@ -1,13 +1,20 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { createEnvironmentInjector, DestroyRef, EnvironmentInjector } from '@angular/core';
+import { Component, createEnvironmentInjector, DestroyRef, EnvironmentInjector, NO_ERRORS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { GetMeResponse, ShortcutParams, ShortcutSettings } from '@shared/models';
+import { FFlowModule, FZoomDirective } from '@foblex/flow';
+import { GetMeResponse, NodeType, ShortcutParams, ShortcutSettings } from '@shared/models';
 
 import { ProfileService } from '../../services/auth/profile.service';
 import { ConfigService } from '../../services/config';
 import { ToastMessage, ToastService } from '../../services/notifications';
+import { CdtDecisionTreeInput } from '../components/node-panels/classification-decision-table-node-panel/cdt-decision-tree-dialog/cdt-decision-tree.model';
+import { CdtDecisionTreeBlockComponent } from '../components/node-panels/classification-decision-table-node-panel/cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
+import { CdtDecisionTreeDialogComponent } from '../components/node-panels/classification-decision-table-node-panel/cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
 import { chordFromEvent } from '../core/keymap/key-chord.util';
+import { ClassificationDecisionTableNodeModel } from '../core/models/node.model';
+import { FlowService } from './flow.service';
 import { KeymapService, PLATFORM_IS_MAC } from './keymap.service';
 
 const PROFILE_URL = '/api/profile/';
@@ -24,7 +31,7 @@ const BASE_USER: GetMeResponse = {
     active_organization_id: 3,
     active_permissions: null,
     avatar_url: null,
-    quickstart_tour_completed: true,
+    completed_tours: ['quick-start'],
     custom_shortcuts: { custom: [], overrides: {} },
 };
 
@@ -380,15 +387,15 @@ describe('KeymapService', () => {
         beforeEach(() => setUp());
 
         it('addCustom shows the new key at once and PATCHes the whole list', () => {
-            loadUser(['editing.undo', 'Alt+KeyU']);
+            loadUser(['editing.undo', 'Alt+KeyH']);
 
-            const result = keymap().addCustom('editing.save', 'Alt+KeyS');
+            const result = keymap().addCustom('editing.save', 'Alt+KeyO');
 
             expect(result).toMatchObject({ accepted: true, displaces: null });
-            expect(keymap().bindings().get('editing.save')).toEqual(['Mod+KeyS', 'Alt+KeyS']);
+            expect(keymap().bindings().get('editing.save')).toEqual(['Mod+KeyS', 'Alt+KeyO']);
             const patch = nextPatch();
             expect(patch.body).toEqual({
-                custom_shortcuts: shortcutSettings(['editing.undo', 'Alt+KeyU'], ['editing.save', 'Alt+KeyS']),
+                custom_shortcuts: shortcutSettings(['editing.undo', 'Alt+KeyH'], ['editing.save', 'Alt+KeyO']),
             });
             patch.succeed();
             expect(keymap().customShortcuts().at(-1)?.id).toBe(result.accepted ? result.customShortcutId : undefined);
@@ -595,7 +602,7 @@ describe('KeymapService', () => {
         beforeEach(() => setUp());
 
         it('clears the keys of rows on node base keys in one PATCH and keeps unique keys', () => {
-            loadUser(['node.task', 'Shift+KeyP'], ['editing.save', 'Alt+KeyS'], ['editing.undo', 'Shift+KeyA']);
+            loadUser(['node.task', 'Shift+KeyP'], ['editing.save', 'Alt+KeyO'], ['editing.undo', 'Shift+KeyA']);
             expect(keymap().defaultsResetClearCount()).toBe(2);
 
             keymap().resetToDefaults();
@@ -607,14 +614,14 @@ describe('KeymapService', () => {
             expect(nextPatch().body).toEqual({
                 custom_shortcuts: shortcutSettings(
                     ['node.task', null],
-                    ['editing.save', 'Alt+KeyS'],
+                    ['editing.save', 'Alt+KeyO'],
                     ['editing.undo', null]
                 ),
             });
         });
 
         it('does nothing when there is nothing to reset', () => {
-            loadUser(['editing.save', 'Alt+KeyS']);
+            loadUser(['editing.save', 'Alt+KeyO']);
 
             keymap().resetToDefaults();
 
@@ -768,7 +775,7 @@ describe('KeymapService', () => {
             const python = vi.fn();
             keymap().register('node.python', python);
 
-            expect(keymap().setNodeKey('node.python', 'Alt+KeyQ')).toEqual({ accepted: true, displaces: null });
+            expect(keymap().setKeyOverride('node.python', 'Alt+KeyQ')).toEqual({ accepted: true, displaces: null });
 
             expect(nextPatch().body).toEqual({
                 custom_shortcuts: {
@@ -785,7 +792,7 @@ describe('KeymapService', () => {
         it('resets one node key with a PATCH that drops only its override', () => {
             loadSettings({ custom: [], overrides: { 'node.python': 'Alt+KeyQ', 'node.task': null } });
 
-            expect(keymap().resetNodeKey('node.python')).toEqual({ accepted: true, displaces: null });
+            expect(keymap().resetKeyOverride('node.python')).toEqual({ accepted: true, displaces: null });
 
             expect(nextPatch().body).toEqual({ custom_shortcuts: { custom: [], overrides: { 'node.task': null } } });
             expect(keymap().builtInBindings().get('node.python')).toEqual(['Shift+KeyP']);
@@ -797,7 +804,7 @@ describe('KeymapService', () => {
                 overrides: { 'node.python': 'Alt+KeyQ' },
             });
 
-            expect(keymap().resetNodeKey('node.python')).toMatchObject({
+            expect(keymap().resetKeyOverride('node.python')).toMatchObject({
                 accepted: false,
                 rejection: 'taken',
                 takenBy: { action: 'node.agent', source: 'custom' },
@@ -818,9 +825,275 @@ describe('KeymapService', () => {
         it('does not save when a node key is set to the key it already has', () => {
             loadSettings({ custom: [], overrides: { 'node.python': 'Alt+KeyQ' } });
 
-            keymap().setNodeKey('node.python', 'Alt+KeyQ');
+            keymap().setKeyOverride('node.python', 'Alt+KeyQ');
 
             httpMock.expectNone({ method: 'PATCH' });
+        });
+    });
+
+    describe('flow toolbar keys', () => {
+        it.each([
+            ['Ctrl+Enter', false, { key: 'Enter', code: 'Enter', ctrlKey: true }, 'flow.run'],
+            ['Cmd+Enter on a mac', true, { key: 'Enter', code: 'Enter', metaKey: true }, 'flow.run'],
+            [
+                'Ctrl+Shift+Enter',
+                false,
+                { key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true },
+                'flow.stop-session',
+            ],
+            [
+                'Cmd+Shift+Enter on a mac',
+                true,
+                { key: 'Enter', code: 'Enter', metaKey: true, shiftKey: true },
+                'flow.stop-session',
+            ],
+            ['Alt+C on a Cyrillic layout', false, { key: 'с', code: 'KeyC', altKey: true }, 'flow.chat'],
+            ['Option+C on a mac', true, { key: 'ç', code: 'KeyC', altKey: true }, 'flow.chat'],
+            ['Alt+,', false, { key: ',', code: 'Comma', altKey: true }, 'flow.settings'],
+            [
+                'Alt+S, the Firefox History menu key on Windows',
+                false,
+                { key: 's', code: 'KeyS', altKey: true },
+                'flow.sessions',
+            ],
+        ] as const)('fires the flow action on %s', (_case, isMac, init, action) => {
+            setUp(isMac);
+            const handler = vi.fn();
+            keymap().register(action, handler);
+
+            const event = press(init);
+
+            expect(handler).toHaveBeenCalledOnce();
+            expect(event.defaultPrevented).toBe(true);
+        });
+
+        it.each([
+            ['Ctrl+Enter runs and does not stop', { key: 'Enter', code: 'Enter', ctrlKey: true }, ['run']],
+            [
+                'Ctrl+Shift+Enter stops and does not run',
+                { key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true },
+                ['stop'],
+            ],
+        ] as const)('keeps Run and Stop session apart: %s', (_case, init, expected) => {
+            setUp();
+            const fired: string[] = [];
+            keymap().register('flow.run', () => fired.push('run'));
+            keymap().register('flow.stop-session', () => fired.push('stop'));
+
+            press(init);
+
+            expect(fired).toEqual(expected);
+        });
+
+        it('fires once per press, not once per auto-repeat while the key is held', () => {
+            setUp();
+            const toggleChat = vi.fn();
+            keymap().register('flow.chat', toggleChat);
+
+            press({ key: 'c', code: 'KeyC', altKey: true });
+            press({ key: 'c', code: 'KeyC', altKey: true, repeat: true });
+
+            expect(toggleChat).toHaveBeenCalledOnce();
+        });
+
+        it('sends a flow key an Additional row uses to that row action', () => {
+            setUp();
+            loadUser(['editing.save', 'Alt+KeyC']);
+            const toggleChat = vi.fn();
+            const save = vi.fn();
+            keymap().register('flow.chat', toggleChat);
+            keymap().register('editing.save', save);
+
+            press({ key: 'c', code: 'KeyC', altKey: true });
+
+            expect(save).toHaveBeenCalledOnce();
+            expect(toggleChat).not.toHaveBeenCalled();
+            expect(keymap().unboundIds().has('flow.chat')).toBe(true);
+        });
+
+        it('fires from the side panel outside a text field, never from a text field in it', () => {
+            setUp();
+            const openDomain = vi.fn();
+            keymap().register('flow.domain', openDomain);
+            const sidePanel = attach(document.createElement('app-node-panel-shell'));
+            const button = sidePanel.appendChild(document.createElement('button'));
+            const textarea = sidePanel.appendChild(document.createElement('textarea'));
+
+            pressOn(button, { key: 'm', code: 'KeyM', altKey: true });
+            pressOn(textarea, { key: 'm', code: 'KeyM', altKey: true });
+
+            expect(openDomain).toHaveBeenCalledOnce();
+        });
+
+        it('gives a flow action a new key, saves the override and fires on it', () => {
+            setUp();
+            const toggleChat = vi.fn();
+            keymap().register('flow.chat', toggleChat);
+
+            expect(keymap().setKeyOverride('flow.chat', 'Alt+KeyJ')).toEqual({ accepted: true, displaces: null });
+
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [], overrides: { 'flow.chat': 'Alt+KeyJ' } },
+            });
+            press({ key: 'j', code: 'KeyJ', altKey: true });
+            press({ key: 'c', code: 'KeyC', altKey: true });
+            expect(toggleChat).toHaveBeenCalledOnce();
+        });
+    });
+
+    describe('tooltips', () => {
+        it.each([
+            [false, 'flow.domain', 'Configure domain', 'Configure domain (Alt + M)'],
+            [false, 'flow.run', 'Run', 'Run (Ctrl + Enter)'],
+            [false, 'flow.stop-session', 'Stop session', 'Stop session (Ctrl + Shift + Enter)'],
+            [false, 'navigating.shortcuts', 'Keyboard shortcuts', 'Keyboard shortcuts (Ctrl + /)'],
+            [true, 'flow.settings', 'Flow settings', 'Flow settings (⌥,)'],
+            [true, 'flow.run', 'Run', 'Run (⌘↩)'],
+            [true, 'flow.stop-session', 'Stop session', 'Stop session (⌘⇧↩)'],
+        ] as const)('adds the key to the label (mac: %s, %s)', (isMac, action, label, tooltip) => {
+            setUp(isMac);
+
+            expect(keymap().withShortcut(label, action)).toBe(tooltip);
+        });
+
+        it('shows the key the user gave the action', () => {
+            setUp();
+            loadUser();
+            keymap().setKeyOverride('flow.chat', 'Alt+KeyJ');
+            nextPatch().succeed();
+
+            expect(keymap().withShortcut('Open chat', 'flow.chat')).toBe('Open chat (Alt + J)');
+        });
+
+        it('shows the label alone when the action has no key', () => {
+            setUp();
+            loadUser();
+            keymap().setKeyOverride('flow.chat', null);
+            nextPatch().succeed();
+
+            expect(keymap().withShortcut('Open chat', 'flow.chat')).toBe('Open chat');
+        });
+    });
+
+    describe('flow actions behind a dialog', () => {
+        @Component({ template: '<button type="button">Inside the dialog</button>' })
+        class PlainDialogComponent {}
+
+        const CTRL_ENTER = { key: 'Enter', code: 'Enter', ctrlKey: true };
+        const ALT_L = { key: 'l', code: 'KeyL', altKey: true };
+        const ALT_S = { key: 's', code: 'KeyS', altKey: true };
+        const CTRL_SHIFT_ENTER = { key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true };
+
+        function dialogButton(): HTMLButtonElement {
+            return document.querySelector<HTMLButtonElement>('.cdk-dialog-container button')!;
+        }
+
+        afterEach(() => TestBed.inject(Dialog).closeAll());
+
+        it('fires no flow action while a dialog is open, and fires again once it is closed', () => {
+            setUp();
+            const arrange = vi.fn();
+            keymap().register('flow.auto-arrange', arrange);
+            const dialogRef = TestBed.inject(Dialog).open(PlainDialogComponent);
+            TestBed.tick();
+
+            pressOn(dialogButton(), ALT_L);
+            press(ALT_L);
+            expect(arrange).not.toHaveBeenCalled();
+
+            dialogRef.close();
+            press(ALT_L);
+            expect(arrange).toHaveBeenCalledOnce();
+        });
+
+        it('keeps keys outside the flow actions working while a dialog is open', () => {
+            setUp();
+            const save = vi.fn();
+            keymap().register('editing.save', save);
+            TestBed.inject(Dialog).open(PlainDialogComponent);
+            TestBed.tick();
+
+            pressOn(dialogButton(), { key: 's', code: 'KeyS', ctrlKey: true });
+
+            expect(save).toHaveBeenCalledOnce();
+        });
+
+        describe('the read-only Decision Tree dialog', () => {
+            const NODE_ID = 'table1';
+
+            const DECISION_TREE: CdtDecisionTreeInput = {
+                nodeId: NODE_ID,
+                backendId: 21,
+                nodeName: 'Triage',
+                preCode: '',
+                postCode: '',
+                preInputMap: {},
+                postInputMap: {},
+                preOutputVariablePath: null,
+                postOutputVariablePath: null,
+                prompts: {},
+                rows: [],
+                canvasRows: [],
+                defaultNextNode: null,
+                errorNextNode: null,
+                connections: [],
+                nodes: [],
+                defaultLlmConfig: null,
+                llmConfigOptions: [],
+                readOnly: true,
+            };
+
+            beforeAll(() => {
+                // The detail window measures its code block with a ResizeObserver; jsdom has none.
+                const scope = globalThis as unknown as { ResizeObserver?: unknown };
+                scope.ResizeObserver ??= class {
+                    observe(): void {}
+                    unobserve(): void {}
+                    disconnect(): void {}
+                };
+            });
+
+            // The dialog shields only the keys it lists (Ctrl+S, Delete...): Ctrl+Enter and the Alt keys pass it.
+            it.each([
+                ['Ctrl+Enter', CTRL_ENTER, 'flow.run'],
+                ['Alt+L', ALT_L, 'flow.auto-arrange'],
+                ['Alt+S', ALT_S, 'flow.sessions'],
+                ['Ctrl+Shift+Enter', CTRL_SHIFT_ENTER, 'flow.stop-session'],
+            ] as const)('keeps %s from reaching the flow behind it', (_key, init, action) => {
+                // jsdom cannot lay out the Foblex canvas the diagram is drawn on, and nothing here needs it.
+                TestBed.overrideComponent(CdtDecisionTreeDialogComponent, {
+                    remove: { imports: [FFlowModule, FZoomDirective] },
+                    add: { schemas: [NO_ERRORS_SCHEMA] },
+                });
+                TestBed.overrideComponent(CdtDecisionTreeBlockComponent, {
+                    remove: { imports: [FFlowModule] },
+                    add: { schemas: [NO_ERRORS_SCHEMA] },
+                });
+                setUp();
+                TestBed.inject(FlowService).setFlow({
+                    nodes: [
+                        {
+                            id: NODE_ID,
+                            backendId: 21,
+                            type: NodeType.CLASSIFICATION_TABLE,
+                            node_name: 'Triage',
+                            data: { name: 'Triage', table: { condition_groups: [] } },
+                        } as unknown as ClassificationDecisionTableNodeModel,
+                    ],
+                    connections: [],
+                });
+                const handler = vi.fn();
+                keymap().register(action, handler);
+                TestBed.inject(Dialog).open(CdtDecisionTreeDialogComponent, {
+                    data: DECISION_TREE,
+                    disableClose: true,
+                });
+                TestBed.tick();
+
+                pressOn(document.querySelector<HTMLElement>('.cdk-dialog-container')!, init);
+
+                expect(handler).not.toHaveBeenCalled();
+            });
         });
     });
 

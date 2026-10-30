@@ -24,7 +24,7 @@ def test_filter_snapshot_nulls_fk_for_agent_node_when_definition_missing(
     }
     missing = {EntityType.AGENT_DEFINITION.value: [agent_node_dict["agent_definition"]]}
 
-    filtered, warnings = manager.filter_snapshot(snapshot, missing)
+    filtered, warnings = manager.filter_snapshot(snapshot, missing, {})
 
     assert len(filtered["nodes"]) == 1
     assert filtered["nodes"][0]["agent_definition"] is None
@@ -40,7 +40,7 @@ def test_filter_snapshot_keeps_agent_node_untouched_when_definition_available(
     }
     missing = {}
 
-    filtered, warnings = manager.filter_snapshot(snapshot, missing)
+    filtered, warnings = manager.filter_snapshot(snapshot, missing, {})
 
     assert len(filtered["nodes"]) == 1
     assert filtered["nodes"][0]["id"] == agent_node_dict["id"]
@@ -67,7 +67,7 @@ SKIPPED_NODE = {"id": 777, "node_type": "crew", "node_name": "removed crew node"
 def test_edges_touching_a_skipped_node_are_dropped(manager, start_node_dict, edge, kept):
     snapshot = {"nodes": [start_node_dict, SKIPPED_NODE], "edge_list": [edge]}
 
-    filtered, warnings = manager.filter_snapshot(snapshot, {})
+    filtered, warnings = manager.filter_snapshot(snapshot, {}, {})
 
     assert [node["id"] for node in filtered["nodes"]] == [100]
     assert filtered["edge_list"] == ([edge] if kept else [])
@@ -88,7 +88,7 @@ def test_decision_table_routes_to_a_skipped_node_are_cleared(
 ):
     snapshot = {"nodes": [start_node_dict, make_decision_table_node(**node_kwargs), SKIPPED_NODE], "edge_list": []}
 
-    filtered, warnings = manager.filter_snapshot(snapshot, {})
+    filtered, warnings = manager.filter_snapshot(snapshot, {}, {})
 
     decision = next(node for node in filtered["nodes"] if node["id"] == 200)
     assert (decision[field] is None) is cleared
@@ -98,7 +98,7 @@ def test_decision_table_routes_to_a_skipped_node_are_cleared(
 def test_a_condition_group_routing_to_a_skipped_node_is_cleared(manager, make_decision_table_node):
     decision = make_decision_table_node(condition_groups=[{"group_name": "g1", "next_node_id": 777}])
 
-    filtered, warnings = manager.filter_snapshot({"nodes": [decision, SKIPPED_NODE], "edge_list": []}, {})
+    filtered, warnings = manager.filter_snapshot({"nodes": [decision, SKIPPED_NODE], "edge_list": []}, {}, {})
 
     assert filtered["nodes"][0]["condition_groups"][0]["next_node_id"] is None
     assert any("condition_groups[g1]" in w.get("field", "") for w in warnings)
@@ -123,7 +123,7 @@ def test_filter_snapshot_does_not_mutate_input(manager, agent_node_dict):
     }
     missing = {EntityType.AGENT_DEFINITION.value: [agent_node_dict["agent_definition"]]}
 
-    manager.filter_snapshot(snapshot, missing)
+    manager.filter_snapshot(snapshot, missing, {})
 
     assert agent_node_dict["agent_definition"] == original_definition_id
 
@@ -171,7 +171,7 @@ def test_change_old_warnings_ids_handles_multiple_warnings(manager):
     ids=["all-available", "all-missing", "mixed", "nulls-ignored"],
 )
 def test_validate_dependencies_splits_available_from_missing(
-    manager, agent_definition, llm_config, requested, available, missing
+    manager, agent_definition, llm_config, default_org, requested, available, missing
 ):
     ids = {"definition": agent_definition.id, "llm": llm_config.id}
     entity = {"definition": EntityType.AGENT_DEFINITION.value, "llm": EntityType.LLM_CONFIG.value}
@@ -180,13 +180,13 @@ def test_validate_dependencies_splits_available_from_missing(
         key = entity[item] if item in entity else EntityType.AGENT_DEFINITION.value
         dependencies.setdefault(key, []).append(ids.get(item, item))
 
-    result = manager.validate_dependencies(dependencies)
+    result = manager.validate_dependencies(dependencies, default_org.id)
 
     found = {i for ids_ in result["available"].values() for i in ids_}
     not_found = {i for ids_ in result["missing"].values() for i in ids_}
     assert found == {ids.get(item, item) for item in available}
     assert not_found == set(missing)
-    assert manager.validate_dependencies({}) == {"available": {}, "missing": {}}
+    assert manager.validate_dependencies({}, default_org.id) == {"available": {}, "missing": {}}
 
 
 # ---------------------------------------------------------------------------
@@ -718,9 +718,9 @@ def test_graph_relation_names_covers_all_node_edge_note_relations(graph):
 def _restore_graph_via_real_pipeline(manager, graph, deps):
     """Mirror GraphVersioningService.restore_version's pipeline exactly."""
     snapshot = manager.create_snapshot(graph)
-    deps_validation = manager.validate_dependencies(deps)
+    deps_validation = manager.validate_dependencies(deps, graph.org_id)
     filtered_snapshot, warnings = manager.filter_snapshot(
-        snapshot, deps_validation["missing"]
+        snapshot, deps_validation["missing"], deps_validation["available"]
     )
     manager.apply_snapshot_to_graph(
         graph, filtered_snapshot, deps_validation["available"]
@@ -917,7 +917,7 @@ def test_create_graph_from_snapshot_keeps_agent_node_agent_definition(
     )
     snapshot = manager.create_snapshot(graph)
     deps = manager.collect_dependencies(graph)
-    deps_validation = manager.validate_dependencies(deps)
+    deps_validation = manager.validate_dependencies(deps, graph.org_id)
 
     new_graph, _ = manager.create_graph_from_snapshot(
         snapshot,
@@ -952,9 +952,9 @@ def test_create_graph_from_snapshot_keeps_agent_node_agent_definition(
 def _restore_from_saved_snapshot(manager, graph, snapshot, deps):
     """Restore `graph` from a snapshot captured earlier, validating `deps`
     (also captured earlier) against the current DB state."""
-    deps_validation = manager.validate_dependencies(deps)
+    deps_validation = manager.validate_dependencies(deps, graph.org_id)
     filtered_snapshot, warnings = manager.filter_snapshot(
-        snapshot, deps_validation["missing"]
+        snapshot, deps_validation["missing"], deps_validation["available"]
     )
     manager.apply_snapshot_to_graph(
         graph, filtered_snapshot, deps_validation["available"]

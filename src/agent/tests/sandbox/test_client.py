@@ -16,6 +16,7 @@ import pytest
 from app.sandbox import client as client_module
 from app.sandbox import http_client as http_client_module
 from app.sandbox.client import SandboxClient
+from app.tools.executors.python_code import PythonCodeToolExecutor
 from loguru import logger
 from shared.bench_log import BENCH_LEVEL
 from shared.models.storage_scope import StorageCredentials
@@ -26,10 +27,14 @@ from shared.sandbox_errors import (
     SandboxOverloadedError,
     SandboxResultTimeoutError,
 )
+from tests.log_capture import assert_masked_exception, capture_logs_at, log_line_starting_with
+from tests.tools.test_python_code_executor import _make_tool_data
 
 RESULTS = "code_results"
 SANDBOX_BASE_URL = "http://sandbox:8000"
 REJECTED_RETRY_AFTER_S = 0.05
+PARSE_FAILURE_PREFIX = "SandboxClient: failed to parse pubsub message:"
+READER_FAILURE_PREFIX = "SandboxClient reader loop failed:"
 
 
 def _task(code: str = "def main(): return 'ok'", **overrides) -> CodeTaskData:
@@ -403,3 +408,117 @@ async def test_submit_raises_when_the_sandbox_does_not_take_the_task(
         await sandbox_client.stop()
 
     assert str(raised.value) == expected_message
+
+async def test_unparseable_result_logs_validation_types_and_locations_only(sandbox_factory):
+    """A result that fails CodeResultData validation reaches pydantic's own rendering
+    verbatim, so the WARNING line must carry only the failure type and its location."""
+    marker = "SENSITIVE_SANDBOX_RESULT_MARKER_31415"
+
+    def answer(body):
+        rejected = json.dumps(
+            {
+                "execution_id": body["execution_id"],
+                "result_data": {"leaked": marker},
+                "stderr": "",
+                "stdout": "",
+            }
+        ).encode()
+        return [rejected, "mine"]
+
+    sandbox_factory(answer)
+    sandbox_client = _build_client()
+    await sandbox_client.start()
+    with capture_logs_at("WARNING") as logs:
+        try:
+            result = await asyncio.wait_for(sandbox_client.submit(_task()), timeout=2)
+        finally:
+            await sandbox_client.stop()
+
+    warning = log_line_starting_with(logs, PARSE_FAILURE_PREFIX)
+    assert marker not in warning
+    assert "validation=ValidationError" in warning
+    assert "1 error(s)" in warning
+    assert "at result_data" in warning
+    assert result.result_data == "mine"
+
+
+async def test_undecodable_result_kills_the_reader_loop_and_logs_digest_only(sandbox_factory):
+    """A payload that is not UTF-8 fails outside the per-message try block (decoding
+    happens before it), so it kills the reader loop the same way any other transport
+    failure does; the ERROR line names the exception class and digests its message."""
+    sandbox_factory(answer=lambda body: [b"\xff\xfe not utf-8"])
+    sandbox_client = _build_client()
+    await sandbox_client.start()
+    with capture_logs_at("ERROR") as logs:
+        try:
+            with pytest.raises(ConnectionError):
+                await asyncio.wait_for(sandbox_client.submit(_task()), timeout=2)
+        finally:
+            await sandbox_client.stop()
+
+    error_line = log_line_starting_with(logs, READER_FAILURE_PREFIX)
+    assert_masked_exception(error_line, "UnicodeDecodeError")
+
+
+_EXPLODE = b"__explode_the_reader_loop__"
+READER_MARKER = "SENSITIVE_TRANSPORT_FAILURE_MARKER_27182"
+
+
+class ExplodingPubSub(FakePubSub):
+    """Delivers messages until the explode sentinel arrives, then fails the subscription."""
+
+    async def listen(self):
+        while True:
+            message = await self._queue.get()
+            if message.get("data") == _EXPLODE:
+                raise RuntimeError(f"pubsub subscription broke: {READER_MARKER}")
+            yield message
+
+
+class ExplodingRedis(FakeRedis):
+    def pubsub(self) -> ExplodingPubSub:
+        return ExplodingPubSub(self._server)
+
+
+@pytest.fixture
+def exploding_sandbox(monkeypatch) -> FakeSandbox:
+    """A sandbox whose answer kills the reader loop while a submit is still pending."""
+    server = FakePubSubServer()
+    monkeypatch.setattr(client_module.aioredis, "Redis", lambda **kwargs: ExplodingRedis(server))
+    sandbox = FakeSandbox(ExplodingRedis(server), answer=lambda body: [_EXPLODE])
+    _route_http_to(monkeypatch, sandbox.handle)
+    return sandbox
+
+
+async def test_reader_loop_failure_logs_the_class_name_and_a_digest_only(exploding_sandbox):
+    sandbox_client = _build_client()
+    await sandbox_client.start()
+    with capture_logs_at("ERROR") as logs:
+        try:
+            with pytest.raises(ConnectionError):
+                await asyncio.wait_for(sandbox_client.submit(_task()), timeout=2)
+        finally:
+            await sandbox_client.stop()
+
+    error_line = log_line_starting_with(logs, READER_FAILURE_PREFIX)
+    assert READER_MARKER not in error_line
+    assert_masked_exception(error_line, "RuntimeError")
+
+
+async def test_reader_loop_failure_reaches_the_agent_as_an_unredacted_tool_result(
+    exploding_sandbox,
+):
+    """Only the log line is redacted: the ConnectionError text still carries the cause,
+    and the executor passes it to the agent as ToolResult.content."""
+    sandbox_client = _build_client()
+    await sandbox_client.start()
+    executor = PythonCodeToolExecutor(sandbox_client, _make_tool_data())
+    try:
+        tool_result = await asyncio.wait_for(executor({"x": "1"}), timeout=2)
+    finally:
+        await sandbox_client.stop()
+
+    assert tool_result.is_error is True
+    assert tool_result.content == (
+        f"SandboxClient reader loop failed: pubsub subscription broke: {READER_MARKER}"
+    )

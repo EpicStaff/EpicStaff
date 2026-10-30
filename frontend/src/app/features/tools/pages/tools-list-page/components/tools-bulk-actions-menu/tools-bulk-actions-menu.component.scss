@@ -1,4 +1,4 @@
-@use '../_menu-panel' as *;
+@use '../../../../../../../styles/menu-panel' as *;
 
 .bulk-menu {
     @include menu-panel();

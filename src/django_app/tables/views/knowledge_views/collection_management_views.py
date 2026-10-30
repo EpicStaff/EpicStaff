@@ -15,6 +15,7 @@ from tables.exceptions import CollectionNotFoundException
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.serializers.knowledge_serializers import (
     CopySourceCollectionSerializer,
+    SourceCollectionBulkDeleteSerializer,
     SourceCollectionCreateSerializer,
     SourceCollectionDetailSerializer,
     SourceCollectionListSerializer,
@@ -37,7 +38,6 @@ from tables.swagger_schemas.knowledge_schemas.collection_management_schemas impo
     SOURCE_COLLECTIONS_GET,
 )
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
-from utils.logger import logger
 
 redis_service = RedisService()
 
@@ -120,25 +120,18 @@ class SourceCollectionViewSet(
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        try:
-            collection = CollectionManagementService.create_collection(
-                collection_name=serializer.validated_data.get("collection_name"),
-                description=serializer.validated_data.get("description", ""),
-                created_by=request.user,
-                collection_origin=serializer.validated_data.get("collection_origin"),
-                org_id=self.get_active_org_id(),
-            )
+        collection = CollectionManagementService.create_collection(
+            collection_name=serializer.validated_data.get("collection_name"),
+            description=serializer.validated_data.get("description", ""),
+            created_by=request.user,
+            collection_origin=serializer.validated_data.get("collection_origin"),
+            org_id=self.get_active_org_id(),
+        )
 
-            output_serializer = SourceCollectionDetailSerializer(
-                collection, context=self.get_serializer_context()
-            )
-            return Response(output_serializer.data, status=status.HTTP_201_CREATED)
-
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to create collection: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        output_serializer = SourceCollectionDetailSerializer(
+            collection, context=self.get_serializer_context()
+        )
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED)
 
     @extend_schema(**SOURCE_COLLECTION_PUT)
     def update(self, request, *args, **kwargs):
@@ -165,11 +158,6 @@ class SourceCollectionViewSet(
 
         except CollectionNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to update collection: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**SOURCE_COLLECTION_DELETE)
     def destroy(self, request, *args, **kwargs):
@@ -187,55 +175,33 @@ class SourceCollectionViewSet(
 
         except CollectionNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to delete collection: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**SOURCE_COLLECTION_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
-        collection_ids = request.data.get("collection_ids", [])
-
-        if not collection_ids:
-            return Response(
-                {"error": "collection_ids is required and must be a non-empty list"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not isinstance(collection_ids, list):
-            return Response(
-                {"error": "collection_ids must be a list"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = SourceCollectionBulkDeleteSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"error": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
 
         # Narrow to ids the active org actually owns — ids in another org are
         # silently ignored (no cross-org delete, no existence leak).
         collection_ids = list(
             self.get_queryset()
-            .filter(collection_id__in=collection_ids)
+            .filter(collection_id__in=body.validated_data["collection_ids"])
             .values_list("collection_id", flat=True)
         )
 
-        try:
-            result = CollectionManagementService.bulk_delete_collections(
-                collection_ids, deleted_by=request.user
-            )
+        result = CollectionManagementService.bulk_delete_collections(
+            collection_ids, deleted_by=request.user
+        )
 
-            return Response(
-                {
-                    "message": f"Successfully deleted {result['deleted_count']} collection(s)",
-                    **result,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to delete collections: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        return Response(
+            {
+                "message": f"Successfully deleted {result['deleted_count']} collection(s)",
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(**SOURCE_COLLECTION_COPY_POST)
     @action(detail=True, methods=["post"])
@@ -267,11 +233,6 @@ class SourceCollectionViewSet(
 
         except CollectionNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to copy collection: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     @extend_schema(**SOURCE_COLLECTION_AVAILABLE_RAGS_GET)
     @action(detail=True, methods=["get"], url_path="available-rags")
@@ -310,9 +271,3 @@ class SourceCollectionViewSet(
 
         except CollectionNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.error(f"Error fetching available RAGs for collection {pk}: {e!s}")
-            return Response(
-                {"error": f"Failed to fetch available RAGs: {e!s}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )

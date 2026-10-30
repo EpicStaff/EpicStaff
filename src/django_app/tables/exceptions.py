@@ -695,6 +695,28 @@ class LLMConfigInvalidError(CustomAPIExeption):
     default_code = "flow_assistant_llm_config_invalid"
 
 
+class ConfigProviderMissingError(CustomAPIExeption):
+    """Raised when an LLM or embedding config reaches a session without a usable provider.
+
+    The provider foreign keys are SET_NULL, so deleting a provider leaves the configs
+    that used it pointing at nothing. One class for both kinds: only the label in the
+    message differs.
+    """
+
+    status_code = 400
+    default_detail = "The config has no model or provider."
+    default_code = "config_provider_missing"
+
+    def __init__(self, config_kind: str, config_name: str):
+        self.config_kind = config_kind
+        self.config_name = config_name
+        super().__init__(
+            f"{config_kind} config '{config_name}' has no model or provider (it may have been deleted). "
+            "Choose a model with a provider and try again.",
+            code=self.default_code,
+        )
+
+
 class UnsupportedReasoningEffortError(CustomAPIExeption):
     """Raised when an LLM config's reasoning effort is one its model cannot take.
 
@@ -812,6 +834,18 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     status_code = 502
     default_detail = "The explanation could not be generated. Please try again."
     default_code = "cdt_explain_upstream_failed"
+
+
+class InUseRestrictedError(CustomAPIExeption):
+    """Raised by the single-object destroy path when the entity is referenced
+    from something the caller cannot see (BaseDeleteService.assert_deletable).
+    A fixed business rule on the row, not a change in the caller's own
+    permissions, so it carries its own code: the frontend must not treat it
+    as stale permissions."""
+
+    status_code = 403
+    default_detail = "This item is used somewhere you don't have access to, so it can't be deleted."
+    default_code = "in_use_restricted"
 
 
 class CdtExplainLLMConfigMissingKeyError(CustomAPIExeption):

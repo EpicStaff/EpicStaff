@@ -16,8 +16,9 @@ def get_accessible_session(user, session_id: int, action: Permission = Permissio
 
     For the non-ViewSet session surfaces (run-session SSE stream, get-updates, stop),
     which cannot rely on HasOrgPermission (no DRF `action`) or the X-Organization-Id
-    header (SSE). A missing session, a session without a graph and a session in an
-    org the caller is not a member of all raise the same SessionNotFoundError.
+    header (SSE). A missing session, a session without a graph or whose graph is in
+    the recycle bin, and a session in an org the caller is not a member of all raise
+    the same SessionNotFoundError.
     Superadmin passes unconditionally (PermissionResolver bypass).
 
     Raises:
@@ -26,12 +27,13 @@ def get_accessible_session(user, session_id: int, action: Permission = Permissio
             on FLOWS.
     """
     session = (
-        Session.objects.annotate(owner_org_id=F("graph__org_id"))
+        Session.objects.visible()
+        .annotate(owner_org_id=F("graph__org_id"))
         .filter(pk=session_id)
         .only("id", "status")
         .first()
     )
-    if session is None or session.owner_org_id is None:
+    if session is None:
         raise SessionNotFoundError()
     assert_row_org_permission(
         user,
@@ -60,14 +62,35 @@ def get_runnable_graph(
     graph = Graph.objects.filter(**lookup).first()
     if graph is None:
         raise GraphNotFoundError()
+    _assert_graph_permission(user, graph.org_id, Permission.USE)
+    return graph
+
+
+def assert_graph_readable(user, graph_id: int) -> None:
+    """Authorize `user` to read the graph `graph_id`, taking the org from the graph row.
+
+    For surfaces that carry no active org (the graph co-editing websocket). A missing
+    graph, a graph in the recycle bin and a graph in an org the caller is not a member
+    of raise the same GraphNotFoundError. Superadmin passes unconditionally.
+
+    Raises:
+        GraphNotFoundError (404): no graph the caller may know about.
+        PermissionDenied (403): a member of the owning org whose role lacks READ on FLOWS.
+    """
+    owner_org_id = Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
+    if owner_org_id is None:
+        raise GraphNotFoundError()
+    _assert_graph_permission(user, owner_org_id, Permission.READ)
+
+
+def _assert_graph_permission(user, owner_org_id: int, action: Permission) -> None:
     assert_row_org_permission(
         user,
-        graph.org_id,
+        owner_org_id,
         ResourceType.FLOWS,
-        Permission.USE,
+        action,
         not_found=GraphNotFoundError(),
     )
-    return graph
 
 
 def assert_parent_session_in_org(parent_session_id: int, org_id: int) -> None:
@@ -76,10 +99,11 @@ def assert_parent_session_in_org(parent_session_id: int, org_id: int) -> None:
     A sub-session is deleted together with its parent (`Session.parent_session`
     cascades), so a parent in another organization would let that organization
     delete this one. A missing parent and another organization's parent raise
-    the same error, so the response never reveals that a session id exists.
+    the same error, so the response never reveals that a session id exists. A
+    parent whose flow is in the recycle bin is missing too.
 
     Raises:
         ParentSessionNotFoundError (400): no session with this id in the organization.
     """
-    if not Session.objects.filter(id=parent_session_id, graph__org_id=org_id).exists():
+    if not Session.objects.visible_in_org(org_id).filter(id=parent_session_id).exists():
         raise ParentSessionNotFoundError()

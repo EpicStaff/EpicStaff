@@ -308,6 +308,40 @@ class TestServiceRegistrationError:
         assert "Traceback" not in log_text
         _assert_contains_no_secret(log_text)
 
+    def test_tunnel_lookup_failure_returns_generic_503_without_its_text(
+        self, default_org, telegram_environment, monkeypatch, captured_logs
+    ):
+        internal_detail = "Error 111 connecting to redis-internal:6379. Connection refused."
+
+        def _tunnel_lookup_fails(self, webhook_trigger):
+            raise ConnectionError(internal_detail)
+
+        monkeypatch.setattr(
+            WebhookTriggerService, "wait_for_tunnel_url_for_trigger", _tunnel_lookup_fails
+        )
+        trigger = _create_telegram_trigger(default_org, "redact-svc-tunnel-lookup")
+        node = _create_node_without_registering(default_org, trigger)
+        requested_urls = _fake_telegram(monkeypatch, _connection_error)
+
+        with pytest.raises(RegisterTelegramTriggerError) as exc_info:
+            TelegramTriggerService().register_telegram_trigger(
+                telegram_trigger_instance=node
+            )
+
+        error = exc_info.value
+        assert error.status_code == 503
+        assert str(error.detail) == "Failed to fetch tunnel URL."
+        assert "redis-internal" not in repr(error)
+        assert error.__cause__ is None
+        log_text = "\n".join(captured_logs)
+        assert (
+            "[TelegramTrigger] Failed to fetch the tunnel URL for webhook trigger "
+            f"{trigger.pk}: ConnectionError"
+        ) in log_text
+        assert "Traceback" not in log_text
+        _assert_contains_no_secret(log_text)
+        assert requested_urls == []
+
     def test_undecryptable_bot_key_raises_resolution_error_without_secret(
         self, default_org, telegram_environment, monkeypatch, captured_logs
     ):

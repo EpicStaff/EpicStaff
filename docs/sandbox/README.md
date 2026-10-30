@@ -127,7 +127,7 @@ All are set in `src/env.yaml`, which generates `src/.env.example`.
 | `SANDBOX_MAX_CONCURRENT_EXECUTIONS` | 256 | sandbox_new | Hard cap on running executions |
 | `SANDBOX_CPU_ADMIT_THRESHOLD` | 85 | sandbox_new | Host CPU % above which nothing starts beyond the floor |
 | `SANDBOX_MEMORY_ADMIT_THRESHOLD` | 80 | sandbox_new | Container memory % above which nothing starts beyond the floor |
-| `CREW_CODE_RESULT_TIMEOUT`, `AGENT_CODE_RESULT_TIMEOUT`, `REALTIME_CODE_RESULT_TIMEOUT` | 35m | crew, agent, realtime | Backstop: the longest a producer waits for a result |
+| `CREW_CODE_RESULT_TIMEOUT`, `AGENT_CODE_RESULT_TIMEOUT`, `REALTIME_CODE_RESULT_TIMEOUT` | 40m | crew, agent, realtime | Backstop: the longest a producer waits for a result |
 
 ## Invariants
 

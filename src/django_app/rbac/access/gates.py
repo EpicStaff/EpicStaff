@@ -115,6 +115,8 @@ class HasOrgPermission(BaseRbacPermission):
             )
         org_id = request._rbac_active_org_id
         effective = self._resolver.resolve(user=request.user, org_id=org_id)
+        # Same key `resolve_request_permissions` reads, for serializers behind this gate.
+        request._rbac_effective_permissions = effective
 
         if not effective.can(resource_type, required):
             resource_str = resource_type if isinstance(resource_type, str) else resource_type.value

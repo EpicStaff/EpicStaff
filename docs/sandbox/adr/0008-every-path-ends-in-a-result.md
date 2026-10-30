@@ -63,7 +63,7 @@ Tests cover each gap: a raising run gets a failed result and frees its slot, an 
 
 ### 3. Rely on the backstop
 
-- Bad, because every affected node would wait 35 minutes.
+- Bad, because every affected node would wait 40 minutes.
 
 ## More Information
 

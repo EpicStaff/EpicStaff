@@ -103,6 +103,7 @@ Get-Content ..\.env | Where-Object { $_ -and $_ -notmatch '^#' } | ForEach-Objec
 $env:PYTHONPATH = "$(Resolve-Path ..\..)"
 
 python manage.py migrate
+python manage.py apply_service_grants
 python manage.py seed_builtin_roles
 python manage.py upload_models
 uvicorn django_app.asgi:application --reload --port 8000
@@ -125,7 +126,6 @@ python main.py --debug
 cd src/sandbox
 uv sync --frozen --all-groups
 .venv\Scripts\activate
-mkdir savefiles
 ```
 
 Fix dependency path in `src/sandbox/dynamic_venv_executor_chain.py`:

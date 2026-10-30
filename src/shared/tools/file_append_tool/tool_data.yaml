@@ -1,7 +1,0 @@
-tool-data:
-  name: "Append File Tool"
-  description: "A tool that can be used to append text to a file."
-  args-schema: "args_schema.json"
-  code-file: "main.py"
-  entrypoint: "main"
-  requirements: "requirements.txt"

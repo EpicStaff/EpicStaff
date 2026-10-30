@@ -1,7 +1,8 @@
 # The plugin gateway lab: EpicStaff's real nginx templates and entrypoint scripts, the pinned
-# nginx image, a stand-in decision service and two plugin backends. Run with run.sh, which
-# uses the project name es-gateway-lab and removes everything afterwards. No fixed host ports:
-# nginx is published on an ephemeral 127.0.0.1 port only.
+# nginx image, a stand-in decision service, two plugin backends and a load balancer that ends
+# TLS in front of nginx. Run with run.sh, which uses the project name es-gateway-lab and removes
+# everything afterwards. No fixed host ports: nginx is published on an ephemeral 127.0.0.1 port
+# only.
 #
 # The plugins' SPA files live in a volume, as in the stack: nginx mounts it read-only, and the
 # tools container writes it (run.sh copies spa/ in; checks.sh sets and clears a maintenance flag
@@ -14,6 +15,11 @@ x-lab-secret: &lab-secret
 # The lab's plugins network: fixed, as PLUGINS_NETWORK_SUBNET is in the stack, and apart from the
 # stack's default so the lab runs next to a dev stack.
 x-plugins-subnet: &plugins-subnet 10.235.254.0/24
+
+# The public network is fixed too, so the load balancer has an address nginx can be told to trust
+# (NGINX_TRUSTED_PROXIES). Apart from the stack's, the e2e run's and the other lab's subnets.
+x-public-subnet: &public-subnet 10.235.251.0/24
+x-load-balancer-address: &load-balancer-address 10.235.251.250
 
 x-lab-service: &lab-service
   build:
@@ -36,6 +42,9 @@ services:
       # As for a deployment reached over https with TLS ended in front of nginx: EpicStaff's server
       # and the plugin hosts send Strict-Transport-Security over nginx's plain http.
       NGINX_HSTS_ENABLED: "true"
+      # The load balancer only (lb, x-load-balancer-address), after an address nothing connects
+      # from: a list, as an operator may write one.
+      NGINX_TRUSTED_PROXIES: 192.0.2.10, 10.235.251.250
       DJANGO_HOST: decision
       DJANGO_PORT: "8000"
       FRONTEND_HOST: frontend
@@ -57,6 +66,10 @@ services:
       PLUGINS_MAX_REQUEST_BODY_MB: "1"
       DJANGO_FRONTEND_BASE_URL: https://epicstaff.test
       PLUGINS_NETWORK_SUBNET: *plugins-subnet
+      STORAGE_HOST: storage
+      STORAGE_PORT: "9000"
+      STORAGE_BUCKET: epicstaff
+      AVATAR_URL_SIGNING_SECRET: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
     volumes:
       - ../../templates/:/etc/nginx/templates:ro
       # Every hook in src/nginx/docker-entrypoint.d, as src/docker-compose.yaml mounts them
@@ -86,6 +99,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ../../docker-entrypoint.d/18-check-trusted-proxies.envsh
+        target: /docker-entrypoint.d/18-check-trusted-proxies.envsh
+        read_only: true
+        bind:
+          create_host_path: false
       - plugin_spa:/srv/plugin-spa:ro
       - ../../plugin-platform:/usr/share/nginx/plugin-platform:ro
     ports:
@@ -102,6 +121,25 @@ services:
         aliases:
           - epicstaff-api
     depends_on: [decision, plugin_alpha, plugin-bravo]
+
+  # A load balancer that ends TLS in front of nginx (lb/default.conf), at a fixed address. The
+  # tools container reaches nginx both through it and directly, as a client that bypasses it.
+  lb:
+    image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
+    command:
+      - sh
+      - -c
+      - >-
+        openssl req -x509 -nodes -newkey rsa:2048 -days 1 -subj /CN=lb
+        -keyout /tmp/lb-privkey.pem -out /tmp/lb-fullchain.pem > /dev/null 2>&1
+        && exec nginx -g 'daemon off;'
+    volumes:
+      - ./lb/default.conf:/etc/nginx/conf.d/default.conf:ro
+    mem_limit: 64m
+    networks:
+      public:
+        ipv4_address: *load-balancer-address
+    depends_on: [nginx]
 
   decision:
     <<: *lab-service
@@ -161,7 +199,10 @@ volumes:
   plugin_spa: {}
 
 networks:
-  public: {}
+  public:
+    ipam:
+      config:
+        - subnet: *public-subnet
   backend: {}
   plugins:
     internal: true

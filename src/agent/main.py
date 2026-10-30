@@ -11,6 +11,7 @@ from app.enums import RunType
 from app.factory import RunnerFactory
 from app.llm.config import configure_litellm
 from app.llm.litellm_client import LiteLLMClient
+from app.logging_utils import format_exception_for_log, summarize_validation_error
 from app.loop.agent_loop import DefaultAgentLoop
 from app.request_handler import RequestHandler
 from app.resources.resolver import AgentResolver
@@ -21,6 +22,7 @@ from app.sandbox.client import SandboxClient
 from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.gateway import McpToolGateway
 from loguru import logger
+from pydantic import ValidationError
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import ResponseError
 from redis.exceptions import TimeoutError as RedisTimeoutError
@@ -70,10 +72,15 @@ async def _process_message(
             envelope = StreamEnvelope.from_fields(message.fields)
 
         except Exception as parse_error:
+            error_details = (
+                f"validation={summarize_validation_error(parse_error)}"
+                if isinstance(parse_error, ValidationError)
+                else f"error={format_exception_for_log(parse_error)}"
+            )
             logger.error(
-                "failed to parse message message_id={} error={} — dropping (poison pill)",
+                "failed to parse message message_id={} {} — dropping (poison pill)",
                 message.message_id,
-                parse_error,
+                error_details,
             )
             await client.ack(
                 settings.AGENT_REQUEST_STREAM,
@@ -90,8 +97,12 @@ async def _process_message(
                 stream=message.stream,
             )
 
-    except Exception:
-        logger.exception("failed to process message_id={}", message.message_id)
+    except Exception as error:
+        logger.error(
+            "failed to process message_id={} error={}",
+            message.message_id,
+            format_exception_for_log(error),
+        )
 
 
 async def consume_requests(
@@ -130,6 +141,9 @@ async def consume_requests(
             try:
                 messages = await _read_requests(client, consumer_name, free_slots)
             except (RedisConnectionError, RedisTimeoutError):
+                # Deliberately not masked: redis-py's own message for these two is only
+                # host/port, never tenant content,
+                # so the full traceback is kept for diagnosing outages.
                 logger.exception(
                     "reading the request stream failed, retrying in {} s", read_retry_delay_s
                 )

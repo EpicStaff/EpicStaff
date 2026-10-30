@@ -2,8 +2,8 @@ import { Dialog } from '@angular/cdk/dialog';
 import { computed, DestroyRef, effect, inject, Injectable, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService } from '@shared/components';
-import { downloadBlob, recycleBinNotice } from '@shared/utils';
-import { EMPTY, forkJoin, from, Observable, of, Subject, Subscription } from 'rxjs';
+import { downloadBlob, escapeHtml, recycleBinNotice } from '@shared/utils';
+import { defer, EMPTY, forkJoin, from, Observable, of, Subject, Subscription } from 'rxjs';
 import { catchError, concatMap, finalize, map, switchMap, toArray } from 'rxjs/operators';
 
 import { ToastService } from '../../../services/notifications';
@@ -31,8 +31,9 @@ import {
     CreateFolderDialogResult,
 } from '../components/create-folder-dialog/create-folder-dialog.component';
 import { StorageDetailsDialogComponent } from '../components/storage-details-dialog/storage-details-dialog.component';
-import { StorageItem, StorageItemInfo } from '../models/storage.models';
+import { StorageItem, StorageItemInfo, StorageUsage, StorageUsageGroup } from '../models/storage.models';
 import { recycleBinPurgeMessage } from '../utils/recycle-bin-purge.utils';
+import { movedStorageItemsMessage } from '../utils/storage-delete-message.utils';
 import { getFileExtension } from '../utils/storage-file.utils';
 import { toStorageItems } from '../utils/storage-tree.utils';
 import { describeUploadFailures } from '../utils/upload-error.utils';
@@ -59,6 +60,9 @@ interface MoveOutcome {
     failed: StorageItem[];
 }
 
+/** Names listed per resource kind in the delete warning before the rest collapse into "and N more". */
+const MAX_USAGE_NAMES_SHOWN = 5;
+
 @Injectable()
 export class StorageTreeFacade {
     private destroyRef = inject(DestroyRef);
@@ -67,6 +71,7 @@ export class StorageTreeFacade {
     private toastService = inject(ToastService);
     private confirmationDialogService = inject(ConfirmationDialogService);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
+    private deleteCheckPending = false;
     private dialog = inject(Dialog);
 
     readonly isLoading = signal<boolean>(true);
@@ -749,7 +754,7 @@ export class StorageTreeFacade {
             return;
         }
 
-        this.confirmDelete([item])
+        this.confirmDeleteWithUsage([item], [item.path])
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((confirmed) => {
                 if (confirmed !== true) {
@@ -761,7 +766,7 @@ export class StorageTreeFacade {
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: () => {
-                            this.toastService.success(`"${item.name}" deleted`);
+                            this.toastService.success(movedStorageItemsMessage([item]));
                             if (this.selectedFile()?.path === item.path) {
                                 this.selectedFile.set(null);
                             }
@@ -821,7 +826,7 @@ export class StorageTreeFacade {
     }
 
     private handleDeleteSelected(selectedItems: StorageItem[]): void {
-        this.deleteItems(selectedItems, 'Selected items deleted', 'Select a file or folder first');
+        this.deleteItems(selectedItems, 'Select a file or folder first');
     }
 
     private handleDownloadAll(): void {
@@ -843,7 +848,7 @@ export class StorageTreeFacade {
 
     private handleDeleteAll(): void {
         const items = this.treeData();
-        this.deleteItems(items, 'All items deleted', 'Nothing to delete', true);
+        this.deleteItems(items, 'Nothing to delete', true);
     }
 
     private filterAllowedFiles(files: File[]): File[] {
@@ -860,33 +865,28 @@ export class StorageTreeFacade {
         return valid;
     }
 
-    private deleteItems(
-        candidates: StorageItem[],
-        successMessage: string,
-        emptyMessage: string,
-        clearSelectedFile: boolean = false
-    ): void {
+    private deleteItems(candidates: StorageItem[], emptyMessage: string, clearSelectedFile: boolean = false): void {
         const items = candidates.filter((item): item is StorageItem & { path: string } => Boolean(item.path));
         if (!items.length) {
             this.toastService.info(emptyMessage);
             return;
         }
 
-        this.confirmDelete(items)
+        const paths = items.map((item) => item.path);
+
+        this.confirmDeleteWithUsage(items, paths)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((confirmed) => {
                 if (confirmed !== true) {
                     return;
                 }
 
-                const paths = items.map((item) => item.path);
-
                 this.storageApiService
                     .delete(paths)
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: () => {
-                            this.toastService.success(successMessage);
+                            this.toastService.success(movedStorageItemsMessage(items));
                             if (clearSelectedFile) {
                                 this.selectedFile.set(null);
                             } else if (
@@ -902,7 +902,27 @@ export class StorageTreeFacade {
             });
     }
 
-    private confirmDelete(items: StorageItem[]): ReturnType<ConfirmationDialogService['confirm']> {
+    private confirmDeleteWithUsage(
+        items: StorageItem[],
+        paths: string[]
+    ): ReturnType<ConfirmationDialogService['confirm']> {
+        return defer(() => {
+            if (!paths.length || this.deleteCheckPending) {
+                return EMPTY;
+            }
+            this.deleteCheckPending = true;
+            return this.storageApiService.usage(paths).pipe(
+                catchError(() => of(null)),
+                switchMap((usage) => this.confirmDelete(items, usage)),
+                finalize(() => (this.deleteCheckPending = false))
+            );
+        });
+    }
+
+    private confirmDelete(
+        items: StorageItem[],
+        usage: StorageUsage | null
+    ): ReturnType<ConfirmationDialogService['confirm']> {
         const fileCount = items.filter((item) => item.type === 'file').length;
         const folderCount = items.filter((item) => item.type === 'folder').length;
         const isSingle = items.length === 1;
@@ -931,13 +951,49 @@ export class StorageTreeFacade {
         }
         message += ` ${recycleBinNotice(this.recycleBinSettings.retentionDays(), items.length)}`;
 
+        // The caution block scrolls, so a long list of names can't push the buttons off screen.
+        const usageWarning = usage ? this.buildUsageWarning(usage, items.length) : '';
+
         return this.confirmationDialogService.confirm({
             title,
             message,
+            caution: usageWarning || undefined,
             confirmText: 'Delete',
             cancelText: 'Cancel',
-            type: 'danger',
+            type: usageWarning ? 'warning' : 'danger',
         });
+    }
+
+    private buildUsageWarning(usage: StorageUsage, itemCount: number): string {
+        const groups: [string, StorageUsageGroup][] = [
+            ['flows', usage.flows],
+            ['surfaces', usage.surfaces],
+            ['agents', usage.agents],
+        ];
+        const lines = groups
+            .filter(([, group]) => group.used)
+            .map(([label, group]) => this.describeUsageGroup(label, group));
+        if (!lines.length) {
+            return '';
+        }
+
+        const pronoun = itemCount === 1 ? 'it' : 'them';
+        lines.push(
+            `Deleting will remove ${pronoun} from these, and restoring ${pronoun} from the recycle bin will not add ${pronoun} back.`
+        );
+        return lines.join('<br>');
+    }
+
+    private describeUsageGroup(label: string, group: StorageUsageGroup): string {
+        if (!group.items.length) {
+            return `<strong>Used in ${label} you can't view.</strong>`;
+        }
+        const shown = group.items
+            .slice(0, MAX_USAGE_NAMES_SHOWN)
+            .map((item) => `<strong>${escapeHtml(item.name)}</strong>`)
+            .join(', ');
+        const hidden = group.items.length - MAX_USAGE_NAMES_SHOWN;
+        return `Used in ${label}: ${shown}${hidden > 0 ? ` and ${hidden} more` : ''}.`;
     }
 
     private formatCount(count: number, single: string, plural: string): string {

@@ -13,6 +13,7 @@ import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
+import { SEARCH_DEBOUNCE_MS } from '../../components/conversation-list-toolbar/conversation-list-toolbar.component';
 import {
     CHAT_BINDING_DEFAULTS,
     ChatBinding,
@@ -134,6 +135,13 @@ describe('ChatPageComponent and the URL', () => {
     const currentRow = (): string | null =>
         host().querySelector('button.conversation-row[aria-current="true"]')?.getAttribute('aria-label') ?? null;
     const inbox = (): HTMLElement => host().querySelector('.inbox') as HTMLElement;
+    const openSections = (): string[] =>
+        Array.from(host().querySelectorAll<HTMLElement>('.conversation-list__section'))
+            .filter(
+                (section) =>
+                    section.querySelector('.conversation-section-header')?.getAttribute('aria-expanded') === 'true'
+            )
+            .map((section) => section.dataset['section'] ?? '');
 
     /**
      * Bot lists `botRows`, the other sections nothing, unless `bySection` says otherwise for a section of a desk (null
@@ -244,6 +252,8 @@ describe('ChatPageComponent and the URL', () => {
         });
         TestBed.inject(ActiveOrgService).set(1);
         TestBed.inject(ChatDesksStorageService).reload();
+        // The rows these specs move through are Bot's: the user keeps Bot open.
+        TestBed.inject(ConversationListPreferencesService).setExpanded('bot');
         location = TestBed.inject(Location) as SpyLocation;
         harness = await RouterTestingHarness.create();
         // As the app's initial navigation does: back and forward reach the router.
@@ -299,17 +309,14 @@ describe('ChatPageComponent and the URL', () => {
         expect(page().selected()?.id).toBe('t-7');
         expect(toast.error).not.toHaveBeenCalled();
         expect(location.path()).toBe(`${LIST}?conversation=t-7`);
-        // For this column only: Mine and the collapsed Tests stay remembered.
+        // For this column only: Mine and the open section stay remembered.
         const preferences = TestBed.inject(ConversationListPreferencesService);
         expect(preferences.isMineOnly()).toBe(true);
-        expect([...preferences.collapsed()]).toEqual(['test', 'closed']);
+        expect(preferences.expanded()).toBe('bot');
     });
 
-    it('reopens a conversation while every section is collapsed: the column opens them first', async () => {
-        const preferences = TestBed.inject(ConversationListPreferencesService);
-        for (const section of ['waiting', 'in_progress', 'test', 'closed', 'bot'] as const)
-            preferences.setCollapsed(section, true);
-
+    it('reopens a conversation while every section is folded: the column opens them first', async () => {
+        TestBed.inject(ConversationListPreferencesService).setExpanded(null);
         const remembered = localStorage.getItem(PREFERENCES_KEY);
 
         await open(`${LIST}?conversation=c-3`);
@@ -319,7 +326,7 @@ describe('ChatPageComponent and the URL', () => {
         expect(localStorage.getItem(PREFERENCES_KEY)).toBe(remembered);
     });
 
-    it('leaves the remembered sections alone when a reload names an id nothing can list, then drops it', async () => {
+    it('leaves the remembered section alone when a reload names an id nothing can list, then drops it', async () => {
         const remembered = localStorage.getItem(PREFERENCES_KEY);
 
         await open(`${LIST}?conversation=c-gone`);
@@ -327,7 +334,7 @@ describe('ChatPageComponent and the URL', () => {
         expect(chatApi.getConversation).toHaveBeenCalledWith('c-gone');
         expect(toast.error).toHaveBeenCalledWith("Couldn't open that conversation.");
         expect(localStorage.getItem(PREFERENCES_KEY)).toBe(remembered);
-        expect([...TestBed.inject(ConversationListPreferencesService).collapsed()]).toEqual(['test', 'closed']);
+        expect(TestBed.inject(ConversationListPreferencesService).expanded()).toBe('bot');
     });
 
     describe('a closed conversation', () => {
@@ -341,7 +348,7 @@ describe('ChatPageComponent and the URL', () => {
                 ...overrides,
             });
 
-        it('reopens on a reload through the collapsed Closed section, read-only, the remembered sections untouched', async () => {
+        it('reopens on a reload through the folded Closed section, read-only, the remembered section untouched', async () => {
             listing(BOT_ROWS, (section) => (section === 'closed' ? [closed('c-8')] : undefined));
             const remembered = localStorage.getItem(PREFERENCES_KEY);
 
@@ -353,7 +360,7 @@ describe('ChatPageComponent and the URL', () => {
             expect(host().querySelector('.thread-closed')?.textContent).toContain('Resolved by Mike');
             expect(host().querySelector('app-chat-thread-composer')).toBeNull();
             expect(localStorage.getItem(PREFERENCES_KEY)).toBe(remembered);
-            expect([...TestBed.inject(ConversationListPreferencesService).collapsed()]).toEqual(['test', 'closed']);
+            expect(TestBed.inject(ConversationListPreferencesService).expanded()).toBe('bot');
         });
 
         // The lookup's own rules (another desk's answer, a 404, other failures) are `open-conversation-sync.service.spec.ts`.
@@ -368,6 +375,26 @@ describe('ChatPageComponent and the URL', () => {
             expect(location.path()).toBe(`${LIST}?conversation=c-old`);
             expect(toast.error).not.toHaveBeenCalled();
             expect(chatApi.getMessages).toHaveBeenCalledWith('c-old');
+        });
+
+        it('opens every section for a link that arrives while a search runs, clearing the search, and finds it', async () => {
+            respond = (params) =>
+                of({ results: params.section === 'closed' && !params.q ? [closed('x-9')] : [], next_cursor: null });
+            await open(LIST);
+            const field = host().querySelector<HTMLInputElement>('app-conversation-list-toolbar input')!;
+            field.value = 'ada';
+            field.dispatchEvent(new Event('input'));
+            await new Promise((resolve) => setTimeout(resolve, SEARCH_DEBOUNCE_MS));
+            await settle();
+
+            await harness.navigateByUrl(`${LIST}?conversation=x-9`);
+
+            expect(field.value).toBe('');
+            expect(openSections()).toEqual(['waiting', 'in_progress', 'test', 'closed', 'bot']);
+            await settle();
+            expect(page().selected()?.id).toBe('x-9');
+            expect(chatApi.getConversation).not.toHaveBeenCalled();
+            expect(toast.error).not.toHaveBeenCalled();
         });
     });
 
@@ -479,7 +506,8 @@ describe('ChatPageComponent and the URL', () => {
         });
 
         it('still pushes after a reload names a conversation the list has not resolved, and back does not reopen it', async () => {
-            // Bot never answers (a slow network): the reloaded id stays unresolved; Waiting has a row to tap.
+            // Bot never answers (a slow network): the reloaded id stays unresolved; Waiting, open, has a row to tap.
+            TestBed.inject(ConversationListPreferencesService).setExpanded('waiting');
             listing([], (section) => (section === 'bot' ? null : section === 'waiting' ? [row('c-9')] : []));
             await open(`${LIST}?conversation=c-1`);
             expect(page().selected()).toBeNull();

@@ -1,6 +1,7 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse
 
+from tables.serializers.recycle_bin_serializers import RecycleBinContentsSerializer
 from tables.serializers.storage_serializers import (
     GraphStorageFileSerializer,
     StorageAddToGraphSerializer,
@@ -20,6 +21,8 @@ from tables.serializers.storage_serializers import (
     StorageTransferResponseSerializer,
     StorageTreeResponseSerializer,
     StorageUploadLimitsResponseSerializer,
+    StorageUsageRequestSerializer,
+    StorageUsageResponseSerializer,
 )
 
 _STORAGE_PATH_PARAM = OpenApiParameter(
@@ -30,6 +33,16 @@ _STORAGE_PATH_PARAM = OpenApiParameter(
     required=False,
     default="",
 )
+
+STORAGE_RECYCLE_BIN_CONTENTS_SWAGGER = {
+    "summary": "Show all of a binned folder's contents",
+    "description": (
+        'Files and folders deleted with one binned folder, up to 5,000: "Show all" past the '
+        "list's 100. `hidden_contents` is always empty here: a folder holds only files."
+    ),
+    "request": None,
+    "responses": RecycleBinContentsSerializer,
+}
 
 STORAGE_LIST_SWAGGER = {
     "summary": "List files and folders",
@@ -47,7 +60,9 @@ STORAGE_LIST_SWAGGER = {
 STORAGE_INFO_SWAGGER = {
     "summary": "Get file metadata",
     "description": (
-        "Returns metadata for a single file (name, size, content_type, modified, created, etag)."
+        "Returns metadata for a single file (name, size, content_type, modified, created, etag) "
+        "and `graphs`, the flows using it by id and name. `graphs` is empty when the caller "
+        "lacks READ on flows."
     ),
     "parameters": [_STORAGE_PATH_PARAM],
     "responses": {
@@ -59,7 +74,7 @@ STORAGE_INFO_SWAGGER = {
 STORAGE_DOWNLOAD_SWAGGER = {
     "summary": "Download a file",
     "description": (
-        "Downloads a single file by path. Returns the file content "
+        "Downloads a single file by path; needs FILES:EXPORT. Returns the file content "
         "with appropriate Content-Disposition header. A single "
         "`Range: bytes=first-[last]` header returns only that part (206)."
     ),
@@ -67,6 +82,22 @@ STORAGE_DOWNLOAD_SWAGGER = {
     "responses": {
         200: OpenApiResponse(description="File content as binary stream"),
         206: OpenApiResponse(description="The requested byte range, with Content-Range"),
+        416: OpenApiResponse(description="Range starts past the end of the file"),
+    },
+}
+
+STORAGE_PREVIEW_SWAGGER = {
+    "summary": "Preview a file",
+    "description": (
+        "Returns a single file's content inline by path, for in-app viewing; needs "
+        "FILES:READ, unlike download, which needs FILES:EXPORT. A single "
+        "`Range: bytes=first-[last]` header returns only that part (206)."
+    ),
+    "parameters": [_STORAGE_PATH_PARAM],
+    "responses": {
+        200: OpenApiResponse(description="File content as binary stream"),
+        206: OpenApiResponse(description="The requested byte range, with Content-Range"),
+        404: OpenApiResponse(description="File does not exist"),
         416: OpenApiResponse(description="Range starts past the end of the file"),
     },
 }
@@ -95,6 +126,27 @@ STORAGE_DELETE_SWAGGER = {
     "description": "Deletes the files or folders at the specified paths.",
     "request": StorageBulkDeleteSerializer,
     "responses": {204: OpenApiResponse(description="Deleted successfully")},
+}
+
+STORAGE_USAGE_SWAGGER = {
+    "summary": "Preview what deleting files or folders would unlink",
+    "description": (
+        "Read-only check to call before a delete. Deleting a file or folder permanently "
+        "removes the links pointing at it, and a restore does not bring them back. For the "
+        "given paths this reports the live flows, surfaces and agents that hold such a link, "
+        "using the same lookup as the delete: a path naming a live file means that file, any "
+        "other path means the folder and everything under it. A path with nothing live at it "
+        "contributes nothing, so it is not an error. Flows are those attached to the files "
+        "and those with a live node whose inline surface is linked to them; agents are those "
+        "running such a node. "
+        "For each kind, `used` is always true when a link exists, whatever the caller may "
+        "read, so nobody destroys links unwarned. `items` lists the distinct entries "
+        "ordered by name, then id, only when the caller holds READ on that resource type "
+        "(flows, surfaces or agents) in the active organization; otherwise it is empty. "
+        "Needs FILES:READ."
+    ),
+    "request": StorageUsageRequestSerializer,
+    "responses": {200: StorageUsageResponseSerializer},
 }
 
 STORAGE_RENAME_SWAGGER = {
@@ -169,7 +221,10 @@ STORAGE_REMOVE_FROM_GRAPH_SWAGGER = {
 
 STORAGE_GRAPH_FILES_SWAGGER = {
     "summary": "List storage files attached to a graph",
-    "description": "Returns all storage paths that have been linked to the given graph.",
+    "description": (
+        "Returns all storage paths that have been linked to the given graph. "
+        "Requires READ on flows as well as on files."
+    ),
     "parameters": [
         OpenApiParameter(
             name="graph_id",
@@ -181,6 +236,7 @@ STORAGE_GRAPH_FILES_SWAGGER = {
     ],
     "responses": {
         200: GraphStorageFileSerializer(many=True),
+        403: OpenApiResponse(description="The caller lacks read permission on flows."),
         404: OpenApiResponse(description="Graph not found"),
     },
 }

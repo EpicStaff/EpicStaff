@@ -1,4 +1,11 @@
-<article class="venv-card">
+<article
+    class="venv-card"
+    [class.venv-card--clickable]="canEdit()"
+    [attr.tabindex]="canEdit() ? 0 : null"
+    [attr.aria-label]="canEdit() ? 'Edit ' + venv().name : null"
+    (click)="onCardClick()"
+    (keydown.enter)="onCardClick()"
+>
     <div class="venv-card__row">
         <div class="venv-card__title">
             <span
@@ -15,6 +22,20 @@
         </div>
 
         <div class="venv-card__actions">
+            <button
+                type="button"
+                class="venv-card__icon-btn"
+                [class.venv-card__icon-btn--accent]="venv().is_favorite"
+                [attr.aria-label]="favoriteLabel()"
+                [matTooltip]="favoriteLabel()"
+                matTooltipPosition="above"
+                (click)="$event.stopPropagation(); onToggleFavorite()"
+            >
+                <app-svg-icon
+                    [icon]="venv().is_favorite ? 'star-filled' : 'star'"
+                    size="16px"
+                />
+            </button>
             @if (updates().length) {
                 <button
                     type="button"
@@ -50,21 +71,6 @@
                     </div>
                 </ng-template>
             }
-            @if (canEdit()) {
-                <button
-                    type="button"
-                    class="venv-card__icon-btn"
-                    aria-label="Edit"
-                    matTooltip="Edit"
-                    matTooltipPosition="above"
-                    (click)="onEdit()"
-                >
-                    <app-svg-icon
-                        icon="edit-pencil"
-                        size="14px"
-                    />
-                </button>
-            }
             @if (canDelete()) {
                 <button
                     type="button"
@@ -72,7 +78,7 @@
                     aria-label="Delete"
                     matTooltip="Delete"
                     matTooltipPosition="above"
-                    (click)="onDelete()"
+                    (click)="$event.stopPropagation(); onDelete()"
                 >
                     <app-svg-icon
                         icon="close"

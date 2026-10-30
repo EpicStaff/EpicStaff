@@ -73,4 +73,4 @@ Chosen option: **1, an execution registry and a status endpoint**, because one s
 ## More Information
 
 - Producers poll through their sandbox clients ([0007](0007-producer-clients-per-service.md)): every 30 s, 404 means lost, three failed requests in a row mean unreachable.
-- Each producer keeps a 35-minute backstop for anything the protocol does not catch.
+- Each producer keeps a 40-minute backstop for anything the protocol does not catch.

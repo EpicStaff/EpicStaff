@@ -1,34 +1,16 @@
-import base64
-from pathlib import Path
-from typing import Optional
 import json
 import sys
+from urllib.parse import urlparse
 
 from openai import OpenAI
 
 
 def validate_image_path_url(image_path_url: str) -> str:
-    """Validate local image path or URL."""
-    if image_path_url.startswith("http"):
-        return image_path_url
-
-    path = Path(image_path_url)
-    if not path.exists():
-        raise ValueError(f"Image file does not exist: {image_path_url}")
-
-    valid_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
-    if path.suffix.lower() not in valid_extensions:
-        raise ValueError(
-            f"Unsupported image format. Supported formats: {valid_extensions}"
-        )
-
+    """Validate that the image is given as an http(s) URL."""
+    url = urlparse(image_path_url)
+    if url.scheme not in ("http", "https") or not url.netloc:
+        raise ValueError(f"'{image_path_url}' is not an http(s) URL")
     return image_path_url
-
-
-def encode_image(image_path: str) -> str:
-    """Encode a local image file as base64."""
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode("utf-8")
 
 
 def main(image_path_url: str, openai_api_key: str, model: str = "gpt-4o-mini") -> str:
@@ -36,7 +18,7 @@ def main(image_path_url: str, openai_api_key: str, model: str = "gpt-4o-mini") -
     Analyze an image using OpenAI Vision API.
 
     Args:
-        image_path_url: Local path or URL to the image
+        image_path_url: Public http(s) URL of the image
         openai_api_key: OpenAI API key
         model: OpenAI model identifier (default: gpt-4o-mini)
 
@@ -44,16 +26,7 @@ def main(image_path_url: str, openai_api_key: str, model: str = "gpt-4o-mini") -
         str: Description of the image or error message
     """
     try:
-        validate_image_path_url(image_path_url)
-
-        if image_path_url.startswith("http"):
-            image_data = image_path_url
-        else:
-            base64_image = encode_image(image_path_url)
-            # Detect MIME type from file extension
-            ext = Path(image_path_url).suffix.lower()
-            mime = "jpeg" if ext in [".jpg", ".jpeg"] else ext[1:]
-            image_data = f"data:image/{mime};base64,{base64_image}"
+        image_data = validate_image_path_url(image_path_url)
 
         client = OpenAI(api_key=openai_api_key)
         response = client.chat.completions.create(

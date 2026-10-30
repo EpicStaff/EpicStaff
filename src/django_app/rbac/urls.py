@@ -23,6 +23,7 @@ from rbac.views.auth import (
     WsTicketView,
 )
 from rbac.views.memberships import MembershipAdminViewSet
+from rbac.views.organization_retention import OrganizationRetentionAdminViewSet
 from rbac.views.organizations import OrganizationAdminViewSet, OrganizationSelfServiceViewSet
 from rbac.views.permissions import (
     MyOrgsPermissionsView,
@@ -33,7 +34,7 @@ from rbac.views.profile import (
     PasswordChangeConfirmView,
     PasswordChangeRequestView,
     ProfileAvatarView,
-    ProfileQuickstartTourCompleteView,
+    ProfileTourCompleteView,
     ProfileView,
 )
 from rbac.views.roles import RoleAdminViewSet
@@ -82,9 +83,9 @@ urlpatterns = [
         name="profile_avatar",
     ),
     path(
-        "api/profile/quickstart-tour/complete/",
-        ProfileQuickstartTourCompleteView.as_view(),
-        name="profile_quickstart_tour_complete",
+        "api/profile/tours/<str:tour_key>/complete/",
+        ProfileTourCompleteView.as_view(),
+        name="profile_tour_complete",
     ),
     path(
         "api/profile/password-change/request/",
@@ -145,6 +146,11 @@ urlpatterns = [
         "api/admin/organizations/settings/",
         OrganizationSelfServiceViewSet.as_view({"patch": "partial_update"}),
         name="organization-self-settings",
+    ),
+    path(
+        "api/admin/organizations/<int:pk>/retention/",
+        OrganizationRetentionAdminViewSet.as_view({"get": "retrieve", "patch": "partial_update"}),
+        name="admin-organization-retention",
     ),
     path("api/admin/", include(admin_router.urls)),
 ]

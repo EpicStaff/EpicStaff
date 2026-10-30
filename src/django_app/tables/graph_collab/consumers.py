@@ -1,8 +1,10 @@
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
+from rest_framework.exceptions import PermissionDenied
 from utils.logger import logger
 
+from tables.exceptions import GraphNotFoundError
 from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.protocol import (
     ErrorMessage,
@@ -11,6 +13,7 @@ from tables.graph_collab.protocol import (
     UserLeftMessage,
 )
 from tables.graph_collab.utils import build_editor_info
+from tables.services.session_access import assert_graph_readable
 
 
 def _group_name(graph_id: int) -> str:
@@ -40,9 +43,15 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4400)
             return
 
-        exists = await sync_to_async(self._graph_exists)(self.graph_id)
-        if not exists:
+        # A graph of another org closes with the same code as a missing one, so the
+        # close code never reveals that the graph exists.
+        try:
+            await sync_to_async(assert_graph_readable)(user, self.graph_id)
+        except GraphNotFoundError:
             await self.close(code=4404)
+            return
+        except PermissionDenied:
+            await self.close(code=4403)
             return
 
         self.group = _group_name(self.graph_id)
@@ -117,11 +126,3 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
     async def presence_state_updated(self, event):
         await self.send_json(event)
-
-    # --- Helpers ---
-
-    @staticmethod
-    def _graph_exists(graph_id: int) -> bool:
-        from tables.models import Graph
-
-        return Graph.objects.filter(pk=graph_id).exists()

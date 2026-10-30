@@ -26,9 +26,8 @@ if LOG_LEVEL not in SharedEnv.LOG_LEVELS_WITH_BENCH:
 VENVS_DIR = env.path("SANDBOX_VENVS_DIR", BASE_DIR / "venvs")
 VENV_STAGING_DIR = VENVS_DIR / "builds"
 
-# Per-execution workspaces are created under here; savefiles is the shared volume.
+# Per-execution workspaces are created under here.
 EXECUTIONS_DIR = BASE_DIR / "executions"
-SAVEFILES_DIR = BASE_DIR / "savefiles"
 
 # Local shared packages the execution wrapper imports unconditionally (dotdict,
 # epicstaff_secrets) plus the shared tool helpers (epicstaff_common). They are NOT
@@ -47,7 +46,7 @@ PREDEFINED_VENV_PACKAGES = (
 QUEUE_TIMEOUT = env.time("SANDBOX_QUEUE_TIMEOUT")
 # Seconds a job may wait for its venv to finish building before it is failed instead of
 # run. Keep it below the producers' result backstops (CREW_CODE_RESULT_TIMEOUT,
-# AGENT_CODE_RESULT_TIMEOUT, REALTIME_CODE_RESULT_TIMEOUT, 35 minutes by default), so a
+# AGENT_CODE_RESULT_TIMEOUT, REALTIME_CODE_RESULT_TIMEOUT, 40 minutes by default), so a
 # producer learns the job was not run before it gives up waiting.
 HOLD_TIMEOUT = env.time("SANDBOX_HOLD_TIMEOUT")
 # Executions accepted and not yet finished (queued or running) before intake answers 503.
@@ -122,6 +121,11 @@ if DEFAULT_EXECUTION_TIMEOUT < MIN_EXECUTION_TIMEOUT or (
         f"SANDBOX_DEFAULT_EXECUTION_TIMEOUT must be at least {MIN_EXECUTION_TIMEOUT}s "
         "and not above SANDBOX_MAX_EXECUTION_TIMEOUT."
     )
+
+# Bytes. Caps the result and storage mutations files the worker reads back from a run.
+MAX_RESULT_SIZE = env.byte_size("SANDBOX_MAX_RESULT_SIZE")
+if MAX_RESULT_SIZE is None or MAX_RESULT_SIZE <= 0:
+    raise ValueError("SANDBOX_MAX_RESULT_SIZE must be a positive size, not none.")
 
 # Defaults are the confining value: a missing setting must not unconfine the sandbox.
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET", True)

@@ -18,6 +18,7 @@ __all__ = [
     "ForbiddenError",
     "InvalidCursorError",
     "InvalidIdentityError",
+    "InvalidInternalKeyError",
     "InvalidSearchError",
     "InvalidTokenError",
     "MessageTooLongError",
@@ -68,6 +69,14 @@ class CallbackRejectedError(ChatError):
         "invalid_signature",
         401,
         "Callback signature or timestamp rejected.",
+    )
+
+
+class InvalidInternalKeyError(ChatError):
+    code, status_code, default_message = (
+        "invalid_internal_key",
+        401,
+        "Missing or wrong internal API key.",
     )
 
 

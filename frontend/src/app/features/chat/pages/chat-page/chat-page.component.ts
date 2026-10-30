@@ -17,8 +17,9 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
-import { CollapseOnOverflowDirective } from '@shared/directives';
+import { CollapseOnOverflowDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { SidebarWidthService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { filter } from 'rxjs';
 
@@ -34,6 +35,11 @@ import { ChatBindingStatusComponent } from '../../components/chat-binding-status
 import { ChatThreadComponent } from '../../components/chat-thread/chat-thread.component';
 import { ConversationListComponent } from '../../components/conversation-list/conversation-list.component';
 import { DeskAvatarComponent } from '../../components/desk-avatar/desk-avatar.component';
+import {
+    CONVERSATIONS_WIDTH_KEY,
+    CONVERSATIONS_WIDTH_OPTIONS,
+    isCompactColumn,
+} from '../../constants/column-widths.constants';
 import { ChatConversation } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
@@ -68,6 +74,7 @@ type DeskAction = 'my-name' | 'settings' | 'snippet' | 'pause' | 'delete';
         CollapseOnOverflowDirective,
         ConversationListComponent,
         DeskAvatarComponent,
+        ResizableSidebarDirective,
     ],
     providers: [OpenConversationService, OpenConversationSyncService, ChatVisitorTokensStore],
     templateUrl: './chat-page.component.html',
@@ -82,6 +89,13 @@ export class ChatPageComponent {
     private readonly deskSwitcher = viewChild<ElementRef<HTMLButtonElement>>('deskSwitcher');
 
     readonly isStartingTest = signal(false);
+    protected readonly conversationsWidth = inject(SidebarWidthService).getWidth(
+        CONVERSATIONS_WIDTH_KEY,
+        CONVERSATIONS_WIDTH_OPTIONS
+    );
+    protected readonly isConversationsCompact = computed(
+        () => !this.isPhone() && isCompactColumn(this.conversationsWidth())
+    );
     // The desk list asked for once the route moved to a desk the list lacked: only that list can say it is gone.
     private readonly deskListRequestedFor = signal<{ bindingId: string; request: number } | null>(null);
 
@@ -254,6 +268,8 @@ export class ChatPageComponent {
     });
 
     protected readonly allDesksIcon = ALL_DESKS_ICON;
+    protected readonly conversationsWidthKey = CONVERSATIONS_WIDTH_KEY;
+    protected readonly conversationsWidthOptions = CONVERSATIONS_WIDTH_OPTIONS;
     protected readonly deskDrawer = inject(DeskDrawerService);
     protected readonly openConversation = inject(OpenConversationService);
     protected readonly isPhone = inject(PhoneLayoutService).isPhone;
@@ -269,6 +285,7 @@ export class ChatPageComponent {
     private readonly myAliasesStorage = inject(ChatMyAliasesStorageService);
     private readonly visitorTokens = inject(ChatVisitorTokensStore);
     private readonly openConversationSync = inject(OpenConversationSyncService);
+    private readonly sidebarWidthService = inject(SidebarWidthService);
     private readonly injector = inject(Injector);
     private scope: string | null | undefined = undefined;
     // Phones: the conversation the stack showed last (null: the list); undefined off phones and before the first look.
@@ -287,6 +304,10 @@ export class ChatPageComponent {
     onTestConversationStarted(conversation: ChatConversation): void {
         this.openConversation.open(conversation);
         this.conversationList()?.reveal('test');
+    }
+
+    protected toggleConversations(): void {
+        this.sidebarWidthService.toggleCollapsed(CONVERSATIONS_WIDTH_KEY, CONVERSATIONS_WIDTH_OPTIONS);
     }
 
     /** The slide has ended: later moves are instant unless one made here asks again. */

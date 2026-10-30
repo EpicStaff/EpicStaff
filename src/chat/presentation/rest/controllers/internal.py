@@ -3,6 +3,7 @@ import time
 from uuid import UUID
 
 from application.orchestrators.conversation import ConversationOrchestrator
+from application.orchestrators.retention import RetentionOrchestrator
 from domain.enums import TERMINAL_RUN_STATUSES
 from domain.errors import UnknownRunError
 from infrastructure.callback_verifier import (
@@ -14,9 +15,16 @@ from infrastructure.callback_verifier import (
 from litestar import Controller, Request, post, status_codes
 from litestar.exceptions import ClientException
 
+from presentation.rest.guards import internal_api_key_guard
+from presentation.rest.schemas import internal as schemas
+
 
 class InternalController(Controller):
-    """Reachable only inside the compose network (nginx answers 404 for /chat/internal/)."""
+    """Reachable only inside the compose network (nginx answers 404 for /chat/internal/).
+
+    Django's session callbacks are signed per run; the manager's retention purge carries
+    CHAT_INTERNAL_API_KEY.
+    """
 
     path = "/chat/internal/v1"
     tags = ("Internal",)
@@ -73,3 +81,17 @@ class InternalController(Controller):
             payload.get("token_usage") or {},
         )
         return {"result": outcome.value}
+
+    @post(
+        path="/retention/purge",
+        status_code=status_codes.HTTP_200_OK,
+        summary="Delete an organization's closed conversations inactive since before a cutoff",
+        guards=[internal_api_key_guard],
+    )
+    async def purge_conversations(
+        self, data: schemas.RetentionPurgeInput, retention: RetentionOrchestrator
+    ) -> dict[str, int]:
+        """For the manager's nightly retention job: deletes closed conversations only; messages,
+        events, visitor tokens and callback receipts go with their conversation."""
+        deleted = await retention.purge_conversations(data.org_id, data.older_than)
+        return {"deleted": deleted}

@@ -7,7 +7,9 @@ from functools import partial
 
 import redis.asyncio as aioredis
 from loguru import logger
+from pydantic import ValidationError
 
+from app.logging_utils import format_exception_for_log, summarize_validation_error
 from app.sandbox.http_client import SandboxHttpClient
 from shared.bench_log import BENCH_LEVEL
 from shared.models.sandbox_execution import ExecutionRequest
@@ -182,8 +184,17 @@ class SandboxClient:
 
                 try:
                     result = CodeResultData.model_validate_json(data)
+                except ValidationError as error:
+                    logger.warning(
+                        "SandboxClient: failed to parse pubsub message: validation={}",
+                        summarize_validation_error(error),
+                    )
+                    continue
                 except Exception as error:
-                    logger.warning("SandboxClient: failed to parse pubsub message: {}", error)
+                    logger.warning(
+                        "SandboxClient: failed to parse pubsub message: error={}",
+                        format_exception_for_log(error),
+                    )
                     continue
 
                 future = self._pending.get(result.execution_id)
@@ -195,7 +206,9 @@ class SandboxClient:
             raise
 
         except Exception as error:
-            logger.error("SandboxClient reader loop failed: {}", error)
+            logger.error(
+                "SandboxClient reader loop failed: error={}", format_exception_for_log(error)
+            )
             connection_error = ConnectionError(f"SandboxClient reader loop failed: {error}")
 
             for future in self._pending.values():

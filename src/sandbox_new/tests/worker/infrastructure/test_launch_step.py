@@ -25,13 +25,13 @@ def launchable(tmp_path, source: str, **job_fields):
     """A context ready for the launch step, with the given child source written out."""
     code_path = tmp_path / "code.py"
     code_path.write_text(source, encoding="utf-8")
-    savefiles = tmp_path / "savefiles"
-    savefiles.mkdir(exist_ok=True)
+    work_dir = tmp_path / "work"
+    work_dir.mkdir(exist_ok=True)
     return make_context(
         make_worker_job(**job_fields),
         python_executable=Path(sys.executable),
         code_path=code_path,
-        savefiles_root=savefiles,
+        work_dir=work_dir,
         isolation=make_isolation_plan(),
     )
 
@@ -55,12 +55,12 @@ async def test_a_failing_child_reports_its_return_code_and_stderr(tmp_path):
     assert "bad" in context.stderr
 
 
-async def test_the_child_runs_in_the_savefiles_directory(tmp_path):
+async def test_the_child_runs_in_its_own_work_directory(tmp_path):
     context = launchable(tmp_path, "import os\nprint(os.getcwd())\n")
 
     await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
 
-    assert context.stdout.strip() == str(tmp_path / "savefiles")
+    assert context.stdout.strip() == str(tmp_path / "work")
 
 
 async def test_the_child_gets_only_the_prepared_environment(tmp_path):

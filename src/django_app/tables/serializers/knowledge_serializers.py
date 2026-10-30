@@ -11,6 +11,8 @@ from tables.models.knowledge_models import (
     NaiveRag,
     SourceCollection,
 )
+from tables.models.knowledge_models.collection_models import clean_collection_description
+from tables.serializers.utils.bulk_ids import BulkIdListField, BulkIdListSerializer
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
@@ -23,16 +25,17 @@ COLLECTION_DESCRIPTION_MAX_LENGTH = 2000
 
 
 def validate_collection_description(value):
-    """Shared length validation for SourceCollection.description.
+    """Clean SourceCollection.description and check its length.
 
-    The value is injected verbatim into every knowledge tool description sent
-    to the LLM, so an unbounded length would bloat every prompt.
+    Appended to every knowledge tool description sent to the LLM, so the length
+    is capped. Measured on the value as SourceCollection.save() cleans it.
     """
-    if value and len(value) > COLLECTION_DESCRIPTION_MAX_LENGTH:
+    cleaned = clean_collection_description(value)
+    if len(cleaned) > COLLECTION_DESCRIPTION_MAX_LENGTH:
         raise serializers.ValidationError(
             f"Description must be {COLLECTION_DESCRIPTION_MAX_LENGTH} characters or less."
         )
-    return value
+    return cleaned
 
 
 class RagConfigurationSummarySerializer(serializers.Serializer):
@@ -181,6 +184,10 @@ class DocumentUploadSerializer(serializers.Serializer):
         if not value:
             raise serializers.ValidationError("At least one file must be provided.")
         return value
+
+
+class SourceCollectionBulkDeleteSerializer(BulkIdListSerializer):
+    collection_ids = BulkIdListField(help_text="IDs of the collections to delete")
 
 
 class DocumentBulkDeleteSerializer(serializers.Serializer):

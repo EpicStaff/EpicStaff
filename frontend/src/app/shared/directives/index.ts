@@ -6,6 +6,7 @@ export * from './enter-blur.directive';
 export * from './enter-submit.directive';
 export * from './has-permission.directive';
 export * from './hide-inline-subtitle-on-overflow.directive';
+export * from './label-drop.directive';
 export * from './overflow-items.directive';
 export * from './resizable.directive';
 export * from './resizable-section.directive';

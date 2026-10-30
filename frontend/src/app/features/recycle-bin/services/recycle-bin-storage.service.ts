@@ -9,7 +9,12 @@ import {
     RecycleBinPage,
     RecycleBinSourceKey,
 } from '../models/recycle-bin.model';
-import { toContents, toRecycleBinItem, toStorageRecycleBinItem } from '../utils/recycle-bin-mappers.util';
+import {
+    hiddenContentsCount,
+    toContents,
+    toRecycleBinItem,
+    toStorageRecycleBinItem,
+} from '../utils/recycle-bin-mappers.util';
 import { DEFAULT_LIST_QUERY } from '../utils/recycle-bin-query.util';
 import { RecycleBinApiService } from './recycle-bin-api.service';
 
@@ -76,6 +81,7 @@ export class RecycleBinStorageService {
                             ? {
                                   ...current,
                                   contents: toContents(item.source, response.contents),
+                                  hiddenContentsCount: hiddenContentsCount(response.hidden_contents),
                                   contentsTotal: response.contents_total,
                               }
                             : current

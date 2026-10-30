@@ -70,6 +70,7 @@ export type CanFunction = (resource: ResourceCode, action: ActionCode) => boolea
 /** Every content of one binned item ("Show all"); the list sends at most 100. */
 export interface GetRecycleBinContentsResponse {
     contents: GetRecycleBinContentResponse[];
+    hidden_contents: GetRecycleBinHiddenContentsResponse[];
     contents_total: number;
 }
 
@@ -78,6 +79,16 @@ export interface GetRecycleBinContentResponse {
     name: string;
     /** A frontend NodeType value for flow nodes; otherwise one of RecycleBinContentKind. */
     kind: string;
+}
+
+/**
+ * Contents of one kind the user may not read the names of, only counted. One per kind, `count` at least 1;
+ * storage never has any.
+ */
+export interface GetRecycleBinHiddenContentsResponse {
+    /** Same values as GetRecycleBinContentResponse.kind. */
+    kind: string;
+    count: number;
 }
 
 /**
@@ -111,8 +122,10 @@ export interface GetRecycleBinEntryResponse {
     deleted_at: string;
     days_left: number;
     details: GetRecycleBinDetailResponse[];
-    /** At most 100; `contents_total` has the full count. */
+    /** At most 100, only the ones the user may read; `contents_total` has the full count. */
     contents: GetRecycleBinContentResponse[];
+    hidden_contents: GetRecycleBinHiddenContentsResponse[];
+    /** Every content, hidden ones included. */
     contents_total: number;
 }
 
@@ -167,7 +180,12 @@ export interface RecycleBinItem {
     details: RecycleBinDetail[];
     /** What the restore brings back with the item (at most 100). `nodeType` holds the content kind. */
     contents: NodeListItem[];
-    /** How many items the restore brings back in all; more than `contents.length` when capped. */
+    /** How many contents the user may not read the names of; never listed. */
+    hiddenContentsCount: number;
+    /**
+     * How many items the restore brings back in all, hidden ones included; more than `contents.length` plus
+     * `hiddenContentsCount` when the list was capped.
+     */
     contentsTotal: number;
 }
 

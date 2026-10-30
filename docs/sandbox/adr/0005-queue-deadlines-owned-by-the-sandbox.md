@@ -33,7 +33,7 @@ Chosen option: **1, sandbox-owned queue deadlines**, because the sandbox is the 
 
 - `JobOrchestrator._dispatch` sets `queued_at` = the wall-clock time (`time.time()`) when the job enters the run queue: at submission for a built venv, or at release for a held job. Never while held ([0006](0006-held-jobs-cap-and-hold-deadline.md)).
 - `JobConsumer` computes the deadline as `queued_at + SANDBOX_QUEUE_TIMEOUT`. If it has passed, it sends "Sandbox overloaded: the job waited N s in the queue and was not run." without taking a run slot. Otherwise it waits for the run gate, but no longer than the deadline, and checks again after admission.
-- Producers do no deadline arithmetic. They wait for the result, check status every 30 s ([0002](0002-execution-registry-and-status-endpoint.md)), and keep a 35-minute backstop. The previously planned `SANDBOX_RESULT_GRACE` setting was dropped.
+- Producers do no deadline arithmetic. They wait for the result, check status every 30 s ([0002](0002-execution-registry-and-status-endpoint.md)), and keep a 40-minute backstop. The previously planned `SANDBOX_RESULT_GRACE` setting was dropped.
 
 ### Consequences
 
@@ -41,7 +41,7 @@ Chosen option: **1, sandbox-owned queue deadlines**, because the sandbox is the 
 - Good, because the wait at the gate is bounded by the deadline, so one long-running job cannot delay every expired job behind it.
 - Good, because `queued_at` is a wall-clock timestamp, so the message keeps its meaning if the manager and the worker are later split into separate processes. A monotonic reading is meaningless outside the process that took it, and would make deadlines fire instantly or never after such a split.
 - Bad, because once the manager and the worker run on different hosts, the deadline depends on their clocks agreeing. With NTP and a queue timeout of tens of seconds, the error is milliseconds. Measuring from when the worker takes the job instead would be worse: it would not count the time spent in transport, which is exactly what the limit must bound.
-- Bad, because a job released from a venv hold near the end of its hold window can still queue and run past the producer's 35-minute backstop. The producer then reports a timeout. Rare; accepted.
+- Bad, because a job released from a venv hold near the end of its hold window can still queue and run past the producer's 40-minute backstop. The producer then reports a timeout. Rare; accepted.
 
 ### Validation
 

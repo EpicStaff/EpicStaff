@@ -12,16 +12,34 @@
     <div
         class="conditions-filter__group"
         [class.conditions-filter__group--framed]="groups().length > 1"
+        cdkDropList
+        (cdkDropListDropped)="reorderCondition(group.id, $event)"
     >
         @for (condition of group.conditions; track condition.id; let index = $index) {
-            <app-audit-condition-row
-                [condition]="condition"
-                (conditionChange)="updateCondition(group.id, $event)"
-                [operators]="operators()"
-                [showJoin]="index > 0"
-                [showKey]="showKey()"
-                (removed)="removeCondition(group.id, condition.id)"
-            />
+            <div
+                class="conditions-filter__draggable"
+                cdkDrag
+            >
+                <span
+                    class="conditions-filter__drag-handle"
+                    cdkDragHandle
+                >
+                    <app-svg-icon
+                        icon="drag-handle"
+                        size="12px"
+                    />
+                </span>
+
+                <app-audit-condition-row
+                    [condition]="condition"
+                    (conditionChange)="updateCondition(group.id, $event)"
+                    [operators]="operators()"
+                    [showJoin]="index > 0"
+                    [showKey]="showKey()"
+                    [keyOptions]="keyOptions()"
+                    (removed)="removeCondition(group.id, condition.id)"
+                />
+            </div>
         }
 
         <button

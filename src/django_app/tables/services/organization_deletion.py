@@ -199,6 +199,10 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "agents.AgentInlineSurfaceGraphLocalSearchConfig",
         "agents.AgentInlineSurfaceGraphGlobalSearchConfig",
         "agents.AgentInlineSurfaceGraphDriftSearchConfig",
+        # A user's own guided-tour progress, a UI preference like the custom
+        # shortcuts on the user row -- part of the deleted user, not a resource
+        # to report:
+        "tables.UserTourProgress",
     }
 )
 
