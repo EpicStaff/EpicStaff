@@ -408,6 +408,8 @@ class SegmentLines {
     within(axis: Axis, position: number, distance: number): { path: number; index: number }[] {
         const first = Math.floor((position - distance) / SAME_LINE_TOLERANCE) - 1;
         const last = Math.floor((position + distance) / SAME_LINE_TOLERANCE) + 1;
+        // Beyond 2^53 a bucket index cannot be stepped, and at that magnitude half-pixel buckets mean nothing.
+        if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last)) return [];
         const result: { path: number; index: number }[] = [];
         for (let bucket = first; bucket <= last; bucket++) result.push(...(this.buckets.get(`${axis}${bucket}`) ?? []));
         return result;
