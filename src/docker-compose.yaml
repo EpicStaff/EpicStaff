@@ -170,7 +170,7 @@ services:
       SANDBOX_PORT: ${SANDBOX_PORT:?}
       SANDBOX_CLIENT_TIMEOUT: ${SANDBOX_CLIENT_TIMEOUT:?}
 
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       AUDITOR_URL: ${AUDITOR_URL:?}
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       AUDIT_TOKEN_TTL_SECONDS: ${AUDIT_TOKEN_TTL_SECONDS:?}
@@ -393,7 +393,7 @@ services:
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_RESULT_TIMEOUT: ${AGENT_RESULT_TIMEOUT:?}
       CREW_TOKEN_BUDGET: ${CREW_TOKEN_BUDGET:?}
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
       AUDITOR_URL: ${AUDITOR_URL:?}
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       CREW_KEY_VALUE_TIMEOUT: ${CREW_KEY_VALUE_TIMEOUT:?}
@@ -541,7 +541,8 @@ services:
       AUDITOR_API_URL: ${AUDITOR_API_URL:?}
       CHAT_ENABLED: ${CHAT_ENABLED:?}
       CHAT_API_URL: ${CHAT_API_URL:?}
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
     networks:
       - frontend-network
@@ -754,7 +755,7 @@ services:
       - backend-network
 
   # Audit trail stack (opensearch, auditor). Gated behind profiles: ["auditor"]: they start only when
-  # COMPOSE_PROFILES includes "auditor"; AUDIT_TRAIL_ENABLED=true then makes them do work.
+  # COMPOSE_PROFILES includes "auditor"; either audit switch set to true then makes them do work.
   # Nothing outside the profile may depend_on them, or a stack without the audit trail would not start.
   opensearch:
     restart: unless-stopped
@@ -763,7 +764,8 @@ services:
     profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
     environment:
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       discovery.type: single-node
       bootstrap.memory_lock: "true"
       OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:?}
@@ -799,7 +801,8 @@ services:
     environment:
       <<: [*docker-env, *redis-env]
       AUDITOR_DEBUG: ${AUDITOR_DEBUG:?}
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
+      USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       AUDITOR_PORT: ${AUDITOR_PORT:?}
       AUDITOR_LOG_LEVEL: ${AUDITOR_LOG_LEVEL:?}
       AUDIT_STORAGE_BACKEND: ${AUDIT_STORAGE_BACKEND:?}
