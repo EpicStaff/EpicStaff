@@ -35,6 +35,19 @@ header_values() {
 code_of_body() { jq -r '.code // empty' "$work/body" 2> /dev/null; }
 backend_header() { jq -r --arg name "$1" '[.headers[] | select(.[0] | ascii_downcase == $name) | .[1]] | join("|")' "$work/body"; }
 decision_entry() { grep -F "$1" /evidence/decision.log | tail -n 1; }
+# The X-Forwarded-Proto values "Django" got for the request with that probe, |-joined.
+django_forwarded_proto() {
+  decision_entry "$1" | jq -r '[.headers[] | select(.[0] | ascii_downcase == "x-forwarded-proto") | .[1]] | join("|")'
+}
+expect_django_forwarded_proto() { # description, probe, expected value
+  local seen
+  seen=$(django_forwarded_proto "$2")
+  if [ "$seen" = "$3" ]; then
+    pass "$1"
+  else
+    fail "$1: Django got X-Forwarded-Proto [$seen], expected [$3]"
+  fi
+}
 
 # The reason in X-EpicStaff-Gateway-Deny for each code the gateway answers with.
 deny_reason_of_code() {
@@ -226,6 +239,36 @@ else
   fail "a POST through the gateway: $(head -c 200 "$work/body")"
 fi
 
+echo "# X-Forwarded-Proto: the load balancer's (NGINX_TRUSTED_PROXIES), nobody else's"
+
+# The lab's nginx trusts only the load balancer (compose.yaml), which ends TLS and sends https. A
+# client that reaches nginx directly, as this container also does, gets nginx's own scheme, http,
+# whatever it claims. Django builds its absolute URLs (avatars, the flow assistant's stream) from
+# what arrives here.
+load_balancer=https://lb
+curl -sk -o /dev/null -H "Host: $main_host" "$load_balancer/api/forwarded/?probe=proto-through-lb"
+expect_django_forwarded_proto "through the TLS-ending load balancer, Django is told https" \
+  probe=proto-through-lb https
+curl -s -o /dev/null -H "Host: $main_host" "$gateway/api/forwarded/?probe=proto-direct"
+expect_django_forwarded_proto "a client that reaches nginx directly: Django is told nginx's own scheme, http" \
+  probe=proto-direct http
+curl -s -o /dev/null -H "Host: $main_host" -H 'X-Forwarded-Proto: https' \
+  "$gateway/api/forwarded/?probe=proto-spoofed"
+expect_django_forwarded_proto "a client that reaches nginx directly and claims https: Django is still told http" \
+  probe=proto-spoofed http
+curl -sk -o "$work/body" -H "Host: $alpha" "$load_balancer/api/public/echo?probe=proto-plugin-lb"
+if [ "$(backend_header x-forwarded-proto)" = https ]; then
+  pass "through the load balancer, a plugin backend is told https"
+else
+  fail "through the load balancer, a plugin backend is told [$(backend_header x-forwarded-proto)], not https"
+fi
+request "$alpha" '/api/public/echo?probe=proto-plugin-spoofed' -H 'X-Forwarded-Proto: https'
+if [ "$(backend_header x-forwarded-proto)" = http ]; then
+  pass "a client that reaches a plugin host directly and claims https: the plugin is told http"
+else
+  fail "directly, claiming https, a plugin backend is told [$(backend_header x-forwarded-proto)], not http"
+fi
+
 echo "# what reaches the plugin and the check"
 
 request "$alpha" '/api/public/echo?probe=cookies' -H 'Cookie: sessionid=s3cret' -H 'Cookie: csrftoken=abc' \
@@ -401,6 +444,13 @@ if echo "$seen" | jq -e '.body_bytes == 12 and ([.headers[] | select(.[0] == "Co
 else
   fail "a POST through the internal listener: $(echo "$seen" | head -c 300)"
 fi
+
+# No load balancer is ever in front of this listener: whatever a plugin backend claims, Django is
+# told nginx's own scheme.
+curl -s -o /dev/null -H 'X-Forwarded-Proto: https' -H 'Authorization: PluginNodeKey lab-node-key' \
+  "$internal_api/api/plugin-nodes/self/desired-state/?probe=proto-internal"
+expect_django_forwarded_proto "the internal listener: a plugin backend that claims https, Django is told http" \
+  probe=proto-internal http
 
 echo "# a plugin backend cannot use EpicStaff's site or the plugin hosts (80/443)"
 

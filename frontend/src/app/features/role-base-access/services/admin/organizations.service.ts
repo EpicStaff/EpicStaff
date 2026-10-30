@@ -5,6 +5,8 @@ import {
     CreateOrganizationRequest,
     GetOrganizationResponse,
     OrganizationDeleteReport,
+    OrganizationRetention,
+    OrganizationRetentionUpdate,
     ResourceCode,
     UpdateOrganizationRequest,
 } from '@shared/models';
@@ -67,6 +69,15 @@ export class AdminOrganizationsService {
 
     reactivateOrganization(id: number): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}${id}/reactivate/`, {});
+    }
+
+    getRetention(id: number): Observable<OrganizationRetention> {
+        return this.http.get<OrganizationRetention>(`${this.apiUrl}${id}/retention/`);
+    }
+
+    /** Send only the changed types; an empty body is rejected with 400. */
+    updateRetention(id: number, data: OrganizationRetentionUpdate): Observable<OrganizationRetention> {
+        return this.http.patch<OrganizationRetention>(`${this.apiUrl}${id}/retention/`, data);
     }
 
     /** The verification phrase is sent as the request body only when given (the real delete). */

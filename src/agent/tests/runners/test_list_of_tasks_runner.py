@@ -29,6 +29,8 @@ from shared.models.agent_service import (
 )
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
+from tests.log_capture import capture_logs_at, log_line_starting_with
+from tests.runners.test_single_task_runner import RaisingResolver
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -520,3 +522,50 @@ def test_format_context_preamble_injects_only_named_outputs_in_context_order():
 
 def test_format_context_preamble_empty_context_returns_empty_string():
     assert format_context_preamble([], {"task_a": "answer a"}) == ""
+
+
+# ---------------------------------------------------------------------------
+# Tests: logging redaction
+# ---------------------------------------------------------------------------
+
+
+async def test_unexpected_crash_logs_the_exception_class_without_its_message():
+    secret_marker = "LIST_CRASH_SECRET_77777"
+    raw_error_text = f"resolver exploded on sk-live-{secret_marker}"
+    emitter = FakeEmitter()
+    runner = _runner(resolver=RaisingResolver(raw_error_text))
+    request = _request([{"name": "task_a", "instructions": "Do A"}])
+
+    with capture_logs_at("DEBUG") as logs:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    crash_line = log_line_starting_with(logs, "list_of_tasks crashed")
+    assert "correlation_id=test-corr" in crash_line
+    assert "RuntimeError" in crash_line
+    assert "<redacted" in crash_line
+    assert secret_marker not in "".join(logs)
+    assert str(emitter.errors[0]) == raw_error_text
+
+
+async def test_task_failure_logs_the_exception_class_without_its_message():
+    secret_marker = "LIST_TASK_FAILURE_SECRET_99999"
+    emitter = FakeEmitter()
+    loop = ScriptedLoop(
+        [_result(None, stop_reason="llm_error", error=f"provider said {secret_marker}")]
+    )
+    runner = _runner(loop=loop)
+    request = _request([{"name": "task_a", "instructions": "Do A"}])
+
+    with capture_logs_at("DEBUG") as logs:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    failed_line = log_line_starting_with(logs, "list_of_tasks failed")
+    assert "correlation_id=test-corr" in failed_line
+    assert "AgentServiceError" in failed_line
+    assert "<redacted" in failed_line
+    assert secret_marker not in "".join(logs)
+
+    task_names_line = log_line_starting_with(logs, "list_of_tasks correlation_id=")
+    assert "task_a" in task_names_line
+
+    assert str(emitter.errors[0]) == f"task 'task_a' failed: provider said {secret_marker}"

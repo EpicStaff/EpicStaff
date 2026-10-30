@@ -37,7 +37,7 @@ location = /api/admin/plugins/packages/ {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $forwarded_proto;
 }
 
 # The upload route's access check: Django's PluginUploadPermissionView, asked with the caller's
@@ -60,7 +60,7 @@ location = /_epicstaff/plugin-upload-permission {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $forwarded_proto;
 }
 
 # Answered by nginx alone: the check above calls Django directly, never through this path.

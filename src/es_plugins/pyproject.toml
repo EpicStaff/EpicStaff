@@ -46,6 +46,8 @@ testpaths = ["tests"]
 pythonpath = [".", "../.."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+# A test still running after two minutes dumps every thread's stack, so a hang in CI says where.
+faulthandler_timeout = 120
 markers = [
     "linux: needs Linux kernel features (SOCK_SEQPACKET, SO_PEERCRED, pidfd, /proc); skipped elsewhere",
     "root: needs root with CAP_SETUID, CAP_SETGID and CAP_CHOWN (the node's container); skipped otherwise",

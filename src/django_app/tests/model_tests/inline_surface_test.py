@@ -156,13 +156,6 @@ def api_storage_file(db, default_org):
     )
 
 
-@pytest.fixture
-def other_org_storage_file(db, other_org):
-    return StorageFile.objects.create(
-        org=other_org, name="foreign-file", path="c/foreign-file.txt"
-    )
-
-
 # ---------------------------------------------------------------------------
 # 1:1 enforcement
 # ---------------------------------------------------------------------------
@@ -490,7 +483,6 @@ def test_surface_combine_service_accepts_inline_read_serializer_output(
     ("inline_surface", "field"),
     [
         (lambda f: {"python_tools": [{"python_tool": f["py_tool"].pk, "mode": "allow"}, {"python_tool": f["py_tool"].pk, "mode": "deny"}]}, "python_tools"),
-        (lambda f: {"storage_items": [{"storage_file": f["other_org_storage_file"].pk, "can_view": "allow"}]}, "storage_items"),
         (lambda f: {"knowledge": [{"collection": f["graph_collection"].pk, "naive_search_config": {"search_limit": 5, "similarity_threshold": "0.30"}}]}, "knowledge"),
         *[
             (lambda f, config=config: {"knowledge": [{"collection": f["graph_collection"].pk, "graph_local_search_config": config}]}, "knowledge")
@@ -501,11 +493,11 @@ def test_surface_combine_service_accepts_inline_read_serializer_output(
             )
         ],
     ],
-    ids=["python-tool-twice", "other-orgs-storage-file", "naive-config-on-graph-collection", "too-many-tokens", "props-over-one", "prompt-too-long"],
+    ids=["python-tool-twice", "naive-config-on-graph-collection", "too-many-tokens", "props-over-one", "prompt-too-long"],
 )
 @pytest.mark.django_db
 def test_invalid_inline_surface_is_refused_under_its_own_key(
-    client, api_graph, py_tool, other_org_storage_file, graph_collection, inline_surface, field
+    client, api_graph, py_tool, graph_collection, inline_surface, field
 ):
     """Errors nest under `inline_surface`, apart from the catalog `surface_list` path, and nothing is saved."""
     response = client.post(

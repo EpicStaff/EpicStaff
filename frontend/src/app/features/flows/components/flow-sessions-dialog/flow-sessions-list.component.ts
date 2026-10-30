@@ -32,6 +32,7 @@ import {
     debounceTime,
     distinctUntilChanged,
     EMPTY,
+    filter,
     finalize,
     interval,
     map,
@@ -50,6 +51,7 @@ import {
     SessionRunType,
     TriggerType,
 } from '../../services/flows-sessions.service';
+import { SessionDeletionService } from '../../services/session-deletion.service';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
 
 @Component({
@@ -100,6 +102,7 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     private readonly destroyRef = inject(DestroyRef);
     private readonly importExportService = inject(ImportExportService);
     private readonly toastService = inject(ToastService);
+    private readonly sessionDeletionService = inject(SessionDeletionService);
     private readonly pageSizeLimit = 100;
     // valid page sizes typed or stepped to; null cancels a pending one (an invalid value was typed after it)
     private readonly pageSizeInput$ = new Subject<number | null>();
@@ -277,28 +280,7 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     }
 
     public onDeleteSelected(ids: number[]): void {
-        if (ids.length === 0) return;
-
-        this.isDeleting.set(true);
-        this.graphSessionService
-            .bulkDeleteSessions(ids)
-            .pipe(
-                finalize(() => this.isDeleting.set(false)),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe({
-                next: () => {
-                    this.selectedIds.update((prev) => {
-                        const next = new Set(prev);
-                        ids.forEach((id) => next.delete(id));
-                        return next;
-                    });
-                    this.reloadAfterDeletion(ids);
-                },
-                error: (err) => {
-                    console.error('Failed to bulk delete sessions', err);
-                },
-            });
+        this.deleteSessions(ids);
     }
 
     private reloadAfterDeletion(deletedIds: number[]): void {
@@ -404,8 +386,7 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     }
 
     public onBulkDelete(): void {
-        this.onDeleteSelected(Array.from(this.selectedIds()));
-        this.selectedIds.set(new Set());
+        this.deleteSessions(Array.from(this.selectedIds()));
     }
 
     public onExport(format: ExportFormat): void {
@@ -454,6 +435,30 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
             return this.pageSize();
         }
         return Math.min(Math.max(Math.round(size), this.pageSizeMin), this.pageSizeMax());
+    }
+
+    // isDeleting covers only the request: the open confirmation dialog already blocks the page
+    private deleteSessions(ids: number[]): void {
+        if (ids.length === 0 || this.isDeleting()) return;
+
+        this.sessionDeletionService
+            .confirmDeletion(ids)
+            .pipe(
+                filter((confirmed) => confirmed),
+                switchMap(() => {
+                    this.isDeleting.set(true);
+                    return this.sessionDeletionService.delete(ids).pipe(finalize(() => this.isDeleting.set(false)));
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => {
+                this.selectedIds.update((prev) => {
+                    const next = new Set(prev);
+                    ids.forEach((id) => next.delete(id));
+                    return next;
+                });
+                this.reloadAfterDeletion(ids);
+            });
     }
 
     private applyPageSize(size: number): void {

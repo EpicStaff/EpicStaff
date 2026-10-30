@@ -23,6 +23,7 @@ from agents.models import (
 )
 from agents.views.agent_definition_views import AgentDefinitionViewSet
 from agents.views.surface_views import SurfaceViewSet
+from rbac.access.effective import EffectivePermissions
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import ApiKey, OrganizationUser, Role, RolePermission
@@ -144,7 +145,16 @@ class TestFlowRecycleBin:
 
         assert [entry["id"] for entry in entries] == [newer.pk, older.pk]
         assert entries[0]["name"] == "Newer"
-        assert set(entries[0]) == {"id", "name", "deleted_at", "days_left", "details", "contents", "contents_total"}
+        assert set(entries[0]) == {
+            "id",
+            "name",
+            "deleted_at",
+            "days_left",
+            "details",
+            "contents",
+            "hidden_contents",
+            "contents_total",
+        }
 
     def test_days_left_counts_down_from_the_retention_time(self, acme_admin_client, acme):
         fresh = Graph.objects.create(org=acme, name="Fresh")
@@ -690,7 +700,9 @@ def test_extra_details_show_without_detail_fields(acme):
 
     resource = bin_resources()["flow"]
     rows = BinContentsService.entry_rows(resource, presentation, acme.id)
-    entries = BinContentsService.to_entries(resource, presentation, acme.id, rows)
+    entries = BinContentsService.to_entries(
+        resource, presentation, acme.id, rows, viewer=EffectivePermissions(is_superadmin=True, role=None)
+    )
 
     # After the "Created by" and "Deleted by" lines every tab starts with.
     assert [entry.details[2:] for entry in entries] == [[notice]]
@@ -1121,7 +1133,7 @@ class TestKeyValueTableBin:
         assert (row["contents"], row["contents_total"]) == ([], 1)
         assert "Keys" not in _details(row)
         show_all = acme_admin_client.get(f"{KEY_VALUE_TABLES_URL}{table.pk}/recycle-bin-contents/")
-        assert show_all.json() == {"contents": [], "contents_total": 1}
+        assert show_all.json() == {"contents": [], "hidden_contents": [], "contents_total": 1}
         assert _details(row)["Description"] == ("Daily prices", "text")
         assert KeyValueTableEntry.deleted_objects.filter(pk=entry.pk).exists()
 

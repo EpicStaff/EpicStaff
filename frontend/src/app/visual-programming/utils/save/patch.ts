@@ -6,7 +6,7 @@ import { PromptConfig } from '../../core/models/classification-decision-table.mo
 import { GetClassificationDecisionTableNodeRequest } from '../../core/models/classification-decision-table-node.model';
 import { ConditionGroup } from '../../core/models/decision-table.model';
 import { FlowModel } from '../../core/models/flow.model';
-import { AgentNodeModel, ClassificationDecisionTableNodeModel } from '../../core/models/node.model';
+import { AgentNodeModel, ClassificationDecisionTableNodeModel, TaskNodeModel } from '../../core/models/node.model';
 import { NodeDiffByType } from './types';
 
 /** The backend id an id-less task at `index` was given, if any. */
@@ -135,6 +135,66 @@ function buildNodeNumberByBackendId(responseGraph: GraphDto): Map<number, number
     return numberByBackendId;
 }
 
+/**
+ * Per sent agent/task node (by UI id), the storage files it sent that the response no longer
+ * lists. The server drops an inline-surface storage item whose file is gone (binned), so such
+ * an entry is stale. Only what was sent is judged: a file added to the canvas since the save
+ * went out was never sent and is not stale. A response node without an inline surface lists no
+ * files, so every sent file counts as dropped.
+ */
+function buildStaleStorageFilesByNodeId(
+    nodeDiff: NodeDiffByType,
+    uiToBackendId: Map<string, number>,
+    responseGraph: GraphDto
+): Map<string, Set<number>> {
+    // Agent and task nodes share one map: backend node ids are unique across node tables.
+    const responseFilesByBackendId = new Map<number, Set<number>>();
+    for (const responseNode of [...(responseGraph.agent_node_list ?? []), ...(responseGraph.task_node_list ?? [])]) {
+        responseFilesByBackendId.set(
+            responseNode.id,
+            new Set((responseNode.inline_surface?.storage_items ?? []).map((item) => item.storage_file))
+        );
+    }
+
+    const sentNodes: (AgentNodeModel | TaskNodeModel)[] = [
+        ...nodeDiff.agentNodes.toCreate,
+        ...nodeDiff.agentNodes.toUpdate.map((pair) => pair.current),
+        ...nodeDiff.taskNodes.toCreate,
+        ...nodeDiff.taskNodes.toUpdate.map((pair) => pair.current),
+    ];
+
+    const staleByNodeId = new Map<string, Set<number>>();
+    for (const sentNode of sentNodes) {
+        const backendId = uiToBackendId.get(sentNode.id) ?? sentNode.backendId;
+        const responseFiles = backendId != null ? responseFilesByBackendId.get(backendId) : undefined;
+        if (!responseFiles) continue;
+
+        const staleFiles = new Set(
+            (sentNode.data.inline_surface?.storage_items ?? [])
+                .map((item) => item.storage_file)
+                .filter((file) => !responseFiles.has(file))
+        );
+        if (staleFiles.size > 0) staleByNodeId.set(sentNode.id, staleFiles);
+    }
+    return staleByNodeId;
+}
+
+/** The node without the stale storage items; the same object when it holds none. Never drops the surface itself. */
+function dropStaleStorageItems<T extends AgentNodeModel | TaskNodeModel>(node: T, staleFiles: Set<number>): T {
+    const surface = node.data.inline_surface;
+    if (!surface?.storage_items.some((item) => staleFiles.has(item.storage_file))) return node;
+    return {
+        ...node,
+        data: {
+            ...node.data,
+            inline_surface: {
+                ...surface,
+                storage_items: surface.storage_items.filter((item) => !staleFiles.has(item.storage_file)),
+            },
+        },
+    };
+}
+
 function patchWithBackendIds(
     currentFlow: FlowModel,
     previousFlow: FlowModel,
@@ -143,6 +203,7 @@ function patchWithBackendIds(
     agentTaskIds: AgentTaskIdLookup
 ): FlowModel {
     const uiToBackendId = buildCreatedNodeIdMap(previousFlow, nodeDiff, responseGraph);
+    const staleStorageFilesByNodeId = buildStaleStorageFilesByNodeId(nodeDiff, uiToBackendId, responseGraph);
     const numberByBackendId = buildNodeNumberByBackendId(responseGraph);
 
     const scheduleDataByBackendId = new Map<
@@ -174,6 +235,11 @@ function patchWithBackendIds(
         if (patched.type === NodeType.AGENT) {
             const idFor = agentTaskIds(patched, mappedBackendId ?? patched.backendId);
             if (idFor) patched = applyAgentTaskIds(patched, idFor);
+        }
+
+        if (patched.type === NodeType.AGENT || patched.type === NodeType.TASK) {
+            const staleFiles = staleStorageFilesByNodeId.get(patched.id);
+            if (staleFiles) patched = dropStaleStorageItems(patched, staleFiles);
         }
 
         if (patched.type === NodeType.SCHEDULE_TRIGGER) {

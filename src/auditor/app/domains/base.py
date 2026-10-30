@@ -13,9 +13,29 @@ EventT = TypeVar("EventT", bound=BaseAuditEvent)
 
 @dataclass(frozen=True)
 class IndexSpec:
+    """A domain's family of OpenSearch indices.
+
+    Attributes:
+        name: Name of the index template, and the prefix of every index in the family.
+        mapping_path: Settings and mappings JSON the template applies to each new index.
+        sort_keys: Sort order of every search, as (field, direction) pairs.
+        ism_policy_prefix: Prefix of the family's ISM policy ids, one per retention tier
+            (`{prefix}-{tier}`). ISM policy ids are cluster-wide, so it must be unique
+            per domain.
+    """
+
     name: str
     mapping_path: Path
     sort_keys: tuple[tuple[str, str], ...]
+    ism_policy_prefix: str
+
+    @property
+    def read_pattern(self) -> str:
+        """Return the pattern every search reads, matching each index in the family.
+
+        The hyphen is load-bearing: `audit_events-*` never matches a bare `audit_events`.
+        """
+        return f"{self.name}-*"
 
 
 @dataclass(frozen=True)

@@ -105,6 +105,18 @@ def test_session_detail_cross_org_returns_404(member_client_a, org_b):
 
 
 @pytest.mark.django_db
+def test_session_detail_has_no_graph_schema(member_client_a, org_a):
+    session = _make_session(org_a, "SA flow")
+
+    resp = member_client_a.get(f"/api/sessions/{session.id}/")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == session.id
+    assert "graph_schema" not in body
+
+
+@pytest.mark.django_db
 def test_session_request_without_header_is_rejected(member_client_a, org_a):
     member_client_a.credentials()  # drop the org header
     resp = member_client_a.get("/api/sessions/")

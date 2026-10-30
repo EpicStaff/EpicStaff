@@ -4,7 +4,9 @@ from zoneinfo import ZoneInfo
 
 import settings
 from db.config import AsyncSessionLocal
+from helpers.chat_retention_client import ChatRetentionClient
 from helpers.logger import logger
+from repositories.retention_repository import RetentionRepository
 from repositories.session_repository import SessionRepository
 from repositories.temp_storage_account_repository import TempStorageAccountRepository
 from services.audit_export_cleanup_service import (
@@ -13,6 +15,7 @@ from services.audit_export_cleanup_service import (
 )
 from services.recycle_bin_purge_service import RecycleBinPurgeService
 from services.redis_service import RedisService
+from services.retention_service import RetentionService
 from services.schedule_service import ScheduleService
 from services.session_timeout_service import SessionTimeoutService
 from services.storage_account_cleanup_service import StorageAccountCleanupService
@@ -52,6 +55,17 @@ recycle_bin_purge_service = RecycleBinPurgeService(
     timezone=ZoneInfo(settings.TIMEZONE),
 )
 
+retention_service = RetentionService(
+    repository=RetentionRepository(AsyncSessionLocal),
+    chat_client=(
+        ChatRetentionClient(settings.CHAT_UPSTREAM_URL, settings.CHAT_INTERNAL_API_KEY)
+        if settings.CHAT_ENABLED
+        else None
+    ),
+    policy=settings.RETENTION_POLICY,
+    timezone=ZoneInfo(settings.TIMEZONE),
+)
+
 
 async def test_database_connection():
     try:
@@ -79,7 +93,7 @@ async def test_database_connection():
 
 
 async def main():
-    """Connect to the DB and Redis, then start the schedule, session-timeout and export-cleanup services."""
+    """Connect to the DB and Redis, then start the schedule, cleanup, retention, session-timeout and export-cleanup services."""
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
 
@@ -99,6 +113,9 @@ async def main():
 
         await storage_account_cleanup_service.start()
         logger.info("StorageAccountCleanupService started successfully.")
+
+        await retention_service.start()
+        logger.info("RetentionService started successfully.")
 
         await session_timeout_service.start()
         logger.info("SessionTimeoutService started successfully.")
@@ -124,6 +141,7 @@ async def shutdown():
         schedule_service.scheduler.shutdown(wait=False)
     storage_account_cleanup_service.stop()
     recycle_bin_purge_service.stop()
+    retention_service.stop()
     if redis_service.aioredis_client:
         await redis_service.aioredis_client.close()
     await export_cleanup_service.stop()

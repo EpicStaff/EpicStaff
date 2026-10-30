@@ -1,6 +1,7 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse
 
+from tables.serializers.recycle_bin_serializers import RecycleBinContentsSerializer
 from tables.serializers.storage_serializers import (
     GraphStorageFileSerializer,
     StorageAddToGraphSerializer,
@@ -32,6 +33,16 @@ _STORAGE_PATH_PARAM = OpenApiParameter(
     required=False,
     default="",
 )
+
+STORAGE_RECYCLE_BIN_CONTENTS_SWAGGER = {
+    "summary": "Show all of a binned folder's contents",
+    "description": (
+        'Files and folders deleted with one binned folder, up to 5,000: "Show all" past the '
+        "list's 100. `hidden_contents` is always empty here: a folder holds only files."
+    ),
+    "request": None,
+    "responses": RecycleBinContentsSerializer,
+}
 
 STORAGE_LIST_SWAGGER = {
     "summary": "List files and folders",

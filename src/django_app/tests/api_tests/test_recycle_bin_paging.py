@@ -22,7 +22,7 @@ from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("retention_seven_days")]
 
-ENTRY_FIELDS = {"id", "name", "deleted_at", "days_left", "details", "contents", "contents_total"}
+ENTRY_FIELDS = {"id", "name", "deleted_at", "days_left", "details", "contents", "hidden_contents", "contents_total"}
 
 
 def _page(client, url: str, **params) -> dict:

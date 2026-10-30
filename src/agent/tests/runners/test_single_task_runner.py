@@ -198,10 +198,18 @@ class FakeResolverWithTools:
 class RaisingResolver:
     """Raises on resolve to simulate resolver failure."""
 
+    def __init__(
+        self,
+        message: str = "resolver exploded",
+        error_type: type[Exception] = RuntimeError,
+    ) -> None:
+        self._message = message
+        self._error_type = error_type
+
     async def resolve(
         self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None, *, is_cancelled
     ) -> ResolvedAgent:
-        raise RuntimeError("resolver exploded")
+        raise self._error_type(self._message)
 
 
 # ---------------------------------------------------------------------------
@@ -621,6 +629,44 @@ async def test_instructions_and_messages_redaction_in_logs():
     messages_line = log_line_starting_with(logs, "prompt messages")
     assert secret_marker not in messages_line
     assert "<redacted" in messages_line
+
+
+async def test_unexpected_crash_logs_the_exception_class_without_its_message():
+    secret_marker = "CRASH_SECRET_55555"
+    raw_error_text = f"resolver exploded on sk-live-{secret_marker}"
+    emitter = FakeEmitter()
+    runner = _runner(resolver=RaisingResolver(raw_error_text))
+    request = _request({"task_instructions": "Do something."})
+
+    with capture_logs_at("DEBUG") as logs:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    crash_line = log_line_starting_with(logs, "single_task crashed")
+    assert "correlation_id=test-corr" in crash_line
+    assert "RuntimeError" in crash_line
+    assert "<redacted" in crash_line
+    assert secret_marker not in "".join(logs)
+    assert str(emitter.errors[0]) == raw_error_text
+
+
+async def test_domain_failure_logs_the_exception_class_without_its_message():
+    secret_marker = "DOMAIN_FAILURE_SECRET_77777"
+    raw_error_text = f"knowledge source unreachable: {secret_marker}"
+    emitter = FakeEmitter()
+    runner = _runner(
+        resolver=RaisingResolver(raw_error_text, error_type=AgentServiceError)
+    )
+    request = _request({"task_instructions": "Do something."})
+
+    with capture_logs_at("DEBUG") as logs:
+        await runner.execute(request, emitter, is_cancelled=never_cancelled)
+
+    failed_line = log_line_starting_with(logs, "single_task failed")
+    assert "correlation_id=test-corr" in failed_line
+    assert "AgentServiceError" in failed_line
+    assert "<redacted" in failed_line
+    assert secret_marker not in "".join(logs)
+    assert str(emitter.errors[0]) == raw_error_text
 
 
 async def test_final_text_redaction_in_logs():

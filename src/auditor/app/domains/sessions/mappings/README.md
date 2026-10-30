@@ -1,21 +1,48 @@
 # Index setup
 
-`runner.py` runs from `entrypoint.sh` on every `auditor` boot and creates
-`audit_events` from `0001_audit_events.json` if it does not already
-exist. Creating an index that exists is a safe no-op, so this is idempotent and
-stays correct if `auditor` is ever scaled to N replicas.
+Audit events live in tiered monthly indices, `audit_events-{tier}-{yyyy.mm}`
+(`audit_events-90d-2026.10`, `audit_events-unlimited-2026.10`). The tier is the
+event's `retention_days`, stamped by the emitting service; the month is when
+`auditor` received the event, in UTC - never `event_time`, so a sender's clock
+skew or a late delivery cannot route an event into a month that is already
+read-only. Every search and export reads `audit_events-*`, and still filters on
+`event_time`.
+
+`app/index_setup/runner.py` runs from `entrypoint.sh` on every `auditor` boot. In
+order, it:
+
+1. installs one ISM policy per retention tier (`audit-retention-{tier}`). These
+   go first: a policy's `ism_template` attaches only to indices created after
+   the policy exists;
+2. puts the composable index template `audit_events` over `audit_events-*`,
+   built from `0001_audit_events.json`;
+3. deletes the legacy single index `audit_events`, if it still exists. It
+   predates tiering and its events carry no retention.
+
+Every step is idempotent, so the runner stays correct on every boot and with N
+replicas. Indices are not pre-created: the first write of a month auto-creates
+that month's index from the template.
+
+Each policy keeps an index `open` for 33 days, then `read_only` (still
+searchable - an OpenSearch *closed* index is not), then deletes it at
+`retention + 33` days. The unlimited tier stays `read_only` forever. An index
+holds a whole month, so an event can outlive its tier by up to about a month.
 
 OpenSearch has no migration concept, so the mapping file is versioned like one.
 
-## Changing the mapping
+## Changing the mapping or a policy
 
-* **Adding a field is additive and safe** - a plain `PUT _mapping` applies it to
-  the live index.
-* **Changing an existing field's type is not.** OpenSearch cannot reinterpret
-  already-indexed data. It requires a new index, a `_reindex` (with a painless
-  script if the shape changes, not just the type), and a swap. Never attempt an
-  in-place type change; it will be rejected, and the runner will not notice the
-  drift because the index already exists.
+* **The template applies only to indices created after it.** Adding a field
+  reaches existing monthly indices only through a `PUT audit_events-*/_mapping`;
+  the runner does not do this.
+* **Changing an existing field's type is not additive.** OpenSearch cannot
+  reinterpret already-indexed data. It requires new indices and a `_reindex`
+  (with a painless script if the shape changes, not just the type). Never
+  attempt an in-place type change; it will be rejected.
+* **A changed ISM policy applies only to indices created after the change.** The
+  runner updates the stored policy, but every managed index keeps the policy
+  version it started with. Move existing indices with
+  `POST _plugins/_ism/change_policy/audit_events-{tier}-*`.
 
 ## Field format decisions
 
@@ -57,6 +84,10 @@ than left to be rediscovered:
   `event_time` came through pydantic. Both are valid `date`s to OpenSearch, but
   they are different *strings* (`+00:00` vs `Z`), which put two UTC spellings in
   one document and leaked into the CSV/JSON export.
+
+* **`number_of_shards: 1`.** Every tier opens a new index each month and the
+  unlimited tier never deletes one, so several shards per small monthly index
+  would pile up toward the per-node shard limit for no search benefit.
 
 * **`auto_expand_replicas: "0-1"`, not `number_of_replicas: 1`.** On the
   single-node dev topology a replica can never be allocated, so a fixed count of

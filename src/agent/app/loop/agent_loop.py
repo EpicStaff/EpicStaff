@@ -25,7 +25,7 @@ from loguru import logger
 from app.emitters.base import Emitter
 from app.exceptions import RunCancelled
 from app.llm.client import LLMChunk, LLMClient
-from app.logging_utils import redact_messages, redact_value
+from app.logging_utils import format_exception_for_log, redact_messages, redact_value
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
 from app.tools.registry import ToolRegistry
@@ -210,7 +210,11 @@ class DefaultAgentLoop(AgentLoop):
             )
 
         except Exception as error:
-            logger.exception("loop llm_error correlation_id={}", context.correlation_id)
+            logger.error(
+                "loop llm_error correlation_id={} error={}",
+                context.correlation_id,
+                format_exception_for_log(error),
+            )
             return LoopResult(
                 stop_reason=StopReason.LLM_ERROR.value,
                 final_text=state.final_text,
