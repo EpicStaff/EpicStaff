@@ -4,7 +4,11 @@ import pytest
 
 from rbac.models import Organization
 from rbac.models.enums import Permission, ResourceType
-from tables.models import SystemOneConfig
+from tables.models import Graph, SystemOneConfig
+from tables.models.graph_models import (
+    ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
+)
 from tests.api_tests.bulk_delete_helpers import custom_role_client, org_admin_client
 
 ROUTE = "/api/system-one-configs/bulk-delete/"
@@ -59,3 +63,23 @@ def test_bulk_delete_another_orgs_config_is_not_found(django_user_model, org_a, 
     assert resp.status_code == 207, resp.data
     assert resp.data["not_found_ids"] == [other.id]
     assert SystemOneConfig.objects.filter(id=other.id).exists()
+
+
+@pytest.mark.django_db
+def test_dry_run_lists_flows_using_the_config(django_user_model, org_a):
+    client = org_admin_client(django_user_model, org_a, "admin@example.com")
+    config = SystemOneConfig.objects.create(org=org_a, custom_name="cfg", provider="llm")
+    graph = Graph.objects.create(name="Lead flow", org=org_a)
+    node = ClassificationDecisionTableNode.objects.create(graph=graph, node_name="cdt")
+    ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=node, prompt_key="p1", kind="system_one", system_one_config=config
+    )
+
+    resp = client.post(f"{ROUTE}?dry_run=true", {"ids": [config.id]}, format="json")
+
+    assert resp.status_code == 200, resp.data
+    usage = resp.data["usage"][str(config.id)]
+    flows = next(s for s in usage["by_resource_type"] if s["resource_type"] == "flows")
+    assert flows["visible_sample"] == [
+        {"resource_type": "flows", "id": graph.id, "name": "Lead flow"}
+    ]

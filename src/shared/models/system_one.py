@@ -5,6 +5,10 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, TypeAdapter
 
 from .ai_providers import LLMData
 
+LLM_PROMPT_KIND = "llm"
+SYSTEM_ONE_PROMPT_KIND = "system_one"
+PromptKind = Literal["llm", "system_one"]
+
 
 class NoulQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
