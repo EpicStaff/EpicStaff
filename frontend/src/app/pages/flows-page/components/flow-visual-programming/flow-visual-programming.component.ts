@@ -1997,13 +1997,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 filter((refused) => !refused),
                 switchMap(() =>
                     this.unsavedChangesDialog.confirm({
-                        title: 'Restore version',
+                        title: 'Restore Version',
                         message,
                         saveText: 'Save & Restore',
-                        dontSaveText: 'Discard & Restore',
+                        dontSaveText: 'Just restore',
                         cancelText: 'Cancel',
                         type: 'warning',
                         showDontSave: true,
+                        appearance: 'neutral',
                     })
                 ),
                 switchMap((result) => {

@@ -11,6 +11,15 @@
     gap: 0;
 }
 
+.dialog-container.neutral {
+    background: var(--color-ks-background);
+
+    .button {
+        height: 44px;
+        padding: 0 20px;
+    }
+}
+
 .dialog-divider {
     height: 1px;
     background: var(--color-divider-regular);
@@ -103,6 +112,15 @@
 
         &:hover:not(:disabled) {
             background: var(--red-alpha-8-flat);
+        }
+
+        &.neutral {
+            color: var(--accent-color);
+            border-color: var(--accent-color);
+
+            &:hover:not(:disabled) {
+                background: var(--color-secondary-btn-background-hover);
+            }
         }
     }
 
