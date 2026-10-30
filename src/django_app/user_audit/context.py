@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from django.http import HttpRequest
 
@@ -13,10 +13,13 @@ class UserActionContext:
     Attributes:
         recorded: Set by `record_user_action`; the middleware's fallback records the
             request itself only while it is still False.
+        retention_days_by_org: Each org's audit retention, read once per request however
+            many actions it records.
     """
 
     request: HttpRequest
     recorded: bool = False
+    retention_days_by_org: dict[int, int] = field(default_factory=dict)
 
 
 _current_context: ContextVar[UserActionContext | None] = ContextVar(

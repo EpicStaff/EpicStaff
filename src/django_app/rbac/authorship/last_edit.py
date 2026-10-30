@@ -4,7 +4,6 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils import timezone
@@ -60,30 +59,14 @@ def record_last_edits(
     *,
     edited_at: datetime.datetime | None = None,
 ) -> None:
-    """Upsert the last edit of every instance in one statement, and record each as updated.
+    """Upsert the last edit of every instance in one statement.
 
     Does nothing when `user` is None (no acting user). A user that does not resolve to an
     author, such as the system API-key principal, is recorded as a NULL editor; rows that
     opt out via `records_last_edit()` are skipped. Never sets `created_by`: an edit does
-    not make the editor the author. Each distinct instance is also recorded as an
-    `updated` user action (see `record_user_action`).
+    not make the editor the author. Records no user action: a direct caller (copy, import,
+    restore) is described by the request's own user-action record.
     """
-    instances = list(instances)
-    _upsert_last_edits(instances, user, edited_at=edited_at)
-    if user is not None:
-        unique_instances = {_identity(instance): instance for instance in instances}
-        _record_user_actions(
-            [_EditAction(UserAction.UPDATED, instance) for instance in unique_instances.values()],
-            known=[],
-        )
-
-
-def _upsert_last_edits(
-    instances: Iterable[LastEditTrackedModel],
-    user: object | None,
-    *,
-    edited_at: datetime.datetime | None = None,
-) -> None:
     if user is None:
         return
     editor = resolve_author(user)
@@ -159,10 +142,11 @@ class LastEditTracker:
     edits also edit) and `last_edit_canvas_fields` (canvas field -> keys that edit the
     owner; never an edit of the row itself).
 
-    `finish()` also records a user action per watched row that really changed: `created`,
-    `updated`, or `renamed` when its name changed. An owner edited only through its rows'
-    canvas fields (a moved node) is recorded as `updated`; owners edited because one of
-    their rows was recorded, deletions and rows passed to `mark_edited` record nothing.
+    `finish()` also records a user action per named row (see `TARGET_NAME_FIELDS`) that
+    really changed: `created`, `updated`, or `renamed` when its name changed. An owner is
+    recorded once as `updated` when it was edited on its rows' canvas fields (a moved node)
+    or through an unnamed row (an edge), unless one of its named rows was recorded.
+    Deletions and rows passed to `mark_edited` record nothing here.
     """
 
     def __init__(self, user: object):
@@ -209,8 +193,7 @@ class LastEditTracker:
         """
         edited = []
         actions = []
-        # Owners edited by an update of one of their rows; those whose rows are recorded
-        # themselves are left out below, so the rest were edited only on the canvas.
+        # Owners edited by an update of one of their rows, a candidate owner record.
         owners_edited_by_updates: set[OwnerReference] = set()
         for watched in self._watched.values():
             if watched.state_serializer is None:
@@ -238,14 +221,13 @@ class LastEditTracker:
         self._watched.clear()
         self._edited_owner_references.clear()
         self._marked_edited.clear()
-        _upsert_last_edits(
+        record_last_edits(
             [instance for instance in edited if isinstance(instance, LastEditTrackedModel)],
             self._user,
         )
         if self._user is not None:
             _record_user_actions(
-                [*actions, *_canvas_owner_actions(actions, owners_edited_by_updates, edited)],
-                known=edited,
+                _with_owner_records(actions, owners_edited_by_updates, edited), edited
             )
 
     def _add_owner_reference(self, reference: OwnerReference | None) -> None:
@@ -260,35 +242,41 @@ def _update_action(watched: _WatchedWrite) -> _EditAction:
     return _EditAction(UserAction.UPDATED, watched.instance)
 
 
-def _canvas_owner_actions(
+def _with_owner_records(
     actions: list[_EditAction],
     owners_edited_by_updates: set[OwnerReference],
     edited: list[models.Model],
 ) -> list[_EditAction]:
-    recorded = {_identity(action.target) for action in actions} | {
-        _owner_reference(action.target) for action in actions
+    # An unnamed row (an edge, a table entry) would read as "updated edge" with nothing
+    # to tell it apart, so its change is recorded on its owner instead.
+    named_actions = []
+    candidate_owners = set(owners_edited_by_updates)
+    for action in actions:
+        owner_reference = _owner_reference(action.target)
+        if _name_field(action.target) is None and owner_reference is not None:
+            candidate_owners.add(owner_reference)
+        else:
+            named_actions.append(action)
+    recorded = {_identity(action.target) for action in named_actions} | {
+        _owner_reference(action.target) for action in named_actions
     }
     edited_by_identity = {_identity(instance): instance for instance in edited}
-    return [
+    return named_actions + [
         _EditAction(UserAction.UPDATED, edited_by_identity[reference])
-        for reference in owners_edited_by_updates - recorded
+        for reference in candidate_owners - recorded
         if reference in edited_by_identity
     ]
 
 
-def _record_user_actions(actions: list[_EditAction], *, known: list[models.Model]) -> None:
-    """Record each action in its resource's org, or else its owner's, naming the owner as parent."""
-    # Checked here as well as in record_user_action: loading owners costs a query.
-    if not actions or not settings.USER_AUDIT_TRAIL_ENABLED:
-        return
+def _record_user_actions(actions: list[_EditAction], edited: list[models.Model]) -> None:
+    """Record each action in its resource's org, or else its owner's, naming the owner as parent.
+
+    Every owner is among `edited`: `finish()` loads the owner of each row it records.
+    """
     try:
-        owner_references = {_owner_reference(action.target) for action in actions} - {None}
-        owners = {
-            _identity(instance): instance
-            for instance in [*known, *_load_owners(owner_references, known=known)]
-        }
+        edited_by_identity = {_identity(instance): instance for instance in edited}
         for action in actions:
-            owner = owners.get(_owner_reference(action.target))
+            owner = edited_by_identity.get(_owner_reference(action.target))
             org_id = getattr(action.target, "org_id", None) or getattr(owner, "org_id", None)
             if org_id is None:
                 continue
@@ -303,8 +291,12 @@ def _record_user_actions(actions: list[_EditAction], *, known: list[models.Model
         logger.exception("Failed to record user actions for {} edited resource(s)", len(actions))
 
 
+def _name_field(instance: models.Model) -> str | None:
+    return next((field for field in TARGET_NAME_FIELDS if hasattr(instance, field)), None)
+
+
 def _name(instance: models.Model) -> str | None:
-    name_field = next((field for field in TARGET_NAME_FIELDS if hasattr(instance, field)), None)
+    name_field = _name_field(instance)
     return getattr(instance, name_field) if name_field is not None else None
 
 

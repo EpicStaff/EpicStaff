@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth.models import AnonymousUser
+from django.db import connection, transaction
 from django.test import RequestFactory
 from rest_framework.request import Request
 
@@ -265,3 +266,40 @@ def test_record_for_user_orgs_skips_inactive_orgs(
         record_for_user_orgs(action=UserAction.SIGNED_IN, actor=actor)
 
     assert [event.org_id for event in sent_events] == [acme.id]
+
+
+@pytest.mark.django_db
+def test_failed_retention_read_leaves_the_callers_transaction_usable(
+    acme, admin_acme, flow, sent_events, monkeypatch
+):
+    def failing_retention_read(org_id, data_type):
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM table_that_does_not_exist")
+
+    monkeypatch.setattr(recorder, "effective_retention_days_for_org", failing_retention_read)
+
+    with user_action_context(request_as(admin_acme)), transaction.atomic():
+        record_user_action(action=UserAction.UPDATED, org_id=acme.id, target=flow)
+        assert Graph.objects.filter(pk=flow.pk).exists()
+
+
+@pytest.mark.django_db
+def test_retention_is_read_once_per_org_per_request(
+    acme, beta, admin_acme, flow, sent_events, django_capture_on_commit_callbacks, monkeypatch
+):
+    reads = []
+    real_read = recorder.effective_retention_days_for_org
+
+    def counting_read(org_id, data_type):
+        reads.append(org_id)
+        return real_read(org_id, data_type)
+
+    monkeypatch.setattr(recorder, "effective_retention_days_for_org", counting_read)
+
+    with user_action_context(request_as(admin_acme)):
+        with django_capture_on_commit_callbacks(execute=True):
+            for org in (acme, acme, beta):
+                record_user_action(action=UserAction.UPDATED, org_id=org.id, target=flow)
+
+    assert sorted(reads) == sorted([acme.id, beta.id])
+    assert len(sent_events) == 3

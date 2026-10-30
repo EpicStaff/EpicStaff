@@ -10,7 +10,7 @@ from src.shared.models import UserActionEvent
 from src.shared.retention import DataType
 
 from user_audit.actor import Actor, actor_from_request
-from user_audit.context import current_context
+from user_audit.context import UserActionContext, current_context
 from user_audit.sender import get_user_audit_sender
 from user_audit.targets import TargetDescription, describe
 
@@ -57,7 +57,7 @@ def record_user_action(
             id=str(uuid4()),
             org_id=org_id,
             event_time=timezone.now(),
-            retention_days=effective_retention_days_for_org(org_id, DataType.AUDIT),
+            retention_days=_retention_days(org_id, context),
             actor_user_id=actor.user_id,
             actor_email=actor.email,
             actor_api_key_name=actor.api_key_name,
@@ -77,6 +77,17 @@ def record_user_action(
         logger.exception("Failed to record user action {} in org {}", action, org_id)
 
 
+def _retention_days(org_id: int, context: UserActionContext | None) -> int:
+    if context is not None and org_id in context.retention_days_by_org:
+        return context.retention_days_by_org[org_id]
+    # A savepoint, so a failed read caught by the caller leaves its transaction usable.
+    with transaction.atomic():
+        retention_days = effective_retention_days_for_org(org_id, DataType.AUDIT)
+    if context is not None:
+        context.retention_days_by_org[org_id] = retention_days
+    return retention_days
+
+
 def record_for_user_orgs(*, action: str, actor: Actor, target: models.Model | None = None) -> None:
     """Record the action once in every active organization `actor` is a member of.
 
@@ -86,9 +97,13 @@ def record_for_user_orgs(*, action: str, actor: Actor, target: models.Model | No
     if not settings.USER_AUDIT_TRAIL_ENABLED:
         return
     try:
-        org_ids = OrganizationUser.objects.filter(
-            user_id=actor.user_id, org__is_active=True
-        ).values_list("org_id", flat=True)
+        # A savepoint, so a failed read caught below leaves the caller's transaction usable.
+        with transaction.atomic():
+            org_ids = list(
+                OrganizationUser.objects.filter(
+                    user_id=actor.user_id, org__is_active=True
+                ).values_list("org_id", flat=True)
+            )
         for org_id in org_ids:
             record_user_action(action=action, org_id=org_id, target=target, actor=actor)
     except Exception:

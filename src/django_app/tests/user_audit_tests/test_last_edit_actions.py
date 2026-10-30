@@ -1,11 +1,15 @@
+import uuid
+
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from rest_framework import status
-from src.shared.models import UserAction
 
 from agents.models import AgentDefinition
 from rbac.authorship import LastEditTracker, record_last_edits
-from tables.models import Graph, PythonNode
+from rbac.models import OrganizationConfig
+from tables.models import Edge, Graph, KeyValueTable, KeyValueTableEntry, PythonNode
 from user_audit.context import user_action_context
 
 from tests.fixtures import *  # noqa: F401,F403
@@ -43,20 +47,26 @@ def _save_flow(client, flow, capture, **lists):
         _post_save(client, flow, lists)
 
 
-@pytest.fixture
-def python_node(auth_client, flow):
-    # Saved the way the editor saves it, so an unchanged resave compares equal. Its own
-    # record is never sent: on-commit callbacks are not captured here.
+def _create_python_nodes(client, flow, names) -> list[PythonNode]:
+    # Saved the way the editor saves them, so an unchanged resave compares equal. Their
+    # own records are never sent: on-commit callbacks are not captured here.
     _post_save(
-        auth_client,
+        client,
         flow,
         {
             "python_node_list": [
-                _python_item(graph=flow.id, temp_id="11111111-1111-1111-1111-111111111111")
+                _python_item(graph=flow.id, node_name=name, temp_id=str(uuid.uuid4()))
+                for name in names
             ]
         },
     )
-    return PythonNode.objects.get(graph=flow)
+    return list(PythonNode.objects.filter(graph=flow, node_name__in=names).order_by("id"))
+
+
+@pytest.fixture
+def python_node(auth_client, flow):
+    [node] = _create_python_nodes(auth_client, flow, ["Fetch invoices"])
+    return node
 
 
 def _target(event) -> tuple:
@@ -178,25 +188,18 @@ def test_creating_agent_records_created(
 
 
 @pytest.mark.django_db
-def test_record_last_edits_direct_call_records_updated_once(
-    rf,
-    flow,
-    python_node,
-    default_org,
-    regular_user,
-    sent_events,
-    django_capture_on_commit_callbacks,
+def test_record_last_edits_direct_call_records_nothing(
+    rf, python_node, regular_user, sent_events, django_capture_on_commit_callbacks
 ):
     request = rf.post("/api/graphs/")
     request.user = regular_user
 
-    with user_action_context(request), django_capture_on_commit_callbacks(execute=True):
-        record_last_edits([python_node, python_node], regular_user)
+    with user_action_context(request) as context:
+        with django_capture_on_commit_callbacks(execute=True):
+            record_last_edits([python_node], regular_user)
 
-    [event] = sent_events
-    assert _target(event) == ("updated", "python node", str(python_node.id), "Fetch invoices")
-    assert _parent(event) == ("flow", str(flow.id), "Billing flow")
-    assert event.org_id == default_org.id
+    assert sent_events == []
+    assert context.recorded is False
 
 
 @pytest.mark.django_db
@@ -214,11 +217,71 @@ def test_tracker_that_changed_nothing_still_marks_the_request_recorded(
 
 
 @pytest.mark.django_db
-def test_binning_a_flow_records_no_updated_action(
+def test_adding_an_edge_records_updated_flow_only(
+    auth_client, flow, python_node, sent_events, django_capture_on_commit_callbacks
+):
+    [next_node] = _create_python_nodes(auth_client, flow, ["Send reminders"])
+
+    _save_flow(
+        auth_client,
+        flow,
+        django_capture_on_commit_callbacks,
+        edge_list=[
+            {
+                "graph": flow.id,
+                "start_node_id": python_node.id,
+                "end_node_id": next_node.id,
+                "metadata": {},
+            }
+        ],
+    )
+
+    assert Edge.objects.filter(graph=flow).count() == 1
+    [event] = sent_events
+    assert _target(event) == ("updated", "flow", str(flow.id), "Billing flow")
+
+
+@pytest.mark.django_db
+def test_editing_key_value_entry_records_updated_table(
+    auth_client, default_org, sent_events, django_capture_on_commit_callbacks
+):
+    table = KeyValueTable.objects.create(org=default_org, name="Customers")
+    entry = KeyValueTableEntry.objects.create(table=table, key="customer_1", value=1)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = auth_client.patch(
+            reverse("key-value-table-entries-detail", args=[entry.id]), {"value": 2}, format="json"
+        )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    [event] = sent_events
+    assert _target(event) == ("updated", "key value table", str(table.id), "Customers")
+    assert event.org_id == default_org.id
+
+
+@pytest.mark.django_db
+def test_save_changing_several_nodes_reads_retention_once(
     auth_client, flow, sent_events, django_capture_on_commit_callbacks
 ):
-    with django_capture_on_commit_callbacks(execute=True):
-        response = auth_client.delete(reverse("graphs-detail", args=[flow.id]))
+    names = ["Fetch invoices", "Send reminders", "Close month"]
+    nodes = _create_python_nodes(auth_client, flow, names)
+    retention_table = OrganizationConfig._meta.db_table
 
-    assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
-    assert UserAction.UPDATED not in {event.action for event in sent_events}
+    with CaptureQueriesContext(connection) as queries:
+        _save_flow(
+            auth_client,
+            flow,
+            django_capture_on_commit_callbacks,
+            python_node_list=[
+                _python_item(
+                    id=node.id, graph=flow.id, node_name=node.node_name, code="def main(): pass"
+                )
+                for node in nodes
+            ],
+        )
+
+    assert sorted(event.target_name for event in sent_events) == sorted(names)
+    retention_reads = [
+        query for query in queries.captured_queries if f'FROM "{retention_table}"' in query["sql"]
+    ]
+    assert len(retention_reads) == 1
