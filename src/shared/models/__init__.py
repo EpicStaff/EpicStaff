@@ -96,6 +96,10 @@ from .knowledge_new import (
     SearchResponse,
     SearchUsage,
 )
+from .sandbox_execution import (
+    ExecutionRequest,
+    ExecutionStorageCredentials,
+)
 from .sessions import (
     GraphSessionMessageData,
     ScheduleEventData,
@@ -199,6 +203,8 @@ __all__ = [
     "EmbedderConfigData",
     "EmbedderData",
     "EndNodeData",
+    "ExecutionRequest",
+    "ExecutionStorageCredentials",
     "FileExtractorNodeData",
     "FoundChunk",
     "GraphData",

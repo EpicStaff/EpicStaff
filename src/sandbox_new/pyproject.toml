@@ -31,6 +31,7 @@ foundation = { path = "../foundation", editable = true }
 [dependency-groups]
 dev = [
     "fakeredis>=2.38.0",
+    "import-linter==2.15",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
 ]
@@ -48,3 +49,59 @@ asyncio_mode = "auto"
 addopts = "--disable-warnings"
 log_cli = true
 log_level = "WARNING"
+
+# Layer boundaries, checked by `lint-imports` run from this directory (the PR
+# workflow's sandbox-new-import-contracts job). Imports of foundation, settings
+# and src.shared fall outside the root packages and are not analysed.
+[tool.importlinter]
+root_packages = ["manager", "worker", "common"]
+
+# The ports are the one part of the application layer an adapter implements.
+# The exemptions are rules rather than recorded imports, so a pattern no current
+# import matches is not an error. `pkg.**` does not match `pkg` itself, hence the
+# pairs below.
+[[tool.importlinter.contracts]]
+name = "manager infrastructure depends on the application layer only through its ports"
+type = "forbidden"
+source_modules = ["manager.infrastructure"]
+forbidden_modules = ["manager.application"]
+ignore_imports = [
+    "manager.infrastructure.** -> manager.application.ports",
+    "manager.infrastructure.** -> manager.application.ports.**",
+]
+unmatched_ignore_imports_alerting = "none"
+
+# Pipeline steps in infrastructure also read and write the execution context.
+[[tool.importlinter.contracts]]
+name = "worker infrastructure depends on the application layer only through its ports and the execution context"
+type = "forbidden"
+source_modules = ["worker.infrastructure"]
+forbidden_modules = ["worker.application"]
+ignore_imports = [
+    "worker.infrastructure.** -> worker.application.ports",
+    "worker.infrastructure.** -> worker.application.ports.**",
+    "worker.infrastructure.** -> worker.application.context",
+]
+unmatched_ignore_imports_alerting = "none"
+
+# common.bootstrap is the composition root: it assembles both runtimes, so
+# everything it reaches is exempt. Every other common module stays independent
+# of either side's adapters.
+[[tool.importlinter.contracts]]
+name = "common does not depend on manager or worker infrastructure, except the composition root"
+type = "forbidden"
+source_modules = ["common"]
+forbidden_modules = ["manager.infrastructure", "worker.infrastructure"]
+ignore_imports = [
+    "common.bootstrap -> manager.**",
+    "common.bootstrap -> worker.**",
+    "common.bootstrap.** -> manager.**",
+    "common.bootstrap.** -> worker.**",
+]
+unmatched_ignore_imports_alerting = "none"
+
+# They share only the message contracts in common.contracts.
+[[tool.importlinter.contracts]]
+name = "manager and worker do not import each other"
+type = "independence"
+modules = ["manager", "worker"]

@@ -153,13 +153,30 @@ def test_a_refused_submission_revokes_the_credentials_it_minted(
 ):
     """The sandbox refused the run, so no result will come back to revoke them."""
     PythonCodeTool.objects.create(python_code=python_code, org_id=org.id, use_storage=True)
-    sandbox_intake.status_code = 503
+    sandbox_intake.status_code = 500
 
     execution_id, _ = _run(python_code, org, user, sandbox_intake)
 
     result = PythonCodeResult.objects.get(execution_id=execution_id)
     assert result.status == PythonCodeResult.Status.ERROR
     assert result.stderr == "Could not reach the code sandbox for this run."
+    assert gateway.deleted == ["temp-access-1"]
+    assert not _temporary_accounts(execution_id).exists()
+
+
+@pytest.mark.django_db
+def test_a_full_sandbox_revokes_the_credentials_it_minted(
+    gateway, org, user, python_code, sandbox_intake
+):
+    """A full sandbox takes nothing, so no result will come back to revoke them."""
+    PythonCodeTool.objects.create(python_code=python_code, org_id=org.id, use_storage=True)
+    sandbox_intake.status_code = 503
+
+    execution_id, _ = _run(python_code, org, user, sandbox_intake)
+
+    result = PythonCodeResult.objects.get(execution_id=execution_id)
+    assert result.status == PythonCodeResult.Status.ERROR
+    assert result.stderr == "The code sandbox is busy; try again in a moment."
     assert gateway.deleted == ["temp-access-1"]
     assert not _temporary_accounts(execution_id).exists()
 

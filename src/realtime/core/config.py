@@ -63,4 +63,9 @@ KNOWLEDGE_BASE_URL = f"http://{KNOWLEDGE_HOST}:{KNOWLEDGE_PORT}"
 SANDBOX_HOST = env.str("SANDBOX_HOST")
 SANDBOX_PORT = env.int("SANDBOX_PORT")
 SANDBOX_TIMEOUT = env.time("REALTIME_SANDBOX_TIMEOUT")
+# Total time a submit keeps retrying a sandbox that is full or unreachable.
+SANDBOX_QUEUE_TIMEOUT = env.time("SANDBOX_QUEUE_TIMEOUT")
+# Backstop for the wait on a python tool result; a lost execution is caught sooner
+# by the status checks. None means "wait while the sandbox has it".
+REALTIME_CODE_RESULT_TIMEOUT = env.time("REALTIME_CODE_RESULT_TIMEOUT")
 SANDBOX_BASE_URL = f"http://{SANDBOX_HOST}:{SANDBOX_PORT}"

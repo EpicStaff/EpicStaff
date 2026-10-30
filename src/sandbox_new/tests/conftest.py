@@ -21,6 +21,8 @@ _TEST_ENVIRONMENT = {
     "REDIS_PORT": "6379",
     "SANDBOX_MAX_EXECUTION_TIMEOUT": "30m",
     "SANDBOX_DEFAULT_EXECUTION_TIMEOUT": "5m",
+    "SANDBOX_QUEUE_TIMEOUT": "2m",
+    "SANDBOX_HOLD_TIMEOUT": "30m",
     "SANDBOX_MAX_RESULT_SIZE": "16mb",
     "STORAGE_PORT": "9000",
     "STORAGE_HOST": "localhost",
@@ -37,6 +39,7 @@ from src.shared.bench_log import BENCH_LEVEL  # noqa: E402
 
 from tests.builders import make_venv  # noqa: E402
 from tests.fakes import (  # noqa: E402
+    FakeClock,
     FakeIsolationProbe,
     FakeJobDispatcher,
     FakeJobFailureSink,
@@ -49,10 +52,16 @@ from tests.fakes import (  # noqa: E402
 
 @pytest.fixture
 def checkpoints():
-    """The BENCH checkpoints logged during the test, as their extra fields, in order."""
+    """The BENCH checkpoints logged during the test, as their extra fields, in order.
+
+    Keys starting with "_" are dropped: a BENCH sink added earlier (the service's own
+    stdout sink) stores its rendered line in the shared extra under such a key.
+    """
     logged: list[dict] = []
     sink_id = logger.add(
-        lambda message: logged.append(dict(message.record["extra"])),
+        lambda message: logged.append(
+            {key: value for key, value in message.record["extra"].items() if not key.startswith("_")}
+        ),
         level=BENCH_LEVEL,
         filter=lambda record: record["level"].no == BENCH_LEVEL,
     )
@@ -93,6 +102,11 @@ def result_sink() -> FakeResultSink:
 @pytest.fixture
 def isolation_probe() -> FakeIsolationProbe:
     return FakeIsolationProbe()
+
+
+@pytest.fixture
+def clock() -> FakeClock:
+    return FakeClock()
 
 
 @pytest.fixture

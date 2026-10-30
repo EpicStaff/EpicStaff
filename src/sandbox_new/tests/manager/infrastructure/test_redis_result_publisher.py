@@ -82,6 +82,7 @@ async def test_the_result_payload_uses_the_keys_consumers_already_read(redis, pu
         (3, None, "failed"),
         (1, "venv_failed", "venv_failed"),
         (1, "dispatch_failed", "dispatch_failed"),
+        (1, "hold_timeout", "hold_timeout"),
     ],
 )
 async def test_exec_published_reports_the_outcome_and_keeps_it_off_the_payload(

@@ -37,6 +37,8 @@ class QueueResultSink(AbstractResultSink):
             returncode=result.returncode,
             mutations=mutations_message,
             reply_to_crew_channel=result.reply_to_crew_channel,
+            ran=result.ran,
             session_id=result.session_id,
+            not_run_reason=result.not_run_reason,
         )
         await self._queue.put(message)

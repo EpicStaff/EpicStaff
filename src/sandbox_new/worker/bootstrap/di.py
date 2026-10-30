@@ -1,8 +1,8 @@
 """Assembles the worker runtime from settings and the shared queues.
 
 The composition root for the worker: it wires the execution pipeline (every step in
-order), the queue source/sink, and the job consumer. The pipeline is stateless and
-reused across jobs -- per-job state lives in the context.
+order), the queue source/sink, the admission gate and the job consumer. The pipeline is
+stateless and reused across jobs -- per-job state lives in the context.
 """
 
 import asyncio
@@ -12,7 +12,10 @@ from common.contracts import ExecutionJobMessage, ExecutionResultMessage
 
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
+from worker.application.ports import AbstractAdmissionGate
+from worker.application.resource_gate import ResourceAdmissionGate
 from worker.application.steps import BuildIsolationPlan, ConfigureStorageStep
+from worker.infrastructure.admission import HostMetrics
 from worker.infrastructure.execution.steps import (
     CaptureMutationsStep,
     CaptureResultStep,
@@ -26,7 +29,7 @@ from worker.infrastructure.transport.queue_job_source import QueueJobSource
 from worker.infrastructure.transport.queue_result_sink import QueueResultSink
 from worker.presentation.job_consumer import JobConsumer
 
-__all__ = ["build_job_consumer", "build_pipeline"]
+__all__ = ["build_admission_gate", "build_job_consumer", "build_pipeline"]
 
 
 def build_pipeline() -> Pipeline:
@@ -62,10 +65,21 @@ def build_pipeline() -> Pipeline:
     )
 
 
+def build_admission_gate() -> ResourceAdmissionGate:
+    return ResourceAdmissionGate(
+        HostMetrics(),
+        min_concurrent=settings.MIN_CONCURRENT_EXECUTIONS,
+        max_concurrent=settings.MAX_CONCURRENT_EXECUTIONS,
+        cpu_threshold=settings.CPU_ADMIT_THRESHOLD,
+        memory_threshold=settings.MEMORY_ADMIT_THRESHOLD,
+    )
+
+
 def build_job_consumer(
     *,
     job_queue: asyncio.Queue[ExecutionJobMessage],
     result_queue: asyncio.Queue[ExecutionResultMessage],
+    gate: AbstractAdmissionGate,
 ) -> JobConsumer:
     orchestrator = ExecutionOrchestrator(
         build_pipeline(),
@@ -73,5 +87,5 @@ def build_job_consumer(
         mask_secrets=settings.MASK_SECRET,
     )
     return JobConsumer(
-        QueueJobSource(job_queue), orchestrator, concurrency=settings.WORKER_CONCURRENCY
+        QueueJobSource(job_queue), orchestrator, gate, queue_timeout=settings.QUEUE_TIMEOUT
     )

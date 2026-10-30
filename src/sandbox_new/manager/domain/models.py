@@ -167,3 +167,6 @@ class Job(Entity):
     # instead of the shared one. The channel name is the sandbox's, not the caller's.
     reply_to_crew_channel: bool = False
     error: str | None = None
+    # Wall-clock seconds when the job was handed to the worker queue; never set while
+    # it is held.
+    queued_at: float | None = None

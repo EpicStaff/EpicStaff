@@ -1,7 +1,7 @@
 """SandboxClient: submits code tasks to sandbox_new over HTTP and matches results by execution id.
 
-The intake is a real httpx client over a MockTransport, so a test sees the JSON
-body the agent actually posts to `POST /executions`. Results still come back on
+The intake is the real SandboxHttpClient over a MockTransport, so a test sees the
+JSON body the agent actually posts to `POST /executions`. Results still come back on
 Redis, which is replaced by a small in-memory pub/sub (fakeredis is not an agent
 dependency); the fake sandbox answers each task the way the sandbox service does.
 """
@@ -14,16 +14,25 @@ import json
 import httpx
 import pytest
 from app.sandbox import client as client_module
+from app.sandbox import http_client as http_client_module
 from app.sandbox.client import SandboxClient
-from app.sandbox.http_client import ClientValidationError
 from app.tools.executors.python_code import PythonCodeToolExecutor
+from loguru import logger
+from shared.bench_log import BENCH_LEVEL
 from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import CodeResultData, CodeTaskData
+from shared.sandbox_errors import (
+    SandboxError,
+    SandboxExecutionLostError,
+    SandboxOverloadedError,
+    SandboxResultTimeoutError,
+)
 from tests.log_capture import assert_masked_exception, capture_logs_at, log_line_starting_with
 from tests.tools.test_python_code_executor import _make_tool_data
 
 RESULTS = "code_results"
 SANDBOX_BASE_URL = "http://sandbox:8000"
+REJECTED_RETRY_AFTER_S = 0.05
 PARSE_FAILURE_PREFIX = "SandboxClient: failed to parse pubsub message:"
 READER_FAILURE_PREFIX = "SandboxClient reader loop failed:"
 
@@ -100,16 +109,28 @@ class FakeSandbox:
 
     `answer(body)` returns the messages the sandbox publishes for that body: a raw
     payload, or a result_data string wrapped in a result for the body's own id.
+    `GET /executions/{id}` reports every execution as running, or as unknown (404)
+    once `loses_executions` is set. The first `rejections_left` submits are answered 503,
+    asking for a `REJECTED_RETRY_AFTER_S` wait, the way a full sandbox answers.
     """
 
     def __init__(self, redis: FakeRedis, answer=lambda body: [body["code"]]):
         self._redis = redis
         self._answer = answer
         self.bodies: list[dict] = []
+        self.loses_executions = False
+        self.rejections_left = 0
 
     async def handle(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            if self.loses_executions:
+                return httpx.Response(404, json={"detail": "not found"})
+            return httpx.Response(200, json={"status": "running"})
         body = json.loads(request.content)
         self.bodies.append(body)
+        if self.rejections_left > 0:
+            self.rejections_left -= 1
+            return httpx.Response(503, headers={"Retry-After": str(REJECTED_RETRY_AFTER_S)})
 
         for reply in self._answer(body):
             if isinstance(reply, bytes):
@@ -145,17 +166,19 @@ def sandbox_factory(redis_server, monkeypatch):
 
     def install(answer=lambda body: [body["code"]]) -> FakeSandbox:
         sandbox = FakeSandbox(FakeRedis(redis_server), answer)
-        http_client_type = client_module.AsyncClient
-        monkeypatch.setattr(
-            client_module,
-            "AsyncClient",
-            lambda **kwargs: http_client_type(
-                **kwargs, transport=httpx.MockTransport(sandbox.handle)
-            ),
-        )
+        _route_http_to(monkeypatch, sandbox.handle)
         return sandbox
 
     return install
+
+
+def _route_http_to(monkeypatch, handler) -> None:
+    http_client_type = client_module.SandboxHttpClient
+    monkeypatch.setattr(
+        client_module,
+        "SandboxHttpClient",
+        lambda **kwargs: http_client_type(**kwargs, transport=httpx.MockTransport(handler)),
+    )
 
 
 @pytest.fixture
@@ -163,7 +186,9 @@ def sandbox(sandbox_factory) -> FakeSandbox:
     return sandbox_factory()
 
 
-def _build_client() -> SandboxClient:
+def _build_client(
+    code_result_timeout: float | None = None, queue_timeout: float = 0
+) -> SandboxClient:
     return SandboxClient(
         host="unused",
         port=0,
@@ -171,7 +196,33 @@ def _build_client() -> SandboxClient:
         result_channel=RESULTS,
         sandbox_base_url=SANDBOX_BASE_URL,
         sandbox_timeout=5.0,
+        # No retry budget by default: a full sandbox fails the first submit.
+        queue_timeout=queue_timeout,
+        code_result_timeout=code_result_timeout,
     )
+
+
+@pytest.fixture
+def checkpoints():
+    """The BENCH checkpoints logged during the test, as their extra fields, in order.
+
+    Keys starting with "_" are dropped: a BENCH sink added earlier (the service's own
+    stdout sink) stores its rendered line in the shared extra under such a key.
+    """
+    logged: list[dict] = []
+    sink_id = logger.add(
+        lambda message: logged.append(
+            {key: value for key, value in message.record["extra"].items() if not key.startswith("_")}
+        ),
+        level=BENCH_LEVEL,
+        filter=lambda record: record["level"].no == BENCH_LEVEL,
+    )
+    yield logged
+    logger.remove(sink_id)
+
+
+def _of_type(checkpoints: list[dict], name: str) -> list[dict]:
+    return [item for item in checkpoints if item["checkpoint"] == name]
 
 
 @pytest.fixture
@@ -240,15 +291,77 @@ async def test_malformed_and_foreign_results_are_ignored(sandbox_factory):
     assert result.result_data == "mine"
 
 
-async def test_submit_times_out_when_the_sandbox_never_answers(sandbox_factory):
+async def test_submit_gives_up_at_the_backstop_when_no_result_arrives(sandbox_factory):
     sandbox_factory(answer=lambda body: [])
+    sandbox_client = _build_client(code_result_timeout=0.2)
+    await sandbox_client.start()
+    try:
+        with pytest.raises(SandboxResultTimeoutError):
+            await asyncio.wait_for(sandbox_client.submit(_task()), timeout=2)
+    finally:
+        await sandbox_client.stop()
+
+
+async def test_submit_fails_when_the_sandbox_lost_the_execution(sandbox_factory, monkeypatch):
+    monkeypatch.setattr(http_client_module, "STATUS_POLL_INTERVAL_SECONDS", 0.01)
+    sandbox = sandbox_factory(answer=lambda body: [])
+    sandbox.loses_executions = True
     sandbox_client = _build_client()
     await sandbox_client.start()
     try:
-        with pytest.raises(asyncio.TimeoutError):
-            await sandbox_client.submit(_task(), timeout=0.2)
+        with pytest.raises(SandboxExecutionLostError):
+            await asyncio.wait_for(sandbox_client.submit(_task()), timeout=2)
     finally:
         await sandbox_client.stop()
+
+
+async def test_a_503_followed_by_a_retry_is_logged_as_sandbox_rejected(
+    sandbox_factory, checkpoints, monkeypatch
+):
+    # The jittered backoff stays under Retry-After, so the logged wait is exactly it.
+    monkeypatch.setattr(http_client_module, "BACKOFF_CAP_SECONDS", 0.001)
+    sandbox = sandbox_factory()
+    sandbox.rejections_left = 1
+    sandbox_client = _build_client(queue_timeout=60)
+    await sandbox_client.start()
+    try:
+        result = await asyncio.wait_for(sandbox_client.submit(_task(session_id=5)), timeout=2)
+    finally:
+        await sandbox_client.stop()
+
+    assert result.result_data == "def main(): return 'ok'"
+    assert _of_type(checkpoints, "sandbox_rejected") == [
+        {
+            "checkpoint": "sandbox_rejected",
+            "session_id": 5,
+            "execution_id": sandbox.bodies[0]["execution_id"],
+            "attempt": 1,
+            "retry_after_s": REJECTED_RETRY_AFTER_S,
+        }
+    ]
+
+
+async def test_an_execution_the_sandbox_lost_is_logged_as_sandbox_lost(
+    sandbox_factory, checkpoints, monkeypatch
+):
+    monkeypatch.setattr(http_client_module, "STATUS_POLL_INTERVAL_SECONDS", 0.01)
+    sandbox = sandbox_factory(answer=lambda body: [])
+    sandbox.loses_executions = True
+    sandbox_client = _build_client()
+    await sandbox_client.start()
+    try:
+        with pytest.raises(SandboxExecutionLostError):
+            await asyncio.wait_for(sandbox_client.submit(_task(session_id=5)), timeout=2)
+    finally:
+        await sandbox_client.stop()
+
+    assert _of_type(checkpoints, "sandbox_lost") == [
+        {
+            "checkpoint": "sandbox_lost",
+            "session_id": 5,
+            "execution_id": sandbox.submitted["execution_id"],
+        }
+    ]
 
 
 async def test_stop_fails_submits_still_waiting(sandbox_factory):
@@ -266,24 +379,41 @@ async def test_stop_fails_submits_still_waiting(sandbox_factory):
         await asyncio.wait_for(waiting, timeout=2)
 
 
-async def test_submit_raises_when_the_intake_rejects_the_task(redis_server, monkeypatch):
-    def reject(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(400, text="use_storage requires storage_credentials")
-
-    http_client_type = client_module.AsyncClient
-    monkeypatch.setattr(
-        client_module,
-        "AsyncClient",
-        lambda **kwargs: http_client_type(**kwargs, transport=httpx.MockTransport(reject)),
+@pytest.mark.parametrize(
+    ("status_code", "headers", "text", "expected_error", "expected_message"),
+    [
+        (
+            400,
+            {},
+            "use_storage requires storage_credentials",
+            SandboxError,
+            "use_storage requires storage_credentials",
+        ),
+        (
+            503,
+            {"Retry-After": "0"},
+            "full",
+            SandboxOverloadedError,
+            "Sandbox overloaded: no free capacity within 0 s.",
+        ),
+    ],
+    ids=["refused", "full"],
+)
+async def test_submit_raises_when_the_sandbox_does_not_take_the_task(
+    redis_server, monkeypatch, status_code, headers, text, expected_error, expected_message
+):
+    _route_http_to(
+        monkeypatch, lambda request: httpx.Response(status_code, headers=headers, text=text)
     )
     sandbox_client = _build_client()
     await sandbox_client.start()
     try:
-        with pytest.raises(ClientValidationError, match="use_storage requires storage_credentials"):
+        with pytest.raises(expected_error) as raised:
             await sandbox_client.submit(_task())
     finally:
         await sandbox_client.stop()
 
+    assert str(raised.value) == expected_message
 
 async def test_unparseable_result_logs_validation_types_and_locations_only(sandbox_factory):
     """A result that fails CodeResultData validation reaches pydantic's own rendering
@@ -362,12 +492,7 @@ def exploding_sandbox(monkeypatch) -> FakeSandbox:
     server = FakePubSubServer()
     monkeypatch.setattr(client_module.aioredis, "Redis", lambda **kwargs: ExplodingRedis(server))
     sandbox = FakeSandbox(ExplodingRedis(server), answer=lambda body: [_EXPLODE])
-    http_client_type = client_module.AsyncClient
-    monkeypatch.setattr(
-        client_module,
-        "AsyncClient",
-        lambda **kwargs: http_client_type(**kwargs, transport=httpx.MockTransport(sandbox.handle)),
-    )
+    _route_http_to(monkeypatch, sandbox.handle)
     return sandbox
 
 
@@ -401,6 +526,5 @@ async def test_reader_loop_failure_reaches_the_agent_as_an_unredacted_tool_resul
 
     assert tool_result.is_error is True
     assert tool_result.content == (
-        f"Sandbox transport error: SandboxClient reader loop failed: "
-        f"pubsub subscription broke: {READER_MARKER}"
+        f"SandboxClient reader loop failed: pubsub subscription broke: {READER_MARKER}"
     )

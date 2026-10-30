@@ -1,14 +1,16 @@
 from datetime import datetime
-from typing import Any, Self
+from typing import Self
 
 from foundation.schemas import Schema
 from pydantic import Field, model_validator
+from src.shared.models.sandbox_execution import ExecutionRequest, ExecutionStorageCredentials
 
-from manager.domain.enums import JobStatus, VenvStatus
+from manager.domain.enums import ExecutionStatus, VenvStatus
 from manager.domain.models import Library, StorageCredentials, Venv
 
 __all__ = [
     "ExecutionAcceptedSchema",
+    "ExecutionStatusSchema",
     "ExecutionSubmitSchema",
     "LibraryRetrieveSchema",
     "LibraryWriteSchema",
@@ -95,39 +97,18 @@ class VenvUpdateSchema(Schema):
     libs: list[LibraryWriteSchema] | None = None
 
 
-class StorageCredentialsSchema(Schema):
+class StorageCredentialsSchema(ExecutionStorageCredentials):
     """Object-store credentials the caller issued for this execution."""
-
-    # Non-empty: a blank key would pass the fail-closed check below (a model is
-    # always truthy) and fail against the object store inside the sandbox instead.
-    access_key: str = Field(min_length=1)
-    secret_key: str = Field(min_length=1)
 
     def to_domain(self) -> StorageCredentials:
         return StorageCredentials(access_key=self.access_key, secret_key=self.secret_key)
 
 
-class ExecutionSubmitSchema(Schema):
-    execution_id: str
-    # Optional: tool paths at session start can submit without a session. Matches
-    # ExecutionJobMessage.session_id, which is already int | None.
-    session_id: int | None = None
-    code: str
-    entrypoint: str
-    global_kwargs: dict[str, Any] = {}
-    func_kwargs: dict[str, Any] = {}
-    secrets: dict[str, Any] = {}
-    venv_id: int | None = None
-    use_storage: bool = False
-    storage_allowed_paths: list[str] = []
-    storage_org_prefix: str | None = None
-    # The sandbox never mints these: the caller issues them and hands them over.
-    storage_credentials: StorageCredentialsSchema | None = None
-    timeout: float | None = None
-    # Asks for the result on crew's private result channel instead of the shared one.
-    # A flag, not a channel name: the sandbox derives the name from its own setting, so a
-    # caller cannot redirect results at another service's channel.
-    reply_to_crew_channel: bool = False
+class ExecutionSubmitSchema(ExecutionRequest):
+    """The submission body; its fields are the producers' `ExecutionRequest` contract."""
+
+    # Re-declared only to parse into the subclass that maps to the domain.
+    storage_credentials: StorageCredentialsSchema | None = Field(default=None, repr=False)
 
     @model_validator(mode="after")
     def require_everything_storage_needs(self) -> Self:
@@ -157,4 +138,9 @@ class ExecutionSubmitSchema(Schema):
 
 class ExecutionAcceptedSchema(Schema):
     execution_id: str
-    status: JobStatus
+    status: ExecutionStatus
+
+
+class ExecutionStatusSchema(Schema):
+    execution_id: str
+    status: ExecutionStatus

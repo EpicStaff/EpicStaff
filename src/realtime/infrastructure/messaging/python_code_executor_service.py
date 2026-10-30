@@ -2,24 +2,27 @@ import asyncio
 import uuid
 from typing import Any
 
-import httpx
 from core import config
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
 from domain.ports.i_redis_messaging_service import IRedisMessagingService
+from foundation.transport.http import ClientError
 from loguru import logger
 from pydantic import ValidationError
-from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData, StorageCredentials
+from src.shared.models import (
+    CodeResultData,
+    CodeTaskData,
+    ExecutionRequest,
+    PythonCodeData,
+    StorageCredentials,
+)
+from src.shared.sandbox_errors import SandboxError
 from utils.singleton_meta import SingletonMeta
 
-from infrastructure.sandbox.sandbox_client import SandboxExecutionClient
+from infrastructure.sandbox.sandbox_client import SandboxClient
 
 
 class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonMeta):
-    _SUBMIT_FAILED_STDERR = "Could not reach the code sandbox for this run."
-
-    def __init__(
-        self, redis_service: IRedisMessagingService, sandbox_client: SandboxExecutionClient
-    ):
+    def __init__(self, redis_service: IRedisMessagingService, sandbox_client: SandboxClient):
         self.redis_service = redis_service
         self.sandbox_client = sandbox_client
 
@@ -79,32 +82,56 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
         # closes it: one subscription per execution would otherwise outlive the call.
         pubsub = await self.redis_service.async_subscribe(config.CODE_RESULT_CHANNEL)
         try:
-            try:
-                await self.sandbox_client.submit(code_task_data)
-            except httpx.HTTPError as error:
-                # The class name, never the error: an httpx error keeps the request
-                # that raised it, and that request body carries secret plaintext.
-                # A rejected submit produces no result, so the wait below would never
-                # end -- fail the tool call now instead.
-                logger.error(
-                    "Failed to submit code execution to the sandbox (execution_id={}, {})",
-                    unique_task_id,
-                    type(error).__name__,
-                )
-                return CodeResultData(
-                    execution_id=unique_task_id,
-                    stderr=self._SUBMIT_FAILED_STDERR,
-                    stdout="",
-                    returncode=1,
-                ).model_dump()
+            await self.sandbox_client.submit(_execution_request(code_task_data))
             logger.info("Waiting for code_results")
-
-            while True:
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                if message:
-                    code_result_data = CodeResultData.model_validate_json(message["data"])
-                    if code_result_data.execution_id == unique_task_id:
-                        return code_result_data.model_dump()
-                await asyncio.sleep(0.1)
+            return await self.sandbox_client.wait_for_result(
+                unique_task_id,
+                _read_result(pubsub, unique_task_id),
+                backstop=config.REALTIME_CODE_RESULT_TIMEOUT,
+            )
+        except (SandboxError, ClientError) as error:
+            # The class name only: the message is for the user, who gets it as stderr.
+            logger.error(
+                "Code execution failed (execution_id={}, {})",
+                unique_task_id,
+                type(error).__name__,
+            )
+            return CodeResultData(
+                execution_id=unique_task_id,
+                stderr=str(error),
+                stdout="",
+                returncode=1,
+            ).model_dump()
         finally:
             await pubsub.aclose()
+
+
+async def _read_result(pubsub, execution_id: str) -> dict:
+    while True:
+        message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+        if message:
+            code_result_data = CodeResultData.model_validate_json(message["data"])
+            if code_result_data.execution_id == execution_id:
+                return code_result_data.model_dump()
+        await asyncio.sleep(0.1)
+
+
+def _execution_request(code_task_data: CodeTaskData) -> ExecutionRequest:
+    storage_credentials = code_task_data.storage_credentials
+    return ExecutionRequest(
+        execution_id=code_task_data.execution_id,
+        session_id=code_task_data.session_id,
+        code=code_task_data.code,
+        entrypoint=code_task_data.entrypoint,
+        global_kwargs=code_task_data.global_kwargs or {},
+        func_kwargs=code_task_data.func_kwargs or {},
+        secrets=code_task_data.secrets,
+        venv_id=code_task_data.venv_id,
+        use_storage=code_task_data.use_storage,
+        storage_allowed_paths=code_task_data.storage_allowed_paths or [],
+        storage_org_prefix=code_task_data.storage_org_prefix,
+        storage_credentials=(
+            storage_credentials.model_dump() if storage_credentials is not None else None
+        ),
+        timeout=code_task_data.execution_timeout,
+    )

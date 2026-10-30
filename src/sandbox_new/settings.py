@@ -41,8 +41,47 @@ PREDEFINED_VENV_PACKAGES = (
     SHARED_DIR / "epicstaff_storage",
 )
 
-# How many executions the worker runs concurrently.
-WORKER_CONCURRENCY = env.int("SANDBOX_WORKER_CONCURRENCY", 4)
+# Seconds a job may wait in the worker queue before it is failed instead of run. Intake
+# also refuses a job it predicts would wait longer than this.
+QUEUE_TIMEOUT = env.time("SANDBOX_QUEUE_TIMEOUT")
+# Seconds a job may wait for its venv to finish building before it is failed instead of
+# run. Keep it below the producers' result backstops (CREW_CODE_RESULT_TIMEOUT,
+# AGENT_CODE_RESULT_TIMEOUT, REALTIME_CODE_RESULT_TIMEOUT, 40 minutes by default), so a
+# producer learns the job was not run before it gives up waiting.
+HOLD_TIMEOUT = env.time("SANDBOX_HOLD_TIMEOUT")
+# Executions accepted and not yet finished (queued or running) before intake answers 503.
+# Bounds the memory accepted jobs can hold. Held jobs are capped apart, below.
+MAX_ACCEPTED_EXECUTIONS = env.int("SANDBOX_MAX_ACCEPTED_EXECUTIONS", 1000)
+# Executions waiting for their venv to finish building before intake answers 503 to
+# another one that would wait.
+MAX_HELD_EXECUTIONS = env.int("SANDBOX_MAX_HELD_EXECUTIONS", 100)
+# Executions that always start whatever the load; 0 means the CPUs the container may use.
+MIN_CONCURRENT_EXECUTIONS = env.int("SANDBOX_MIN_CONCURRENT_EXECUTIONS", 0)
+# Executions that never run at once, whatever the load.
+MAX_CONCURRENT_EXECUTIONS = env.int("SANDBOX_MAX_CONCURRENT_EXECUTIONS", 256)
+# Percent. Above the minimum, a job starts only while host CPU and container memory are
+# below these.
+CPU_ADMIT_THRESHOLD = env.float("SANDBOX_CPU_ADMIT_THRESHOLD", 85)
+MEMORY_ADMIT_THRESHOLD = env.float("SANDBOX_MEMORY_ADMIT_THRESHOLD", 80)
+
+if QUEUE_TIMEOUT is None or QUEUE_TIMEOUT <= 0:
+    raise ValueError("SANDBOX_QUEUE_TIMEOUT must be a duration above zero, not none.")
+if HOLD_TIMEOUT is None or HOLD_TIMEOUT <= 0:
+    raise ValueError("SANDBOX_HOLD_TIMEOUT must be a duration above zero, not none.")
+if MAX_ACCEPTED_EXECUTIONS is None or MAX_ACCEPTED_EXECUTIONS < 1:
+    raise ValueError("SANDBOX_MAX_ACCEPTED_EXECUTIONS must be at least 1.")
+if MAX_HELD_EXECUTIONS is None or MAX_HELD_EXECUTIONS < 1:
+    raise ValueError("SANDBOX_MAX_HELD_EXECUTIONS must be at least 1.")
+if MIN_CONCURRENT_EXECUTIONS is None or MIN_CONCURRENT_EXECUTIONS < 0:
+    raise ValueError("SANDBOX_MIN_CONCURRENT_EXECUTIONS must be 0 (auto) or more.")
+if MAX_CONCURRENT_EXECUTIONS is None or MAX_CONCURRENT_EXECUTIONS < 1:
+    raise ValueError("SANDBOX_MAX_CONCURRENT_EXECUTIONS must be at least 1.")
+for _name, _threshold in (
+    ("SANDBOX_CPU_ADMIT_THRESHOLD", CPU_ADMIT_THRESHOLD),
+    ("SANDBOX_MEMORY_ADMIT_THRESHOLD", MEMORY_ADMIT_THRESHOLD),
+):
+    if _threshold is None or not 0 < _threshold <= 100:
+        raise ValueError(f"{_name} must be a percentage above 0 and at most 100.")
 
 DB_USER = env.str("SANDBOX_DB_USER")
 DB_PASSWORD = env.str("SANDBOX_DB_PASSWORD")

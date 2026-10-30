@@ -7,11 +7,14 @@ back into an ``ExecutionResultMessage``.
 
 import asyncio
 
+import pytest
+
 from common.contracts import (
     ExecutionJobMessage,
     ExecutionResultMessage,
     StorageCredentialsMessage,
 )
+from worker.application.ports import UndecodableJobError
 from worker.domain.models import ExecutionResult, StorageMutations
 from worker.infrastructure.transport.queue_job_source import QueueJobSource
 from worker.infrastructure.transport.queue_result_sink import QueueResultSink
@@ -36,6 +39,7 @@ async def test_a_wire_job_decodes_into_a_domain_job():
             ),
             session_id=11,
             timeout=12.5,
+            queued_at=1_800_000_000.0,
         )
     )
 
@@ -55,6 +59,7 @@ async def test_a_wire_job_decodes_into_a_domain_job():
     assert job.storage_credentials.secret_key == "SK456"
     assert job.session_id == 11
     assert job.timeout == 12.5
+    assert job.queued_at == 1_800_000_000.0
 
 
 async def test_a_minimal_wire_job_decodes_with_its_defaults():
@@ -142,3 +147,49 @@ async def test_the_crew_reply_flag_is_encoded_back_onto_the_wire_result():
     )
 
     assert queue.get_nowait().reply_to_crew_channel is True
+
+
+@pytest.mark.parametrize(
+    ("wire_fields", "session_id"),
+    [
+        ({"venv_hash": None, "session_id": 11}, 11),
+        # The session id itself is what does not decode, so it cannot be carried.
+        ({"venv_hash": "1abc", "session_id": "not-a-session"}, None),
+    ],
+    ids=["session-known", "session-undecodable"],
+)
+async def test_a_wire_job_that_does_not_decode_raises_with_what_is_needed_to_fail_it(
+    wire_fields, session_id
+):
+    queue: asyncio.Queue[ExecutionJobMessage] = asyncio.Queue()
+    # Built without validation: the manager never sends such a job, so this is the
+    # drifted contract the source must still answer for.
+    queue.put_nowait(
+        ExecutionJobMessage.model_construct(
+            execution_id="exec-1",
+            code="",
+            entrypoint="main",
+            secrets={"TOKEN": "s3cret"},
+            reply_to_crew_channel=True,
+            **wire_fields,
+        )
+    )
+
+    with pytest.raises(UndecodableJobError) as raised:
+        await QueueJobSource(queue).get()
+
+    assert raised.value.execution_id == "exec-1"
+    assert raised.value.reply_to_crew_channel is True
+    assert raised.value.session_id == session_id
+    assert "s3cret" not in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__ is True
+
+
+@pytest.mark.parametrize("ran", [True, False])
+async def test_whether_the_job_ran_is_encoded_onto_the_wire_result(ran):
+    queue: asyncio.Queue[ExecutionResultMessage] = asyncio.Queue()
+
+    await QueueResultSink(queue).send(ExecutionResult(execution_id="exec-1", ran=ran))
+
+    assert queue.get_nowait().ran is ran

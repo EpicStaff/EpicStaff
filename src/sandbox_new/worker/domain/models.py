@@ -8,7 +8,7 @@ object, not an entity with a lifecycle. ``Jail`` and ``NetworkDecision`` are the
 outputs of the isolation domain services (see ``domain/services/isolation.py``).
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from foundation.base import ValueObject
 from pydantic import Field
@@ -21,9 +21,16 @@ __all__ = [
     "Jail",
     "Job",
     "NetworkDecision",
+    "NotRunReason",
     "StorageCredentials",
     "StorageMutations",
 ]
+
+
+# Why the worker failed a job without running it, when the reason is one the manager
+# reports as an outcome of its own. A job that was run, or failed for another reason,
+# carries none.
+type NotRunReason = Literal["overloaded"]
 
 
 class StorageCredentials(ValueObject):
@@ -57,6 +64,9 @@ class Job(ValueObject):
     # Carried for the manager's benefit only: the worker echoes it onto the result so the
     # manager can publish to the channel the submitter listens on. Nothing here reads it.
     reply_to_crew_channel: bool = False
+    # Wall-clock seconds when the manager queued the job; it is failed instead of run
+    # once it has waited longer than the queue timeout.
+    queued_at: float | None = None
 
 
 class Jail(ValueObject):
@@ -82,8 +92,12 @@ class ExecutionResult(ValueObject):
     returncode: int = 0
     # Echoed from the job; see ``Job.reply_to_crew_channel``.
     reply_to_crew_channel: bool = False
+    # The job was really executed, as opposed to failed without running.
+    ran: bool = False
     # Echoed from the job so the manager's BENCH checkpoint can name the session.
     session_id: int | None = None
+    # Feeds the manager's BENCH checkpoint only; see ``NotRunReason``.
+    not_run_reason: NotRunReason | None = None
 
 
 class StorageMutations(ValueObject):

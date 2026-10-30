@@ -26,6 +26,7 @@ async def main():
         password=settings.REDIS_PASSWORD,
     )
     sandbox_client = SandboxClient(
+        queue_timeout=settings.SANDBOX_QUEUE_TIMEOUT,
         base_url=f"http://{settings.SANDBOX_HOST}:{settings.SANDBOX_PORT}",
         timeout=settings.SANDBOX_TIMEOUT,
     )

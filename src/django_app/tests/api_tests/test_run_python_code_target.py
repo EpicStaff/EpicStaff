@@ -227,10 +227,19 @@ class TestSandboxRefusesTheSubmission:
     """A refused submission produces no result on the result channel, so the
     PENDING row would never be completed by anything."""
 
+    @pytest.mark.parametrize(
+        ("status_code", "expected_stderr"),
+        [
+            (500, "Could not reach the code sandbox for this run."),
+            # A full sandbox is not retried while the user waits on the request.
+            (503, "The code sandbox is busy; try again in a moment."),
+        ],
+        ids=["refused", "full"],
+    )
     def test_the_result_is_marked_error_instead_of_staying_pending(
-        self, acme_client, acme_graph, sandbox_intake
+        self, acme_client, acme_graph, sandbox_intake, status_code, expected_stderr
     ):
-        sandbox_intake.status_code = 503
+        sandbox_intake.status_code = status_code
         node = _python_node(acme_graph, use_storage=False)
 
         response = _run_target(acme_client, "python_node", node.id)
@@ -238,8 +247,9 @@ class TestSandboxRefusesTheSubmission:
         assert response.status_code == 200, response.data
         result = PythonCodeResult.objects.get(execution_id=response.data["execution_id"])
         assert result.status == PythonCodeResult.Status.ERROR
-        assert result.stderr == "Could not reach the code sandbox for this run."
+        assert result.stderr == expected_stderr
         assert result.finished_at is not None
+        assert len(sandbox_intake.bodies) == 1
 
 
 @pytest.mark.django_db

@@ -10,6 +10,11 @@ import pytest
 
 from app.tools.executors.python_code import PythonCodeToolExecutor
 from shared.models.storage_scope import StorageCredentials
+from shared.sandbox_errors import (
+    SandboxExecutionLostError,
+    SandboxOverloadedError,
+    SandboxResultTimeoutError,
+)
 from shared.models.tools import (
     ArgsSchema,
     CodeResultData,
@@ -149,9 +154,12 @@ async def test_sandbox_task_carries_the_tool_configuration(python_code_overrides
             CodeResultData(execution_id="exec-1", result_data=None, stderr="", stdout="partial output", returncode=1),
             "partial output", True,
         ),
-        (ConnectionError("Redis gone"), "Sandbox transport error: Redis gone", True),
+        (ConnectionError("SandboxClient stopped"), "SandboxClient stopped", True),
+        (SandboxOverloadedError(120), "Sandbox overloaded: no free capacity within 120 s.", True),
+        (SandboxExecutionLostError(), "The sandbox lost the execution (it restarted, or its result was not delivered).", True),
+        (SandboxResultTimeoutError(2100), "Timed out waiting for the result after 2100 s.", True),
     ],
-    ids=["success", "stderr", "nonzero-uses-stdout", "transport-error"],
+    ids=["success", "stderr", "nonzero-uses-stdout", "client-stopped", "sandbox-full", "execution-lost", "backstop"],
 )
 async def test_sandbox_result_becomes_the_tool_result(sandbox_result, expected_content, expected_error):
     result = await PythonCodeToolExecutor(FakeSandbox(sandbox_result), _make_tool_data())({})
