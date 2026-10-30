@@ -11,7 +11,8 @@ from tables.serializers.model_serializers import (
     McpToolSerializer,
     PythonCodeToolSerializer,
 )
-from tables.serializers.serializers import BulkExportSerializer
+from tables.serializers.serializers import BulkExportSerializer, BulkIdsSerializer
+from tables.serializers.utils.bulk_ids import BULK_DELETE_MAX_IDS
 from tables.swagger_schemas.common_schemas import (
     FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
     UNAUTHORIZED_401_RESPONSE,
@@ -29,12 +30,6 @@ TOOL_ORDERING_PARAMETER = OpenApiParameter(
     ),
 )
 
-_BULK_DELETE_REQUEST = inline_serializer(
-    name="ToolBulkDeleteRequest",
-    fields={
-        "ids": drf_serializers.ListField(child=drf_serializers.IntegerField()),
-    },
-)
 
 PYTHON_CODE_TOOL_BULK_DELETE_POST = {
     "summary": "Bulk delete Python-code tools",
@@ -46,7 +41,7 @@ PYTHON_CODE_TOOL_BULK_DELETE_POST = {
         "in the response always echoes the full requested list, regardless of "
         "which ids were actually found/deleted/skipped."
     ),
-    "request": _BULK_DELETE_REQUEST,
+    "request": BulkIdsSerializer,
     "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -62,11 +57,20 @@ PYTHON_CODE_TOOL_BULK_DELETE_POST = {
         ),
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="`ids` is missing, not a list, or contains non-integer values.",
+            description=(
+                f"`ids` is missing, empty, longer than {BULK_DELETE_MAX_IDS}, or holds something other "
+                "than positive integers (booleans, strings and floats are rejected)."
+            ),
             examples=[
                 OpenApiExample(
                     "Invalid ids",
-                    value={"detail": "ids must be a list of integers."},
+                    value={"detail": "ids must be a list of positive integers."},
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+                OpenApiExample(
+                    "Too many ids",
+                    value={"detail": f"ids must have at most {BULK_DELETE_MAX_IDS} items."},
                     response_only=True,
                     status_codes=["400"],
                 ),
@@ -197,7 +201,7 @@ MCP_TOOL_BULK_DELETE_POST = {
         "single atomic transaction. `McpTool` has no built-in concept, so "
         "every matching requested id is deleted."
     ),
-    "request": _BULK_DELETE_REQUEST,
+    "request": BulkIdsSerializer,
     "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -213,11 +217,20 @@ MCP_TOOL_BULK_DELETE_POST = {
         ),
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="`ids` is missing, not a list, or contains non-integer values.",
+            description=(
+                f"`ids` is missing, empty, longer than {BULK_DELETE_MAX_IDS}, or holds something other "
+                "than positive integers (booleans, strings and floats are rejected)."
+            ),
             examples=[
                 OpenApiExample(
                     "Invalid ids",
-                    value={"detail": "ids must be a list of integers."},
+                    value={"detail": "ids must be a list of positive integers."},
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+                OpenApiExample(
+                    "Too many ids",
+                    value={"detail": f"ids must have at most {BULK_DELETE_MAX_IDS} items."},
                     response_only=True,
                     status_codes=["400"],
                 ),

@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from functools import cache
 
 from django.db.models import F, Model
+from rbac.access.effective import EffectivePermissions
+from rbac.models.enums import Permission, ResourceType
 from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
@@ -28,15 +30,28 @@ from tables.models.graph_models import (
 )
 from tables.services.recycle_bin.sources import RecycleBinSource
 
+# What a detail line that names an item the user may not read says instead of its name.
+NO_ACCESS = "No access"
+
+
+def may_read(viewer: EffectivePermissions, resource_type: ResourceType) -> bool:
+    """Whether the bin may name an item of `resource_type` to `viewer`: READ on that type."""
+    return viewer.can(resource_type.value, Permission.READ)
+
 
 @dataclass(frozen=True)
 class ContentSource:
-    """Rows of `model` that belong to a bin entry through `parent_field`, named by `name_field`."""
+    """Rows of `model` that belong to a bin entry through `parent_field`, named by `name_field`.
+
+    `resource_type` is the RBAC resource the rows are: a user without READ on it gets
+    only how many there are (the entry's `hidden_contents`), never their names.
+    """
 
     model: type[Model]
     parent_field: str
     name_field: str
     kind: str
+    resource_type: ResourceType
 
 
 def _detail_text(text) -> str | None:
@@ -47,11 +62,29 @@ def _detail_text(text) -> str | None:
 
 
 @dataclass(frozen=True)
+class DetailContext:
+    """What a tab's detail lines may need besides the rows.
+
+    Attributes:
+        viewer: The request user's permissions in the org. A line names an item
+            of another resource type only when `can_read` allows it.
+    """
+
+    org_id: int
+    viewer: EffectivePermissions
+
+    def can_read(self, resource_type: ResourceType) -> bool:
+        return may_read(self.viewer, resource_type)
+
+
+@dataclass(frozen=True)
 class DetailField:
     """A detail line: `paths` are values() lookups, joined with " · " when there are several.
 
     `to_text` turns a stored value into its text first, for a field that isn't plain text;
     `label_for` names the line from that stored value, when one label doesn't fit every row.
+    `names` is the RBAC resource of the item the line names (a surface's owner agent): a
+    user without READ on it gets NO_ACCESS instead of the name.
     """
 
     label: str
@@ -59,11 +92,12 @@ class DetailField:
     format: str = "text"
     to_text: Callable[[object], object] | None = None
     label_for: Callable[[object], str] | None = None
+    names: ResourceType | None = None
 
     def label_of(self, row: dict) -> str:
         return self.label if self.label_for is None else self.label_for(row[self.paths[0]])
 
-    def render(self, row: dict):
+    def render(self, row: dict, context: DetailContext):
         if self.format != "text":
             value = row[self.paths[0]]
             return value.isoformat() if hasattr(value, "isoformat") else value
@@ -71,13 +105,25 @@ class DetailField:
         if self.to_text is not None:
             values = [self.to_text(value) for value in values]
         parts = [_detail_text(value) for value in values]
-        return " · ".join(part for part in parts if part) or None
+        text = " · ".join(part for part in parts if part) or None
+        # An empty line stays empty: there is no name to hide.
+        if text is not None and self.names is not None and not context.can_read(self.names):
+            return NO_ACCESS
+        return text
 
 
 @dataclass(frozen=True)
 class BinContent:
     name: str
     kind: str
+
+
+@dataclass(frozen=True)
+class HiddenContents:
+    """How many contents of one kind a restore brings back whose names the user may not see."""
+
+    kind: str
+    count: int
 
 
 @dataclass(frozen=True)
@@ -90,13 +136,6 @@ class BinDetail:
     # avatar_url) or "notice" (how the item comes back: without something, or differently;
     # the UI shows it in the accent colour)
     format: str = "text"
-
-
-@dataclass(frozen=True)
-class DetailContext:
-    """What an extra-details builder may need besides the ids."""
-
-    org_id: int
 
 
 ExtraDetails = Callable[[list[int], DetailContext], dict[int, list[BinDetail]]]
@@ -250,7 +289,8 @@ def _flow_trigger_details(ids: list[int], context: DetailContext) -> dict[int, l
 
     The node keeps its link, but a binned trigger takes no calls, so the restored
     flow won't start from it until the trigger is restored too. Only nodes deleted
-    with the flow count: the others don't come back with it.
+    with the flow count: the others don't come back with it. The triggers are named
+    only to a user who may read webhooks.
     """
     paths_by_flow: dict[int, set[str]] = defaultdict(set)
     for node_model in (WebhookTriggerNode, TelegramTriggerNode):
@@ -260,13 +300,20 @@ def _flow_trigger_details(ids: list[int], context: DetailContext) -> dict[int, l
             webhook_trigger__active=False,
         ).values_list("graph_id", "webhook_trigger__path"):
             paths_by_flow[flow_id].add(path)
+    may_name_triggers = context.can_read(ResourceType.WEBHOOKS)
     details: dict[int, list[BinDetail]] = {}
     for flow_id, paths in paths_by_flow.items():
-        names = ", ".join(f'"{path}"' for path in sorted(paths))
-        if len(paths) == 1:
-            value = f"Its webhook trigger {names} is in the recycle bin: it won't start from it until that's restored."
+        if may_name_triggers:
+            trigger_names = ", ".join(f'"{path}"' for path in sorted(paths))
+            one_trigger = f"Its webhook trigger {trigger_names}"
+            many_triggers = f"Its webhook triggers {trigger_names}"
         else:
-            value = f"Its webhook triggers {names} are in the recycle bin: it won't start from them until they're restored."
+            one_trigger = "Its webhook trigger"
+            many_triggers = f"Its {len(paths)} webhook triggers"
+        if len(paths) == 1:
+            value = f"{one_trigger} is in the recycle bin: it won't start from it until that's restored."
+        else:
+            value = f"{many_triggers} are in the recycle bin: it won't start from them until they're restored."
         details[flow_id] = [BinDetail(label="Comes back", value=value, format="notice")]
     return details
 
@@ -277,7 +324,8 @@ def _voice_channel_details(ids: list[int], context: DetailContext) -> dict[int, 
     Deleting an agent clears the channel's link to it, so a channel can come
     back with no agent. A phone number a live channel took meanwhile is dropped
     on restore (restore_hooks.drop_taken_phone_number). A channel whose webhook
-    trigger is binned too keeps its link but takes no calls until that's restored.
+    trigger is binned too keeps its link but takes no calls until that's restored;
+    the trigger is named only to a user who may read webhooks.
     """
     from tables.models import RealtimeChannel, TwilioChannel
 
@@ -308,9 +356,8 @@ def _voice_channel_details(ids: list[int], context: DetailContext) -> dict[int, 
             notices.append(f"Without its phone number: {number} is in use by another channel.")
         # False only when it has a trigger and the trigger is binned (no trigger gives None).
         if trigger_active is False:
-            notices.append(
-                f'It can\'t take calls until its webhook trigger "{trigger_path}" is restored.'
-            )
+            trigger = f' "{trigger_path}"' if context.can_read(ResourceType.WEBHOOKS) else ""
+            notices.append(f"It can't take calls until its webhook trigger{trigger} is restored.")
         if notices:
             details[channel_id] = [
                 BinDetail(label="Comes back", value=" ".join(notices), format="notice")
@@ -355,7 +402,7 @@ def bin_presentations() -> dict[RecycleBinSource, BinPresentation]:
             ),
             extra_details=_flow_trigger_details,
             content_sources=tuple(
-                ContentSource(model, "graph_id", "node_name", node_type)
+                ContentSource(model, "graph_id", "node_name", node_type, ResourceType.FLOWS)
                 for model, node_type in FLOW_BIN_NODE_TYPES.items()
             ),
         ),
@@ -369,28 +416,49 @@ def bin_presentations() -> dict[RecycleBinSource, BinPresentation]:
                     to_text=_instructions_text,
                     label_for=_instructions_label,
                 ),
-                DetailField("LLM", ("llm_config__custom_name", "llm_config__model__name")),
+                DetailField(
+                    "LLM",
+                    ("llm_config__custom_name", "llm_config__model__name"),
+                    names=ResourceType.LLM_CONFIGS,
+                ),
             ),
             # An agent's own surfaces go to the bin with it and come back with it.
-            content_sources=(ContentSource(Surface, "owner_agent_id", "name", "surface"),),
+            content_sources=(
+                ContentSource(Surface, "owner_agent_id", "name", "surface", ResourceType.SURFACES),
+            ),
         ),
         RecycleBinSource.SURFACE: BinPresentation(
             detail_fields=(
                 DetailField("Instructions", ("instructions",)),
-                DetailField("Owner agent", ("owner_agent__name",)),
+                DetailField("Owner agent", ("owner_agent__name",), names=ResourceType.AGENTS),
                 DetailField("Created", ("created_at",), "date"),
                 DetailField("Last changed", ("updated_at",), "date"),
             ),
             content_sources=(
-                ContentSource(SurfacePythonTool, "surface_id", "python_tool__name", "python_tool"),
-                ContentSource(SurfaceMcpTool, "surface_id", "mcp_tool__name", "mcp_tool"),
+                ContentSource(
+                    SurfacePythonTool,
+                    "surface_id",
+                    "python_tool__name",
+                    "python_tool",
+                    ResourceType.TOOLS,
+                ),
+                ContentSource(
+                    SurfaceMcpTool, "surface_id", "mcp_tool__name", "mcp_tool", ResourceType.TOOLS
+                ),
                 ContentSource(
                     SurfaceKnowledge,
                     "surface_id",
                     "collection__collection_name",
                     "knowledge_source",
+                    ResourceType.KNOWLEDGE_SOURCES,
                 ),
-                ContentSource(SurfaceStorageItem, "surface_id", "storage_file__path", "file"),
+                ContentSource(
+                    SurfaceStorageItem,
+                    "surface_id",
+                    "storage_file__path",
+                    "file",
+                    ResourceType.FILES,
+                ),
             ),
         ),
         RecycleBinSource.PYTHON_TOOL: BinPresentation(
@@ -414,7 +482,11 @@ def bin_presentations() -> dict[RecycleBinSource, BinPresentation]:
                 DetailField("Created", ("created_at",), "date"),
                 DetailField("Last changed", ("updated_at",), "date"),
             ),
-            content_sources=(ContentSource(KeyValueTableEntry, "table_id", "key", "key"),),
+            content_sources=(
+                ContentSource(
+                    KeyValueTableEntry, "table_id", "key", "key", ResourceType.KEY_VALUE_TABLES
+                ),
+            ),
             # A table's keys can be private data, so only how many come back is shown.
             named_contents=False,
         ),
@@ -426,7 +498,13 @@ def bin_presentations() -> dict[RecycleBinSource, BinPresentation]:
             ),
             extra_details=_collection_index_details,
             content_sources=(
-                ContentSource(DocumentMetadata, "source_collection_id", "file_name", "document"),
+                ContentSource(
+                    DocumentMetadata,
+                    "source_collection_id",
+                    "file_name",
+                    "document",
+                    ResourceType.KNOWLEDGE_SOURCES,
+                ),
             ),
         ),
         # Never the value.
@@ -448,6 +526,7 @@ def bin_presentations() -> dict[RecycleBinSource, BinPresentation]:
                         "realtime_agent__agent__role",
                         "realtime_agent_definition__agent_definition__name",
                     ),
+                    names=ResourceType.AGENTS,
                 ),
             ),
             extra_details=_voice_channel_details,

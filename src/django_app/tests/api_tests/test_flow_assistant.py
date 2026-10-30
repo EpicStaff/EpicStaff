@@ -3429,3 +3429,23 @@ async def test_tool_use_failed_after_a_tool_call_is_retried(
     assert len(calls) == 3
     assert [e.message for e in events if e.type == "structured"] == ["Here is the flow"]
     assert events[-1].type == "done"
+
+
+@pytest.mark.django_db
+def test_session_tools_treat_a_binned_flows_sessions_as_missing(org_a):
+    from tables.models.session_models import Session
+    from tables.services.flow_assistant.tools import (
+        get_recent_sessions,
+        get_session_detail,
+        get_session_messages,
+        get_session_stats,
+    )
+
+    flow = Graph.objects.create(name="Binned Flow", description="", org=org_a)
+    session = Session.objects.create(graph=flow, status=Session.SessionStatus.END)
+    flow.delete()
+
+    assert get_session_stats(flow.pk)["total"] == 0
+    assert get_recent_sessions(flow.pk)["sessions"] == []
+    assert "error" in get_session_detail(flow.pk, session.pk)
+    assert "error" in get_session_messages(flow.pk, session.pk)

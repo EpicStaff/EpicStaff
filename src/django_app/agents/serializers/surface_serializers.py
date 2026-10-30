@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
@@ -194,7 +196,56 @@ class SurfaceMcpToolWriteSerializer(serializers.Serializer):
     mode = serializers.ChoiceField(choices=ToolMode.choices)
 
 
+def _storage_file_pk(item):
+    """The integer pk named by a raw storage item, or None when it is not a plain id."""
+    if not isinstance(item, Mapping):
+        return None
+    raw_pk = item.get("storage_file")
+    if isinstance(raw_pk, bool) or not isinstance(raw_pk, (int, str)):
+        return None
+    try:
+        return int(raw_pk)
+    except ValueError:
+        return None
+
+
+class SurfaceStorageItemListSerializer(serializers.ListSerializer):
+    """Drops storage items whose file is not a live file of the caller's organization.
+
+    Deleting a storage file bins it and unlinks it from every surface, but an editor
+    holding the surface from before the delete still sends the file back. Binned,
+    purged, unknown and other-organization ids are all dropped the same way, so the
+    response never tells a caller whether a file exists in another organization.
+    Items whose `storage_file` is not a plain id are kept for normal validation to
+    reject. Errors on retained items are indexed against the list after the dropped
+    items are removed. Float ids and QueryDict input are not filtered.
+    """
+
+    def to_internal_value(self, data):
+        if self.context.get("request") is None or not isinstance(data, list):
+            return super().to_internal_value(data)
+
+        item_pks = [_storage_file_pk(item) for item in data]
+        referenced_pks = {pk for pk in item_pks if pk is not None}
+        if not referenced_pks:
+            return super().to_internal_value(data)
+
+        live_pks = set(
+            self.child.fields["storage_file"]
+            .get_queryset()
+            .filter(pk__in=referenced_pks)
+            .values_list("pk", flat=True)
+        )
+        retained_items = [
+            item for item, pk in zip(data, item_pks, strict=True) if pk is None or pk in live_pks
+        ]
+        return super().to_internal_value(retained_items)
+
+
 class SurfaceStorageItemWriteSerializer(serializers.Serializer):
+    class Meta:
+        list_serializer_class = SurfaceStorageItemListSerializer
+
     storage_file = OrgScopedPrimaryKeyRelatedField(queryset=StorageFile.objects.all())
     can_list = serializers.ChoiceField(choices=StorageAccess.choices, default=StorageAccess.UNSET)
     can_view = serializers.ChoiceField(choices=StorageAccess.choices, default=StorageAccess.UNSET)

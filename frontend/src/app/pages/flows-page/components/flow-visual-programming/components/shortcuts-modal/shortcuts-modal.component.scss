@@ -294,9 +294,9 @@
     display: contents;
 }
 
-// Chrome ignores break-after: avoid in multi-column layout, so a heading left at the bottom of a column
-// would be cut off from its rows. The first item carries the heading inside one unbreakable box; the
-// remaining rows stay separate column items, so a long section still continues into the next column.
+// Firefox ignores break-after: avoid in multi-column layout (Chromium honours it), so a heading left at the
+// bottom of a column would be cut off from its rows. The first item carries the heading inside one unbreakable
+// box; the remaining rows stay separate column items, so a long section still continues into the next column.
 .shortcuts__card-item:first-child {
     display: block;
     break-inside: avoid;

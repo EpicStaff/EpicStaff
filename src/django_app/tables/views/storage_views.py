@@ -66,6 +66,7 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_MKDIR_SWAGGER,
     STORAGE_MOVE_SWAGGER,
     STORAGE_PREVIEW_SWAGGER,
+    STORAGE_RECYCLE_BIN_CONTENTS_SWAGGER,
     STORAGE_REMOVE_FROM_GRAPH_SWAGGER,
     STORAGE_RENAME_SWAGGER,
     STORAGE_SEARCH_SWAGGER,
@@ -603,15 +604,16 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             StorageRecycleBinEntrySerializer(entries, many=True).data
         )
 
-    @extend_schema(request=None, responses=RecycleBinContentsSerializer)
+    @extend_schema(**STORAGE_RECYCLE_BIN_CONTENTS_SWAGGER)
     @action(detail=False, methods=["get"], url_path=r"recycle-bin/(?P<entry_id>\d+)/contents")
     def recycle_bin_contents(self, request, entry_id=None):
-        """Files and folders deleted with one binned folder, up to 5,000: "Show all" past the list's 100."""
         contents, total = StorageRecycleBinService.contents_of(
             self.get_active_org_id(), int(entry_id)
         )
         return Response(
-            RecycleBinContentsSerializer({"contents": contents, "contents_total": total}).data
+            RecycleBinContentsSerializer(
+                {"contents": contents, "hidden_contents": [], "contents_total": total}
+            ).data
         )
 
     @extend_schema(

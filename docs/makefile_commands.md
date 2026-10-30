@@ -118,9 +118,12 @@ make django-migrate ARGS=tables
 make django-migrate ARGS="tables 0010"
 ```
 
-`migrate` does not apply the built-in roles — in Docker, `entrypoint.sh` runs
+`migrate` neither grants the service database roles their table privileges nor applies
+the built-in roles — in Docker, `entrypoint.sh` runs `apply_service_grants` and then
 `seed_builtin_roles` right after it. Running Django locally, follow it with
+`make django-manage CMD="apply_service_grants"` and
 `make django-manage CMD="seed_builtin_roles"` (see
+[CREWDB_ENTRYPOINT.md](db/CREWDB_ENTRYPOINT.md) and
 [DEV_rbac_backend_guide.md](rbac/DEV_rbac_backend_guide.md) §2.2).
 
 ### `make django-manage CMD=<command>`
@@ -233,7 +236,9 @@ python scripts/envtool.py --setup         # production: asks URL, HTTPS, feature
 ```
 
 With an existing `src/.env`, `--setup` offers to change features (it rewrites only
-`CHAT_ENABLED`, `AUDIT_TRAIL_ENABLED` and `COMPOSE_PROFILES`), tune performance and limits
+`CHAT_ENABLED`, `AUDIT_TRAIL_ENABLED`, `PLUGINS_ENABLED` and `COMPOSE_PROFILES`; turning
+plugins on also fills unset plugin secrets, asks for `PLUGINS_BASE_DOMAIN` unless it is
+valid, and locally moves EpicStaff to `http://epicstaff.localhost`, the host plugins need), tune performance and limits
 (server size, the longest a code node may run, the log level of every service), add missing settings, or start
 over while keeping the existing credentials. It needs a terminal: in Docker, run it with
 `docker run -it`. After pulling new variables, `make env-update` (or

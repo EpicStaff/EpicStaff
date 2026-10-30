@@ -376,3 +376,32 @@ def test_end_status_links_every_written_file_with_one_lookup(
             "storage_file_id", flat=True
         )
     ) == {storage_file.id for storage_file in written_files}
+
+
+@pytest.mark.django_db
+def test_a_run_whose_flow_was_binned_still_records_its_end(pubsub_with_redis, running_session):
+    pubsub, redis_client = pubsub_with_redis
+    flow = running_session.graph
+    flow.enable_persistent_variables = True
+    flow.save(update_fields=["enable_persistent_variables"])
+    StartNode.objects.create(
+        graph=flow,
+        variables={
+            "variables": {"counter": 0},
+            "persistent_variables": {"organization": ["counter"], "user": []},
+        },
+    )
+    GraphOrganization.objects.create(graph=flow, persistent_variables={})
+    flow.delete()
+    _store_final_variables(redis_client, running_session.id, {"counter": 5})
+
+    pubsub.session_status_handler(_status_message(running_session.id, Session.SessionStatus.END))
+
+    running_session.refresh_from_db()
+    assert running_session.status == Session.SessionStatus.END
+    assert running_session.finished_at is not None
+    assert running_session.graph_id == flow.pk
+    # The binned flow's stored values stay as they were when it was binned.
+    assert list(
+        GraphOrganization.all_objects.filter(graph=flow).values_list("persistent_variables", flat=True)
+    ) == [{}]

@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Tue, 27 Oct 2026 12:37:41 GMT -->
-<!-- commit: 612e28dc2a146d5237d5f2ca8badfc5e583f0da0 -->
-<!-- package-lock.json sha256: df34f81eaa00dac8 -->
+<!-- generated: Thu, 29 Oct 2026 13:21:16 GMT -->
+<!-- commit: 2dd4777b72ddf5d8dcd431514899a065930e6db8 -->
+<!-- package-lock.json sha256: c545f5ca8f1743fc -->
 
 ## Frontend license summary
 

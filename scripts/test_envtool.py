@@ -275,34 +275,43 @@ class FeatureProfilesTest(unittest.TestCase):
 
     def test_local_keeps_dev_and_unknown_profiles(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": True}, "mcp,dev,chat", local=True
+            {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": True, "PLUGINS_ENABLED": False},
+            "mcp,dev,chat",
+            local=True,
         )
         self.assertEqual(
             values,
             {
                 "CHAT_ENABLED": "false",
                 "AUDIT_TRAIL_ENABLED": "true",
+                "PLUGINS_ENABLED": "false",
                 "COMPOSE_PROFILES": "mcp,dev,auditor",
             },
         )
 
     def test_production_with_nothing_enabled_writes_none(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": False}, "chat,auditor", local=False
+            {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": False},
+            "chat,auditor,plugins",
+            local=False,
         )
         self.assertEqual(values["COMPOSE_PROFILES"], "none")
 
     def test_production_drops_the_dev_profile(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": False}, "dev,auditor", local=False
+            {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": False},
+            "dev,auditor",
+            local=False,
         )
         self.assertEqual(values["COMPOSE_PROFILES"], "chat")
 
     def test_local_adds_dev_when_missing(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": False}, "none", local=True
+            {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": True},
+            "none",
+            local=True,
         )
-        self.assertEqual(values["COMPOSE_PROFILES"], "dev,chat")
+        self.assertEqual(values["COMPOSE_PROFILES"], "dev,chat,plugins")
 
 
 class ProductionValuesTest(unittest.TestCase):
@@ -399,15 +408,81 @@ class SetupWizardTest(unittest.TestCase):
         return envtool.read_env_values(self.env_file.read_text(encoding="utf-8")), output.getvalue()
 
     def test_local_new_file_asks_only_features(self):
-        values, _ = self.run_setup("dev", ["n", "y"])
+        values, _ = self.run_setup("dev", ["n", "y", ""])
         self.assertEqual(values["CHAT_ENABLED"], "false")
         self.assertEqual(values["AUDIT_TRAIL_ENABLED"], "true")
         self.assertEqual(values["COMPOSE_PROFILES"], "dev,auditor")
         self.assertEqual(values["DB_PASSWORD"], "root_password")
+        self.assertEqual(values["PLUGINS_ENABLED"], "false")
+        for name in envtool.PLUGIN_SECRETS:
+            self.assertRegex(values[name], r"^[A-Za-z0-9]{32,}$", name)
+
+    def test_local_plugins_use_the_localhost_host_django_accepts(self):
+        values, output = self.run_setup("dev", ["n", "y", "y"])
+        self.assertEqual(values["COMPOSE_PROFILES"], "dev,auditor,plugins")
+        self.assertEqual(values["DJANGO_FRONTEND_BASE_URL"], "http://epicstaff.localhost")
+        self.assertEqual(values["NGINX_SERVER_NAME"], "epicstaff.localhost")
+        self.assertIn("http://epicstaff.localhost", output)
+
+    def test_production_with_plugins_asks_their_domain(self):
+        values, output = self.run_setup(
+            "prod",
+            [
+                "https://es.example.com", "1", "n", "n", "y",
+                "plugins.invalid", "example.com", "Plugins.Example.com.", "v1", "n",
+            ],
+        )  # fmt: skip
+        self.assertEqual(values["PLUGINS_ENABLED"], "true")
+        self.assertEqual(values["COMPOSE_PROFILES"], "plugins")
+        self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "plugins.example.com")
+        for name in envtool.PLUGIN_SECRETS:
+            self.assertRegex(values[name], r"^[A-Za-z0-9]{32,}$", name)
+        self.assertIn("*.plugins.example.com", output)
+
+    def test_plugins_stay_off_for_an_ip_or_plain_http_host(self):
+        for public_url in ("http://10.0.0.5", "http://es.example.com"):
+            self.env_file.unlink(missing_ok=True)
+            values, output = self.run_setup("prod", [public_url, "3", "n", "n", "y", "v1", "n"])
+            self.assertEqual(values["PLUGINS_ENABLED"], "false", public_url)
+            self.assertNotIn("plugins", values["COMPOSE_PROFILES"])
+            self.assertIn("Plugins stay off", output)
+
+    def test_plugins_over_plain_http_need_a_localhost_domain(self):
+        values, output = self.run_setup(
+            "prod",
+            [
+                "http://es.localhost", "3", "n", "n", "y",
+                "plugins.example.com", "p.localhost", "v1", "n",
+            ],
+        )  # fmt: skip
+        self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "p.localhost")
+        self.assertNotIn("Point *.", output)
+
+    def test_turning_plugins_on_fills_missing_secrets_and_keeps_set_ones(self):
+        envtool.main(["--dev", "--env-file", str(self.env_file)])
+        text = self.env_file.read_text(encoding="utf-8")
+        text = text.replace(
+            "\nPLUGINS_DB_ADMIN_PASSWORD=none\n", "\nPLUGINS_DB_ADMIN_PASSWORD=keepme123\n"
+        )
+        self.env_file.write_text(text, encoding="utf-8")
+        # The dev domain default is valid, so it is not asked again.
+        values, _ = self.run_setup("dev", ["1", "", "", "y"])
+        self.assertEqual(values["PLUGINS_ENABLED"], "true")
+        self.assertEqual(values["COMPOSE_PROFILES"], "dev,chat,auditor,plugins")
+        self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "plugins.epicstaff.localhost")
+        self.assertEqual(values["DJANGO_FRONTEND_BASE_URL"], "http://epicstaff.localhost")
+        self.assertEqual(values["PLUGINS_DB_ADMIN_PASSWORD"], "keepme123")
+        self.assertRegex(values["PLUGINS_NODE_KEY"], r"^[A-Za-z0-9]{32,}$")
+
+    def test_add_missing_settings_locally_generates_plugin_secrets(self):
+        self.env_file.write_text("IMAGE_TAG=latest\n", encoding="utf-8")
+        values, _ = self.run_setup("dev", ["3"])
+        for name in envtool.PLUGIN_SECRETS:
+            self.assertRegex(values[name], r"^[A-Za-z0-9]{32,}$", name)
 
     def test_production_new_file(self):
         values, output = self.run_setup(
-            "prod", ["https://es.example.com", "1", "y", "n", "latest", "v1.3.0", "n"]
+            "prod", ["https://es.example.com", "1", "y", "n", "n", "latest", "v1.3.0", "n"]
         )
         self.assertNotRegex(
             self.env_file.read_text(encoding="utf-8"), r"(?m)^# \w+=<enter your value>$"
@@ -425,11 +500,11 @@ class SetupWizardTest(unittest.TestCase):
         self.assertIn("src/nginx/certs", output)
 
     def test_wizard_files_are_private(self):
-        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "v1", "n"])
+        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "n"])
         self.assertEqual(self.env_file.stat().st_mode & 0o777, 0o600)
 
     def test_wizard_header_warns_against_plain_regeneration(self):
-        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "v1", "n"])
+        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "n"])
         header = self.env_file.read_text(encoding="utf-8").split("\n# Deploy\n")[0]
         self.assertIn("envtool.py --setup", header)
         self.assertIn("overwrites this file", header)
@@ -437,16 +512,18 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_proxy_in_front_points_at_the_proxy_count(self):
         _, behind_proxy = self.run_setup(
-            "prod", ["https://es.example.com", "2", "n", "n", "v1", "n"]
+            "prod", ["https://es.example.com", "2", "n", "n", "n", "v1", "n"]
         )
         self.assertIn("DJANGO_NUM_PROXIES", behind_proxy)
         self.env_file.unlink()
-        _, nginx_tls = self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "v1", "n"])
+        _, nginx_tls = self.run_setup(
+            "prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "n"]
+        )
         self.assertNotIn("DJANGO_NUM_PROXIES", nginx_tls)
 
     def test_production_advanced_settings(self):
         values, _ = self.run_setup(
-            "prod", ["https://es.example.com", "1", "y", "n", "v1", "y", "3", "3", "1"]
+            "prod", ["https://es.example.com", "1", "y", "n", "n", "v1", "y", "3", "3", "1"]
         )
         self.assertEqual(values["DJANGO_SGI_WORKERS"], "3")
         self.assertEqual(values["DJANGO_DB_POOL_MAX_SIZE"], "12")
@@ -473,7 +550,7 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_verbose_logging_reminds_to_switch_back(self):
         _, created = self.run_setup(
-            "prod", ["https://es.example.com", "1", "n", "n", "v1", "y", "1", "2", "1"]
+            "prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "y", "1", "2", "1"]
         )
         self.assertIn("back to INFO", created)
         # Tune lists "Keep current" first, so DEBUG is 2 and WARNING is 4.
@@ -510,14 +587,14 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(values["SANDBOX_DEFAULT_EXECUTION_TIMEOUT"], "5m")
 
     def test_scheme_mismatch_reasks_the_serving_mode(self):
-        values, _ = self.run_setup("prod", ["http://10.0.0.5", "1", "3", "n", "n", "v1", "n"])
+        values, _ = self.run_setup("prod", ["http://10.0.0.5", "1", "3", "n", "n", "n", "v1", "n"])
         self.assertEqual(values["NGINX_SSL_MODE"], "off")
         self.assertEqual(values["NGINX_HSTS_ENABLED"], "false")
 
     def test_change_features_rewrites_only_feature_lines(self):
         envtool.main(["--dev", "--env-file", str(self.env_file)])
         original = self.env_file.read_text(encoding="utf-8").splitlines()
-        _, output = self.run_setup("dev", ["1", "n", "y"])
+        _, output = self.run_setup("dev", ["1", "n", "y", ""])
         changed = set(self.env_file.read_text(encoding="utf-8").splitlines()) - set(original)
         self.assertEqual(
             changed,
@@ -538,7 +615,7 @@ class SetupWizardTest(unittest.TestCase):
             encoding="utf-8",
         )
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "v1", "n"]
+            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "n"]
         )
         self.assertEqual(values["REDIS_PASSWORD"], "keepme123")
         self.assertEqual(values["CHAT_DB_USER"], "chat")
@@ -549,7 +626,7 @@ class SetupWizardTest(unittest.TestCase):
     def test_start_over_drops_a_quoted_dev_value(self):
         self.env_file.write_text('DB_PASSWORD="root_password"  # dev\n', encoding="utf-8")
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "v1", "n"]
+            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "n"]
         )
         self.assertNotIn("root_password", values["DB_PASSWORD"])
         self.assertIn("DB_PASSWORD", output)
@@ -560,14 +637,14 @@ class SetupWizardTest(unittest.TestCase):
         self.env_file.write_text(
             text.replace("\nCHAT_ENABLED=true\n", '\nCHAT_ENABLED="true" # on\n'), encoding="utf-8"
         )
-        _, output = self.run_setup("dev", ["1", "", ""])
+        _, output = self.run_setup("dev", ["1", "", "", ""])
         self.assertNotIn("out of sync", output)
         self.assertNotIn("docker compose stop", output)
 
     def test_start_over_keeps_a_private_backup_of_the_old_file(self):
         original = "DB_PASSWORD=keepme123\nDB_NAME=custom_db\n"
         self.env_file.write_text(original, encoding="utf-8")
-        self.run_setup("prod", ["4", "y", "https://es.example.com", "2", "n", "n", "v1", "n"])
+        self.run_setup("prod", ["4", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "n"])
         backup = self.env_file.with_name(".env.backup.env")
         self.assertEqual(backup.read_text(encoding="utf-8"), original)
         self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
@@ -580,7 +657,7 @@ class SetupWizardTest(unittest.TestCase):
             encoding="utf-8",
         )
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "v1", "n"]
+            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "n"]
         )
         self.assertNotEqual(values["DJANGO_API_KEY"], "epicstaff_realtime_api_key")
         self.assertNotEqual(values["AUDIT_JWT_SECRET"], "keepme123")
@@ -610,7 +687,7 @@ class FakeTerminal(io.StringIO):
 ANSI_CODE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
-ALL_ON = {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": True}
+ALL_ON = {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": True, "PLUGINS_ENABLED": True}
 
 
 class AdvancedSettingsTest(unittest.TestCase):
@@ -649,7 +726,7 @@ class AdvancedSettingsTest(unittest.TestCase):
         self.assertEqual(set(levels.values()), {"DEBUG"})
 
     def test_settings_of_disabled_features_are_left_alone(self):
-        all_off = {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": False}
+        all_off = {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": False}
         values = envtool.advanced_values("large", "30m", "DEBUG", all_off, real_schema())
         for name in ("CHAT_WORKERS", "CHAT_LOG_LEVEL", "AUDITOR_LOG_LEVEL"):
             self.assertNotIn(name, values)
@@ -685,8 +762,8 @@ class TerminalOutputTest(unittest.TestCase):
         return output.getvalue()
 
     def test_terminal_clears_the_screen_per_question_and_shows_the_answers_so_far(self):
-        output = self.run_setup(["n", "y"], {}, FakeTerminal())
-        self.assertEqual(output.count("\x1b[2J"), 3)
+        output = self.run_setup(["n", "y", ""], {}, FakeTerminal())
+        self.assertEqual(output.count("\x1b[2J"), 4)
         self.assertIn("\x1b[32m", output)
         final_screen = ANSI_CODE.sub("", output.split("\x1b[2J\x1b[H")[-1])
         self.assertIn("EpicStaff setup", final_screen)
@@ -695,7 +772,7 @@ class TerminalOutputTest(unittest.TestCase):
         self.assertIn("✓ Wrote", final_screen)
 
     def test_no_color_keeps_clearing_but_drops_colours(self):
-        output = self.run_setup(["n", "y"], {"NO_COLOR": "1"}, FakeTerminal())
+        output = self.run_setup(["n", "y", ""], {"NO_COLOR": "1"}, FakeTerminal())
         self.assertIn("\x1b[2J", output)
         self.assertEqual(
             ANSI_CODE.sub("", output.replace("\x1b[2J\x1b[H", "")),
@@ -703,7 +780,7 @@ class TerminalOutputTest(unittest.TestCase):
         )
 
     def test_output_that_is_not_a_terminal_has_no_escape_codes(self):
-        output = self.run_setup(["n", "y"], {}, io.StringIO())
+        output = self.run_setup(["n", "y", ""], {}, io.StringIO())
         self.assertNotIn("\x1b", output)
         self.assertIn("✓ Chat: no", output)
 
