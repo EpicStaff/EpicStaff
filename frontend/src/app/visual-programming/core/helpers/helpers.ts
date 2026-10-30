@@ -1,4 +1,4 @@
-import { NodeType } from '@shared/models';
+import { NODE_COLORS, NodeType } from '@shared/models';
 
 import { isBackwardWire } from '../geometry/wire-direction';
 import { ConnectionModel } from '../models/connection.model';
@@ -536,6 +536,7 @@ export function generatePortsForClassificationDecisionTableNode(
     nodeId: string,
     conditionGroups: ConditionGroup[]
 ): ViewPort[] {
+    const cdtColor = NODE_COLORS[NodeType.CLASSIFICATION_TABLE];
     const inputPortConfig = DEFAULT_TABLE_NODE_PORTS.find((p) => p.port_type === 'input');
     const inputPort = {
         ...(inputPortConfig ?? {
@@ -545,8 +546,8 @@ export function generatePortsForClassificationDecisionTableNode(
             label: 'In',
             allowedConnections: ['project-out', 'python-out', 'table-out', 'start-start', 'file-extractor-out'],
             position: 'left',
-            color: '#00aaff',
         }),
+        color: cdtColor,
         id: `${nodeId}_table-in` as `${string}_${string}`,
     };
 
@@ -578,9 +579,9 @@ export function generatePortsForClassificationDecisionTableNode(
                     'file-extractor-in',
                 ],
                 position: 'right',
-                color: '#00aaff',
                 multiple: false,
             }),
+            color: cdtColor,
             role: `decision-route-${routeCode}`,
             label: routeCode,
             id: `${nodeId}_decision-route-${normalizedRouteCode}` as `${string}_${string}`,
@@ -592,6 +593,7 @@ export function generatePortsForClassificationDecisionTableNode(
     if (defaultOutputConfig) {
         specialPorts.push({
             ...defaultOutputConfig,
+            color: cdtColor,
             role: 'decision-default',
             label: 'Default',
             id: `${nodeId}_decision-default` as `${string}_${string}`,
@@ -599,6 +601,7 @@ export function generatePortsForClassificationDecisionTableNode(
 
         specialPorts.push({
             ...defaultOutputConfig,
+            color: cdtColor,
             role: 'decision-error',
             label: 'Error',
             id: `${nodeId}_decision-error` as `${string}_${string}`,
