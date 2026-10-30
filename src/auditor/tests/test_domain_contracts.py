@@ -21,12 +21,13 @@ from app.domains.base import (
 )
 from app.domains.sessions.domain import SESSIONS
 from app.domains.sessions.expansion import MatchScope, SessionTreeExpander, expand_matches
+from app.domains.user_actions.domain import USER_ACTIONS
 from app.filtering.ast import FieldSpec, FilterValidationError
 from app.filtering.constants import SELECT_OPS, TEXT_CONDITION_OPS
 from app.repositories.compiler import FilterCompileError, QueryCompiler
 from app.services.matching import expand_and_mark
 from app.services.search_pipeline import SearchPipeline
-from src.shared.models import BaseAuditEvent, SessionAuditEvent
+from src.shared.models import BaseAuditEvent, SessionAuditEvent, UserAction, UserActionEvent
 from tests._auth import auth
 from tests._fakes import InMemoryFakeRepository
 
@@ -253,6 +254,68 @@ async def test_audit_grant_does_not_open_another_domains_routes():
     headers = auth(AUDIT=["read", "export"])
     async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
         resp = await client.post("/api/audit/flat/search", json={})
+
+    assert resp.status_code == 403
+
+
+def _user_action(event_id: str, org_id: int, action: UserAction) -> UserActionEvent:
+    return UserActionEvent(
+        id=event_id,
+        org_id=org_id,
+        event_time=NOW,
+        actor_user_id=1,
+        actor_email="user@example.com",
+        action=action,
+    )
+
+
+def _user_actions_app(events: list[UserActionEvent]) -> FastAPI:
+    app = FastAPI()
+    app.include_router(build_search_router(USER_ACTIONS))
+    app.state.repositories = {USER_ACTIONS.name: InMemoryFakeRepository(events)}
+    return app
+
+
+@pytest.mark.asyncio
+async def test_user_actions_search_returns_org_scoped_items():
+    events = [
+        _user_action("ua-1", ORG_ID, UserAction.CREATED),
+        _user_action("ua-2", ORG_ID, UserAction.DELETED),
+        _user_action("ua-other-org", 999, UserAction.CREATED),
+    ]
+    transport = ASGITransport(app=_user_actions_app(events))
+    headers = auth(AUDIT=None, USER_AUDIT=["read"])
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
+        resp = await client.post(
+            "/api/audit/user_actions/search",
+            json={"filters": {"field": "action", "op": "equals", "value": "created"}},
+        )
+
+    assert resp.status_code == 200
+    assert [item["id"] for item in resp.json()["items"]] == ["ua-1"]
+    assert "retention_days" not in resp.json()["items"][0]
+
+
+@pytest.mark.asyncio
+async def test_audit_claim_does_not_open_user_actions():
+    transport = ASGITransport(app=_user_actions_app([]))
+    headers = auth(AUDIT=["read", "export"])
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
+        resp = await client.post("/api/audit/user_actions/search", json={})
+
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_user_audit_claim_does_not_open_sessions():
+    app = FastAPI()
+    app.include_router(build_search_router(SESSIONS))
+    app.state.repositories = {SESSIONS.name: InMemoryFakeRepository([])}
+    headers = auth(AUDIT=None, USER_AUDIT=["read", "export"])
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=headers
+    ) as client:
+        resp = await client.post("/api/audit/sessions/search", json={})
 
     assert resp.status_code == 403
 
