@@ -139,7 +139,7 @@ from tables.models import (
     SubGraphNode,
     TaskNode,
 )
-from tables.models.audit_filter_preset_models import AuditFilterPreset
+from tables.models.audit_filter_preset_models import AuditFilterPreset, AuditPresetDomain
 from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.flow_filter_preset_models import FlowFilterPreset
 from tables.models.graph_models import (
@@ -328,6 +328,7 @@ from tables.services.twilio_service import TwilioService, TwilioServiceError
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.swagger_schemas.audit_filter_preset_schemas import (
     AUDIT_FILTER_PRESET_COPY,
+    AUDIT_FILTER_PRESET_DOMAIN,
     AUDIT_FILTER_PRESET_EXPORT_ALL,
     AUDIT_FILTER_PRESET_EXPORT_ONE,
     AUDIT_FILTER_PRESET_IMPORT,
@@ -2947,6 +2948,7 @@ class SecretViewSet(
         return Response(secret_usage_service.summary(secret=secret, effective=effective))
 
 
+@extend_schema(**AUDIT_FILTER_PRESET_DOMAIN)
 class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     """
     Saved audit-search filters of the active org, each private to its author
@@ -2958,17 +2960,25 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     The author may share a preset (`is_shared: true`); un-sharing is rejected
     by the serializer.
 
-    Gated entirely on AUDIT:read, same as browsing itself - presets are a
+    Every request works on one audit domain, `?domain=` (default `sessions`,
+    anything else but `user_actions` is a 400 before any row is read): it
+    lists, creates, copies, exports and imports only that domain's presets.
+
+    Gated entirely on the domain's own read bit - AUDIT:read for sessions,
+    USER_AUDIT:read for user_actions, same as browsing each tab - presets are a
     convenience over audit data, not audit data itself, so every action
     (including create/update/destroy/copy/export/import) maps to READ rather
     than the CREATE/UPDATE/DELETE bits DEFAULT_ACTION_MAP would otherwise
-    require - which were never granted for the `audit` resource type (see
+    require - which were never granted for either audit resource type (see
     rbac/access/builtin_roles.json: Org Admin only has READ+EXPORT).
     """
 
     # Presets belong to a person, so a plugin service account never reaches them.
     permission_classes = [IsAuthenticated, DenyPluginCredential, HasOrgPermission]
-    rbac_resource_type = ResourceType.AUDIT
+    _domain_resource_types = {
+        AuditPresetDomain.SESSIONS: ResourceType.AUDIT,
+        AuditPresetDomain.USER_ACTIONS: ResourceType.USER_AUDIT,
+    }
     rbac_action_map = {
         "list": Permission.READ,
         "retrieve": Permission.READ,
@@ -2999,8 +3009,26 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
     _author_only_actions = frozenset({"update", "partial_update", "destroy"})
 
+    @property
+    def domain(self) -> str:
+        domain = self.request.query_params.get("domain", AuditPresetDomain.SESSIONS)
+        if domain not in AuditPresetDomain.values:
+            raise DRFValidationError(
+                {"domain": f"Must be one of: {', '.join(AuditPresetDomain.values)}."}
+            )
+        return domain
+
+    @property
+    def rbac_resource_type(self) -> ResourceType:
+        # Read by HasOrgPermission before anything else, so an invalid domain 400s
+        # before any permission or data lookup.
+        return self._domain_resource_types[self.domain]
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "domain": self.domain}
+
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().filter(domain=self.domain)
         if self.action in self._author_only_actions:
             return queryset.filter(created_by=self.request.user)
         return queryset.filter(Q(is_shared=True) | Q(created_by=self.request.user))
@@ -3055,6 +3083,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             user=request.user,
             settings=ImportSettings(),
             org_id=self.get_active_org_id(),
+            domain=self.domain,
         )
         return Response(summary, status=status.HTTP_200_OK)
 

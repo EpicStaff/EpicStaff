@@ -75,7 +75,14 @@ class ViewSetImportExportService:
 
         return VersionConverter.convert(data)
 
-    def import_entity(self, file, user, settings: ImportSettings = None, org_id: int | None = None):
+    def import_entity(
+        self,
+        file,
+        user,
+        settings: ImportSettings = None,
+        org_id: int | None = None,
+        **strategy_kwargs,
+    ):
         data = self._parse_and_validate(file)
 
         effective_permissions = PermissionResolver().resolve(user=user, org_id=org_id)
@@ -86,6 +93,7 @@ class ViewSetImportExportService:
             org_id=org_id,
             user=user,
             effective_permissions=effective_permissions,
+            **strategy_kwargs,
         )
         summary = id_mapper.get_detailed_summary(registry)
 

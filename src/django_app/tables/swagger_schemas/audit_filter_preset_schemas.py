@@ -1,7 +1,8 @@
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
 
 from tables.import_export.enums import EntityType
+from tables.models.audit_filter_preset_models import AuditPresetDomain
 from tables.serializers.model_serializers.audit_filter_preset_serializers import (
     AuditFilterPresetCopySerializer,
 )
@@ -15,6 +16,25 @@ _PRESET_EXAMPLE = {
     "id": 1,
     "name": "My Filter",
     "filter_body": {"query": 'status = "failed"'},
+}
+_EXPORTED_PRESET_EXAMPLE = {**_PRESET_EXAMPLE, "domain": AuditPresetDomain.SESSIONS.value}
+
+AUDIT_FILTER_PRESET_DOMAIN = {
+    "parameters": [
+        OpenApiParameter(
+            name="domain",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            enum=AuditPresetDomain.values,
+            default=AuditPresetDomain.SESSIONS.value,
+            description=(
+                "The Audit tab the presets belong to. Every action works only on this "
+                "domain's presets and needs its read permission: `sessions` AUDIT:read, "
+                "`user_actions` USER_AUDIT:read. Any other value is a 400. The "
+                "`filter_body` keys follow the domain: `match_scope` is sessions-only."
+            ),
+        )
+    ],
 }
 
 AUDIT_FILTER_PRESET_COPY = {
@@ -60,7 +80,7 @@ AUDIT_FILTER_PRESET_EXPORT_ONE = {
     "summary": "Export one saved preset by id",
     "description": (
         "Downloads a single preset as a `.json` attachment - the bare "
-        "`{id, name, filter_body}` object, matching the single-item shape "
+        "`{id, name, filter_body, domain}` object, matching the single-item shape "
         "`import` accepts. Same convention as Agent/Crew/Graph export. "
         "Visibility is not exported - an import reuses a preset with the same "
         "search or creates a private one. "
@@ -70,7 +90,9 @@ AUDIT_FILTER_PRESET_EXPORT_ONE = {
         200: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description="The preset, as a downloadable JSON file.",
-            examples=[OpenApiExample("Exported", value=_PRESET_EXAMPLE, response_only=True)],
+            examples=[
+                OpenApiExample("Exported", value=_EXPORTED_PRESET_EXAMPLE, response_only=True)
+            ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
@@ -94,7 +116,7 @@ AUDIT_FILTER_PRESET_EXPORT_ALL = {
             description="A `{presets: [...]}` batch, as a downloadable JSON file.",
             examples=[
                 OpenApiExample(
-                    "Exported", value={"presets": [_PRESET_EXAMPLE]}, response_only=True
+                    "Exported", value={"presets": [_EXPORTED_PRESET_EXAMPLE]}, response_only=True
                 ),
             ],
         ),
@@ -123,8 +145,10 @@ AUDIT_FILTER_PRESET_IMPORT = {
         'produced - either the single-object shape or a `{"presets": '
         "[...]}` batch. `org`/`created_by` always come from the caller's "
         "own request, regardless of anything the imported file itself "
-        "claims. An entry with the same search (`filters`, `query`, `match_scope`) "
-        "as one of the caller's own presets or any shared preset in the org is "
+        "claims. Every preset in the file must be of the requested `domain` "
+        "(a file without `domain` holds sessions presets), or the import is a 400 "
+        "and nothing is created. An entry with the same search (`filters`, `query`, `match_scope`) "
+        "as one of the caller's own presets or any shared preset of the domain in the org is "
         "not created; that preset is reported under `reused`. Otherwise the "
         "preset is created private (My Presets) for the caller, even if the file "
         "carries `is_shared`; a name the caller already uses for one of their own "
@@ -153,7 +177,7 @@ AUDIT_FILTER_PRESET_IMPORT = {
                     value={
                         EntityType.AUDIT_FILTER_PRESET.value: {
                             "total": 1,
-                            "created": {"count": 1, "items": [_PRESET_EXAMPLE]},
+                            "created": {"count": 1, "items": [_EXPORTED_PRESET_EXAMPLE]},
                             "reused": {"count": 0, "items": []},
                         },
                     },
@@ -166,7 +190,7 @@ AUDIT_FILTER_PRESET_IMPORT = {
                             "total": 1,
                             "created": {
                                 "count": 1,
-                                "items": [{**_PRESET_EXAMPLE, "name": "My Filter (2)"}],
+                                "items": [{**_EXPORTED_PRESET_EXAMPLE, "name": "My Filter (2)"}],
                             },
                             "reused": {"count": 0, "items": []},
                         },
@@ -176,7 +200,10 @@ AUDIT_FILTER_PRESET_IMPORT = {
             ],
         ),
         400: OpenApiResponse(
-            description="Invalid file, wrong main entity, or a validation error on an item (e.g. missing `name`)."
+            description=(
+                "Invalid file, wrong main entity, a preset of another domain, or a "
+                "validation error on an item (e.g. missing `name`)."
+            )
         ),
         401: UNAUTHORIZED_401_RESPONSE,
         # Refused when the file carries a flow with trigger nodes and the caller lacks Use.

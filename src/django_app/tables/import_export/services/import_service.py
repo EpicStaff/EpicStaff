@@ -30,11 +30,13 @@ class ImportService:
         org_id: int | None = None,
         user=None,
         effective_permissions=None,
+        **strategy_kwargs,
     ):
         """Import `export_data` into `org_id`, `main_entity` being the file's main type.
 
         `effective_permissions=None` means a trusted internal caller: both permission
         checks (CREATE on each new resource, and USE for trigger nodes) are skipped.
+        `strategy_kwargs` reach every strategy's `import_entity` as keyword arguments.
         """
         if settings is None:
             settings = ImportSettings()
@@ -84,6 +86,7 @@ class ImportService:
                             effective_permissions=effective_permissions,
                             created_resources=created_resources,
                             created_venv_ids=created_venv_ids,
+                            **strategy_kwargs,
                         )
 
                 if denied_resources:
