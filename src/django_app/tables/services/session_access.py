@@ -11,7 +11,13 @@ from tables.exceptions import (
 from tables.models import Graph, Session
 
 
-def get_accessible_session(user, session_id: int, action: Permission = Permission.READ) -> Session:
+def get_accessible_session(
+    user,
+    session_id: int,
+    action: Permission = Permission.READ,
+    *,
+    api_key_org_id: int | None,
+) -> Session:
     """Fetch a session (its id and status only) by raw id and authorize `user` via the org that owns its graph.
 
     For the non-ViewSet session surfaces (run-session SSE stream, get-updates, stop),
@@ -19,7 +25,10 @@ def get_accessible_session(user, session_id: int, action: Permission = Permissio
     header (SSE). A missing session, a session without a graph or whose graph is in
     the recycle bin, and a session in an org the caller is not a member of all raise
     the same SessionNotFoundError.
-    Superadmin passes unconditionally (PermissionResolver bypass).
+    Superadmin passes unconditionally (PermissionResolver bypass), unless
+    `api_key_org_id` (the org of the caller's USER API key) names another org.
+    `api_key_org_id` is required so no caller can forget the key's org; pass None
+    only for a credential that is not a USER API key.
 
     Raises:
         SessionNotFoundError (404): no session the caller may know about.
@@ -41,18 +50,25 @@ def get_accessible_session(user, session_id: int, action: Permission = Permissio
         ResourceType.FLOWS,
         action,
         not_found=SessionNotFoundError(),
+        api_key_org_id=api_key_org_id,
     )
     return session
 
 
 def get_runnable_graph(
-    user, *, graph_id: int | None = None, graph_uuid: UUID | None = None
+    user,
+    *,
+    graph_id: int | None = None,
+    graph_uuid: UUID | None = None,
+    api_key_org_id: int | None,
 ) -> Graph:
     """Fetch the graph to run by id (or uuid when no id is given) and authorize `user`.
 
     Running a flow requires USE on FLOWS within the graph's own org. A missing graph
     and a graph in an org the caller is not a member of raise the same
-    GraphNotFoundError. Superadmin passes unconditionally.
+    GraphNotFoundError. Superadmin passes unconditionally, unless `api_key_org_id`
+    (the org of the caller's USER API key, None for any other credential) names
+    another org.
 
     Raises:
         GraphNotFoundError (404): no graph the caller may know about.
@@ -62,16 +78,17 @@ def get_runnable_graph(
     graph = Graph.objects.filter(**lookup).first()
     if graph is None:
         raise GraphNotFoundError()
-    _assert_graph_permission(user, graph.org_id, Permission.USE)
+    _assert_graph_permission(user, graph.org_id, Permission.USE, api_key_org_id=api_key_org_id)
     return graph
 
 
-def assert_graph_readable(user, graph_id: int) -> None:
+def assert_graph_readable(user, graph_id: int, *, api_key_org_id: int | None) -> None:
     """Authorize `user` to read the graph `graph_id`, taking the org from the graph row.
 
     For surfaces that carry no active org (the graph co-editing websocket). A missing
     graph, a graph in the recycle bin and a graph in an org the caller is not a member
-    of raise the same GraphNotFoundError. Superadmin passes unconditionally.
+    of raise the same GraphNotFoundError. Superadmin passes unconditionally, unless
+    `api_key_org_id` (the org of the caller's USER API key) names another org.
 
     Raises:
         GraphNotFoundError (404): no graph the caller may know about.
@@ -80,16 +97,19 @@ def assert_graph_readable(user, graph_id: int) -> None:
     owner_org_id = Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
     if owner_org_id is None:
         raise GraphNotFoundError()
-    _assert_graph_permission(user, owner_org_id, Permission.READ)
+    _assert_graph_permission(user, owner_org_id, Permission.READ, api_key_org_id=api_key_org_id)
 
 
-def _assert_graph_permission(user, owner_org_id: int, action: Permission) -> None:
+def _assert_graph_permission(
+    user, owner_org_id: int, action: Permission, *, api_key_org_id: int | None
+) -> None:
     assert_row_org_permission(
         user,
         owner_org_id,
         ResourceType.FLOWS,
         action,
         not_found=GraphNotFoundError(),
+        api_key_org_id=api_key_org_id,
     )
 
 

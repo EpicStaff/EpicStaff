@@ -250,6 +250,47 @@ def test_move_and_copy_across_orgs_for_a_superadmin(
     assert _exists(store, default_org, "a.txt") is source_kept
 
 
+def _key_client(issue_api_key, user, org):
+    raw_key, _ = issue_api_key(user=user, org=org)
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw_key)
+    return client
+
+
+@pytest.mark.parametrize("action", ["move", "copy"])
+def test_a_superadmin_api_key_may_not_transfer_across_orgs(
+    issue_api_key, superadmin_user, put, store, default_org, action
+):
+    other_org = Organization.objects.create(name="other-org")
+    put("a.txt", b"payload")
+
+    resp = _key_client(issue_api_key, superadmin_user, default_org).post(
+        f"/api/storage/{action}/",
+        {"from_path": "a.txt", "to_path": "inbox", "source_org_id": default_org.id, "destination_org_id": other_org.id},
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_403_FORBIDDEN, resp.data
+    assert resp.data["code"] == "permission_denied"
+    assert store.list_all_keys(f"org_{other_org.id}") == []
+    assert _exists(store, default_org, "a.txt")
+
+
+@pytest.mark.parametrize(("action", "source_kept"), [("move", False), ("copy", True)])
+def test_an_api_key_may_transfer_within_its_org(
+    issue_api_key, regular_user, put, store, default_org, action, source_kept
+):
+    put("a.txt")
+    client = _key_client(issue_api_key, regular_user, default_org)
+    client.post("/api/storage/mkdir/", {"path": "dest"}, format="json")
+
+    resp = client.post(f"/api/storage/{action}/", {"from_path": "a.txt", "to_path": "dest"}, format="json")
+
+    assert resp.status_code == status.HTTP_200_OK, resp.data
+    assert _exists(store, default_org, "dest/a.txt")
+    assert _exists(store, default_org, "a.txt") is source_kept
+
+
 @pytest.mark.parametrize("action", ["move", "copy"])
 @pytest.mark.parametrize(
     ("org_ids", "rejected_field"),

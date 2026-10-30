@@ -60,7 +60,7 @@ lives under `src/django_app/rbac/`; see §10 for the full file index.
 | `OrganizationUser` | `rbac_organization_user` | `rbac/models/organization_user.py` | Membership: (`user`, `org`) unique, carries exactly one `role`. Deleting the row revokes access. |
 | `Role` | `rbac_role` | `rbac/models/role.py` | `is_built_in=True, org=NULL` for the four built-ins (immutable); custom roles carry `org`. |
 | `RolePermission` | `rbac_role_permission` | `rbac/models/role.py` | One row per (role, resource_type) with an integer permission **bitmask**. |
-| `ApiKey` | — | `rbac/models/api_key.py` | Service-to-service auth. Stores a plain SHA-256 hash + 12-char `es-` prefix; `key_type` is `system` or `user`. System keys (no owner) resolve to `SystemServicePrincipal` (superadmin-equivalent); user keys resolve to their owning user. No scopes field — see [api_keys.md](api_keys.md) for detail. |
+| `ApiKey` | — | `rbac/models/api_key.py` | Service-to-service auth. Stores a plain SHA-256 hash + 12-char `es-` prefix; `key_type` is `system` or `user`. System keys (no owner, no org) resolve to `SystemServicePrincipal` (superadmin-equivalent); user keys resolve to their owning user and are bound to one org (`org` FK, `CASCADE`; required for `user` keys by the `api_key_type_invariants` constraint). No scopes field — see [api_keys.md](api_keys.md) for detail. |
 | `PasswordResetToken` | `rbac_password_reset_token` | `rbac/models/password_reset_token.py` | Single-use reset grant, TTL `PASSWORD_RESET_TOKEN_TTL` (default 900 s). Stores only `token_hash` (SHA-256 of a `secrets.token_urlsafe(32)` value) — the raw token exists once, in the emailed link, so a read of this table is not replayable. The row's existence *is* the grant: consuming or superseding one deletes it, so there is no `is_used` flag and no accumulation of spent verifiers. Generation, hashing and deletion live in `PasswordResetTokenRepository`. |
 | `OrgScopedModel` | abstract | `rbac/models/org_scoped.py` | Adds `org` FK (+ index) and `created_by` FK to any resource model. `org` is declared nullable in Python; NOT NULL is enforced per-table at the DB layer after backfill. |
 
@@ -197,13 +197,20 @@ Two authentication classes (`rbac/identity/authentication.py`), both global defa
   token travels only in an HttpOnly cookie, `rbac/identity/refresh_cookie.py`). Custom claims: `email`, `is_superadmin`,
   `hash_password` (`CHECK_REVOKE_TOKEN=True`: binds the token to the password hash).
 - `ApiKeyAuthentication` — `X-Api-Key: <key>` or `Authorization: ApiKey <key>` → delegates to
-  `ApiKeyAuthenticator`, which resolves the raw key to an `ApiKey` row, then hands it to
+  `ApiKeyAuthenticator`, which resolves the raw key to an `ApiKey` row (401 when it is
+  missing, revoked or expired, its owner is inactive, or — for a user key — its org is
+  inactive or a non-superadmin owner has no membership there; the org check sits here
+  because superadmin permission paths never re-check the org), then hands it to
   `PrincipalResolver` (`rbac/identity/api_keys/principals.py`): a `system`-type key
   resolves to `SystemServicePrincipal` (superadmin-equivalent, no `email`/`pk`); a
   `user`-type key resolves to its owner. `request.user` is that principal, `request.auth`
-  is the `ApiKey` row. A user key inherits the owner's live RBAC permissions per the
-  `X-Organization-Id` header the caller sends — identical to that owner authenticating with
-  a JWT. Key management endpoints (`/api/profile/api-keys/`,
+  is the `ApiKey` row. A user key belongs to one org (`ApiKey.org`) and acts **only in that
+  org**, with the owner's live RBAC permissions there. The `X-Organization-Id` header (and an
+  `org_id` URL kwarg) is ignored for it — never read, never an error. Code that needs the org
+  of a user key calls `rbac.access.principals.user_api_key_org_id(request)` (the key's org,
+  or `None` for any other credential) instead of reading the header; `OrgContextService`,
+  `GET /api/profile/`, the flow-assistant org resolver and the admin views do so. Key
+  management endpoints (`/api/profile/api-keys/`,
   `/api/admin/api-keys/`) are JWT-only (`DenyApiKeyAuth`) — see
   [api_keys.md](api_keys.md). Every write on the governance surface
   (`/api/admin/roles|memberships|organizations|users/`, including permanent
@@ -218,9 +225,11 @@ Two authentication classes (`rbac/identity/authentication.py`), both global defa
 
 Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tickets
 (`TicketService`, `rbac/identity/tickets.py`): `POST /api/auth/sse-ticket/`
-or `/api/auth/ws-ticket/` with JWT → 30 s single-use ticket consumed atomically via
-`GETDEL`, passed as `?ticket=` on the stream URL. Redis stores only
-`sha256(ticket)` as the key, so Redis read access yields no replayable ticket.
+or `/api/auth/ws-ticket/` with JWT or a USER API key → 30 s single-use ticket consumed
+atomically via `GETDEL`, passed as `?ticket=` on the stream URL. Redis stores only
+`sha256(ticket)` as the key, so Redis read access yields no replayable ticket. `consume()`
+returns a `TicketHolder(user, api_key_org_id)`: a ticket issued with a USER key carries the
+key's org, and every stream must refuse a row of any other org as `not_found`.
 
 Throttling (`rbac/throttles.py`; `NotifyEmailThrottle` lives in `tables/throttles.py`) — every
 anonymous credential-adjacent endpoint is covered. Exceeding any bucket returns `429` with
@@ -263,22 +272,28 @@ See [auth_endpoints.md](auth_endpoints.md) and
 
 ## 4. Org context layer
 
-`OrgContextService.resolve(request, view_kwargs)` (`org_context_service.py`) is the single
+`OrgContextService.resolve(request, view_kwargs)` (`rbac/access/org_context.py`) is the single
 implementation. Resolution order:
 
+0. USER API key → the key's org (`user_api_key_org_id`). Steps 1 and 2 are skipped: a
+   request naming another org still acts in the key's org.
 1. URL kwarg `org_id` (target-context; used by `/api/admin/organizations/{org_id}/...`).
    The header is **ignored** on these endpoints.
 2. `X-Organization-Id` header (active-context; everything else).
 
-Then membership is asserted: a non-superadmin must have an `OrganizationUser` row in that
-org **and the org must be active**. Errors:
+Then membership is asserted (`assert_membership`, public — key creation reuses it): a
+non-superadmin must have an `OrganizationUser` row in that org **and the org must be
+active**. For a USER key this checks the key's owner, so an owner removed from the key's org,
+or an inactive org, gives `403`. Errors:
 
 | Condition | Exception | HTTP |
 |---|---|---|
 | Header/kwarg missing or non-integer | `OrgContextRequiredError` (`org_context_required`) | 400 |
 | Not a member / org inactive (non-superadmin) | `OrgMembershipRequiredError` (`org_membership_required`) | 403 |
+| Org inactive (superadmin) | `OrgMembershipRequiredError` (`org_membership_required`) | 403 |
+| Org does not exist (superadmin) | `OrganizationNotFoundError` (`organization_not_found`) | 404 |
 
-Superadmin skips the membership check (may target any org, including inactive ones).
+Superadmin skips the membership check (may target any existing, active org).
 The resolved id is cached per-request as `request._rbac_active_org_id` — both
 `OrgScopedResolverMixin.get_active_org_id()` and the serializer fields share that cache,
 so resolution runs at most once per request.
@@ -335,15 +350,24 @@ The quickstart endpoint (`tables/views/views.py`) is the reference example.
 
 Sessions have no org column; they are children of their graph. Non-ViewSet session
 surfaces (SSE stream, get-updates, stop) authorize via
-`get_accessible_session(user, session_id, action)`
+`get_accessible_session(user, session_id, action, *, api_key_org_id)`
 (`tables/services/session_access.py`): 404 when the session has no graph, then
-membership + FLOWS bit check against `session.graph.org_id`. SSE resolves the user from
-the single-use ticket first, then calls this. Reading a session (SSE, get-updates) needs
-`READ`; stopping one needs `USE`, as starting one does (`get_runnable_graph`).
+membership + FLOWS bit check against `session.graph.org_id`. Reading a session (SSE,
+get-updates) needs `READ`; stopping one needs `USE`, as starting one does
+(`get_runnable_graph`).
+
+`api_key_org_id` is a **required** keyword on `get_accessible_session`,
+`get_runnable_graph`, `assert_graph_readable`, `get_streamable_conversation` and
+`assert_row_org_permission`, so no caller can forget it: a row of another org than the
+key's is refused as missing, even for a member there or a superadmin. An HTTP view passes
+`user_api_key_org_id(request)`; SSE and the websocket pass the ticket's `api_key_org_id`
+(they resolve the user from the single-use ticket first). Pass `None` explicitly only for
+a credential that is not a USER key.
 
 The graph co-editing WebSocket (`ws/graphs/<id>/edit/`, `tables/graph_collab/consumers.py`)
-follows the same pattern: the ticket carries only the user, so `connect()` calls
-`assert_graph_readable(user, graph_id)` from the same module, which takes the org from the
+follows the same pattern: the ticket carries the user (and a USER key's org, which
+`TicketAuthMiddleware` puts in `scope["api_key_org_id"]`), so `connect()` calls
+`assert_graph_readable(user, graph_id, api_key_org_id=...)` from the same module, which takes the org from the
 graph row and needs FLOWS `READ` — the same bit that opens the graph over HTTP. A missing
 graph, a binned one and another org's graph all close with `4404`; a member without the bit
 closes with `4403`. The check runs before the socket joins the graph's group or presence,
@@ -411,17 +435,19 @@ deliberate write-without-read grant working: a role carrying `delete` but not `r
 able to delete, not be told the row does not exist. `action` is a required argument precisely
 so every call site states which verb it authorizes.
 
-`authorize_any_org(actor, org_ids, action)` is the existential counterpart: it authorizes a row
-scoped through a *set* of orgs instead of a single column — an API key's scope is every
-organization its owner belongs to — and applies the same split over that set. The row is
-visible when **at least one** reachable org grants READ or `action`, and authorized when at
-least one grants `action`; sharing no org at all still 404s, exactly as `resolve_for_write`
-does for one.
 `delegated_scope_q`, an optional class attribute a subclass may declare, is an extra queryset
 restriction `apply_org_scope` applies only when a delegated (non-superadmin) caller is being
 org-scoped at all — never to a superadmin, who already bypasses the org filter entirely.
 `ApiKeyManagementService` sets it to exclude superadmin-owned keys from a delegated admin's
 list, since the superadmin's own request already reaches them without it.
+
+`limit_org_ids_to_api_key(request, org_ids)` (`rbac/access/principals.py`, next to
+`user_api_key_org_id`) narrows the admin read surface for a USER API key: it returns
+`[key org]` in place of whatever orgs the read named (or `None`), and passes `org_ids` through
+unchanged for any other credential. Every cross-org list (roles, memberships incl. `assignable-users`, organizations,
+users, plugin role permissions) calls it before the service; get-by-id reads (a role, an
+organization, its retention) return 404 outside the key's org. A new cross-org read action must
+call it too, or a USER key reads every org its owner can.
 
 ### 5.5 Service-layer guards (defense in depth)
 
@@ -661,8 +687,8 @@ Serializer rules for org-scoped models:
 | Header | Meaning |
 |---|---|
 | `Authorization: Bearer <jwt>` | End-user auth |
-| `X-Api-Key` / `Authorization: ApiKey <key>` | Service auth: a user key inherits its owner's permissions; the system key acts as a superadmin service principal |
-| `X-Organization-Id: <int>` | Active org for active-context endpoints. CORS-allowlisted in settings. |
+| `X-Api-Key` / `Authorization: ApiKey <key>` | Service auth: a user key acts in its own org with its owner's permissions there; the system key acts as a superadmin service principal |
+| `X-Organization-Id: <int>` | Active org for active-context endpoints (JWT and the system key). Ignored with a user API key. CORS-allowlisted in settings. |
 
 ### 7.2 Permissions for the FE
 
@@ -781,11 +807,13 @@ service, and never trust ids in the payload without an org-scoped fetch.
 ### 8.5 Streaming (SSE/WS) endpoint
 
 1. Client obtains a ticket (`/api/auth/sse-ticket/` or `/ws-ticket/`).
-2. Your consumer/view consumes it (`sse_ticket_service.consume(ticket)`) → user or 401
-   `invalid_sse_ticket`.
+2. Your consumer/view consumes it (`sse_ticket_service.consume(ticket)`) → a
+   `TicketHolder` or 401 `invalid_sse_ticket`. `SSEMixin` sets `self.user` and
+   `self.api_key_org_id` for you.
 3. Authorize against the org that owns the streamed object (for sessions:
-   `get_accessible_session`; for a graph: `assert_graph_readable`). Never trust an org
-   id supplied in the query string. Authorize before joining any channel group.
+   `get_accessible_session`; for a graph: `assert_graph_readable`), passing
+   `api_key_org_id` so a USER key's ticket cannot stream another org's row. Never trust an
+   org id supplied in the query string. Authorize before joining any channel group.
 
 ### 8.6 Global (non-org) resource
 
@@ -846,7 +874,9 @@ path — the default org is only for bootstrap and data migrations.
 | User account admin (superadmin: create / grant-revoke SA / activate-deactivate) | `rbac/governance/users.py`, `rbac/governance/guards.py`, `rbac/views/users.py` |
 | Roles CRUD + authoring ceiling + immutability guard + `?assignable_org_ids=` filter + the org-scoped `assigned_count` | `rbac/governance/roles.py`, `rbac/views/roles.py` |
 | Escalation ceiling (shared by authoring and assignment) | `rbac/access/asserts.py` (`assert_within_ceiling`), `rbac/access/effective.py` (`covers`, `bits_of`) |
-| API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys) | `rbac/governance/api_keys.py`, `rbac/views/api_keys_admin.py` |
+| API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys, scoped by the key's own org) | `rbac/governance/api_keys.py`, `rbac/views/api_keys_admin.py` |
+| Self-service API keys (one org per key, cap 5 per user and org) + key-org lookup | `rbac/identity/api_keys/service.py`, `rbac/views/api_keys.py`, `rbac/access/principals.py` (`user_api_key_org_id`) |
+| Admin read limit for a USER API key | `rbac/access/principals.py` (`limit_org_ids_to_api_key`) |
 | Permission gate (ViewSet) | `rbac/access/gates.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
 | Permission gate (APIView) | `rbac/access/asserts.py` |
 | Session/SSE and graph co-editing WS authorization | `tables/services/session_access.py`, `tables/views/sse_views.py`, `tables/graph_collab/consumers.py` (stays in `tables` — sessions are children of the graph, not an RBAC concept) |

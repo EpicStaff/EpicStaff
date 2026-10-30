@@ -2,6 +2,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 
+from rbac.access.principals import limit_org_ids_to_api_key
 from rbac.governance.memberships import (
     MembershipManagementService,
 )
@@ -56,7 +57,9 @@ class MembershipAdminViewSet(CrossOrgAdminViewSet):
 
     @extend_schema(**MEMBERSHIPS_LIST_GET)
     def list(self, request):
-        org_ids = self.parse_org_ids(request.query_params.get("org_ids"))
+        org_ids = limit_org_ids_to_api_key(
+            request, self.parse_org_ids(request.query_params.get("org_ids"))
+        )
         filters = self._validator.validate_list_memberships_query(request.query_params)
         scopes = getattr(request, "_rbac_org_scopes", None)
         qs = self._service.list_memberships(
@@ -81,6 +84,7 @@ class MembershipAdminViewSet(CrossOrgAdminViewSet):
             actor=request.user,
             search=request.query_params.get("search"),
             scopes=scopes,
+            org_ids=limit_org_ids_to_api_key(request, None),
         )
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(qs, request, view=self)

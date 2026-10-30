@@ -1,6 +1,8 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework.response import Response
 
+from rbac.access.principals import user_api_key_org_id
+from rbac.exceptions import OrganizationNotFoundError
 from rbac.governance.organization_retention import OrganizationRetentionService
 from rbac.models.enums import Permission, ResourceType
 from rbac.schemas.organization_retention import (
@@ -28,7 +30,12 @@ class OrganizationRetentionAdminViewSet(CrossOrgAdminViewSet):
 
     @extend_schema(**ORGANIZATION_RETENTION_GET)
     def retrieve(self, request, pk=None):
-        retention = self._service.get_retention(actor=request.user, org_id=int(pk))
+        org_id = int(pk)
+        key_org_id = user_api_key_org_id(request)
+        # A USER API key reads only its own org; any other id is as missing.
+        if key_org_id is not None and key_org_id != org_id:
+            raise OrganizationNotFoundError()
+        retention = self._service.get_retention(actor=request.user, org_id=org_id)
         return self._respond(request, retention)
 
     @extend_schema(**ORGANIZATION_RETENTION_PATCH)

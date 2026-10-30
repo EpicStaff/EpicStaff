@@ -1,7 +1,7 @@
 import pytest
 from rest_framework.exceptions import PermissionDenied
 
-from rbac.models import OrganizationUser
+from rbac.models import ApiKey, OrganizationUser
 from rbac.governance.memberships import (
     MembershipManagementService,
 )
@@ -271,6 +271,26 @@ def test_remove_member_scrubs_them_from_that_orgs_version_snapshots_only(
     assert acme_note_entry["created_at"] == acme_note.created_at.isoformat()
     beta_snapshot = GraphVersion.objects.get(pk=beta_version.pk).snapshot
     assert {entry["created_by"] for entry in beta_snapshot["node_authorship"].values()} == {bob.id}
+
+
+@pytest.mark.django_db
+def test_remove_member_deletes_their_api_keys_in_that_org_only(
+    admin_acme, acme, beta, role_member, django_user_model, issue_api_key
+):
+    bob = django_user_model.objects.create_user(
+        email="rm-keys@x.com", password="StrongPass123!"
+    )
+    membership = OrganizationUser.objects.create(user=bob, org=acme, role=role_member)
+    OrganizationUser.objects.create(user=bob, org=beta, role=role_member)
+    _, acme_key = issue_api_key(user=bob, org=acme)
+    _, beta_key = issue_api_key(user=bob, org=beta)
+    _, colleague_key = issue_api_key(user=admin_acme, org=acme)
+
+    svc.remove_member(actor=admin_acme, membership_id=membership.id)
+
+    assert not ApiKey.objects.filter(pk=acme_key.pk).exists()
+    assert ApiKey.objects.filter(pk=beta_key.pk).exists()
+    assert ApiKey.objects.filter(pk=colleague_key.pk).exists()
 
 
 @pytest.mark.django_db

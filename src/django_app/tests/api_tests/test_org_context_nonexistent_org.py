@@ -1,4 +1,4 @@
-"""Regression tests for OrgContextService._assert_membership on a
+"""Regression tests for OrgContextService.assert_membership on a
 nonexistent X-Organization-Id.
 
 Superadmin bypasses membership but the org must still exist as a real id

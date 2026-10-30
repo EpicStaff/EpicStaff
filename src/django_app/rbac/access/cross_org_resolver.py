@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from django.db.models.functions import Lower
 
 from rbac.access.effective import EffectivePermissions
+from rbac.access.resolver import PermissionResolver
+from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models import Organization, OrganizationUser
 
 
@@ -35,6 +37,21 @@ class CrossOrgPermissionResolver:
             OrgScope(org=m.org, effective=EffectivePermissions.from_role(m.role))
             for m in memberships
         ]
+
+    def resolve_in_org(self, user, org_id: int) -> list[OrgScope]:
+        """`user`'s scope in `org_id` alone, a superadmin included; [] unless they act in it.
+
+        For a caller limited to one org (a USER API key): an inactive org, or one
+        `user` is not a member of, yields no scope, as `resolve_all` would.
+        """
+        org = Organization.objects.filter(pk=org_id, is_active=True).first()
+        if org is None:
+            return []
+        try:
+            effective = PermissionResolver().resolve(user=user, org_id=org_id)
+        except OrgMembershipRequiredError:
+            return []
+        return [OrgScope(org=org, effective=effective)]
 
     def resolve_all_cached(self, request) -> list[OrgScope]:
         """Per-request memoization of `resolve_all` for the request's user.

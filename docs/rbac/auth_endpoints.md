@@ -31,9 +31,9 @@ Base URL in examples: `http://localhost:8000`.
 | GET, POST | `/api/profile/api-keys/` | Bearer JWT only | List / create my own API keys — see [api_keys.md](api_keys.md) |
 | DELETE | `/api/profile/api-keys/{id}/` | Bearer JWT only | Hard-delete one of my own API keys |
 | POST | `/api/profile/api-keys/{id}/revoke/` | Bearer JWT only | Revoke one of my own API keys (kept for audit) |
-| GET | `/api/admin/api-keys/` | Bearer JWT + api_keys:READ (in ≥1 org) | List API keys of members the caller administers |
-| DELETE | `/api/admin/api-keys/{id}/` | Bearer JWT + api_keys:DELETE (in ≥1 shared org) | Hard-delete a member's API key |
-| POST | `/api/admin/api-keys/{id}/revoke/` | Bearer JWT + api_keys:DELETE (in ≥1 shared org) | Revoke a member's API key |
+| GET | `/api/admin/api-keys/` | Bearer JWT + api_keys:READ (in ≥1 org) | List API keys of the orgs where the caller holds api_keys:READ |
+| DELETE | `/api/admin/api-keys/{id}/` | Bearer JWT + api_keys:DELETE (in the key's org) | Hard-delete a member's API key |
+| POST | `/api/admin/api-keys/{id}/revoke/` | Bearer JWT + api_keys:DELETE (in the key's org) | Revoke a member's API key |
 
 **Throttles.** Every anonymous credential-adjacent endpoint is rate limited; exceeding a bucket returns `429` with `Retry-After`.
 
@@ -99,9 +99,9 @@ ApiKeyAuthentication]`:
   code can check `isinstance(request.auth, ApiKey)` to detect a key caller.
 - `request.user` depends on the key's `key_type` (see
   [api_keys.md](api_keys.md) for the full model):
-  - **USER** key → `request.user` is the key's `created_by` owner. Behaves
-    exactly like that user would with a JWT — same RBAC permissions per
-    `X-Organization-Id`.
+  - **USER** key → `request.user` is the key's `created_by` owner. The key
+    belongs to one organization and acts only there, with the owner's RBAC
+    permissions in it. `X-Organization-Id` is ignored for it.
   - **SYSTEM** key (the singleton seeded from `DJANGO_API_KEY`) →
     `request.user` is a synthetic `SystemServicePrincipal`
     (`is_authenticated=True`, `is_superadmin=True`, no `email`/`pk`). It
@@ -528,9 +528,12 @@ request.
     "active":        true,
     "name":          "system",
     "prefix":        "es-fnFo21JtA",
-    "owner_user_id": null    // null for the SYSTEM key; a user id for a USER key
+    "owner_user_id": null,   // null for the SYSTEM key; a user id for a USER key
+    "org_id":        null    // null for the SYSTEM key; the org a USER key acts in
   }
   ```
+  A USER key acts only in `org_id`, whatever `X-Organization-Id` header is
+  sent — see [api_keys.md](api_keys.md).
   There is no `scopes` field — permissions come from the owning user's
   live RBAC role (or superadmin, for the system key), not a per-key scope
   list.
@@ -539,6 +542,9 @@ request.
     not found, or the key is revoked.
   - `401` (`authentication_failed`, message `"API key has expired"`) — key
     found but `expires_at` is in the past.
+  - `401` (`authentication_failed`, message `"API key is no longer valid for
+    its organization"`) — a USER key whose organization is inactive, or whose
+    non-superadmin owner is no longer a member of it.
   - `403` (`detail: "API key required"`) — caller authenticated with JWT
     instead of an ApiKey.
 
@@ -646,7 +652,8 @@ Create a personal key afterwards via `POST /api/profile/api-keys/`.
 Two key classes exist — `SYSTEM` (the singleton seeded from
 `DJANGO_API_KEY`) and `USER` (self-service, created via
 `POST /api/profile/api-keys/`, owned by whoever created them). A `USER`
-key always has an owner and inherits that owner's live RBAC permissions;
+key always has an owner and one organization, and has the owner's live RBAC
+permissions in that organization only;
 the `SYSTEM` key has no owner and resolves to a superadmin-equivalent
 `SystemServicePrincipal`. Header formats: `X-Api-Key: <raw_key>` (preferred)
 or `Authorization: ApiKey <raw_key>`.
@@ -736,6 +743,7 @@ curl -s http://localhost:8000/api/graphs/ -H "Authorization: Bearer $ACCESS" | j
 |---|---|---|
 | `401 authentication_failed — "Invalid API key"` | Lookup is an exact match on `key_hash` (SHA-256 of the raw key) — any typo, a truncated paste, or a revoked key all miss. Raw keys are always `es-`-prefixed. | Re-copy the full raw key from where it was issued (it's shown once, at creation). If it was revoked, issue a new one via `POST /api/profile/api-keys/`. See [api_keys.md](api_keys.md). |
 | `401 authentication_failed — "API key has expired"` | The key's `expires_at` is in the past. | Issue a new key; the expired one cannot be renewed. |
+| `401 authentication_failed — "API key is no longer valid for its organization"` | The USER key's organization was deactivated (applies to a superadmin's key too), or the owner (not a superadmin) is no longer a member of it. | Reactivate the organization, or re-add the owner and issue a new key (removing a member deletes their keys in that organization). See [api_keys.md](api_keys.md). |
 | `409 Setup has already been completed` | At least one User exists. | Expected. If intentional reset, use `POST /api/auth/reset-user/` or `manage.py reset_user`. |
 | FE shows login form but `needs_setup` is `true` | Frontend isn't calling `GET /api/auth/first-setup/` on boot. | Wire the boot check per "Frontend changes required". |
 | `/api/auth/login/` returns 401 on what looks like valid creds | Payload uses `username` instead of `email`. | Send `{"email": ..., "password": ...}`. |

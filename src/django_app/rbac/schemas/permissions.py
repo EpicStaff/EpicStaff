@@ -66,7 +66,8 @@ PERMISSIONS_ME_ORGS_GET = {
         "The caller's permissions in every org they belong to, in one call — "
         "drives the admin nav, org filters, and per-org action gating. Takes "
         'no header. A superadmin gets {is_superadmin: true, permissions: "*"} '
-        "with no `orgs` array."
+        "with no `orgs` array. A USER API key caller, a superadmin's too, gets "
+        "`orgs` with the key's org alone."
     ),
     "responses": {
         200: MyOrgsPermissionsResponseSerializer,

@@ -11,28 +11,24 @@ function keyListHtml(items: BulkApiKeyItem[]): string {
     return `<ul>${items.map((k) => `<li>• ${escapeHtml(k.name)}</li>`).join('')}</ul>`;
 }
 
-/** Single-key revoke — admin view.
- *  Copy states the account-wide blast radius as a rule; it does not name or count affected
- *  organizations because the row deliberately does not carry that information. */
+/** Single-key revoke — admin view. */
 export function getAdminRevokeConfirmationData(keyName: string): ConfirmationDialogData {
     return {
         title: 'Revoke key',
         message: `Revoking <strong>${escapeHtml(keyName)}</strong> retires it immediately. The record stays in the list for audit purposes.`,
-        caution:
-            'API keys are account-wide, so this key will stop working everywhere its owner uses it — including organizations you may not be able to see.',
+        caution: 'Any client or integration currently using this key will lose access.',
         type: 'danger',
         confirmText: 'Revoke',
         cancelText: 'Cancel',
     };
 }
 
-/** Single-key delete — admin view. Same blast-radius rule as revoke. */
+/** Single-key delete — admin view. */
 export function getAdminDeleteConfirmationData(ownerName: string): ConfirmationDialogData {
     return {
         title: 'Delete key',
         message: `This key belongs to <strong>${escapeHtml(ownerName)}</strong>. Deleting it removes the record and cannot be undone.`,
-        caution:
-            'API keys are account-wide, so this key will stop working everywhere its owner uses it — including organizations you may not be able to see.',
+        caution: 'Any client or integration currently using this key will lose access.',
         type: 'danger',
         confirmText: 'Delete',
         cancelText: 'Cancel',

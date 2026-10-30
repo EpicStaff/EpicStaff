@@ -37,6 +37,7 @@ class ProfileApiKeysView(APIView):
         cleaned = self._validator.validate_create(request.data)
         issued = self._service.create_key(
             user=request.user,
+            org_id=cleaned["org_id"],
             name=cleaned["name"],
             expires_in_days=cleaned["expires_in_days"],
             # DenyApiKeyAuth leaves JwtAuthentication as the only way in, so

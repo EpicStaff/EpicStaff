@@ -9,6 +9,8 @@ from rest_framework.response import Response
 
 from rbac.access.gates import HasOrgPermission
 from rbac.access.org_context import OrgContextService
+from rbac.access.principals import limit_org_ids_to_api_key, user_api_key_org_id
+from rbac.exceptions import OrganizationNotFoundError
 from rbac.governance.organizations import (
     OrganizationManagementService,
 )
@@ -73,7 +75,9 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     @extend_schema(**ORGANIZATIONS_LIST_GET)
     def list(self, request):
         is_active = self._parse_is_active(request.query_params.get("is_active"))
-        org_ids = self.parse_org_ids(request.query_params.get("org_ids"))
+        org_ids = limit_org_ids_to_api_key(
+            request, self.parse_org_ids(request.query_params.get("org_ids"))
+        )
         scopes = getattr(request, "_rbac_org_scopes", None)
         qs = self._service.list_for_actor(
             actor=request.user,
@@ -95,7 +99,12 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
 
     @extend_schema(**ORGANIZATIONS_RETRIEVE_GET)
     def retrieve(self, request, pk=None):
-        org = self._service.get_for_read(actor=request.user, org_id=int(pk))
+        org_id = int(pk)
+        key_org_id = user_api_key_org_id(request)
+        # A USER API key reads only its own org; any other id is as missing.
+        if key_org_id is not None and key_org_id != org_id:
+            raise OrganizationNotFoundError()
+        org = self._service.get_for_read(actor=request.user, org_id=org_id)
         return Response(OrganizationResponseSerializer(org).data)
 
     @extend_schema(**ORGANIZATIONS_CREATE_POST)

@@ -47,10 +47,10 @@ def org_client_as(client_as):
 
 @pytest.fixture
 def api_key_client_as(issue_api_key):
-    """Factory → an APIClient authenticated by a user API key of `user`, acting in `org`."""
+    """Factory → an APIClient authenticated by a user API key of `user`, bound to `org`."""
 
     def _make(user, org):
-        raw_key, _ = issue_api_key(user=user)
+        raw_key, _ = issue_api_key(user=user, org=org)
         client = APIClient()
         client.credentials(HTTP_X_API_KEY=raw_key, HTTP_X_ORGANIZATION_ID=str(org.id))
         return client

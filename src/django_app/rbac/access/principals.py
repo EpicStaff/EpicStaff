@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from django.contrib.auth import get_user_model
 
 from rbac.access.effective import EffectivePermissions
+from rbac.models import ApiKey
 
 if TYPE_CHECKING:
     from tables.models.user import User
@@ -77,6 +78,28 @@ def is_plugin_credential(request) -> bool:
         getattr(credential, "is_plugin_credential", False) is True
         or getattr(principal, "is_plugin_credential", False) is True
     )
+
+
+def user_api_key_org_id(request) -> int | None:
+    """Return the org of the request's USER API key, or None for any other credential.
+
+    A USER key acts only in its own org: callers use this instead of reading the
+    `X-Organization-Id` header, which is ignored for such a key.
+    """
+    api_key = getattr(request, "auth", None)
+    if isinstance(api_key, ApiKey) and api_key.key_type == ApiKey.KeyType.USER:
+        return api_key.org_id
+    return None
+
+
+def limit_org_ids_to_api_key(request, org_ids: list[int] | None) -> list[int] | None:
+    """Return `[key org]` for a USER API key request, else `org_ids` unchanged.
+
+    A USER key (a superadmin's too) reads cross-org surfaces only in its own org,
+    so whatever the query asked for, or nothing at all, becomes the key's org.
+    """
+    key_org_id = user_api_key_org_id(request)
+    return org_ids if key_org_id is None else [key_org_id]
 
 
 def acting_person(user: object) -> "User | None":

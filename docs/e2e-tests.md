@@ -34,8 +34,9 @@ host; nothing from the suite is shipped in a service image.
   `ANSWER: <tool result>`; embeddings are a fixed vector. Its call log is readable at
   `http://localhost:18080/__calls`.
 - **Black box.** Tests talk HTTP to nginx only. Bootstrap: first-setup creates the superadmin,
-  then a custom role, a user, the user's login and an API key. From then on every request
-  uses `X-Api-Key` + `X-Organization-Id`.
+  then a custom role, a user, the user's login and an API key of the user's organization.
+  From then on every request uses `X-Api-Key`; the key acts in its own organization (an
+  `X-Organization-Id` header is ignored for it).
 - **One-shot.** First-setup works once per database, so **every run needs a freshly created
   stack** (`down -v`, then `up -d`).
 
@@ -94,7 +95,7 @@ $DC down -v --remove-orphans           # fresh database for the next run
 | `test_flow_python.py` | Flow A (Start → Python `a + b` → End): save, run, final state, session messages. |
 | `test_flow_agent_rag.py` | Flow B (Start → Knowledge → Task with the RAG tool → End): retrieval, agent answer from the tool, mock-llm received the tool result. |
 | `test_sse.py` | Runtime delivery of a flow B run: subscribed while the run is going, the knowledge and task nodes' `finish`, `graph_end` and the `end` status arrive live (after the replay's initial status), node finishes in run order and before the completion events; prompt first event; replay of an ended flow A run; ticket refusals; another org's session. |
-| `test_rbac_negative.py` | API keys refused on JWT-only endpoints, missing org header, other-org access, Viewer cannot create. |
+| `test_rbac_negative.py` | API keys refused on JWT-only endpoints, a key acts in its own org (no header needed, another org's header ignored), a JWT without an org header or with another org's header is refused, other-org access, Viewer cannot create. |
 | `test_concurrency.py` | Ten parallel flow A runs (marker `load`). |
 
 Shared resources are session fixtures:

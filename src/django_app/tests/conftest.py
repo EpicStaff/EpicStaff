@@ -198,19 +198,39 @@ def superadmin_client_with_org(
 @pytest.fixture
 def issue_api_key(db):
     """Factory: create an ApiKey directly (bypasses endpoint/cap) and
-    return (raw_key, ApiKey). user=None + key_type=SYSTEM makes a system key."""
+    return (raw_key, ApiKey). user=None + key_type=SYSTEM makes a system key.
 
-    def _issue(user=None, **overrides):
+    A USER key without `org` is bound to the owner's first membership in an active
+    org, else to the first org (a superadmin without memberships), else to a new
+    one. A SYSTEM key never has an org."""
+
+    def _issue(user=None, org=None, **overrides):
         generated = ApiKeyGenerator.generate()
+        key_type = overrides.pop(
+            "key_type",
+            ApiKey.KeyType.USER if user else ApiKey.KeyType.SYSTEM,
+        )
+        if key_type == ApiKey.KeyType.SYSTEM:
+            org = None
+        elif org is None:
+            membership = (
+                OrganizationUser.objects.filter(user=user, org__is_active=True)
+                .order_by("id")
+                .first()
+            )
+            org = (
+                membership.org
+                if membership
+                else Organization.objects.order_by("id").first()
+                or Organization.objects.create(name="api-key-test-org")
+            )
         key = ApiKey.objects.create(
             name=overrides.pop("name", "test-key"),
-            key_type=overrides.pop(
-                "key_type",
-                ApiKey.KeyType.USER if user else ApiKey.KeyType.SYSTEM,
-            ),
+            key_type=key_type,
             prefix=generated.prefix,
             key_hash=generated.key_hash,
             created_by=user,
+            org=org,
             **overrides,
         )
         return generated.raw_key, key

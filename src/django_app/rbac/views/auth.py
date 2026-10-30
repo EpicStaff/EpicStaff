@@ -11,6 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
+from rbac.access.principals import user_api_key_org_id
 from rbac.exceptions import (
     FirstSetupDisabledError,
     InvalidRefreshTokenError,
@@ -144,7 +145,9 @@ class SseTicketView(APIView):
                 {"detail": "This endpoint requires a user context."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        ticket, ttl = sse_ticket_service.issue(request.user)
+        ticket, ttl = sse_ticket_service.issue(
+            request.user, api_key_org_id=user_api_key_org_id(request)
+        )
         return Response({"ticket": ticket, "expires_in": ttl})
 
 
@@ -167,7 +170,9 @@ class WsTicketView(APIView):
                 {"detail": "This endpoint requires a user context."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        ticket, ttl = ws_ticket_service.issue(request.user)
+        ticket, ttl = ws_ticket_service.issue(
+            request.user, api_key_org_id=user_api_key_org_id(request)
+        )
         return Response({"ticket": ticket, "expires_in": ttl})
 
 
@@ -289,6 +294,7 @@ class ApiKeyValidateView(APIView):
                 "name": key.name,
                 "prefix": key.prefix,
                 "owner_user_id": key.created_by_id,
+                "org_id": key.org_id,
             },
             status=status.HTTP_200_OK,
         )
