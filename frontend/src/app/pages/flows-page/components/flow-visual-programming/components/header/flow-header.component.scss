@@ -292,8 +292,49 @@
         }
     }
 
+    .save-status-chip__spinner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 20px;
+        height: 20px;
+
+        &::before {
+            content: '';
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: conic-gradient(
+                from 90deg,
+                currentColor 0deg,
+                color-mix(in srgb, currentColor 25%, transparent) 270deg,
+                transparent 270deg
+            );
+            mask: radial-gradient(circle, transparent 2.5px, black 3px);
+            animation: save-status-spin 1s linear infinite;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            &::before {
+                animation: none;
+            }
+        }
+    }
+
     &--saved {
         --save-status-color: var(--purple-500);
         --save-status-background: var(--purple-alpha-8);
+    }
+
+    &--saving {
+        --save-status-color: var(--sky-500);
+        --save-status-background: var(--sky-alpha-6);
+    }
+}
+
+@keyframes save-status-spin {
+    to {
+        transform: rotate(360deg);
     }
 }

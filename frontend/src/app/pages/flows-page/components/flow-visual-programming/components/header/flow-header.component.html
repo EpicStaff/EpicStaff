@@ -64,6 +64,20 @@
                             <span class="save-status-chip__label">Saved</span>
                         </span>
                     }
+                    @case ('saving') {
+                        <span
+                            class="save-status-chip save-status-chip--saving"
+                            matTooltip="Saving changes"
+                            matTooltipPosition="below"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".save-status-chip__label"
+                            collapseOnOverflowClass="save-status-chip--icon-only"
+                            collapseOnOverflowRequireSelector=".save-status-chip__spinner"
+                        >
+                            <span class="save-status-chip__spinner"></span>
+                            <span class="save-status-chip__label">Saving…</span>
+                        </span>
+                    }
                 }
                 @if (runStatus(); as status) {
                     <app-status-badge [sessionStatus]="status" />

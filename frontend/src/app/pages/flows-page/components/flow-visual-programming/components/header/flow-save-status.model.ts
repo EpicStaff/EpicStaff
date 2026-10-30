@@ -1,1 +1,1 @@
-export type FlowSaveStatus = 'saved' | 'unsaved';
+export type FlowSaveStatus = 'saved' | 'saving' | 'unsaved';
