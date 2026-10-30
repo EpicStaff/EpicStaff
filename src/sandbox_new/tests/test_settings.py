@@ -125,7 +125,7 @@ def test_the_admission_settings_have_their_defaults(reload_settings_with_env):
         reloaded.MAX_CONCURRENT_EXECUTIONS,
         reloaded.CPU_ADMIT_THRESHOLD,
         reloaded.MEMORY_ADMIT_THRESHOLD,
-    ) == (120, 1800, 300, 100, 0, 256, 85, 80)
+    ) == (120, 1800, 1000, 100, 0, 256, 85, 80)
 
 
 @pytest.mark.parametrize(
