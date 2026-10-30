@@ -204,10 +204,16 @@ def _build_client(
 
 @pytest.fixture
 def checkpoints():
-    """The BENCH checkpoints logged during the test, as their extra fields, in order."""
+    """The BENCH checkpoints logged during the test, as their extra fields, in order.
+
+    Keys starting with "_" are dropped: a BENCH sink added earlier (the service's own
+    stdout sink) stores its rendered line in the shared extra under such a key.
+    """
     logged: list[dict] = []
     sink_id = logger.add(
-        lambda message: logged.append(dict(message.record["extra"])),
+        lambda message: logged.append(
+            {key: value for key, value in message.record["extra"].items() if not key.startswith("_")}
+        ),
         level=BENCH_LEVEL,
         filter=lambda record: record["level"].no == BENCH_LEVEL,
     )

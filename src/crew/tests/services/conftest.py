@@ -112,20 +112,31 @@ class FakeSandbox:
             ).model_dump_json(),
         )
 
-    async def wait_for_tasks(self, count: int) -> list[dict]:
-        for _ in range(1000):
-            if len(self.tasks) >= count:
-                return self.tasks
-            await asyncio.sleep(0)
-        raise AssertionError(f"crew submitted {len(self.tasks)} execution(s), expected {count}")
+    async def wait_for_tasks(self, count: int, timeout_s: float = 1.0) -> list[dict]:
+        # Bounded by time, not by event-loop turns: a retried submit sleeps for real between
+        # attempts, and a fast machine runs through any fixed number of turns before it wakes.
+        deadline = asyncio.get_running_loop().time() + timeout_s
+        while len(self.tasks) < count:
+            if asyncio.get_running_loop().time() > deadline:
+                raise AssertionError(
+                    f"crew submitted {len(self.tasks)} execution(s), expected {count}"
+                )
+            await asyncio.sleep(0.001)
+        return self.tasks
 
 
 @pytest.fixture
 def checkpoints():
-    """The BENCH checkpoints logged during the test, as their extra fields, in order."""
+    """The BENCH checkpoints logged during the test, as their extra fields, in order.
+
+    Keys starting with "_" are dropped: a BENCH sink added earlier (the service's own
+    stdout sink) stores its rendered line in the shared extra under such a key.
+    """
     logged: list[dict] = []
     sink_id = logger.add(
-        lambda message: logged.append(dict(message.record["extra"])),
+        lambda message: logged.append(
+            {key: value for key, value in message.record["extra"].items() if not key.startswith("_")}
+        ),
         level=BENCH_LEVEL,
         filter=lambda record: record["level"].no == BENCH_LEVEL,
     )
