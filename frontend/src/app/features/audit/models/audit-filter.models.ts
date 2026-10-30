@@ -115,6 +115,10 @@ export interface AuditFilterState {
     prompt: AuditConditionGroup[];
     messageText: AuditConditionGroup[];
     tokens: AuditNumberFilter;
+    // Builder filters of a field catalog (user actions), by field name. Left out of the sessions filter,
+    // so a sessions state saves and compiles exactly as before they existed.
+    selections?: Record<string, AuditValuesFilter>;
+    textConditions?: Record<string, AuditConditionGroup[]>;
 }
 
 export interface AuditConditionGroup {
@@ -147,6 +151,18 @@ export const EMPTY_AUDIT_FILTER: AuditFilterState = {
     messageText: [createAuditConditionGroup()],
     tokens: { op: 'gt', value: '' },
 };
+
+// Shared, so an unset catalog field hands the Builder the same empty value on every change detection.
+const EMPTY_SELECTION: AuditValuesFilter = { op: 'in', values: [] };
+const EMPTY_TEXT_CONDITIONS: AuditConditionGroup[] = [createAuditConditionGroup()];
+
+export function catalogSelection(state: AuditFilterState, field: string): AuditValuesFilter {
+    return state.selections?.[field] ?? EMPTY_SELECTION;
+}
+
+export function catalogTextConditions(state: AuditFilterState, field: string): AuditConditionGroup[] {
+    return state.textConditions?.[field] ?? EMPTY_TEXT_CONDITIONS;
+}
 
 export function createAuditCondition(): AuditCondition {
     return { id: generateUuid(), join: 'and', key: '', op: 'contains', value: '' };

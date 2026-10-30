@@ -9,6 +9,7 @@ import {
     EMPTY_AUDIT_FILTER,
 } from '../models/audit-filter.models';
 import { QUERY_EXAMPLES } from '../models/audit-filter-options';
+import { USER_ACTION_FIELD_CATALOG } from '../models/audit-user-action-filter-options';
 import { auditFilterToQueryText } from './audit-query-text.util';
 import { queryToBuilderState } from './audit-query-to-builder.util';
 import { compileAuditFilter } from './compile-audit-filter.util';
@@ -309,5 +310,58 @@ describe('queryToBuilderState', () => {
                 output: [group('or', condition('contains', 'Greetings'))],
             }),
         ]);
+    });
+});
+
+describe('queryToBuilderState for user actions', () => {
+    const userActionCurrent: AuditFilterState = { ...EMPTY_AUDIT_FILTER, mode: 'query', searchText: 'needle' };
+
+    function toUserActionBuilder(query: string): AuditFilterState | null {
+        return queryToBuilderState(query, userActionCurrent, USER_ACTION_FIELD_CATALOG);
+    }
+
+    function textOf(state: AuditFilterState | null, field: string): unknown {
+        return state?.textConditions?.[field]?.map((item) => ({
+            join: item.join,
+            conditions: item.conditions.map(({ join, op, value }) => ({ join, op, value })),
+        }));
+    }
+
+    it('fills the action, text and date fields from a query', () => {
+        const state = toUserActionBuilder(
+            'action in (created, renamed) and actor_email : "ann@" and event_time >= "2026-01-01T00:00:00Z"'
+        );
+
+        expect(state?.selections).toEqual({ action: { op: 'in', values: ['created', 'renamed'] } });
+        expect(textOf(state, 'actor_email')).toEqual([
+            { join: 'or', conditions: [{ join: 'and', op: 'contains', value: 'ann@' }] },
+        ]);
+        expect(state?.dateFrom).toBe('2026-01-01T00:00:00Z');
+        expect(state?.searchText).toBe('needle');
+    });
+
+    it('reads `action = x` as a one-value selection, like the sessions select fields', () => {
+        expect(toUserActionBuilder('ACTION != signed_in')?.selections).toEqual({
+            action: { op: 'not_in', values: ['signed_in'] },
+        });
+    });
+
+    it('keeps an equality on target type as a condition', () => {
+        expect(textOf(toUserActionBuilder('target_type = "python node"'), 'target_type')).toEqual([
+            { join: 'or', conditions: [{ join: 'and', op: 'equals', value: 'python node' }] },
+        ]);
+    });
+
+    it.each([
+        ['a session field', 'status in (failed)'],
+        ['an action the Builder does not list', 'action in (frobnicate)'],
+        ['a field kept for Query Code', 'route = "POST api/graphs/<pk>/copy/"'],
+        ['an operator the field does not offer', 'target_type : flow'],
+    ])('leaves %s to Query Code', (_case, query) => {
+        expect(toUserActionBuilder(query)).toBeNull();
+    });
+
+    it('leaves a user action field to Query Code on the sessions tab', () => {
+        expect(queryToBuilderState('action in (created)', current)).toBeNull();
     });
 });

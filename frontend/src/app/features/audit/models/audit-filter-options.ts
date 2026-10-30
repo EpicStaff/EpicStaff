@@ -1,6 +1,7 @@
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { auditNodeTypeLabel } from '../utils/audit-event-label.util';
+import { AuditFieldCatalog } from './audit-domain.models';
 import { AuditEnumOption, AuditFilterOp } from './audit-filter.models';
 
 // same label as the table's Node Type column, so a type reads the same in both places
@@ -162,3 +163,11 @@ export const QUERY_FIELDS: string[] = [
     'prompt',
     'message_text',
 ];
+
+export const SESSION_FIELD_CATALOG: AuditFieldCatalog = {
+    domain: 'sessions',
+    builderFields: [],
+    queryFields: QUERY_FIELDS,
+    queryExamples: QUERY_EXAMPLES,
+    queryPlaceholder: 'e.g. status in (failed) and name == "Session Start"',
+};

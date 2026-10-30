@@ -1,4 +1,5 @@
 import { AuditFilterState, DEFAULT_MATCH_SCOPE, EMPTY_AUDIT_FILTER } from '../models/audit-filter.models';
+import { USER_ACTION_FIELD_CATALOG } from '../models/audit-user-action-filter-options';
 import { buildPresetBody, restorePresetState } from './audit-preset-body.util';
 import { compileAuditFilter } from './compile-audit-filter.util';
 
@@ -78,5 +79,21 @@ describe('audit preset body', () => {
 
     it('cannot restore a preset created with only raw filters', () => {
         expect(restorePresetState({ filters: { field: 'kind', op: 'in', value: ['event'] } })).toBeNull();
+    });
+});
+
+describe('user actions preset body', () => {
+    it('stores the search without a match scope, which only sessions accept', () => {
+        const state: AuditFilterState = {
+            ...EMPTY_AUDIT_FILTER,
+            selections: { action: { op: 'in', values: ['deleted'] } },
+        };
+
+        const body = buildPresetBody(state, USER_ACTION_FIELD_CATALOG);
+
+        expect(body).toEqual({
+            filters: { field: 'action', op: 'in', value: ['deleted'] },
+            ui_state: { version: 1, state },
+        });
     });
 });

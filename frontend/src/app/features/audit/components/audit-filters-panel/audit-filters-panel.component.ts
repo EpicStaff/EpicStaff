@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -16,6 +17,7 @@ import { copyWithFeedback } from '@shared/utils';
 import { DateRangeFilter } from 'src/app/shared/models';
 
 import { ToastService } from '../../../../services/notifications';
+import { AUDIT_FIELD_CATALOG } from '../../models/audit-domain.models';
 import {
     AuditConditionGroup,
     AuditEnumOption,
@@ -24,6 +26,8 @@ import {
     AuditMatchScopeState,
     AuditNumberFilter,
     AuditValuesFilter,
+    catalogSelection,
+    catalogTextConditions,
     EMPTY_AUDIT_FILTER,
 } from '../../models/audit-filter.models';
 import {
@@ -32,8 +36,6 @@ import {
     JSON_OPERATORS,
     KIND_OPTIONS,
     NODE_TYPE_OPTIONS,
-    QUERY_EXAMPLES,
-    QUERY_FIELDS,
     QUERY_OPERATORS,
     STATUS_OPTIONS,
 } from '../../models/audit-filter-options';
@@ -77,6 +79,7 @@ export type AuditFilterTab = 'builder' | 'query' | AuditPresetScope;
         AuditTokensFilterComponent,
         AuditMatchScopeComponent,
         AuditPresetsComponent,
+        NgTemplateOutlet,
     ],
     providers: [AuditPresetsStorageService],
     templateUrl: './audit-filters-panel.component.html',
@@ -106,8 +109,11 @@ export class AuditFiltersPanelComponent implements OnInit {
     public readonly errorOperators = ERROR_OPERATORS;
     public readonly jsonOperators = JSON_OPERATORS;
     public readonly deepTextOperators = DEEP_TEXT_OPERATORS;
-    public readonly queryExamples = QUERY_EXAMPLES;
-    public readonly queryFields = QUERY_FIELDS;
+    // the audit tab's domain: which Builder fields, query fields and examples the panel offers
+    protected readonly catalog = inject(AUDIT_FIELD_CATALOG);
+    protected readonly isSessions = this.catalog.domain === 'sessions';
+    public readonly queryExamples = this.catalog.queryExamples;
+    public readonly queryFields = this.catalog.queryFields;
 
     public readonly queryOperators = QUERY_OPERATORS;
 
@@ -133,12 +139,12 @@ export class AuditFiltersPanelComponent implements OnInit {
         const current = this.filter();
         if (tab === 'query' && current.mode === 'builder') {
             // the search box is its own control, so its text never goes into the query
-            const filters = compileAuditFilter({ ...current, searchText: '' }).filters;
+            const filters = compileAuditFilter({ ...current, searchText: '' }, this.catalog).filters;
             const query = filters === undefined ? '' : auditFilterToQueryText(filters);
             this.filter.set({ ...current, query, mode: 'query' });
         }
         if (tab === 'builder' && current.mode === 'query') {
-            const builderState = queryToBuilderState(current.query, current);
+            const builderState = queryToBuilderState(current.query, current, this.catalog);
             if (builderState === null) {
                 this.confirmClearComplexQuery();
                 return;
@@ -229,7 +235,8 @@ export class AuditFiltersPanelComponent implements OnInit {
     private readonly fieldSummaries = computed<Map<string, string>>(() => {
         const chips = describeAuditFilter(
             { ...this.filter(), mode: 'builder' },
-            { agents: this.agentOptions(), tools: this.toolOptions() }
+            { agents: this.agentOptions(), tools: this.toolOptions() },
+            this.catalog
         );
         return new Map(chips.map((chip) => [chip.key, chip.value]));
     });
@@ -313,6 +320,22 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public setTokens(tokens: AuditNumberFilter): void {
         this.updateBuilder({ tokens });
+    }
+
+    public selectionOf(field: string): AuditValuesFilter {
+        return catalogSelection(this.filter(), field);
+    }
+
+    public textConditionsOf(field: string): AuditConditionGroup[] {
+        return catalogTextConditions(this.filter(), field);
+    }
+
+    public setSelection(field: string, selection: AuditValuesFilter): void {
+        this.updateBuilder({ selections: { ...this.filter().selections, [field]: selection } });
+    }
+
+    public setTextConditions(field: string, groups: AuditConditionGroup[]): void {
+        this.updateBuilder({ textConditions: { ...this.filter().textConditions, [field]: groups } });
     }
 
     public setQuery(event: Event): void {

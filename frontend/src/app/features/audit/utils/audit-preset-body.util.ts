@@ -1,3 +1,4 @@
+import { AuditFieldCatalog } from '../models/audit-domain.models';
 import {
     AuditFilterState,
     AuditMatchScopeState,
@@ -5,14 +6,19 @@ import {
     EMPTY_AUDIT_FILTER,
     MAX_ROWS_BEFORE,
 } from '../models/audit-filter.models';
+import { SESSION_FIELD_CATALOG } from '../models/audit-filter-options';
 import { AuditPresetBody } from '../models/audit-preset.models';
 import { AuditMatchScope } from '../models/audit-session.models';
 import { compileAuditFilter } from './compile-audit-filter.util';
 
 export const AUDIT_PRESET_UI_STATE_VERSION = 1;
 
-export function buildPresetBody(state: AuditFilterState): AuditPresetBody {
-    const { filters, query, matchScope } = compileAuditFilter(state);
+// The body is the domain's search request, so only a sessions preset carries a match scope.
+export function buildPresetBody(
+    state: AuditFilterState,
+    catalog: AuditFieldCatalog = SESSION_FIELD_CATALOG
+): AuditPresetBody {
+    const { filters, query, matchScope } = compileAuditFilter(state, catalog);
     return {
         filters,
         query,

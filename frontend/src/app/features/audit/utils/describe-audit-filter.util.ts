@@ -1,3 +1,4 @@
+import { AuditFieldCatalog } from '../models/audit-domain.models';
 import {
     AuditCondition,
     AuditConditionGroup,
@@ -8,6 +9,8 @@ import {
     AuditIdMode,
     AuditMatchScopeState,
     AuditNumberFilter,
+    catalogSelection,
+    catalogTextConditions,
     createAuditConditionGroup,
     DEFAULT_MATCH_SCOPE,
     isUsableCondition,
@@ -17,6 +20,7 @@ import {
     KIND_OPTIONS,
     NODE_TYPE_OPTIONS,
     OPERATOR_LABELS,
+    SESSION_FIELD_CATALOG,
     STATUS_OPTIONS,
     TOKEN_OPERATOR_LABELS,
 } from '../models/audit-filter-options';
@@ -146,6 +150,43 @@ function conditionChip(key: string, label: string, groups: AuditConditionGroup[]
     return parts === null ? null : createPartsChip(key, label, parts);
 }
 
+function describeCatalogFilters(state: AuditFilterState, catalog: AuditFieldCatalog): AuditFilterChip[] {
+    const chips: AuditFilterChip[] = [];
+    for (const builderField of catalog.builderFields) {
+        const { field, label } = builderField;
+        if (builderField.kind === 'select') {
+            const selection = catalogSelection(state, field);
+            if (selection.values.length > 0) {
+                const values = labelsFor(selection.values, builderField.options);
+                chips.push(operatorChip(field, label, OPERATOR_LABELS[selection.op], values));
+            }
+            continue;
+        }
+        const chip = conditionChip(field, label, catalogTextConditions(state, field));
+        if (chip !== null) {
+            chips.push(chip);
+        }
+    }
+    return chips;
+}
+
+function withoutField<T>(values: Record<string, T> | undefined, field: string): Record<string, T> | undefined {
+    if (values === undefined || !(field in values)) {
+        return values;
+    }
+    return Object.fromEntries(Object.entries(values).filter(([key]) => key !== field));
+}
+
+// a field catalog filter is keyed by its field name
+function clearCatalogField(state: AuditFilterState, field: string): AuditFilterState {
+    const selections = withoutField(state.selections, field);
+    const textConditions = withoutField(state.textConditions, field);
+    if (selections === state.selections && textConditions === state.textConditions) {
+        return state;
+    }
+    return { ...state, selections, textConditions };
+}
+
 function describeDate(from: string | null, to: string | null): string | null {
     if (from && to) {
         return `${formatAuditDay(from)} - ${formatAuditDay(to)}`;
@@ -188,11 +229,13 @@ export interface AuditFilterVocabularies {
 
 export function describeAuditFilter(
     state: AuditFilterState,
-    vocabularies: AuditFilterVocabularies = {}
+    vocabularies: AuditFilterVocabularies = {},
+    catalog: AuditFieldCatalog = SESSION_FIELD_CATALOG
 ): AuditFilterChip[] {
     const chips: AuditFilterChip[] = [];
+    const isSessions = catalog.domain === 'sessions';
 
-    const matchScopeValue = describeMatchScope(state.matchScope);
+    const matchScopeValue = isSessions ? describeMatchScope(state.matchScope) : null;
     if (matchScopeValue !== null) {
         chips.push({ key: 'matchScope', label: 'Match scope', value: matchScopeValue });
     }
@@ -208,6 +251,13 @@ export function describeAuditFilter(
             chips.push(createPartsChip('query', 'Query', highlightQuery(query)));
         }
         return chips;
+    }
+
+    const dateValue = describeDate(state.dateFrom, state.dateTo);
+    const dateChip: AuditFilterChip[] = dateValue === null ? [] : [{ key: 'date', label: 'Date', value: dateValue }];
+
+    if (!isSessions) {
+        return [...chips, ...describeCatalogFilters(state, catalog), ...dateChip];
     }
 
     if (state.kinds.length > 0) {
@@ -249,10 +299,7 @@ export function describeAuditFilter(
     ];
     chips.push(...leadingConditionChips.filter((chip) => chip !== null));
 
-    const dateValue = describeDate(state.dateFrom, state.dateTo);
-    if (dateValue !== null) {
-        chips.push({ key: 'date', label: 'Date', value: dateValue });
-    }
+    chips.push(...dateChip);
 
     const trailingChips = [
         conditionChip('task', 'Task', state.task),
@@ -306,6 +353,6 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
         case 'search':
             return { ...state, searchText: '' };
         default:
-            return state;
+            return clearCatalogField(state, key);
     }
 }

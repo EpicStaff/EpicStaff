@@ -1,13 +1,17 @@
+import { AuditFieldCatalog } from '../models/audit-domain.models';
 import {
     AuditCondition,
     AuditConditionGroup,
     AuditFilterNode,
     AuditFilterState,
     AuditMatchScopeState,
+    catalogSelection,
+    catalogTextConditions,
     isUsableCondition,
     MAX_ROWS_BEFORE,
     VALUE_FREE_OPS,
 } from '../models/audit-filter.models';
+import { SESSION_FIELD_CATALOG } from '../models/audit-filter-options';
 import { AuditMatchScope } from '../models/audit-session.models';
 
 export const TOOL_NAME_FIELD = 'details.data.name';
@@ -16,7 +20,8 @@ export const TOKENS_FIELD = 'details.data.token_usage.total_tokens';
 export interface AuditFilterQuery {
     filters?: AuditFilterNode;
     query?: string;
-    matchScope: AuditMatchScope;
+    // sessions only: no other domain nests its results
+    matchScope?: AuditMatchScope;
 }
 
 // format and prepare condition payload for request (for error, input, output, details filters)
@@ -74,19 +79,19 @@ function compileQuery(query: string, searchText: string): string {
     return query === '' ? textClause : `(${query}) and ${textClause}`;
 }
 
-export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
-    const matchScope = compileMatchScope(state.matchScope);
-    const searchText = state.searchText.trim();
-
-    if (state.mode === 'query') {
-        const query = compileQuery(state.query.trim(), searchText);
-        return query === '' ? { matchScope } : { query, matchScope };
-    }
-
+function compileDateRange(state: AuditFilterState): AuditFilterNode[] {
     const leaves: AuditFilterNode[] = [];
-    if (searchText !== '') {
-        leaves.push({ field: '__text__', op: 'contains', value: searchText });
+    if (state.dateFrom) {
+        leaves.push({ field: 'event_time', op: 'gte', value: state.dateFrom });
     }
+    if (state.dateTo) {
+        leaves.push({ field: 'event_time', op: 'lte', value: state.dateTo });
+    }
+    return leaves;
+}
+
+function compileSessionFilters(state: AuditFilterState): AuditFilterNode[] {
+    const leaves: AuditFilterNode[] = [];
 
     if (state.kinds.length > 0) {
         leaves.push({ field: 'kind', op: 'in', value: state.kinds });
@@ -130,13 +135,7 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
         leaves.push({ field: 'status', op: 'in', value: state.statuses });
     }
 
-    if (state.dateFrom) {
-        leaves.push({ field: 'event_time', op: 'gte', value: state.dateFrom });
-    }
-
-    if (state.dateTo) {
-        leaves.push({ field: 'event_time', op: 'lte', value: state.dateTo });
-    }
+    leaves.push(...compileDateRange(state));
 
     if (state.nodeTypes.length > 0) {
         leaves.push({ field: 'node_type', op: 'in', value: state.nodeTypes });
@@ -184,12 +183,55 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
         leaves.push(messageTextNode);
     }
 
+    return leaves;
+}
+
+function compileCatalogFilters(state: AuditFilterState, catalog: AuditFieldCatalog): AuditFilterNode[] {
+    const leaves: AuditFilterNode[] = [];
+    for (const builderField of catalog.builderFields) {
+        if (builderField.kind === 'select') {
+            const selection = catalogSelection(state, builderField.field);
+            if (selection.values.length > 0) {
+                leaves.push({ field: builderField.field, op: selection.op, value: selection.values });
+            }
+            continue;
+        }
+        const node = compileConditionGroups(builderField.field, catalogTextConditions(state, builderField.field));
+        if (node !== null) {
+            leaves.push(node);
+        }
+    }
+    return [...leaves, ...compileDateRange(state)];
+}
+
+// `catalog` is the domain whose fields the state is read and compiled for; only sessions carry a match scope.
+export function compileAuditFilter(
+    state: AuditFilterState,
+    catalog: AuditFieldCatalog = SESSION_FIELD_CATALOG
+): AuditFilterQuery {
+    const isSessions = catalog.domain === 'sessions';
+    const scope: Pick<AuditFilterQuery, 'matchScope'> = isSessions
+        ? { matchScope: compileMatchScope(state.matchScope) }
+        : {};
+    const searchText = state.searchText.trim();
+
+    if (state.mode === 'query') {
+        const query = compileQuery(state.query.trim(), searchText);
+        return query === '' ? scope : { query, ...scope };
+    }
+
+    const leaves: AuditFilterNode[] = [];
+    if (searchText !== '') {
+        leaves.push({ field: '__text__', op: 'contains', value: searchText });
+    }
+    leaves.push(...(isSessions ? compileSessionFilters(state) : compileCatalogFilters(state, catalog)));
+
     if (leaves.length === 0) {
-        return { matchScope };
+        return scope;
     }
 
     return {
         filters: leaves.length === 1 ? leaves[0] : { op: 'and', children: leaves },
-        matchScope,
+        ...scope,
     };
 }

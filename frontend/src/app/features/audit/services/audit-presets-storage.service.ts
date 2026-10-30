@@ -3,7 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable, ReplaySubject, tap } from 'rxjs';
 
 import { ImportResult } from '../../../core/models/import-result.model';
-import { AuditDomainName } from '../models/audit-domain.models';
+import { AUDIT_FIELD_CATALOG, AuditDomainName } from '../models/audit-domain.models';
 import { AuditPreset, AuditPresetBody, AuditPresetChanges, AuditPresetScope } from '../models/audit-preset.models';
 import { AuditPresetsApiService } from './audit-presets-api.service';
 
@@ -18,8 +18,8 @@ export class AuditPresetsStorageService {
     public readonly presets = this.presetsSignal.asReadonly();
     public readonly isLoading = this.isLoadingSignal.asReadonly();
     public readonly loadError = this.loadErrorSignal.asReadonly();
-    // The filters panel is only used by the sessions page for now; the user actions page sets its own domain.
-    public readonly domain: AuditDomainName = 'sessions';
+    // the domain of the audit tab that provides the catalog, so its presets never mix with another tab's
+    public readonly domain: AuditDomainName = inject(AUDIT_FIELD_CATALOG).domain;
 
     private readonly presetsApi = inject(AuditPresetsApiService);
     private readonly destroyRef = inject(DestroyRef);

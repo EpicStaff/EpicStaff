@@ -67,7 +67,34 @@
     </div>
 
     <div class="filters-panel__body">
-        @if (activeTab() === 'builder') {
+        @if (activeTab() === 'builder' && !isSessions) {
+            <div class="filters-panel__groups">
+                @for (builderField of catalog.builderFields; track builderField.field) {
+                    <app-audit-filter-group
+                        [label]="builderField.label"
+                        [summary]="summaryOf(builderField.field)"
+                        (cleared)="clearField(builderField.field)"
+                    >
+                        @if (builderField.kind === 'select') {
+                            <app-audit-flow-filter
+                                [options]="builderField.options"
+                                [filter]="selectionOf(builderField.field)"
+                                (filterChange)="setSelection(builderField.field, $event)"
+                            />
+                        } @else {
+                            <app-audit-condition-filter
+                                [groups]="textConditionsOf(builderField.field)"
+                                (groupsChange)="setTextConditions(builderField.field, $event)"
+                                [operators]="builderField.operators"
+                                [showKey]="false"
+                            />
+                        }
+                    </app-audit-filter-group>
+                }
+
+                <ng-container [ngTemplateOutlet]="dateGroup" />
+            </div>
+        } @else if (activeTab() === 'builder') {
             <div class="filters-panel__groups">
                 <app-audit-match-scope
                     [scope]="filter().matchScope"
@@ -208,16 +235,7 @@
                     />
                 </app-audit-filter-group>
 
-                <app-audit-filter-group
-                    label="Date"
-                    [summary]="summaryOf('date')"
-                    (cleared)="clearField('date')"
-                >
-                    <app-audit-date-filter
-                        [range]="dateRange()"
-                        (rangeChange)="setDateRange($event)"
-                    />
-                </app-audit-filter-group>
+                <ng-container [ngTemplateOutlet]="dateGroup" />
 
                 <p class="filters-panel__section">Deep filters</p>
 
@@ -315,10 +333,12 @@
             </div>
         } @else if (activeTab() === 'query') {
             <div class="filters-panel__query">
-                <app-audit-match-scope
-                    [scope]="filter().matchScope"
-                    (scopeChange)="setMatchScope($event)"
-                />
+                @if (isSessions) {
+                    <app-audit-match-scope
+                        [scope]="filter().matchScope"
+                        (scopeChange)="setMatchScope($event)"
+                    />
+                }
 
                 <div class="filters-panel__query-header">
                     <label
@@ -356,7 +376,7 @@
                     id="audit-query"
                     class="filters-panel__query-input"
                     rows="4"
-                    placeholder='e.g. status in (failed) and name == "Session Start"'
+                    [placeholder]="catalog.queryPlaceholder"
                     [value]="filter().query"
                     (input)="setQuery($event)"
                 ></textarea>
@@ -478,3 +498,16 @@
         </div>
     }
 </div>
+
+<ng-template #dateGroup>
+    <app-audit-filter-group
+        label="Date"
+        [summary]="summaryOf('date')"
+        (cleared)="clearField('date')"
+    >
+        <app-audit-date-filter
+            [range]="dateRange()"
+            (rangeChange)="setDateRange($event)"
+        />
+    </app-audit-filter-group>
+</ng-template>

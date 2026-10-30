@@ -16,7 +16,6 @@ import {
     ActionDropdownButtonComponent,
     ActionDropdownItem,
     AppSvgIconComponent,
-    normalizeIana,
     NumberStepperComponent,
 } from '@shared/components';
 import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
@@ -53,7 +52,9 @@ import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
 import { AuditHighlightComponent } from './components/audit-highlight/audit-highlight.component';
 import { AuditValueViewerComponent } from './components/audit-value-viewer/audit-value-viewer.component';
+import { AUDIT_FIELD_CATALOG } from './models/audit-domain.models';
 import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
+import { SESSION_FIELD_CATALOG } from './models/audit-filter-options';
 import {
     AuditExportRequest,
     AuditSessionEvent,
@@ -67,6 +68,7 @@ import {
     readStoredAuditFilter,
     writeStoredAuditFilter,
 } from './utils/audit-filter-storage.util';
+import { buildTimeZoneLabel } from './utils/audit-time-zone-label.util';
 import { AuditRow, buildAuditRows } from './utils/build-audit-rows.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
 import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
@@ -135,6 +137,7 @@ interface ViewedValue {
         HasPermissionDirective,
         ResizableSidebarDirective,
     ],
+    providers: [{ provide: AUDIT_FIELD_CATALOG, useValue: SESSION_FIELD_CATALOG }],
     templateUrl: './audit-sessions-browser.component.html',
     styleUrls: ['./audit-sessions-browser.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -563,15 +566,4 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.valueViewerTrigger?.focus();
         this.valueViewerTrigger = null;
     }
-}
-
-function buildTimeZoneLabel(): string {
-    // some browsers still report the legacy 'Europe/Kiev' name
-    const zone = normalizeIana(Intl.DateTimeFormat().resolvedOptions().timeZone);
-    const offsetMinutes = -new Date().getTimezoneOffset();
-    const sign = offsetMinutes < 0 ? '-' : '+';
-    const absolute = Math.abs(offsetMinutes);
-    const hours = String(Math.floor(absolute / 60)).padStart(2, '0');
-    const minutes = String(absolute % 60).padStart(2, '0');
-    return `${sign}${hours}:${minutes} ${zone}`;
 }

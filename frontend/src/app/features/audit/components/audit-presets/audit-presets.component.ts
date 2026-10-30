@@ -28,6 +28,7 @@ import { downloadBlob, escapeHtml } from '@shared/utils';
 import { catchError, EMPTY, filter, finalize, Observable, switchMap, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
+import { AUDIT_FIELD_CATALOG } from '../../models/audit-domain.models';
 import {
     AuditEnumOption,
     AuditFilterMode,
@@ -185,7 +186,7 @@ export class AuditPresetsComponent implements OnInit {
         if (editor === null) {
             return [];
         }
-        return describeAuditFilter({ ...editor.state, mode: 'builder' }, this.vocabularies()).filter(
+        return describeAuditFilter({ ...editor.state, mode: 'builder' }, this.vocabularies(), this.catalog).filter(
             (chip) => chip.key !== 'matchScope'
         );
     });
@@ -201,6 +202,8 @@ export class AuditPresetsComponent implements OnInit {
     ];
 
     protected readonly unavailableHint = "Created outside the filters panel — it can't be opened here";
+    protected readonly catalog = inject(AUDIT_FIELD_CATALOG);
+    protected readonly hasMatchScope = this.catalog.domain === 'sessions';
 
     private readonly presetsStorage = inject(AuditPresetsStorageService);
     private readonly presetsApi = inject(AuditPresetsApiService);
@@ -262,7 +265,7 @@ export class AuditPresetsComponent implements OnInit {
             return;
         }
         const name = editor.name.trim();
-        const filterBody = buildPresetBody(editor.state);
+        const filterBody = buildPresetBody(editor.state, this.catalog);
         const request =
             editor.presetId === null
                 ? this.presetsStorage.createPreset(name, filterBody, this.scope() === 'shared')
@@ -316,7 +319,9 @@ export class AuditPresetsComponent implements OnInit {
 
     protected overwrite(card: AuditPresetCard): void {
         this.closeMenu(card.preset.id);
-        this.presetsStorage.updatePreset(card.preset.id, { filter_body: buildPresetBody(this.currentFilter()) });
+        this.presetsStorage.updatePreset(card.preset.id, {
+            filter_body: buildPresetBody(this.currentFilter(), this.catalog),
+        });
     }
 
     protected copyQuery(card: AuditPresetCard): void {
@@ -332,8 +337,7 @@ export class AuditPresetsComponent implements OnInit {
             {
                 title: 'Delete preset?',
                 message: `Are you sure you want to delete <strong>${escapeHtml(preset.name)}</strong> preset?`,
-                caution:
-                    "It will <strong>disappear</strong> from your presets list, and the filters and match scope saved in it <strong>will be lost</strong>. You'll have to set them up manually next time.",
+                caution: `It will <strong>disappear</strong> from your presets list, and the ${this.hasMatchScope ? 'filters and match scope' : 'filters'} saved in it <strong>will be lost</strong>. You'll have to set them up manually next time.`,
                 confirmText: 'Delete',
             },
             () => this.presetsStorage.deletePreset(preset.id)
@@ -474,7 +478,7 @@ export class AuditPresetsComponent implements OnInit {
 
     private toCard(preset: AuditPreset): AuditPresetCard {
         const state = restorePresetState(preset.filter_body);
-        const chips = state === null ? [] : describeAuditFilter(state, this.vocabularies());
+        const chips = state === null ? [] : describeAuditFilter(state, this.vocabularies(), this.catalog);
         return {
             preset,
             state,
