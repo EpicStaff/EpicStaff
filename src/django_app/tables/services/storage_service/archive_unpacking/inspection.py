@@ -58,7 +58,7 @@ def inspect_archive(
             if total > free_bytes:
                 raise StorageQuotaExceeded()
             files.add(safe_name)
-            if is_blocked(name):
+            if is_blocked(safe_name):
                 blocked.append(name)
         if blocked:
             raise ValueError(
