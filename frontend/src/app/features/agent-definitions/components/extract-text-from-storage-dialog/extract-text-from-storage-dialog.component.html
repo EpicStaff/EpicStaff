@@ -2,8 +2,10 @@
     <div class="picker__header">
         <h2 class="picker__title">Extract Text from Storage</h2>
         <button
+            type="button"
             class="picker__close"
             aria-label="Cancel"
+            matTooltip="Cancel"
             (click)="onCancel()"
         >
             <app-svg-icon
@@ -24,6 +26,9 @@
                 class="picker__search-input"
                 type="text"
                 placeholder="Search folders, files..."
+                aria-label="Search folders, files"
+                matTooltip="Search folders, files"
+                cdkFocusInitial
                 [ngModel]="searchQuery()"
                 (ngModelChange)="searchQuery.set($event)"
             />
@@ -42,12 +47,22 @@
                         <div
                             class="picker__item"
                             [style.padding-left.px]="8 + node.level * 20"
+                            tabindex="0"
+                            role="button"
+                            [attr.aria-label]="node.name"
+                            [attr.aria-expanded]="node.type === 'folder' ? node.isExpanded : null"
                             (click)="onNodeClick(node)"
+                            (keydown)="onNodeKeydown($event, node)"
                         >
                             @if (node.type === 'folder' && (node.hasChildren || node.isExpanded)) {
+                                <!-- The row itself expands the folder from the keyboard, so the chevron is mouse-only. -->
                                 <button
+                                    type="button"
+                                    tabindex="-1"
                                     class="picker__chevron"
                                     [class.picker__chevron--open]="node.isExpanded"
+                                    [attr.aria-label]="node.isExpanded ? 'Collapse' : 'Expand'"
+                                    [matTooltip]="node.isExpanded ? 'Collapse' : 'Expand'"
                                     (click)="toggleExpand($event, node)"
                                 >
                                     <app-svg-icon
@@ -67,7 +82,7 @@
 
                             <span
                                 class="picker__item-name"
-                                [title]="node.name"
+                                [matTooltip]="node.name"
                                 >{{ node.name }}</span
                             >
 

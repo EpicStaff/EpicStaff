@@ -35,6 +35,7 @@
             <button
                 type="button"
                 class="button dont-save-button"
+                [matTooltip]="data.dontSaveText || 'Don\'t Save'"
                 (click)="onDontSave()"
             >
                 {{ data.dontSaveText || "Don't Save" }}
@@ -44,6 +45,7 @@
             <button
                 type="button"
                 class="button cancel-button"
+                [matTooltip]="data.cancelText || 'Cancel'"
                 (click)="onCancel()"
             >
                 {{ data.cancelText || 'Cancel' }}
@@ -52,6 +54,7 @@
                 type="button"
                 class="button save-button"
                 [ngClass]="data.type || 'warning'"
+                [matTooltip]="data.saveText || 'Save'"
                 (click)="onSave()"
                 [disabled]="isSaving"
             >

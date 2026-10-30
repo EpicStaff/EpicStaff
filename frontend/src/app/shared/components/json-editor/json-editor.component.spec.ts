@@ -35,13 +35,30 @@ describe('JsonEditorComponent header action', () => {
         return headerIcons().map((icon) => icon.querySelector('use')!.getAttribute('href')!.replace('#icon-', ''));
     }
 
+    /** The accessible name of each header action, or null when it is not a button. */
+    function headerButtonNames(): (string | null)[] {
+        return headerIcons().map((icon) =>
+            icon instanceof HTMLButtonElement ? icon.getAttribute('aria-label') : null
+        );
+    }
+
+    /** Every header action is a button; the custom action is the one named after `actionLabel`. */
     function actionButton(): HTMLButtonElement | null {
-        return fixture.nativeElement.querySelector('.right-section > button.action-icon');
+        return (
+            headerIcons().find(
+                (icon): icon is HTMLButtonElement =>
+                    icon instanceof HTMLButtonElement &&
+                    icon.getAttribute('aria-label') === 'Insert example from selected fields'
+            ) ?? null
+        );
     }
 
     function actionTooltip(): string {
-        return fixture.debugElement.query(By.css('.right-section > button.action-icon')).injector.get(MatTooltip)
-            .message;
+        const button = actionButton()!;
+        return fixture.debugElement
+            .queryAll(By.directive(MatTooltip))
+            .find((debugElement) => debugElement.nativeElement === button)!
+            .injector.get(MatTooltip).message;
     }
 
     function showAction(): void {
@@ -58,11 +75,12 @@ describe('JsonEditorComponent header action', () => {
         expect(fixture.debugElement.query(By.css('.editor-resize-handle'))).toBeNull();
     });
 
-    it('renders no action by default, leaving the copy and expand icons as they are', () => {
+    it('renders no action by default, only the copy and expand buttons', () => {
         fixture.detectChanges();
 
         expect(actionButton()).toBeNull();
         expect(headerIconNames()).toEqual(['copy', 'editor-expand']);
+        expect(headerButtonNames()).toEqual(['Copy to clipboard', 'Expand editor']);
     });
 
     it('renders the action as an icon-only button before the copy icon, sized like it', () => {

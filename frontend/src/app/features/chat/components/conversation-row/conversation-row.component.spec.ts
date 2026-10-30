@@ -85,6 +85,7 @@ describe('ConversationRowComponent', () => {
     const takeOverButton = (): HTMLButtonElement | null => host().querySelector('.conversation-row__take-over button');
     const tooltipOf = (selector: string): MatTooltip =>
         fixture.debugElement.query(By.css(selector)).injector.get(MatTooltip);
+    const rowTooltip = (): MatTooltip => tooltipOf('button.conversation-row');
 
     beforeEach(() => {
         vi.stubGlobal('ResizeObserver', ResizeObserverStub);
@@ -116,16 +117,15 @@ describe('ConversationRowComponent', () => {
             expect(host().textContent).not.toContain('turns');
             expect(textOf('app-conversation-avatar')).toBe('12');
             expect(host().querySelector('.conversation-row__desk')).toBeNull();
-            expect(tooltipOf('.conversation-row__name').disabled).toBe(true);
+            expect(rowTooltip().message).toBe('Visitor 12');
         });
 
         it('names a signed visitor by their verified id, in full in a tooltip', () => {
             render(conversation({ chat_user_id: 'customer-4711@example.com' }));
             expect(textOf('.conversation-row__name')).toBe('customer-4711@example.com');
             expect(accessibleName().startsWith('customer-4711@example.com,')).toBe(true);
-            const tooltip = tooltipOf('.conversation-row__name');
-            expect(tooltip.disabled).toBe(false);
-            expect(tooltip.message).toBe('customer-4711@example.com');
+            expect(rowTooltip().disabled).toBe(false);
+            expect(rowTooltip().message).toBe('customer-4711@example.com');
             expect(textOf('app-conversation-avatar')).toBe('CU');
         });
     });
@@ -426,8 +426,6 @@ describe('ConversationRowComponent', () => {
     });
 
     describe('compact', () => {
-        const rowTooltip = (): MatTooltip => tooltipOf('button.conversation-row');
-
         it('shows only the avatar, the visitor in a tooltip on the row, and the full accessible name', () => {
             render(waiting(), { isCompact: true });
             expect(rowButton().children).toHaveLength(1);
@@ -439,9 +437,10 @@ describe('ConversationRowComponent', () => {
             expect(rowButton().getAttribute('aria-describedby') ?? '').not.toContain('conversation-preview');
         });
 
-        it('names the visitor in a tooltip only while compact', () => {
+        it('names the visitor in a tooltip on the row while not compact too', () => {
             render(waiting());
-            expect(rowTooltip().disabled).toBe(true);
+            expect(rowTooltip().message).toBe('Visitor 1');
+            expect(rowTooltip().disabled).toBe(false);
         });
 
         it('rings the open conversation instead of filling its row', () => {

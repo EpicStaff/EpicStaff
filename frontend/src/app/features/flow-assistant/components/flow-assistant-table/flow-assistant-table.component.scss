@@ -29,7 +29,7 @@
             &.sortable {
                 cursor: pointer;
 
-                &:hover {
+                &:is(:hover, :focus-within) {
                     color: var(--color-text-primary);
                     background-color: var(--color-secondary-btn-background-hover);
                 }
@@ -70,4 +70,17 @@
     margin-left: 0.25rem;
     font-size: 0.75rem;
     color: var(--accent-color);
+}
+
+// The header text as a button, so a sortable column is reached by Tab; it looks like the text it replaces.
+.sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
 }

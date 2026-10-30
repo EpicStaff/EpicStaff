@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, output, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { LabelDto } from '@shared/models';
 
@@ -49,6 +50,7 @@ type FlowsFilterTab = 'builder' | 'presets';
         FlowsFilterGroupComponent,
         FlowsCheckboxEnumComponent,
         FlowsFilterPresetsComponent,
+        MatTooltip,
     ],
     providers: [FlowFilterPresetsStorageService],
     templateUrl: './flows-filter-sidebar.component.html',

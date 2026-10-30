@@ -7,6 +7,7 @@
                 type="button"
                 class="thread-header__back"
                 [attr.aria-label]="backLabel()"
+                [matTooltip]="backLabel()"
                 (click)="openConversation.close()"
             >
                 <app-svg-icon

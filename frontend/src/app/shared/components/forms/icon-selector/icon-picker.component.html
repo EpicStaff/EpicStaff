@@ -1,9 +1,11 @@
 <div class="icon-picker-container">
-    <div
+    <button
+        type="button"
         class="icon-selector"
-        (click)="toggleIconPicker()"
+        aria-label="Select icon"
         matTooltip="Select icon"
-        matTooltipPosition="above"
+        [attr.aria-expanded]="showIconPicker"
+        (click)="toggleIconPicker()"
     >
         @if (selectedIcon) {
             <div class="selected-icon">
@@ -21,7 +23,7 @@
                 ></app-icon>
             </div>
         }
-    </div>
+    </button>
 
     <!-- Icon Picker Popup -->
     @if (showIconPicker) {
@@ -32,27 +34,33 @@
         >
             <div class="icons-grid">
                 @for (iconName of availableIcons; track iconName) {
-                    <div
+                    <button
+                        type="button"
                         class="icon-item"
-                        (click)="selectIcon(iconName)"
                         [class.selected]="selectedIcon === iconName"
+                        [attr.aria-pressed]="selectedIcon === iconName"
+                        [attr.aria-label]="iconName"
+                        [matTooltip]="iconName"
+                        (click)="selectIcon(iconName)"
                     >
                         <app-icon
                             [icon]="getIconPath(iconName)"
                             [size]="'24'"
                         ></app-icon>
-                    </div>
+                    </button>
                 }
             </div>
             <div class="icon-picker-footer">
                 <button
                     type="button"
+                    matTooltip="Clear"
                     (click)="clearIcon()"
                 >
                     Clear
                 </button>
                 <button
                     type="button"
+                    matTooltip="Close"
                     (click)="toggleIconPicker()"
                 >
                     Close

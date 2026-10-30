@@ -15,6 +15,8 @@
         [class.selector__btn--open]="open()"
         [class.selector__btn--placeholder]="!selectedCollection()"
         [disabled]="disabled()"
+        [attr.aria-expanded]="open()"
+        [matTooltip]="label() || placeholder()"
         (click)="toggle()"
     >
         @if (loading()) {
@@ -48,11 +50,16 @@
 </div>
 
 <ng-template #dropdownTemplate>
-    <div class="dropdown">
+    <div
+        class="dropdown"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+    >
         <button
             type="button"
             class="dropdown__option"
             [class.dropdown__option--selected]="value() === null"
+            matTooltip="No collection"
             (click)="select(null)"
         >
             <span class="dropdown__name dropdown__name--accent">No collection</span>
@@ -63,6 +70,7 @@
                 type="button"
                 class="dropdown__option"
                 [class.dropdown__option--selected]="collection.collection_id === value()"
+                [matTooltip]="collection.collection_name"
                 (click)="select(collection.collection_id)"
             >
                 <span class="dropdown__name">{{ collection.collection_name }}</span>

@@ -16,8 +16,13 @@
     user-select: none;
     position: relative;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
+    }
+
+    // Drawn inside: the rows sit tight in a clipped section.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &--selected {
@@ -98,12 +103,12 @@
     }
 
     // 2.25rem clears the single 28px .row__hover-btn plus its 0.5rem right offset.
-    &--surface:hover &__label,
-    &--agent:hover &__label {
+    &--surface:is(:hover, :focus-within) &__label,
+    &--agent:is(:hover, :focus-within) &__label {
         padding-right: 2.25rem;
     }
 
-    &--surface:hover &__shared {
+    &--surface:is(:hover, :focus-within) &__shared {
         margin-right: 2.25rem;
     }
 
@@ -131,15 +136,29 @@
         transform: translateY(-50%);
         flex-shrink: 0;
         z-index: 2;
-        visibility: hidden;
+        // Transparent, not hidden: the ⋮ stays in the Tab order and can take back the focus a menu dialog returns.
+        opacity: 0;
 
         &--visible {
-            visibility: visible;
+            opacity: 1;
         }
+    }
+
+    &:focus-within &__hover-actions {
+        opacity: 1;
     }
 
     &__hover-btn {
         @include row-more-menu.trigger-button;
+
+        &:focus-visible {
+            color: var(--color-text-primary);
+            outline-offset: -2px;
+        }
+    }
+
+    &__chevron-btn:focus-visible {
+        outline-offset: 0;
     }
 }
 

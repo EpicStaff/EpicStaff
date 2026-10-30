@@ -3,6 +3,8 @@
     <input
         type="range"
         [id]="label"
+        [attr.aria-label]="label || null"
+        [matTooltip]="label"
         [min]="min"
         [max]="max"
         [step]="step"

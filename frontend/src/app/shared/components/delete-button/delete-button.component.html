@@ -4,7 +4,7 @@
     [class.delete-btn--default]="variant() === 'default'"
     [disabled]="disabled()"
     [matTooltip]="tooltip()"
-    [attr.aria-label]="ariaLabel()"
+    [attr.aria-label]="ariaLabel() ?? tooltip()"
     (click)="triggered.emit()"
 >
     <app-svg-icon

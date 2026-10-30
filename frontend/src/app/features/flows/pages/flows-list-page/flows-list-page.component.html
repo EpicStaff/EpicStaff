@@ -49,6 +49,7 @@
                                 [appCollapseOnOverflow]="true"
                                 collapseOnOverflowTarget=".btn-label"
                                 collapseOnOverflowClass="btn--icon-only"
+                                matTooltip="Import"
                                 (click)="onImportClick()"
                             >
                                 <app-svg-icon
@@ -62,7 +63,7 @@
                                 class="import-group__cog"
                                 aria-label="Import options"
                                 matTooltip="Import options"
-                                matTooltipPosition="below"
+                                [attr.aria-expanded]="importOptionsOpen()"
                                 [class.is-open]="importOptionsOpen()"
                                 (click)="toggleImportOptions()"
                             >
@@ -100,6 +101,7 @@
                             [appCollapseOnOverflow]="true"
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
+                            matTooltip="Export"
                             (click)="onSelectClick()"
                         >
                             <app-svg-icon
@@ -138,7 +140,9 @@
         <nav class="tabs">
             <div class="tabs-left">
                 @for (tab of tabs; track tab.link; let last = $last) {
+                    <!-- RouterLink makes a non-link host focusable; the tab's own button already takes Tab and Enter. -->
                     <app-tab-button
+                        tabindex="-1"
                         mod="sm"
                         routerLink="{{ tab.link }}"
                         routerLinkActive="active"
@@ -178,9 +182,12 @@
         <div class="body-content">
             <div class="breadcrumb-bar">
                 <button
+                    type="button"
                     class="expand-sidebar-btn"
                     (click)="toggleSidebar()"
                     [class.active]="showSidebar()"
+                    [attr.aria-label]="showSidebar() ? 'Close sidebar' : 'Open sidebar'"
+                    [attr.aria-expanded]="showSidebar()"
                     [matTooltip]="showSidebar() ? 'Close sidebar' : 'Open sidebar'"
                     matTooltipPosition="right"
                 >
@@ -191,8 +198,10 @@
                 </button>
                 <div class="breadcrumb-path">
                     <button
+                        type="button"
                         class="breadcrumb-home"
                         (click)="selectAllLabels()"
+                        aria-label="All Flows"
                         matTooltip="All Flows"
                         matTooltipPosition="right"
                     >
@@ -208,37 +217,44 @@
                 </div>
 
                 <div class="breadcrumb-actions">
-                    <button
-                        type="button"
+                    <!-- Two buttons drawn as one: the clear button cannot sit inside the toggle. -->
+                    <div
                         class="menu-trigger filter-trigger"
                         [class.active]="showFilterSidebar() || activeFilterCount() > 0"
-                        (click)="toggleFilterSidebar()"
                     >
-                        <app-svg-icon
-                            icon="filter-outline"
-                            size="0.875rem"
-                        />
-                        <span>
-                            Filter
-                            @if (activeFilterCount() > 0) {
-                                <span class="filter-count">({{ activeFilterCount() }})</span>
-                            }
-                        </span>
+                        <button
+                            type="button"
+                            class="filter-trigger__toggle"
+                            matTooltip="Filter"
+                            [attr.aria-expanded]="showFilterSidebar()"
+                            (click)="toggleFilterSidebar()"
+                        >
+                            <app-svg-icon
+                                icon="filter-outline"
+                                size="0.875rem"
+                            />
+                            <span>
+                                Filter
+                                @if (activeFilterCount() > 0) {
+                                    <span class="filter-count">({{ activeFilterCount() }})</span>
+                                }
+                            </span>
+                        </button>
                         @if (activeFilterCount() > 0) {
-                            <span
+                            <button
+                                type="button"
                                 class="filter-clear-inline"
-                                role="button"
+                                aria-label="Clear all filters"
                                 matTooltip="Clear all filters"
-                                matTooltipPosition="above"
-                                (click)="clearAllFilters($event)"
+                                (click)="clearAllFilters()"
                             >
                                 <app-svg-icon
                                     icon="x"
                                     size="0.875rem"
                                 />
-                            </span>
+                            </button>
                         }
-                    </button>
+                    </div>
 
                     <button
                         #sortTrigger="cdkOverlayOrigin"
@@ -246,6 +262,9 @@
                         type="button"
                         class="menu-trigger"
                         [class.active]="sortMenuOpen() || activeSort() !== 'default'"
+                        aria-haspopup="menu"
+                        [attr.aria-expanded]="sortMenuOpen()"
+                        [matTooltip]="sortTriggerLabel()"
                         (click)="toggleSortMenu()"
                     >
                         <app-svg-icon
@@ -260,6 +279,7 @@
                             [class.open]="sortMenuOpen()"
                         />
                     </button>
+                    <!-- Escape detaches the overlay, which closes the menu; its focus trap returns the focus here. -->
                     <ng-template
                         cdkConnectedOverlay
                         [cdkConnectedOverlayOrigin]="sortTrigger"

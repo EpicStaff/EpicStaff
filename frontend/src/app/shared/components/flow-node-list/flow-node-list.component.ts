@@ -9,6 +9,7 @@ import {
     signal,
     TemplateRef,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -48,7 +49,15 @@ function isNodeType(value: string): value is NodeType {
 
 @Component({
     selector: 'app-flow-node-list',
-    imports: [AppSvgIconComponent, DecimalPipe, NgClass, NgTemplateOutlet, SearchComponent, SelectComponent],
+    imports: [
+        MatTooltip,
+        AppSvgIconComponent,
+        DecimalPipe,
+        NgClass,
+        NgTemplateOutlet,
+        SearchComponent,
+        SelectComponent,
+    ],
     templateUrl: './flow-node-list.component.html',
     styleUrls: ['./flow-node-list.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -91,6 +100,11 @@ export class FlowNodeListComponent<T extends NodeListItem = FlowNodeListItem> {
     public readonly showAllLimit = input<number | null>(null);
     /** The host is loading the rest: the button is disabled until it's done. */
     public readonly showAllPending = input<boolean>(false);
+    /**
+     * A click on a row opens something (the host listens to `rowClick`): each row's name is then a button that does
+     * the same from the keyboard. Off, only a branch's chevron is.
+     */
+    public readonly activatableRows = input<boolean>(false);
 
     public readonly rowClick = output<T>();
     public readonly showAllRequested = output<void>();

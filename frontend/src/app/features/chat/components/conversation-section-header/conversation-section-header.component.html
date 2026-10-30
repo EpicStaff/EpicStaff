@@ -8,7 +8,6 @@
     [attr.aria-controls]="controlsId()"
     [attr.aria-label]="isCompact() ? compactLabel() : null"
     [matTooltip]="compactLabel()"
-    [matTooltipDisabled]="!isCompact()"
     (click)="toggled.emit()"
 >
     <app-svg-icon

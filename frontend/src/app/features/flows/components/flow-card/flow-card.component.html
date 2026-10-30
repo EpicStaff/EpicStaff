@@ -15,11 +15,13 @@
         #cardDrop="appLabelDrop"
     >
         @if (selectMode()) {
+            <!-- In select mode the checkbox is the card's keyboard control: its click reaches the card's handler. -->
             <div class="selection-checkbox">
                 <app-checkbox
                     color="secondary"
                     [checked]="isSelected()"
                     [disabled]="isDeleting()"
+                    [ariaLabel]="'Select ' + flow().name"
                 ></app-checkbox>
             </div>
         }
@@ -27,7 +29,18 @@
             <div class="card-main">
                 <div class="card-info">
                     <div class="name-row">
-                        <span class="flow-name">{{ flow().name }}</span>
+                        @if (selectMode()) {
+                            <span class="flow-name">{{ flow().name }}</span>
+                        } @else {
+                            <!-- Opens the flow, from the keyboard too; its click reaches the card's handler. -->
+                            <button
+                                type="button"
+                                class="flow-name"
+                                [matTooltip]="flow().name"
+                            >
+                                {{ flow().name }}
+                            </button>
+                        }
                         <span class="flow-id">- ID {{ flow().id }}</span>
                     </div>
                     <div
@@ -98,7 +111,14 @@
                     <div class="subflow-main">
                         <div class="subflow-info">
                             <div class="subflow-name-row">
-                                <span class="subflow-name">{{ subflow.name }}</span>
+                                <!-- Opens the subflow, from the keyboard too; its click reaches the row's handler. -->
+                                <button
+                                    type="button"
+                                    class="subflow-name"
+                                    [matTooltip]="subflow.name"
+                                >
+                                    {{ subflow.name }}
+                                </button>
                                 <span class="flow-id">· ID {{ subflow.id }}</span>
                             </div>
                             <div

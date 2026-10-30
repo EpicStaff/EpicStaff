@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer, OverlayModule } from '@angular/cdk/overlay';
 import { CUSTOM_ELEMENTS_SCHEMA, signal, WritableSignal } from '@angular/core';
@@ -94,7 +95,7 @@ function render(canWrite: boolean): {
     // Only the editor header is under test: the explorer and editor panes stay unrendered custom elements.
     TestBed.overrideComponent(AgentDefinitionsPageComponent, {
         set: {
-            imports: [DetailHeaderComponent, AppSvgIconComponent, OverlayModule, HasPermissionDirective],
+            imports: [DetailHeaderComponent, AppSvgIconComponent, OverlayModule, CdkTrapFocus, HasPermissionDirective],
             providers: [
                 { provide: AgentsPageStore, useValue: agentSelectedStore() },
                 {
@@ -121,7 +122,10 @@ function savingSignal(fixture: ComponentFixture<AgentDefinitionsPageComponent>):
     return fixture.debugElement.injector.get(AgentsPageStore).saving as WritableSignal<boolean>;
 }
 
+// Focused first, as a real click or Enter leaves it: the menu's focus trap hands the focus back to whatever had it
+// when the menu opened, and a test must not depend on what an earlier spec left focused.
 function openMenu(fixture: ComponentFixture<AgentDefinitionsPageComponent>): void {
+    moreButton(fixture.nativeElement)!.focus();
     moreButton(fixture.nativeElement)!.click();
     fixture.detectChanges();
 }

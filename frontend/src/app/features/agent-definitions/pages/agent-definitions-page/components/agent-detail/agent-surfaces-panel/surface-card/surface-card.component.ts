@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import {
@@ -99,6 +100,7 @@ import { SurfaceKnowledgeAdvancedComponent } from './surface-knowledge-advanced/
         SurfaceKnowledgeAdvancedComponent,
         CheckboxComponent,
         OverlayModule,
+        CdkTrapFocus,
         HasPermissionDirective,
     ],
     templateUrl: './surface-card.component.html',
@@ -207,6 +209,9 @@ export class SurfaceCardComponent {
     );
     // Authorship is read-only, so anyone who can see the surface may view it — no permission gate.
     protected readonly canViewDetails = computed(() => this.surface() !== null);
+    // An editable name is an input; otherwise the name is a button that toggles the card like the chevron, so the
+    // chevron leaves the Tab order to avoid two stops doing the same thing.
+    protected readonly nameIsEditable = computed(() => this.expanded() && !this.readOnly());
     readonly hasMenuItems = computed(
         () =>
             this.showAgentSpecificMenu() ||
@@ -299,6 +304,8 @@ export class SurfaceCardComponent {
         event: MouseEvent
     ): void {
         event.stopPropagation();
+        // Off a menu item first: a dialog the action opens returns the focus to what had it, and the item goes away.
+        if (this.menuOpen()) this.menuTriggerButton()?.nativeElement.focus();
         this.menuOpen.set(false);
         switch (action) {
             case 'openSource':

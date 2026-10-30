@@ -7,11 +7,23 @@
                         <th
                             [class.sortable]="isSortable()"
                             [class.sort-active]="isSortActive(col.key)"
+                            [attr.aria-sort]="sortState(col.key)"
                             (click)="toggleSort(col.key)"
                         >
-                            <span>{{ col.title ?? col.key }}</span>
-                            @if (isSortable() && isSortActive(col.key)) {
-                                <span class="sort-indicator">{{ sortDir() === 'asc' ? '↑' : '↓' }}</span>
+                            @if (isSortable()) {
+                                <!-- The keyboard's way to sort; its click reaches the header cell's handler. -->
+                                <button
+                                    type="button"
+                                    class="sort-btn"
+                                    [matTooltip]="'Sort by ' + (col.title ?? col.key)"
+                                >
+                                    <span>{{ col.title ?? col.key }}</span>
+                                    @if (isSortActive(col.key)) {
+                                        <span class="sort-indicator">{{ sortDir() === 'asc' ? '↑' : '↓' }}</span>
+                                    }
+                                </button>
+                            } @else {
+                                <span>{{ col.title ?? col.key }}</span>
                             }
                         </th>
                     }

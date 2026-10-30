@@ -11,7 +11,12 @@
             (dragover)="onSurfaceDragOver($event)"
             (dragleave)="onSurfaceDragLeave($event)"
             (drop)="onSurfaceDrop($event)"
+            tabindex="0"
+            role="button"
+            [attr.aria-label]="n.label"
+            [attr.aria-current]="isSelected() ? 'true' : null"
             (click)="onRowClick()"
+            (keydown)="onRowKeydown($event)"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
         >
@@ -19,7 +24,9 @@
                 <button
                     type="button"
                     class="row__chevron-btn"
-                    aria-label="Toggle"
+                    [attr.aria-label]="isExpanded() ? 'Collapse' : 'Expand'"
+                    [attr.aria-expanded]="isExpanded()"
+                    [matTooltip]="isExpanded() ? 'Collapse' : 'Expand'"
                     (click)="onChevron($event)"
                 >
                     <app-svg-icon
@@ -43,7 +50,6 @@
                 class="row__label"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
-                matTooltipPosition="above"
                 matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
                 >{{ n.label }}</span
@@ -63,7 +69,12 @@
             (dragHover)="onRowDragHover()"
             (dragstart)="onSurfaceDragStart($event)"
             (dragend)="onSurfaceDragEnd()"
+            tabindex="0"
+            role="button"
+            [attr.aria-label]="n.label"
+            [attr.aria-current]="isSelected() ? 'true' : null"
             (click)="onRowClick()"
+            (keydown)="onRowKeydown($event)"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
         >
@@ -77,7 +88,6 @@
                 class="row__label row__label--surface"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
-                matTooltipPosition="above"
                 matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
                 >{{ n.label }}</span
@@ -93,7 +103,9 @@
                     <button
                         type="button"
                         class="row__hover-btn"
-                        aria-label="More"
+                        aria-label="More actions"
+                        aria-haspopup="menu"
+                        matTooltip="More actions"
                         (click)="onMenuClick($event)"
                     >
                         <app-svg-icon
@@ -116,7 +128,12 @@
             (dragover)="onSurfaceDragOver($event)"
             (dragleave)="onSurfaceDragLeave($event)"
             (drop)="onSurfaceDrop($event)"
+            tabindex="0"
+            role="button"
+            [attr.aria-label]="n.label"
+            [attr.aria-current]="isSelected() ? 'true' : null"
             (click)="onRowClick()"
+            (keydown)="onRowKeydown($event)"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
         >
@@ -124,7 +141,9 @@
                 <button
                     type="button"
                     class="row__chevron-btn"
-                    aria-label="Toggle"
+                    [attr.aria-label]="isExpanded() ? 'Collapse' : 'Expand'"
+                    [attr.aria-expanded]="isExpanded()"
+                    [matTooltip]="isExpanded() ? 'Collapse' : 'Expand'"
                     (click)="onChevron($event)"
                 >
                     <app-svg-icon
@@ -146,7 +165,6 @@
                 class="row__label"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
-                matTooltipPosition="above"
                 matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
                 >{{ n.label }}</span
@@ -159,7 +177,9 @@
                     <button
                         type="button"
                         class="row__hover-btn"
-                        aria-label="More"
+                        aria-label="More actions"
+                        aria-haspopup="menu"
+                        matTooltip="More actions"
                         (click)="onMenuClick($event)"
                     >
                         <app-svg-icon
@@ -176,7 +196,12 @@
             class="row row--doc"
             [class.row--selected]="isSelected()"
             [style.padding-left.px]="12 + depth() * 20"
+            tabindex="0"
+            role="button"
+            [attr.aria-label]="n.label"
+            [attr.aria-current]="isSelected() ? 'true' : null"
             (click)="onRowClick()"
+            (keydown)="onRowKeydown($event)"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
         >
@@ -190,7 +215,6 @@
                 class="row__label"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
-                matTooltipPosition="above"
                 matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
                 >{{ n.label }}</span

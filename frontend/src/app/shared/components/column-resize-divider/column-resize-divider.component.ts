@@ -9,6 +9,7 @@ import {
     OnDestroy,
     signal,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
@@ -25,7 +26,7 @@ const COLLAPSE_DRAG_SLACK = 220;
  */
 @Component({
     selector: 'app-column-resize-divider',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
     template: `
         @if (collapsible()) {
             <button
@@ -33,6 +34,7 @@ const COLLAPSE_DRAG_SLACK = 220;
                 class="collapse-toggle"
                 [class.always-visible]="collapsed()"
                 [attr.aria-label]="collapsed() ? 'Expand panel' : 'Collapse panel'"
+                [matTooltip]="collapsed() ? 'Expand panel' : 'Collapse panel'"
                 (pointerdown)="$event.stopPropagation()"
                 (click)="onToggleClick()"
             >
@@ -100,11 +102,17 @@ const COLLAPSE_DRAG_SLACK = 220;
                 }
             }
 
-            :host:has(.collapse-toggle:not(.always-visible):hover) {
+            :host:has(.collapse-toggle:not(.always-visible):is(:hover, :focus-visible)) {
                 border-left-color: var(--accent-color);
             }
 
-            :host:has(.collapse-toggle.always-visible:hover) {
+            :host:has(.collapse-toggle.always-visible:is(:hover, :focus-visible)) {
+                border-right-color: var(--accent-color);
+            }
+
+            /* Too narrow for the focus ring: its borders take the accent instead. */
+            :host(:focus-visible) {
+                border-left-color: var(--accent-color);
                 border-right-color: var(--accent-color);
             }
 
@@ -133,7 +141,7 @@ const COLLAPSE_DRAG_SLACK = 220;
                     color 0.15s ease;
                 z-index: -1;
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     border-color: var(--accent-color);
                     color: var(--accent-color);
                 }
@@ -148,7 +156,7 @@ const COLLAPSE_DRAG_SLACK = 220;
             }
 
             :host(:hover) .collapse-toggle,
-            :host(:focus-visible) .collapse-toggle {
+            :host(:focus-within) .collapse-toggle {
                 opacity: 1;
                 pointer-events: auto;
             }

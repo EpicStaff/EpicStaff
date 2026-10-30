@@ -6,6 +6,10 @@
                     type="button"
                     class="filter__item"
                     [class.filter__item--locked]="section.locked"
+                    role="checkbox"
+                    [attr.aria-checked]="isChecked(section.id)"
+                    [attr.aria-disabled]="section.locked || null"
+                    [matTooltip]="section.locked ? section.filterLabel + ': always shown' : section.filterLabel"
                     (click)="toggle(section)"
                 >
                     <span

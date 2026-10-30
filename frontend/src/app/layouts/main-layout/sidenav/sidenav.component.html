@@ -40,22 +40,22 @@
         />
     </div>
 
-    <!-- EpicStaff's pages, or the open app's navigation: the context follows the address. Scrolls on its own. -->
+    <!-- EpicStaff's pages, or the open app's navigation: the context follows the address. Scrolls on its own.
+         Every row names itself in a tooltip on its right, on hover and on keyboard focus. -->
     <ul
         class="sidenav-nav main-nav"
         cdkScrollable
     >
         @if (appContext(); as app) {
-            <li
-                class="sidenav-nav-item"
-                (mouseenter)="hoveredRow.set('back')"
-                (mouseleave)="hoveredRow.set(null)"
-            >
+            <li class="sidenav-nav-item">
                 <div class="tooltip-wrapper">
                     <a
                         class="sidenav-nav-link"
                         [routerLink]="returnUrl()"
                         [attr.aria-label]="isExpanded() ? null : backToEpicStaffLabel"
+                        [matTooltip]="backToEpicStaffLabel"
+                        matTooltipPosition="right"
+                        [matTooltipDisabled]="isExpanded()"
                     >
                         <div class="sidenav-link-icon">
                             <app-svg-icon
@@ -67,20 +67,15 @@
                             <span class="sidenav-row-label text-body-medium">{{ backToEpicStaffLabel }}</span>
                         }
                     </a>
-                    <app-tooltip
-                        [text]="backToEpicStaffLabel"
-                        [visible]="hoveredRow() === 'back' && !isExpanded()"
-                    ></app-tooltip>
                 </div>
             </li>
             <li
                 class="sidenav-nav-item"
                 cdkOverlayOrigin
                 #switcherOrigin="cdkOverlayOrigin"
-                (mouseenter)="hoveredRow.set('switcher')"
-                (mouseleave)="hoveredRow.set(null)"
             >
                 <div class="tooltip-wrapper">
+                    <!-- No tooltip while its list is open: it would cover the list. -->
                     <button
                         #switcherRow
                         type="button"
@@ -92,6 +87,9 @@
                             listsInline() && openList() === 'switcher' ? 'sidenav-switcher-list' : null
                         "
                         [attr.aria-label]="isExpanded() ? null : switcherLabel()"
+                        [matTooltip]="switcherLabel()"
+                        matTooltipPosition="right"
+                        [matTooltipDisabled]="isExpanded() || openList() === 'switcher'"
                         (click)="toggleList('switcher')"
                     >
                         <div class="sidenav-link-icon">
@@ -109,10 +107,6 @@
                             ></i>
                         }
                     </button>
-                    <app-tooltip
-                        [text]="switcherLabel()"
-                        [visible]="hoveredRow() === 'switcher' && !isExpanded() && openList() !== 'switcher'"
-                    ></app-tooltip>
                 </div>
                 <ng-template
                     cdkConnectedOverlay
@@ -126,6 +120,7 @@
                     (overlayKeydown)="onPopoverKeydown($event, switcherRow)"
                 >
                     <div
+                        #appsListTrap
                         class="apps-popover"
                         role="dialog"
                         aria-label="Switch app"
@@ -156,11 +151,7 @@
                 ></li>
                 @for (item of menu(); track item.path) {
                     @let isActive = item === activeMenuItem();
-                    <li
-                        class="sidenav-nav-item"
-                        (mouseenter)="hoveredRow.set('menu:' + item.path)"
-                        (mouseleave)="hoveredRow.set(null)"
-                    >
+                    <li class="sidenav-nav-item">
                         <div class="tooltip-wrapper">
                             <a
                                 class="sidenav-nav-link"
@@ -168,6 +159,9 @@
                                 [class.active]="isActive"
                                 [attr.aria-current]="isActive ? activeMenuItemAriaCurrent() : null"
                                 [attr.aria-label]="isExpanded() ? null : item.label"
+                                [matTooltip]="item.label"
+                                matTooltipPosition="right"
+                                [matTooltipDisabled]="isExpanded()"
                             >
                                 <div class="sidenav-link-icon">
                                     <app-plugin-menu-icon
@@ -179,10 +173,6 @@
                                     <span class="sidenav-row-label text-body-medium">{{ item.label }}</span>
                                 }
                             </a>
-                            <app-tooltip
-                                [text]="item.label"
-                                [visible]="hoveredRow() === 'menu:' + item.path && !isExpanded()"
-                            ></app-tooltip>
                         </div>
                     </li>
                 }
@@ -196,11 +186,7 @@
                             role="separator"
                         ></li>
                     }
-                    <li
-                        class="sidenav-nav-item"
-                        (mouseenter)="item.showTooltip = true"
-                        (mouseleave)="item.showTooltip = false"
-                    >
+                    <li class="sidenav-nav-item">
                         <div class="tooltip-wrapper">
                             <a
                                 class="sidenav-nav-link"
@@ -209,6 +195,9 @@
                                 (click)="item.action ? handleItemClick(item, $event) : null"
                                 [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
                                 [attr.aria-label]="isExpanded() ? null : item.label"
+                                [matTooltip]="item.label"
+                                matTooltipPosition="right"
+                                [matTooltipDisabled]="isExpanded()"
                             >
                                 <div class="sidenav-link-icon">
                                     @if (item.icon) {
@@ -230,14 +219,12 @@
                                     class="sidenav-badge-link"
                                     [routerLink]="item.badgeLink"
                                     [attr.aria-label]="item.badgeLabel?.(count) ?? null"
+                                    [matTooltip]="item.badgeLabel?.(count) ?? ''"
+                                    matTooltipPosition="right"
                                 >
                                     <span class="sidenav-badge">{{ count > 99 ? '99+' : count }}</span>
                                 </a>
                             }
-                            <app-tooltip
-                                [text]="item.label"
-                                [visible]="item.showTooltip && !isExpanded()"
-                            ></app-tooltip>
                         </div>
                     </li>
                 }
@@ -252,10 +239,9 @@
                     class="sidenav-nav-item"
                     cdkOverlayOrigin
                     #appsOrigin="cdkOverlayOrigin"
-                    (mouseenter)="hoveredRow.set('apps')"
-                    (mouseleave)="hoveredRow.set(null)"
                 >
                     <div class="tooltip-wrapper">
+                        <!-- No tooltip while its list is open: it would cover the list. -->
                         <button
                             #appsRow
                             type="button"
@@ -265,6 +251,9 @@
                             [attr.aria-haspopup]="listsInline() ? null : 'dialog'"
                             [attr.aria-controls]="listsInline() && openList() === 'apps' ? 'sidenav-apps-list' : null"
                             [attr.aria-label]="isExpanded() ? null : appsRowLabel()"
+                            [matTooltip]="appsRowLabel()"
+                            matTooltipPosition="right"
+                            [matTooltipDisabled]="isExpanded() || openList() === 'apps'"
                             (click)="toggleList('apps')"
                         >
                             <div class="sidenav-link-icon">
@@ -288,10 +277,6 @@
                                 />
                             }
                         </button>
-                        <app-tooltip
-                            [text]="appsRowLabel()"
-                            [visible]="hoveredRow() === 'apps' && !isExpanded() && openList() !== 'apps'"
-                        ></app-tooltip>
                     </div>
                     <ng-template
                         cdkConnectedOverlay
@@ -305,6 +290,7 @@
                         (overlayKeydown)="onPopoverKeydown($event, appsRow)"
                     >
                         <div
+                            #appsListTrap
                             class="apps-popover"
                             role="dialog"
                             aria-label="Apps"
@@ -334,17 +320,16 @@
 
     <ul class="sidenav-nav bottom-nav">
         @if (!appContext() && recycleBinNavItem.isPermitted()) {
-            <li
-                class="sidenav-nav-item"
-                (mouseenter)="recycleBinNavItem.showTooltip = true"
-                (mouseleave)="recycleBinNavItem.showTooltip = false"
-            >
+            <li class="sidenav-nav-item">
                 <div class="tooltip-wrapper">
                     <a
                         class="sidenav-nav-link"
                         [routerLink]="resolveRouteLink(recycleBinNavItem)"
                         [class.active]="isItemActive(recycleBinNavItem)"
                         [attr.aria-label]="isExpanded() ? null : recycleBinNavItem.label"
+                        [matTooltip]="recycleBinNavItem.label"
+                        matTooltipPosition="right"
+                        [matTooltipDisabled]="isExpanded()"
                     >
                         <div class="sidenav-link-icon">
                             <!-- Tabler's outline trash, from the webfont the app ships: the sprite's trash is solid. -->
@@ -357,10 +342,6 @@
                             <span class="sidenav-row-label text-body-medium">{{ recycleBinNavItem.label }}</span>
                         }
                     </a>
-                    <app-tooltip
-                        [text]="recycleBinNavItem.label"
-                        [visible]="recycleBinNavItem.showTooltip && !isExpanded()"
-                    ></app-tooltip>
                 </div>
             </li>
         }
@@ -370,8 +351,6 @@
                 <li
                     class="sidenav-nav-item"
                     [attr.data-tour]="item.id === 'settings' ? tourAnchors.sidenavSettings : null"
-                    (mouseenter)="item.showTooltip = true"
-                    (mouseleave)="item.showTooltip = false"
                 >
                     <div class="tooltip-wrapper">
                         <a
@@ -381,6 +360,9 @@
                             (click)="handleItemClick(item, $event)"
                             [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
                             [attr.aria-label]="isExpanded() ? null : item.label"
+                            [matTooltip]="item.label"
+                            matTooltipPosition="right"
+                            [matTooltipDisabled]="isExpanded()"
                         >
                             <div class="sidenav-link-icon">
                                 @if (item.icon) {
@@ -394,11 +376,6 @@
                                 <span class="sidenav-row-label text-body-medium">{{ item.label }}</span>
                             }
                         </a>
-                        <app-tooltip
-                            [text]="item.label"
-                            [visible]="item.showTooltip && !isExpanded()"
-                            [class]="item.customClass || ''"
-                        ></app-tooltip>
                     </div>
                 </li>
             }
@@ -413,14 +390,20 @@
                 class="sidenav-nav-item user-menu-item"
                 appClickOutside
                 (appClickOutside)="closeUserMenu()"
-                (mouseenter)="showAccountTooltip = true"
-                (mouseleave)="showAccountTooltip = false"
+                (keydown.escape)="closeUserMenuOnEscape($event)"
             >
                 <div class="tooltip-wrapper user-avatar-wrapper">
-                    <div
+                    <!-- No tooltip while its menu is open: it would cover the menu. -->
+                    <button
+                        type="button"
                         class="user-avatar-btn"
                         [class.opened]="isUserMenuOpen()"
                         [class.active]="isAccountRoute()"
+                        [attr.aria-expanded]="isUserMenuOpen()"
+                        [attr.aria-label]="isExpanded() ? null : accountTooltip"
+                        [matTooltip]="accountTooltip"
+                        matTooltipPosition="right"
+                        [matTooltipDisabled]="isExpanded() || isUserMenuOpen()"
                         (click)="toggleUserMenu($event)"
                     >
                         <!-- The active organization; a user without one is shown instead. -->
@@ -453,21 +436,16 @@
                                 >
                             }
                         }
-                    </div>
-                    <app-tooltip
-                        text="Account"
-                        [visible]="showAccountTooltip && !isUserMenuOpen() && !isExpanded()"
-                    ></app-tooltip>
+                    </button>
                     @if (isUserMenuOpen()) {
+                        <!-- Takes the focus when it opens and hands it back to the account row when it closes. -->
                         <app-user-menu
+                            cdkTrapFocus
+                            [cdkTrapFocusAutoCapture]="true"
                             [user]="user"
                             [(isUserMenuOpen)]="isUserMenuOpen"
                         />
                     }
-                    <app-tooltip
-                        text="Profile"
-                        [visible]="showProfileTooltip && !isUserMenuOpen() && !isExpanded()"
-                    ></app-tooltip>
                 </div>
             </li>
         }
@@ -491,6 +469,7 @@
             <a
                 class="apps-list-footer-link"
                 [routerLink]="manageAppsUrl"
+                matTooltip="Manage apps"
                 (click)="onListFooterLinkClick($event)"
             >
                 <app-svg-icon
@@ -523,6 +502,7 @@
             [href]="currentHref()"
             target="_blank"
             rel="noopener"
+            matTooltip="Open in a new tab"
             (click)="closeLists()"
         >
             <app-svg-icon

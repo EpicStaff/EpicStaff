@@ -12,13 +12,20 @@
                 }
                 <span class="dt__header-title">{{ title() }}</span>
             </div>
-            <app-svg-icon
-                [class.disabled]="!canAddRow()"
+            <button
+                type="button"
                 class="dt__add-btn"
-                size="1rem"
-                icon="plus"
+                [class.disabled]="!canAddRow()"
+                [attr.aria-disabled]="!canAddRow() || null"
+                aria-label="Add row"
+                matTooltip="Add row"
                 (click)="addRow()"
-            />
+            >
+                <app-svg-icon
+                    size="1rem"
+                    icon="plus"
+                />
+            </button>
         </div>
     }
 
@@ -172,6 +179,7 @@
                                                             type="button"
                                                             class="dt__navigate-cell"
                                                             [class.dt__navigate-cell--empty]="label.isEmpty"
+                                                            [matTooltip]="label.text"
                                                             (click)="navigateRow.emit({ row, rowIndex })"
                                                         >
                                                             @if (label.isEmpty) {
@@ -192,8 +200,9 @@
                                                         <button
                                                             type="button"
                                                             class="dt__navigate-btn dt__navigate-btn--cell"
+                                                            aria-label="Open nested properties"
+                                                            matTooltip="Open nested properties"
                                                             (click)="navigateRow.emit({ row, rowIndex })"
-                                                            title="Open nested properties"
                                                         >
                                                             <app-svg-icon
                                                                 icon="go-to-arrow"
@@ -206,6 +215,8 @@
                                                         class="dt__cell-input"
                                                         type="text"
                                                         [placeholder]="col.placeholder ?? ''"
+                                                        [attr.aria-label]="col.header"
+                                                        [matTooltip]="col.header"
                                                         [ngModel]="getCellValue(row._id, col.key)"
                                                         (ngModelChange)="onCellChange(row._id, col.key, $event)"
                                                         [disabled]="!!isCellDisabled()?.(row, col.key)"
@@ -215,6 +226,8 @@
                                             @case ('select') {
                                                 <select
                                                     class="dt__cell-select"
+                                                    [attr.aria-label]="col.header"
+                                                    [matTooltip]="col.header"
                                                     [ngModel]="getCellValue(row._id, col.key)"
                                                     (ngModelChange)="onCellChange(row._id, col.key, $event)"
                                                     [disabled]="!!isCellDisabled()?.(row, col.key)"
@@ -235,6 +248,7 @@
                                             @case ('checkbox') {
                                                 <app-checkbox
                                                     class="dt__cell-checkbox"
+                                                    [ariaLabel]="col.header"
                                                     [checked]="!!getCellValue(row._id, col.key)"
                                                     [disabled]="!!isCellDisabled()?.(row, col.key)"
                                                     (checkedChange)="onCellChange(row._id, col.key, $event)"
@@ -259,8 +273,9 @@
                                         <button
                                             type="button"
                                             class="dt__navigate-btn"
+                                            aria-label="Open nested properties"
+                                            matTooltip="Open nested properties"
                                             (click)="navigateRow.emit({ row, rowIndex })"
-                                            title="Open nested properties"
                                         >
                                             <app-svg-icon
                                                 icon="go-to-arrow"
@@ -272,8 +287,9 @@
                                         <button
                                             type="button"
                                             class="dt__remove-btn"
+                                            aria-label="Remove row"
+                                            matTooltip="Remove row"
                                             (click)="removeRow(row._id)"
-                                            title="Remove row"
                                         >
                                             <i class="ti ti-x"></i>
                                         </button>

@@ -15,8 +15,13 @@ $compact-theme: mat.define-theme(
 
 // Material's --mat-sys-*-font tokens default to Roboto; point them at --font-family.
 :root {
-    --mat-tooltip-container-color: rgba(33, 35, 37, 1);
-    --mat-tooltip-supporting-text-color: #d9d9de;
+    // Every matTooltip: a #1E1E1E body, 10px corners, Inter 12px (body-small), text #D9D9DE.
+    --mat-tooltip-container-color: var(--color-tooltip-background);
+    --mat-tooltip-supporting-text-color: var(--color-text-primary);
+    --mat-tooltip-container-shape: var(--radius-xl);
+    --mat-tooltip-supporting-text-size: var(--text-body-small-size);
+    --mat-tooltip-supporting-text-weight: var(--text-body-small-weight);
+    --mat-tooltip-supporting-text-line-height: var(--text-body-small-line-height);
 
     --mat-sys-body-large-font: var(--font-family);
     --mat-sys-body-medium-font: var(--font-family);
@@ -42,7 +47,55 @@ $compact-theme: mat.define-theme(
 }
 
 .mat-mdc-tooltip .mdc-tooltip__surface {
-    box-shadow: var(--shadow-raised);
+    padding: 0.625rem;
+}
+
+// A 16 × 5px arrow pointing at the element, whichever side Material places the tooltip on (it puts
+// mat-mdc-tooltip-panel-above / -below / -left / -right on the overlay pane, after any flip). The arrow hangs
+// off the tooltip element, not the surface: the surface clips (overflow: hidden) and Material uses its ::before.
+.mat-mdc-tooltip::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    border: 0 solid transparent;
+    pointer-events: none;
+}
+
+.mat-mdc-tooltip-panel-above .mat-mdc-tooltip::after,
+.mat-mdc-tooltip-panel-below .mat-mdc-tooltip::after {
+    left: 50%;
+    border-left-width: 8px;
+    border-right-width: 8px;
+    transform: translateX(-50%);
+}
+
+.mat-mdc-tooltip-panel-left .mat-mdc-tooltip::after,
+.mat-mdc-tooltip-panel-right .mat-mdc-tooltip::after {
+    top: 50%;
+    border-top-width: 8px;
+    border-bottom-width: 8px;
+    transform: translateY(-50%);
+}
+
+.mat-mdc-tooltip-panel-above .mat-mdc-tooltip::after {
+    top: 100%;
+    border-top: 5px solid var(--mat-tooltip-container-color);
+}
+
+.mat-mdc-tooltip-panel-below .mat-mdc-tooltip::after {
+    bottom: 100%;
+    border-bottom: 5px solid var(--mat-tooltip-container-color);
+}
+
+.mat-mdc-tooltip-panel-left .mat-mdc-tooltip::after {
+    left: 100%;
+    border-left: 5px solid var(--mat-tooltip-container-color);
+}
+
+.mat-mdc-tooltip-panel-right .mat-mdc-tooltip::after {
+    right: 100%;
+    border-right: 5px solid var(--mat-tooltip-container-color);
 }
 
 .allow-scroll-tooltip .mdc-tooltip__surface {
@@ -104,44 +157,14 @@ $compact-theme: mat.define-theme(
 
 // A tooltip listing several details, one per line: the message joins them with "\n". Wider than
 // Material's 200px default, so a line rarely wraps on its own and the breaks stay readable.
-// Colours and text size are the app's default tooltip (the :root tokens above); only the arrow's shape
-// comes from the sidenav tooltip (layouts/main-layout/sidenav/tooltip).
 // `matTooltipClass` lands on the .mat-mdc-tooltip element, the surface's parent.
 .multiline-tooltip {
     --mat-tooltip-container-max-width: 400px;
-    --mat-tooltip-container-shape: var(--radius-lg);
 }
 
 .multiline-tooltip .mdc-tooltip__surface {
     max-width: 400px;
-    padding: 0.5rem 0.75rem;
     text-align: left;
     overflow-wrap: anywhere;
     white-space: pre-line;
-}
-
-// The arrow hangs off the tooltip element, not the surface: the surface clips (overflow: hidden) and
-// Material already uses its ::before. The sidenav arrow turned on its side: a 16px base, 8px tall, so it
-// spans the 8px gap Material leaves to the row, tip on the row. Material puts
-// mat-mdc-tooltip-panel-above / -below on the overlay pane.
-.multiline-tooltip::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    width: 0;
-    height: 0;
-    border-left: 8px solid transparent;
-    border-right: 8px solid transparent;
-    transform: translateX(-50%);
-    pointer-events: none;
-}
-
-.mat-mdc-tooltip-panel-above .multiline-tooltip::after {
-    top: 100%;
-    border-top: 8px solid var(--mat-tooltip-container-color);
-}
-
-.mat-mdc-tooltip-panel-below .multiline-tooltip::after {
-    bottom: 100%;
-    border-bottom: 8px solid var(--mat-tooltip-container-color);
 }

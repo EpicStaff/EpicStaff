@@ -1,3 +1,17 @@
+// A name that is the button opening its card or row: drawn as the plain title it was. Its card or row shows the focus.
+@mixin name-button {
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: inherit;
+    text-align: left;
+    cursor: inherit;
+
+    &:focus-visible {
+        outline: none;
+    }
+}
+
 .flow-card {
     // One title line: `.flow-name` sets this line height, and the name row and the select-mode
     // checkbox column are this tall, so the checkbox stays centred on the title.
@@ -19,12 +33,18 @@
     width: 100%;
     box-sizing: border-box;
 
-    &:hover {
+    &:is(:hover, :has(.name-row > .flow-name:focus-visible)) {
         background: var(--graphite-690);
     }
 
     &.selected {
         outline: 1px solid var(--accent-color);
+    }
+
+    // The name button opens the flow, so the card shows its keyboard focus.
+    &:has(.name-row > .flow-name:focus-visible) {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
     }
 
     // No `width: 100%`: as a stretched flex item it keeps the full width when select mode pulls it left.
@@ -94,6 +114,7 @@
                     white-space: nowrap;
                     min-width: 0;
                     flex-shrink: 1;
+                    @include name-button;
                 }
 
                 .flow-id {
@@ -209,8 +230,14 @@
             cursor: pointer;
             transition: background 0.15s ease;
 
-            &:hover {
+            &:is(:hover, :has(.subflow-name:focus-visible)) {
                 background: var(--graphite-690);
+            }
+
+            // The name button opens the subflow, so the row shows its keyboard focus.
+            &:has(.subflow-name:focus-visible) {
+                outline: 2px solid var(--accent-color);
+                outline-offset: 2px;
             }
 
             &.drag-over {
@@ -243,6 +270,8 @@
                             overflow: hidden;
                             text-overflow: ellipsis;
                             white-space: nowrap;
+                            line-height: inherit;
+                            @include name-button;
                         }
 
                         .flow-id {

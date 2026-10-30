@@ -3,7 +3,6 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
-import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable, of } from 'rxjs';
 
@@ -341,21 +340,20 @@ describe('DeskRailComponent', () => {
         expect(host().querySelector('.desk-rail__badge')).toBeNull();
     });
 
-    it("shows a listed desk's full name in a tooltip above it, for when the name is cut off", () => {
-        render();
-        const names = fixture.debugElement.queryAll(By.directive(TooltipOnOverflowDirective));
-        expect(names.map((name) => name.nativeElement.textContent.trim())).toEqual([
-            'All desks',
-            'Billing',
-            'Sales',
-            'Support',
-        ]);
-        for (const name of names) {
-            const tooltip = name.injector.get(MatTooltip);
-            expect(tooltip.message).toBe(name.nativeElement.textContent.trim());
-            expect(tooltip.position).toBe('above');
+    it.each([
+        ['listed', false],
+        ['compact', true],
+    ])(
+        'names each desk in a tooltip on its entry while %s, so a cut-off name can be read in full',
+        (_width, compact) => {
+            render({}, 'rail', compact);
+            const tooltips = fixture.debugElement
+                .queryAll(By.css('a.desk-rail__entry'))
+                .map((entry) => entry.injector.get(MatTooltip));
+            expect(tooltips.map((tooltip) => tooltip.message)).toEqual(['All desks', 'Billing', 'Sales', 'Support']);
+            expect(tooltips.every((tooltip) => !tooltip.disabled)).toBe(true);
         }
-    });
+    );
 
     it('lists names in the phone drawer, without the toggle', () => {
         render({ 'b-1': 2 }, 'drawer');

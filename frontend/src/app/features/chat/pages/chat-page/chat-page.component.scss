@@ -254,13 +254,13 @@
         font: inherit;
         cursor: pointer;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-ghost-btn-hover);
         }
 
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -1px;
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
         }
     }
 
@@ -308,7 +308,7 @@
             color: var(--accent-color);
         }
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background-color: var(--color-ghost-btn-hover);
         }
 
@@ -318,8 +318,8 @@
         }
 
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -1px;
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
         }
     }
 }

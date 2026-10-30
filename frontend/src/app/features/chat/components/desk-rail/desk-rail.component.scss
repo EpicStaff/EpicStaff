@@ -81,13 +81,13 @@
     text-decoration: none;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 
     &:focus-visible {
-        outline: 1px solid var(--accent-color);
-        outline-offset: -1px;
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
     }
 
     &--selected {
@@ -144,12 +144,12 @@
     color: var(--color-status-failed);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 
     &:focus-visible {
-        outline: 1px solid var(--accent-color);
+        outline: 2px solid var(--accent-color);
         outline-offset: 2px;
     }
 }
@@ -157,7 +157,7 @@
 .desk-rail__new {
     color: var(--color-text-secondary);
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 }

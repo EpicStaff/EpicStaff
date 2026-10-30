@@ -70,6 +70,7 @@
                     <button
                         type="button"
                         class="detail-header__used-by"
+                        [matTooltip]="'Used by ' + selectedSurfaceUsageCount()"
                         (click)="onOpenUsage()"
                     >
                         Used by {{ selectedSurfaceUsageCount() }}
@@ -133,6 +134,9 @@
                             type="button"
                             class="detail-header__kebab"
                             aria-label="More actions"
+                            aria-haspopup="menu"
+                            matTooltip="More actions"
+                            [attr.aria-expanded]="headerMenuOpen()"
                             [disabled]="store.saving()"
                             (click)="toggleHeaderMenu($event)"
                         >
@@ -150,11 +154,19 @@
                             (overlayOutsideClick)="closeHeaderMenu()"
                             (detach)="closeHeaderMenu()"
                         >
-                            <div class="detail-header__menu">
+                            <!-- Takes the focus on opening and hands it back to the ⋮ button when it closes (Escape closes the overlay). -->
+                            <div
+                                class="detail-header__menu"
+                                role="menu"
+                                cdkTrapFocus
+                                [cdkTrapFocusAutoCapture]="true"
+                            >
                                 @if (canDuplicateSelected()) {
                                     <button
                                         type="button"
                                         class="detail-header__menu-item"
+                                        role="menuitem"
+                                        matTooltip="Duplicate"
                                         (click)="onHeaderDuplicate()"
                                     >
                                         Duplicate
@@ -165,6 +177,8 @@
                                     <button
                                         type="button"
                                         class="detail-header__menu-item"
+                                        role="menuitem"
+                                        matTooltip="View Details"
                                         (click)="onHeaderViewDetails()"
                                     >
                                         View Details
@@ -174,6 +188,8 @@
                                     <button
                                         type="button"
                                         class="detail-header__menu-item detail-header__menu-item--danger"
+                                        role="menuitem"
+                                        matTooltip="Delete"
                                         (click)="onHeaderDelete()"
                                     >
                                         Delete

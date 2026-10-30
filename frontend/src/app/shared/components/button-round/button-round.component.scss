@@ -26,7 +26,7 @@
         background-color: var(--br-color);
         border-color: var(--br-color);
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             box-shadow: 0 4px 20px var(--br-hover);
         }
 
@@ -40,7 +40,7 @@
         background-color: transparent;
         border-color: var(--br-color);
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background-color: var(--br-hover);
         }
 

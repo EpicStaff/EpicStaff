@@ -1,6 +1,9 @@
+<!-- Takes the focus when it opens and hands it back to the Sort button when it closes. -->
 <div
     class="sort-menu"
     role="menu"
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
     (click)="$event.stopPropagation()"
 >
     @for (item of items; track item.value) {
@@ -8,7 +11,9 @@
             type="button"
             class="menu-item"
             [class.is-active]="activeSort() === item.value"
-            role="menuitem"
+            role="menuitemradio"
+            [attr.aria-checked]="activeSort() === item.value"
+            [matTooltip]="item.label"
             (click)="onSelect(item.value)"
         >
             <span class="label">{{ item.label }}</span>

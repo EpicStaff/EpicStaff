@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, model, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 
 export interface FlowsEnumOption {
@@ -9,7 +10,7 @@ export interface FlowsEnumOption {
 
 @Component({
     selector: 'app-flows-checkbox-enum',
-    imports: [CheckboxComponent, AppSvgIconComponent],
+    imports: [CheckboxComponent, AppSvgIconComponent, MatTooltip],
     templateUrl: './flows-checkbox-enum.component.html',
     styleUrls: ['./flows-checkbox-enum.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

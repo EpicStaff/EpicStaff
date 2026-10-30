@@ -20,8 +20,12 @@
         <div class="panel-header-actions">
             <button
                 #kebabOrigin
+                type="button"
                 class="header-btn"
-                title="Menu"
+                aria-label="Menu"
+                aria-haspopup="menu"
+                matTooltip="Menu"
+                [attr.aria-expanded]="kebabMenuOpen()"
                 (click)="onKebabClick()"
             >
                 <app-svg-icon
@@ -32,8 +36,10 @@
 
             @if (mode() === 'floating') {
                 <button
+                    type="button"
                     class="header-btn"
-                    [title]="isFullHeight() ? 'Restore height' : 'Full height'"
+                    [attr.aria-label]="isFullHeight() ? 'Restore height' : 'Full height'"
+                    [matTooltip]="isFullHeight() ? 'Restore height' : 'Full height'"
                     (click)="onExpandClick()"
                 >
                     <app-svg-icon
@@ -44,8 +50,10 @@
             }
 
             <button
+                type="button"
                 class="header-btn"
-                [title]="mode() === 'docked' ? 'Float' : 'Dock'"
+                [attr.aria-label]="mode() === 'docked' ? 'Float' : 'Dock'"
+                [matTooltip]="mode() === 'docked' ? 'Float' : 'Dock'"
                 (click)="onToggleMode()"
             >
                 <app-svg-icon
@@ -55,8 +63,10 @@
             </button>
 
             <button
+                type="button"
                 class="header-btn"
-                title="Minimize"
+                aria-label="Minimize"
+                matTooltip="Minimize"
                 (click)="close()"
             >
                 <app-svg-icon
@@ -75,37 +85,49 @@
         [cdkConnectedOverlayHasBackdrop]="true"
         cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
         (backdropClick)="closeKebabMenu()"
+        (detach)="closeKebabMenu()"
     >
+        <!-- Takes the focus on opening and hands it back to the ⋮ button when it closes (Escape closes the overlay). -->
         <div
             class="header-menu"
             role="menu"
+            cdkTrapFocus
+            [cdkTrapFocusAutoCapture]="true"
         >
             <button
+                type="button"
                 class="header-menu__item"
                 role="menuitem"
+                matTooltip="Sessions"
                 (click)="onMenuItemClick('sessions')"
             >
                 Sessions
             </button>
             <button
+                type="button"
                 class="header-menu__item"
                 role="menuitem"
+                matTooltip="Settings"
                 (click)="onMenuItemClick('settings')"
             >
                 Settings
             </button>
             <div class="header-menu__divider"></div>
             <button
+                type="button"
                 class="header-menu__item"
                 role="menuitem"
+                matTooltip="Clear chat history"
                 (click)="onMenuItemClick('clear-history')"
             >
                 Clear chat history
             </button>
             @if (mode() === 'floating') {
                 <button
+                    type="button"
                     class="header-menu__item"
                     role="menuitem"
+                    matTooltip="Reset position"
                     (click)="onMenuItemClick('reset-position')"
                 >
                     Reset position
@@ -115,14 +137,15 @@
     </ng-template>
 
     @if (showSettings()) {
-        <app-flow-assistant-settings (closed)="showSettings.set(false)" />
+        <app-flow-assistant-settings (closed)="onSettingsClosed()" />
     }
 
     <div class="panel-body">
         @if (sidebarOpen()) {
             <app-flow-assistant-sidebar
                 class="sidebar-overlay"
-                (selected)="closeSidebar()"
+                (selected)="onSessionSelected()"
+                (keydown.escape)="onSidebarEscape($event)"
             />
         }
 
@@ -172,7 +195,7 @@
                                     class="copy-btn"
                                     [class.copy-btn--copied]="copiedMessageIndex() === $index"
                                     (click)="copyAssistantMessage(message, $index)"
-                                    title="Copy message"
+                                    matTooltip="Copy message"
                                     aria-label="Copy message"
                                 >
                                     @if (copiedMessageIndex() === $index) {
@@ -196,7 +219,10 @@
                         @if (!assistantService.liveToolCallIds().has(message.tool_call_id)) {
                             <div class="message message--tool">
                                 <details class="tool-call">
-                                    <summary class="tool-call__summary">
+                                    <summary
+                                        class="tool-call__summary"
+                                        [matTooltip]="message.name"
+                                    >
                                         <app-svg-icon
                                             icon="tool"
                                             size="0.875rem"
@@ -233,7 +259,9 @@
                     <div class="prompt-chips">
                         @for (chip of displayChips(); track $index) {
                             <button
+                                type="button"
                                 class="prompt-chip"
+                                [matTooltip]="chip.text"
                                 (click)="assistantService.executeAction(chip)"
                             >
                                 {{ chip.text }}
@@ -246,6 +274,8 @@
                         #messageInput
                         class="input-area__textarea"
                         placeholder="Ask about this flow..."
+                        aria-label="Ask about this flow"
+                        matTooltip="Ask about this flow"
                         rows="1"
                         [value]="inputText()"
                         (input)="onInputChange($event)"
@@ -257,7 +287,7 @@
                                 type="button"
                                 class="input-area__send-btn input-area__send-btn--stop"
                                 (click)="assistantService.cancelStream()"
-                                title="Stop generating"
+                                matTooltip="Stop generating"
                                 aria-label="Stop generating"
                             >
                                 <app-svg-icon
@@ -267,10 +297,12 @@
                             </button>
                         } @else {
                             <button
+                                type="button"
                                 class="input-area__send-btn"
+                                aria-label="Send"
+                                matTooltip="Send (Enter)"
                                 [disabled]="sendDisabled()"
                                 (click)="sendMessage()"
-                                title="Send (Enter)"
                             >
                                 <app-svg-icon
                                     icon="send"

@@ -6,12 +6,18 @@
         @for (chip of selectedChips(); let i = $index; track $index) {
             <span class="chips__item">
                 {{ chip.name }}
-                <app-icon
-                    [icon]="'ui/close'"
+                <button
+                    type="button"
                     class="chips__item-remove"
-                    [size]="'1rem'"
+                    [attr.aria-label]="'Remove ' + chip.name"
+                    matTooltip="Remove"
                     (click)="remove($event, i)"
-                />
+                >
+                    <app-icon
+                        [icon]="'ui/close'"
+                        [size]="'1rem'"
+                    />
+                </button>
             </span>
         }
     </div>
@@ -20,9 +26,11 @@
         #inputRef
         type="text"
         [placeholder]="placeholder()"
+        [attr.aria-label]="placeholder() || null"
+        [matTooltip]="placeholder()"
         [(ngModel)]="inputValue"
         (keydown.enter)="addInput()"
-        (keydown.tab)="addInput()"
+        (keydown.tab)="completeOnTab()"
         (keydown.arrowDown)="highlightNext()"
         (keydown.arrowUp)="highlightPrev()"
         (focus)="onFocus()"

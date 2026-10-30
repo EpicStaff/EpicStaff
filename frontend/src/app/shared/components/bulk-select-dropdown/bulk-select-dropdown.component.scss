@@ -56,15 +56,14 @@
         cursor: pointer;
         transition: background-color 0.15s ease;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background: var(--color-secondary-btn-background-hover);
         }
 
         // Inset, so the container's overflow clipping cannot cut the ring off, and 1px clear of the
         // container border, so it stays distinct from the accent border of the Selected states.
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -2px;
+            outline-offset: -3px;
         }
 
         &:disabled {
@@ -138,7 +137,7 @@
 
         .bulk-select__main,
         .bulk-select__clear {
-            &:hover:not(:disabled) {
+            &:is(:hover, :focus-visible):not(:disabled) {
                 background: var(--color-ghost-btn-hover);
             }
 
@@ -221,8 +220,7 @@
 
         // Inset, so the menu's overflow clipping cannot cut the ring off.
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -1px;
+            outline-offset: -2px;
         }
     }
 

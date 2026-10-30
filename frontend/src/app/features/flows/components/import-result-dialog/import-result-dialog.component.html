@@ -34,6 +34,7 @@
         <button
             class="close-btn"
             type="button"
+            aria-label="Close"
             (click)="closeDialog()"
             matTooltip="Close"
             matTooltipPosition="above"
@@ -103,16 +104,18 @@
                 >
                     @for (entityType of entityTypes(); track entityType) {
                         @if (getEntityTypeCount(entityType) > 0) {
-                            <div
+                            <button
+                                type="button"
                                 class="summary-item"
+                                [matTooltip]="getEntityTypeLabel(entityType)"
                                 (click)="scrollToEntityGroup(entityType)"
                             >
                                 @if (isInlineSvgIcon(entityType)) {
-                                    <div
+                                    <span
                                         class="item-icon"
                                         [innerHTML]="getInlineSvgIcon(entityType)"
                                         [style.color]="getIconColorForEntityType(entityType)"
-                                    ></div>
+                                    ></span>
                                 } @else {
                                     <app-icon
                                         [icon]="getIconForEntityType(entityType)"
@@ -120,13 +123,13 @@
                                         [style.color]="getIconColorForEntityType(entityType)"
                                     ></app-icon>
                                 }
-                                <p class="summary-label">
+                                <span class="summary-label">
                                     <span class="summary-count">
                                         {{ getEntityTypeCount(entityType) }}
                                     </span>
                                     {{ getEntityTypeLabel(entityType) }}
-                                </p>
-                            </div>
+                                </span>
+                            </button>
                         }
                     }
                 </div>
@@ -164,31 +167,36 @@
                         [class.highlighted]="highlightedGroup() === entityType"
                     >
                         <!-- Entity Type Header -->
-                        <h4
-                            class="entity-type-title"
-                            (click)="toggleGroup(entityType)"
-                        >
-                            <app-icon
-                                icon="ui/chevron-down"
-                                size="0.85rem"
-                                class="collapse-icon"
-                                [class.collapsed]="isGroupCollapsed(entityType)"
-                            ></app-icon>
-                            @if (isInlineSvgIcon(entityType)) {
-                                <div
-                                    class="item-icon"
-                                    [innerHTML]="getInlineSvgIcon(entityType)"
-                                    [style.color]="getIconColorForEntityType(entityType)"
-                                ></div>
-                            } @else {
+                        <h4 class="entity-type-title">
+                            <button
+                                type="button"
+                                class="entity-type-toggle"
+                                [attr.aria-expanded]="!isGroupCollapsed(entityType)"
+                                [matTooltip]="getEntityTypeLabel(entityType)"
+                                (click)="toggleGroup(entityType)"
+                            >
                                 <app-icon
-                                    [icon]="getIconForEntityType(entityType)"
-                                    size="1.25rem"
-                                    [style.color]="getIconColorForEntityType(entityType)"
+                                    icon="ui/chevron-down"
+                                    size="0.85rem"
+                                    class="collapse-icon"
+                                    [class.collapsed]="isGroupCollapsed(entityType)"
                                 ></app-icon>
-                            }
-                            {{ getEntityTypeLabel(entityType) }}
-                            <span class="summary-count">{{ result!.total }}</span>
+                                @if (isInlineSvgIcon(entityType)) {
+                                    <span
+                                        class="item-icon"
+                                        [innerHTML]="getInlineSvgIcon(entityType)"
+                                        [style.color]="getIconColorForEntityType(entityType)"
+                                    ></span>
+                                } @else {
+                                    <app-icon
+                                        [icon]="getIconForEntityType(entityType)"
+                                        size="1.25rem"
+                                        [style.color]="getIconColorForEntityType(entityType)"
+                                    ></app-icon>
+                                }
+                                {{ getEntityTypeLabel(entityType) }}
+                                <span class="summary-count">{{ result!.total }}</span>
+                            </button>
                         </h4>
 
                         <!-- Entity Items List -->
@@ -206,6 +214,18 @@
                                                     <div
                                                         class="entity-item"
                                                         [class.expandable]="hasExpandableFields(entityType, item)"
+                                                        [attr.tabindex]="
+                                                            hasExpandableFields(entityType, item) ? 0 : null
+                                                        "
+                                                        [attr.role]="
+                                                            hasExpandableFields(entityType, item) ? 'button' : null
+                                                        "
+                                                        [attr.aria-expanded]="
+                                                            hasExpandableFields(entityType, item)
+                                                                ? isItemExpanded(entityType, 'created', item.id)
+                                                                : null
+                                                        "
+                                                        (keydown)="onItemKeydown($event, entityType, 'created', item)"
                                                         [class.expanded]="
                                                             isItemExpanded(entityType, 'created', item.id)
                                                         "
@@ -289,6 +309,18 @@
                                                     <div
                                                         class="entity-item"
                                                         [class.expandable]="hasExpandableFields(entityType, item)"
+                                                        [attr.tabindex]="
+                                                            hasExpandableFields(entityType, item) ? 0 : null
+                                                        "
+                                                        [attr.role]="
+                                                            hasExpandableFields(entityType, item) ? 'button' : null
+                                                        "
+                                                        [attr.aria-expanded]="
+                                                            hasExpandableFields(entityType, item)
+                                                                ? isItemExpanded(entityType, 'reused', item.id)
+                                                                : null
+                                                        "
+                                                        (keydown)="onItemKeydown($event, entityType, 'reused', item)"
                                                         [class.expanded]="isItemExpanded(entityType, 'reused', item.id)"
                                                         (click)="
                                                             hasExpandableFields(entityType, item) &&

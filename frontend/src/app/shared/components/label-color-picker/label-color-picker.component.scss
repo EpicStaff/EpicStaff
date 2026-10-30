@@ -17,7 +17,7 @@
     height: 28px;
     width: 100%;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         border-color: var(--accent-color);
     }
 

@@ -72,11 +72,16 @@
     max-height: 260px;
     overflow-y: auto;
 }
-.dropdown-menu li {
+.dropdown-menu .status-option {
+    width: 100%;
     padding: 6px 18px 6px 14px;
     display: flex;
     align-items: center;
     gap: 10px;
+    border: none;
+    background: transparent;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
     font-size: 1em;
     color: var(--color-text-primary);
@@ -84,11 +89,16 @@
         background 0.15s,
         color 0.15s;
     position: relative;
+
+    // The menu scrolls, so it would clip a ring drawn outside the option.
+    &:focus-visible {
+        outline-offset: -2px;
+    }
 }
-.dropdown-menu li.selected {
+.dropdown-menu .status-option.selected {
     background: var(--blue-alpha-10);
 }
-.dropdown-menu li:hover {
+.dropdown-menu .status-option:is(:hover, :focus-visible) {
     background: var(--blue-alpha-18);
 }
 .dropdown-menu .status-icon {

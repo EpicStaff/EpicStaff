@@ -1,4 +1,6 @@
 <button
+    appContentText
+    #label="appContentText"
     class="tab-btn"
     [class.active]="active"
     [class.disabled]="disabled"
@@ -6,8 +8,8 @@
     [disabled]="disabled"
     [attr.aria-pressed]="active"
     [attr.aria-describedby]="describedBy()"
+    [matTooltip]="label.text()"
     (click)="onAction($event)"
-    (keydown.enter)="onAction($event)"
     type="button"
 >
     <ng-content></ng-content>

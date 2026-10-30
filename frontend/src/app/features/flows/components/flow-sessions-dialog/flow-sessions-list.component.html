@@ -28,7 +28,9 @@
 
             <div class="action-buttons">
                 <button
+                    type="button"
                     class="delete-btn"
+                    matTooltip="Delete Selected"
                     [class.delete-btn--hidden]="selectedIds().size === 0"
                     [disabled]="isDeleting()"
                     (click)="onBulkDelete()"

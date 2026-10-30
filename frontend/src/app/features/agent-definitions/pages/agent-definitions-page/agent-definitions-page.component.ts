@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import {
@@ -13,6 +14,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
     AppSvgIconComponent,
@@ -79,6 +81,8 @@ import {
         DetailHeaderComponent,
         AppSvgIconComponent,
         OverlayModule,
+        CdkTrapFocus,
+        MatTooltip,
         HasPermissionDirective,
     ],
     templateUrl: './agent-definitions-page.component.html',
@@ -450,7 +454,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     onHeaderDuplicate(): void {
-        this.closeHeaderMenu();
+        this.closeHeaderMenuToTrigger();
         const a = this.store.selectedAgent();
         if (a) {
             this.store.duplicateAgent(a.id);
@@ -469,8 +473,14 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     onHeaderDelete(): void {
-        this.closeHeaderMenu();
+        this.closeHeaderMenuToTrigger();
         this.onDeleteSelected();
+    }
+
+    /** Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away. */
+    private closeHeaderMenuToTrigger(): void {
+        this.headerMenuTrigger()?.nativeElement.focus();
+        this.closeHeaderMenu();
     }
 
     onExplorerTreeMenu(event: ExplorerTreeMenuEvent): void {

@@ -6,6 +6,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    padding: 0;
+    border: none;
+    background: transparent;
     cursor: pointer;
     color: var(--color-text-secondary);
 }
@@ -44,6 +47,11 @@
     border: 1px solid var(--fog-alpha-16);
     border-radius: 4px;
     color: var(--color-text-secondary);
+
+    // The input draws no border of its own, so the box shows its focus.
+    &:focus-within {
+        border-color: var(--accent-color);
+    }
 
     input {
         flex: 1;
@@ -93,7 +101,7 @@
     cursor: pointer;
     transition: color 0.2s;
 
-    &:hover:not(.select-dropdown__tab--active) {
+    &:is(:hover, :focus-visible):not(.select-dropdown__tab--active) {
         color: var(--color-text-primary);
     }
 
@@ -121,7 +129,7 @@
     transition: opacity 0.3s;
 
     // Same accent-tinted hover as the tabs (#685fff14).
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--accent-color-hover);
     }
 
@@ -167,8 +175,14 @@
     cursor: pointer;
     box-sizing: border-box;
 
-    &:hover {
+    // A tree row in multiple selection is not focused itself: its checkbox or chevron is.
+    &:is(:hover, :focus-visible, :has(:focus-visible)) {
         background-color: var(--color-ghost-btn-hover);
+    }
+
+    // Inside the scrolling list, which clips anything drawn outside it.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &--selected {
@@ -184,7 +198,7 @@
         opacity: 0.5;
         cursor: not-allowed;
 
-        &:hover {
+        &:is(:hover, :focus-visible, :has(:focus-visible)) {
             background-color: var(--graphite-750);
         }
     }
@@ -214,7 +228,10 @@
     }
 }
 
-.select-dropdown__row:hover ::ng-deep app-checkbox input[type='checkbox']:not(:checked):not(:indeterminate) {
+.select-dropdown__row:is(:hover, :focus-visible)
+    ::ng-deep
+    app-checkbox
+    input[type='checkbox']:not(:checked):not(:indeterminate) {
     border-color: var(--fog-200);
 }
 
@@ -223,11 +240,30 @@
     color: var(--color-text-secondary);
 }
 
+// In single selection a tree row's name is the button that picks the row, so the row shows its keyboard focus; inside,
+// as the scrolling list clips anything drawn outside it.
+.select-dropdown__row--tree:has(> .select-dropdown__row-name:focus-visible) {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
+}
+
 .select-dropdown__row-name {
     min-width: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: inherit;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+
+    // The row draws it.
+    &:focus-visible {
+        outline: none;
+    }
 }
 
 .select-dropdown__row-tip {

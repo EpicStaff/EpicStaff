@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ConnectedPosition, Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
@@ -25,6 +26,7 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { LabelColor, LabelTreeNode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
+import { filter } from 'rxjs';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../buttons';
@@ -49,6 +51,7 @@ interface FlatLabelNode {
 @Component({
     selector: 'app-label-dropdown',
     imports: [
+        CdkTrapFocus,
         CommonModule,
         FormsModule,
         AppSvgIconComponent,
@@ -218,6 +221,15 @@ export class LabelDropdownComponent implements OnInit {
         this.overlayRef
             .backdropClick()
             .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.close());
+
+        // Escape in one of its inputs clears or cancels that input instead (their own keyup handlers).
+        this.overlayRef
+            .keydownEvents()
+            .pipe(
+                filter((event) => event.key === 'Escape' && !(event.target instanceof HTMLInputElement)),
+                takeUntilDestroyed(this.destroyRef)
+            )
             .subscribe(() => this.close());
 
         const portal = new TemplatePortal(this.dropdownTemplate(), this.vcr);

@@ -11,6 +11,7 @@
             type="button"
             class="tab-btn"
             [class.active]="activeTab() === 'primary'"
+            [matTooltip]="primaryTab.label"
             (click)="setActiveTab('primary')"
         >
             <app-svg-icon
@@ -23,6 +24,7 @@
             type="button"
             class="tab-btn"
             [class.active]="activeTab() === 'labels'"
+            [matTooltip]="labelsTab.label"
             (click)="setActiveTab('labels')"
         >
             <app-svg-icon
@@ -46,6 +48,8 @@
             type="text"
             class="search-input"
             [placeholder]="primaryTab.searchPlaceholder ?? 'Search...'"
+            [attr.aria-label]="primaryTab.searchPlaceholder ?? 'Search'"
+            [matTooltip]="primaryTab.searchPlaceholder ?? 'Search'"
             [ngModel]="primarySearch()"
             (ngModelChange)="primarySearch.set($event)"
         />
@@ -81,6 +85,8 @@
             type="text"
             class="search-input"
             [placeholder]="labelsTab.searchPlaceholder ?? 'Search label...'"
+            [attr.aria-label]="labelsTab.searchPlaceholder ?? 'Search label'"
+            [matTooltip]="labelsTab.searchPlaceholder ?? 'Search label'"
             [ngModel]="labelSearch()"
             (ngModelChange)="labelSearch.set($event)"
         />
@@ -96,6 +102,9 @@
                         <button
                             type="button"
                             class="expand-btn"
+                            [attr.aria-expanded]="isExpanded(entry.node.id)"
+                            [attr.aria-label]="(isExpanded(entry.node.id) ? 'Collapse ' : 'Expand ') + entry.node.name"
+                            [matTooltip]="isExpanded(entry.node.id) ? 'Collapse' : 'Expand'"
                             (click)="toggleExpand(entry.node.id)"
                         >
                             <app-svg-icon

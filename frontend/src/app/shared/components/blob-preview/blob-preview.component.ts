@@ -11,6 +11,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { renderAsync } from 'docx-preview';
 import * as Papa from 'papaparse';
@@ -61,7 +62,7 @@ export function canPreviewFilePart(fileName: string): boolean {
     selector: 'app-blob-preview',
     templateUrl: './blob-preview.component.html',
     styleUrls: ['./blob-preview.component.scss'],
-    imports: [DecimalPipe, JsonPipe, AppSvgIconComponent, ButtonComponent],
+    imports: [DecimalPipe, JsonPipe, AppSvgIconComponent, ButtonComponent, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BlobPreviewComponent {

@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { EnterSubmitDirective } from '@shared/directives';
 import { Observable } from 'rxjs';
 
@@ -71,6 +72,7 @@ export interface ConfirmationCheckbox {
 @Component({
     selector: 'app-confirmation-dialog',
     imports: [
+        MatTooltip,
         CommonModule,
         DialogModule,
         IconButtonComponent,

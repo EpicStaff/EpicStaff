@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { FlowAssistantService } from '../../flow-assistant.service';
@@ -24,7 +25,7 @@ function formatRelativeDate(isoString: string | null | undefined): string {
 
 @Component({
     selector: 'app-flow-assistant-sidebar',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
     templateUrl: './flow-assistant-sidebar.component.html',
     styleUrls: ['./flow-assistant-sidebar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -53,6 +54,13 @@ export class FlowAssistantSidebarComponent {
         if (this.currentConversationId() === id) return;
         this.assistantService.selectSession(id);
         this.selected.emit(id);
+    }
+
+    /** Enter/Space on a focused row open its session, as a click does; keys from its delete button pass. */
+    onSessionKeydown(event: KeyboardEvent, id: number): void {
+        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        this.selectSession(id);
     }
 
     deleteSession(event: MouseEvent, id: number): void {

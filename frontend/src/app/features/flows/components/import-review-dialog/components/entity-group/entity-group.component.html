@@ -50,7 +50,11 @@
             class="entity-item"
             [class.expandable]="isRowClickable(item)"
             [class.expanded]="isItemExpanded(status, item.id)"
+            [attr.tabindex]="isRowClickable(item) ? 0 : null"
+            [attr.role]="isRowClickable(item) ? 'button' : null"
+            [attr.aria-expanded]="isRowExpandable(item) ? isItemExpanded(status, item.id) : null"
             (click)="onRowClick(item, status)"
+            (keydown)="onRowKeydown($event, item, status)"
         >
             @if (isRowExpandable(item)) {
                 <app-svg-icon

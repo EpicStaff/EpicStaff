@@ -9,6 +9,7 @@
             class="close-btn"
             (click)="cancel()"
             aria-label="Close"
+            matTooltip="Close"
         >
             <app-svg-icon
                 icon="x"
@@ -23,6 +24,7 @@
                 type="button"
                 class="scope-tab"
                 [class.active]="scopeKey() === scope.key"
+                [matTooltip]="scope.label"
                 (click)="setScope(scope.key)"
             >
                 <app-svg-icon
@@ -45,6 +47,7 @@
                 <button
                     type="button"
                     class="operator-btn"
+                    matTooltip="Operator"
                     [class.open]="operatorOpenFor() === 'primary'"
                     (click)="toggleOperator('primary')"
                 >
@@ -62,6 +65,7 @@
                             <button
                                 type="button"
                                 class="operator-option"
+                                [matTooltip]="operatorLabels[op]"
                                 [class.selected]="op === primaryOperator()"
                                 (click)="selectOperator('primary', op)"
                             >
@@ -76,6 +80,8 @@
                 type="text"
                 class="value-input"
                 placeholder="Enter value..."
+                aria-label="First value"
+                matTooltip="First value"
                 [ngModel]="primaryValue()"
                 (ngModelChange)="primaryValue.set($event)"
             />
@@ -87,6 +93,7 @@
                     type="button"
                     class="combinator-btn"
                     [class.active]="combinator() === 'AND'"
+                    matTooltip="AND"
                     (click)="setCombinator('AND')"
                 >
                     AND
@@ -95,6 +102,7 @@
                     type="button"
                     class="combinator-btn"
                     [class.active]="combinator() === 'OR'"
+                    matTooltip="OR"
                     (click)="setCombinator('OR')"
                 >
                     OR
@@ -107,6 +115,7 @@
                 <button
                     type="button"
                     class="operator-btn"
+                    matTooltip="Operator"
                     [class.open]="operatorOpenFor() === 'secondary'"
                     (click)="toggleOperator('secondary')"
                 >
@@ -124,6 +133,7 @@
                             <button
                                 type="button"
                                 class="operator-option"
+                                [matTooltip]="operatorLabels[op]"
                                 [class.selected]="op === secondaryOperator()"
                                 (click)="selectOperator('secondary', op)"
                             >
@@ -138,6 +148,8 @@
                 type="text"
                 class="value-input"
                 placeholder="Enter value..."
+                aria-label="Second value"
+                matTooltip="Second value"
                 [ngModel]="secondaryValue()"
                 (ngModelChange)="secondaryValue.set($event)"
             />

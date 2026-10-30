@@ -12,6 +12,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     HelpTooltipComponent,
@@ -46,6 +47,7 @@ import { SurfaceCardComponent } from './surface-card/surface-card.component';
     selector: 'app-agent-surfaces-panel',
     imports: [
         FormsModule,
+        MatTooltip,
         EnterBlurDirective,
         AppSvgIconComponent,
         SurfaceCardComponent,

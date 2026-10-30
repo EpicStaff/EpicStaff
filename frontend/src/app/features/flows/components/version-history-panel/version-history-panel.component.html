@@ -14,6 +14,8 @@
                 (cleared)="cancelSelectMode()"
             />
             <button
+                type="button"
+                aria-label="Close"
                 (click)="closed.emit()"
                 matTooltip="Close"
                 class="panel-header__close"
@@ -43,9 +45,9 @@
         @for (version of versionsList; track version.id) {
             <div
                 class="version-card"
-                tabindex="0"
-                role="button"
-                [attr.aria-pressed]="isCardSelected(version.id)"
+                [attr.tabindex]="selectMode() ? null : 0"
+                [attr.role]="selectMode() ? null : 'button'"
+                [attr.aria-pressed]="selectMode() ? null : isCardSelected(version.id)"
                 [class.version-card--selected]="isCardSelected(version.id)"
                 [class.version-card--previewed]="previewedVersionId() === version.id"
                 (click)="onCardClick($event, version)"
@@ -60,6 +62,7 @@
                             color="secondary"
                             [checked]="isVersionSelected(version.id)"
                             [disabled]="isDeleting()"
+                            [ariaLabel]="'Select ' + version.name"
                             (changed)="toggleVersionSelection(version.id)"
                         ></app-checkbox>
                     </div>
@@ -143,34 +146,55 @@
                             (overlayOutsideClick)="openMenuId = null"
                             (detach)="openMenuId = null"
                         >
-                            <div class="action-dropdown-panel__inner">
+                            <!-- Takes the focus when it opens and hands it back to the options button when it closes. -->
+                            <div
+                                class="action-dropdown-panel__inner"
+                                role="menu"
+                                cdkTrapFocus
+                                [cdkTrapFocusAutoCapture]="true"
+                            >
                                 <button
+                                    type="button"
                                     class="action-dropdown-panel__item"
+                                    role="menuitem"
+                                    matTooltip="Restore"
                                     (click)="restoreVersion(version, $event)"
                                 >
                                     Restore
                                 </button>
                                 <button
+                                    type="button"
                                     class="action-dropdown-panel__item"
+                                    role="menuitem"
+                                    matTooltip="Create flow from this"
                                     (click)="createFlowFromVersion(version, $event)"
                                 >
                                     Create flow from this
                                 </button>
                                 <button
+                                    type="button"
                                     class="action-dropdown-panel__item"
+                                    role="menuitem"
+                                    matTooltip="Rename"
                                     (click)="startEdit(version, 'name')"
                                 >
                                     Rename
                                 </button>
                                 <button
+                                    type="button"
                                     class="action-dropdown-panel__item"
+                                    role="menuitem"
+                                    matTooltip="Change Description"
                                     (click)="startEdit(version, 'description')"
                                 >
                                     Change Description
                                 </button>
                                 <button
                                     *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
+                                    type="button"
                                     class="action-dropdown-panel__item action-dropdown-panel__item--danger"
+                                    role="menuitem"
+                                    matTooltip="Delete"
                                     (click)="deleteVersion(version, $event)"
                                 >
                                     Delete
@@ -199,7 +223,9 @@
             </app-button>
         } @else {
             <button
+                type="button"
                 class="restore-version-btn"
+                matTooltip="Restore This Version"
                 [disabled]="!selectedVersionId()"
                 (click)="restoreSelectedVersion()"
             >

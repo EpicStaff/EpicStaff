@@ -36,7 +36,7 @@
             line-height: 130%;
             transition: border-color 0.2s ease;
 
-            &:hover:not(:disabled) {
+            &:is(:hover, :focus-visible):not(:disabled) {
                 border-color: var(--accent-color, #685fff);
             }
 
@@ -136,7 +136,7 @@
             border-bottom: none;
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--white-alpha-5);
         }
 
@@ -188,4 +188,9 @@
     100% {
         transform: rotate(360deg);
     }
+}
+
+// Inside the scrolling list, which clips anything drawn outside it.
+.dropdown__option:focus-visible {
+    outline-offset: -2px;
 }

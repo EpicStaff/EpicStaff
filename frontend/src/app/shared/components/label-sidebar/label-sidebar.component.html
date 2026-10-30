@@ -1,7 +1,9 @@
 <div class="sidebar-header">
     <span class="sidebar-title">Label Branches</span>
     <button
+        type="button"
         class="close-btn"
+        aria-label="Close sidebar"
         matTooltip="Close sidebar"
         matTooltipPosition="right"
         data-selection-safe
@@ -16,9 +18,12 @@
 
 <div class="sidebar-content">
     <!-- All items row -->
-    <div
+    <button
+        type="button"
         class="tree-item all-items-item"
         [class.active]="activeLabelFilter() === 'all'"
+        [attr.aria-pressed]="activeLabelFilter() === 'all'"
+        [matTooltip]="allItemsLabel()"
         (click)="selectAll()"
     >
         <app-svg-icon
@@ -26,7 +31,7 @@
             size="0.9rem"
         />
         <span>{{ allItemsLabel() }}</span>
-    </div>
+    </button>
 
     <!-- Labels section header -->
     <div class="section-header">
@@ -39,7 +44,9 @@
         </div>
         <button
             *appHasPermission="[resourceCode(), ActionCode.Create]"
+            type="button"
             class="add-btn"
+            aria-label="Add label"
             (click)="startAddRootLabel()"
             matTooltip="Add label"
             matTooltipPosition="above"
@@ -60,6 +67,8 @@
                 [ngModel]="newLabelNameValue()"
                 (ngModelChange)="newLabelNameValue.set($event); onNewLabelInput()"
                 placeholder="Enter Label Name..."
+                aria-label="Label name"
+                matTooltip="Label name"
                 (keyup.enter)="confirmAddLabel()"
                 (keyup.escape)="cancelAddLabel()"
                 autofocus
@@ -69,7 +78,9 @@
                 (colorChange)="newLabelColor.set($event)"
             ></app-label-color-picker>
             <button
+                type="button"
                 class="confirm-btn"
+                aria-label="Confirm"
                 (click)="confirmAddLabel()"
                 matTooltip="Confirm"
                 matTooltipPosition="above"
@@ -80,7 +91,9 @@
                 />
             </button>
             <button
+                type="button"
                 class="cancel-btn"
+                aria-label="Cancel"
                 (click)="cancelAddLabel()"
                 matTooltip="Cancel"
                 matTooltipPosition="above"
@@ -110,7 +123,10 @@
             (click)="selectLabel(item.node.id)"
         >
             <button
+                type="button"
                 class="toggle-btn"
+                [attr.aria-expanded]="isExpanded(item.node.id)"
+                [attr.aria-label]="(isExpanded(item.node.id) ? 'Collapse ' : 'Expand ') + item.node.name"
                 (click)="$event.stopPropagation(); toggleExpand(item.node.id)"
                 [style.visibility]="item.node.children.length > 0 ? 'visible' : 'hidden'"
                 [matTooltip]="isExpanded(item.node.id) ? 'Collapse' : 'Expand'"
@@ -132,6 +148,8 @@
             @if (editingLabelId() === item.node.id) {
                 <input
                     class="rename-input"
+                    aria-label="Label name"
+                    matTooltip="Label name"
                     [class.has-error]="renameLabelError()"
                     [ngModel]="editingLabelNameValue()"
                     (ngModelChange)="editingLabelNameValue.set($event); onRenameLabelInput()"
@@ -145,7 +163,9 @@
                     (colorChange)="editingLabelColor.set($event)"
                 ></app-label-color-picker>
                 <button
+                    type="button"
                     class="confirm-btn"
+                    aria-label="Confirm"
                     (click)="$event.stopPropagation(); confirmRename(item.node.id)"
                     matTooltip="Confirm"
                     matTooltipPosition="above"
@@ -156,7 +176,9 @@
                     />
                 </button>
                 <button
+                    type="button"
                     class="cancel-btn"
+                    aria-label="Cancel"
                     (click)="$event.stopPropagation(); cancelRename()"
                     matTooltip="Cancel"
                     matTooltipPosition="above"
@@ -167,19 +189,25 @@
                     />
                 </button>
             } @else {
-                <span
+                <!-- Selects the label, from the keyboard too; its click reaches the row's handler. -->
+                <button
+                    type="button"
                     class="label-name"
+                    [attr.aria-pressed]="activeLabelFilter() === item.node.id"
                     [matTooltip]="item.node.name"
                     matTooltipPosition="above"
                     matTooltipShowDelay="500"
                     matTooltipClass="tree-name-tooltip"
-                    >{{ item.node.name }}</span
                 >
+                    {{ item.node.name }}
+                </button>
 
                 <div class="item-actions">
                     <button
                         *appHasPermission="[resourceCode(), ActionCode.Create]"
+                        type="button"
                         class="action-btn"
+                        [attr.aria-label]="'Add sublabel to ' + item.node.name"
                         (click)="$event.stopPropagation(); startAddChildLabel(item.node.id)"
                         matTooltip="Add sublabel"
                         matTooltipPosition="above"
@@ -191,7 +219,9 @@
                     </button>
                     <button
                         *appHasPermission="[resourceCode(), ActionCode.Update]"
+                        type="button"
                         class="action-btn edit-label-btn"
+                        [attr.aria-label]="'Rename ' + item.node.name"
                         (click)="$event.stopPropagation(); startRename(item.node)"
                         matTooltip="Rename"
                         matTooltipPosition="above"
@@ -203,7 +233,9 @@
                     </button>
                     <button
                         *appHasPermission="[resourceCode(), ActionCode.Delete]"
+                        type="button"
                         class="action-btn danger"
+                        [attr.aria-label]="'Delete ' + item.node.name"
                         (click)="$event.stopPropagation(); openDeleteDialog(item.node)"
                         matTooltip="Delete"
                         matTooltipPosition="above"
@@ -238,6 +270,8 @@
                     [ngModel]="newLabelNameValue()"
                     (ngModelChange)="newLabelNameValue.set($event); onNewLabelInput()"
                     placeholder="Enter Sublabel Name..."
+                    aria-label="Sublabel name"
+                    matTooltip="Sublabel name"
                     (keyup.enter)="confirmAddLabel()"
                     (keyup.escape)="cancelAddLabel()"
                     autofocus
@@ -247,7 +281,9 @@
                     (colorChange)="newLabelColor.set($event)"
                 ></app-label-color-picker>
                 <button
+                    type="button"
                     class="confirm-btn"
+                    aria-label="Confirm"
                     (click)="confirmAddLabel()"
                     matTooltip="Confirm"
                     matTooltipPosition="above"
@@ -258,7 +294,9 @@
                     />
                 </button>
                 <button
+                    type="button"
                     class="cancel-btn"
+                    aria-label="Cancel"
                     (click)="cancelAddLabel()"
                     matTooltip="Cancel"
                     matTooltipPosition="above"
@@ -281,9 +319,12 @@
     }
 
     <!-- Unlabeled row -->
-    <div
+    <button
+        type="button"
         class="tree-item unlabeled-item"
         [class.active]="activeLabelFilter() === 'unlabeled'"
+        [attr.aria-pressed]="activeLabelFilter() === 'unlabeled'"
+        matTooltip="Unlabeled"
         (click)="selectUnlabeled()"
     >
         <app-svg-icon
@@ -291,7 +332,7 @@
             size="12px"
         />
         <span>Unlabeled</span>
-    </div>
+    </button>
 </div>
 
 <div

@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { GetLlmConfigRequest } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
@@ -18,7 +19,7 @@ import { FlowAssistantService } from '../../flow-assistant.service';
 
 @Component({
     selector: 'app-flow-assistant-settings',
-    imports: [ReactiveFormsModule, AppSvgIconComponent],
+    imports: [ReactiveFormsModule, MatTooltip, AppSvgIconComponent],
     templateUrl: './flow-assistant-settings.component.html',
     styleUrls: ['./flow-assistant-settings.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,6 +34,8 @@ export class FlowAssistantSettingsComponent implements OnInit {
     readonly isSaving = signal(false);
 
     readonly config = computed(() => this.assistantService.config());
+    /** The save button's label, and its tooltip with it. */
+    protected readonly saveLabel = computed(() => (this.isSaving() ? 'Saving…' : 'Save'));
 
     // 5. Public template-bound
     readonly form = new FormGroup({

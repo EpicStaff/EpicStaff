@@ -1,5 +1,6 @@
 export * from './click-outside.directive';
 export * from './collapse-on-overflow.directive';
+export * from './content-text.directive';
 export * from './drag-hover.directive';
 export * from './drag-scroll.directive';
 export * from './enter-blur.directive';

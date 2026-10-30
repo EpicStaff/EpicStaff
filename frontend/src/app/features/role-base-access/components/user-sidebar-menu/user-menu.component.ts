@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input, model, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { NavigationEnd, Router } from '@angular/router';
 import { AppSvgIconComponent, UserAvatarComponent } from '@shared/components';
 import { FullMembership, GetMeResponse } from '@shared/models';
@@ -22,7 +23,7 @@ const ORG_SWITCH_FAILED_MESSAGE = 'Could not switch organization. Please try aga
 /** The sidebar's account menu: the signed-in user, their organizations, navigation and sign out. */
 @Component({
     selector: 'app-user-menu',
-    imports: [AppSvgIconComponent, UserAvatarComponent, OrgAvatarComponent],
+    imports: [MatTooltip, AppSvgIconComponent, UserAvatarComponent, OrgAvatarComponent],
     templateUrl: './user-menu.component.html',
     styleUrls: ['./user-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

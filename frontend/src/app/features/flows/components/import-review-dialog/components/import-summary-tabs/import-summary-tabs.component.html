@@ -33,21 +33,23 @@
             >
                 @for (entityType of entityTypes(); track entityType) {
                     @if (getEntityTypeCount(entityType) > 0) {
-                        <div
+                        <button
+                            type="button"
                             class="summary-item"
+                            [matTooltip]="getEntityTypeLabel(entityType)"
                             (click)="tabClick.emit(entityType)"
                         >
                             <app-entity-icon
                                 [entityType]="entityType"
                                 [color]="getIconColorForEntityType(entityType)"
                             ></app-entity-icon>
-                            <p class="summary-label">
+                            <span class="summary-label">
                                 <span class="summary-count">
                                     {{ getEntityTypeCount(entityType) }}
                                 </span>
                                 {{ getEntityTypeLabel(entityType) }}
-                            </p>
-                        </div>
+                            </span>
+                        </button>
                     }
                 }
             </div>

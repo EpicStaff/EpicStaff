@@ -10,6 +10,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppIconComponent } from '../app-icon/app-icon.component';
 import { SelectItem } from '../select/select.component';
@@ -18,7 +19,7 @@ import { SelectItem } from '../select/select.component';
     selector: 'app-chips-select',
     templateUrl: './chips-select.component.html',
     styleUrls: ['./chips-select.component.scss'],
-    imports: [FormsModule, AppIconComponent],
+    imports: [FormsModule, AppIconComponent, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChipsSelectComponent {
@@ -45,6 +46,13 @@ export class ChipsSelectComponent {
         const option = this.filteredChips()[this.highlightedIndex()];
         if (option) {
             this.select(option);
+        }
+    }
+
+    /** Tab completes what was typed; with nothing typed it only moves the focus on, adding nothing. */
+    completeOnTab() {
+        if (this.inputValue().trim()) {
+            this.addInput();
         }
     }
 

@@ -23,8 +23,9 @@
                 type="button"
                 class="segmented__option"
                 [class.segmented__option--active]="value() === option.value"
+                [attr.aria-pressed]="value() === option.value"
                 [disabled]="isDisabled()"
-                [title]="option.tooltip ?? ''"
+                [matTooltip]="option.tooltip ?? option.label ?? option.name"
                 (click)="select(option)"
             >
                 @if (option.icon) {
@@ -46,11 +47,14 @@
         [class.radio--disabled]="isDisabled()"
     >
         @for (option of options(); track option.value; let count = $count) {
-            <div
+            <button
+                type="button"
                 class="item"
                 [style.width]="`calc(100% / ${count})`"
                 [class.active]="option.value === value()"
-                [title]="option.tooltip ?? ''"
+                [attr.aria-pressed]="option.value === value()"
+                [disabled]="isDisabled()"
+                [matTooltip]="option.tooltip ?? option.label ?? option.name"
                 (click)="select(option)"
             >
                 @if (option.icon) {
@@ -61,7 +65,7 @@
                     />
                 }
                 {{ option.label ?? option.name }}
-            </div>
+            </button>
         }
     </div>
 }

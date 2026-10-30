@@ -11,13 +11,14 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 
 import { EXPLORER_SECTIONS, ExplorerSectionDef, ExplorerSectionId } from '../../../../../models/explorer.model';
 
 @Component({
     selector: 'app-branches-filter',
-    imports: [AppSvgIconComponent, ButtonComponent],
+    imports: [AppSvgIconComponent, ButtonComponent, MatTooltip],
     templateUrl: './branches-filter.component.html',
     styleUrls: ['./branches-filter.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

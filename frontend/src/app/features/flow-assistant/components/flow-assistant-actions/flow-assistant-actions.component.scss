@@ -26,7 +26,7 @@
     cursor: pointer;
     transition: background-color 0.2s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--ep-button-primary-hover-bg);
     }
 }
@@ -46,7 +46,7 @@
     cursor: pointer;
     transition: background-color 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--ep-color-accent-soft);
     }
 }

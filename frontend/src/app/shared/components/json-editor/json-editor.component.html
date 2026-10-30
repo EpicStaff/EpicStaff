@@ -21,14 +21,19 @@
         </div>
         <div class="right-section">
             @if (collapsible) {
-                <app-svg-icon
+                <button
+                    type="button"
                     class="action-icon"
-                    [icon]="collapsed ? 'preview' : 'preview-hidden'"
-                    size="1rem"
+                    [attr.aria-label]="collapsed ? 'Show editor' : 'Hide editor'"
+                    [attr.aria-expanded]="!collapsed"
                     [matTooltip]="collapsed ? 'Show editor' : 'Hide editor'"
-                    matTooltipPosition="above"
                     (click)="onToggle()"
-                />
+                >
+                    <app-svg-icon
+                        [icon]="collapsed ? 'preview' : 'preview-hidden'"
+                        size="1rem"
+                    />
+                </button>
             }
             @if (actionIcon(); as icon) {
                 <!-- aria-disabled, not disabled: the button stays focusable, so its tooltip (also its
@@ -49,25 +54,32 @@
                 </button>
             }
             @if (allowCopy) {
-                <app-svg-icon
+                <button
+                    type="button"
                     class="action-icon"
-                    icon="copy"
-                    size="1rem"
+                    aria-label="Copy to clipboard"
                     matTooltip="Copy to clipboard"
-                    matTooltipPosition="above"
                     (click)="onCopy()"
-                />
+                >
+                    <app-svg-icon
+                        icon="copy"
+                        size="1rem"
+                    />
+                </button>
             }
             @if (allowExpand) {
-                <app-svg-icon
+                <button
+                    type="button"
                     class="action-icon"
-                    icon="editor-expand"
-                    size="0.875rem"
                     [attr.aria-label]="expandLabel()"
                     [matTooltip]="expandLabel()"
-                    matTooltipPosition="above"
                     (click)="onExpand()"
-                />
+                >
+                    <app-svg-icon
+                        icon="editor-expand"
+                        size="0.875rem"
+                    />
+                </button>
             }
         </div>
     </div>
@@ -89,6 +101,7 @@
                     class="example-block__toggle"
                     [attr.aria-expanded]="!exampleCollapsed"
                     [attr.aria-label]="exampleCollapsed ? 'Show example' : 'Hide example'"
+                    [matTooltip]="exampleCollapsed ? 'Show example' : 'Hide example'"
                     (click)="onToggleExample()"
                 >
                     <app-svg-icon

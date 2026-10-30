@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 @Component({
     selector: 'app-tree-search',
-    imports: [FormsModule, AppSvgIconComponent],
+    imports: [FormsModule, MatTooltip, AppSvgIconComponent],
     templateUrl: './tree-search.component.html',
     styleUrls: ['./tree-search.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

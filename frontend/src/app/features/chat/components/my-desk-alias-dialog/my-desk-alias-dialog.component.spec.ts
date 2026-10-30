@@ -108,8 +108,12 @@ describe('MyDeskAliasDialogComponent', () => {
             expect(input.placeholder).toBe('Support');
             // The dialog opens with the focus on it (the CDK focus trap honours cdkFocusInitial).
             expect(input.hasAttribute('cdkFocusInitial')).toBe(true);
-            const hint = document.getElementById(input.getAttribute('aria-describedby')!);
-            expect(hint?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+            // The field's tooltip may add its own description next to the hint.
+            const descriptions = input
+                .getAttribute('aria-describedby')!
+                .split(' ')
+                .map((id) => document.getElementById(id)?.textContent?.replace(/\s+/g, ' ').trim());
+            expect(descriptions).toContain(
                 'Visitors on “Sales” see this name on your replies. Leave blank to use “Support”.'
             );
             expect(input.getAttribute('aria-invalid')).toBe('false');

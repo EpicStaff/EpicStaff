@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -17,6 +18,7 @@ type DocMode = 'preview' | 'markdown';
     selector: 'app-agent-doc-preview',
     imports: [
         FormsModule,
+        MatTooltip,
         AppSvgIconComponent,
         MarkdownComponent,
         MonacoEditorModule,

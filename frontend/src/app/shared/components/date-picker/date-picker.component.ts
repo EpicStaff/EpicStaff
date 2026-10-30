@@ -1,5 +1,7 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
+import { DatePipe } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -13,6 +15,8 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
+import { filter } from 'rxjs';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
@@ -63,7 +67,7 @@ function formatDate(date: Date): string {
 
 @Component({
     selector: 'app-date-picker',
-    imports: [FormsModule, OverlayModule, TooltipComponent],
+    imports: [FormsModule, OverlayModule, TooltipComponent, MatTooltip, CdkTrapFocus, DatePipe],
     templateUrl: './date-picker.component.html',
     styleUrls: ['./date-picker.component.scss'],
     providers: [
@@ -104,6 +108,8 @@ export class DatePickerComponent implements ControlValueAccessor {
     });
 
     resolvedActiveColor = computed<string>(() => this.activeColor() || '#685fff');
+    /** The input's accessible name and tooltip: the label shown above it isn't tied to it. */
+    protected readonly fieldName = computed(() => this.label() || 'Date');
 
     dayCells = computed<DayCell[]>(() => {
         const view = this.viewDate();
@@ -308,6 +314,10 @@ export class DatePickerComponent implements ControlValueAccessor {
         });
 
         this.overlayRef.backdropClick().subscribe(() => this.close());
+        this.overlayRef
+            .keydownEvents()
+            .pipe(filter((event) => event.key === 'Escape'))
+            .subscribe(() => this.close());
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);
         this.isOpen.set(true);

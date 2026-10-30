@@ -12,7 +12,7 @@
     cursor: pointer;
     transition: background-color 0.15s ease;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background: var(--transparent-white-8);
     }
 

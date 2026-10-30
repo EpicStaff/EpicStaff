@@ -1,5 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService, ConfirmationResult } from '@shared/components';
 import { of, Subject } from 'rxjs';
 
@@ -251,5 +251,73 @@ describe('CreateFolderDialogComponent unpack badge', () => {
 
         expect(component.isArchive(file('site.tar.gz'))).toBe(false);
         expect(component.isArchive(file('notes.txt'))).toBe(false);
+    });
+});
+
+describe('CreateFolderDialogComponent file removal', () => {
+    let fixture: ComponentFixture<CreateFolderDialogComponent>;
+
+    const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+    const removeButtons = (): HTMLButtonElement[] =>
+        Array.from(host().querySelectorAll<HTMLButtonElement>('.create-folder-dialog__file-remove'));
+    const chooseFilesButton = (): HTMLButtonElement => host().querySelector('.file-uploader__button')!;
+
+    beforeEach(async () => {
+        TestBed.configureTestingModule({
+            providers: [
+                {
+                    provide: DialogRef,
+                    useValue: {
+                        backdropClick: new Subject(),
+                        keydownEvents: new Subject(),
+                        close: vi.fn(),
+                        disableClose: false,
+                    } as unknown as DialogRef,
+                },
+                { provide: DIALOG_DATA, useValue: {} },
+                {
+                    provide: StorageApiService,
+                    useValue: {
+                        tree: () => of(EMPTY_STORAGE_TREE),
+                        getUploadLimits: () => of(null),
+                    } as unknown as StorageApiService,
+                },
+                { provide: StorageUploadService, useValue: {} as StorageUploadService },
+                { provide: ConfirmationDialogService, useValue: {} as ConfirmationDialogService },
+                { provide: ToastService, useValue: {} as ToastService },
+            ],
+        });
+        fixture = TestBed.createComponent(CreateFolderDialogComponent);
+        fixture.componentInstance.files.set(['a.txt', 'b.txt'].map((name) => new File(['content'], name)));
+        fixture.autoDetectChanges();
+        await fixture.whenStable();
+    });
+
+    async function removeWithKeyboard(button: HTMLButtonElement): Promise<void> {
+        button.focus();
+        button.click();
+        await fixture.whenStable();
+    }
+
+    it('keeps the focus on the next Remove button, then on the file picker once the list is empty', async () => {
+        await removeWithKeyboard(removeButtons()[0]);
+
+        expect(removeButtons().map((button) => button.getAttribute('aria-label'))).toEqual(['Remove b.txt']);
+        expect(document.activeElement).toBe(removeButtons()[0]);
+
+        await removeWithKeyboard(removeButtons()[0]);
+
+        expect(removeButtons()).toEqual([]);
+        expect(document.activeElement).toBe(chooseFilesButton());
+    });
+
+    it('leaves the focus alone when the Remove button did not have it', async () => {
+        const otherField = host().querySelector<HTMLInputElement>('.create-folder-dialog__input')!;
+        otherField.focus();
+
+        removeButtons()[0].click();
+        await fixture.whenStable();
+
+        expect(document.activeElement).toBe(otherField);
     });
 });

@@ -34,7 +34,7 @@
         color: var(--color-text-secondary);
         cursor: pointer;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }

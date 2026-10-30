@@ -22,6 +22,8 @@
                 #timeInputEl
                 class="time-picker__input"
                 [placeholder]="placeholder()"
+                [attr.aria-label]="fieldName()"
+                [matTooltip]="fieldName()"
                 [disabled]="isDisabled()"
                 [readonly]="readonly()"
                 [ngModel]="timeInput()"
@@ -31,22 +33,31 @@
             />
         </div>
         @if (!readonly()) {
-            <svg
-                class="time-picker__chevron"
-                [class.time-picker__chevron--open]="isOpen()"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
+            <button
+                type="button"
+                class="time-picker__chevron-btn"
+                aria-label="Choose time"
+                matTooltip="Choose time"
+                [attr.aria-expanded]="isOpen()"
+                [disabled]="isDisabled()"
                 (click)="$event.stopPropagation(); toggleDropdown()"
             >
-                <path
-                    d="M6 9l6 6 6-6"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    fill="none"
-                    stroke-linecap="round"
-                />
-            </svg>
+                <svg
+                    class="time-picker__chevron"
+                    [class.time-picker__chevron--open]="isOpen()"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        d="M6 9l6 6 6-6"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        fill="none"
+                        stroke-linecap="round"
+                    />
+                </svg>
+            </button>
         }
     </div>
 </div>
@@ -58,17 +69,22 @@
 <ng-template #dropdownTemplate>
     <div
         class="time-picker__dropdown"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
         [style.--active-color]="activeColor()"
     >
         <div class="time-picker__slots">
             @for (slot of filteredSlots(); track slot) {
-                <div
+                <button
+                    type="button"
                     class="time-picker__option"
                     [class.time-picker__option--selected]="slot === timeInput()"
+                    [attr.aria-pressed]="slot === timeInput()"
+                    [matTooltip]="slot"
                     (click)="selectSlot(slot)"
                 >
                     {{ slot }}
-                </div>
+                </button>
             }
         </div>
     </div>

@@ -22,7 +22,8 @@
         box-sizing: border-box;
         cursor: pointer;
 
-        &:hover:not(.time-picker__trigger--readonly) {
+        // Its input draws no focus of its own: the field shows it.
+        &:is(:hover, :focus-within):not(.time-picker__trigger--readonly) {
             border-color: var(--active-color, var(--accent-color, #685fff));
         }
 
@@ -89,6 +90,20 @@
         }
     }
 
+    &__chevron-btn {
+        display: inline-flex;
+        flex-shrink: 0;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+
+        &:disabled {
+            cursor: not-allowed;
+        }
+    }
+
     &__chevron {
         flex-shrink: 0;
         color: var(--color-input-text-placeholder);
@@ -123,6 +138,12 @@
     }
 
     &__option {
+        display: block;
+        width: 100%;
+        border: none;
+        background: transparent;
+        color: inherit;
+        font-family: inherit;
         padding: 0.5rem 1rem;
         text-align: center;
         font-size: var(--text-body-size);
@@ -139,8 +160,13 @@
             border-bottom: none;
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--color-ks-transparent-black-72);
+        }
+
+        // Inside the list, which clips anything drawn outside it.
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         &--selected {
@@ -151,7 +177,7 @@
             cursor: default;
             color: var(--color-input-text-placeholder);
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: transparent;
             }
         }

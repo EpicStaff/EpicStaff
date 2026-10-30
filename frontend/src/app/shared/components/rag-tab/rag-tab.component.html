@@ -46,6 +46,7 @@
                     <button
                         type="button"
                         class="metadata-status__retry"
+                        matTooltip="Retry"
                         (click)="retryMetadataFetch()"
                     >
                         Retry
@@ -167,6 +168,7 @@
                                             [disabled]="
                                                 !maxContextTokensDirty() || suggestingFor() === activeGraphMethod
                                             "
+                                            aria-label="Recalculate suggested values for this token budget"
                                             matTooltip="Recalculate suggested values for this token budget"
                                             matTooltipPosition="above"
                                             (click)="onApplyMaxContextTokens()"
@@ -354,6 +356,8 @@
                                     <button
                                         type="button"
                                         class="advanced-settings__summary"
+                                        [attr.aria-expanded]="globalAdvancedOpen()"
+                                        matTooltip="Advanced settings"
                                         (click)="globalAdvancedOpen.set(!globalAdvancedOpen())"
                                     >
                                         <app-svg-icon
@@ -597,6 +601,8 @@
                                     <button
                                         type="button"
                                         class="advanced-settings__summary"
+                                        [attr.aria-expanded]="driftAdvancedOpen()"
+                                        matTooltip="Advanced settings"
                                         (click)="driftAdvancedOpen.set(!driftAdvancedOpen())"
                                     >
                                         <app-svg-icon

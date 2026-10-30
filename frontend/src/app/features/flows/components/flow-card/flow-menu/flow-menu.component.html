@@ -1,11 +1,16 @@
 <div
     class="menu-container"
     [ngClass]="{ 'menu-active': isMenuOpen() }"
+    (keydown.escape)="closeOnEscape($event)"
 >
     <button
         #menuTrigger
+        type="button"
         class="menu-button"
         [class.active]="isMenuOpen()"
+        aria-label="Options"
+        aria-haspopup="menu"
+        [attr.aria-expanded]="isMenuOpen()"
         matTooltip="Options"
         matTooltipPosition="left"
         (click)="toggleMenu($event)"
@@ -18,8 +23,12 @@
         ></app-svg-icon>
     </button>
     @if (isMenuOpen()) {
+        <!-- Takes the focus on opening and hands it back to the ⋮ button when it closes. -->
         <div
             class="context-menu"
+            role="menu"
+            cdkTrapFocus
+            [cdkTrapFocusAutoCapture]="true"
             (mouseenter)="onMenuEnter()"
             (mouseleave)="onMenuLeave()"
         >

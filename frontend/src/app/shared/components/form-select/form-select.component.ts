@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, forwardRef, Input, OnDestroy, OnInit } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { Observable, Subscription } from 'rxjs';
 
 import { ApiGetRequest } from '../../../core/models/api-request.model';
@@ -7,7 +8,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
 @Component({
     selector: 'app-custom-select',
-    imports: [FormsModule, HelpTooltipComponent],
+    imports: [FormsModule, HelpTooltipComponent, MatTooltip],
     template: `
         <div class="form-group">
             @if (label) {
@@ -31,6 +32,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                 [class.error]="errorMessage"
                 [disabled]="disabled"
                 [style.--active-color]="activeColor"
+                [matTooltip]="label || placeholder"
             >
                 <option [ngValue]="null">{{ placeholder }}</option>
                 @for (opt of options; track opt) {

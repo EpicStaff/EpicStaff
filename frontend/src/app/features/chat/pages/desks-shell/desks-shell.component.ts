@@ -2,6 +2,7 @@ import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { afterNextRender, Component, computed, effect, inject, Injector, untracked, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 import { HideInlineSubtitleOnOverflowDirective, ResizableSidebarDirective } from '@shared/directives';
@@ -38,6 +39,7 @@ import { DeskDrawerService } from '../../services/desk-drawer.service';
     imports: [
         RouterOutlet,
         CdkTrapFocus,
+        MatTooltip,
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
         ResizableSidebarDirective,

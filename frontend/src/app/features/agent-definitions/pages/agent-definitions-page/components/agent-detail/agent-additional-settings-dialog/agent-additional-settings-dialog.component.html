@@ -15,8 +15,10 @@
 
     <div class="tabs">
         @for (tab of tabs; track tab.id) {
+            <!-- The dialog opens on its first tab, so the keyboard starts at the tab row. -->
             <app-tab-button
                 mod="sm"
+                [attr.cdkFocusInitial]="$first ? '' : null"
                 [active]="tab.id === activeTab()"
                 (click)="activeTab.set(tab.id)"
             >

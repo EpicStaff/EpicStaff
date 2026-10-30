@@ -8,6 +8,7 @@
     [class.tz-selector__btn--open]="open()"
     [class.tz-selector__btn--placeholder]="!selectedValue()"
     [class.tz-selector__btn--readonly]="readonly()"
+    matTooltip="Timezone"
     (click)="toggle()"
 >
     <span class="tz-selector__text">{{ selectedOption()?.displayLabel ?? selectedValue() ?? 'Select timezone' }}</span>
@@ -38,6 +39,8 @@
                 class="tz-selector__search"
                 type="text"
                 placeholder="Search timezone..."
+                aria-label="Search timezone"
+                matTooltip="Search timezone"
                 role="combobox"
                 aria-autocomplete="list"
                 aria-expanded="true"

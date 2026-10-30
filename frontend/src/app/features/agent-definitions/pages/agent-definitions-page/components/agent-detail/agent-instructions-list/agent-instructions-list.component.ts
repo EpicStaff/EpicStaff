@@ -12,6 +12,7 @@ import {
     output,
     signal,
     viewChild,
+    viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -69,6 +70,8 @@ export class AgentInstructionsListComponent {
     readonly openInstruction = output<{ index: number; edit: boolean }>();
 
     private readonly renameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput');
+    /** One per row while the list is editable — the only time a rename can run — so the row index matches. */
+    private readonly renameButtons = viewChildren<ElementRef<HTMLButtonElement>>('renameButton');
 
     // Optimistic copy: a drop / rename shows at once instead of snapping back until the PATCH returns.
     protected readonly rows = linkedSignal<{ list: AgentInstruction[]; tick: number }, AgentInstruction[]>({
@@ -137,6 +140,18 @@ export class AgentInstructionsListComponent {
             this.commit(list.map((instruction, i) => (i === index ? { ...instruction, name } : instruction)));
         }
         if (current && openAfterRename) this.openInstruction.emit({ index, edit: true });
+    }
+
+    /** Enter in the rename input: on success the focus goes back to the row's Rename button instead of <body>. */
+    commitRenameByKey(index: number): void {
+        this.commitRename(index);
+        if (this.renamingIndex() === null) this.focusRenameButton(index);
+    }
+
+    /** Escape in the rename input: closed first, so the blur the refocus causes commits nothing. */
+    cancelRenameByKey(index: number): void {
+        this.cancelRename();
+        this.focusRenameButton(index);
     }
 
     cancelRename(): void {
@@ -227,5 +242,9 @@ export class AgentInstructionsListComponent {
     private commit(list: AgentInstruction[]): void {
         this.rows.set(list);
         this.instructionListChange.emit(list);
+    }
+
+    private focusRenameButton(index: number): void {
+        this.renameButtons()[index]?.nativeElement.focus();
     }
 }

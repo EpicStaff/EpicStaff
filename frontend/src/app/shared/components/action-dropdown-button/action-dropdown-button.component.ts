@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -11,7 +12,7 @@ export interface ActionDropdownItem {
 
 @Component({
     selector: 'app-action-dropdown-button',
-    imports: [OverlayModule, AppSvgIconComponent, MatTooltipModule],
+    imports: [OverlayModule, CdkTrapFocus, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './action-dropdown-button.component.html',
     styleUrls: ['./action-dropdown-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -7,6 +8,7 @@ import {
     Output,
     signal,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { GraphSessionStatus } from '@shared/models';
@@ -20,15 +22,20 @@ interface StatusOption {
 
 @Component({
     selector: 'app-flow-session-status-filter-dropdown',
-    imports: [ClickOutsideDirective, AppSvgIconComponent],
+    imports: [CdkTrapFocus, ClickOutsideDirective, AppSvgIconComponent, MatTooltip],
     template: `
         <div
             class="status-filter-dropdown-custom"
             [class.open]="open"
             (appClickOutside)="closeDropdown()"
+            (keydown.escape)="closeOnEscape($event)"
         >
             <button
+                type="button"
                 class="dropdown-toggle"
+                aria-haspopup="menu"
+                [attr.aria-expanded]="open"
+                matTooltip="Filter by status"
                 (click)="toggleDropdown($event)"
             >
                 <span class="selected-icons">
@@ -47,23 +54,36 @@ interface StatusOption {
             </button>
 
             @if (open) {
-                <ul class="dropdown-menu">
+                <!-- Takes the focus when it opens and hands it back to the toggle when it closes. -->
+                <ul
+                    class="dropdown-menu"
+                    role="menu"
+                    cdkTrapFocus
+                    [cdkTrapFocusAutoCapture]="true"
+                >
                     @for (option of options; track option.value) {
-                        <li
-                            (click)="toggleStatus(option.value, $event)"
-                            [class.selected]="selectedValues().includes(option.value)"
-                        >
-                            <span [style.color]="option.color">
-                                <app-svg-icon
-                                    class="status-icon"
-                                    [icon]="option.icon"
-                                    size="16px"
-                                ></app-svg-icon>
-                                {{ option.label }}
-                            </span>
-                            @if (selectedValues().includes(option.value)) {
-                                <span class="checkmark">&#10003;</span>
-                            }
+                        <li role="none">
+                            <button
+                                type="button"
+                                class="status-option"
+                                role="menuitemcheckbox"
+                                [class.selected]="selectedValues().includes(option.value)"
+                                [attr.aria-checked]="selectedValues().includes(option.value)"
+                                [matTooltip]="option.label"
+                                (click)="toggleStatus(option.value, $event)"
+                            >
+                                <span [style.color]="option.color">
+                                    <app-svg-icon
+                                        class="status-icon"
+                                        [icon]="option.icon"
+                                        size="16px"
+                                    ></app-svg-icon>
+                                    {{ option.label }}
+                                </span>
+                                @if (selectedValues().includes(option.value)) {
+                                    <span class="checkmark">&#10003;</span>
+                                }
+                            </button>
                         </li>
                     }
                 </ul>
@@ -147,6 +167,13 @@ export class FlowSessionStatusFilterDropdownComponent {
         event.stopPropagation();
         this.open = !this.open;
         this._cdr.markForCheck();
+    }
+
+    /** Escape closes the open menu, and goes no further (it would close a dialog around it). */
+    public closeOnEscape(event: Event): void {
+        if (!this.open) return;
+        event.stopPropagation();
+        this.closeDropdown();
     }
 
     public closeDropdown() {

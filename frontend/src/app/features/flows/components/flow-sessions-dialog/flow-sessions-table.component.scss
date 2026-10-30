@@ -240,12 +240,18 @@ table {
             border: 1px solid var(--color-divider-subtle);
             border-radius: 6px;
             color: var(--color-text-primary);
+            text-decoration: none;
             transition:
                 border-color 0.15s,
                 background 0.15s;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 border-color: var(--color-divider-regular);
+            }
+
+            // The cell clips what is drawn outside it.
+            &:focus-visible {
+                outline-offset: -2px;
             }
 
             .flow-link-icon {

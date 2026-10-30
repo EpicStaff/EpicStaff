@@ -9,6 +9,7 @@
                 [disabled]="store.reviewableEntries.length === 0"
                 (click)="store.goToPreviousReviewEntry()"
                 aria-label="Previous"
+                matTooltip="Previous"
             >
                 <app-svg-icon
                     icon="panel-nav-chevron"
@@ -25,6 +26,7 @@
                 [disabled]="store.reviewableEntries.length === 0"
                 (click)="store.goToNextReviewEntry()"
                 aria-label="Next"
+                matTooltip="Next"
             >
                 <app-svg-icon
                     icon="panel-nav-chevron"
@@ -62,6 +64,8 @@
                             type="button"
                             class="code-editor-tab"
                             [class.code-editor-tab--active]="tab.fieldKey === entry.fieldKey"
+                            [attr.aria-pressed]="tab.fieldKey === entry.fieldKey"
+                            [matTooltip]="tab.label"
                             (click)="store.goToCodeTab(tab.fieldKey)"
                         >
                             {{ tab.label }}

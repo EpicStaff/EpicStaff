@@ -14,11 +14,15 @@
         'btn--mod-' + mod,
     ]"
     [disabled]="disabled()"
-    [attr.aria-label]="ariaLabel"
+    [attr.aria-label]="ariaLabelAttribute()"
     [attr.aria-describedby]="ariaDescribedby()"
     [attr.aria-disabled]="ariaDisabled() || null"
+    [matTooltip]="tooltipText()"
+    [matTooltipDisabled]="!showsOwnTooltip()"
     type="button"
     (click)="stopClickWhileAriaDisabled($event)"
+    (focus)="showHostTooltipOnKeyboardFocus()"
+    (blur)="hideHostTooltip()"
 >
     @if (type === 'icon') {
         @if (leftIcon) {
@@ -50,7 +54,10 @@
             />
         }
 
-        <div class="btn-content">
+        <div
+            appContentText
+            class="btn-content"
+        >
             <ng-content></ng-content>
         </div>
 
@@ -65,3 +72,11 @@
         }
     }
 </button>
+@if (disabled()) {
+    <span
+        class="btn-disabled-hover-target"
+        (mouseenter)="showTooltipWhileDisabled()"
+        (mouseleave)="hideTooltipWhileDisabled()"
+        (click)="$event.stopPropagation()"
+    ></span>
+}

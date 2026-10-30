@@ -9,6 +9,7 @@
                 <div class="table-cell checkbox">
                     <app-checkbox
                         color="secondary"
+                        ariaLabel="Select all"
                         [checked]="allSelected()"
                         [indeterminate]="indeterminate()"
                         (changed)="toggleAll()"
@@ -27,6 +28,7 @@
                             type="button"
                             class="col-label-group col-label-group--clickable"
                             [class.col-label-group--active]="col.headerIconActive"
+                            [matTooltip]="col.label ?? ''"
                             (click)="onHeaderIconClick(col.key, $event)"
                         >
                             <span class="col-label">{{ col.label }}</span>
@@ -53,6 +55,7 @@
                                 type="button"
                                 class="col-label col-label--filter"
                                 [class.col-label--filter--active]="hasFilterValue(col.key)"
+                                [matTooltip]="'Filter by ' + (col.label ?? '')"
                                 [appSelectTrigger]="sel"
                             >
                                 {{ col.label }}
@@ -81,6 +84,7 @@
                                 type="button"
                                 class="col-label col-label--filter"
                                 [class.col-label--filter--active]="hasFilterValue(col.key)"
+                                [matTooltip]="'Filter by ' + (col.label ?? '')"
                                 [appMultiSelectTrigger]="ms"
                             >
                                 {{ col.label }}
@@ -118,6 +122,7 @@
                             >
                                 <app-checkbox
                                     color="secondary"
+                                    ariaLabel="Select row"
                                     [checked]="isSelected(item)"
                                     [disabled]="!rowSelectable()(item)"
                                     (changed)="toggleRow(item)"
@@ -147,6 +152,7 @@
                                                     [class.warning]="variant === 'warning'"
                                                     [class.action-btn--muted]="variant === 'muted'"
                                                     [attr.disabled]="action.disabled?.(item) ? '' : null"
+                                                    [attr.aria-label]="action.tooltip ?? null"
                                                     [matTooltip]="action.tooltip ?? ''"
                                                     (click)="action.onClick(item)"
                                                 >

@@ -15,20 +15,19 @@
     min-width: 0;
     flex: 0 1 auto;
     max-width: 100%;
-    outline: none;
 
     &.sm {
         padding: 0.5rem;
         font-size: 0.875rem;
     }
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--white);
     }
 
+    // Inside the button: tabs sit edge to edge in a bar that may clip what is drawn outside them.
     &:focus-visible {
-        outline: 1px solid var(--accent-color);
-        outline-offset: -1px;
+        outline-offset: -2px;
     }
 
     &.active {

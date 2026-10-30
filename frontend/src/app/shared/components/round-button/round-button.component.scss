@@ -3,7 +3,6 @@
 }
 
 .round-btn {
-    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -21,7 +20,7 @@
         border-color 0.15s ease,
         color 0.15s ease;
 
-    &:hover:not(.round-btn--active) {
+    &:is(:hover, :focus-visible):not(.round-btn--active) {
         border-color: var(--active-color, var(--accent-color, #685fff));
         color: var(--active-color, var(--accent-color, #685fff));
     }
@@ -31,23 +30,5 @@
         border-color: var(--active-color, var(--accent-color, #685fff));
         color: var(--white);
         font-weight: 500;
-    }
-
-    &[data-tooltip]:hover::after {
-        content: attr(data-tooltip);
-        position: absolute;
-        bottom: calc(100% + 6px);
-        left: 50%;
-        transform: translateX(-50%);
-        background: var(--graphite-880);
-        color: var(--color-text-primary);
-        font-size: 0.6875rem;
-        font-weight: 400;
-        white-space: nowrap;
-        padding: 3px 8px;
-        border-radius: 6px;
-        border: 1px solid var(--color-input-border);
-        pointer-events: none;
-        z-index: 100;
     }
 }

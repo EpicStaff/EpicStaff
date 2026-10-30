@@ -2,8 +2,10 @@
     <div class="sidebar-header">
         <span class="sidebar-title">Sessions</span>
         <button
+            type="button"
             class="sidebar-btn"
-            title="New session"
+            aria-label="New session"
+            matTooltip="New session"
             (click)="newSession()"
         >
             <app-svg-icon
@@ -15,10 +17,16 @@
 
     <div class="sessions-list">
         @for (session of sessions(); track trackById($index, session); let i = $index) {
+            <!-- A row and not a button: it holds the delete button. -->
             <div
                 class="session-row"
+                tabindex="0"
+                role="button"
                 [class.session-row--active]="currentConversationId() === session.id"
+                [attr.aria-current]="currentConversationId() === session.id ? 'true' : null"
+                [attr.aria-label]="sessionTitle(session, i)"
                 (click)="selectSession(session.id)"
+                (keydown)="onSessionKeydown($event, session.id)"
             >
                 <div class="session-row__body">
                     <span class="session-row__title">{{ sessionTitle(session, i) }}</span>
@@ -30,8 +38,10 @@
                     </div>
                 </div>
                 <button
+                    type="button"
                     class="session-row__delete delete-btn"
-                    title="Delete session"
+                    aria-label="Delete session"
+                    matTooltip="Delete session"
                     (click)="deleteSession($event, session.id)"
                 >
                     <app-svg-icon

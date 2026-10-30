@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
@@ -13,6 +14,8 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
+import { filter } from 'rxjs';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
@@ -54,7 +57,7 @@ function parseValue(value: string): string | null {
 
 @Component({
     selector: 'app-time-picker',
-    imports: [FormsModule, OverlayModule, TooltipComponent],
+    imports: [FormsModule, OverlayModule, TooltipComponent, MatTooltip, CdkTrapFocus],
     templateUrl: './time-picker.component.html',
     styleUrls: ['./time-picker.component.scss'],
     providers: [
@@ -80,6 +83,9 @@ export class TimePickerComponent implements ControlValueAccessor {
     timeInput = signal<string>('');
     isOpen = signal<boolean>(false);
     isDisabled = signal<boolean>(false);
+
+    /** The input's accessible name and tooltip: the label shown above it isn't tied to it. */
+    protected readonly fieldName = computed(() => this.label() || 'Time');
 
     /** Full formatted value shown in the trigger and emitted to the form. */
     displayValue = computed<string>(() => this.timeInput());
@@ -178,6 +184,10 @@ export class TimePickerComponent implements ControlValueAccessor {
         });
 
         this.overlayRef.backdropClick().subscribe(() => this.close());
+        this.overlayRef
+            .keydownEvents()
+            .pipe(filter((event) => event.key === 'Escape'))
+            .subscribe(() => this.close());
 
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);

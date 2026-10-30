@@ -29,8 +29,13 @@
         align-items: center;
         gap: 6px;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background: var(--accent-color-hover, #3a7edc);
+        }
+
+        // The container clips what is drawn outside it.
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         &:disabled {
@@ -51,8 +56,12 @@
         justify-content: center;
         transition: background 0.18s;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background: var(--accent-color-hover, #3a7edc);
+        }
+
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         &:disabled {

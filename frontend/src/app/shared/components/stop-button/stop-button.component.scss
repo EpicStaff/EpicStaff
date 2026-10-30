@@ -20,7 +20,7 @@
         --stop-btn-color: var(--orange-500);
     }
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background: var(--transparent-white-8);
     }
 

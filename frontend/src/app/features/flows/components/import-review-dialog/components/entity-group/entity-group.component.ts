@@ -51,6 +51,14 @@ export class EntityGroupComponent {
         return this.isRowExpandable(item) || this.store.hasPythonCode(item.name) || this.store.isMcpTool(item.name);
     }
 
+    /** Enter and Space activate a focused row as they do a button (not when they come from the badge in it). */
+    public onRowKeydown(event: KeyboardEvent, item: ImportResultItem, status: ItemStatus): void {
+        if (!this.isRowClickable(item) || event.target !== event.currentTarget) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        this.onRowClick(item, status);
+    }
+
     public onRowClick(item: ImportResultItem, status: ItemStatus): void {
         if (this.isRowExpandable(item)) {
             this.toggleItem(status, item.id);

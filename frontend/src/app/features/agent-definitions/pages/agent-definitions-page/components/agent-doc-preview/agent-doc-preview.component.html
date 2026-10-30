@@ -8,12 +8,15 @@
         <div
             *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
             class="doc-toggle"
-            role="tablist"
+            role="group"
+            aria-label="View mode"
         >
             <button
                 type="button"
                 class="doc-toggle__btn"
                 [class.doc-toggle__btn--active]="mode() === 'preview'"
+                [attr.aria-pressed]="mode() === 'preview'"
+                matTooltip="Preview"
                 (click)="setMode('preview')"
             >
                 <app-svg-icon
@@ -26,6 +29,8 @@
                 type="button"
                 class="doc-toggle__btn"
                 [class.doc-toggle__btn--active]="mode() === 'markdown'"
+                [attr.aria-pressed]="mode() === 'markdown'"
+                matTooltip="Edit"
                 (click)="setMode('markdown')"
             >
                 <app-svg-icon

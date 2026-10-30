@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -9,6 +10,7 @@ import {
     SimpleChanges,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 
@@ -19,7 +21,7 @@ interface FlowOption {
 
 @Component({
     selector: 'app-flow-name-filter-dropdown',
-    imports: [FormsModule, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
+    imports: [CdkTrapFocus, FormsModule, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
     styles: [
         `
@@ -46,9 +48,14 @@ interface FlowOption {
             [class.open]="open"
             [class.has-value]="hasValue"
             (appClickOutside)="onCancel()"
+            (keydown.escape)="closeOnEscape($event)"
         >
             <button
+                type="button"
                 class="dropdown-toggle"
+                aria-haspopup="dialog"
+                [attr.aria-expanded]="open"
+                matTooltip="Filter by flow name"
                 (click)="toggleDropdown($event)"
             >
                 <span class="selected-label">
@@ -60,23 +67,36 @@ interface FlowOption {
                 </span>
             </button>
             @if (open) {
-                <div class="dropdown-panel">
+                <!-- Takes the focus when it opens and hands it back to the toggle when it closes. -->
+                <div
+                    class="dropdown-panel"
+                    cdkTrapFocus
+                    [cdkTrapFocusAutoCapture]="true"
+                >
                     <div class="search-box">
                         <i class="ti ti-search search-icon"></i>
                         <input
                             type="text"
                             class="search-input"
                             placeholder="Search flows..."
+                            aria-label="Search flows"
+                            matTooltip="Search flows"
                             [ngModel]="searchQuery"
                             (ngModelChange)="onSearchChange($event)"
                             (click)="$event.stopPropagation()"
                         />
                         @if (searchQuery) {
                             <button
+                                type="button"
                                 class="clear-search"
+                                aria-label="Clear search"
+                                matTooltip="Clear search"
                                 (click)="clearSearch($event)"
                             >
-                                <i class="ti ti-x"></i>
+                                <i
+                                    class="ti ti-x"
+                                    aria-hidden="true"
+                                ></i>
                             </button>
                         }
                     </div>
@@ -86,7 +106,10 @@ interface FlowOption {
                                 class="group-item"
                                 (click)="toggleFlow(flow.name)"
                             >
-                                <app-checkbox [checked]="isChecked(flow.name)"></app-checkbox>
+                                <app-checkbox
+                                    [checked]="isChecked(flow.name)"
+                                    [ariaLabel]="flow.name"
+                                ></app-checkbox>
                                 <span>{{ flow.name }}</span>
                             </li>
                         }
@@ -100,19 +123,25 @@ interface FlowOption {
 
                     <div class="trigger-dropdown-footer">
                         <button
+                            type="button"
                             class="clear-filter-btn"
+                            matTooltip="Clear Filter"
                             (click)="onClear()"
                         >
                             Clear Filter
                         </button>
                         <button
+                            type="button"
                             class="cancel-btn"
+                            matTooltip="Cancel"
                             (click)="onCancel()"
                         >
                             Cancel
                         </button>
                         <button
+                            type="button"
                             class="save-btn"
+                            matTooltip="Save Changes"
                             (click)="onSave()"
                         >
                             Save Changes
@@ -192,6 +221,13 @@ export class FlowNameFilterDropdownComponent implements OnChanges {
         this.draftValue = [];
         this.valueChange.emit([]);
         this.closeDropdown();
+    }
+
+    /** Escape closes the open panel without saving, and goes no further (it would close a dialog around it). */
+    public closeOnEscape(event: Event): void {
+        if (!this.open) return;
+        event.stopPropagation();
+        this.onCancel();
     }
 
     public onCancel(): void {

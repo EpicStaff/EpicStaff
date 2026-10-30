@@ -52,7 +52,7 @@
         flex-shrink: 0;
         border-radius: 4px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--text);
             background: var(--transparent-white-8);
         }

@@ -24,7 +24,7 @@
     border-radius: 6px;
     transition: all 0.2s ease;
     margin-bottom: 2px;
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--white-alpha-10);
         color: var(--color-text-primary);
     }

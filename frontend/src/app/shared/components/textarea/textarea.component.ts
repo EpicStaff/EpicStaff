@@ -9,12 +9,13 @@ import {
     ViewChild,
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-textarea',
-    imports: [TooltipComponent],
+    imports: [TooltipComponent, MatTooltip],
     templateUrl: './textarea.component.html',
     styleUrls: ['./textarea.component.scss'],
     providers: [
@@ -42,6 +43,8 @@ export class TextareaComponent implements ControlValueAccessor {
     isReadonly = this.readonly;
 
     value = signal<string>('');
+    /** The field's accessible name and tooltip: the label shown above it isn't tied to it. */
+    protected readonly fieldName = computed(() => this.label() || this.placeholder());
 
     @ViewChild('textareaRef') private textareaRef!: ElementRef<HTMLTextAreaElement>;
 
