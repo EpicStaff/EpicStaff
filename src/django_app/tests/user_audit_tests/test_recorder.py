@@ -229,3 +229,49 @@ def test_cache_active_org_id_sets_underlying_http_request():
     assert drf_request._rbac_active_org_id == 7
     # The middleware holds the HttpRequest, so it must see the org the view resolved.
     assert http_request._rbac_active_org_id == 7
+
+
+@pytest.mark.django_db
+def test_failing_sender_does_not_raise_from_the_committing_code(
+    acme, admin_acme, flow, monkeypatch, settings, django_capture_on_commit_callbacks
+):
+    settings.USER_AUDIT_TRAIL_ENABLED = True
+
+    def broken_sender_factory():
+        raise RuntimeError("sender unavailable")
+
+    monkeypatch.setattr(recorder, "get_user_audit_sender", broken_sender_factory)
+
+    with user_action_context(request_as(admin_acme)):
+        with django_capture_on_commit_callbacks(execute=True) as callbacks:
+            record_user_action(action=UserAction.UPDATED, org_id=acme.id, target=flow)
+
+    assert len(callbacks) == 1
+
+
+@pytest.mark.django_db
+def test_record_for_user_orgs_queries_nothing_when_switch_off(
+    admin_acme, sent_events, settings, django_assert_num_queries
+):
+    settings.USER_AUDIT_TRAIL_ENABLED = False
+    actor = Actor(user_id=admin_acme.id, email=admin_acme.email, api_key_name=None)
+
+    with django_assert_num_queries(0):
+        record_for_user_orgs(action=UserAction.SIGNED_IN, actor=actor)
+
+    assert sent_events == []
+
+
+@pytest.mark.django_db
+def test_record_for_user_orgs_skips_inactive_orgs(
+    acme, beta, admin_acme, role_member, sent_events, django_capture_on_commit_callbacks
+):
+    OrganizationUser.objects.create(user=admin_acme, org=beta, role=role_member)
+    beta.is_active = False
+    beta.save(update_fields=["is_active"])
+    actor = Actor(user_id=admin_acme.id, email=admin_acme.email, api_key_name=None)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        record_for_user_orgs(action=UserAction.SIGNED_IN, actor=actor)
+
+    assert [event.org_id for event in sent_events] == [acme.id]

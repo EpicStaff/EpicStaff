@@ -48,7 +48,8 @@ class UserAuditSender:
         if loop is None:
             return
         try:
-            asyncio.run_coroutine_threadsafe(client.shutdown(), loop).result()
+            # Above the client's own 5 s drain cap, so only a loop that stopped running trips it.
+            asyncio.run_coroutine_threadsafe(client.shutdown(), loop).result(timeout=10)
         except Exception:
             logger.exception("Failed to flush user action audit events on shutdown")
         finally:

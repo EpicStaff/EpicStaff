@@ -71,21 +71,24 @@ def record_user_action(
             parent_name=parent_description.name if parent_description else None,
             route=route,
         )
-        transaction.on_commit(lambda: get_user_audit_sender().send([event]))
+        # robust: the write has committed, so a failing callback must not turn it into a 500.
+        transaction.on_commit(lambda: get_user_audit_sender().send([event]), robust=True)
     except Exception:
         logger.exception("Failed to record user action {} in org {}", action, org_id)
 
 
 def record_for_user_orgs(*, action: str, actor: Actor, target: models.Model | None = None) -> None:
-    """Record the action once in every organization `actor` is a member of.
+    """Record the action once in every active organization `actor` is a member of.
 
     For actions that belong to no single org, such as signing in. Best-effort like
     `record_user_action`.
     """
+    if not settings.USER_AUDIT_TRAIL_ENABLED:
+        return
     try:
-        org_ids = OrganizationUser.objects.filter(user_id=actor.user_id).values_list(
-            "org_id", flat=True
-        )
+        org_ids = OrganizationUser.objects.filter(
+            user_id=actor.user_id, org__is_active=True
+        ).values_list("org_id", flat=True)
         for org_id in org_ids:
             record_user_action(action=action, org_id=org_id, target=target, actor=actor)
     except Exception:
