@@ -3,6 +3,7 @@ from tables.views.storage_upload_stream_view import UPLOAD_STREAM_PATH
 TAG_MAP = [
     # Authentication
     ("api/auth/", "Authentication"),
+    ("api/profile", "Profile"),
     # Agent Definitions
     ("api/agent-definitions", "Agent Definitions"),
     # Surfaces
@@ -14,6 +15,8 @@ TAG_MAP = [
     ("api/graph-versions", "Graph Versions"),
     ("api/graph-notes", "Graph Notes"),
     ("api/graph-session-messages", "Graph Session Messages"),
+    ("api/flow-assistants", "Flow Assistants"),
+    ("api/flow-filter-presets", "Flow Filter Presets"),
     # Nodes
     ("api/pythonnodes", "Python Nodes"),
     ("api/startnodes", "Start Nodes"),
@@ -49,6 +52,8 @@ TAG_MAP = [
     ("api/python-code-tool", "Python Code Tool"),
     ("api/python-code-result", "Python Code Results"),
     ("api/run-python-code", "Run Python Code"),
+    ("api/venvs", "Venvs"),
+    ("api/tool-filter-presets", "Tool Filter Presets"),
     # Knowledge & RAG
     ("api/documents", "Knowledge & RAG"),
     ("api/naive-rag", "Knowledge & RAG"),
@@ -86,20 +91,39 @@ TAG_MAP = [
     ("api/admin/organizations", "Admin: Organizations"),
     ("api/admin/users", "Admin: Users"),
     ("api/admin/roles", "Admin: Roles"),
+    ("api/admin/memberships", "Admin: Memberships"),
+    ("api/admin/api-keys", "Admin: API Keys"),
+    ("api/permissions", "Permissions"),
     # Config / Defaults
     ("api/tool-labels", "Tool Labels"),
     ("api/labels", "Labels"),
     ("api/secrets", "Secrets"),
     ("api/storage", "Storage"),
+    ("api/recycle-bin", "Recycle Bin"),
+    ("api/execution-timeout-limits", "Execution Timeout Limits"),
     ("api/default-", "Defaults"),
     ("api/quickstart", "Quickstart"),
-    ("api/memory", "Memory"),
     # Audit
     ("api/audit", "Audit"),
+    # Key Value Tables
+    ("api/key-value-tables", "Key Value Tables"),
+    ("api/key-value-table-entries", "Key Value Tables"),
+    # Internal session endpoints, whose key is `sessions`
+    ("/key-value-tables/", "Key Value Tables"),
+    # Plugins
+    ("api/plugins", "Plugins"),
+    ("api/plugin-nodes", "Plugins"),
+    ("api/plugin-public", "Plugins"),
+    ("api/plugin-runtime", "Plugins"),
+    ("api/admin/plugins", "Plugins"),
+    ("api/admin/plugin-role-permissions", "Plugins"),
+    # Notifications
+    ("api/notify", "Notifications"),
 ]
 
 TAGS_ORDER = [
     "Authentication",
+    "Profile",
     "Agent Definitions",
     "Surfaces",
     "Graphs",
@@ -107,6 +131,8 @@ TAGS_ORDER = [
     "Graph Versions",
     "Graph Notes",
     "Graph Session Messages",
+    "Flow Assistants",
+    "Flow Filter Presets",
     "Python Nodes",
     "Start Nodes",
     "End Nodes",
@@ -134,6 +160,8 @@ TAGS_ORDER = [
     "Python Code Tool Configs",
     "Python Code Results",
     "Run Python Code",
+    "Venvs",
+    "Tool Filter Presets",
     "Knowledge & RAG",
     "Graph RAG",
     "Realtime Agents & Sessions",
@@ -148,13 +176,21 @@ TAGS_ORDER = [
     "Admin: Organizations",
     "Admin: Users",
     "Admin: Roles",
+    "Admin: Memberships",
+    "Admin: API Keys",
+    "Permissions",
     "Tool Labels",
     "Labels",
     "Secrets",
     "Storage",
+    "Recycle Bin",
+    "Execution Timeout Limits",
     "Audit",
     "Defaults",
     "Quickstart",
+    "Key Value Tables",
+    "Plugins",
+    "Notifications",
     "Other",
 ]
 
