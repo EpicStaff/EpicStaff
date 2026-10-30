@@ -13,6 +13,23 @@
         >
             <app-svg-icon icon="edit"></app-svg-icon>
         </div>
+        <app-note-color-picker
+            [color]="noteBackgroundColor"
+            (colorChange)="onNoteColorChange($event)"
+        />
+        <app-font-size-select
+            [value]="noteFontSize"
+            (valueChange)="onNoteFontSizeChange($event)"
+        />
+        <!-- Reselect Area Button for Note -->
+        <div
+            class="action-button reselect-area-button"
+            matTooltip="Reselect area"
+            matTooltipPosition="above"
+            (click)="onReselectAreaClick($event)"
+        >
+            <i class="ti ti-capture"></i>
+        </div>
         <!-- Delete Button (NOTE only here - never START) -->
         <div
             class="action-button delete-button"
@@ -238,7 +255,10 @@
 </ng-template>
 @switch (node.type) {
     @case (NodeType.NOTE) {
-        <app-graph-note [node]="noteNode!"></app-graph-note>
+        <app-graph-note
+            [node]="noteNode!"
+            (dblclick)="onNoteDoubleClick($event)"
+        ></app-graph-note>
     }
     @case (NodeType.TABLE) {
         <app-decision-table-node

@@ -8,6 +8,35 @@
     overflow: hidden;
 }
 
+// Crosshair cursor while the user draws a note area region.
+.visual-programming-flow.note-draw-mode {
+    cursor: crosshair !important;
+
+    // Suppress the default "grab" cursor on every child so the crosshair stays consistent.
+    * {
+        cursor: crosshair !important;
+    }
+}
+
+// Live rectangle drawn while the user drags out a note region.
+.note-draw-overlay {
+    position: absolute;
+    pointer-events: none;
+    border: 1.5px dashed #ffc832;
+    background: rgba(255, 200, 50, 0.08);
+    z-index: 9999;
+}
+
+// CDK panel class for the near-fullscreen note dialog.
+::ng-deep .note-dialog-fullscreen {
+    width: calc(100vw - 2rem) !important;
+    height: calc(100vh - 2rem) !important;
+    max-width: calc(100vw - 2rem) !important;
+    max-height: calc(100vh - 2rem) !important;
+    border-radius: 12px !important;
+    padding: 0 !important;
+}
+
 // Must stay z-index/transform/isolation-free: it is moved inside `f-canvas`'s
 // stacking context, and any stacking context of its own would trap its
 // children's z-index instead of letting it compete with `.f-nodes-container`.

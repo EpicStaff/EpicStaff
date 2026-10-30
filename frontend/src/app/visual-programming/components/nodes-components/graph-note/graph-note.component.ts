@@ -4,6 +4,7 @@ import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 import { Subject } from 'rxjs';
 
 import { GraphNoteModel } from '../../../core/models/node.model';
+import { NOTE_COLORS } from '../../../core/utils/note-colors.util';
 import { FlowService } from '../../../services/flow.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { ResizeHandleComponent } from '../../resize-handle/resize-handle.component';
@@ -14,9 +15,12 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
     template: `
         <div
             class="note-container"
-            [style.background-color]="node.data.backgroundColor || '#ffffd1'"
+            [style.--note-bg]="node.data.backgroundColor || defaultNoteColor"
         >
-            <div class="content-container">
+            <div
+                class="content-container"
+                [style.font-size.px]="node.data.fontSize || 14"
+            >
                 {{ node.data.content || (isReadOnly() ? '' : 'Add note text...') }}
             </div>
             @if (!isReadOnly()) {
@@ -32,20 +36,29 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
                 border-radius: 4px;
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
                 display: flex;
-
                 position: relative;
+                background: transparent;
+            }
+
+            .note-container::before {
+                content: '';
+                position: absolute;
+                inset: 0;
+                border-radius: inherit;
+                background: var(--note-bg);
+                opacity: 0.55;
+                pointer-events: none;
             }
 
             .content-container {
+                position: relative;
                 width: 100%;
                 height: 100%;
-
                 padding: 8px;
                 overflow: auto;
                 white-space: pre-wrap;
                 word-break: break-word;
-                font-size: 0.875rem;
-                color: black;
+                color: var(--color-text-primary, #fff);
             }
         `,
     ],
@@ -58,6 +71,7 @@ export class GraphNoteComponent implements OnDestroy {
 
     public eResizeHandleType = EFResizeHandleType;
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
+    protected readonly defaultNoteColor = NOTE_COLORS[0];
 
     constructor(
         private flowService: FlowService,

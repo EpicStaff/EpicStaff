@@ -261,7 +261,12 @@ function toNoteComparable(node: GraphNoteModel): unknown {
     return {
         node_name: node.node_name,
         content: node.data.content,
-        metadata: { ...toNodeMetadata(node), backgroundColor: node.data.backgroundColor ?? null },
+        metadata: {
+            ...toNodeMetadata(node),
+            backgroundColor: node.data.backgroundColor ?? null,
+            fontSize: node.data.fontSize ?? null,
+            linkedRegion: node.data.linkedRegion ?? null,
+        },
     };
 }
 

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { MenuNodeType, NODE_MENU_GROUPS, NODE_MENU_LABELS } from '../../../core/constants/node-menu-groups';
@@ -40,21 +41,37 @@ const MAC_KEY_GAP = '\u2009';
                 <ul>
                     @for (block of group.blocks; track block.type) {
                         <li
-                            (click)="onBlockClicked(block.type)"
                             [style.border-left-color]="block.color"
                             [class.disabled]="isDisabled(block.type)"
+                            [class.note-row]="block.type === NodeType.NOTE"
                         >
-                            <i
-                                class="node-icon"
-                                [class]="block.icon"
-                                [style.color]="block.color"
-                            ></i>
-                            <span class="menu-group__item-label">{{ block.label }}</span>
-                            @if (block.keyHint; as keyHint) {
-                                <span class="key-hint">{{ keyHint }}</span>
-                            } @else {
-                                <i class="ti ti-plus plus-icon"></i>
-                            }
+                            <div
+                                class="block-main"
+                                (click)="onBlockClicked(block.type)"
+                            >
+                                <i
+                                    class="node-icon"
+                                    [class]="block.icon"
+                                    [style.color]="block.color"
+                                ></i>
+                                <span class="menu-group__item-label">{{ block.label }}</span>
+                                @if (block.type === NodeType.NOTE) {
+                                    <button
+                                        type="button"
+                                        class="area-draw-btn"
+                                        matTooltip="Place note with selected area"
+                                        matTooltipPosition="right"
+                                        (click)="$event.stopPropagation(); onAreaNoteClicked()"
+                                    >
+                                        <i class="ti ti-capture"></i>
+                                    </button>
+                                }
+                                @if (block.keyHint; as keyHint) {
+                                    <span class="key-hint">{{ keyHint }}</span>
+                                } @else {
+                                    <i class="ti ti-plus plus-icon"></i>
+                                }
+                            </div>
                         </li>
                     }
                 </ul>
@@ -83,12 +100,26 @@ const MAC_KEY_GAP = '\u2009';
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                padding: 12px 16px;
+                padding: 0;
                 border-radius: 8px;
-                gap: 14px;
+                gap: 0;
                 cursor: pointer;
                 transition: background 0.2s ease;
                 position: relative;
+            }
+
+            li:hover {
+                background: #2a2a2a;
+            }
+
+            /* The main clickable area fills the row except for the area-draw button */
+            .block-main {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                flex: 1 1 auto;
+                min-width: 0;
+                padding: 12px 16px;
             }
 
             .node-icon {
@@ -99,12 +130,12 @@ const MAC_KEY_GAP = '\u2009';
                 font-size: 1.125rem;
             }
 
-            .node-label {
-                color: #fff;
-            }
-
-            li:hover {
-                background: #2a2a2a;
+            .menu-group__item-label {
+                flex: 1 1 auto;
+                min-width: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
             .plus-icon {
@@ -119,14 +150,6 @@ const MAC_KEY_GAP = '\u2009';
             li:hover .plus-icon {
                 opacity: 1;
                 color: inherit;
-            }
-
-            .menu-group__item-label {
-                flex: 1 1 auto;
-                min-width: 0;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
             }
 
             .key-hint {
@@ -148,13 +171,42 @@ const MAC_KEY_GAP = '\u2009';
                 cursor: not-allowed;
                 pointer-events: none;
             }
+
+            /* Area-draw button shown only on the Note row */
+            .area-draw-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                width: 2.25rem;
+                height: 2.25rem;
+                margin-right: 0.5rem;
+                border-radius: 6px;
+                border: none;
+                background: transparent;
+                color: var(--color-ks-transparent-text-60);
+                cursor: pointer;
+                font-size: 1rem;
+                transition:
+                    background 0.2s ease,
+                    color 0.2s ease;
+                outline: none;
+            }
+
+            .area-draw-btn:hover {
+                background: #3a3a3a;
+                color: var(--color-text-primary, #fff);
+            }
         `,
     ],
+    imports: [MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FlowGraphCoreMenuComponent {
     public readonly searchTerm = input('');
     public readonly nodeSelected = output<CreateNodeRequest>();
+
+    readonly NodeType = NodeType;
 
     protected readonly filteredGroups = computed<FlowGraphMenuGroup[]>(() => {
         const term = this.searchTerm().toLowerCase();
@@ -186,6 +238,10 @@ export class FlowGraphCoreMenuComponent {
 
     protected onBlockClicked(type: NodeType): void {
         this.nodeSelected.emit({ type });
+    }
+
+    protected onAreaNoteClicked(): void {
+        this.nodeSelected.emit({ type: NodeType.NOTE, areaSelection: true });
     }
 
     protected isDisabled(type: NodeType): boolean {

@@ -468,7 +468,12 @@ export function buildBulkSavePayload(
             node_name: n.node_name,
             graph: graphId,
             content: n.data.content,
-            metadata: { ...toNodeMetadata(n), backgroundColor: n.data.backgroundColor ?? null },
+            metadata: {
+                ...toNodeMetadata(n),
+                backgroundColor: n.data.backgroundColor ?? null,
+                fontSize: n.data.fontSize ?? null,
+                linkedRegion: n.data.linkedRegion ?? null,
+            },
         })),
         classification_decision_table_node_list: nodeItems(nodeDiff.classificationDecisionTableNodes, (n) =>
             buildCdtNodePayload(n, graphId, current.nodes, idMap, current.connections)
