@@ -17,6 +17,7 @@ class ResourceType(models.TextChoices):
     LLM_CONFIGS = "llm_configs", "LLM Configs"
     SECRETS = "secrets", "Secrets"
     AUDIT = "audit", "Audit"
+    USER_AUDIT = "user_audit", "User audit"
     VOICE = "voice", "Voice"
     SURFACES = "surfaces", "Surfaces"
     WEBHOOKS = "webhooks", "Webhooks"

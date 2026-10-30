@@ -149,6 +149,14 @@ RESOURCE_TYPE_METADATA = [
         "platform_actions": [],
     },
     {
+        "code": ResourceType.USER_AUDIT.value,
+        "label": "User audit",
+        "group": "admin",
+        "description": "Org-wide log of who changed what: browse and export",
+        "applicable_actions": ["read", "export"],
+        "platform_actions": [],
+    },
+    {
         "code": ResourceType.VOICE.value,
         "label": "Voice",
         "group": "config",
