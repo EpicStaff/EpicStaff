@@ -76,6 +76,7 @@ import {
     GraphVersionDto,
     RestoreWarning,
 } from '../../../../features/flows/models/graph.model';
+import { snapshotDeclaresSecrets } from '../../../../features/flows/models/graph-version-preview.model';
 import { RunGraphResponse } from '../../../../features/flows/models/run-session.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
 import {
@@ -1982,7 +1983,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             : `Restoring <strong>${escapeHtml(version.name)}</strong> will replace the current flow state. Save a backup of the current state first?`;
 
         // A restore this user may not do is refused first: before the backup question, the preview exit or a save.
-        this.refuseRestoreOfTriggerNodes(version)
+        this.refuseRestoreThisUserMayNotDo(version)
             .pipe(
                 filter((refused) => !refused),
                 switchMap(() =>
@@ -2017,25 +2018,37 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     /**
-     * Restoring creates the version's nodes again, and creating a trigger node needs Flows:Use, so for a user
-     * without it a version with trigger nodes is refused as a whole; emits true when it refused, after telling
-     * the user why. Users with Flows:Use get `false` at once, without fetching the version.
+     * Restoring creates the version's nodes again. Creating a trigger node needs Flows:Use, and getting code that
+     * reads secrets needs Secrets:Use, so for a user without either a version holding such nodes is refused as a
+     * whole; the trigger refusal wins when both apply, as on the backend. Emits true when it refused, after telling
+     * the user why. A user with both permissions gets `false` at once, without fetching the version.
+     *
+     * The secrets check counts every declared name, even one whose secret no longer exists, as the backend does:
+     * a deleted secret can come back later and the restored code would read it again.
      */
-    private refuseRestoreOfTriggerNodes(version: GraphVersionDto): Observable<boolean> {
-        if (this.flowReadOnly.canEditTriggerNodes()) {
+    private refuseRestoreThisUserMayNotDo(version: GraphVersionDto): Observable<boolean> {
+        const checksTriggerNodes = !this.flowReadOnly.canEditTriggerNodes();
+        const checksSecretCode = !this.permissionsService.can(ResourceCode.Secrets, ActionCode.Use);
+        if (!checksTriggerNodes && !checksSecretCode) {
             return of(false);
         }
         return this.flowApiService.previewGraphVersion(version.id).pipe(
-            map(({ snapshot }) =>
-                mapGraphDtoToFlowModel(mapSnapshotToGraphDto(snapshot, new Map())).nodes.some((node) =>
-                    isTriggerNodeType(node.type)
-                )
-            ),
+            map(({ snapshot }): 'triggerNodes' | 'secretCode' | null => {
+                const hasTriggerNodes =
+                    checksTriggerNodes &&
+                    mapGraphDtoToFlowModel(mapSnapshotToGraphDto(snapshot, new Map())).nodes.some((node) =>
+                        isTriggerNodeType(node.type)
+                    );
+                if (hasTriggerNodes) return 'triggerNodes';
+                return checksSecretCode && snapshotDeclaresSecrets(snapshot) ? 'secretCode' : null;
+            }),
             // Unknown (the version could not be read): the restore request decides, through catchRefusal.
-            catchError(() => of(false)),
-            tap((refused) => {
-                if (refused) this.usePermissionRefusal.showRefusal('restore');
-            })
+            catchError(() => of(null)),
+            tap((refusal) => {
+                if (refusal === 'triggerNodes') this.usePermissionRefusal.showRefusal('restore');
+                if (refusal === 'secretCode') this.usePermissionRefusal.showSecretsRefusal('restore');
+            }),
+            map((refusal) => refusal !== null)
         );
     }
 

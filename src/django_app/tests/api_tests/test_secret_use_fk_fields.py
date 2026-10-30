@@ -30,6 +30,7 @@ from tables.models.realtime_models import (
 from tables.models.webhook_models import RealtimeChannel, TwilioChannel
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
+from tables.serializers.model_serializers import PythonCodeSerializer
 from tables.services.secrets import secret_service
 
 
@@ -669,9 +670,9 @@ def test_use_holder_can_create_a_tool_with_the_m2m_secret(use_client_6b, secret_
 
 
 # ---------------------------------------------------------------------------
-# PythonCode.secret_ids under every parent that nests a PythonCode. Only the
-# declaration needs secrets:USE; editing the code of a PythonCode that already
-# declares secrets is free, even when the new code reads them.
+# PythonCode.secret_ids under every parent that nests a PythonCode. Changing the
+# declaration needs secrets:USE, and so does changing the code of a PythonCode that
+# declares secrets, as the code reads them; resending it unchanged is free.
 # ---------------------------------------------------------------------------
 
 _PYTHON_CODE_TEXT = "def main(**kwargs):\n    return 1\n"
@@ -788,13 +789,33 @@ class TestPythonCodeDeclarationIsGatedInEveryParent:
         parent.refresh_from_db()
         assert _declared_ids(parent, attribute) == [secret_b.id]
 
-    def test_editing_code_of_python_code_with_secrets_is_free(
+    def test_editing_code_of_python_code_with_secrets_without_use_is_refused(
         self, request, no_use_client_6b, endpoint, attribute, fixture_name, secret_a
+    ):
+        parent = request.getfixturevalue(fixture_name)
+        code_before = getattr(parent, attribute).code
+        code_reading_the_secret = 'def main(**kwargs):\n    return get_secret("FKUSE_SECRET_A")'
+
+        response = no_use_client_6b.patch(
+            f"{endpoint}{parent.pk}/",
+            {attribute: _python_code_payload(code=code_reading_the_secret)},
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        assert response.json()["message"].startswith(f"{attribute}: code: ")
+        python_code = getattr(parent, attribute)
+        python_code.refresh_from_db()
+        assert python_code.code == code_before
+        assert _declared_ids(parent, attribute) == [secret_a.id]
+
+    def test_editing_code_of_python_code_with_secrets_with_use_is_saved(
+        self, request, use_client_6b, endpoint, attribute, fixture_name, secret_a
     ):
         parent = request.getfixturevalue(fixture_name)
         code_reading_the_secret = 'def main(**kwargs):\n    return get_secret("FKUSE_SECRET_A")'
 
-        response = no_use_client_6b.patch(
+        response = use_client_6b.patch(
             f"{endpoint}{parent.pk}/",
             {attribute: _python_code_payload(code=code_reading_the_secret)},
             format="json",
@@ -868,4 +889,71 @@ def test_bulk_save_declaration_change_without_use_is_rejected_per_node(
     graph.refresh_from_db()
     node.refresh_from_db()
     assert graph.save_version == before
+    assert _declared_ids(node, attribute) == [secret_a.id]
+
+
+def _frontend_python_code(python_code: PythonCode, list_key: str) -> dict:
+    """The nested code block the flow editor resends for an untouched node (`utils/save/payload.ts`).
+
+    A Python or webhook trigger node sends back the code as the API read it, plus
+    `secret_ids`; a classification decision table builds its pre and post blocks from
+    a few fields and leaves `venv_id` out.
+    """
+    read = dict(PythonCodeSerializer(python_code).data)
+    read["secret_ids"] = [secret["id"] for secret in read["secrets"]]
+    if list_key != "classification_decision_table_node_list":
+        return read
+    return {
+        key: read[key]
+        for key in ("code", "entrypoint", "global_kwargs", "secret_ids", "execution_timeout")
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("list_key,attribute,fixture_name", PYTHON_CODE_BULK_NODES)
+def test_bulk_save_moving_and_renaming_a_declaring_node_without_use_is_accepted(
+    request,
+    no_use_client_6b,
+    python_code_parent_graph,
+    list_key,
+    attribute,
+    fixture_name,
+    secret_a,
+):
+    """Every save resends each node's code: an unchanged resend must not need secrets:USE."""
+    node = request.getfixturevalue(fixture_name)
+    stored = {
+        # Stored with a trailing newline, which the serializer trims off the resend.
+        "code": "def run(**kwargs):\n    return kwargs\n",
+        "entrypoint": "run",
+        "global_kwargs": {"region": "eu", "retries": 3},
+    }
+    PythonCode.objects.filter(pk=getattr(node, attribute).pk).update(**stored)
+    python_code = getattr(node, attribute)
+    python_code.refresh_from_db()
+    graph = python_code_parent_graph
+    graph.refresh_from_db()
+
+    response = no_use_client_6b.post(
+        f"/api/graphs/{graph.id}/save/",
+        {
+            "save_version": graph.save_version,
+            list_key: [
+                {
+                    "id": node.id,
+                    "graph": graph.id,
+                    "node_name": "moved and renamed",
+                    "metadata": {"position": {"x": 320, "y": 180}},
+                    attribute: _frontend_python_code(python_code, list_key),
+                }
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    node.refresh_from_db()
+    python_code.refresh_from_db()
+    assert node.node_name == "moved and renamed"
+    assert (python_code.entrypoint, python_code.global_kwargs) == ("run", stored["global_kwargs"])
     assert _declared_ids(node, attribute) == [secret_a.id]

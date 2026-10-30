@@ -172,6 +172,9 @@
                                 panelWidth="346px"
                                 (valueChange)="onPreSecretsChange($event)"
                             />
+                            @if (isPreCodeLocked()) {
+                                <app-hint-message>{{ secretCodeLockedMessage }}</app-hint-message>
+                            }
                             <app-custom-input
                                 label="Output Variable Path"
                                 tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
@@ -186,6 +189,7 @@
                                 label="Pre-computation execution timeout"
                             />
                             <app-node-storage-section
+                                [readonly]="isReadOnly() || isPreCodeLocked()"
                                 [useStorage]="preUseStorage()"
                                 (onToggleChange)="onPreStorageToggle($event)"
                                 (onInsertCode)="insertPreStorageCode($event)"
@@ -210,7 +214,7 @@
                                 [pythonCode]="preCode"
                                 [secretNames]="preSecretNames()"
                                 [inputMapKeys]="preInputMapKeys()"
-                                [readOnly]="isReadOnly()"
+                                [readOnly]="isReadOnly() || isPreCodeLocked()"
                                 (pythonCodeChange)="onPreCodeChange($event)"
                             ></app-code-editor>
                         </div>
@@ -245,6 +249,9 @@
                                 panelWidth="346px"
                                 (valueChange)="onPostSecretsChange($event)"
                             />
+                            @if (isPostCodeLocked()) {
+                                <app-hint-message>{{ secretCodeLockedMessage }}</app-hint-message>
+                            }
                             <app-custom-input
                                 label="Output Variable Path"
                                 tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
@@ -259,6 +266,7 @@
                                 label="Post-computation execution timeout"
                             />
                             <app-node-storage-section
+                                [readonly]="isReadOnly() || isPostCodeLocked()"
                                 [useStorage]="postUseStorage()"
                                 (onToggleChange)="onPostStorageToggle($event)"
                                 (onInsertCode)="insertPostStorageCode($event)"
@@ -283,7 +291,7 @@
                                 [pythonCode]="postCode"
                                 [secretNames]="postSecretNames()"
                                 [inputMapKeys]="postInputMapKeys()"
-                                [readOnly]="isReadOnly()"
+                                [readOnly]="isReadOnly() || isPostCodeLocked()"
                                 (pythonCodeChange)="onPostCodeChange($event)"
                             ></app-code-editor>
                         </div>

@@ -121,6 +121,7 @@
                     <app-tool-card-menu
                         [toolLabelIds]="tool().labelIds"
                         [isBuiltIn]="!!tool().builtIn"
+                        [copyBlockedReason]="tool().copyBlockedReason"
                         (actionSelected)="onMenuAction($event)"
                         (labelsChanged)="onMenuLabelsChanged($event)"
                         (labelsOpenChange)="onLabelsOpenChange($event)"

@@ -242,4 +242,20 @@ describe('VenvDialogComponent library rows', () => {
         );
         expect(close).not.toHaveBeenCalled();
     });
+
+    it('toasts why a library change was refused for a venv that code reading secrets runs in', () => {
+        const message =
+            'libs: Changing code that reads secrets, or what it runs with, requires the "Use" permission on Secrets. ' +
+            'The existing value was left unchanged. Ask an organization admin to grant it.';
+        open({ venv: storedVenv([{ name: 'requests', specification: '', version: '2.31.0', description: null }]) });
+        type(0, 'Version', '2.32.0');
+
+        save();
+        httpMock
+            .expectOne(`${VENVS_URL}7/`)
+            .flush({ status_code: 400, code: 'invalid', message }, { status: 400, statusText: 'Bad Request' });
+
+        expect(TestBed.inject(ToastService).error).toHaveBeenCalledExactlyOnceWith(message);
+        expect(close).not.toHaveBeenCalled();
+    });
 });

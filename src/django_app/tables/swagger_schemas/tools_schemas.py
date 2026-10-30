@@ -13,6 +13,7 @@ from tables.serializers.model_serializers import (
 )
 from tables.serializers.serializers import BulkExportSerializer
 from tables.swagger_schemas.common_schemas import (
+    CODE_WITH_SECRETS_403_RESPONSE,
     FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
     UNAUTHORIZED_401_RESPONSE,
 )
@@ -98,6 +99,7 @@ def _copy_post_schema(
     built_in_note: str,
     error_400_description: str,
     error_400_example: dict | None,
+    error_403: OpenApiResponse | None = None,
 ) -> dict:
     responses = {
         201: OpenApiResponse(
@@ -106,6 +108,8 @@ def _copy_post_schema(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     }
+    if error_403 is not None:
+        responses[403] = error_403
     if error_400_example is not None:
         responses[400] = OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -136,9 +140,15 @@ def _copy_post_schema(
 PYTHON_CODE_TOOL_COPY_POST = _copy_post_schema(
     model_name="PythonCodeTool",
     response_serializer=PythonCodeToolSerializer,
-    built_in_note="Built-in tools (`built_in=True`) cannot be copied and return a 400 error.",
+    built_in_note=(
+        "Built-in tools (`built_in=True`) cannot be copied and return a 400 error. A tool "
+        "whose code declares a secret requires USE on secrets: the copied code is the "
+        "caller's own. Without it the response is 403 "
+        "`code_with_secrets_requires_secrets_use_permission` and nothing is written."
+    ),
     error_400_description="Built-in tools cannot be copied.",
     error_400_example={"message": "Cannot copy a built-in tool."},
+    error_403=CODE_WITH_SECRETS_403_RESPONSE,
 )
 MCP_TOOL_COPY_POST = _copy_post_schema(
     model_name="McpTool",

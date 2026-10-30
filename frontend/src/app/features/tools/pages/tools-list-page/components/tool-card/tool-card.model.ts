@@ -18,6 +18,8 @@ export interface ToolCardVM {
     labelIds: number[];
     favorite: boolean;
     builtIn: boolean;
+    /** Why the tool cannot be duplicated by this user; absent when it can. */
+    copyBlockedReason?: string;
     agentSurfaceUsage?: number;
     sharedSurfaceUsage?: number;
     inlineSurfaceUsage?: number;

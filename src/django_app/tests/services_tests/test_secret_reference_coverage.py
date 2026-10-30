@@ -1,4 +1,4 @@
-"""Coverage tests for secrets:USE: every Secret-writing serializer field has a secret Use check at its write point or is exempt, and the paths the design leaves ungated stay ungated."""
+"""Coverage tests for secrets:USE: every Secret-writing serializer field has a secret Use check at its write point or is exempt, and the one path the design leaves ungated stays ungated."""
 
 import pytest
 from rest_framework.relations import ManyRelatedField, PrimaryKeyRelatedField
@@ -239,7 +239,7 @@ def test_every_mapped_secret_use_check_exists():
 
 
 # ---------------------------------------------------------------------------
-# Check 2 -- the paths this design deliberately leaves ungated stay ungated
+# Check 2 -- the path this design deliberately leaves ungated stays ungated
 # ---------------------------------------------------------------------------
 
 
@@ -260,18 +260,14 @@ def _client_with(*, org, django_user_model, email, resource_permissions):
 
 @pytest.fixture
 def no_use_client(db, django_user_model, default_org):
-    """An APIClient whose role holds READ (not USE) on secrets and CREATE|READ|UPDATE on flows."""
-    # Flows needs CREATE because `GraphViewSet.rbac_action_map` maps `copy` to
-    # `Permission.CREATE`; READ|UPDATE are what the bulk save path needs.
+    """An APIClient whose role holds READ (not USE) on secrets and READ|UPDATE on flows, what bulk save needs."""
     return _client_with(
         org=default_org,
         django_user_model=django_user_model,
         email="coverage_nouse@example.com",
         resource_permissions={
             ResourceType.SECRETS.value: int(Permission.READ),
-            ResourceType.FLOWS.value: int(
-                Permission.CREATE | Permission.READ | Permission.UPDATE
-            ),
+            ResourceType.FLOWS.value: int(Permission.READ | Permission.UPDATE),
         },
     )
 
@@ -299,24 +295,14 @@ def python_node(graph, secret):
 
 @pytest.mark.django_db
 class TestUngatedPathsStayUngated:
-    """copy_python_code and bulk-save node deletion must stay reachable without secrets:USE, per spec sec5."""
+    """Bulk-save node deletion stays reachable without secrets:USE.
 
-    # Both reach PythonCode.secrets without a serializer and reproduce or drop an
-    # existing declaration inside one org rather than granting new access. Graph-version
-    # restore is the third such path; it is exercised in
-    # tests/graph_versioning_tests/test_secret_declarations.py rather than here.
-
-    def test_copying_a_flow_preserves_the_declaration(
-        self, no_use_client, graph, python_node, secret
-    ):
-        response = no_use_client.post(f"/api/graphs/{graph.id}/copy/")
-
-        assert response.status_code in (200, 201), response.json()
-        copied = Graph.objects.exclude(pk=graph.pk).order_by("-id").first()
-        copied_node = copied.python_node_list.get(node_name=python_node.node_name)
-        assert list(copied_node.python_code.secrets.values_list("name", flat=True)) == [
-            secret.name
-        ]
+    It reaches PythonCode.secrets without a serializer, but only drops a declaration:
+    nobody gains code that reads a secret. Copying such code and restoring a version
+    that declares secrets hand the caller code they can edit and run, so both need
+    secrets:USE (tests/api_tests/test_secret_use_python_code.py and
+    tests/graph_versioning_tests/test_secret_declarations.py).
+    """
 
     def test_deleting_a_declaring_node_is_allowed(
         self, no_use_client, graph, python_node

@@ -6,8 +6,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
 import { ExecutionTimeoutFieldComponent, ExecutionTimeoutFormField } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { NodeType, ResourceCode } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
+import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { of } from 'rxjs';
 
 import { ImportExportService } from '../../../../core/services/import-export.service';
@@ -32,6 +33,7 @@ import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
 import { buildUuidToBackendIdMap, getConnectionDiff, getNodeDiff } from '../../../utils/save/diff';
 import { buildBulkSavePayload } from '../../../utils/save/payload';
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
@@ -754,5 +756,107 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
 
         expect(fields().preExecutionTimeout.control.disabled).toBe(true);
         expect(fields().postExecutionTimeout.control.disabled).toBe(true);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — code that reads secrets', () => {
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+
+    /** Only the pre-computation code reads a secret. */
+    function open(canUseSecrets: boolean): void {
+        configurePanelTestBed({
+            providers: [
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode) => resource !== ResourceCode.Secrets || canUseSecrets,
+                        canEditSecrets: () => canUseSecrets,
+                    },
+                },
+            ],
+        });
+        const node = tableNode();
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...node,
+            data: {
+                ...node.data,
+                table: {
+                    ...node.data.table,
+                    pre_computation: { code: 'def main(): pass', secret_ids: [7], secret_names: ['STRIPE_KEY'] },
+                    post_computation: { code: 'def main(): pass' },
+                },
+            },
+        } as ClassificationDecisionTableNodeModel);
+        fixture.detectChanges();
+    }
+
+    function showTab(tab: 'precomputation' | 'postcomputation'): void {
+        fixture.componentInstance.activeTab.set(tab);
+        fixture.detectChanges();
+    }
+
+    function codeEditorReadOnly(): boolean {
+        return (
+            fixture.debugElement.query(By.directive(CodeEditorStubComponent))
+                .componentInstance as CodeEditorStubComponent
+        ).readOnly();
+    }
+
+    function storageReadOnly(): boolean {
+        return (
+            fixture.debugElement.query(By.directive(NodeStorageSectionComponent))
+                .componentInstance as NodeStorageSectionComponent
+        ).readonly();
+    }
+
+    function showsLockHint(): boolean {
+        return (fixture.nativeElement as HTMLElement).textContent?.includes(SECRET_CODE_NEEDS_USE_MESSAGE) ?? false;
+    }
+
+    it('locks only the block whose code reads secrets, with its storage toggle, without Secrets:Use', () => {
+        open(false);
+
+        showTab('precomputation');
+        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([true, true, true]);
+
+        showTab('postcomputation');
+        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([false, false, false]);
+    });
+
+    it('leaves both blocks editable with Secrets:Use', () => {
+        open(true);
+
+        showTab('precomputation');
+        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([false, false, false]);
+    });
+
+    it('locks the storage toggles in a version preview', () => {
+        configurePanelTestBed({ isPreview: true });
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', tableNode());
+        fixture.detectChanges();
+
+        showTab('postcomputation');
+        expect(storageReadOnly()).toBe(true);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — stored code fields', () => {
+    it('saves the stored entrypoint and global kwargs of each block, which it does not edit', () => {
+        configurePanelTestBed();
+        const node = tableNode();
+        const stored = { code: 'def run(): pass', entrypoint: 'run', global_kwargs: { retries: 3 } };
+        const fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...node,
+            data: { ...node.data, table: { ...node.data.table, pre_computation: stored, post_computation: stored } },
+        } as ClassificationDecisionTableNodeModel);
+        fixture.detectChanges();
+
+        const { pre_computation, post_computation } = fixture.componentInstance.createUpdatedNode().data.table;
+
+        expect([pre_computation?.entrypoint, pre_computation?.global_kwargs]).toEqual(['run', { retries: 3 }]);
+        expect([post_computation?.entrypoint, post_computation?.global_kwargs]).toEqual(['run', { retries: 3 }]);
     });
 });

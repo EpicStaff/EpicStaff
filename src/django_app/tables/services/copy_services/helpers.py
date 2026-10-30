@@ -10,6 +10,8 @@ from tables.import_export.utils import (
     slug_base,
 )
 from tables.models.python_models import PythonCode
+from tables.services.secrets.secret_code_inspector import secret_code_access
+from tables.services.secrets.secret_use_service import SecretActor
 
 #: Distinguishes "the payload omitted secrets" from "the payload sent an empty list".
 #: A PATCH that omits secret_ids must leave the declaration alone; one that sends []
@@ -145,8 +147,26 @@ def apply_python_code_fields(*, python_code: PythonCode, python_code_data: dict)
         python_code.forget_linked_secrets()
 
 
-def copy_python_code(python_code: PythonCode) -> PythonCode:
-    """Create and return a new PythonCode instance with all fields duplicated."""
+def copy_python_code(python_code: PythonCode, *, actor: SecretActor | None) -> PythonCode:
+    """Create and return a new PythonCode with every field and declared secret duplicated.
+
+    The duplicate keeps the declaration: copy stays inside one org, so the ids remain
+    valid, and dropping it would leave a copy that fails validation. A secret in the
+    recycle bin is copied too, as its links stay until it's purged. Whoever copies
+    owns the duplicate and can rewrite the code that reads those secrets, so copying
+    code that declares any needs secrets:USE. The copy endpoints refuse before writing
+    anything (`SecretCodeInspector`); this check is the backstop every copy passes.
+
+    Raises:
+        CodeWithSecretsRequiresSecretsUsePermissionError: The code declares a secret and
+            `actor` lacks secrets:USE, or is a pinned-org principal that may not
+            reference it (`SecretCodeAccess.assert_may_recreate`). Raised before this
+            code is written; a caller copying several rows must run in one transaction
+            so the rows already copied roll back.
+    """
+    declared_secrets = python_code.linked_secrets()
+    if declared_secrets:
+        secret_code_access.assert_may_recreate(actor, declared_secrets)
     duplicate = PythonCode.objects.create(
         code=python_code.code,
         entrypoint=python_code.entrypoint,
@@ -154,10 +174,7 @@ def copy_python_code(python_code: PythonCode) -> PythonCode:
         global_kwargs=python_code.global_kwargs,
         execution_timeout=python_code.execution_timeout,
     )
-    # Copy stays inside one org, so the ids remain valid and the duplicate must be
-    # runnable. Dropping the declaration would leave a copy that fails validation. A
-    # secret in the recycle bin is copied too: its links stay until it's purged.
-    duplicate.secrets.set(python_code.linked_secrets())
+    duplicate.secrets.set(declared_secrets)
     return duplicate
 
 

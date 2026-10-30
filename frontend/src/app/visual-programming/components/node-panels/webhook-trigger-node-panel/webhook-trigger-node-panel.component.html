@@ -17,7 +17,7 @@
             [class.code-editor-card--with-terminal]="showCodeTerminal()"
             [pythonCode]="pythonCode"
             [secretNames]="secretNames()"
-            [readOnly]="isReadOnly()"
+            [readOnly]="isCodeReadOnly()"
             [editorHeight]="smallEditorHeight"
             [allowExpand]="true"
             [compactHeader]="true"
@@ -131,6 +131,9 @@
                         [tooltipText]="secretsTooltip()"
                         (valueChange)="onSecretsChange($event)"
                     />
+                    @if (isSecretCodeLocked()) {
+                        <app-hint-message>{{ secretCodeLockedMessage }}</app-hint-message>
+                    }
 
                     <app-execution-timeout-field
                         [field]="executionTimeout"
@@ -138,7 +141,7 @@
                     />
 
                     <app-node-storage-section
-                        [readonly]="isReadOnly()"
+                        [readonly]="isCodeReadOnly()"
                         [useStorage]="useStorage()"
                         (onToggleChange)="onStorageToggle($event)"
                         (onInsertCode)="insertStorageCode($event)"
@@ -182,7 +185,7 @@
                                 [class.code-editor-section--with-terminal]="showCodeTerminal()"
                                 [pythonCode]="pythonCode"
                                 [secretNames]="secretNames()"
-                                [readOnly]="isReadOnly()"
+                                [readOnly]="isCodeReadOnly()"
                                 [allowExpand]="true"
                                 [compactHeader]="true"
                                 expandLabel="Swap with test payload"

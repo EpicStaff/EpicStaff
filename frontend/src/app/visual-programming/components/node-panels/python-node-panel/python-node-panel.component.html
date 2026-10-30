@@ -57,6 +57,9 @@
                         [tooltipText]="secretsTooltip()"
                         (valueChange)="onSecretsChange($event)"
                     />
+                    @if (isSecretCodeLocked()) {
+                        <app-hint-message>{{ secretCodeLockedMessage }}</app-hint-message>
+                    }
 
                     <app-custom-input
                         label="Output Variable Path"
@@ -79,7 +82,7 @@
                             [showSearch]="true"
                             searchPlaceholder="Search by venv name..."
                             [loading]="loadingVenvs()"
-                            [readonly]="isReadOnly()"
+                            [readonly]="isCodeReadOnly()"
                             (opened)="onVenvDropdownOpened()"
                             (changed)="onVenvChanged($event)"
                         />
@@ -91,7 +94,7 @@
                     />
 
                     <app-node-storage-section
-                        [readonly]="isReadOnly()"
+                        [readonly]="isCodeReadOnly()"
                         [useStorage]="useStorage()"
                         (onToggleChange)="onStorageToggle($event)"
                         (onInsertCode)="insertStorageCode($event)"
@@ -122,7 +125,7 @@
                             [pythonCode]="pythonCode"
                             [secretNames]="secretNames()"
                             [inputMapKeys]="inputMapKeys()"
-                            [readOnly]="isReadOnly()"
+                            [readOnly]="isCodeReadOnly()"
                             (pythonCodeChange)="onPythonCodeChange($event)"
                             (errorChange)="onCodeErrorChange($event)"
                         ></app-code-editor>

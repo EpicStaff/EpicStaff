@@ -26,6 +26,7 @@ import {
 import { ConfirmationDialogService } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode, ShortcutSettings } from '@shared/models';
+import { SECRET_CODE_COPY_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { EMPTY, of } from 'rxjs';
 
 import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
@@ -1579,6 +1580,49 @@ describe('FlowGraphComponent', () => {
                 expect(flowNode('schedule-1')).toBeUndefined();
             });
         });
+
+        it.each([
+            { canUseSecrets: true, pasted: ['python-plain', 'python-secret'] },
+            { canUseSecrets: false, pasted: ['python-plain'] },
+        ])(
+            'pastes a node whose code reads secrets only with Secrets:Use ($canUseSecrets)',
+            async ({ canUseSecrets, pasted }) => {
+                const secretNode = {
+                    ...pythonNode('python-secret', { x: 0, y: 0 }),
+                    data: { secret_ids: [7] },
+                } as unknown as NodeModel;
+                mountCanvas(FLOW_ACTIONS_WITH_USE, [pythonNode('python-plain', { x: 400, y: 0 }), secretNode]);
+                grantPermissions({
+                    [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE,
+                    [ResourceCode.Secrets]: canUseSecrets ? [ActionCode.Use] : [ActionCode.Read],
+                });
+                vi.spyOn(flowElement().injector.get(FFlowComponent), 'getSelection').mockReturnValue({
+                    fNodeIds: ['python-plain', 'python-secret'],
+                    fGroupIds: [],
+                    fConnectionIds: [],
+                });
+
+                pressShortcut('c');
+                pressShortcut('v');
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const pastedNames = flowService
+                    .nodes()
+                    .filter((node) => !['python-plain', 'python-secret'].includes(node.id))
+                    .map((node) => node.node_name)
+                    .sort();
+                expect(pastedNames).toEqual(pasted);
+                if (canUseSecrets) {
+                    expect(warning).not.toHaveBeenCalled();
+                } else {
+                    expect(warning).toHaveBeenCalledWith(
+                        `1 node was not pasted. ${SECRET_CODE_COPY_NEEDS_USE_MESSAGE}`,
+                        6000,
+                        'bottom-right'
+                    );
+                }
+            }
+        );
 
         // Auto arrange needs two nodes it may move; a trigger node counts only for a user with Use.
         it.each([

@@ -1,5 +1,6 @@
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, effect, input, output, viewChild } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { LabelDropdownComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -8,7 +9,7 @@ import { ToolCardMenuAction } from './tool-card.model';
 
 @Component({
     selector: 'app-tool-card-menu',
-    imports: [LabelDropdownComponent, HasPermissionDirective],
+    imports: [LabelDropdownComponent, HasPermissionDirective, MatTooltipModule],
     templateUrl: './tool-card-menu.component.html',
     styleUrls: ['./tool-card-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -17,6 +18,8 @@ export class ToolCardMenuComponent {
     /** Labels currently assigned to the tool this menu belongs to. */
     public readonly toolLabelIds = input<number[]>([]);
     public readonly isBuiltIn = input<boolean>(false);
+    /** Shown on Duplicate, which then does nothing; Duplicate stays focusable so the reason can be read. */
+    public readonly copyBlockedReason = input<string | undefined>();
 
     public readonly actionSelected = output<ToolCardMenuAction>();
     public readonly labelsChanged = output<number[]>();
@@ -36,6 +39,7 @@ export class ToolCardMenuComponent {
     }
 
     public onSelect(action: ToolCardMenuAction): void {
+        if (action === 'duplicate' && this.copyBlockedReason()) return;
         this.actionSelected.emit(action);
     }
 

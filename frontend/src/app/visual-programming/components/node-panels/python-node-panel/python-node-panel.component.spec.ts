@@ -1,9 +1,13 @@
-import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { Component, input, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormArray, ReactiveFormsModule } from '@angular/forms';
 import { By } from '@angular/platform-browser';
 import { ConfirmationDialogService, ExecutionTimeoutFormField } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { NodeType, ResourceCode } from '@shared/models';
+import { SecretsStorageService } from '@shared/services';
+import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { of, Subject } from 'rxjs';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
@@ -13,10 +17,13 @@ import { VenvsApiService } from '../../../../features/virtual-environments/servi
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { typeIntoExecutionTimeout } from '../../../../shared/components/execution-timeout-field/execution-timeout-field.testing';
+import { RuffDiagnosticsService } from '../../../../shared/ruff-linter/services/ruff-diagnostics.service';
+import { RuffWasmService } from '../../../../shared/ruff-linter/services/ruff-wasm.service';
 import {
     provideLoadedExecutionTimeoutLimits,
     TEST_EXECUTION_TIMEOUT_LIMITS,
 } from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
+import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { PythonNode } from '../../../core/models/python-node.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
@@ -25,6 +32,7 @@ import { PollEvent, PythonCodeRunService } from '../../../services/python-code-r
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapPythonNodeToModel } from '../../../utils/load/nodes/python-node.mapper';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import {
     NODE_SAVING_MESSAGE,
     SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
@@ -144,6 +152,19 @@ describe('PythonNodePanelComponent test run', () => {
     function blocker(): string | null {
         return (panel as unknown as TestRunPanel).runTestBlocker();
     }
+
+    it('saves the stored entrypoint and global kwargs it does not edit', () => {
+        open(
+            mapPythonNodeToModel({
+                ...STORED_NODE,
+                python_code: { ...STORED_NODE.python_code, entrypoint: 'run', global_kwargs: { retries: 3 } },
+            })
+        );
+
+        const saved = panel.createUpdatedNode().data;
+
+        expect([saved.entrypoint, saved.global_kwargs]).toEqual(['run', { retries: 3 }]);
+    });
 
     it('runs the stored code of the node, by its backend id, with the parsed test values', () => {
         open();
@@ -420,13 +441,19 @@ describe('PythonNodePanelComponent Input List and main() signature', () => {
     });
 
     /** Opens a Python node with only its Input List rendered, as the user sees it. */
-    function open(code: string, inputMap: Record<string, string>, isPreview = false): void {
+    function open(code: string, inputMap: Record<string, string>, isPreview = false, canUseSecrets = true): void {
         vi.useFakeTimers();
         TestBed.configureTestingModule({
             providers: [
                 provideLoadedExecutionTimeoutLimits(),
                 { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
-                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode) => resource !== ResourceCode.Secrets || canUseSecrets,
+                        canEditSecrets: () => canUseSecrets,
+                    },
+                },
                 { provide: PythonCodeRunService, useValue: {} },
                 { provide: GraphSessionService, useValue: {} },
                 { provide: RunSessionSSEService, useValue: { status: signal(null) } },
@@ -653,6 +680,16 @@ describe('PythonNodePanelComponent Input List and main() signature', () => {
             expect(panel.pythonCode).toBe(code);
         });
 
+        // The node reads secret 7: without Secrets:Use the backend refuses a change to its code.
+        it('renames the row but leaves code that reads secrets alone for a user without Secrets:Use', () => {
+            open(CODE, { count: 'variables.count' }, false, false);
+
+            typeKey(0, 'total');
+
+            expect(rows()).toEqual([{ key: 'total', value: 'variables.count' }]);
+            expect(panel.createUpdatedNode().data.code).toBe(CODE);
+        });
+
         it('leaves a signature edit still waiting for its sync to the code editor', () => {
             open(CODE, { count: 'variables.count' });
 
@@ -746,5 +783,82 @@ describe('PythonNodePanelComponent venv selection', () => {
 
         // Asserted on the state, not on the call: a build finished since the panel opened.
         expect(panel.venvs()).toEqual([READY]);
+    });
+});
+
+describe('PythonNodePanelComponent code that reads secrets', () => {
+    /** Stands in for the venv picker, a form control the panel renders without its forms module here. */
+    @Component({ selector: 'app-select', template: '' })
+    class VenvSelectStubComponent {
+        readonly readonly = input(false);
+    }
+
+    /** Stands in for the Input List: `nodeName` would otherwise land on the read-only DOM property. */
+    @Component({ selector: 'app-input-map', template: '' })
+    class InputMapStubComponent {
+        readonly nodeName = input<string>();
+    }
+
+    let fixture: ComponentFixture<PythonNodePanelComponent>;
+
+    /** The real panel template, for a node whose code reads secret 7; the controls not checked are unknown elements. */
+    function open(canUseSecrets: boolean): void {
+        TestBed.configureTestingModule({
+            providers: [
+                provideLoadedExecutionTimeoutLimits(),
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: FLOW_EDITOR_PREVIEW, useValue: false },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode) => resource !== ResourceCode.Secrets || canUseSecrets,
+                        canEditSecrets: () => canUseSecrets,
+                    },
+                },
+                { provide: VenvsApiService, useValue: { getVenvs: () => of([]) } },
+                { provide: SecretsStorageService, useValue: { namesForIds: () => ['STRIPE_KEY'] } },
+                { provide: RuffWasmService, useValue: { check: () => Promise.resolve([]) } },
+                { provide: RuffDiagnosticsService, useValue: { setMarkers: () => {}, hasSyntaxErrors: () => false } },
+            ],
+        });
+        TestBed.overrideComponent(PythonNodePanelComponent, {
+            set: {
+                imports: [
+                    CodeEditorComponent,
+                    NodeStorageSectionComponent,
+                    VenvSelectStubComponent,
+                    InputMapStubComponent,
+                ],
+                schemas: [NO_ERRORS_SCHEMA],
+            },
+        });
+        TestBed.overrideComponent(CodeEditorComponent, { set: { template: '', imports: [] } });
+        fixture = TestBed.createComponent(PythonNodePanelComponent);
+        fixture.componentRef.setInput('node', pythonNode);
+        fixture.detectChanges();
+    }
+
+    function locks(): { codeEditor: boolean; venv: boolean; storage: boolean; hint: boolean } {
+        const query = <T>(type: new (...args: never[]) => T): T =>
+            fixture.debugElement.query(By.directive(type)).componentInstance as T;
+        return {
+            codeEditor: query(CodeEditorComponent).readOnly,
+            venv: query(VenvSelectStubComponent).readonly(),
+            storage: query(NodeStorageSectionComponent).readonly(),
+            hint: (fixture.nativeElement as HTMLElement).textContent?.includes(SECRET_CODE_NEEDS_USE_MESSAGE) ?? false,
+        };
+    }
+
+    it('locks the code, venv and storage toggle, saying why, for a user without Secrets:Use', () => {
+        open(false);
+
+        expect(locks()).toEqual({ codeEditor: true, venv: true, storage: true, hint: true });
+    });
+
+    it('leaves them editable, with no hint, for a user with Secrets:Use', () => {
+        open(true);
+
+        expect(locks()).toEqual({ codeEditor: false, venv: false, storage: false, hint: false });
     });
 });

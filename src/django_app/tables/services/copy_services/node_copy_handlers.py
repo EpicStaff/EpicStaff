@@ -42,9 +42,12 @@ from tables.services.copy_services.inline_surface_copy_helpers import (
     copy_node_inline_surface,
 )
 from tables.services.key_value_table_service import KeyValueTableService
+from tables.services.secrets.secret_use_service import SecretActor
 
 
-def copy_start_node(graph: Graph, node: StartNode, user, node_number: int | None) -> StartNode:
+def copy_start_node(
+    graph: Graph, node: StartNode, user, node_number: int | None, actor: SecretActor | None
+) -> StartNode:
     return StartNode.objects.create(
         graph=graph,
         created_by=resolve_author(user),
@@ -53,7 +56,9 @@ def copy_start_node(graph: Graph, node: StartNode, user, node_number: int | None
     )
 
 
-def copy_end_node(graph: Graph, node: EndNode, user, node_number: int | None) -> EndNode:
+def copy_end_node(
+    graph: Graph, node: EndNode, user, node_number: int | None, actor: SecretActor | None
+) -> EndNode:
     return EndNode.objects.create(
         graph=graph,
         created_by=resolve_author(user),
@@ -62,7 +67,9 @@ def copy_end_node(graph: Graph, node: EndNode, user, node_number: int | None) ->
     )
 
 
-def copy_graph_note(graph: Graph, node: GraphNote, user, node_number: int | None) -> GraphNote:
+def copy_graph_note(
+    graph: Graph, node: GraphNote, user, node_number: int | None, actor: SecretActor | None
+) -> GraphNote:
     return GraphNote.objects.create(
         graph=graph,
         content=node.content,
@@ -72,7 +79,7 @@ def copy_graph_note(graph: Graph, node: GraphNote, user, node_number: int | None
 
 
 def copy_file_extractor_node(
-    graph: Graph, node: FileExtractorNode, user, node_number: int | None
+    graph: Graph, node: FileExtractorNode, user, node_number: int | None, actor: SecretActor | None
 ) -> FileExtractorNode:
     return FileExtractorNode.objects.create(
         graph=graph,
@@ -83,7 +90,7 @@ def copy_file_extractor_node(
 
 
 def copy_key_value_node(
-    graph: Graph, node: KeyValueNode, user, node_number: int | None
+    graph: Graph, node: KeyValueNode, user, node_number: int | None, actor: SecretActor | None
 ) -> KeyValueNode:
     # A cross-org copy must re-bind by name in the target org, never keep the source id.
     table = node.key_value_table
@@ -105,7 +112,11 @@ def copy_key_value_node(
 
 
 def copy_audio_transcription_node(
-    graph: Graph, node: AudioTranscriptionNode, user, node_number: int | None
+    graph: Graph,
+    node: AudioTranscriptionNode,
+    user,
+    node_number: int | None,
+    actor: SecretActor | None,
 ) -> AudioTranscriptionNode:
     return AudioTranscriptionNode.objects.create(
         graph=graph,
@@ -116,7 +127,7 @@ def copy_audio_transcription_node(
 
 
 def copy_subgraph_node(
-    graph: Graph, node: SubGraphNode, user, node_number: int | None
+    graph: Graph, node: SubGraphNode, user, node_number: int | None, actor: SecretActor | None
 ) -> SubGraphNode:
     return SubGraphNode.objects.create(
         graph=graph,
@@ -127,8 +138,10 @@ def copy_subgraph_node(
     )
 
 
-def copy_python_node(graph: Graph, node: PythonNode, user, node_number: int | None) -> PythonNode:
-    new_code = copy_python_code(node.python_code)
+def copy_python_node(
+    graph: Graph, node: PythonNode, user, node_number: int | None, actor: SecretActor | None
+) -> PythonNode:
+    new_code = copy_python_code(node.python_code, actor=actor)
     return PythonNode.objects.create(
         graph=graph,
         node_number=node_number,
@@ -139,9 +152,9 @@ def copy_python_node(graph: Graph, node: PythonNode, user, node_number: int | No
 
 
 def copy_webhook_trigger_node(
-    graph: Graph, node: WebhookTriggerNode, user, node_number: int | None
+    graph: Graph, node: WebhookTriggerNode, user, node_number: int | None, actor: SecretActor | None
 ) -> WebhookTriggerNode:
-    new_code = copy_python_code(node.python_code)
+    new_code = copy_python_code(node.python_code, actor=actor)
     return WebhookTriggerNode.objects.create(
         graph=graph,
         node_number=node_number,
@@ -156,7 +169,11 @@ def copy_webhook_trigger_node(
 
 
 def copy_telegram_trigger_node(
-    graph: Graph, node: TelegramTriggerNode, user, node_number: int | None
+    graph: Graph,
+    node: TelegramTriggerNode,
+    user,
+    node_number: int | None,
+    actor: SecretActor | None,
 ) -> TelegramTriggerNode:
     new_node = TelegramTriggerNode.objects.create(
         graph=graph,
@@ -179,7 +196,7 @@ def copy_telegram_trigger_node(
 
 
 def copy_knowledge_node(
-    graph: Graph, node: KnowledgeNode, user, node_number: int | None
+    graph: Graph, node: KnowledgeNode, user, node_number: int | None, actor: SecretActor | None
 ) -> KnowledgeNode:
     new_node = KnowledgeNode.objects.create(
         graph=graph,
@@ -208,7 +225,11 @@ def copy_knowledge_node(
 
 
 def copy_schedule_trigger_node(
-    graph: Graph, node: ScheduleTriggerNode, user, node_number: int | None
+    graph: Graph,
+    node: ScheduleTriggerNode,
+    user,
+    node_number: int | None,
+    actor: SecretActor | None,
 ) -> ScheduleTriggerNode:
     # Schedule config is preserved verbatim; activation state is reset so the
     # copy does not start firing on its own — user must enable it explicitly.
@@ -234,7 +255,7 @@ def copy_schedule_trigger_node(
 
 
 def copy_decision_table_node(
-    graph: Graph, node: DecisionTableNode, user, node_number: int | None
+    graph: Graph, node: DecisionTableNode, user, node_number: int | None, actor: SecretActor | None
 ) -> DecisionTableNode:
     new_node = DecisionTableNode.objects.create(
         graph=graph,
@@ -266,10 +287,18 @@ def copy_decision_table_node(
 
 
 def copy_classification_decision_table_node(
-    graph: Graph, node: ClassificationDecisionTableNode, user, node_number: int | None
+    graph: Graph,
+    node: ClassificationDecisionTableNode,
+    user,
+    node_number: int | None,
+    actor: SecretActor | None,
 ) -> ClassificationDecisionTableNode:
-    new_pre_code = copy_python_code(node.pre_python_code) if node.pre_python_code else None
-    new_post_code = copy_python_code(node.post_python_code) if node.post_python_code else None
+    new_pre_code = (
+        copy_python_code(node.pre_python_code, actor=actor) if node.pre_python_code else None
+    )
+    new_post_code = (
+        copy_python_code(node.post_python_code, actor=actor) if node.post_python_code else None
+    )
 
     new_node = ClassificationDecisionTableNode.objects.create(
         graph=graph,
@@ -337,7 +366,9 @@ def copy_classification_decision_table_node(
     return new_node
 
 
-def copy_task_node(graph: Graph, node: TaskNode, user, node_number: int | None) -> TaskNode:
+def copy_task_node(
+    graph: Graph, node: TaskNode, user, node_number: int | None, actor: SecretActor | None
+) -> TaskNode:
     new_node = TaskNode.objects.create(
         graph=graph,
         node_number=node_number,
@@ -353,7 +384,9 @@ def copy_task_node(graph: Graph, node: TaskNode, user, node_number: int | None) 
     return new_node
 
 
-def copy_agent_node(graph: Graph, node: AgentNode, user, node_number: int | None) -> AgentNode:
+def copy_agent_node(
+    graph: Graph, node: AgentNode, user, node_number: int | None, actor: SecretActor | None
+) -> AgentNode:
     new_node = AgentNode.objects.create(
         graph=graph,
         node_number=node_number,
@@ -372,7 +405,9 @@ def copy_agent_node(graph: Graph, node: AgentNode, user, node_number: int | None
 # Maps each NodeType to (relation_name, handler_function).
 # relation_name is the Graph reverse accessor used to iterate existing nodes.
 # Handlers are called as handler(new_graph, node, user=<acting user or None>,
-# node_number=<the copy's badge number>) and author the new node with that user.
+# node_number=<the copy's badge number>, actor=<the SecretActor copying>) and author
+# the new node with that user. A handler copying a PythonCode passes the actor to
+# copy_python_code, which refuses code that declares secrets without secrets:USE.
 # node_number is None for the types that show no badge (start, end, note), and when
 # the caller wants the number minted from the target graph's counter.
 # To add a new node type: write a copy_<name> function above and add one entry here.

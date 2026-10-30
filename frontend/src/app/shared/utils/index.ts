@@ -27,5 +27,6 @@ export * from './pluralize.util';
 export * from './recycle-bin-notice.util';
 export * from './retry-after.util';
 export * from './role-permissions-to-set.util';
+export * from './secret-code-lock.util';
 export * from './token-price.util';
 export * from './unique-name.util';

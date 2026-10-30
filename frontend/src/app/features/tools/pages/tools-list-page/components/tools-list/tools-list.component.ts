@@ -124,6 +124,7 @@ export class ToolsListComponent implements OnInit {
                 labelIds: t.labels ?? [],
                 favorite: t.is_favorite,
                 builtIn: this.port.isBuiltIn(t),
+                copyBlockedReason: this.port.copyBlockedReason?.(t),
                 ...toUsageVmFields(usage, t.id, showUsage),
             }));
     });
@@ -495,10 +496,18 @@ export class ToolsListComponent implements OnInit {
     }
 
     private handleBulkDuplicate(): void {
-        const ids = Array.from(this.viewState.selectedIds());
-        const requests = ids.map((id) => {
-            return this.port.copy(id);
+        const selected = Array.from(this.viewState.selectedIds());
+        const copyable = selected.filter((id) => {
+            const tool = this.findToolById(id);
+            return !!tool && !this.port.copyBlockedReason?.(tool);
         });
+        const skipped = selected.length - copyable.length;
+        if (skipped > 0) {
+            this.toastService.info(
+                `${skipped} ${this.port.entityLabel}(s) read secrets you may not use and will not be duplicated.`
+            );
+        }
+        const requests = copyable.map((id) => this.port.copy(id));
         runSettledBulk(requests, {
             destroyRef: this.destroyRef,
             toast: this.toastService,

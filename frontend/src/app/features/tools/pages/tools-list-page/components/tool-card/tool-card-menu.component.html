@@ -9,6 +9,9 @@
         type="button"
         class="menu-item"
         role="menuitem"
+        [attr.aria-disabled]="copyBlockedReason() ? true : null"
+        [matTooltip]="copyBlockedReason() ?? ''"
+        matTooltipPosition="left"
         (click)="onSelect('duplicate')"
     >
         <span class="label">Duplicate</span>

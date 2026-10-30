@@ -46,6 +46,7 @@ import {
 } from '@foblex/flow';
 import { AppSvgIconComponent, AuthorshipDetailsSource } from '@shared/components';
 import { NodeType, ShortcutParams } from '@shared/models';
+import { SECRET_CODE_COPY_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { fromEvent, Subject } from 'rxjs';
 
 import { GetGraphLightRequest, GraphContentDto } from '../../features/flows/models/graph.model';
@@ -71,6 +72,7 @@ import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directiv
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
 import { PANEL_COMPONENT_MAP } from '../core/enums/node-panel.map';
 import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
+import { codeSecretIds } from '../core/helpers/code-secret-ids.util';
 import { buildInsertionConnections, findConnectionUnderNode } from '../core/helpers/drop-on-connection.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isConnectionValid } from '../core/helpers/helpers';
@@ -873,14 +875,26 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             ? snapPointToGrid(this.toFlowPosition(this.mouseCursorPosition))
             : { x: 0, y: 0 };
 
-        const canPaste = (node: NodeModel): boolean => !this.flowReadOnly.isNodeTypeReadOnly(node.type);
-        const { skippedNodeCount } = this.insertNodes(clipboardData, pastePosition, canPaste);
+        const isTriggerBlocked = (node: NodeModel): boolean => this.flowReadOnly.isNodeTypeReadOnly(node.type);
+        const isSecretCodeBlocked = (node: NodeModel): boolean =>
+            this.flowReadOnly.isSecretCodeLocked(codeSecretIds(node));
+        const { skippedNodeCount } = this.insertNodes(
+            clipboardData,
+            pastePosition,
+            (node) => !isTriggerBlocked(node) && !isSecretCodeBlocked(node)
+        );
         if (skippedNodeCount > 0) {
-            this.toastService.warning(
-                `${skippedNodeCount} trigger node${skippedNodeCount > 1 ? 's were' : ' was'} not pasted. ${TRIGGER_NODES_NEED_USE_MESSAGE}`,
-                6000,
-                'bottom-right'
-            );
+            const triggerCount = clipboardData.nodes.filter(isTriggerBlocked).length;
+            const secretCodeCount = skippedNodeCount - triggerCount;
+            const reasons = [
+                triggerCount > 0
+                    ? `${triggerCount} trigger node${triggerCount > 1 ? 's were' : ' was'} not pasted. ${TRIGGER_NODES_NEED_USE_MESSAGE}`
+                    : null,
+                secretCodeCount > 0
+                    ? `${secretCodeCount} node${secretCodeCount > 1 ? 's were' : ' was'} not pasted. ${SECRET_CODE_COPY_NEEDS_USE_MESSAGE}`
+                    : null,
+            ];
+            this.toastService.warning(reasons.filter(Boolean).join(' '), 6000, 'bottom-right');
         }
     }
 

@@ -95,20 +95,22 @@ class GraphVersioningManager:
     ) -> list[dict]:
         """Re-link the declarations a snapshot recorded, warning about the rest.
 
-        No secrets:USE check here for a person — intentional, not a gap. Restoring a
-        version (or creating a flow from one) only reproduces a secret binding that
-        already existed in this org at some point; it never grants a person access to
-        anything new. This is the third of three paths our secrets-permission guard
-        deliberately leaves reachable without secrets:USE, per spec sec5 — see
-        TestUngatedPathsStayUngated in
-        tests/services_tests/test_secret_reference_coverage.py for the other two
-        (copy_python_code, bulk-save node deletion) and the same rationale. Do not
-        add a secrets:USE check here without revisiting that design decision first.
+        Restoring a version, or creating a flow from one, hands the restoring user
+        code that reads the secrets it declares, in a flow they can then edit and run.
+        So the caller needs secrets:USE to restore a version whose code declares any
+        secret, even one purged or binned since: it can come back later, and the code
+        reads it again. The restore and create-graph endpoints refuse one without it
+        before anything is written (`GraphVersionViewSet._check_secret_code_may_be_recreated`,
+        through `SecretCodeAccess`), so a person reaching here may re-link every declaration; a declaration whose
+        secret is gone links nothing and is warned about. A Telegram trigger's bot token is
+        not gated: it is only ever sent to Telegram's fixed host, and editing the node
+        keeps it without the permission.
 
-        A plugin's service account is different: `create_graph_from_version` would make
-        it the owner of a new node bound by name to a secret it never created, which it
-        may then read by running the flow. So a secret a pinned principal (`user`) may
-        not reference is dropped and warned about, never re-linked.
+        A plugin's service account needs secrets:USE like anyone, and is limited further:
+        `create_graph_from_version` would make it the owner of a new node bound by name
+        to a secret it never created, which it may then read by running the flow. So a
+        secret a pinned principal (`user`) may not reference is dropped and warned
+        about, never re-linked.
         """
         if not declarations:
             return []

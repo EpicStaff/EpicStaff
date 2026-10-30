@@ -8,6 +8,7 @@ from tables.services.copy_services.helpers import next_copy_name
 from tables.services.copy_services.node_copy_handlers import NODE_COPY_HANDLERS
 from tables.services.node_number_service import source_order
 from tables.services.persistent_variables_service import PersistentVariablesService
+from tables.services.secrets.secret_use_service import SecretActor
 
 
 class GraphCopyService(BaseCopyService):
@@ -16,8 +17,13 @@ class GraphCopyService(BaseCopyService):
     Node ids stored inside decision-table nodes are remapped to the copies too. The copied
     nodes are numbered 1..K in the source's number order. The acting user is recorded as
     the last editor of the new graph and of every new node.
+
+    Runs in one transaction: a node whose code declares a secret the user may not use
+    (`copy_python_code`) refuses the whole copy, and nothing of it is left. The copy
+    endpoint refuses such a flow before writing anything (`GraphViewSet.check_copy_allowed`).
     """
 
+    @transaction.atomic
     def copy(
         self,
         graph: Graph,
@@ -27,17 +33,18 @@ class GraphCopyService(BaseCopyService):
     ) -> Graph:
         target_org_id = org_id if org_id is not None else graph.org_id
         base_name = name if name else graph.name
+        # One actor for every node, so secrets:USE is resolved once per copy.
+        actor = SecretActor.for_user(user, target_org_id)
 
-        with transaction.atomic():
-            new_graph = Graph.objects.create(
-                name=next_copy_name(Graph, org_id=target_org_id, base_name=base_name),
-                description=graph.description,
-                metadata=graph.metadata,
-                time_to_live=graph.time_to_live,
-                enable_persistent_variables=graph.enable_persistent_variables,
-                org_id=target_org_id,
-                created_by=resolve_author(user),
-            )
+        new_graph = Graph.objects.create(
+            name=next_copy_name(Graph, org_id=target_org_id, base_name=base_name),
+            description=graph.description,
+            metadata=graph.metadata,
+            time_to_live=graph.time_to_live,
+            enable_persistent_variables=graph.enable_persistent_variables,
+            org_id=target_org_id,
+            created_by=resolve_author(user),
+        )
         new_graph.labels.set(graph.labels.filter(scope=Label.Scope.FLOW))
         source_start = StartNode.objects.filter(graph=graph).first()
         PersistentVariablesService().seed_for_copy(
@@ -62,7 +69,11 @@ class GraphCopyService(BaseCopyService):
         new_nodes = []
         for handler, node in source_nodes:
             new_node = handler(
-                new_graph, node, user=user, node_number=new_node_numbers.get(node.id)
+                new_graph,
+                node,
+                user=user,
+                node_number=new_node_numbers.get(node.id),
+                actor=actor,
             )
             node_id_map[node.id] = new_node.id
             new_nodes.append(new_node)

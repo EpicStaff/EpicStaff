@@ -19,6 +19,7 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
                 name: wn.node_name,
                 code: wn.python_code.code,
                 entrypoint: wn.python_code.entrypoint,
+                global_kwargs: wn.python_code.global_kwargs,
                 execution_timeout: wn.python_code.execution_timeout,
                 secret_ids: toSecretIds(wn.python_code.secrets),
                 secret_names: toSecretNames(wn.python_code.secrets),

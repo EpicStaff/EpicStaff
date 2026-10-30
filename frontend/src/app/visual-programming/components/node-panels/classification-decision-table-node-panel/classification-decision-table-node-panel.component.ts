@@ -30,6 +30,7 @@ import {
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
     HelpTooltipComponent,
+    HintMessageComponent,
     JsonEditorComponent,
     LlmModelSelectorComponent,
     SelectComponent,
@@ -38,7 +39,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, FullLLMConfigService, SecretsStorageService } from '@shared/services';
-import { downloadBlob, formatNodeLabel, getProviderIconPath } from '@shared/utils';
+import { downloadBlob, formatNodeLabel, getProviderIconPath, SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -112,6 +113,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         HasPermissionDirective,
         IfFlowEditableDirective,
         ExecutionTimeoutFieldComponent,
+        HintMessageComponent,
         MatTooltipModule,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
@@ -186,6 +188,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public pendingPromptName = signal<string>('');
     public newPromptId = '';
     public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
+    protected readonly secretCodeLockedMessage = SECRET_CODE_NEEDS_USE_MESSAGE;
     private readonly schemaDrafts = signal<Record<string, string>>({});
     private readonly schemaErrors = signal<Record<string, string>>({});
 
@@ -212,6 +215,20 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             : this.isReadOnly()
               ? 'Secrets assigned to this post-computation code.'
               : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
+    );
+    /**
+     * A block's code reads secrets and the user lacks Secrets:Use: that code and its storage toggle (which edits
+     * the code) are locked, the rest is not.
+     */
+    protected readonly isPreCodeLocked = computed(
+        () =>
+            !this.isReadOnly() &&
+            this.flowReadOnly.isSecretCodeLocked(this.node().data.table?.pre_computation?.secret_ids ?? [])
+    );
+    protected readonly isPostCodeLocked = computed(
+        () =>
+            !this.isReadOnly() &&
+            this.flowReadOnly.isSecretCodeLocked(this.node().data.table?.post_computation?.secret_ids ?? [])
     );
     public readonly preSelectedSecretIds = signal<number[]>([]);
     public readonly postSelectedSecretIds = signal<number[]>([]);
@@ -502,6 +519,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             post_computation_code: this.postCode,
             post_use_storage: this.postUseStorage(),
             pre_computation: {
+                // Keeps the stored fields the panel does not edit (entrypoint, global_kwargs).
+                ...currentNode.data.table?.pre_computation,
                 code: this.preCode,
                 input_map: preInputMap,
                 output_variable_path: this.form.value.pre_output_variable_path || undefined,
@@ -510,6 +529,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 execution_timeout: this.preExecutionTimeout.value,
             },
             post_computation: {
+                ...currentNode.data.table?.post_computation,
                 code: this.postCode,
                 input_map: postInputMap,
                 output_variable_path: this.form.value.post_output_variable_path || undefined,

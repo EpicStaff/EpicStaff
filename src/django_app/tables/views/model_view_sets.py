@@ -141,7 +141,6 @@ from tables.models import (
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.flow_filter_preset_models import FlowFilterPreset
-from tables.models.tool_filter_preset_models import ToolFilterPreset
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     Condition,
@@ -173,6 +172,7 @@ from tables.models.realtime_models import (
     RealtimeAgentDefinition,
     RealtimeSessionItem,
 )
+from tables.models.tool_filter_preset_models import ToolFilterPreset
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     ProviderType,
@@ -202,6 +202,7 @@ from tables.serializers.model_serializers import (
     ElevenLabsRealtimeConfigSerializer,
     EndNodeSerializer,
     FileExtractorNodeSerializer,
+    FlowFilterPresetSerializer,
     GeminiRealtimeConfigSerializer,
     GraphLightSerializer,
     GraphNoteSerializer,
@@ -236,7 +237,6 @@ from tables.serializers.model_serializers import (
     TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
     TelegramWebhookInfoSerializer,
-    FlowFilterPresetSerializer,
     ToolFilterPresetSerializer,
     TwilioChannelSerializer,
     WebhookTriggerFlowsSerializer,
@@ -298,6 +298,10 @@ from tables.services.secrets.pinned_principal_rules import (
     EMBEDDING_MODEL_ENDPOINT_FIELDS,
     LLM_MODEL_ENDPOINT_FIELDS,
 )
+from tables.services.secrets.secret_code_inspector import (
+    SecretCodeInspector,
+    secret_code_access,
+)
 from tables.services.secrets.secret_use_checks import (
     check_elevenlabs_realtime_config_write,
     check_embedding_config_write,
@@ -307,6 +311,7 @@ from tables.services.secrets.secret_use_checks import (
     check_llm_model_write,
     check_mcp_tool_write,
     check_openai_realtime_config_write,
+    check_python_code_tool_config_write,
     check_python_code_tool_write,
     check_python_node_write,
     check_realtime_config_write,
@@ -339,7 +344,10 @@ from tables.swagger_schemas.bulk_delete_schemas import (
     LLM_CONFIG_BULK_DELETE_POST,
     OPENAI_REALTIME_CONFIG_BULK_DELETE_POST,
 )
-from tables.swagger_schemas.common_schemas import FLOW_WITH_TRIGGER_NODES_403_RESPONSE
+from tables.swagger_schemas.common_schemas import (
+    FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
+    FLOW_WITH_TRIGGER_NODES_OR_SECRET_CODE_403_RESPONSE,
+)
 from tables.swagger_schemas.graph_copy_schemas import GRAPH_COPY_POST
 from tables.swagger_schemas.graph_delete_by_uuid_schemas import (
     GRAPH_DELETE_BY_UUID_DELETE,
@@ -712,6 +720,14 @@ class PythonCodeToolViewSet(
             raise BuiltInToolModificationError()
         return super().destroy(request, *args, **kwargs)
 
+    def check_copy_allowed(self, request, instance) -> None:
+        # The copy is the caller's own code, which reads the secrets it declares.
+        declared = instance.python_code.linked_secrets()
+        if declared:
+            secret_code_access.assert_user_may_recreate(
+                request.user, self.get_active_org_id(), declared
+            )
+
     @extend_schema(methods=["POST"], **PYTHON_CODE_TOOL_FAVORITE_POST)
     @extend_schema(methods=["DELETE"], **PYTHON_CODE_TOOL_FAVORITE_DELETE)
     @action(detail=True, methods=["post", "delete"], url_path="favorite")
@@ -806,7 +822,9 @@ class PythonCodeToolViewSet(
         return Response(data, status=status.HTTP_200_OK)
 
 
-class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class PythonCodeToolConfigViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
@@ -814,6 +832,7 @@ class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         *authorship_prefetches(last_edit=False)
     )
     serializer_class = PythonCodeToolConfigSerializer
+    secret_use_check = check_python_code_tool_config_write
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["tool", "name"]
 
@@ -977,6 +996,10 @@ class GraphViewSet(
         # Copied trigger nodes are live at once (they share the source's webhook trigger).
         if TriggerNodeInspector.has_any_in_graph(instance):
             trigger_node_access.assert_user_may_recreate(request.user, instance.org_id)
+        # Copied code is the caller's own, and reads the secrets it declares.
+        declared = SecretCodeInspector.declared_in_graph(instance)
+        if declared:
+            secret_code_access.assert_user_may_recreate(request.user, instance.org_id, declared)
 
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
@@ -1233,7 +1256,10 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             "Uses optimistic locking via `save_version` to prevent overwriting concurrent edits. "
             "A snapshot holding a trigger node (webhook, Telegram, schedule) also requires USE "
             "on flows; without it the response is 403 "
-            "`flow_with_trigger_nodes_requires_use_permission` and nothing is written."
+            "`flow_with_trigger_nodes_requires_use_permission` and nothing is written. "
+            "A snapshot whose code declares a secret, whether or not it still exists, also "
+            "requires USE on secrets; without it the response is 403 "
+            "`code_with_secrets_requires_secrets_use_permission` and nothing is written."
         ),
         request=RestoreVersionInputSerializer,
         responses={
@@ -1245,7 +1271,7 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
                     "auto_backup_version_id": serializers.IntegerField(allow_null=True),
                 },
             ),
-            403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
+            403: FLOW_WITH_TRIGGER_NODES_OR_SECRET_CODE_403_RESPONSE,
         },
         parameters=[
             OpenApiParameter(
@@ -1265,7 +1291,10 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             "Missing dependencies are stripped from the snapshot and reported in `warnings`. "
             "Returns the ID of the newly created graph. A snapshot holding a trigger node "
             "(webhook, Telegram, schedule) also requires USE on flows; without it the response "
-            "is 403 `flow_with_trigger_nodes_requires_use_permission` and nothing is written."
+            "is 403 `flow_with_trigger_nodes_requires_use_permission` and nothing is written. "
+            "A snapshot whose code declares a secret, whether or not it still exists, also "
+            "requires USE on secrets; without it the response is 403 "
+            "`code_with_secrets_requires_secrets_use_permission` and nothing is written."
         ),
         request=None,
         responses={
@@ -1276,7 +1305,7 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
                     "warnings": serializers.ListField(child=serializers.DictField()),
                 },
             ),
-            403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
+            403: FLOW_WITH_TRIGGER_NODES_OR_SECRET_CODE_403_RESPONSE,
         },
     ),
     preview=extend_schema(
@@ -1384,6 +1413,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
 
         version = self.get_object()
         self._check_trigger_nodes_may_be_recreated(request, version)
+        self._check_secret_code_may_be_recreated(request, version)
         backup = request.query_params.get("backup", "").lower() == "true"
         result = GraphVersioningService().restore_version(
             version,
@@ -1408,6 +1438,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
     def create_graph(self, request, *args, **kwargs):
         version = self.get_object()
         self._check_trigger_nodes_may_be_recreated(request, version)
+        self._check_secret_code_may_be_recreated(request, version)
         result = GraphVersioningService().create_graph_from_version(version, user=request.user)
         return Response(result, status=status.HTTP_201_CREATED)
 
@@ -1417,6 +1448,15 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
         # `nodes` layout are the same in every snapshot version.
         if TriggerNodeInspector.has_any_in_flow_entry(version.snapshot or {}):
             trigger_node_access.assert_user_may_recreate(request.user, version.graph.org_id)
+
+    @staticmethod
+    def _check_secret_code_may_be_recreated(request, version: GraphVersion) -> None:
+        # The restored code is the caller's own, and reads the secrets it declares, now or
+        # once a purged one is recreated. Snapshot names may not resolve, so no secrets are
+        # passed: the restore itself drops and warns about each secret a plugin's service
+        # account may not reference (`restore_secret_declarations`).
+        if SecretCodeInspector.snapshot_declares_any(version.snapshot or {}):
+            secret_code_access.assert_user_may_recreate(request.user, version.graph.org_id)
 
     @action(detail=True, methods=["get"], url_path="preview")
     def preview(self, request, *args, **kwargs):

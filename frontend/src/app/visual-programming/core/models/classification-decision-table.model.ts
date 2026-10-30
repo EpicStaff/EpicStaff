@@ -3,6 +3,9 @@ import { ConditionGroup } from './decision-table.model';
 
 export interface ComputationConfig {
     code: string;
+    /** Stored with the code and sent back as loaded (the panel does not edit them); absent for new code. */
+    entrypoint?: string;
+    global_kwargs?: Record<string, unknown>;
     input_map?: Record<string, string>;
     output_variable_path?: string | null;
     secret_ids?: number[];

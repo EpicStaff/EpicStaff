@@ -25,6 +25,12 @@ _DESTINATION_DENIED = (
     "to grant it."
 )
 
+_CODE_DENIED = (
+    'Changing code that reads secrets, or what it runs with, requires the "Use" '
+    "permission on Secrets. The existing value was left unchanged. Ask an organization "
+    "admin to grant it."
+)
+
 
 @dataclass(frozen=True)
 class SecretActor:
@@ -36,6 +42,16 @@ class SecretActor:
     # every check. `actor_from_request` gives each request one actor with a memo, as
     # rights do not change within a request, so a bulk save of many rows resolves once.
     use_memo: list[bool] | None = field(default=None, compare=False, repr=False)
+
+    @classmethod
+    def for_user(cls, user, org_id: int | None) -> "SecretActor | None":
+        """Return the actor for `user` writing in `org_id`, or None when there is no user.
+
+        For writes made outside a request's own serializer checks (a copy, a version
+        restore). Memoizes secrets:USE, so the write resolves it once however many
+        rows it checks.
+        """
+        return cls(user=user, org_id=org_id, use_memo=[]) if user is not None else None
 
     @property
     def principal(self):
@@ -161,6 +177,47 @@ class SecretUseService:
         if _normalize_destination(current) == _normalize_destination(incoming):
             return
         self._require_use(actor, field_path=field_path, message=_DESTINATION_DENIED)
+
+    def check_code(
+        self,
+        actor: SecretActor | None,
+        *,
+        field_path: tuple[str, ...],
+        declares_secret: bool,
+        current,
+        incoming,
+        secret_ids: frozenset | None = None,
+    ) -> None:
+        """Require USE when code that reads secrets changes what it runs, or what it runs with.
+
+        The declared secrets are handed to the code at run time, so whoever changes
+        that code, its inputs (a tool's variables and configs) or its environment (a
+        venv's libraries) decides what is done with their plaintext, which is a use of
+        them. Code that declares no secret, after the write, may change freely.
+
+        A pinned-org principal changing it must also be allowed to reference every
+        secret in `secret_ids`, when given.
+
+        Args:
+            declares_secret: Whether the code declares a secret after the write.
+            current: The field's persisted value.
+            incoming: Its value after the write.
+
+        Raises:
+            SecretUseDeniedError: The value changes, the code declares a secret and
+                `actor` lacks secrets:USE, or is a pinned-org principal that may not
+                reference one of `secret_ids`.
+        """
+        if not declares_secret or current == incoming:
+            return
+        self._require_use(actor, field_path=field_path, message=_CODE_DENIED)
+        principal = principal_of(actor)
+        if (
+            secret_ids is not None
+            and principal is not None
+            and not principal.may_reference_secrets(secret_ids)
+        ):
+            raise SecretUseDeniedError(field_path=field_path, message=NOT_REFERENCEABLE)
 
     def _resolve_use(self, actor: SecretActor) -> bool:
         try:

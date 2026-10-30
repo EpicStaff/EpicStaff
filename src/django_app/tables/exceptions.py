@@ -79,6 +79,24 @@ class FlowWithTriggerNodesRequiresUsePermissionError(CustomAPIExeption):
     default_code = "flow_with_trigger_nodes_requires_use_permission"
 
 
+class CodeWithSecretsRequiresSecretsUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on secrets would copy or restore code that reads secrets.
+
+    For copying a flow or a Python code tool, restoring a flow version or creating a
+    flow from one, and restoring a recycle-bin item that brings such code back or live:
+    the result is the caller's own code, which they can edit and run, so it reads the
+    secrets for them. The message names no action, as the bulk recycle-bin restore
+    shows it verbatim. Editing such code is refused as a field
+    error of the save instead (400), so a client can tell the two apart.
+    """
+
+    status_code = 403
+    default_detail = (
+        "This contains code that reads secrets. This action requires the Use permission on secrets."
+    )
+    default_code = "code_with_secrets_requires_secrets_use_permission"
+
+
 class CodeRunTargetNotFoundError(Exception):
     """Raised for a test-run target that is missing, deleted, owned by another org,
     or whose code slot is empty. The caller maps it to the same error as a missing

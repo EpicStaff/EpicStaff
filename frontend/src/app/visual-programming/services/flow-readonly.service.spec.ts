@@ -144,4 +144,26 @@ describe('FlowReadOnlyService', () => {
             expect(toast.info).toHaveBeenCalledWith('You have read-only access to this flow.');
         });
     });
+
+    describe('Python code that reads secrets', () => {
+        it.each([
+            { secretActions: [ActionCode.Use], secretIds: [7], locked: false },
+            { secretActions: [ActionCode.Read], secretIds: [7], locked: true },
+            { secretActions: [], secretIds: [7, 8], locked: true },
+            { secretActions: [], secretIds: [], locked: false },
+        ])(
+            'is locked for Secrets actions $secretActions and secret ids $secretIds: $locked',
+            ({ secretActions, secretIds, locked }) => {
+                TestBed.configureTestingModule({
+                    providers: [provideHttpClient(), { provide: FLOW_EDITOR_PREVIEW, useValue: false }],
+                });
+                grantPermissions({
+                    [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE,
+                    [ResourceCode.Secrets]: secretActions,
+                });
+
+                expect(TestBed.inject(FlowReadOnlyService).isSecretCodeLocked(secretIds)).toBe(locked);
+            }
+        );
+    });
 });

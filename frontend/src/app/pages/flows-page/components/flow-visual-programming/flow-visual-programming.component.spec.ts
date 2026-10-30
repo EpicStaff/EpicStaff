@@ -91,6 +91,9 @@ import {
     TEST_RUN_PAYLOAD_REJECTED_MESSAGE,
 } from './flow-visual-programming.component';
 
+const SECRETS_REFUSAL_MESSAGE =
+    'This contains code that reads secrets. This action requires the Use permission on secrets.';
+
 /** Past the page's private 1.5 s explanation-save debounce. */
 const NODE_AUTOSAVE_WAIT_MS = 2000;
 const CAPTURED_VIEWPORT: FlowViewport = { position: { x: 120, y: -40 }, scale: 0.75 };
@@ -250,6 +253,7 @@ describe('FlowVisualProgrammingComponent', () => {
     let sessionStatus: ReturnType<typeof signal<GraphSessionStatus>>;
     // A signal, so FlowReadOnlyService's computed permissions follow a change made inside a test.
     let canRunFlows: WritableSignal<boolean>;
+    let canUseSecrets: WritableSignal<boolean>;
     let explanationsApi: { saveExplanations: ReturnType<typeof vi.fn> };
     let flowsStorage: { bulkDelete: ReturnType<typeof vi.fn> };
 
@@ -286,6 +290,7 @@ describe('FlowVisualProgrammingComponent', () => {
         isStreaming = signal(false);
         sessionStatus = signal(GraphSessionStatus.RUNNING);
         canRunFlows = signal(true);
+        canUseSecrets = signal(true);
         const paramMap = convertToParamMap({ id: '1' });
         paramMap$ = new BehaviorSubject(paramMap);
         const queryParamMap = convertToParamMap({});
@@ -321,9 +326,11 @@ describe('FlowVisualProgrammingComponent', () => {
                 {
                     provide: PermissionsService,
                     useValue: {
-                        // Use follows its own signal; the other actions follow the update signal.
-                        can: (_resource: ResourceCode, action: ActionCode) =>
-                            action === ActionCode.Use ? canRunFlows() : canUpdateFlows(),
+                        // Use follows its own signal per resource; the other actions follow the update signal.
+                        can: (resource: ResourceCode, action: ActionCode) => {
+                            if (action !== ActionCode.Use) return canUpdateFlows();
+                            return resource === ResourceCode.Secrets ? canUseSecrets() : canRunFlows();
+                        },
                         canAny: (_resource: ResourceCode, actions: ActionCode[]) =>
                             actions.some((action) => (action === ActionCode.Use ? canRunFlows() : canUpdateFlows())),
                         meets: (requirement: PermissionRequirement) =>
@@ -563,6 +570,66 @@ describe('FlowVisualProgrammingComponent', () => {
                 previewGraphVersion.mockReturnValue(of({ snapshot: { nodes }, warnings: [], node_authorship: {} }));
             }
 
+            /** The version's webhook code declares the secret API_TOKEN, as the backend records it: by name. */
+            function versionHoldingSecretCode(): void {
+                previewGraphVersion.mockReturnValue(
+                    of({
+                        snapshot: {
+                            nodes: [WEBHOOK_SNAPSHOT],
+                            secret_declarations: { nodes: { '21': { python_code: ['API_TOKEN'] } } },
+                        },
+                        warnings: [],
+                        node_authorship: {},
+                    })
+                );
+            }
+
+            it('refuses code that reads secrets without Secrets:Use before the backup question', () => {
+                canUseSecrets.set(false);
+                versionHoldingSecretCode();
+                enterPreview(VERSION_A);
+                makeLiveFlowDirty();
+
+                requestRestore(VERSION_A);
+
+                expect(confirm).toHaveBeenCalledExactlyOnceWith(
+                    expect.objectContaining({
+                        message: 'This version contains code that reads secrets.',
+                        caution:
+                            '<strong>Restoring</strong> it requires the <strong>Use</strong> permission on secrets.',
+                    })
+                );
+                expect(unsavedChangesDialog.confirm).not.toHaveBeenCalled();
+                expect(flowsApi['restoreGraphVersion']).not.toHaveBeenCalled();
+            });
+
+            it('restores code that reads secrets for a user with Secrets:Use', () => {
+                versionHoldingSecretCode();
+                enterPreview(VERSION_A);
+                unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
+
+                requestRestore(VERSION_A);
+
+                expect(confirm).not.toHaveBeenCalled();
+                expect(flowsApi['restoreGraphVersion']).toHaveBeenCalledWith(VERSION_A.id, false, 1);
+            });
+
+            it('gives the trigger node refusal when a version needs both permissions the user lacks', () => {
+                canRunFlows.set(false);
+                canUseSecrets.set(false);
+                versionHoldingSecretCode();
+                enterPreview(VERSION_A);
+
+                requestRestore(VERSION_A);
+
+                expect(confirm).toHaveBeenCalledExactlyOnceWith(
+                    expect.objectContaining({
+                        message: 'This version contains trigger nodes (Webhook, Telegram, Schedule).',
+                    })
+                );
+                expect(unsavedChangesDialog.confirm).not.toHaveBeenCalled();
+            });
+
             it('refuses it without Run before the backup question, keeping the preview and saving nothing', () => {
                 canRunFlows.set(false);
                 versionHolding(WEBHOOK_SNAPSHOT);
@@ -669,6 +736,39 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(flowsApi['getGraphById'].mock.calls.length).toBe(graphLoadsBefore);
             expect(component.isCanvasReloading()).toBe(false);
             expect(liveCanvas()).toBeDefined();
+        });
+
+        it('explains a restore refused over code that reads secrets with no toast', () => {
+            enterPreview(VERSION_A);
+            const confirm = vi
+                .spyOn(TestBed.inject(ConfirmationDialogService), 'confirm')
+                .mockReturnValue(of<ConfirmationResult>('close'));
+            flowsApi['restoreGraphVersion'].mockReturnValue(
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 403,
+                            error: {
+                                status_code: 403,
+                                code: 'code_with_secrets_requires_secrets_use_permission',
+                                message: SECRETS_REFUSAL_MESSAGE,
+                            },
+                        })
+                )
+            );
+            unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
+
+            requestRestore(VERSION_A);
+
+            expect(confirm).toHaveBeenCalledExactlyOnceWith(
+                expect.objectContaining({
+                    title: 'Use permission required',
+                    message: 'This version contains code that reads secrets.',
+                    caution: '<strong>Restoring</strong> it requires the <strong>Use</strong> permission on secrets.',
+                })
+            );
+            expect(toast['error']).not.toHaveBeenCalled();
+            expect(toast['success']).not.toHaveBeenCalled();
         });
 
         // F-09 / F-10: someone else saved or restored the flow while this tab was previewing.
