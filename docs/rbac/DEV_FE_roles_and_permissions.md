@@ -480,7 +480,7 @@ Full payload shapes in [`roles_and_permissions.md`](./roles_and_permissions.md).
 A typical session, start to finish:
 
 1. **App loads, no token yet.** Router redirects to `/login`.
-2. **User logs in.** `POST /api/auth/login/` returns access + refresh tokens. Tokens stored.
+2. **User logs in.** `POST /api/auth/login/` returns the access token (kept in memory) and sets the refresh token as an HttpOnly cookie.
 3. **Bootstrap kicks off.** `bootstrap()` calls `GET /api/profile/` (no header — interceptor skips because `activeOrgId` is null).
 4. **Profile returns with `memberships[]`.** Let's say the user has 2 memberships: `[{org: Acme, role: Org Admin}, {org: Beta, role: Member}]`. localStorage has `activeOrgId=5` (Beta's id) from last session. Still valid → set to 5.
 5. **Refetch profile with header.** Interceptor now attaches `X-Organization-Id: 5`. Response includes `active_organization_id: 5`, `active_permissions: {role: {name: "Member"}, permissions: {...}}`.
