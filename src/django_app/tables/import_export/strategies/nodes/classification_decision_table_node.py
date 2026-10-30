@@ -10,7 +10,7 @@ from tables.import_export.serializers.classification_decision_table_node import 
 )
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.utils import remap_python_code_venv
+from tables.import_export.utils import python_code_venv_ids, remap_python_code_venv
 from tables.models import ClassificationDecisionTableNode, PythonCode
 from tables.models.graph_models import (
     ClassificationConditionGroupSection,
@@ -29,7 +29,21 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
         return {"id": instance.id, "graph": instance.graph_id}
 
     def extract_dependencies_from_instance(self, instance: ClassificationDecisionTableNode) -> dict:
-        deps = {EntityType.GRAPH: [instance.graph_id]}
+        return self._dependencies(instance, org_id=None)
+
+    def extract_org_scoped_dependencies(
+        self, instance: ClassificationDecisionTableNode, org_id: int
+    ) -> dict:
+        return self._dependencies(instance, org_id=org_id)
+
+    @staticmethod
+    def _dependencies(instance: ClassificationDecisionTableNode, *, org_id: int | None) -> dict:
+        deps = {
+            EntityType.GRAPH: [instance.graph_id],
+            EntityType.VENV: python_code_venv_ids(
+                instance.pre_python_code, instance.post_python_code, org_id=org_id
+            ),
+        }
         llm_config_ids = set()
         if instance.default_llm_config_id:
             llm_config_ids.add(instance.default_llm_config_id)

@@ -2,6 +2,7 @@
 
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from tables.services.recycle_bin.presentation import NO_ACCESS
 
 
 class BinContentSerializer(serializers.Serializer):
@@ -13,6 +14,18 @@ class BinContentSerializer(serializers.Serializer):
     )
 
 
+class HiddenContentsSerializer(serializers.Serializer):
+    kind = serializers.CharField(help_text="A content kind, as `contents[].kind`")
+    count = serializers.IntegerField(min_value=1)
+
+
+_HIDDEN_CONTENTS_HELP = (
+    "What a restore brings back that the user may not see the names of (no READ on its "
+    "resource type, e.g. an agent's surfaces without surfaces:read): how many of each kind. "
+    "Counted in `contents_total`, never listed in `contents`"
+)
+
+
 class RecycleBinContentsSerializer(serializers.Serializer):
     """One binned item's contents for "Show all": up to 5,000 (the list sends at most 100).
 
@@ -20,6 +33,7 @@ class RecycleBinContentsSerializer(serializers.Serializer):
     """
 
     contents = BinContentSerializer(many=True)
+    hidden_contents = HiddenContentsSerializer(many=True, help_text=_HIDDEN_CONTENTS_HELP)
     contents_total = serializers.IntegerField()
 
 
@@ -51,7 +65,8 @@ class BinDetailSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Text (`text`, `notice`), an ISO 8601 date (`date`), a size in bytes (`size`) "
         "or a user summary {id, display_name, avatar_url} (`user`); null when the field is "
-        "empty or, for `user`, the user is unknown",
+        "empty or, for `user`, the user is unknown. A `text` line that names an item the user "
+        f"may not read (e.g. a surface's owner agent without agents:read) says `{NO_ACCESS}`",
     )
     format = serializers.ChoiceField(
         choices=["text", "date", "size", "notice", "user"],
@@ -72,8 +87,9 @@ class RecycleBinEntrySerializer(serializers.Serializer):
     contents = BinContentSerializer(
         many=True, help_text="What a restore brings back with it (at most 100)"
     )
+    hidden_contents = HiddenContentsSerializer(many=True, help_text=_HIDDEN_CONTENTS_HELP)
     contents_total = serializers.IntegerField(
-        help_text="How many items a restore brings back with it in all"
+        help_text="How many items a restore brings back with it in all, hidden ones included"
     )
 
 

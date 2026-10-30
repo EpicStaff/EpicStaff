@@ -55,6 +55,7 @@ import {
     extractHttpErrorMessage,
     ImportFileData,
     JsonObject,
+    pluralize,
     showExportExclusionWarning,
 } from '@shared/utils';
 import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
@@ -165,6 +166,9 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
     public selectMode = this.flowStorageService.selectMode;
     public selectedFlowIds = this.flowStorageService.selectedFlowIds;
+    protected readonly exportSelectedLabel = computed(
+        () => `Export ${pluralize(this.selectedFlowIds().length, 'flow', 'flows')}`
+    );
     public isDeleting = this.flowStorageService.isDeleting;
 
     public readonly filterState = this.flowStorageService.filter;

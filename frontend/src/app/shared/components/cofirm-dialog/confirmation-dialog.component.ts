@@ -87,8 +87,11 @@ export class ConfirmationDialogComponent {
     protected readonly isBreakdownExpanded = signal(false);
     protected readonly typedPhrase = signal('');
 
-    // `data` must stay above the fields below: they read it in their initializers.
+    // `data` and `dialogRef` must stay above the fields below: they read them in their initializers.
     readonly data = inject<ConfirmationDialogData>(DIALOG_DATA);
+    private readonly dialogRef = inject<DialogRef<DialogResult>>(DialogRef);
+    /** Id of the title; the dialog that opened this one is labelled by it (`ariaLabelledBy`). */
+    protected readonly titleId = this.dialogRef.config.ariaLabelledBy ?? null;
     protected readonly footerMessage = signal(this.data.footerMessage ?? '');
     protected readonly checkboxChecked = signal(this.data.checkbox?.checked ?? false);
     protected readonly breakdownListId = `confirmation-breakdown-list-${nextBreakdownListId++}`;
@@ -99,7 +102,6 @@ export class ConfirmationDialogComponent {
         () => !!this.data.verification && this.typedPhrase() !== this.data.verification.phrase
     );
 
-    private readonly dialogRef = inject<DialogRef<DialogResult>>(DialogRef);
     private readonly destroyRef = inject(DestroyRef);
 
     constructor() {

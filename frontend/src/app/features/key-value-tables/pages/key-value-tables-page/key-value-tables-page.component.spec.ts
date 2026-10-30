@@ -206,7 +206,7 @@ describe('KeyValueTablesPageComponent delete table', () => {
         expect(message()).toContain("Restoring it won't add it back to those nodes.");
         expect(message()).not.toContain('cannot be undone');
         expect(api.deleteTable).toHaveBeenCalledWith(1);
-        expect(toastSuccess).toHaveBeenCalledWith('Table "profiles" deleted');
+        expect(toastSuccess).toHaveBeenCalledWith('Moved 1 key-value table to the recycle bin.');
         expect(triggerRefresh).toHaveBeenCalledOnce();
     });
 

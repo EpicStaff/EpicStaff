@@ -37,6 +37,11 @@ echo "Postgres is ready."
 echo "Applying database migrations..."
 python manage.py migrate
 
+# Right after migrate, while nothing else alters the schema: a grant racing a migration
+# on the same table fails. crewdb has already created the roles.
+echo "Granting service database roles their table privileges..."
+python manage.py apply_service_grants
+
 # Reconcile built-in roles with rbac/access/builtin_roles.json; an invalid file stops startup.
 echo "Seeding built-in roles..."
 python manage.py seed_builtin_roles

@@ -15,6 +15,7 @@ from tables.exceptions import CollectionNotFoundException
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.serializers.knowledge_serializers import (
     CopySourceCollectionSerializer,
+    SourceCollectionBulkDeleteSerializer,
     SourceCollectionCreateSerializer,
     SourceCollectionDetailSerializer,
     SourceCollectionListSerializer,
@@ -178,25 +179,15 @@ class SourceCollectionViewSet(
     @extend_schema(**SOURCE_COLLECTION_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
-        collection_ids = request.data.get("collection_ids", [])
-
-        if not collection_ids:
-            return Response(
-                {"error": "collection_ids is required and must be a non-empty list"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not isinstance(collection_ids, list):
-            return Response(
-                {"error": "collection_ids must be a list"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = SourceCollectionBulkDeleteSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"error": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
 
         # Narrow to ids the active org actually owns — ids in another org are
         # silently ignored (no cross-org delete, no existence leak).
         collection_ids = list(
             self.get_queryset()
-            .filter(collection_id__in=collection_ids)
+            .filter(collection_id__in=body.validated_data["collection_ids"])
             .values_list("collection_id", flat=True)
         )
 

@@ -1,4 +1,4 @@
-import { Dialog, DialogModule } from '@angular/cdk/dialog';
+import { DialogModule } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -17,10 +17,11 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, getLabelColorOption, LabelColor, LabelDto, LabelTreeNode, ResourceCode } from '@shared/models';
 import { LABELS_STORE, SidebarWidthService } from '@shared/services';
+import { escapeHtml } from '@shared/utils';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
-import { ConfirmationDialogComponent, DialogResult } from '../cofirm-dialog';
+import { ConfirmationDialogService } from '../cofirm-dialog';
 import { LabelColorPickerComponent } from '../label-color-picker/label-color-picker.component';
 
 interface FlatLabelNode {
@@ -67,7 +68,7 @@ export class LabelSidebarComponent implements OnInit {
     labelDeleted = output<number>();
 
     private readonly labelsStorage = inject(LABELS_STORE);
-    private readonly dialog = inject(Dialog);
+    private readonly confirmationDialog = inject(ConfirmationDialogService);
     private readonly el = inject(ElementRef);
     private readonly sidebarWidthService = inject(SidebarWidthService);
     private readonly permissions = inject(PermissionsService);
@@ -246,32 +247,32 @@ export class LabelSidebarComponent implements OnInit {
         const caution = cautionFn ? cautionFn(label) : undefined;
         const message = messageFn
             ? messageFn(label)
-            : 'Are you sure you want to delete <strong>${label.name}</strong> label?';
+            : `Are you sure you want to delete <strong>${escapeHtml(label.name)}</strong> label?`;
 
-        const dialogRef = this.dialog.open<DialogResult>(ConfirmationDialogComponent, {
-            width: '500px',
-            data: {
-                title: 'Delete labels',
-                message,
-                confirmText: 'Delete',
-                type: 'danger',
-                isShownBorder: true,
-                caution,
-            },
-        });
-
-        dialogRef.closed.subscribe((result) => {
-            if (result?.action === 'confirm') {
-                this.labelsStorage.deleteLabel(label.id).subscribe({
-                    next: () => {
-                        this.labelDeleted.emit(label.id);
-                    },
-                    error: (err) => {
-                        console.error('Error deleting label', err);
-                    },
-                });
-            }
-        });
+        this.confirmationDialog
+            .confirm(
+                {
+                    title: 'Delete labels',
+                    message,
+                    confirmText: 'Delete',
+                    type: 'danger',
+                    isShownBorder: true,
+                    caution,
+                },
+                { width: '500px' }
+            )
+            .subscribe((result) => {
+                if (result === true) {
+                    this.labelsStorage.deleteLabel(label.id).subscribe({
+                        next: () => {
+                            this.labelDeleted.emit(label.id);
+                        },
+                        error: (err) => {
+                            console.error('Error deleting label', err);
+                        },
+                    });
+                }
+            });
     }
 
     getLabelIconColor(node: LabelTreeNode): string {

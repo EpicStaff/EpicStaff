@@ -87,7 +87,7 @@
                         [disabled]="selectedFlowIds().length === 0"
                         (click)="confirmExport()"
                     >
-                        Export {{ selectedFlowIds().length }} flows
+                        {{ exportSelectedLabel() }}
                     </app-button>
                 } @else {
                     <div

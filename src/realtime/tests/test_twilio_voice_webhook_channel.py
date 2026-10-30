@@ -118,6 +118,30 @@ async def test_signed_call_is_sent_to_the_channels_media_stream(
 
 
 @pytest.mark.asyncio
+async def test_twilio_form_post_is_parsed_and_answered_with_twiml(resolve_channel):
+    """Twilio posts its call parameters form-encoded; the real request parser must
+    read them, or no signature can be validated and every call fails."""
+    from httpx import ASGITransport, AsyncClient
+
+    from api.main import app
+
+    base_url = "https://fallback.example.ngrok.io"
+    path = f"/voice/{CHANNEL_TOKEN}"
+    call_parameters = {"CallSid": "CA123", "From": "+15550001111", "To": "+10000000000"}
+    resolve_channel(_channel_with_nested_webhook_trigger(live_url=None, ngrok_domain="fallback.example.ngrok.io"))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.post(
+            path,
+            data=call_parameters,
+            headers={"X-Twilio-Signature": _compute_signature(f"{base_url}{path}", call_parameters, AUTH_TOKEN)},
+        )
+
+    assert response.status_code == 200
+    assert ET.fromstring(response.content).find("./Connect/Stream") is not None
+
+
+@pytest.mark.asyncio
 async def test_twiml_carries_one_single_use_stream_token_bound_to_the_channel(resolve_channel):
     """Twilio drops the URL query on the Media Stream leg and relays only the nested
     <Parameter>, so the token travels in both, and they must be the same token."""

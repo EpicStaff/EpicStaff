@@ -31,7 +31,12 @@
                     />
                 }
             </span>
-            <h2 class="dialog-title">{{ data.title }}</h2>
+            <h2
+                class="dialog-title"
+                [attr.id]="titleId"
+            >
+                {{ data.title }}
+            </h2>
         </div>
         <app-icon-button
             icon="x"
