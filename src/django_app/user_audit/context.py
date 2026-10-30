@@ -1,0 +1,40 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+
+from django.http import HttpRequest
+
+
+@dataclass
+class UserActionContext:
+    """The request being served, and whether anything recorded an action for it yet.
+
+    Attributes:
+        recorded: Set by `record_user_action`; the middleware's fallback records the
+            request itself only while it is still False.
+    """
+
+    request: HttpRequest
+    recorded: bool = False
+
+
+_current_context: ContextVar[UserActionContext | None] = ContextVar(
+    "user_action_context", default=None
+)
+
+
+@contextmanager
+def user_action_context(request: HttpRequest) -> Iterator[UserActionContext]:
+    """Open the context for one request, and close it whatever happens."""
+    context = UserActionContext(request=request)
+    token = _current_context.set(context)
+    try:
+        yield context
+    finally:
+        _current_context.reset(token)
+
+
+def current_context() -> UserActionContext | None:
+    """The context of the request being served, or None outside a request."""
+    return _current_context.get()

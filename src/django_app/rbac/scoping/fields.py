@@ -4,7 +4,7 @@ from loguru import logger
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
-from rbac.access.org_context import OrgContextService
+from rbac.access.org_context import OrgContextService, cache_active_org_id
 
 
 def resolve_active_org_id(request) -> int:
@@ -15,7 +15,7 @@ def resolve_active_org_id(request) -> int:
     org_id = getattr(request, "_rbac_active_org_id", None)
     if org_id is None:
         org_id = OrgContextService().resolve(request=request)
-        request._rbac_active_org_id = org_id
+        cache_active_org_id(request, org_id)
     return org_id
 
 

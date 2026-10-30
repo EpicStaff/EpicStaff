@@ -78,3 +78,16 @@ class OrgContextService:
         ).exists()
         if not exists:
             raise OrgMembershipRequiredError()
+
+
+def cache_active_org_id(request, org_id: int | None) -> None:
+    """Cache the request's resolved active org under `_rbac_active_org_id`.
+
+    Set on DRF's Request and on the HttpRequest beneath it: the scoping mixins, the
+    serializer fields and `HasOrgPermission` read the former, middleware sees only the
+    latter.
+    """
+    request._rbac_active_org_id = org_id
+    http_request = getattr(request, "_request", None)
+    if http_request is not None:
+        http_request._rbac_active_org_id = org_id
