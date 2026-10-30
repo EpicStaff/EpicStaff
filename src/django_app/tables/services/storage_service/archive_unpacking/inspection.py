@@ -58,7 +58,9 @@ def inspect_archive(
             if total > free_bytes:
                 raise StorageQuotaExceeded()
             files.add(safe_name)
-            if is_blocked(name):
+            # Check the name the member is stored under: normalizing can change the
+            # extension ("run.sh/." is stored as "run.sh").
+            if is_blocked(safe_name):
                 blocked.append(name)
         if blocked:
             raise ValueError(
