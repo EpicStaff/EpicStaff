@@ -176,6 +176,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
                 confirmText: 'Convert',
                 cancelText: 'Cancel',
                 type: 'warning',
+                appearance: 'raised',
             })
             .subscribe((result) => {
                 if (result !== true) {
