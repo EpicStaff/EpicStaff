@@ -383,6 +383,7 @@ class SchemaCoverageTest(unittest.TestCase):
     def test_every_name_the_wizard_writes_exists_in_the_schema(self):
         written = set(envtool.production_values("https://host", "nginx-tls", "v1"))
         written |= set(envtool.GENERATED_SECRETS) | {"COMPOSE_PROFILES"}
+        written |= set(envtool.RETENTION_DAYS)
         for group in (*envtool.SERVING_MODES.values(), *envtool.SERVER_SIZE_VALUES.values()):
             written |= set(group)
         for feature in envtool.FEATURES:
@@ -429,7 +430,7 @@ class SetupWizardTest(unittest.TestCase):
             "prod",
             [
                 "https://es.example.com", "1", "n", "n", "y",
-                "plugins.invalid", "example.com", "Plugins.Example.com.", "v1", "n",
+                "plugins.invalid", "example.com", "Plugins.Example.com.", "v1", "1", "n",
             ],
         )  # fmt: skip
         self.assertEqual(values["PLUGINS_ENABLED"], "true")
@@ -442,7 +443,9 @@ class SetupWizardTest(unittest.TestCase):
     def test_plugins_stay_off_for_an_ip_or_plain_http_host(self):
         for public_url in ("http://10.0.0.5", "http://es.example.com"):
             self.env_file.unlink(missing_ok=True)
-            values, output = self.run_setup("prod", [public_url, "3", "n", "n", "y", "v1", "n"])
+            values, output = self.run_setup(
+                "prod", [public_url, "3", "n", "n", "y", "v1", "1", "n"]
+            )
             self.assertEqual(values["PLUGINS_ENABLED"], "false", public_url)
             self.assertNotIn("plugins", values["COMPOSE_PROFILES"])
             self.assertIn("Plugins stay off", output)
@@ -452,7 +455,7 @@ class SetupWizardTest(unittest.TestCase):
             "prod",
             [
                 "http://es.localhost", "3", "n", "n", "y",
-                "plugins.example.com", "p.localhost", "v1", "n",
+                "plugins.example.com", "p.localhost", "v1", "1", "n",
             ],
         )  # fmt: skip
         self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "p.localhost")
@@ -482,12 +485,14 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_production_new_file(self):
         values, output = self.run_setup(
-            "prod", ["https://es.example.com", "1", "y", "n", "n", "latest", "v1.3.0", "n"]
+            "prod", ["https://es.example.com", "1", "y", "n", "n", "latest", "v1.3.0", "3", "n"]
         )
         self.assertNotRegex(
             self.env_file.read_text(encoding="utf-8"), r"(?m)^# \w+=<enter your value>$"
         )
         self.assertEqual(values["IMAGE_TAG"], "v1.3.0")
+        for name in envtool.RETENTION_DAYS:
+            self.assertEqual(values[name], "90", name)
         self.assertEqual(values["NGINX_SSL_MODE"], "on")
         self.assertEqual(values["NGINX_SERVER_NAME"], "es.example.com")
         self.assertEqual(values["COMPOSE_PROFILES"], "chat")
@@ -500,11 +505,11 @@ class SetupWizardTest(unittest.TestCase):
         self.assertIn("src/nginx/certs", output)
 
     def test_wizard_files_are_private(self):
-        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "n"])
+        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "n"])
         self.assertEqual(self.env_file.stat().st_mode & 0o777, 0o600)
 
     def test_wizard_header_warns_against_plain_regeneration(self):
-        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "n"])
+        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "n"])
         header = self.env_file.read_text(encoding="utf-8").split("\n# Deploy\n")[0]
         self.assertIn("envtool.py --setup", header)
         self.assertIn("overwrites this file", header)
@@ -512,18 +517,18 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_proxy_in_front_points_at_the_proxy_count(self):
         _, behind_proxy = self.run_setup(
-            "prod", ["https://es.example.com", "2", "n", "n", "n", "v1", "n"]
+            "prod", ["https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertIn("DJANGO_NUM_PROXIES", behind_proxy)
         self.env_file.unlink()
         _, nginx_tls = self.run_setup(
-            "prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "n"]
+            "prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertNotIn("DJANGO_NUM_PROXIES", nginx_tls)
 
     def test_production_advanced_settings(self):
         values, _ = self.run_setup(
-            "prod", ["https://es.example.com", "1", "y", "n", "n", "v1", "y", "3", "3", "1"]
+            "prod", ["https://es.example.com", "1", "y", "n", "n", "v1", "1", "y", "3", "3", "1"]
         )
         self.assertEqual(values["DJANGO_SGI_WORKERS"], "3")
         self.assertEqual(values["DJANGO_DB_POOL_MAX_SIZE"], "12")
@@ -550,7 +555,7 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_verbose_logging_reminds_to_switch_back(self):
         _, created = self.run_setup(
-            "prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "y", "1", "2", "1"]
+            "prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "y", "1", "2", "1"]
         )
         self.assertIn("back to INFO", created)
         # Tune lists "Keep current" first, so DEBUG is 2 and WARNING is 4.
@@ -587,7 +592,9 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(values["SANDBOX_DEFAULT_EXECUTION_TIMEOUT"], "5m")
 
     def test_scheme_mismatch_reasks_the_serving_mode(self):
-        values, _ = self.run_setup("prod", ["http://10.0.0.5", "1", "3", "n", "n", "n", "v1", "n"])
+        values, _ = self.run_setup(
+            "prod", ["http://10.0.0.5", "1", "3", "n", "n", "n", "v1", "1", "n"]
+        )
         self.assertEqual(values["NGINX_SSL_MODE"], "off")
         self.assertEqual(values["NGINX_HSTS_ENABLED"], "false")
 
@@ -615,7 +622,7 @@ class SetupWizardTest(unittest.TestCase):
             encoding="utf-8",
         )
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "n"]
+            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertEqual(values["REDIS_PASSWORD"], "keepme123")
         self.assertEqual(values["CHAT_DB_USER"], "chat")
@@ -626,7 +633,7 @@ class SetupWizardTest(unittest.TestCase):
     def test_start_over_drops_a_quoted_dev_value(self):
         self.env_file.write_text('DB_PASSWORD="root_password"  # dev\n', encoding="utf-8")
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "n"]
+            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertNotIn("root_password", values["DB_PASSWORD"])
         self.assertIn("DB_PASSWORD", output)
@@ -644,7 +651,9 @@ class SetupWizardTest(unittest.TestCase):
     def test_start_over_keeps_a_private_backup_of_the_old_file(self):
         original = "DB_PASSWORD=keepme123\nDB_NAME=custom_db\n"
         self.env_file.write_text(original, encoding="utf-8")
-        self.run_setup("prod", ["4", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "n"])
+        self.run_setup(
+            "prod", ["4", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
+        )
         backup = self.env_file.with_name(".env.backup.env")
         self.assertEqual(backup.read_text(encoding="utf-8"), original)
         self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
@@ -657,7 +666,7 @@ class SetupWizardTest(unittest.TestCase):
             encoding="utf-8",
         )
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "n"]
+            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertNotEqual(values["DJANGO_API_KEY"], "epicstaff_realtime_api_key")
         self.assertNotEqual(values["AUDIT_JWT_SECRET"], "keepme123")
