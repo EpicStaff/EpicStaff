@@ -153,7 +153,7 @@
             max-height: 360px;
             // Even on both sides: the list below reserves its scrollbar with
             // `scrollbar-gutter`, so the right side needs no bare edge of its own.
-            padding: 1rem;
+            padding: 1rem 0 1rem 1rem;
             gap: 1rem;
         }
     }

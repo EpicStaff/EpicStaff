@@ -1,21 +1,66 @@
 <div class="content">
     <div class="engage-bar">
-        <span class="label">
-            Assign User to Organization:
-            <span class="count">({{ selectedOrganizations().length }})</span>
-        </span>
-        <app-search
-            placeholder="Search by name..."
-            [(searchTerm)]="searchTerm"
-        />
-        <app-select
-            class="bulk-role-select"
-            placeholder="Role for selected"
-            [items]="bulkRoleItems()"
-            [selectedValue]="bulkRoleId()"
-            [disabled]="disabled()"
-            (changed)="onBulkRoleSelected($event)"
-        />
+        <div class="left">
+            <span class="label">Assign User to Organization:</span>
+
+            <div
+                class="chips-container"
+                appOverflowItems
+                #chipOverflow="overflowItems"
+            >
+                @for (chip of roleChips(); track chip.roleId) {
+                    <span
+                        appOverflowItem
+                        [appOverflowLabel]="chip.roleName"
+                        class="role-chip"
+                        [matTooltip]="chipTooltips().get(chip.roleId) ?? ''"
+                        matTooltipPosition="above"
+                    >
+                        {{ chip.roleName }}
+                        <span class="org-count">{{ chip.orgCount }}</span>
+                        <button
+                            class="chip-close"
+                            [attr.aria-label]="'Remove ' + chip.roleName + ' role'"
+                            (click)="removeChip(chip.roleId); $event.stopPropagation()"
+                        >
+                            <app-svg-icon
+                                icon="x"
+                                size="1rem"
+                            />
+                        </button>
+                    </span>
+                }
+                @if (chipOverflow.overflowCount() > 0) {
+                    <button
+                        appOverflowBadge
+                        class="overflow-badge"
+                        #overflowBadge
+                        (click)="openOverflowMenu(overflowBadge); $event.stopPropagation()"
+                    >
+                        +{{ chipOverflow.overflowCount() }}
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="right">
+            <span>New selections get:</span>
+            <app-select
+                class="bulk-role-select"
+                placeholder="Role for selected"
+                [showSearch]="true"
+                variant="boxed"
+                [items]="bulkRoleItems()"
+                [selectedValue]="bulkRoleId()"
+                [disabled]="disabled()"
+                (changed)="onBulkRoleSelected($event)"
+            />
+            <app-search
+                class="search"
+                placeholder="Search by name..."
+                [(searchTerm)]="searchTerm"
+            />
+        </div>
     </div>
 
     @if (disabled()) {
@@ -68,3 +113,28 @@
         </app-table>
     }
 </div>
+
+<ng-template #overflowDropdown>
+    <div class="overflow-menu">
+        @for (chip of hiddenChips(); track chip.roleId) {
+            <div
+                class="overflow-menu__item"
+                [matTooltip]="chipTooltips().get(chip.roleId) ?? ''"
+                matTooltipPosition="above"
+            >
+                <span class="overflow-menu__name">{{ chip.roleName }}</span>
+                <span class="org-count">{{ chip.orgCount }}</span>
+                <button
+                    class="chip-close"
+                    [attr.aria-label]="'Remove ' + chip.roleName + ' role'"
+                    (click)="removeChip(chip.roleId); closeOverflowMenu(); $event.stopPropagation()"
+                >
+                    <app-svg-icon
+                        icon="x"
+                        size="1rem"
+                    />
+                </button>
+            </div>
+        }
+    </div>
+</ng-template>
