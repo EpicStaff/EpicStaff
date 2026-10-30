@@ -202,6 +202,15 @@ export class AgentsPageStore {
 
     readonly isDraftingAgent = computed<boolean>(() => this.selectedNode().kind === 'draft-agent');
 
+    /** The agent the latest Add Agent draft was saved as; null until one is, and again once another draft begins. */
+    private readonly agentCreatedFromDraftId = signal<number | null>(null);
+
+    /** Whether the agent shown is the one the latest Add Agent draft was saved as. */
+    readonly isSelectedAgentFromLatestDraft = computed<boolean>(() => {
+        const agent = this.selectedAgent();
+        return agent !== null && agent.id === this.agentCreatedFromDraftId();
+    });
+
     readonly isDraftingSurface = computed<boolean>(() => this.selectedNode().kind === 'draft-surface');
 
     readonly isStorageSelected = computed<boolean>(() => this.selectedNode().kind === 'storage');
@@ -557,6 +566,7 @@ export class AgentsPageStore {
     }
 
     beginCreateAgent(): void {
+        this.agentCreatedFromDraftId.set(null);
         this.selectedNode.set({ kind: 'draft-agent', id: null });
     }
 
@@ -846,6 +856,7 @@ export class AgentsPageStore {
         this.agentsApi.create({ ...body, name: trimmed }).subscribe({
             next: (created) => {
                 this.agents.update((list) => [...list, created]);
+                this.agentCreatedFromDraftId.set(created.id);
                 if (openFirstInstruction) {
                     this.selectAgentDoc(created.id, 0);
                 } else {

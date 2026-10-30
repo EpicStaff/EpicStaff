@@ -198,6 +198,7 @@
                     }
                     <li
                         class="sidenav-nav-item"
+                        [attr.data-tour]="item.id === 'agents' ? createAgentTourAnchors.sidenavAgents : null"
                         (mouseenter)="item.showTooltip = true"
                         (mouseleave)="item.showTooltip = false"
                     >
@@ -369,7 +370,7 @@
             @if (!appContext() && item.isPermitted()) {
                 <li
                     class="sidenav-nav-item"
-                    [attr.data-tour]="item.id === 'settings' ? tourAnchors.sidenavSettings : null"
+                    [attr.data-tour]="item.id === 'settings' ? quickStartTourAnchors.sidenavSettings : null"
                     (mouseenter)="item.showTooltip = true"
                     (mouseleave)="item.showTooltip = false"
                 >

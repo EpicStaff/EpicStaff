@@ -9,8 +9,9 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { GetMeResponse, ResourceCode } from '@shared/models';
 
-import { ProfileTourProgressStore, TOUR_PROGRESS_STORE } from '../../../core/guided-tour';
+import { ProfileTourProgressStore, TOUR_PROGRESS_STORE, tourAnchorSelector } from '../../../core/guided-tour';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../features/create-agent-tour/create-agent-tour-anchors';
 import { AvailablePlugin } from '../../../features/plugins/models/available-plugin.model';
 import { AppReturnUrlService } from '../../../features/plugins/services/app-return-url.service';
 import { AvailablePluginsStorageService } from '../../../features/plugins/services/available-plugins-storage.service';
@@ -18,6 +19,7 @@ import {
     buildAvailablePlugin,
     buildAvailablePluginNavigationItem,
 } from '../../../features/plugins/testing/plugin-fixtures';
+import { QUICK_START_TOUR_ANCHORS } from '../../../features/quick-start-tour/quick-start-tour-anchors';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
@@ -390,6 +392,20 @@ describe('LeftSidebarComponent', () => {
 
             expect(labelTexts()).toContain('Recycle Bin');
             expect(navLink('Recycle Bin')!.classList).toContain('active');
+        });
+    });
+
+    describe('guided tour targets', () => {
+        beforeEach(() => render(COLLAPSED_WIDTH));
+
+        it.each([
+            ['Agents', CREATE_AGENT_TOUR_ANCHORS.sidenavAgents],
+            ['Settings', QUICK_START_TOUR_ANCHORS.sidenavSettings],
+        ])('marks the %s item, and only it, for its tour', (label, anchor) => {
+            const marked = element.querySelectorAll(tourAnchorSelector(anchor));
+
+            expect(marked).toHaveLength(1);
+            expect(marked[0]).toBe(navLink(label)!.closest('li'));
         });
     });
 

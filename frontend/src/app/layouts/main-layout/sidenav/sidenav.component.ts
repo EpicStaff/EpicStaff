@@ -29,6 +29,7 @@ import { isPlainPrimaryClick } from '@shared/utils';
 import { filter, map } from 'rxjs/operators';
 
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../features/create-agent-tour/create-agent-tour-anchors';
 import { AppsListComponent } from '../../../features/plugins/components/apps-list/apps-list.component';
 import { PluginIconComponent } from '../../../features/plugins/components/plugin-icon/plugin-icon.component';
 import { PluginMenuIconComponent } from '../../../features/plugins/components/plugin-menu-icon/plugin-menu-icon.component';
@@ -180,7 +181,8 @@ export class LeftSidebarComponent {
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
     public showAccountTooltip = false;
-    protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
+    protected readonly quickStartTourAnchors = QUICK_START_TOUR_ANCHORS;
+    protected readonly createAgentTourAnchors = CREATE_AGENT_TOUR_ANCHORS;
     protected readonly backToEpicStaffLabel = BACK_TO_EPICSTAFF_LABEL;
     protected readonly manageAppsUrl = MANAGE_APPS_URL;
     protected readonly popoverPositions = RIGHT_OF_ROW;

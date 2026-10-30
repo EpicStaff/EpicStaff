@@ -43,7 +43,10 @@
         @if (isOpen('basics')) {
             <div class="section__body">
                 <div class="row row--name-llm">
-                    <div class="field">
+                    <div
+                        class="field"
+                        [attr.data-tour]="isCreating() ? tourAnchors.agentName : null"
+                    >
                         <label class="label"> Agent Name<span class="required">*</span> </label>
                         <input
                             type="text"
@@ -57,7 +60,10 @@
                             <span class="field__error">Agent name must be at most 255 characters.</span>
                         }
                     </div>
-                    <div class="field">
+                    <div
+                        class="field"
+                        [attr.data-tour]="tourAnchors.llmConfig"
+                    >
                         <label class="label">LLM Configuration<span class="required">*</span></label>
                         <app-llm-model-selector
                             formControlName="llm_config"
@@ -82,7 +88,10 @@
                     ></textarea>
                 </div>
 
-                <div class="field">
+                <div
+                    class="field"
+                    [attr.data-tour]="tourAnchors.instructions"
+                >
                     <label class="label">Instructions<span class="required">*</span></label>
                     <app-agent-instructions-list
                         [instructions]="instructionList()"
@@ -102,6 +111,7 @@
         *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
         id="agent-section-surfaces"
         class="section"
+        [attr.data-tour]="tourAnchors.surfaces"
     >
         <button
             type="button"
