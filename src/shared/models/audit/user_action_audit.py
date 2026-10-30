@@ -24,7 +24,7 @@ class UserActionEvent(BaseAuditEvent):
         action: A UserAction value, or a DRF action name for fallback records.
         target_type: Display label such as "python node", "flow" or "member".
         previous_name: Set only when action is "renamed".
-        route: Fallback records only, e.g. "POST api/graphs/<int:pk>/copy/".
+        route: Fallback records only, e.g. "POST api/graphs/<pk>/copy/".
     """
 
     actor_user_id: int | None

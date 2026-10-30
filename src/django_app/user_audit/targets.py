@@ -25,9 +25,10 @@ def describe(instance: models.Model) -> TargetDescription:
         ),
         None,
     )
-    meta = instance._meta
-    return TargetDescription(
-        type=TARGET_TYPE_LABELS.get(meta.model_name, str(meta.verbose_name)),
-        id=str(instance.pk),
-        name=name,
-    )
+    return TargetDescription(type=target_type(type(instance)), id=str(instance.pk), name=name)
+
+
+def target_type(model: type[models.Model]) -> str:
+    """The label a user-action record gives rows of `model`, such as "flow"."""
+    meta = model._meta
+    return TARGET_TYPE_LABELS.get(meta.model_name, str(meta.verbose_name))

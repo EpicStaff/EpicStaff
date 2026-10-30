@@ -95,6 +95,7 @@ def record_for_user_orgs(
     target: models.Model | None = None,
     target_description: TargetDescription | None = None,
     org_user_id: int | None = None,
+    route: str | None = None,
 ) -> None:
     """Record the action once in every active organization `actor` is a member of.
 
@@ -122,6 +123,7 @@ def record_for_user_orgs(
                 org_id=org_id,
                 target=target,
                 target_description=target_description,
+                route=route,
                 actor=actor,
             )
     except Exception:
