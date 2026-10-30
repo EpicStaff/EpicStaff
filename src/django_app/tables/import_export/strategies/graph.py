@@ -78,6 +78,12 @@ class GraphStrategy(EntityImportExportStrategy):
             )
         )
         deps[EntityType.LLM_CONFIG].discard(None)
+        deps[EntityType.SYSTEM_ONE_CONFIG] = set(
+            ClassificationDecisionTablePrompt.objects.filter(cdt_node__graph=instance).values_list(
+                "system_one_config_id", flat=True
+            )
+        )
+        deps[EntityType.SYSTEM_ONE_CONFIG].discard(None)
 
         deps[EntityType.AGENT_DEFINITION] = set(
             instance.agent_node_list.values_list("agent_definition_id", flat=True)
