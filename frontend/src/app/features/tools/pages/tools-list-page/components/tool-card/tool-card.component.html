@@ -17,6 +17,7 @@
                 >
                     <app-checkbox
                         color="secondary"
+                        [ariaLabel]="'Select ' + tool().name"
                         [checked]="selected()"
                         (changed)="onSelectToggle($event)"
                     />
@@ -27,10 +28,11 @@
                 />
 
                 @if (showUsage() && !tool().unused) {
-                    <div
+                    <button
+                        type="button"
                         class="usage-chip"
+                        aria-label="Show used places"
                         matTooltip="Show used places"
-                        matTooltipPosition="above"
                         (click)="$event.stopPropagation(); onUsageChipClick()"
                     >
                         @if (tool().agentSurfaceUsage) {
@@ -60,16 +62,17 @@
                                 <span>{{ tool().inlineSurfaceUsage }}</span>
                             </span>
                         }
-                    </div>
+                    </button>
                 }
             </div>
 
             <div class="card-top-right">
                 <button
+                    type="button"
                     class="star-btn"
                     aria-label="Favorite"
-                    matTooltip="Add to favorites"
-                    matTooltipPosition="above"
+                    [attr.aria-pressed]="!!tool().favorite"
+                    [matTooltip]="tool().favorite ? 'Remove from favorites' : 'Add to favorites'"
                     [class.active]="tool().favorite"
                     (click)="$event.stopPropagation(); onStarClick($event)"
                 >
@@ -81,10 +84,12 @@
                 <button
                     #menuTrigger="cdkOverlayOrigin"
                     cdkOverlayOrigin
+                    type="button"
                     class="menu-btn"
-                    aria-label="Tool actions"
+                    aria-label="Options"
+                    aria-haspopup="menu"
+                    [attr.aria-expanded]="menuOpen()"
                     matTooltip="Options"
-                    matTooltipPosition="above"
                     [class.active]="menuOpen()"
                     (click)="$event.stopPropagation(); toggleMenu($event)"
                     (mouseenter)="onButtonEnter()"
@@ -96,6 +101,7 @@
                     />
                 </button>
 
+                <!-- Escape detaches the overlay, which closes the menu; its focus trap returns the focus to the ⋮ button. -->
                 <ng-template
                     cdkConnectedOverlay
                     [cdkConnectedOverlayOrigin]="menuTrigger"
@@ -133,7 +139,15 @@
 
         <div class="card-main">
             <div class="card-main-info">
-                <div class="card-name">{{ tool().name }}</div>
+                <!-- Opens the tool, from the keyboard too; its click reaches the card's handler. -->
+                <button
+                    type="button"
+                    #nameButton
+                    class="card-name"
+                    [matTooltip]="tool().name"
+                >
+                    {{ tool().name }}
+                </button>
                 <div class="card-description">{{ tool().description }}</div>
             </div>
 
@@ -148,7 +162,8 @@
                             class="label-chip"
                             [style.background]="chipBg(label)"
                             [style.color]="chipColor(label)"
-                            [title]="label.full_path || label.name"
+                            [matTooltip]="label.full_path || label.name"
+                            matTooltipClass="allow-scroll-tooltip"
                         >
                             {{ label.name }}
                         </span>

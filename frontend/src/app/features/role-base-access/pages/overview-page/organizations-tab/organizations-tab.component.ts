@@ -1,7 +1,7 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
     ActivateButtonComponent,
@@ -60,6 +60,9 @@ const STATUS_ITEMS: SelectItem[] = [
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class OrganizationsTabComponent {
+    // Takes the focus when an action removes or swaps the row button that had it.
+    private readonly mainAction = viewChild<ButtonComponent>('mainAction');
+
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
     private confirmation = inject(ConfirmationDialogService);
@@ -187,7 +190,10 @@ export class OrganizationsTabComponent {
                     .deactivateOrganization(id)
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
-                        next: () => this.toast.success('Organization deactivated successfully'),
+                        next: () => {
+                            this.toast.success('Organization deactivated successfully');
+                            this.focusMainAction();
+                        },
                         error: (err: HttpErrorResponse) =>
                             this.toast.error(rbacErrorMessage(err, 'Failed to deactivate organization.')),
                     });
@@ -201,6 +207,7 @@ export class OrganizationsTabComponent {
             .reactivateOrganization(id)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
+                next: () => this.focusMainAction(),
                 error: (err: HttpErrorResponse) =>
                     this.toast.error(rbacErrorMessage(err, 'Failed to reactivate organization.')),
             });
@@ -224,11 +231,17 @@ export class OrganizationsTabComponent {
                 }
             )
             .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe();
+            .subscribe((deleted) => {
+                if (deleted) this.focusMainAction();
+            });
     }
 
     canEditRow(row: TableRow): boolean {
         return this.permissionsService.canInOrg(row['id'] as number, ResourceCode.Organizations, ActionCode.Update);
+    }
+
+    private focusMainAction(): void {
+        this.mainAction()?.focus();
     }
 
     private orgToRow(org: GetOrganizationResponse): TableRow {

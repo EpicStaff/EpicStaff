@@ -105,7 +105,7 @@
         cursor: pointer;
         transition: border-color 0.15s ease;
 
-        &:hover,
+        &:is(:hover, :focus-visible),
         &.active {
             border-color: var(--accent-color);
         }
@@ -120,8 +120,29 @@
         }
     }
 
+    // The frame holds the toggle and the clear button; the toggle takes the frame's padding, so it fills it.
     .filter-trigger {
-        gap: 0.5rem;
+        gap: 0;
+        padding: 0;
+        cursor: default;
+
+        .filter-trigger__toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            height: 100%;
+            padding: 0 0.5rem;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+
+            &:focus-visible {
+                outline-offset: -2px;
+            }
+        }
 
         .filter-count {
             margin-left: 0.25rem;
@@ -133,17 +154,23 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            height: 28px;
+            height: 100%;
             width: 28px;
-            margin-right: -0.5rem;
+            padding: 0;
+            background: transparent;
+            border: none;
             color: var(--accent-color);
             border-left: 1px solid var(--color-divider-subtle);
             border-radius: 4px;
             cursor: pointer;
             transition: background 0.15s;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: var(--transparent-white-8);
+            }
+
+            &:focus-visible {
+                outline-offset: -2px;
             }
         }
     }

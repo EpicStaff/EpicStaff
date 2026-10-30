@@ -12,6 +12,7 @@
         <div class="config__grid-item config__grid-item--short">
             @if (canUpdateKnowledges()) {
                 <app-select
+                    tooltip="Chunk Strategy"
                     [selectedValue]="selectedStrategy()"
                     [items]="chunkStrategySelectItems"
                     (changed)="onSelectedStrategyChange($event)"

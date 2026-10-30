@@ -80,6 +80,8 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
     private overlay = inject(Overlay);
     private overlayPositionBuilder = inject(OverlayPositionBuilder);
     private vcr = inject(ViewContainerRef);
+    // Disposing the overlay also completes its event streams; the subscriptions end with the component too.
+    private readonly disposeOverlayOnDestroy = this.destroyRef.onDestroy(() => this.overlayRef?.dispose());
 
     placeholder = input<string>('Select LLM model');
     icon = input<string>('help_outline');
@@ -189,10 +191,16 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
                 width: this.triggerBtn.nativeElement.offsetWidth,
             });
 
-            this.overlayRef.backdropClick().subscribe(() => this.close());
+            this.overlayRef
+                .backdropClick()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe(() => this.close());
             this.overlayRef
                 .keydownEvents()
-                .pipe(filter((event) => event.key === 'Escape'))
+                .pipe(
+                    filter((event) => event.key === 'Escape'),
+                    takeUntilDestroyed(this.destroyRef)
+                )
                 .subscribe(() => this.close());
         }
 

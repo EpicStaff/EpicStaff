@@ -35,7 +35,7 @@
             cursor: pointer;
             border-radius: 4px;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: var(--transparent-white-8);
                 color: var(--text);
             }
@@ -107,13 +107,13 @@
     text-align: left;
 
     // The design's hover fill has no token; an 8% white overlay on top of the line fill lightens it.
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-image: linear-gradient(var(--transparent-white-8), var(--transparent-white-8));
     }
 
+    // Drawn inside: the group clips it.
     &:focus-visible {
-        outline: 1px solid var(--accent-color);
-        outline-offset: 1px;
+        outline-offset: -2px;
     }
 
     .chevron {

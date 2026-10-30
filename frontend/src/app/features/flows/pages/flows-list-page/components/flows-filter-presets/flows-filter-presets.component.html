@@ -72,7 +72,7 @@
                             [value]="editingPresetName()"
                             (input)="setRenameName($event)"
                             (keydown.enter)="confirmRename(card.preset.id, true)"
-                            (keydown.escape)="cancelRename(card.preset.id)"
+                            (keydown.escape)="cancelRename(card.preset.id); $event.stopPropagation()"
                             (blur)="confirmRename(card.preset.id)"
                         />
                     } @else {

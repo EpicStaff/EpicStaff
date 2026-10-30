@@ -3,13 +3,16 @@ import {
     Component,
     computed,
     DestroyRef,
+    ElementRef,
     inject,
     input,
     OnInit,
     output,
     signal,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { LabelDto } from '@shared/models';
 import { forkJoin } from 'rxjs';
@@ -99,6 +102,7 @@ type ToolsFilterTab = 'builder' | 'presets';
         ToolsFilterGroupComponent,
         ToolsCheckboxEnumComponent,
         ToolsFilterPresetsComponent,
+        MatTooltip,
     ],
     providers: [ToolFilterPresetsStorageService],
     templateUrl: './tools-filter-sidebar.component.html',
@@ -114,6 +118,8 @@ export class ToolsFilterSidebarComponent implements OnInit {
 
     public readonly showSource = input<boolean>(false);
     public readonly closeSidebar = output<void>();
+
+    private readonly closeButton = viewChild.required<ElementRef<HTMLButtonElement>>('closeButton');
 
     protected readonly statusExpanded = signal(false);
     protected readonly sourceExpanded = signal(false);
@@ -354,6 +360,11 @@ export class ToolsFilterSidebarComponent implements OnInit {
 
     protected cancel(): void {
         this.closeSidebar.emit();
+    }
+
+    /** Moves the keyboard focus into the panel, which sits after the page content in the Tab order. */
+    public focus(): void {
+        this.closeButton().nativeElement.focus();
     }
 
     private patchPending(patch: Partial<SidebarFilterState>): void {

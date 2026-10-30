@@ -77,7 +77,8 @@ export class ResetPasswordPageComponent {
 
     onSubmit(): void {
         this.form.markAllAsTouched();
-        if (this.form.invalid) return;
+        // Enter submits the form while the button waits too, so the in-flight guard lives here.
+        if (this.form.invalid || this.loading()) return;
 
         const data = {
             token: this.token,

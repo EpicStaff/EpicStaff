@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 @Component({
     selector: 'app-warning-messages',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
     template: `
         @if (messages && messages.length > 0) {
             <div class="warning-container">
@@ -23,7 +24,16 @@ import { AppSvgIconComponent } from '@shared/components';
                             size="1rem"
                         />
                     </div>
-                    <h3>Warnings</h3>
+                    <h3>
+                        <button
+                            type="button"
+                            class="message-toggle"
+                            matTooltip="Warnings"
+                            [attr.aria-expanded]="isExpanded"
+                        >
+                            Warnings
+                        </button>
+                    </h3>
                     <span class="warning-count">({{ messages.length }})</span>
                 </div>
                 <div
@@ -45,6 +55,18 @@ import { AppSvgIconComponent } from '@shared/components';
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the warnings; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .warning-container {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;

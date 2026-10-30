@@ -15,6 +15,7 @@
         <div class="config__grid-item config__grid-item--short">
             @if (canUpdate()) {
                 <app-input-number
+                    ariaLabel="Chunk Size"
                     formControlName="chunk_size"
                     [alwaysShowSteps]="true"
                     [stepSize]="DEFAULT_STEP_SIZE"
@@ -38,6 +39,7 @@
         <div class="config__grid-item config__grid-item--short">
             @if (canUpdate()) {
                 <app-input-number
+                    ariaLabel="Chunk Overlap"
                     formControlName="chunk_overlap"
                     [alwaysShowSteps]="true"
                     [stepSize]="DEFAULT_STEP_SIZE"
@@ -70,7 +72,10 @@
         </div>
         <div class="config__grid-item">
             @if (canUpdate()) {
-                <app-toggle-switch formControlName="preserve_links" />
+                <app-toggle-switch
+                    ariaLabel="Preserve Links"
+                    formControlName="preserve_links"
+                />
             } @else {
                 <span>{{ !!params().preserve_links }}</span>
             }
@@ -86,7 +91,10 @@
         </div>
         <div class="config__grid-item">
             @if (canUpdate()) {
-                <app-toggle-switch formControlName="normalize_text" />
+                <app-toggle-switch
+                    ariaLabel="Normalize Text"
+                    formControlName="normalize_text"
+                />
             } @else {
                 <span>{{ !!params().normalize_text }}</span>
             }
@@ -125,6 +133,7 @@
         <div class="config__grid-item">
             @if (canUpdate()) {
                 <app-custom-input
+                    ariaLabel="Denylist Tags"
                     class="config__input"
                     formControlName="denylist_tags"
                     type="text"

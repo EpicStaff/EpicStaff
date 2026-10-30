@@ -13,12 +13,18 @@
                     Duplicate Role
                 </app-button>
             }
-            <app-svg-icon
-                (click)="onClose()"
+            <button
+                type="button"
                 class="close-btn"
-                icon="x"
-                size="20px"
-            />
+                aria-label="Close"
+                matTooltip="Close"
+                (click)="onClose()"
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="20px"
+                />
+            </button>
         </div>
     </div>
 

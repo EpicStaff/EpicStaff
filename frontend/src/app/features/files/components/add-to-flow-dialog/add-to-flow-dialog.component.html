@@ -6,10 +6,10 @@
     <div class="add-to-flow-dialog__header">
         <h2 class="add-to-flow-dialog__title">Add to Flow</h2>
         <button
+            type="button"
             class="add-to-flow-dialog__close"
             aria-label="Close"
             matTooltip="Close"
-            matTooltipPosition="above"
             (click)="onCancel()"
         >
             <app-svg-icon
@@ -20,13 +20,23 @@
     </div>
 
     <div class="add-to-flow-dialog__body">
-        <div class="add-to-flow-dialog__field">
+        <!-- Escape here closes only the flow list, not the dialog. -->
+        <div
+            class="add-to-flow-dialog__field"
+            (keydown.escape)="onFlowListEscape($event)"
+        >
             <label class="add-to-flow-dialog__label">Flow <span class="add-to-flow-dialog__required">*</span></label>
-            <div
+            <!-- The dialog opens with the focus here: the only choice the form asks for. -->
+            <button
                 #selectorEl
+                type="button"
                 class="add-to-flow-dialog__selector"
                 [class.add-to-flow-dialog__selector--filled]="selectedFlows().length > 0"
                 [class.add-to-flow-dialog__selector--open]="dropdownOpen()"
+                cdkFocusInitial
+                [attr.aria-expanded]="dropdownOpen()"
+                [attr.aria-label]="'Flow: ' + (selectedFlows().length > 0 ? selectorLabel : 'Select flows')"
+                matTooltip="Flow"
                 (click)="toggleDropdown($event)"
             >
                 <span class="add-to-flow-dialog__selector-text">
@@ -38,11 +48,13 @@
                     class="add-to-flow-dialog__selector-chevron"
                     [class.add-to-flow-dialog__selector-chevron--open]="dropdownOpen()"
                 ></app-svg-icon>
-            </div>
+            </button>
 
             @if (dropdownOpen()) {
+                <!-- Tab cycles inside the open list; Escape hands the focus back to the selector. -->
                 <div
                     class="add-to-flow-dialog__dropdown"
+                    cdkTrapFocus
                     [style.max-height.px]="dropdownMaxHeight()"
                     (click)="stopPropagation($event)"
                 >
@@ -53,11 +65,15 @@
                             class="add-to-flow-dialog__search-icon"
                         ></app-svg-icon>
                         <input
+                            #flowSearchInput
                             class="add-to-flow-dialog__search-input"
                             type="text"
                             placeholder="Search flows..."
+                            aria-label="Search flows"
+                            matTooltip="Search flows"
                             [ngModel]="searchQuery()"
                             (ngModelChange)="searchQuery.set($event)"
+                            (keydown.enter)="$event.preventDefault()"
                         />
                     </div>
 
@@ -68,12 +84,16 @@
                             <div class="add-to-flow-dialog__state">No flows found</div>
                         } @else {
                             @for (flow of visibleFlows(); track flow.id) {
-                                <div
+                                <button
+                                    type="button"
                                     class="add-to-flow-dialog__item"
                                     [class.add-to-flow-dialog__item--checked]="flow.checked"
+                                    role="checkbox"
+                                    [attr.aria-checked]="flow.checked"
+                                    [matTooltip]="flow.name"
                                     (click)="toggleFlow(flow)"
                                 >
-                                    <div
+                                    <span
                                         class="add-to-flow-dialog__checkbox"
                                         [class.add-to-flow-dialog__checkbox--checked]="flow.checked"
                                     >
@@ -83,9 +103,9 @@
                                                 size="0.625rem"
                                             ></app-svg-icon>
                                         }
-                                    </div>
+                                    </span>
                                     <span class="add-to-flow-dialog__item-name">{{ flow.name }}</span>
-                                </div>
+                                </button>
                             }
                         }
                     </div>
@@ -96,13 +116,17 @@
 
     <div class="add-to-flow-dialog__footer">
         <button
+            type="button"
             class="add-to-flow-dialog__btn add-to-flow-dialog__btn--cancel"
+            matTooltip="Cancel"
             (click)="onCancel()"
         >
             Cancel
         </button>
         <button
+            type="button"
             class="add-to-flow-dialog__btn add-to-flow-dialog__btn--confirm"
+            matTooltip="Add"
             [disabled]="!hasChanges"
             (click)="onConfirm()"
         >

@@ -1,6 +1,8 @@
 import { formatDate } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
+import { getDebugNode } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { provideRouter, Router } from '@angular/router';
 import { ConfirmationDialogService } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
@@ -158,6 +160,11 @@ function cell(element: HTMLElement, rowId: string, colId: string): HTMLElement |
     return element.querySelector<HTMLElement>(`.ag-row[row-id="${rowId}"] [col-id="${colId}"]`);
 }
 
+/** The text of the tooltip `element` shows on hover and keyboard focus. */
+function tooltipOf(element: Element | null | undefined): string | undefined {
+    return element ? getDebugNode(element)?.injector.get(MatTooltip).message : undefined;
+}
+
 describe('KeyValueEntriesGridComponent rows', () => {
     beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
     afterEach(() => vi.unstubAllGlobals());
@@ -181,9 +188,7 @@ describe('KeyValueEntriesGridComponent rows', () => {
         expect(modifiedBy?.classList).not.toContain('entries-grid__cell--link');
         const manualEdit = modifiedBy?.querySelector('.entries-grid__manual-edit');
         expect(manualEdit?.textContent?.trim()).toBe('Manual edit');
-        expect(manualEdit?.getAttribute('title')).toBe(
-            'Edited by hand, or written by a session that was later deleted'
-        );
+        expect(tooltipOf(manualEdit)).toBe('Edited by hand, or written by a session that was later deleted');
     });
 
     it('shows the value preview, with an ellipsis when the server cut it', async () => {

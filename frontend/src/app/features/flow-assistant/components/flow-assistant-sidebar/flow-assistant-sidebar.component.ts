@@ -56,13 +56,6 @@ export class FlowAssistantSidebarComponent {
         this.selected.emit(id);
     }
 
-    /** Enter/Space on a focused row open its session, as a click does; keys from its delete button pass. */
-    onSessionKeydown(event: KeyboardEvent, id: number): void {
-        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
-        event.preventDefault();
-        this.selectSession(id);
-    }
-
     deleteSession(event: MouseEvent, id: number): void {
         event.stopPropagation();
         this.assistantService.deleteSession(id);

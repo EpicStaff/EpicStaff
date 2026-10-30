@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import {
@@ -42,7 +43,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
 
 @Component({
     selector: 'app-node-stream-message',
-    imports: [AppSvgIconComponent, RuntimeNodeLabelPipe],
+    imports: [MatTooltip, AppSvgIconComponent, RuntimeNodeLabelPipe],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -71,7 +72,14 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                     />
                 </div>
                 <div class="header-text">
-                    <span class="node-name">{{ message().name | runtimeNodeLabel }}</span>
+                    <button
+                        type="button"
+                        class="message-toggle node-name"
+                        [matTooltip]="message().name | runtimeNodeLabel"
+                        [attr.aria-expanded]="isExpanded()"
+                    >
+                        {{ message().name | runtimeNodeLabel }}
+                    </button>
                     @if (!isDone()) {
                         <span class="status-badge">working...</span>
                     }
@@ -109,8 +117,11 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                                     <div class="steps-container">
                                         @for (step of group.toolSteps; track step.key) {
                                             <div class="step-item">
-                                                <div
+                                                <button
+                                                    type="button"
                                                     class="step-header"
+                                                    [attr.aria-expanded]="isStepExpanded(step)"
+                                                    [matTooltip]="getStepSummary(step)"
                                                     (click)="toggleStep(step)"
                                                 >
                                                     <app-svg-icon
@@ -128,7 +139,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                                                         [class.is-error]="isStepError(step)"
                                                     />
                                                     <span class="step-summary">{{ getStepSummary(step) }}</span>
-                                                </div>
+                                                </button>
 
                                                 <div
                                                     class="collapsible-content"
@@ -201,6 +212,18 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
         </div>
     `,
     styles: `
+        // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+        // its own click, which this button's click reaches.
+        .message-toggle {
+            padding: 0;
+            border: none;
+            background: none;
+            color: inherit;
+            font: inherit;
+            text-align: left;
+            cursor: inherit;
+        }
+
         :host {
             display: flex;
             flex-direction: column;
@@ -347,17 +370,29 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
             border-radius: 6px;
         }
 
+        // The button that folds its step, drawn as the row it was.
         .step-header {
             display: flex;
             align-items: center;
             gap: 8px;
+            width: 100%;
+            border: none;
+            background: none;
+            color: inherit;
+            font: inherit;
+            text-align: left;
             cursor: pointer;
             user-select: none;
             padding: 0.35rem 0.5rem;
             border-radius: 4px;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--gray-800);
+            }
+
+            // Drawn inside: the collapsible content around clips it.
+            &:focus-visible {
+                outline-offset: -2px;
             }
 
             app-svg-icon {

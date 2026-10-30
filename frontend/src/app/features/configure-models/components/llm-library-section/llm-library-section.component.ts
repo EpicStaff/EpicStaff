@@ -1,14 +1,17 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/portal';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
     inject,
+    Injector,
     OnInit,
     Signal,
     signal,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -117,6 +120,8 @@ const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding conf
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LlmLibrarySectionComponent implements OnInit {
+    private readonly addButton = viewChild('addButton', { read: ButtonComponent });
+
     private readonly llmLibraryService = inject(LLMLibraryService);
     private readonly llmConfigStorageService = inject(LlmConfigStorageService);
     private readonly embeddingConfigStorage = inject(EmbeddingConfigStorageService);
@@ -128,6 +133,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     private readonly bulkDeleteService = inject(BulkDeleteService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dialog = inject(Dialog);
+    private readonly injector = inject(Injector);
 
     readonly voiceProviders: VoiceProvider[] = [
         {
@@ -384,6 +390,7 @@ export class LlmLibrarySectionComponent implements OnInit {
             .run([group])
             .pipe(
                 tap((outcomes) => this.applyDefaultModelsOutdated(outcomes)),
+                tap(() => this.focusAddAfterDelete()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe();
@@ -436,6 +443,7 @@ export class LlmLibrarySectionComponent implements OnInit {
             .run([this.buildModelGroup(model)])
             .pipe(
                 tap((outcomes) => this.applyDefaultModelsOutdated(outcomes)),
+                tap(() => this.focusAddAfterDelete()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe();
@@ -474,6 +482,7 @@ export class LlmLibrarySectionComponent implements OnInit {
                 tap((outcomes) => {
                     this.applyDefaultModelsOutdated(outcomes);
                     this.exitSelectMode();
+                    this.focusAddAfterDelete();
                 }),
                 finalize(() => this.isDeleting.set(false)),
                 takeUntilDestroyed(this.destroyRef)
@@ -483,6 +492,11 @@ export class LlmLibrarySectionComponent implements OnInit {
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+
+    /** The deleted card (or the bulk Delete button, gone with select mode) had the focus: it goes to Add Configuration. */
+    private focusAddAfterDelete(): void {
+        afterNextRender(() => this.addButton()?.focus(), { injector: this.injector });
+    }
 
     private kindForModel(model: LlmLibraryModel): LlmLibrarySelectionKind {
         return model.configType === ModelTypes.EMBEDDING ? 'embedding' : 'llm';

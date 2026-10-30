@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     BinnedSecretNoteComponent,
     CustomInputComponent,
@@ -65,6 +66,7 @@ function optionalText(value = ''): FormControl<string> {
         CustomInputComponent,
         HelpTooltipComponent,
         HintMessageComponent,
+        MatTooltip,
         SelectComponent,
         ValidationErrorsComponent,
     ],

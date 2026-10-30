@@ -31,8 +31,12 @@
         </div>
 
         <div class="choices">
+            <!-- Takes the focus from step 1, which goes with the field or button that had it. -->
             <button
+                #firstChoice
+                type="button"
                 class="choice-card"
+                matTooltip="Start working"
                 (click)="onStartWorking()"
             >
                 <app-svg-icon
@@ -45,7 +49,9 @@
             </button>
 
             <button
+                type="button"
                 class="choice-card"
+                matTooltip="Set up organizations"
                 (click)="onSetupOrganizations()"
             >
                 <app-svg-icon

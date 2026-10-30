@@ -14,9 +14,9 @@
     border-radius: 4px;
     background-color: transparent;
 
+    // The search field shows its focus with its border, not with the ring.
     &:focus-within {
-        outline: 2px solid var(--accent-color);
-        outline-offset: 1px;
+        border-color: var(--accent-color);
     }
 }
 

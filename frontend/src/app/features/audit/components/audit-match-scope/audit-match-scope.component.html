@@ -2,6 +2,7 @@
     class="match-scope__header"
     type="button"
     [attr.aria-expanded]="isExpanded()"
+    [matTooltip]="isExpanded() ? 'Collapse Match scope' : 'Expand Match scope'"
     (click)="toggleExpanded()"
 >
     <app-svg-icon
@@ -19,6 +20,7 @@
             <app-checkbox
                 color="secondary"
                 [class.match-scope__implied]="scope().fullSessionHistory"
+                ariaLabel="Its session & node"
                 [checked]="true"
                 [disabled]="true"
             />
@@ -30,6 +32,7 @@
             <app-checkbox
                 color="secondary"
                 [class.match-scope__implied]="scope().fullSessionHistory"
+                ariaLabel="Everything inside the match"
                 [checked]="scope().children || scope().fullSessionHistory"
                 (changed)="setChildren($event)"
             />
@@ -41,6 +44,7 @@
             <app-checkbox
                 color="secondary"
                 [class.match-scope__implied]="scope().fullSessionHistory"
+                ariaLabel="Rows immediately before the match"
                 [checked]="scope().rowsBeforeEnabled || scope().fullSessionHistory"
                 (changed)="setRowsBeforeEnabled($event)"
             />
@@ -51,6 +55,7 @@
                 min="1"
                 [max]="maxRowsBefore"
                 aria-label="Rows before the match"
+                matTooltip="Rows before the match"
                 [value]="scope().rowsBefore"
                 (change)="setRowsBefore($event)"
             />
@@ -61,6 +66,7 @@
         <label class="match-scope__row">
             <app-checkbox
                 color="secondary"
+                ariaLabel="Full data on the same session"
                 [checked]="scope().fullSessionHistory"
                 (changed)="setFullSessionHistory($event)"
             />

@@ -31,11 +31,17 @@
             cursor: pointer;
             border-radius: 4px;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: var(--transparent-white-8);
                 color: var(--text);
             }
         }
+    }
+
+    // The created step takes the focus without being a Tab stop: its ring is drawn inside, round the key.
+    .created-step:focus-visible {
+        outline-offset: -2px;
+        border-radius: 4px;
     }
 
     .body {

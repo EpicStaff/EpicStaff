@@ -1,4 +1,5 @@
 import { Component, computed, input, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 import { KEY_VALUE_MODE_COLORS } from '@shared/models';
 
@@ -53,7 +54,7 @@ const JSON_TOKEN =
 
 @Component({
     selector: 'app-key-value-message',
-    imports: [AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent],
+    imports: [MatTooltip, AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent],
     templateUrl: './key-value-message.component.html',
     styleUrls: ['./key-value-message.component.scss'],
 })

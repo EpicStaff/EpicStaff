@@ -13,11 +13,13 @@
     </h3>
 
     <div class="toolbar-actions">
+        <!-- ariaDisabled, not disabled: it keeps the focus the key dialog hands back when that key reached the limit. -->
         <app-button
+            #createButton
             type="primary"
             leftIcon="plus"
             [matTooltip]="maxCountReached() ? 'Maximum active keys reached' : 'Create API key'"
-            [disabled]="maxCountReached()"
+            [ariaDisabled]="maxCountReached()"
             (click)="onCreateKey()"
         >
             Create API Key

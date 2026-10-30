@@ -47,7 +47,7 @@
             border: 1.5px solid var(--accent-color);
             color: var(--accent-color);
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--color-ghost-btn-hover);
             }
         }
@@ -62,7 +62,7 @@
                 cursor: not-allowed;
             }
 
-            &:not(:disabled):hover {
+            &:not(:disabled):is(:hover, :focus-visible) {
                 background-color: var(--purple-alpha-85);
             }
         }
@@ -154,7 +154,7 @@
         transition: background-color 0.15s ease;
         white-space: nowrap;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--purple-alpha-8);
         }
     }
@@ -226,7 +226,14 @@
             background-color: var(--color-ks-transparent-black-28);
         }
 
-        &:hover {
+        // The name button checks the item, so the row shows its keyboard focus; drawn inside, as the scrolling list
+        // clips the full-width rows.
+        &:has(.files-dialog__item-name:focus-visible) {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
+        }
+
+        &:is(:hover, :has(.files-dialog__item-name:focus-visible)) {
             background-color: var(--purple-alpha-8);
         }
 
@@ -301,9 +308,20 @@
         flex: 1 1 auto;
         min-width: 0;
         margin-left: 6px;
+        padding: 0;
+        border: none;
+        background: none;
+        font-family: inherit;
         font-size: 0.875rem;
         color: var(--color-text-primary);
+        text-align: left;
         white-space: nowrap;
+        cursor: inherit;
+
+        // The row draws it.
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     &__empty-badge {

@@ -22,7 +22,7 @@
             background-color 0.15s ease,
             color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--white-alpha-10);
             color: var(--white);
         }
@@ -81,10 +81,22 @@
         color: var(--accent-color);
         border-left: 3px solid var(--accent-color);
 
+        // A button drawn as the plain crumb it was.
+        border-top: none;
+        border-right: none;
+        border-bottom: none;
+        font: inherit;
+        cursor: default;
+
+        // Inside the scrolling track, which clips anything drawn outside it.
+        &:focus-visible {
+            outline-offset: -2px;
+        }
+
         &--clickable {
             cursor: pointer;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: var(--white-alpha-10);
             }
         }

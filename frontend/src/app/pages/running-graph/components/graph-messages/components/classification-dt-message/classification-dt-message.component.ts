@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import {
@@ -13,7 +14,7 @@ import {
 
 @Component({
     selector: 'app-classification-dt-message',
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [MatTooltip, CommonModule, AppSvgIconComponent],
     template: `
         <!-- Condition Group -->
         @if (isConditionGroup()) {
@@ -41,7 +42,16 @@ import {
                         />
                     </div>
                     <div class="header-text">
-                        <h3>{{ getConditionData()?.group_name }}</h3>
+                        <h3>
+                            <button
+                                type="button"
+                                class="message-toggle"
+                                [matTooltip]="getConditionData()?.group_name ?? ''"
+                                [attr.aria-expanded]="isMessageExpanded"
+                            >
+                                {{ getConditionData()?.group_name }}
+                            </button>
+                        </h3>
                         <span
                             class="badge"
                             [ngClass]="conditionResultClass()"
@@ -92,7 +102,16 @@ import {
                         />
                     </div>
                     <div class="header-text">
-                        <h3>LLM Classification</h3>
+                        <h3>
+                            <button
+                                type="button"
+                                class="message-toggle"
+                                matTooltip="LLM Classification"
+                                [attr.aria-expanded]="isMessageExpanded"
+                            >
+                                LLM Classification
+                            </button>
+                        </h3>
                         <span class="badge prompt-badge">{{ getPromptData()?.prompt_id }}</span>
                     </div>
                 </div>
@@ -104,8 +123,11 @@ import {
                     <div class="dt-content">
                         <!-- Prompt Text -->
                         <div class="detail-section">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isPromptExpanded"
+                                matTooltip="Prompt"
                                 (click)="toggleSection('prompt'); $event.stopPropagation()"
                             >
                                 <app-svg-icon
@@ -113,7 +135,7 @@ import {
                                     size="1.1rem"
                                 />
                                 Prompt
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isPromptExpanded"
@@ -126,8 +148,11 @@ import {
 
                         <!-- Raw Response -->
                         <div class="detail-section">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isResponseExpanded"
+                                matTooltip="Raw Response"
                                 (click)="toggleSection('response'); $event.stopPropagation()"
                             >
                                 <app-svg-icon
@@ -135,7 +160,7 @@ import {
                                     size="1.1rem"
                                 />
                                 Raw Response
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isResponseExpanded"
@@ -170,7 +195,7 @@ import {
                                 <div class="detail-row">
                                     <span
                                         class="detail-label"
-                                        title="Subset of prompt tokens — not added to the total."
+                                        matTooltip="Subset of prompt tokens — not added to the total."
                                         >Cached tokens</span
                                     >
                                     <span class="detail-value">
@@ -211,7 +236,16 @@ import {
                         />
                     </div>
                     <div class="header-text">
-                        <h3>Manipulation</h3>
+                        <h3>
+                            <button
+                                type="button"
+                                class="message-toggle"
+                                matTooltip="Manipulation"
+                                [attr.aria-expanded]="isMessageExpanded"
+                            >
+                                Manipulation
+                            </button>
+                        </h3>
                         <span class="badge manipulation-badge">{{ getManipulationData()?.group_name }}</span>
                     </div>
                 </div>
@@ -230,6 +264,18 @@ import {
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .dt-flow-container {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
@@ -410,7 +456,14 @@ import {
                 margin-bottom: 0.75rem;
             }
 
+            // The button that folds its section, drawn as the heading row it was.
             .section-heading {
+                width: 100%;
+                padding: 0;
+                border: none;
+                background: none;
+                font-family: inherit;
+                text-align: left;
                 font-size: var(--text-body-medium-size);
                 font-weight: var(--text-body-medium-weight);
                 line-height: var(--text-body-medium-line-height);
@@ -420,6 +473,11 @@ import {
                 user-select: none;
                 display: flex;
                 align-items: center;
+            }
+
+            // Drawn inside: the collapsible content around clips it.
+            .section-heading:focus-visible {
+                outline-offset: -2px;
             }
 
             .section-heading app-svg-icon {

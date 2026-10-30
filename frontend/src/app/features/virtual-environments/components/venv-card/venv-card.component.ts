@@ -1,5 +1,5 @@
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
-import { Component, computed, input, output, signal } from '@angular/core';
+import { Component, computed, ElementRef, input, output, signal, viewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, formatAuthorshipTimestamp } from '@shared/components';
 import {
@@ -43,6 +43,9 @@ export class VenvCardComponent {
     /** The state the star was clicked into, not the one it had. */
     readonly favoriteChange = output<boolean>();
 
+    private readonly nameButton = viewChild<ElementRef<HTMLButtonElement>>('nameButton');
+    private readonly favoriteButton = viewChild.required<ElementRef<HTMLButtonElement>>('favoriteButton');
+
     protected readonly hiddenLibsOpen = signal(false);
     protected readonly updatesOpen = signal(false);
 
@@ -74,6 +77,11 @@ export class VenvCardComponent {
         { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -8 },
         { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },
     ];
+
+    /** Focuses the name button, which opens the venv; the star where the venv cannot be edited. */
+    focus(): void {
+        (this.nameButton() ?? this.favoriteButton()).nativeElement.focus();
+    }
 
     // appOverflowItems hides chips from the end, so the hidden ones are the last `count`.
     hiddenLibs(count: number): VenvLib[] {

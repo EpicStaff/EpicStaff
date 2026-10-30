@@ -4,6 +4,12 @@
     display: flex;
     flex-direction: column;
     cursor: pointer;
+
+    // The name button opens the organization, so the card shows its keyboard focus. Drawn inside: the grid scrolls.
+    &:has(.name:focus-visible) {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
 }
 
 .header {
@@ -18,10 +24,21 @@
         align-items: center;
         gap: 8px;
 
+        // The button opening the card, drawn as the plain title it was; the card shows its focus.
         .name {
+            padding: 0;
+            border: none;
+            background: none;
+            font-family: inherit;
+            text-align: left;
+            cursor: inherit;
             font-size: var(--text-body-medium-size);
             font-weight: var(--text-body-medium-weight);
             color: var(--text);
+
+            &:focus-visible {
+                outline: none;
+            }
         }
     }
 

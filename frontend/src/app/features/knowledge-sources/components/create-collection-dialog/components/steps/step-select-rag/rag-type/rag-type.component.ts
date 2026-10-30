@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { Rag } from '../../../../../../models/base-rag.model';
@@ -7,7 +8,7 @@ import { Rag } from '../../../../../../models/base-rag.model';
     selector: 'app-rag-type',
     templateUrl: './rag-type.component.html',
     styleUrls: ['./rag-type.component.scss'],
-    imports: [AppSvgIconComponent],
+    imports: [MatTooltip, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RagTypeComponent {

@@ -30,8 +30,11 @@
                                     }
                                 </div>
                                 <div class="tool-arguments">
-                                    <div
+                                    <button
+                                        type="button"
                                         class="tool-arguments-header"
+                                        matTooltip="Arguments"
+                                        [attr.aria-expanded]="isArgumentsExpanded(item.id)"
                                         (click)="toggleArgumentsVisibility(item.id)"
                                     >
                                         <app-svg-icon
@@ -40,7 +43,7 @@
                                             [ngClass]="{ expanded: isArgumentsExpanded(item.id) }"
                                         />
                                         <span>Arguments</span>
-                                    </div>
+                                    </button>
                                     @if (isArgumentsExpanded(item.id)) {
                                         <div class="tool-arguments-content">
                                             <app-json-viewer
@@ -55,8 +58,11 @@
                         <!-- Tool Response -->
                         @if (item.type === 'function_call_output') {
                             <div class="message-text tool-response">
-                                <div
+                                <button
+                                    type="button"
                                     class="tool-response-header"
+                                    matTooltip="Output"
+                                    [attr.aria-expanded]="isResponseExpanded(item.id)"
                                     (click)="toggleResponseVisibility(item.id)"
                                 >
                                     <app-svg-icon
@@ -65,7 +71,7 @@
                                         [ngClass]="{ expanded: isResponseExpanded(item.id) }"
                                     />
                                     <span>Output</span>
-                                </div>
+                                </button>
                                 @if (isResponseExpanded(item.id)) {
                                     <div class="tool-response-content">
                                         {{ item.formatted.output }}

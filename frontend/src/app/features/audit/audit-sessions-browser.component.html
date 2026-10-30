@@ -12,13 +12,18 @@
                     type="text"
                     placeholder="Search every field, every level..."
                     aria-label="Search every field"
+                    matTooltip="Search every field"
                     [value]="appliedSearchText()"
                     (input)="onSearchInput(searchInput.value)"
                     (keydown.enter)="applySearch(searchInput.value)"
                 />
                 <button
+                    #filtersToggle
                     class="audit-browser__tool-btn"
                     type="button"
+                    matTooltip="Filters"
+                    aria-controls="audit-filters-panel"
+                    [attr.aria-expanded]="isFiltersPanelOpen() && !viewedValue()"
                     [class.is-active]="isFiltersPanelOpen()"
                     (click)="toggleFiltersPanel()"
                 >
@@ -35,6 +40,7 @@
                     class="audit-browser__tool-btn"
                     type="button"
                     [class.is-active]="areColumnsExpanded()"
+                    [matTooltip]="areColumnsExpanded() ? 'Collapse All Rows' : 'Expand All Rows'"
                     (click)="setColumnsExpanded(!areColumnsExpanded())"
                 >
                     {{ areColumnsExpanded() ? 'Collapse All Rows' : 'Expand All Rows' }}
@@ -43,6 +49,7 @@
                     class="audit-browser__tool-btn"
                     type="button"
                     [disabled]="!hasCollapsibleRows()"
+                    [matTooltip]="areAllRowsExpanded() ? 'Collapse Tree' : 'Expand Tree'"
                     (click)="toggleAllRows()"
                 >
                     {{ areAllRowsExpanded() ? 'Collapse Tree' : 'Expand Tree' }}
@@ -65,8 +72,8 @@
                     <app-audit-filter-chips
                         class="audit-browser__chips"
                         [chips]="appliedChips()"
-                        (removed)="removeFilter($event)"
-                        (cleared)="clearFilters()"
+                        (removed)="removeChip($event)"
+                        (cleared)="clearChips()"
                     />
                 </div>
             }
@@ -151,6 +158,9 @@
                                                         [attr.aria-label]="
                                                             isRowCollapsed(row.event.id) ? 'Expand row' : 'Collapse row'
                                                         "
+                                                        [matTooltip]="
+                                                            isRowCollapsed(row.event.id) ? 'Expand row' : 'Collapse row'
+                                                        "
                                                     >
                                                         <app-svg-icon
                                                             icon="caret-down-filled"
@@ -232,6 +242,7 @@
                                                 aria-controls="audit-value-viewer"
                                                 [attr.aria-expanded]="isViewed"
                                                 [class.is-viewed]="isViewed"
+                                                [matTooltip]="'View ' + field"
                                                 (click)="openValue(valueButton, field, row, text, isPlainText)"
                                             >
                                                 <app-audit-highlight
@@ -287,19 +298,22 @@
                         (changed)="setPageSize($event)"
                     />
 
+                    <!-- aria-disabled, not disabled: a page button keeps the focus when its page is the last one. -->
                     <button
                         class="audit-pager__nav"
                         type="button"
-                        [disabled]="!canGoNewer()"
+                        [attr.aria-disabled]="!canGoNewer()"
                         (click)="goToFirstPage()"
                         aria-label="First page"
+                        matTooltip="First page"
                     >
                         «
                     </button>
                     <button
                         class="audit-pager__nav"
                         type="button"
-                        [disabled]="!canGoNewer()"
+                        [attr.aria-disabled]="!canGoNewer()"
+                        matTooltip="Newer page"
                         (click)="goToNewerPage()"
                     >
                         ‹ Newer
@@ -307,7 +321,8 @@
                     <button
                         class="audit-pager__nav audit-pager__nav--primary"
                         type="button"
-                        [disabled]="!canGoOlder()"
+                        [attr.aria-disabled]="!canGoOlder()"
+                        matTooltip="Older page"
                         (click)="goToOlderPage()"
                     >
                         Older ›
@@ -333,6 +348,7 @@
             <aside
                 #panel
                 class="audit-browser__panel"
+                (keydown.escape)="onPanelEscape($event)"
                 [style.flex-basis.px]="panelWidth()"
             >
                 <div
@@ -346,6 +362,7 @@
                 ></div>
                 @if (isFiltersPanelOpen()) {
                     <app-audit-filters-panel
+                        id="audit-filters-panel"
                         [flowNames]="flowNames()"
                         [agentOptions]="agentOptions()"
                         [toolOptions]="toolOptions()"

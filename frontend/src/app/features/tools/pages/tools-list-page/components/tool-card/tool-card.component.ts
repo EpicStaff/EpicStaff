@@ -51,6 +51,8 @@ export class ToolCardComponent implements OnDestroy {
         read: ElementRef,
     });
 
+    private readonly nameButton = viewChild.required<ElementRef<HTMLButtonElement>>('nameButton');
+
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
 
     public readonly menuOpen = signal<boolean>(false);
@@ -163,7 +165,14 @@ export class ToolCardComponent implements OnDestroy {
         this.cancelCloseTimeout();
     }
 
+    /** Focuses the card's name button, which opens the tool. */
+    public focus(): void {
+        this.nameButton().nativeElement.focus();
+    }
+
     public onMenuAction(action: ToolCardMenuAction): void {
+        // Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away.
+        this.menuTriggerButton().nativeElement.focus();
         this.closeMenu();
         this.menuAction.emit({ tool: this.tool(), action, trigger: this.menuTriggerButton().nativeElement });
     }

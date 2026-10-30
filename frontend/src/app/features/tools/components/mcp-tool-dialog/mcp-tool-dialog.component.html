@@ -32,7 +32,9 @@
                 </div>
             }
             <div>
+                <!-- The dialog opens with the focus here: the first field it asks for. -->
                 <app-custom-input
+                    cdkFocusInitial
                     label="Name"
                     placeholder="Enter unique name for MCP configuration"
                     tooltipText="Unique identifier for this MCP tool configuration"

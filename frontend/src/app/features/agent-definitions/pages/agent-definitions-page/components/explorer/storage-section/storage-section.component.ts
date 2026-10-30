@@ -38,6 +38,9 @@ export class StorageSectionComponent implements OnInit {
         this.facade.selectInTree
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((item) => this.tree()?.selectItemExternally(item));
+        this.facade.renameFailed
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((path) => this.tree()?.onRenameFailed(path));
 
         this.facade.loadTree();
     }

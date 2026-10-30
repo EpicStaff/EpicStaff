@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -7,7 +8,7 @@ import { GraphSessionLight } from '../../../../features/flows/services/flows-ses
 
 @Component({
     selector: 'app-session-id-switcher',
-    imports: [FormsModule, MatTooltipModule, AppSvgIconComponent],
+    imports: [FormsModule, MatTooltipModule, AppSvgIconComponent, CdkTrapFocus],
     templateUrl: './session-id-switcher.component.html',
     styleUrls: ['./session-id-switcher.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,6 +37,13 @@ export class SessionIdSwitcherComponent {
     public closeDropdown(): void {
         this.isDropdownOpen = false;
         this.searchQuery = '';
+    }
+
+    // Taken here, so the page around (the memories sidebar) does not close on it too.
+    public onDropdownEscape(event: Event): void {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeDropdown();
     }
 
     public get filteredSessions(): GraphSessionLight[] {

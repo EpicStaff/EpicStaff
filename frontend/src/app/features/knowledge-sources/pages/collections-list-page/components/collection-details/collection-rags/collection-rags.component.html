@@ -21,6 +21,7 @@
                             [attr.aria-label]="ragTypeConfig[config.rag_type].name + ' indexing usage'"
                             [attr.aria-expanded]="isUsageExpanded"
                             [attr.aria-controls]="usageDetailsId(config.rag_type)"
+                            [matTooltip]="(isUsageExpanded ? 'Hide ' : 'Show ') + 'indexing usage'"
                             (click)="$event.stopPropagation(); toggleUsage(config.rag_type)"
                         >
                             <app-svg-icon
@@ -35,11 +36,18 @@
                         [icon]="ragTypeConfig[config.rag_type].icon"
                         size="0.75rem"
                     />
-                    <span class="name">{{ ragTypeConfig[config.rag_type].name }}</span>
+                    <!-- Opens the RAG configuration, from the keyboard too; its click reaches the row's handler. -->
+                    <button
+                        #ragNameButton
+                        type="button"
+                        class="name"
+                        [matTooltip]="ragTypeConfig[config.rag_type].name"
+                    >
+                        {{ ragTypeConfig[config.rag_type].name }}
+                    </button>
                     <span
                         class="model"
                         [matTooltip]="config.embedder_name"
-                        matTooltipPosition="above"
                     >
                         {{ config.embedder_name }}
                     </span>
@@ -53,15 +61,19 @@
                         />
                         {{ ragStatusConfig[config.status].text }}
                     </div>
-                    <app-svg-icon
+                    <button
                         *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
-                        (click)="$event.stopPropagation(); onDeleteRag(config.rag_type, config.rag_id)"
-                        icon="x"
-                        size="1rem"
+                        type="button"
                         class="nav action"
+                        [attr.aria-label]="'Delete ' + ragTypeConfig[config.rag_type].name"
                         matTooltip="Delete RAG"
-                        matTooltipPosition="above"
-                    />
+                        (click)="$event.stopPropagation(); onDeleteRag(config.rag_type, config.rag_id)"
+                    >
+                        <app-svg-icon
+                            icon="x"
+                            size="1rem"
+                        />
+                    </button>
                 </div>
                 @if (usage.length) {
                     <div

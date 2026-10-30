@@ -41,7 +41,10 @@
             </form>
 
             <div class="terms-row">
-                <app-checkbox [formControl]="termsControl" />
+                <app-checkbox
+                    ariaLabel="I agree to the Privacy Policy"
+                    [formControl]="termsControl"
+                />
                 <p class="terms-text">
                     I agree to the
                     <a
@@ -49,6 +52,7 @@
                         rel="noopener noreferrer"
                         target="_blank"
                         class="terms-link"
+                        matTooltip="Privacy Policy"
                         >Privacy Policy</a
                     >
                 </p>

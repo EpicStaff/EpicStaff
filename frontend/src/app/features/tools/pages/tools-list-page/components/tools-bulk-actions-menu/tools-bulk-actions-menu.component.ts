@@ -1,5 +1,7 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, effect, input, output, viewChild } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, LabelDropdownComponent } from '@shared/components';
 
 import { ToolsBulkActionKind } from '../../../../services/tools-view-storage.service';
@@ -13,7 +15,7 @@ export interface ToolsBulkAction {
 
 @Component({
     selector: 'app-tools-bulk-actions-menu',
-    imports: [AppSvgIconComponent, LabelDropdownComponent],
+    imports: [CdkTrapFocus, MatTooltip, AppSvgIconComponent, LabelDropdownComponent],
     templateUrl: './tools-bulk-actions-menu.component.html',
     styleUrls: ['./tools-bulk-actions-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

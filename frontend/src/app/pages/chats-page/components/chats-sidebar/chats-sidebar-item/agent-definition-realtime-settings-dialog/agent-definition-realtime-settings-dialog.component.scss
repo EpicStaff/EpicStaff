@@ -44,7 +44,7 @@
             border-radius: 6px;
             margin-left: 10px;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--white-alpha-10);
                 color: var(--white-alpha-90);
             }
@@ -140,7 +140,7 @@
                 background-color: var(--white-alpha-10);
                 color: var(--white-alpha-90);
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     background-color: var(--white-alpha-15);
                 }
             }
@@ -149,7 +149,7 @@
                 background-color: var(--accent-color);
                 color: var(--white);
 
-                &:hover {
+                &:is(:hover, :focus-visible):not(:disabled, .disabled) {
                     background-color: var(--purple-400);
                 }
 

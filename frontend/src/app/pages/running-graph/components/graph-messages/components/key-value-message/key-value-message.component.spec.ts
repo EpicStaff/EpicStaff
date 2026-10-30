@@ -1,4 +1,6 @@
+import { getDebugNode } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { CopyButtonComponent } from '@shared/components';
 
@@ -46,6 +48,11 @@ function render(data: RenderData): HTMLElement {
 
 function text(element: HTMLElement, selector: string): string {
     return element.querySelector(selector)?.textContent?.trim() ?? '';
+}
+
+/** The text of the tooltip `element` shows on hover and keyboard focus. */
+function tooltipOf(element: Element | null): string | undefined {
+    return element ? getDebugNode(element)?.injector.get(MatTooltip).message : undefined;
 }
 
 function chips(element: HTMLElement): { label: string; neutral: boolean }[] {
@@ -521,7 +528,7 @@ describe('KeyValueMessageComponent', () => {
         const title = element.querySelector('.title') as HTMLElement;
         const style = getComputedStyle(title);
 
-        expect(title.getAttribute('title')).toBe(longName);
+        expect(tooltipOf(element.querySelector('.key-value-header'))).toBe(`Read 0 keys from table ${longName}`);
         expect(text(element, '.title .table-name')).toBe(longName);
         expect(chips(element)).toEqual([{ label: '0 found', neutral: false }]);
         expect([style.whiteSpace, style.overflow, style.textOverflow]).toEqual(['nowrap', 'hidden', 'ellipsis']);

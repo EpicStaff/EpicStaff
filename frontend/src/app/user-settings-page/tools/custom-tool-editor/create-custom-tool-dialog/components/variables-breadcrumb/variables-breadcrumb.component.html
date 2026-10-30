@@ -4,6 +4,7 @@
             type="button"
             class="breadcrumb-scroll-left"
             aria-label="Scroll breadcrumbs to start"
+            matTooltip="Scroll breadcrumbs to start"
             (click)="scrollToStart()"
         >
             <app-svg-icon
@@ -18,9 +19,15 @@
         class="breadcrumb-track"
     >
         @for (crumb of crumbs(); track crumb.label; let last = $last; let i = $index) {
-            <span
+            <!-- The current level is a button too: going up to a level keeps the focus on the crumb clicked. -->
+            <button
+                #crumbButton
+                type="button"
                 class="breadcrumb-item"
                 [class.breadcrumb-item--clickable]="!last"
+                [attr.aria-current]="last ? 'location' : null"
+                [matTooltip]="crumb.label || rootLabel"
+                [attr.aria-label]="crumb.label ? null : rootLabel"
                 (click)="!last && crumbClick.emit(i)"
             >
                 @if (crumb.icon) {
@@ -35,7 +42,7 @@
                 @if (crumb.label) {
                     <span class="breadcrumb-label">{{ crumb.label }}</span>
                 }
-            </span>
+            </button>
             @if (!last) {
                 <span class="breadcrumb-separator">></span>
             }

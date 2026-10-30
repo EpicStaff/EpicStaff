@@ -9,6 +9,7 @@
             <button
                 class="action-item"
                 type="button"
+                matTooltip="Select All"
                 (click)="selectAllClick.emit()"
             >
                 <app-svg-icon
@@ -20,6 +21,7 @@
             <button
                 class="action-item"
                 type="button"
+                matTooltip="Clear All"
                 (click)="clearAllClick.emit()"
             >
                 <app-svg-icon
@@ -59,9 +61,11 @@
         </div>
 
         @if (!readonly()) {
+            <!-- Out of the Tab order while it is folded away. -->
             <div
                 class="related-banner top"
                 [class.is-open]="globalPendingCount() > 0"
+                [attr.inert]="globalPendingCount() === 0 ? '' : null"
             >
                 <span class="text"> Related permissions needed — {{ globalPendingCount() }} pending </span>
 
@@ -83,8 +87,11 @@
                     [attr.data-group-key]="group.key"
                 >
                     <!-- Group header -->
-                    <div
+                    <button
+                        type="button"
                         class="group-header"
+                        [attr.aria-expanded]="!isGroupCollapsed(group.key)"
+                        [matTooltip]="(isGroupCollapsed(group.key) ? 'Expand ' : 'Collapse ') + group.label"
                         (click)="toggleGroup(group.key)"
                     >
                         <app-svg-icon
@@ -110,12 +117,13 @@
                             {{ groupCounts().get(group.key)?.selected }} /
                             {{ groupCounts().get(group.key)?.total }}
                         </span>
-                    </div>
+                    </button>
 
-                    <!-- Resources (collapsible with animation) -->
+                    <!-- Resources (collapsible with animation); inert while collapsed, as only its zero height hides it. -->
                     <div
                         class="group-content"
                         [class.is-collapsed]="isGroupCollapsed(group.key)"
+                        [attr.inert]="isGroupCollapsed(group.key) ? '' : null"
                     >
                         @if (!readonly() && group.rows.length > 0) {
                             <div class="resource-row bulk">
@@ -150,8 +158,11 @@
                         }
 
                         @for (resource of group.rows; track resource.code) {
+                            <!-- Not a Tab stop: it takes the focus when its banner's Enable or Dismiss removes the banner. -->
                             <div
+                                #resourceRow
                                 class="resource-row"
+                                tabindex="-1"
                                 [attr.data-resource-code]="resource.code"
                             >
                                 <div class="row-select">

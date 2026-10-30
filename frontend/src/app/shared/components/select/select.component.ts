@@ -87,6 +87,8 @@ export class SelectComponent implements ControlValueAccessor {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    /** The field's name for the trigger's tooltip when it has no `label` (e.g. a caption outside the select). */
+    tooltip = input<string>('');
     loading = input<boolean>(false);
     mod = input<'default' | 'small'>('default');
     items = input<SelectItem[]>([]);

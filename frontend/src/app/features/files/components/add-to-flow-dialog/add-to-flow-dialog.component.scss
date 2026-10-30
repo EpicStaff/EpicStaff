@@ -34,7 +34,7 @@
         color: var(--color-text-primary);
         border-radius: 0.25rem;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-ghost-btn-hover);
         }
     }
@@ -72,11 +72,14 @@
         background-color: var(--graphite-750);
         border: 1px solid var(--fog-alpha-16);
         border-radius: 4px;
+        color: inherit;
+        font-family: inherit;
+        text-align: left;
         cursor: pointer;
         flex-shrink: 0;
         transition: border-color 0.15s ease;
 
-        &:hover,
+        &:is(:hover, :focus-visible),
         &--open {
             border-color: var(--fog-alpha-40);
         }
@@ -130,6 +133,11 @@
         height: 40px;
         border-bottom: 1px solid var(--graphite-750);
         flex-shrink: 0;
+
+        // The input draws no border of its own, so the box's divider shows its focus.
+        &:focus-within {
+            border-bottom-color: var(--accent-color);
+        }
     }
 
     &__search-icon {
@@ -173,11 +181,21 @@
         gap: 0.625rem;
         height: 36px;
         padding: 0 0.75rem;
+        border: none;
         border-radius: 4px;
+        background: transparent;
+        color: inherit;
+        font-family: inherit;
+        text-align: left;
         cursor: pointer;
         flex-shrink: 0;
 
-        &:hover:not(&--checked) {
+        // The scrolling list clips anything drawn outside a full-width row.
+        &:focus-visible {
+            outline-offset: -2px;
+        }
+
+        &:is(:hover, :focus-visible):not(&--checked) {
             background-color: var(--fog-alpha-4);
         }
 
@@ -243,7 +261,7 @@
             border: 1px solid var(--accent-color);
             color: var(--accent-color);
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--purple-alpha-8);
             }
         }
@@ -253,7 +271,7 @@
             border: none;
             color: var(--color-text-primary);
 
-            &:hover:not(:disabled) {
+            &:not(:disabled):is(:hover, :focus-visible) {
                 background-color: var(--purple-alpha-85);
             }
 

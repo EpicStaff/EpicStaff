@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { DatePipe } from '@angular/common';
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
 import { filter, finalize } from 'rxjs';
 
@@ -66,7 +67,14 @@ interface SuspendPreviewView {
  */
 @Component({
     selector: 'app-plugin-suspend-dialog',
-    imports: [AppSvgIconComponent, ButtonComponent, DatePipe, LoadingSpinnerComponent, PluginPreviewSectionComponent],
+    imports: [
+        MatTooltip,
+        AppSvgIconComponent,
+        ButtonComponent,
+        DatePipe,
+        LoadingSpinnerComponent,
+        PluginPreviewSectionComponent,
+    ],
     templateUrl: './plugin-suspend-dialog.component.html',
     styleUrl: './plugin-suspend-dialog.component.scss',
 })

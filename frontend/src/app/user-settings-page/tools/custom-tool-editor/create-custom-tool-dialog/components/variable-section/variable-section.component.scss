@@ -50,7 +50,7 @@
     flex-shrink: 0;
     box-sizing: border-box;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--purple-alpha-15);
     }
 

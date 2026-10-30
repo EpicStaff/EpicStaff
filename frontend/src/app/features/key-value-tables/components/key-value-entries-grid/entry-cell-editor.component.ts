@@ -1,6 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { Component, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { JSON_EDITOR_OPTIONS, JsonEditorComponent } from '@shared/components';
 import { ICellEditorAngularComp } from 'ag-grid-angular';
 import { ICellEditorParams } from 'ag-grid-community';
@@ -38,7 +39,7 @@ const EDITOR_HEIGHT_PX = 200;
  */
 @Component({
     selector: 'app-entry-cell-editor',
-    imports: [JsonEditorComponent],
+    imports: [JsonEditorComponent, MatTooltip],
     template: `
         @if (params.multiline) {
             <!-- Focusable, so Esc reaches the grid (cancel) while the value or Monaco is still loading. -->
@@ -98,6 +99,7 @@ const EDITOR_HEIGHT_PX = 200;
                     [value]="text()"
                     [placeholder]="params.placeholder"
                     [attr.aria-label]="params.ariaLabel"
+                    [matTooltip]="params.ariaLabel"
                     [attr.aria-invalid]="params.error ? true : null"
                     [attr.aria-describedby]="params.error ? errorId : null"
                     (input)="text.set(input.value)"

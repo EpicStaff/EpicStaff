@@ -41,21 +41,29 @@
                         <div class="details__section-actions">
                             <!--Creating RAG requires both Create and Update permissions-->
                             <ng-container *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]">
-                                <app-svg-icon
+                                <button
                                     *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
-                                    icon="plus"
+                                    type="button"
                                     class="details__action details__action--medium"
-                                    size="1rem"
+                                    #createRagButton
+                                    aria-label="Create or update RAG"
                                     matTooltip="Create or update RAG"
-                                    matTooltipPosition="above"
                                     (click)="openCreateCollectionModal()"
-                                />
+                                >
+                                    <app-svg-icon
+                                        icon="plus"
+                                        size="1rem"
+                                    />
+                                </button>
                             </ng-container>
                         </div>
                     </div>
 
                     @if (fullCollection()) {
-                        <app-collection-details-rags [collection]="fullCollection()!" />
+                        <app-collection-details-rags
+                            [collection]="fullCollection()!"
+                            (lastRagRemoved)="focusCreateRagButton()"
+                        />
                     }
                 </div>
 
@@ -80,37 +88,46 @@
                                     [selectedValue]="activeFileType()"
                                     (changed)="onFileTypeChange($event)"
                                 />
-                                <app-svg-icon
+                                <button
                                     *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
-                                    icon="download"
+                                    type="button"
                                     class="details__action details__action--medium"
-                                    size="0.875rem"
+                                    aria-label="Download all files"
                                     matTooltip="Download all files"
-                                    matTooltipPosition="above"
                                     (click)="downloadAllFiles()"
-                                />
-                                <app-svg-icon
+                                >
+                                    <app-svg-icon
+                                        icon="download"
+                                        size="0.875rem"
+                                    />
+                                </button>
+                                <button
                                     *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
-                                    icon="files-filled"
+                                    type="button"
                                     class="details__action details__action--medium"
-                                    size="0.75rem"
+                                    aria-label="Copy files to other collection"
                                     matTooltip="Copy files to other collection"
-                                    matTooltipPosition="above"
                                     (click)="openCopyFilesDialog()"
-                                />
+                                >
+                                    <app-svg-icon
+                                        icon="files-filled"
+                                        size="0.75rem"
+                                    />
+                                </button>
 
-                                <label
+                                <button
                                     *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
+                                    type="button"
+                                    class="details__action details__action--medium"
+                                    aria-label="Add file"
                                     matTooltip="Add file"
-                                    matTooltipPosition="above"
                                     (click)="fileInput.click()"
                                 >
                                     <app-svg-icon
                                         icon="plus"
-                                        class="details__action details__action--medium"
                                         size="1rem"
                                     />
-                                </label>
+                                </button>
                                 <input
                                     #fileInput
                                     type="file"

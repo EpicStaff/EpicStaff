@@ -1,6 +1,7 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, UserAvatarComponent } from '@shared/components';
 import { ActionCode, CatalogResponse, GetRoleResponse, ResourceCode } from '@shared/models';
 import { rolePermissionsToSet } from '@shared/utils';
@@ -20,7 +21,7 @@ import { PermissionsTableComponent } from '../permissions-table/permissions-tabl
     templateUrl: './role-info-dialog.component.html',
     styleUrls: ['./role-info-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AppSvgIconComponent, ButtonComponent, PermissionsTableComponent, UserAvatarComponent],
+    imports: [AppSvgIconComponent, ButtonComponent, PermissionsTableComponent, UserAvatarComponent, MatTooltip],
     providers: [PermissionExtensionRowsService],
 })
 export class RoleInfoDialogComponent implements OnInit {

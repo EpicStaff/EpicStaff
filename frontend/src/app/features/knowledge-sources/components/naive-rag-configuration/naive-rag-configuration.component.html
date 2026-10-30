@@ -8,6 +8,7 @@
             />
             <app-select
                 mod="small"
+                tooltip="Status"
                 [items]="statusFilterItems"
                 [(selectedValue)]="statusFilter"
             />
@@ -29,14 +30,21 @@
             >
                 Bulk configuration
             </app-button>
-            <app-svg-icon
+            <button
                 *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
-                icon="trash"
+                type="button"
                 class="configure__bulk-delete"
                 [class.configure__bulk-delete--disabled]="!filteredAndCheckedDocIds().length"
-                size="12px"
+                [attr.aria-disabled]="!filteredAndCheckedDocIds().length || null"
+                aria-label="Delete selected files"
+                matTooltip="Delete selected files"
                 (click)="filteredAndCheckedDocIds().length && applyBulkDelete()"
-            />
+            >
+                <app-svg-icon
+                    icon="trash"
+                    size="12px"
+                />
+            </button>
         </div>
 
         <app-configuration-table

@@ -1,11 +1,13 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
     inject,
+    Injector,
     OnInit,
     signal,
     viewChild,
@@ -91,6 +93,8 @@ export class SecretsSectionComponent implements OnInit {
     private readonly permissionsService = inject(PermissionsService);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly usedByFilterSelect = viewChild.required<SelectComponent>('usedByFilterSelect');
+    private readonly addSecretButton = viewChild('addSecretButton', { read: ButtonComponent });
+    private readonly injector = inject(Injector);
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
@@ -220,6 +224,7 @@ export class SecretsSectionComponent implements OnInit {
                     .subscribe({
                         next: () => {
                             this.toastService.success(movedToRecycleBinMessage(1, 'secret', 'secrets'));
+                            this.focusAddAfterDelete();
                         },
                         error: (err: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(err)),
                     });
@@ -255,6 +260,7 @@ export class SecretsSectionComponent implements OnInit {
                         next: () => {
                             this.toastService.success(movedToRecycleBinMessage(ids.length, 'secret', 'secrets'));
                             this.selectedRows.set([]);
+                            this.focusAddAfterDelete();
                         },
                         error: (err: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(err)),
                     });
@@ -288,6 +294,11 @@ export class SecretsSectionComponent implements OnInit {
             height: 'calc(100vh - 2rem)',
             data: { secretId: row['id'] as number, secretName: row['name'] as string },
         });
+    }
+
+    /** The deleted row's button, or the bulk Delete gone with the selection, had the focus: it goes to Add Secret. */
+    private focusAddAfterDelete(): void {
+        afterNextRender(() => this.addSecretButton()?.focus(), { injector: this.injector });
     }
 
     private deleteUsageCaution(readable: unknown, hidden: unknown): string | undefined {

@@ -1,6 +1,7 @@
 <app-audit-select
     [options]="modeOptions"
     [value]="filter().mode"
+    ariaLabel="ID match"
     (valueChange)="setMode($event)"
 />
 
@@ -11,6 +12,8 @@
                 type="text"
                 inputmode="numeric"
                 placeholder="Enter a value..."
+                aria-label="ID from"
+                matTooltip="ID from"
                 [value]="filter().from"
                 (input)="keepDigits($event)"
                 (change)="setFrom($event)"
@@ -20,6 +23,8 @@
                 type="text"
                 inputmode="numeric"
                 placeholder="Enter a value..."
+                aria-label="ID to"
+                matTooltip="ID to"
                 [value]="filter().to"
                 (input)="keepDigits($event)"
                 (change)="setTo($event)"
@@ -31,6 +36,8 @@
             type="text"
             inputmode="numeric"
             placeholder="1002, 1041"
+            aria-label="IDs"
+            matTooltip="IDs"
             [value]="filter().values.join(', ')"
             (input)="keepDigitList($event)"
             (change)="setValues($event)"
@@ -41,6 +48,8 @@
             type="text"
             inputmode="numeric"
             placeholder="Enter a value..."
+            aria-label="ID"
+            matTooltip="ID"
             [value]="filter().value"
             (input)="keepDigits($event)"
             (change)="setValue($event)"

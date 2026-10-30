@@ -159,6 +159,14 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        // A button that shows its row's chunks, drawn as the plain name it was.
+        padding: 0;
+        border: none;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: inherit;
     }
 
     &__col-btn {

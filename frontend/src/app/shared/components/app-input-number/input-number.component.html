@@ -14,16 +14,19 @@
     [class.input__wrapper--disabled]="isDisabled()"
     (mouseenter)="hovered.set(true)"
     (mouseleave)="hovered.set(false)"
+    (focusin)="focusWithin.set(true)"
+    (focusout)="onFocusOut($event)"
 >
-    @if (hovered() || alwaysShowSteps()) {
+    @if (stepsShown()) {
         <button
             type="button"
             class="input__step input__step--minus"
             aria-label="Decrease"
             matTooltip="Decrease"
-            tabindex="-1"
-            (mousedown)="onStep(-1); $event.preventDefault()"
-            [disabled]="isDisabled() || !canStepDown()"
+            [disabled]="isDisabled()"
+            [attr.aria-disabled]="!canStepDown()"
+            (mousedown)="$event.preventDefault()"
+            (click)="onStep(-1)"
         >
             −
         </button>
@@ -47,15 +50,16 @@
         [attr.aria-describedby]="message() ? messageId : null"
     />
 
-    @if (hovered() || alwaysShowSteps()) {
+    @if (stepsShown()) {
         <button
             type="button"
             class="input__step input__step--plus"
             aria-label="Increase"
             matTooltip="Increase"
-            tabindex="-1"
-            (mousedown)="onStep(1); $event.preventDefault()"
-            [disabled]="isDisabled() || !canStepUp()"
+            [disabled]="isDisabled()"
+            [attr.aria-disabled]="!canStepUp()"
+            (mousedown)="$event.preventDefault()"
+            (click)="onStep(1)"
         >
             +
         </button>

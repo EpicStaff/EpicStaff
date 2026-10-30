@@ -16,6 +16,7 @@ export class AuditOperatorSelectComponent {
     public operators = input<AuditFilterOp[]>([]);
     public selectedOperator = model.required<AuditFilterOp>();
     public labels = input<Record<string, string>>({});
+    public ariaLabel = input<string>('Operator');
 
     protected readonly options = computed<AuditEnumOption[]>(() =>
         this.operators().map((operator) => ({ value: operator, label: this.labelFor(operator) }))

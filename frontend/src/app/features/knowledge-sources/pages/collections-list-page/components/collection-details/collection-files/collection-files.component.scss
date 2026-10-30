@@ -13,6 +13,14 @@
         &--previewable {
             cursor: pointer;
         }
+
+        // The name button opens the preview, so the row shows its keyboard focus; drawn inside, as the list clips
+        // the full-width rows.
+        &:has(.files__name--button:focus-visible) {
+            background-color: var(--color-ks-line);
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
+        }
     }
 
     &__name-column {
@@ -27,6 +35,23 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+
+        // A button that opens its row's preview, drawn as the plain name it was.
+        &--button {
+            min-width: 0;
+            padding: 0;
+            border: none;
+            background: none;
+            color: inherit;
+            font: inherit;
+            text-align: left;
+            cursor: inherit;
+
+            // The row draws it.
+            &:focus-visible {
+                outline: none;
+            }
+        }
     }
 
     &__file-error {
@@ -57,9 +82,16 @@
     }
 
     &__close-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: none;
+        background: none;
+        color: inherit;
         border-radius: 50%;
         cursor: pointer;
-        &:hover {
+        &:is(:hover, :focus-visible) {
             transition: 0.3s;
             background-color: var(--graphite-650);
         }

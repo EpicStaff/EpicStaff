@@ -1,7 +1,10 @@
+<!-- Takes the focus when it opens and hands it back to the Bulk Actions button when it closes. -->
 <div
     #panel
     class="bulk-menu"
     role="menu"
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
     (click)="$event.stopPropagation()"
 >
     @if (showManageLabels()) {
@@ -9,6 +12,8 @@
             type="button"
             class="menu-item"
             role="menuitem"
+            aria-haspopup="menu"
+            matTooltip="Manage Labels"
             (click)="$event.stopPropagation(); ld.openAt(panel, labelsPositions)"
         >
             <span class="label">Manage Labels</span>
@@ -34,6 +39,7 @@
                 type="button"
                 class="menu-item"
                 role="menuitem"
+                [matTooltip]="action.label"
                 (click)="onSelect(action)"
             >
                 <span class="label">{{ action.label }}</span>

@@ -5,10 +5,12 @@ import {
     computed,
     DestroyRef,
     effect,
+    ElementRef,
     inject,
     linkedSignal,
     signal,
     untracked,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -79,6 +81,8 @@ export class CollectionDetailsComponent {
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
 
+    private readonly createRagButton = viewChild<ElementRef<HTMLButtonElement>>('createRagButton');
+
     loadingCollection = signal<boolean>(false);
     loadingDocuments = signal<boolean>(false);
     fullCollection = signal<CreateCollectionDtoResponse | null>(null);
@@ -146,6 +150,11 @@ export class CollectionDetailsComponent {
 
     protected onFileTypeChange(fileType: unknown): void {
         this.activeFileType.set(typeof fileType === 'string' ? fileType : null);
+    }
+
+    /** The RAG list emptied with the focus on its last Delete button: the focus moves to adding a RAG. */
+    protected focusCreateRagButton(): void {
+        this.createRagButton()?.nativeElement.focus();
     }
 
     protected openDetails(trigger: HTMLElement): void {

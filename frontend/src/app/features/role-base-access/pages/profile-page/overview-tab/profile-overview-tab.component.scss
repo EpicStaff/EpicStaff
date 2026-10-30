@@ -135,13 +135,8 @@
             color: var(--accent-color);
             cursor: pointer;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 text-decoration: underline;
-            }
-
-            &:focus-visible {
-                outline: 1px solid var(--accent-color);
-                outline-offset: 2px;
             }
         }
     }

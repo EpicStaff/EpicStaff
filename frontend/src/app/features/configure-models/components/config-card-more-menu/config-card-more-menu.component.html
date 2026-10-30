@@ -3,8 +3,7 @@
     type="button"
     class="more-menu__trigger"
     aria-label="More actions"
-    matTooltip="More"
-    matTooltipPosition="above"
+    matTooltip="More actions"
     [cdkMenuTriggerFor]="menu"
     [cdkMenuPosition]="menuPositions"
     [class.more-menu__trigger--active]="menuTrigger.isOpen()"
@@ -24,6 +23,7 @@
             cdkMenuItem
             type="button"
             class="more-menu-panel__item"
+            matTooltip="View Details"
             (cdkMenuItemTriggered)="onViewDetails()"
             (keydown.escape)="onMenuItemEscape($event)"
         >

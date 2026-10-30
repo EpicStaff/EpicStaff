@@ -5,6 +5,7 @@
             <p class="tab__subtitle">Create and manage webhook triggers reused by trigger nodes and channels.</p>
         </div>
         <app-button
+            #addButton
             *appHasPermission="[ResourceCode.Webhooks, ActionCode.Create]"
             type="primary"
             [disabled]="status() === 'error'"
@@ -53,7 +54,7 @@
                                 type="button"
                                 class="trigger-card__action"
                                 aria-label="More actions"
-                                title="More"
+                                matTooltip="More actions"
                                 [cdkMenuTriggerFor]="menu"
                                 [cdkMenuPosition]="menuPositions"
                                 [class.trigger-card__action--active]="menuTrigger.isOpen()"
@@ -73,6 +74,7 @@
                                         cdkMenuItem
                                         type="button"
                                         class="trigger-card-menu__item"
+                                        matTooltip="View Details"
                                         (cdkMenuItemTriggered)="onViewDetails(trigger, menuTriggerButton)"
                                         (keydown.escape)="onMenuItemEscape($event, menuTrigger, menuTriggerButton)"
                                     >
@@ -84,8 +86,9 @@
                                 *appHasPermission="[ResourceCode.Webhooks, ActionCode.Update]"
                                 type="button"
                                 class="trigger-card__action"
-                                title="Edit"
-                                [disabled]="isEditCheckPending()"
+                                [attr.aria-label]="'Edit ' + (trigger.name || trigger.path)"
+                                matTooltip="Edit"
+                                [attr.aria-disabled]="isEditCheckPending() || null"
                                 (click)="onEdit(trigger)"
                             >
                                 <i
@@ -97,7 +100,8 @@
                                 *appHasPermission="[ResourceCode.Webhooks, ActionCode.Delete]"
                                 type="button"
                                 class="trigger-card__action trigger-card__action--delete"
-                                title="Delete"
+                                [attr.aria-label]="'Delete ' + (trigger.name || trigger.path)"
+                                matTooltip="Delete"
                                 (click)="onDelete(trigger)"
                             >
                                 <i

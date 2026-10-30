@@ -1,7 +1,10 @@
+<!-- Takes the focus when it opens and hands it back to the ⋮ button when it closes. -->
 <div
     #panel
     class="card-menu"
     role="menu"
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
     (click)="$event.stopPropagation()"
 >
     <button
@@ -9,6 +12,7 @@
         type="button"
         class="menu-item"
         role="menuitem"
+        matTooltip="Duplicate"
         (click)="onSelect('duplicate')"
     >
         <span class="label">Duplicate</span>
@@ -18,6 +22,8 @@
         type="button"
         class="menu-item"
         role="menuitem"
+        aria-haspopup="menu"
+        matTooltip="Manage Labels"
         (click)="$event.stopPropagation(); ld.openAt(panel, labelsPositions)"
     >
         <span class="label">Manage Labels</span>
@@ -27,6 +33,7 @@
         type="button"
         class="menu-item"
         role="menuitem"
+        matTooltip="Export"
         (click)="onSelect('export')"
     >
         <span class="label">Export</span>
@@ -35,6 +42,7 @@
         type="button"
         class="menu-item"
         role="menuitem"
+        matTooltip="Show Used Places"
         (click)="onSelect('show_used_places')"
     >
         <span class="label">Show Used Places</span>
@@ -45,6 +53,7 @@
             type="button"
             class="menu-item"
             role="menuitem"
+            matTooltip="View Details"
             (click)="onSelect('view_details')"
         >
             <span class="label">View Details</span>
@@ -54,6 +63,7 @@
             type="button"
             class="menu-item"
             role="menuitem"
+            matTooltip="Delete"
             (click)="onSelect('delete')"
         >
             <span class="label">Delete</span>

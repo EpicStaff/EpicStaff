@@ -5,6 +5,7 @@
             <p class="tab__subtitle">Manage realtime voice channels and their Twilio configuration.</p>
         </div>
         <app-button
+            #addButton
             *appHasPermission="[ResourceCode.Voice, ActionCode.Create]"
             type="primary"
             [disabled]="status() === 'error'"
@@ -47,7 +48,7 @@
                                 type="button"
                                 class="channel-card__action"
                                 aria-label="More actions"
-                                title="More"
+                                matTooltip="More actions"
                                 [cdkMenuTriggerFor]="menu"
                                 [cdkMenuPosition]="menuPositions"
                                 [class.channel-card__action--active]="menuTrigger.isOpen()"
@@ -67,6 +68,7 @@
                                         cdkMenuItem
                                         type="button"
                                         class="channel-card-menu__item"
+                                        matTooltip="View Details"
                                         (cdkMenuItemTriggered)="onViewDetails(channel, menuTriggerButton)"
                                         (keydown.escape)="onMenuItemEscape($event, menuTrigger, menuTriggerButton)"
                                     >
@@ -78,7 +80,8 @@
                                 *appHasPermission="[ResourceCode.Voice, ActionCode.Update]"
                                 type="button"
                                 class="channel-card__action"
-                                title="Edit"
+                                [attr.aria-label]="'Edit ' + channel.name"
+                                matTooltip="Edit"
                                 (click)="onEditChannel(channel)"
                             >
                                 <i
@@ -90,7 +93,8 @@
                                 *appHasPermission="[ResourceCode.Voice, ActionCode.Delete]"
                                 type="button"
                                 class="channel-card__action channel-card__action--delete"
-                                title="Delete"
+                                [attr.aria-label]="'Delete ' + channel.name"
+                                matTooltip="Delete"
                                 (click)="onDeleteChannel(channel)"
                             >
                                 <i

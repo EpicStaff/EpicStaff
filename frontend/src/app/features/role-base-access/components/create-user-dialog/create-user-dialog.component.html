@@ -15,7 +15,8 @@
             </app-button>
             <app-button
                 type="primary"
-                [disabled]="submitDisabled()"
+                [disabled]="hasInvalidInput()"
+                [ariaDisabled]="isSubmitting()"
                 (click)="onSubmit()"
             >
                 {{ editMode() ? 'Save' : 'Create' }}

@@ -5,15 +5,18 @@
 >
     <div class="header">
         <span class="title">Duplicate Role</span>
-        <app-svg-icon
+        <button
+            type="button"
             class="close-btn"
-            icon="x"
-            size="20px"
-            role="button"
-            tabindex="0"
-            aria-label="Close dialog"
+            aria-label="Close"
+            matTooltip="Close"
             (click)="onCancel()"
-        />
+        >
+            <app-svg-icon
+                icon="x"
+                size="20px"
+            />
+        </button>
     </div>
 
     <form
@@ -28,8 +31,11 @@
                     position="right"
                 />
             </label>
+            <!-- The dialog opens with the focus here, its first field. -->
             <app-custom-input
+                cdkFocusInitial
                 placeholder="Role name..."
+                ariaLabel="Name"
                 formControlName="name"
             />
             <app-validation-errors [control]="form.controls.name" />

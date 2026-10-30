@@ -14,6 +14,7 @@
                 >
                     <app-checkbox
                         color="secondary"
+                        ariaLabel="Select all files"
                         [checked]="allChecked()"
                         [indeterminate]="indeterminate()"
                         (changed)="toggleAll()"
@@ -72,6 +73,7 @@
                     <div class="table__col">
                         <app-select
                             mod="small"
+                            tooltip="Chunk strategy for selected"
                             [items]="chunkStrategySelectItems"
                             [(selectedValue)]="bulkChunkStrategy"
                         />
@@ -88,6 +90,7 @@
                         <div class="table__col">
                             <app-input-number
                                 mod="small"
+                                ariaLabel="Chunk size for selected"
                                 [min]="20"
                                 [max]="8000"
                                 [stepSize]="DEFAULT_STEP_SIZE"
@@ -99,6 +102,7 @@
                         <div class="table__col">
                             <app-input-number
                                 mod="small"
+                                ariaLabel="Overlap for selected"
                                 [min]="0"
                                 [max]="1000"
                                 [stepSize]="DEFAULT_STEP_SIZE"
@@ -185,6 +189,7 @@
                         >
                             <app-checkbox
                                 color="secondary"
+                                [ariaLabel]="'Select ' + d.file_name"
                                 [checked]="d.checked"
                                 (changed)="toggleDocument(d)"
                             />
@@ -201,13 +206,15 @@
                                 class="table__file-icon"
                                 size="0.75rem"
                             />
-                            <span
+                            <!-- Shows the file's chunks, from the keyboard too; its click reaches the cell's handler. -->
+                            <button
+                                type="button"
                                 class="table__file-name"
+                                [attr.aria-pressed]="d.naive_rag_document_id === selectedRagDocId()"
                                 [matTooltip]="parseFullFileName(d.file_name).name"
-                                matTooltipPosition="above"
                             >
                                 {{ parseFullFileName(d.file_name).name }}
-                            </span>
+                            </button>
                             <span>
                                 {{ parseFullFileName(d.file_name).type }}
                             </span>
@@ -219,6 +226,7 @@
                                 <app-select
                                     [disabled]="!canUpdateKnowledges()"
                                     mod="small"
+                                    tooltip="Chunk strategy"
                                     [items]="chunkStrategySelectItems"
                                     [selectedValue]="d.chunk_strategy"
                                     [invalid]="!!d.errors?.chunk_strategy"
@@ -254,6 +262,7 @@
                                     <app-input-number
                                         [disabled]="!canUpdateKnowledges()"
                                         mod="small"
+                                        ariaLabel="Chunk size"
                                         [min]="20"
                                         [max]="8000"
                                         [stepSize]="DEFAULT_STEP_SIZE"
@@ -274,6 +283,7 @@
                                     <app-input-number
                                         [disabled]="!canUpdateKnowledges()"
                                         mod="small"
+                                        ariaLabel="Overlap"
                                         [min]="0"
                                         [max]="1000"
                                         [stepSize]="DEFAULT_STEP_SIZE"

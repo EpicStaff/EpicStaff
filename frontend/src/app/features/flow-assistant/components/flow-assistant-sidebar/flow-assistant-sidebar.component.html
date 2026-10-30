@@ -17,19 +17,22 @@
 
     <div class="sessions-list">
         @for (session of sessions(); track trackById($index, session); let i = $index) {
-            <!-- A row and not a button: it holds the delete button. -->
+            <!-- A row and not a button: it holds the delete button. The title is the row's keyboard stop. -->
             <div
                 class="session-row"
-                tabindex="0"
-                role="button"
                 [class.session-row--active]="currentConversationId() === session.id"
-                [attr.aria-current]="currentConversationId() === session.id ? 'true' : null"
-                [attr.aria-label]="sessionTitle(session, i)"
                 (click)="selectSession(session.id)"
-                (keydown)="onSessionKeydown($event, session.id)"
             >
                 <div class="session-row__body">
-                    <span class="session-row__title">{{ sessionTitle(session, i) }}</span>
+                    <!-- Its click reaches the row's handler. -->
+                    <button
+                        type="button"
+                        class="session-row__title"
+                        [attr.aria-current]="currentConversationId() === session.id ? 'true' : null"
+                        [matTooltip]="sessionTitle(session, i)"
+                    >
+                        {{ sessionTitle(session, i) }}
+                    </button>
                     <div class="session-row__meta">
                         <span class="session-row__date">{{ formatDate(session.last_message_at) }}</span>
                         @if (session.message_count > 0) {

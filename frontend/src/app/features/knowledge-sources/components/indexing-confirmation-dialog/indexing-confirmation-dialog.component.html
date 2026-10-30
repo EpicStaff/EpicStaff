@@ -100,6 +100,7 @@
                     class="files__toggle text-body-medium"
                     [attr.aria-expanded]="isExpanded(list.kind)"
                     [attr.aria-controls]="list.listId"
+                    [matTooltip]="list.title"
                     (click)="toggleList(list.kind)"
                 >
                     <app-icon

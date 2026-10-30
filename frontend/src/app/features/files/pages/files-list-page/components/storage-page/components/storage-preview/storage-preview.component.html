@@ -2,11 +2,18 @@
     class="storage-preview"
     [class.storage-preview--empty]="!item()"
 >
-    <div class="storage-preview__header">
+    <div
+        class="storage-preview__header"
+        (focusin)="onHeaderFocusIn($event)"
+    >
         <div class="storage-preview__header-left">
             <button
+                #toggleSidebarButton
+                type="button"
                 class="storage-preview__toggle-btn"
                 [class.storage-preview__toggle-btn--active]="showSidebar()"
+                [attr.aria-pressed]="showSidebar()"
+                aria-label="Toggle Folder Branches"
                 (click)="toggleSidebar.emit()"
                 matTooltip="Toggle Folder Branches"
                 matTooltipPosition="right"
@@ -21,7 +28,9 @@
                     @for (crumb of breadcrumbs; track crumb; let last = $last; let i = $index) {
                         @if (!last) {
                             <button
+                                type="button"
                                 class="storage-preview__breadcrumb storage-preview__breadcrumb--link"
+                                [matTooltip]="crumb"
                                 (click)="breadcrumbClick.emit(breadcrumbs.slice(0, i + 1).join('/'))"
                             >
                                 {{ crumb }}
@@ -50,8 +59,12 @@
                 </app-button>
             </ng-container>
             <button
+                #kebabButton
+                type="button"
                 class="storage-preview__kebab"
-                aria-label="More actions"
+                aria-label="More options"
+                aria-haspopup="menu"
+                [attr.aria-expanded]="kebabMenuOpen()"
                 matTooltip="More options"
                 matTooltipPosition="left"
                 (click)="onKebabClick($event)"
@@ -70,34 +83,51 @@
                 class="storage-preview__overlay"
                 (click)="closeKebabMenu()"
             ></div>
+            <!-- Takes the focus on opening and hands it back to the ⋮ button when it closes. -->
             <div
                 class="storage-preview__context-menu"
+                role="menu"
+                cdkTrapFocus
+                [cdkTrapFocusAutoCapture]="true"
                 [style.right.px]="kebabMenuPosition().right"
                 [style.top.px]="kebabMenuPosition().top"
+                (keydown.escape)="closeKebabMenuOnEscape($event)"
             >
                 <button
                     *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
+                    type="button"
+                    role="menuitem"
                     class="storage-preview__context-menu-item"
+                    matTooltip="Download"
                     (click)="onKebabMenuAction('download')"
                 >
                     Download
                 </button>
                 <button
                     *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
+                    type="button"
+                    role="menuitem"
                     class="storage-preview__context-menu-item"
+                    matTooltip="Copy to..."
                     (click)="onKebabMenuAction('copy')"
                 >
                     Copy to...
                 </button>
                 <button
                     *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
+                    type="button"
+                    role="menuitem"
                     class="storage-preview__context-menu-item"
+                    matTooltip="Rename"
                     (click)="onKebabMenuAction('rename')"
                 >
                     Rename
                 </button>
                 <button
+                    type="button"
+                    role="menuitem"
                     class="storage-preview__context-menu-item"
+                    matTooltip="View details"
                     (click)="onKebabMenuAction('view-details')"
                 >
                     View details
@@ -105,7 +135,10 @@
                 <div class="storage-preview__context-menu-divider"></div>
                 <button
                     *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
+                    type="button"
+                    role="menuitem"
                     class="storage-preview__context-menu-item"
+                    matTooltip="Delete"
                     (click)="onKebabMenuAction('delete')"
                 >
                     Delete

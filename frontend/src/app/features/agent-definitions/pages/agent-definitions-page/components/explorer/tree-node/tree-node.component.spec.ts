@@ -96,3 +96,62 @@ describe('TreeNodeComponent row menu "View Details"', () => {
         expect(moreButton(host)).toBeNull();
     });
 });
+
+describe('TreeNodeComponent row name', () => {
+    const AGENT_WITH_DOC: BranchTreeNode = {
+        kind: 'agent',
+        agentId: 3,
+        label: 'CV Processor',
+        children: [{ kind: 'agent-doc', agentId: 3, instructionIndex: 0, label: 'Boot' }],
+    };
+
+    function nameButton(host: HTMLElement): HTMLButtonElement {
+        return host.querySelector<HTMLButtonElement>('.row__name')!;
+    }
+
+    function pressOnName(host: HTMLElement, key: string): void {
+        nameButton(host).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    }
+
+    it('is the keyboard stop of the row: a button with the label, while the row itself is not a button', () => {
+        const { host } = render(AGENT_NODE, FULL_ACCESS);
+        const row = host.querySelector<HTMLElement>('.row')!;
+
+        expect(nameButton(host).type).toBe('button');
+        expect(nameButton(host).textContent.trim()).toBe('CV Processor');
+        expect(row.getAttribute('role')).toBeNull();
+        expect(row.hasAttribute('tabindex')).toBe(false);
+    });
+
+    it('selects the node when the name is activated', () => {
+        const { fixture, host } = render(AGENT_NODE, FULL_ACCESS);
+        const selected: BranchTreeNode[] = [];
+        fixture.componentInstance.selectNode.subscribe((node) => selected.push(node));
+
+        nameButton(host).click();
+
+        expect(selected).toEqual([AGENT_NODE]);
+    });
+
+    it('selects the node on a click anywhere on the row', () => {
+        const { fixture, host } = render(AGENT_NODE, FULL_ACCESS);
+        const selected: BranchTreeNode[] = [];
+        fixture.componentInstance.selectNode.subscribe((node) => selected.push(node));
+
+        host.querySelector<HTMLElement>('.row__icon')!.click();
+
+        expect(selected).toEqual([AGENT_NODE]);
+    });
+
+    it('expands the children with ArrowRight on the name and collapses them with ArrowLeft', () => {
+        const { fixture, host } = render(AGENT_WITH_DOC, FULL_ACCESS);
+
+        pressOnName(host, 'ArrowRight');
+        fixture.detectChanges();
+        expect(host.querySelector('.children')).not.toBeNull();
+
+        pressOnName(host, 'ArrowLeft');
+        fixture.detectChanges();
+        expect(host.querySelector('.children')).toBeNull();
+    });
+});

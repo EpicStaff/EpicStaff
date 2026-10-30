@@ -54,6 +54,7 @@
                             <app-checkbox
                                 *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                                 color="secondary"
+                                [ariaLabel]="'Select ' + item.file_name"
                                 [checked]="checkedDocIds().has(item.graph_rag_document_id)"
                                 [disabled]="item.disabled"
                                 (changed)="toggleDoc.emit(item.graph_rag_document_id)"
@@ -80,16 +81,22 @@
                                 [class.dimmed]="item.disabled"
                                 >{{ item.file_size | fileSize }}</span
                             >
-                            <app-svg-icon
+                            <button
+                                #removeButton
                                 *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
-                                icon="close"
+                                type="button"
                                 class="file-action"
                                 [class.file-action--disabled]="item.disabled"
-                                size="1rem"
+                                [disabled]="item.disabled"
+                                [attr.aria-label]="'Remove ' + item.file_name"
                                 matTooltip="Remove file"
-                                matTooltipPosition="above"
                                 (click)="onDelete(item)"
-                            />
+                            >
+                                <app-svg-icon
+                                    icon="close"
+                                    size="1rem"
+                                />
+                            </button>
                         </div>
                     </li>
                 </div>

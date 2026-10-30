@@ -14,9 +14,12 @@
         </div>
 
         <div class="dialog__form-input-wrap">
+            <!-- The dialog opens with the focus here: the first field it asks for. -->
             <input
                 type="text"
                 id="collection-name"
+                cdkFocusInitial
+                matTooltip="Collection Name"
                 class="dialog__form-input"
                 [formControl]="collectionName"
                 placeholder="Enter collection name"
@@ -44,6 +47,7 @@
             <textarea
                 #descriptionTa
                 id="collection-description"
+                matTooltip="Guidance for Agents"
                 class="dialog__form-input dialog__form-textarea"
                 [formControl]="description"
                 placeholder="Describe what's inside and which questions this collection can answer..."

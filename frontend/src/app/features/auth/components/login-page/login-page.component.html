@@ -38,7 +38,10 @@
             </div>
 
             <div class="remember-row">
-                <app-checkbox formControlName="rememberMe" />
+                <app-checkbox
+                    ariaLabel="Remember me"
+                    formControlName="rememberMe"
+                />
                 <span class="remember-label">Remember me</span>
                 @if (showAccountLinks) {
                     <!-- mousedown keeps focus in the field: its blur would show validation errors, shift the layout and
@@ -70,7 +73,8 @@
         <app-button
             class="btn"
             (click)="onSubmit()"
-            [disabled]="loading() || form.invalid || throttleSecondsLeft() > 0"
+            [disabled]="form.invalid || throttleSecondsLeft() > 0"
+            [ariaDisabled]="loading()"
         >
             Login
         </app-button>

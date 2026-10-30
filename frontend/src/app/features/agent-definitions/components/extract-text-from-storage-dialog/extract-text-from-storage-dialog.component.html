@@ -47,15 +47,10 @@
                         <div
                             class="picker__item"
                             [style.padding-left.px]="8 + node.level * 20"
-                            tabindex="0"
-                            role="button"
-                            [attr.aria-label]="node.name"
-                            [attr.aria-expanded]="node.type === 'folder' ? node.isExpanded : null"
                             (click)="onNodeClick(node)"
-                            (keydown)="onNodeKeydown($event, node)"
                         >
                             @if (node.type === 'folder' && (node.hasChildren || node.isExpanded)) {
-                                <!-- The row itself expands the folder from the keyboard, so the chevron is mouse-only. -->
+                                <!-- The name expands the folder from the keyboard, so the chevron is mouse-only. -->
                                 <button
                                     type="button"
                                     tabindex="-1"
@@ -80,11 +75,15 @@
                                 size="13px"
                             />
 
-                            <span
+                            <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+                            <button
+                                type="button"
                                 class="picker__item-name"
+                                [attr.aria-expanded]="node.type === 'folder' ? node.isExpanded : null"
                                 [matTooltip]="node.name"
-                                >{{ node.name }}</span
                             >
+                                {{ node.name }}
+                            </button>
 
                             @if (node.isLoading) {
                                 <span class="picker__node-spinner">...</span>

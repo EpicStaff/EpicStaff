@@ -1,16 +1,21 @@
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
+    ElementRef,
     inject,
+    Injector,
     input,
     model,
     OnInit,
     output,
     signal,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
 import { copyWithFeedback } from '@shared/utils';
 import { DateRangeFilter } from 'src/app/shared/models';
@@ -77,6 +82,7 @@ export type AuditFilterTab = 'builder' | 'query' | AuditPresetScope;
         AuditTokensFilterComponent,
         AuditMatchScopeComponent,
         AuditPresetsComponent,
+        MatTooltip,
     ],
     providers: [AuditPresetsStorageService],
     templateUrl: './audit-filters-panel.component.html',
@@ -99,6 +105,9 @@ export class AuditFiltersPanelComponent implements OnInit {
     );
 
     public filter = model<AuditFilterState>(EMPTY_AUDIT_FILTER);
+
+    private readonly closeButton = viewChild.required<ElementRef<HTMLButtonElement>>('closeButton');
+    private readonly queryInput = viewChild<ElementRef<HTMLTextAreaElement>>('queryInput');
 
     public readonly kindOptions = KIND_OPTIONS;
     public readonly statusOptions = STATUS_OPTIONS;
@@ -123,9 +132,15 @@ export class AuditFiltersPanelComponent implements OnInit {
     private readonly presetsStorage = inject(AuditPresetsStorageService);
     private readonly confirmationDialog = inject(ConfirmationDialogService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     public ngOnInit(): void {
         this.presetsStorage.load();
+    }
+
+    /** Moves the keyboard focus into the panel, which sits after the table in the Tab order. */
+    public focus(): void {
+        this.closeButton().nativeElement.focus();
     }
 
     // Builder and Query Code stay in sync: each switch carries the filters over to the other tab.
@@ -156,6 +171,8 @@ export class AuditFiltersPanelComponent implements OnInit {
     public openQuery(query: string): void {
         this.filter.update((current) => ({ ...current, query, mode: 'query' }));
         this.activeTab.set('query');
+        // the preset's menu that asked for it goes with the presets tab
+        afterNextRender(() => this.queryInput()?.nativeElement.focus(), { injector: this.injector });
     }
 
     public disabledKinds = computed(() => {

@@ -1,8 +1,9 @@
 <div class="header">
     <div class="breadcrumbs">
-        <div
+        <a
             class="flows-prefix"
             routerLink="/flows"
+            matTooltip="Flows"
         >
             <app-svg-icon
                 icon="arrow-left"
@@ -10,13 +11,18 @@
                 class="back-arrow"
             />
             <span>Flows</span>
-        </div>
+        </a>
         <span class="slash">/</span>
-        <span
-            class="flow-name project-link"
-            (click)="onFlowClick()"
-            >{{ graphName || '...' }}</span
-        >
+        @if (graphId) {
+            <a
+                class="flow-name project-link"
+                [routerLink]="['/flows', graphId]"
+                [matTooltip]="graphName || '...'"
+                >{{ graphName || '...' }}</a
+            >
+        } @else {
+            <span class="flow-name">{{ graphName || '...' }}</span>
+        }
         <span class="slash">/</span>
         <app-status-badge [sessionStatus]="sessionStatus"></app-status-badge>
     </div>
@@ -31,14 +37,19 @@
         <button
             mat-button
             class="sessions-button"
+            matTooltip="Sessions"
             (click)="openSessionsDialog()"
             [disabled]="!graphData"
         >
             <span class="btn-label">Sessions</span>
         </button>
         <button
+            #memoriesButton
             mat-button
             class="memories-button"
+            matTooltip="Memories"
+            aria-controls="session-memories-sidebar"
+            [attr.aria-expanded]="showMemoriesSidebar"
             (click)="toggleMemoriesSidebar()"
         >
             <span class="btn-label">Memories</span>
@@ -100,6 +111,7 @@
 
 <!-- Memories Sidebar Component -->
 <app-memories-sidebar
+    id="session-memories-sidebar"
     [isOpen]="showMemoriesSidebar"
     [memories]="memories"
     (close)="closeSidebar()"

@@ -26,8 +26,10 @@
             @if (hasAny()) {
                 <div class="summary-chips">
                     @if (agentSurfaceCount > 0) {
-                        <div
+                        <button
+                            type="button"
                             class="summary-chip"
+                            matTooltip="Go to Agent surfaces"
                             (click)="scrollToSection('agent')"
                         >
                             <app-svg-icon
@@ -38,11 +40,13 @@
                                 <span class="chip-count">{{ agentSurfaceCount }}</span>
                                 agent surface{{ agentSurfaceCount === 1 ? '' : 's' }}
                             </span>
-                        </div>
+                        </button>
                     }
                     @if (sharedSurfaceCount > 0) {
-                        <div
+                        <button
+                            type="button"
                             class="summary-chip"
+                            matTooltip="Go to Shared surfaces"
                             (click)="scrollToSection('shared')"
                         >
                             <app-svg-icon
@@ -53,11 +57,13 @@
                                 <span class="chip-count">{{ sharedSurfaceCount }}</span>
                                 shared surface{{ sharedSurfaceCount === 1 ? '' : 's' }}
                             </span>
-                        </div>
+                        </button>
                     }
                     @if (inlineSurfaceCount > 0) {
-                        <div
+                        <button
+                            type="button"
                             class="summary-chip"
+                            matTooltip="Go to Inline surfaces"
                             (click)="scrollToSection('inline')"
                         >
                             <app-svg-icon
@@ -68,7 +74,7 @@
                                 <span class="chip-count">{{ inlineSurfaceCount }}</span>
                                 inline surface{{ inlineSurfaceCount === 1 ? '' : 's' }}
                             </span>
-                        </div>
+                        </button>
                     }
                 </div>
             } @else {
@@ -95,7 +101,7 @@
                         <div class="usage-row">
                             <span
                                 class="usage-name"
-                                [title]="item.name"
+                                [matTooltip]="item.name"
                                 >{{ item.name }}</span
                             >
                             <button
@@ -103,7 +109,6 @@
                                 class="nav-btn"
                                 aria-label="Open agents"
                                 matTooltip="Open agents"
-                                matTooltipPosition="above"
                                 (click)="openAgentsForSurface(item.id)"
                             >
                                 <app-svg-icon
@@ -136,7 +141,7 @@
                         <div class="usage-row">
                             <span
                                 class="usage-name"
-                                [title]="item.name"
+                                [matTooltip]="item.name"
                                 >{{ item.name }}</span
                             >
                             <button
@@ -144,7 +149,6 @@
                                 class="nav-btn"
                                 aria-label="Go to surface"
                                 matTooltip="Go to surface"
-                                matTooltipPosition="above"
                                 (click)="openAgentsForSurface(item.id)"
                             >
                                 <app-svg-icon
@@ -177,7 +181,7 @@
                         <div class="usage-row">
                             <span
                                 class="usage-name"
-                                [title]="item.name"
+                                [matTooltip]="item.name"
                                 >{{ item.name }}</span
                             >
                             <button
@@ -185,7 +189,6 @@
                                 class="nav-btn"
                                 aria-label="Go to flow"
                                 matTooltip="Go to flow"
-                                matTooltipPosition="above"
                                 (click)="openFlows(item)"
                             >
                                 <app-svg-icon

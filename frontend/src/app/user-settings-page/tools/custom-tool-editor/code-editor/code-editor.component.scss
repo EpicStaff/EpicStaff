@@ -54,7 +54,7 @@
             color: var(--gray-215);
             transition: color 0.2s ease;
 
-            &:hover {
+            &:is(:hover, :focus-within) {
                 color: var(--white);
             }
         }

@@ -1,4 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -31,7 +32,7 @@ import {
     OrganizationRetentionUpdate,
     RetentionDataType,
 } from '@shared/models';
-import { catchError, EMPTY, finalize, map, Observable, of, switchMap, tap, throwError } from 'rxjs';
+import { catchError, EMPTY, filter, finalize, map, Observable, of, switchMap, tap, throwError } from 'rxjs';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
@@ -157,11 +158,22 @@ export class CreateOrganizationDialogComponent implements OnInit {
 
     isSubmitting = signal(false);
 
-    readonly submitDisabled = computed(
-        () => this.isSubmitting() || this.isNameInvalid() || (this.membersEditor()?.hasInvalidRow() ?? false)
-    );
+    readonly hasInvalidInput = computed(() => this.isNameInvalid() || (this.membersEditor()?.hasInvalidRow() ?? false));
+    readonly submitDisabled = computed(() => this.isSubmitting() || this.hasInvalidInput());
 
     ngOnInit(): void {
+        // disableClose keeps a stray backdrop click from losing the form; Escape is asked for, so it cancels.
+        // A dropdown that closed on this Escape has taken it.
+        this.dialogRef.keydownEvents
+            .pipe(
+                filter((event) => event.key === 'Escape' && !hasModifierKey(event) && !event.defaultPrevented),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((event) => {
+                event.preventDefault();
+                this.onCancel();
+            });
+
         if (this.organizationId === null) return;
 
         this.isRetentionLoading.set(true);

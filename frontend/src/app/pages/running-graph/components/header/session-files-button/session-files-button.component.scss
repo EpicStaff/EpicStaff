@@ -24,7 +24,7 @@
     overflow: hidden;
     transition: background-color 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--purple-alpha-8);
     }
 

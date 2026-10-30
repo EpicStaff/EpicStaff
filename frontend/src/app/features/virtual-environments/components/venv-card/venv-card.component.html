@@ -1,20 +1,28 @@
 <article
     class="venv-card"
     [class.venv-card--clickable]="canEdit()"
-    [attr.tabindex]="canEdit() ? 0 : null"
-    [attr.aria-label]="canEdit() ? 'Edit ' + venv().name : null"
     (click)="onCardClick()"
-    (keydown.enter)="onCardClick()"
 >
     <div class="venv-card__row">
         <div class="venv-card__title">
-            <span
-                class="venv-card__name text-body-medium"
-                appTooltipOnOverflow
-                matTooltipPosition="above"
-                [matTooltip]="venv().name"
-                >{{ venv().name }}</span
-            >
+            @if (canEdit()) {
+                <!-- Opens the venv, from the keyboard too; its click reaches the card's handler. -->
+                <button
+                    #nameButton
+                    type="button"
+                    class="venv-card__name venv-card__name-button text-body-medium"
+                    [matTooltip]="venv().name"
+                >
+                    {{ venv().name }}
+                </button>
+            } @else {
+                <span
+                    class="venv-card__name text-body-medium"
+                    appTooltipOnOverflow
+                    [matTooltip]="venv().name"
+                    >{{ venv().name }}</span
+                >
+            }
             <app-venv-status-badge
                 [status]="venv().status"
                 [error]="venv().error"
@@ -23,12 +31,13 @@
 
         <div class="venv-card__actions">
             <button
+                #favoriteButton
                 type="button"
                 class="venv-card__icon-btn"
                 [class.venv-card__icon-btn--accent]="venv().is_favorite"
                 [attr.aria-label]="favoriteLabel()"
+                [attr.aria-pressed]="venv().is_favorite"
                 [matTooltip]="favoriteLabel()"
-                matTooltipPosition="above"
                 (click)="$event.stopPropagation(); onToggleFavorite()"
             >
                 <app-svg-icon
@@ -45,6 +54,8 @@
                     #updatesOrigin="cdkOverlayOrigin"
                     (mouseenter)="updatesOpen.set(true)"
                     (mouseleave)="updatesOpen.set(false)"
+                    (focus)="updatesOpen.set(true)"
+                    (blur)="updatesOpen.set(false)"
                 >
                     <app-svg-icon
                         icon="arrow-up"
@@ -77,7 +88,6 @@
                     class="venv-card__icon-btn"
                     aria-label="Delete"
                     matTooltip="Delete"
-                    matTooltipPosition="above"
                     (click)="$event.stopPropagation(); onDelete()"
                 >
                     <app-svg-icon

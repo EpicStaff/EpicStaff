@@ -9,6 +9,8 @@
             class="checkbox-enum__search-input"
             type="text"
             placeholder="Search..."
+            aria-label="Search"
+            matTooltip="Search"
             [value]="searchTerm()"
             (input)="onSearchInput($event)"
         />
@@ -22,6 +24,7 @@
     @for (option of filteredOptions(); track option.value) {
         <label class="checkbox-enum__option">
             <app-checkbox
+                [ariaLabel]="option.label"
                 [checked]="isSelected(option.value)"
                 (changed)="toggle(option.value)"
             />

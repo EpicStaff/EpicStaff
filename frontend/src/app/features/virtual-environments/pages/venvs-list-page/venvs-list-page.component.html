@@ -15,6 +15,7 @@
             </div>
             <div class="header-actions">
                 <app-button
+                    #createButton
                     *appHasPermission="[ResourceCode.Venvs, ActionCode.Create]"
                     type="primary"
                     leftIcon="plus"
@@ -34,39 +35,50 @@
                 </app-tab-button>
             </div>
             <div class="tabs-right">
-                <button
+                <!-- Two buttons drawn as one: the clear button cannot sit inside the toggle. -->
+                <div
                     #filterTrigger="cdkOverlayOrigin"
                     cdkOverlayOrigin
-                    type="button"
                     class="menu-trigger filter-trigger"
                     [class.active]="filterMenuOpen() || activeFilterCount() > 0"
-                    (click)="toggleFilterMenu()"
                 >
-                    <app-svg-icon
-                        icon="filter-outline"
-                        size="0.875rem"
-                    />
-                    <span>
-                        Filter
-                        @if (activeFilterCount() > 0) {
-                            <span class="filter-count">({{ activeFilterCount() }})</span>
-                        }
-                    </span>
+                    <button
+                        #filterToggle
+                        type="button"
+                        class="filter-trigger__toggle"
+                        aria-haspopup="dialog"
+                        [attr.aria-expanded]="filterMenuOpen()"
+                        matTooltip="Filter"
+                        (click)="toggleFilterMenu()"
+                    >
+                        <app-svg-icon
+                            icon="filter-outline"
+                            size="0.875rem"
+                        />
+                        <span>
+                            Filter
+                            @if (activeFilterCount() > 0) {
+                                <span class="filter-count">({{ activeFilterCount() }})</span>
+                            }
+                        </span>
+                    </button>
                     @if (activeFilterCount() > 0) {
-                        <span
+                        <!-- Goes away once the filters are cleared: the focus moves to the Filter button. -->
+                        <button
+                            type="button"
                             class="filter-clear-inline"
-                            role="button"
+                            aria-label="Clear all filters"
                             matTooltip="Clear all filters"
-                            matTooltipPosition="above"
-                            (click)="clearAllFilters($event)"
+                            (click)="clearAllFilters($event); filterToggle.focus()"
                         >
                             <app-svg-icon
                                 icon="x"
                                 size="0.875rem"
                             />
-                        </span>
+                        </button>
                     }
-                </button>
+                </div>
+                <!-- Escape detaches the overlay, which closes the panel; its focus trap returns the focus to the Filter button. -->
                 <ng-template
                     cdkConnectedOverlay
                     [cdkConnectedOverlayOrigin]="filterTrigger"
@@ -92,6 +104,9 @@
                     type="button"
                     class="menu-trigger"
                     [class.active]="sortMenuOpen() || sortOrder() !== 'default'"
+                    aria-haspopup="menu"
+                    [attr.aria-expanded]="sortMenuOpen()"
+                    [matTooltip]="sortTriggerLabel()"
                     (click)="toggleSortMenu()"
                 >
                     <app-svg-icon
@@ -106,6 +121,7 @@
                         [class.open]="sortMenuOpen()"
                     />
                 </button>
+                <!-- Escape detaches the overlay, which closes the menu; its focus trap returns the focus here. -->
                 <ng-template
                     cdkConnectedOverlay
                     [cdkConnectedOverlayOrigin]="sortTrigger"

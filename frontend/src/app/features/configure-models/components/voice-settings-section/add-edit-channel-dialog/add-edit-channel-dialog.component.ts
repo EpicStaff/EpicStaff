@@ -1,4 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -141,6 +142,12 @@ export class AddEditChannelDialogComponent implements OnInit {
             if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
                 event.preventDefault();
                 this.onSubmit();
+            }
+            // disableClose keeps a stray backdrop click from losing the form; Escape is asked for, so it cancels.
+            // A dropdown that closed on this Escape has taken it.
+            if (event.key === 'Escape' && !hasModifierKey(event) && !event.defaultPrevented) {
+                event.preventDefault();
+                this.onCancel();
             }
         });
     }

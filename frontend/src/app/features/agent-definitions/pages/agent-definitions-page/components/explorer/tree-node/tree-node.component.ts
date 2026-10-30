@@ -150,13 +150,9 @@ export class TreeNodeComponent implements OnInit {
         this.selectNode.emit(this.node());
     }
 
-    /** Enter/Space select the focused row like a click; Right/Left arrows expand/collapse it. Keys from its buttons pass. */
-    onRowKeydown(event: KeyboardEvent): void {
-        if (event.target !== event.currentTarget) return;
-        if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            this.onRowClick();
-        } else if (event.key === 'ArrowRight' && this.hasChildren() && !this.isExpanded()) {
+    /** Right/Left arrows on the focused name expand/collapse the row; Enter/Space click the name, which selects the row. */
+    onNameKeydown(event: KeyboardEvent): void {
+        if (event.key === 'ArrowRight' && this.hasChildren() && !this.isExpanded()) {
             event.preventDefault();
             this.expanded.set(true);
         } else if (event.key === 'ArrowLeft' && this.hasChildren() && this.expanded()) {

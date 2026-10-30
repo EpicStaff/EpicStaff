@@ -23,8 +23,7 @@
     color: var(--fog-alpha-60);
     cursor: pointer;
 
-    &:hover,
-    &:focus {
+    &:is(:hover, :focus-visible):not([aria-disabled='true']) {
         background-color: var(--graphite-700);
         color: var(--color-text-primary);
     }
@@ -37,7 +36,8 @@
     }
 
     &:disabled,
-    &[disabled] {
+    &[disabled],
+    &[aria-disabled='true'] {
         color: var(--graphite-650);
         background-color: transparent;
         cursor: not-allowed;
@@ -82,7 +82,7 @@
     transition: border-color 0.2s ease;
     box-sizing: border-box;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--graphite-955);
     }
 
@@ -164,8 +164,13 @@
         transition: background-color 0.15s ease;
         font-weight: 400;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--graphite-700);
+        }
+
+        // Drawn inside: the list clips its items.
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         &:active {

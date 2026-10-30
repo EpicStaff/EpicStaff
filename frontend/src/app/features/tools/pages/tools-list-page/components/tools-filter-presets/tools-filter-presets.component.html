@@ -17,6 +17,8 @@
                 class="presets__name-input"
                 type="text"
                 placeholder="New preset name..."
+                aria-label="New preset name"
+                matTooltip="New preset name"
                 maxlength="150"
                 [value]="presetName()"
                 (input)="setNewPresetName($event)"
@@ -26,6 +28,7 @@
                 class="presets__btn presets__btn--accent"
                 type="button"
                 [disabled]="!canSave()"
+                matTooltip="Save"
                 (click)="saveNewPreset()"
             >
                 <app-svg-icon
@@ -64,62 +67,32 @@
                             class="preset-card__rename"
                             type="text"
                             maxlength="150"
+                            aria-label="Preset name"
+                            matTooltip="Preset name"
                             [value]="editingPresetName()"
                             (input)="setRenameName($event)"
-                            (keydown.enter)="confirmRename(card.preset.id)"
-                            (keydown.escape)="cancelRename()"
+                            (keydown.enter)="confirmRename(card.preset.id, true)"
+                            (keydown.escape)="cancelRename(card.preset.id); $event.stopPropagation()"
                             (blur)="confirmRename(card.preset.id)"
                         />
                     } @else {
                         <button
+                            #presetButton
                             class="preset-card__main"
                             type="button"
+                            [attr.data-preset-id]="card.preset.id"
+                            [matTooltip]="card.preset.name"
                             (click)="applyPreset(card.preset)"
                         >
-                            <div class="preset-card__header">
+                            <span class="preset-card__header">
                                 <span class="preset-card__name">{{ card.preset.name }}</span>
-                                <div class="preset-card__actions">
-                                    <button
-                                        class="preset-card__action"
-                                        type="button"
-                                        title="Overwrite with current filters"
-                                        (click)="overwritePreset(card.preset)"
-                                    >
-                                        <app-svg-icon
-                                            icon="floppy"
-                                            size="14px"
-                                        />
-                                    </button>
-                                    <button
-                                        class="preset-card__action"
-                                        type="button"
-                                        title="Rename preset"
-                                        (click)="startRename(card.preset)"
-                                    >
-                                        <app-svg-icon
-                                            icon="edit"
-                                            size="14px"
-                                        />
-                                    </button>
-                                    <button
-                                        class="preset-card__action"
-                                        type="button"
-                                        title="Delete preset"
-                                        (click)="confirmDelete(card.preset)"
-                                    >
-                                        <app-svg-icon
-                                            icon="trash"
-                                            size="12px"
-                                        />
-                                    </button>
-                                </div>
-                            </div>
+                            </span>
                             @if (card.chips.length > 0) {
                                 <span class="preset-card__chips">
                                     @for (chip of card.chips; track chip.label) {
                                         <span
                                             class="preset-chip"
-                                            [title]="chip.label + ' ' + chip.value"
+                                            [matTooltip]="chip.label + ' ' + chip.value"
                                         >
                                             <span class="preset-chip__label">{{ chip.label }}</span>
                                             <span class="preset-chip__value">{{ chip.value }}</span>
@@ -131,6 +104,45 @@
                                 </span>
                             }
                         </button>
+                        <!-- Beside the apply button, not in it: a button inside a button would apply the preset too. -->
+                        <div class="preset-card__actions">
+                            <button
+                                class="preset-card__action"
+                                type="button"
+                                aria-label="Overwrite with current filters"
+                                matTooltip="Overwrite with current filters"
+                                (click)="overwritePreset(card.preset)"
+                            >
+                                <app-svg-icon
+                                    icon="floppy"
+                                    size="14px"
+                                />
+                            </button>
+                            <button
+                                class="preset-card__action"
+                                type="button"
+                                aria-label="Rename preset"
+                                matTooltip="Rename preset"
+                                (click)="startRename(card.preset)"
+                            >
+                                <app-svg-icon
+                                    icon="edit"
+                                    size="14px"
+                                />
+                            </button>
+                            <button
+                                class="preset-card__action"
+                                type="button"
+                                aria-label="Delete preset"
+                                matTooltip="Delete preset"
+                                (click)="confirmDelete(card.preset)"
+                            >
+                                <app-svg-icon
+                                    icon="trash"
+                                    size="12px"
+                                />
+                            </button>
+                        </div>
                     }
                 </div>
             }

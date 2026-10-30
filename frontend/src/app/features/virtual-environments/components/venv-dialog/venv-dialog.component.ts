@@ -1,6 +1,18 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import {
+    afterNextRender,
+    Component,
+    computed,
+    DestroyRef,
+    ElementRef,
+    inject,
+    Injector,
+    signal,
+    viewChild,
+    viewChildren,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
     AbstractControl,
@@ -19,9 +31,9 @@ import {
     HelpTooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { TooltipOnOverflowDirective } from '@shared/directives';
+import { EnterSubmitDirective } from '@shared/directives';
 import { extractHttpErrorMessage } from '@shared/utils';
-import { Observable } from 'rxjs';
+import { filter, Observable } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import {
@@ -65,12 +77,16 @@ interface LibraryRowGroup {
         ButtonComponent,
         AppSvgIconComponent,
         MatTooltipModule,
-        TooltipOnOverflowDirective,
+        EnterSubmitDirective,
     ],
     templateUrl: './venv-dialog.component.html',
     styleUrls: ['./venv-dialog.component.scss'],
 })
 export class VenvDialogComponent {
+    private readonly libraryNameInputs = viewChildren<ElementRef<HTMLInputElement>>('libraryNameInput');
+    private readonly removeLibraryButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeLibraryButton');
+    private readonly addLibraryButton = viewChild.required<ElementRef<HTMLButtonElement>>('addLibraryButton');
+
     readonly isSubmitting = signal(false);
 
     readonly data = inject<VenvDialogData | null>(DIALOG_DATA, { optional: true }) ?? {};
@@ -108,6 +124,7 @@ export class VenvDialogComponent {
     private readonly venvsApi = inject(VenvsApiService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     constructor() {
         const venv = this.data.venv;
@@ -117,6 +134,16 @@ export class VenvDialogComponent {
                 this.form.controls.libs.push(this.createLibraryRow(lib));
             }
         }
+        // disableClose keeps a stray backdrop click from throwing the table away; Escape is asked for, so it cancels.
+        this.dialogRef.keydownEvents
+            .pipe(
+                filter((event) => event.key === 'Escape' && !hasModifierKey(event) && !event.defaultPrevented),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((event) => {
+                event.preventDefault();
+                this.cancel();
+            });
     }
 
     get libs(): FormArray<FormGroup<LibraryRowGroup>> {
@@ -125,10 +152,20 @@ export class VenvDialogComponent {
 
     addLibrary(): void {
         this.libs.push(this.createLibraryRow());
+        // The new row is where the next keystrokes go.
+        afterNextRender(() => this.libraryNameInputs().at(-1)?.nativeElement.focus(), { injector: this.injector });
     }
 
     removeLibrary(index: number): void {
         this.libs.removeAt(index);
+        // The removed row takes its focused button along: the focus moves to the row now in its place.
+        afterNextRender(
+            () => {
+                const buttons = this.removeLibraryButtons();
+                (buttons[Math.min(index, buttons.length - 1)] ?? this.addLibraryButton()).nativeElement.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     removeAllLibraries(): void {
@@ -159,6 +196,11 @@ export class VenvDialogComponent {
 
     cancel(): void {
         this.dialogRef.close(null);
+    }
+
+    /** The field's name, and its whole value, which the narrow cell may cut. */
+    protected cellTooltip(fieldName: string, value: string): string {
+        return value ? `${fieldName}: ${value}` : fieldName;
     }
 
     protected versionErrorMessage(row: FormGroup<LibraryRowGroup>): string | null {

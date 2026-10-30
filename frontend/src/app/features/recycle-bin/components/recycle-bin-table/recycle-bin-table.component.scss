@@ -92,6 +92,11 @@
     border: none;
     background: transparent;
     cursor: pointer;
+
+    // Sits inside app-select, whose host clips (overflow: hidden): an outside ring would be cut off.
+    &:focus-visible {
+        outline-offset: -2px;
+    }
 }
 
 .col-label__count {
@@ -107,6 +112,11 @@
     &:hover {
         background: var(--transparent-white-4);
     }
+}
+
+// Takes the focus only from code (after a restore or delete), inside the scrolling table, which clips the ring.
+.table-row:focus-visible {
+    outline-offset: -2px;
 }
 
 .table-row.selected {
@@ -173,8 +183,6 @@
     cursor: pointer;
 
     &:focus-visible {
-        outline: 1px solid var(--accent-color);
-        outline-offset: 2px;
         border-radius: 4px;
     }
 }
@@ -378,7 +386,7 @@
     background: transparent;
     transition: background-color 0.15s;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--white-alpha-8);
     }
 

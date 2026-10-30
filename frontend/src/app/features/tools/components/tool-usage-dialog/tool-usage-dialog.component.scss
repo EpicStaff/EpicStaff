@@ -35,7 +35,7 @@
         cursor: pointer;
         transition: opacity 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             opacity: 0.7;
         }
     }
@@ -79,13 +79,16 @@
         gap: 0.5rem;
         padding: 1rem;
         background: var(--color-input-background);
+        border: none;
         border-radius: 10px;
         color: var(--color-text-secondary);
+        font-family: inherit;
         font-size: 0.75rem;
+        text-align: left;
         cursor: pointer;
         transition: border-color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             border-color: var(--accent-color);
         }
 
@@ -143,7 +146,7 @@
     border-radius: 6px;
     transition: background 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-within) {
         background: var(--color-input-background);
     }
 
@@ -174,7 +177,7 @@
             color 0.15s ease;
         flex-shrink: 0;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--accent-color);
             color: var(--white);
         }

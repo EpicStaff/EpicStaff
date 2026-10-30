@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, ViewEncapsulation } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
 import {
@@ -11,7 +12,7 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
 
 @Component({
     selector: 'app-subgraph-finish-message',
-    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent, RuntimeNodeLabelPipe],
+    imports: [MatTooltip, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent, RuntimeNodeLabelPipe],
     encapsulation: ViewEncapsulation.Emulated,
     template: `
         <div class="subgraph-finish-container">
@@ -34,7 +35,14 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                     />
                 </div>
                 <h3>
-                    <span class="node-name">{{ message.name | runtimeNodeLabel }}</span> subgraph finished
+                    <button
+                        type="button"
+                        class="message-toggle"
+                        [matTooltip]="(message.name | runtimeNodeLabel) + ' subgraph finished'"
+                        [attr.aria-expanded]="isMessageExpanded"
+                    >
+                        <span class="node-name">{{ message.name | runtimeNodeLabel }}</span> subgraph finished
+                    </button>
                 </h3>
             </div>
 
@@ -47,8 +55,11 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                     <!-- Final Output Section -->
                     @if (hasOutput()) {
                         <div class="output-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isOutputExpanded"
+                                matTooltip="Final Output"
                                 (click)="toggleOutput($event)"
                             >
                                 <app-svg-icon
@@ -56,7 +67,7 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                                     size="1rem"
                                 />
                                 Final Output
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isOutputExpanded"
@@ -77,8 +88,11 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                     <!-- Variables Section -->
                     @if (hasVariables()) {
                         <div class="variables-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isVariablesExpanded"
+                                matTooltip="Variables"
                                 (click)="toggleVariables($event)"
                             >
                                 <app-svg-icon
@@ -86,7 +100,7 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                                     size="1rem"
                                 />
                                 Variables
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isVariablesExpanded"
@@ -113,6 +127,18 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .subgraph-finish-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
@@ -189,7 +215,14 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
             }
 
             /* Section styling */
+            // The button that folds its section, drawn as the heading row it was.
             .section-heading {
+                width: 100%;
+                padding: 0;
+                border: none;
+                background: none;
+                font-family: inherit;
+                text-align: left;
                 font-size: var(--text-body-medium-size);
                 font-weight: var(--text-body-medium-weight);
                 line-height: var(--text-body-medium-line-height);
@@ -199,6 +232,11 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                 user-select: none;
                 display: flex;
                 align-items: center;
+
+                // Drawn inside: the collapsible content around clips it.
+                &:focus-visible {
+                    outline-offset: -2px;
+                }
 
                 app-svg-icon {
                     margin-right: 8px;

@@ -101,6 +101,8 @@ export class ChunkSearchBarComponent implements OnInit, OnChanges {
     }
 
     onIdInputChange(value: string): void {
+        // Typing again after Enter or Escape closed the list opens it back.
+        this.dropdownOpen.set(true);
         this.idInputValue.set(value);
         this.loadVisibleIds(value);
     }
@@ -113,6 +115,12 @@ export class ChunkSearchBarComponent implements OnInit, OnChanges {
     }
 
     onIdInputKeydown(event: KeyboardEvent): void {
+        // Escape closes the ID list only, keeping the typed-over value from sticking and the focus in the field.
+        if (event.key === 'Escape' && this.dropdownOpen()) {
+            event.stopPropagation();
+            this.onIdInputBlur();
+            return;
+        }
         if (event.key === 'Enter') {
             const raw = this.idInputValue().replace(/\D/g, '');
             const num = Number(raw);
@@ -121,7 +129,8 @@ export class ChunkSearchBarComponent implements OnInit, OnChanges {
             } else if (!raw || this.idInputValue().toLowerCase() === 'all') {
                 this.selectId('all');
             }
-            this.idInput.nativeElement.blur();
+            // Closes the list and shows the chosen ID; the focus stays in the field instead of dropping to the page.
+            this.onIdInputBlur();
         }
     }
 

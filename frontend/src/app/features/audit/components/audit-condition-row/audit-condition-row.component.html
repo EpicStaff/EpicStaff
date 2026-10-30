@@ -23,6 +23,8 @@
                 class="condition-row__key"
                 type="text"
                 placeholder="Key, e.g. message_type"
+                aria-label="Condition key"
+                matTooltip="Condition key"
                 [value]="condition().key"
                 (change)="setKey($event)"
             />
@@ -39,6 +41,7 @@
         class="condition-row__remove"
         type="button"
         aria-label="Remove condition"
+        matTooltip="Remove condition"
         (click)="removed.emit()"
     >
         ✕
@@ -50,6 +53,8 @@
         class="condition-row__value"
         type="text"
         placeholder="Enter a value..."
+        aria-label="Condition value"
+        matTooltip="Condition value"
         [value]="condition().value"
         (change)="setValue($event)"
     />

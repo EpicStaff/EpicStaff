@@ -4,9 +4,16 @@
     [appCollectionDropTarget]="collection().collection_id"
 >
     <div class="header">
-        <span class="name">
+        <!-- Opens the collection, from the keyboard too; its click reaches the card's handler. -->
+        <button
+            type="button"
+            #nameButton
+            class="name"
+            [attr.aria-pressed]="selected()"
+            [matTooltip]="collection().collection_name"
+        >
             {{ collection().collection_name }}
-        </span>
+        </button>
 
         @if (collection().document_count; as count) {
             <span class="files-count"> {{ count }} files </span>

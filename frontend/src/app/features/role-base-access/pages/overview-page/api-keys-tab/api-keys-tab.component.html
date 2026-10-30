@@ -21,6 +21,9 @@
                     type="button"
                     class="org-trigger"
                     [class.org-trigger--active]="orgFilterIds().length"
+                    aria-haspopup="listbox"
+                    [attr.aria-expanded]="orgMs.isOpen()"
+                    matTooltip="Organization filter"
                     [appMultiSelectTrigger]="orgMs"
                 >
                     <span class="org-trigger__label">{{
@@ -36,13 +39,18 @@
             </app-multi-select>
         }
 
+        <!-- aria-disabled, not disabled: it keeps the focus when a bulk action clears the selection. -->
         <button
+            #bulkButton
             type="button"
             class="settings-btn"
             aria-label="Bulk actions"
+            matTooltip="Bulk actions"
+            aria-haspopup="menu"
+            [attr.aria-expanded]="isBulkMenuOpen()"
             [class.active]="selectedItems().length > 0"
             [class.open]="isBulkMenuOpen()"
-            [disabled]="selectedItems().length === 0 || isBulkLoading()"
+            [attr.aria-disabled]="isBulkDisabled()"
             cdkOverlayOrigin
             #bulkOrigin="cdkOverlayOrigin"
             (click)="toggleBulkMenu()"
@@ -64,19 +72,31 @@
             (overlayOutsideClick)="closeBulkMenu()"
             (detach)="closeBulkMenu()"
         >
-            <div class="settings-dropdown">
-                <div
+            <!-- Takes the focus when it opens and hands it back to the Bulk actions button when it closes. -->
+            <div
+                class="settings-dropdown"
+                role="menu"
+                cdkTrapFocus
+                [cdkTrapFocusAutoCapture]="true"
+            >
+                <button
+                    type="button"
                     class="settings-dropdown-item"
+                    role="menuitem"
+                    matTooltip="Revoke selected keys"
                     (click)="onBulkRevoke()"
                 >
                     Revoke
-                </div>
-                <div
+                </button>
+                <button
+                    type="button"
                     class="settings-dropdown-item"
+                    role="menuitem"
+                    matTooltip="Delete selected keys"
                     (click)="onBulkDelete()"
                 >
                     Delete
-                </div>
+                </button>
             </div>
         </ng-template>
     </div>

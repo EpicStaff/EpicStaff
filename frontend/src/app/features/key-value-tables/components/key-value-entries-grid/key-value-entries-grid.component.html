@@ -106,7 +106,7 @@
         @if (row.sessionLabel; as label) {
             <a
                 class="entries-grid__session-link"
-                [title]="label"
+                [matTooltip]="label"
                 [routerLink]="row.sessionLink"
             >
                 <span class="entries-grid__text">{{ label }}</span>
@@ -118,7 +118,7 @@
         } @else {
             <span
                 class="entries-grid__manual-edit"
-                title="Edited by hand, or written by a session that was later deleted"
+                matTooltip="Edited by hand, or written by a session that was later deleted"
                 >Manual edit</span
             >
         }
@@ -134,7 +134,7 @@
             type="button"
             class="entries-grid__delete"
             aria-label="Delete entry"
-            title="Delete entry"
+            matTooltip="Delete entry"
             (click)="onDelete(entry)"
             (keydown)="$event.stopPropagation()"
         >

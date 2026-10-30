@@ -42,12 +42,12 @@
         cursor: pointer;
         transition: all 0.3s ease;
 
-        &:hover:not(:disabled):not(.open) {
+        &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true'], .open) {
             color: var(--accent-color);
             border-color: var(--accent-color);
         }
 
-        &:disabled {
+        &:is(:disabled, [aria-disabled='true']) {
             opacity: 0.5;
             cursor: not-allowed;
         }
@@ -74,8 +74,12 @@
     }
 
     .settings-dropdown-item {
+        display: block;
         width: 100%;
         padding: 10px 16px;
+        border: none;
+        font-family: inherit;
+        text-align: left;
         background: transparent;
         font-size: 0.875rem;
         color: var(--text);
@@ -86,8 +90,13 @@
             border-bottom: 1px solid var(--color-input-border);
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--transparent-white-8);
+        }
+
+        // Drawn inside: the dropdown clips its items.
+        &:focus-visible {
+            outline-offset: -2px;
         }
     }
 

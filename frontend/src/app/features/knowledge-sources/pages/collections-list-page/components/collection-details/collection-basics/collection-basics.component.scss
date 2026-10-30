@@ -49,15 +49,10 @@
             border-color 0.2s ease,
             color 0.2s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             border-color: var(--accent-color-hover);
             background: var(--color-ghost-btn-hover);
             color: var(--accent-color-hover);
-        }
-
-        &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: 2px;
         }
 
         &--active,
@@ -175,8 +170,7 @@
 
         // Inset, so the menu's overflow clipping cannot cut the ring off.
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -1px;
+            outline-offset: -2px;
         }
 
         & + & {

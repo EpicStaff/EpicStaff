@@ -310,6 +310,7 @@
             @if (isUntrusted()) {
                 <label class="review__acknowledge text-body">
                     <app-checkbox
+                        ariaLabel="I understand the risk and want to install this untrusted package"
                         [checked]="acknowledged()"
                         [disabled]="busy()"
                         (changed)="acknowledged.set($event)"

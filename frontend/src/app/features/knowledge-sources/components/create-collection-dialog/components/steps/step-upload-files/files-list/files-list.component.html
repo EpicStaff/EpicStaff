@@ -47,7 +47,14 @@
                                 icon="document"
                                 size="0.75rem"
                             />
-                            <span class="list__file-name">{{ item.file_name }}</span>
+                            <!-- Shows the preview, from the keyboard too; its click reaches the row's handler. -->
+                            <button
+                                type="button"
+                                class="list__file-name"
+                                [matTooltip]="item.file_name"
+                            >
+                                {{ item.file_name }}
+                            </button>
                             <div
                                 [class.list__file-error]="!item.isValidSize || !item.isValidType"
                                 [class.list__file-error--small]="!item.isValidSize || !item.isValidType"
@@ -68,13 +75,20 @@
                                 <div class="list__upload-spinner"></div>
                             } @else {
                                 <app-list-actions>
-                                    <app-svg-icon
+                                    <button
+                                        #removeButton
                                         *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
-                                        icon="x"
+                                        type="button"
                                         class="files__file-action"
-                                        size="1rem"
+                                        [attr.aria-label]="'Remove ' + item.file_name"
+                                        matTooltip="Remove file"
                                         (click)="$event.stopPropagation(); onDelete(item)"
-                                    />
+                                    >
+                                        <app-svg-icon
+                                            icon="x"
+                                            size="1rem"
+                                        />
+                                    </button>
                                 </app-list-actions>
                             }
                         </div>

@@ -5,12 +5,18 @@
 >
     <div class="header">
         <span class="title">Copy Files</span>
-        <app-svg-icon
-            icon="x"
+        <button
+            type="button"
             class="close"
-            size="1.5rem"
+            aria-label="Close"
+            matTooltip="Close"
             (click)="onClose()"
-        />
+        >
+            <app-svg-icon
+                icon="x"
+                size="1.5rem"
+            />
+        </button>
     </div>
 
     <div class="body">
@@ -23,7 +29,11 @@
                 [items]="fileItems()"
                 [(selectedValues)]="selectedDocumentIds"
             >
+                <!-- The dialog opens with the focus here: the first choice the form asks for. -->
                 <button
+                    type="button"
+                    cdkFocusInitial
+                    matTooltip="Files to Copy"
                     [appMultiSelectTrigger]="filesMultiSelect"
                     class="ms-trigger"
                     [class.placeholder]="!selectedDocumentIds().length"
@@ -53,6 +63,8 @@
                 [(selectedValues)]="selectedCollectionIds"
             >
                 <button
+                    type="button"
+                    matTooltip="Destination Collection(s)"
                     [appMultiSelectTrigger]="collectionsMultiSelect"
                     class="ms-trigger"
                     [class.placeholder]="!selectedCollectionIds().length"

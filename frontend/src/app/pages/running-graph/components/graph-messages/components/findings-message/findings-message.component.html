@@ -17,7 +17,16 @@
                 />
             </div>
             <div class="title">
-                <h3>{{ data.title || 'Findings' }}</h3>
+                <h3>
+                    <button
+                        type="button"
+                        class="message-toggle"
+                        [matTooltip]="data.title || 'Findings'"
+                        [attr.aria-expanded]="isExpanded"
+                    >
+                        {{ data.title || 'Findings' }}
+                    </button>
+                </h3>
                 @if (data.summary) {
                     <p class="subtitle">
                         {{ data.summary }}

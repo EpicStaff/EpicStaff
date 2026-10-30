@@ -11,12 +11,7 @@
             (dragover)="onSurfaceDragOver($event)"
             (dragleave)="onSurfaceDragLeave($event)"
             (drop)="onSurfaceDrop($event)"
-            tabindex="0"
-            role="button"
-            [attr.aria-label]="n.label"
-            [attr.aria-current]="isSelected() ? 'true' : null"
             (click)="onRowClick()"
-            (keydown)="onRowKeydown($event)"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
         >
@@ -46,14 +41,19 @@
                     size="12px"
                 />
             }
-            <span
-                class="row__label"
+            <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+            <button
+                type="button"
+                class="row__label row__name"
+                [attr.aria-current]="isSelected() ? 'true' : null"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
                 matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
-                >{{ n.label }}</span
+                (keydown)="onNameKeydown($event)"
             >
+                {{ n.label }}
+            </button>
             @if (!hasChildren()) {
                 <span class="row__empty">Empty</span>
             }
@@ -69,12 +69,7 @@
             (dragHover)="onRowDragHover()"
             (dragstart)="onSurfaceDragStart($event)"
             (dragend)="onSurfaceDragEnd()"
-            tabindex="0"
-            role="button"
-            [attr.aria-label]="n.label"
-            [attr.aria-current]="isSelected() ? 'true' : null"
             (click)="onRowClick()"
-            (keydown)="onRowKeydown($event)"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
         >
@@ -84,14 +79,19 @@
                 icon="surfaces-tab"
                 size="12px"
             />
-            <span
-                class="row__label row__label--surface"
+            <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+            <button
+                type="button"
+                class="row__label row__label--surface row__name"
+                [attr.aria-current]="isSelected() ? 'true' : null"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
                 matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
-                >{{ n.label }}</span
+                (keydown)="onNameKeydown($event)"
             >
+                {{ n.label }}
+            </button>
             @if (n.shared) {
                 <span class="row__shared">Shared</span>
             }
@@ -128,12 +128,7 @@
             (dragover)="onSurfaceDragOver($event)"
             (dragleave)="onSurfaceDragLeave($event)"
             (drop)="onSurfaceDrop($event)"
-            tabindex="0"
-            role="button"
-            [attr.aria-label]="n.label"
-            [attr.aria-current]="isSelected() ? 'true' : null"
             (click)="onRowClick()"
-            (keydown)="onRowKeydown($event)"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
         >
@@ -161,14 +156,19 @@
                 icon="agents-tab"
                 size="0.95rem"
             />
-            <span
-                class="row__label"
+            <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+            <button
+                type="button"
+                class="row__label row__name"
+                [attr.aria-current]="isSelected() ? 'true' : null"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
                 matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
-                >{{ n.label }}</span
+                (keydown)="onNameKeydown($event)"
             >
+                {{ n.label }}
+            </button>
             @if (showHoverMenu()) {
                 <div
                     class="row__hover-actions"
@@ -196,12 +196,7 @@
             class="row row--doc"
             [class.row--selected]="isSelected()"
             [style.padding-left.px]="12 + depth() * 20"
-            tabindex="0"
-            role="button"
-            [attr.aria-label]="n.label"
-            [attr.aria-current]="isSelected() ? 'true' : null"
             (click)="onRowClick()"
-            (keydown)="onRowKeydown($event)"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
         >
@@ -211,14 +206,19 @@
                 icon="file"
                 size="0.95rem"
             />
-            <span
-                class="row__label"
+            <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+            <button
+                type="button"
+                class="row__label row__name"
+                [attr.aria-current]="isSelected() ? 'true' : null"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
                 matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
-                >{{ n.label }}</span
+                (keydown)="onNameKeydown($event)"
             >
+                {{ n.label }}
+            </button>
         </div>
     }
 }

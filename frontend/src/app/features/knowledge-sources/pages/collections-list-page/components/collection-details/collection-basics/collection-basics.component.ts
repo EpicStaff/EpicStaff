@@ -184,6 +184,8 @@ export class CollectionBasicsComponent {
     }
 
     protected onDelete(): void {
+        // Off the menu item first: the confirmation closes back to what had the focus, and the item dies with the menu.
+        this.menuTriggerButton().nativeElement.focus();
         this.deleteClick.emit();
     }
 

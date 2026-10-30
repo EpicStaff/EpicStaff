@@ -10,23 +10,35 @@
                 class="default-llms-card__icon"
             />
             @if (selectedConfigId()) {
-                <app-svg-icon
+                <!-- Goes away with the choice it clears: the focus moves to the card's Add model button. -->
+                <button
                     *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
+                    type="button"
                     class="default-llms-card__close-icon"
-                    size="1.25rem"
-                    icon="close"
+                    [attr.aria-label]="'Clear ' + card().title"
                     matTooltip="Clear"
-                    matTooltipPosition="above"
                     (click)="onResetConfig()"
-                />
+                >
+                    <app-svg-icon
+                        size="1.25rem"
+                        icon="close"
+                    />
+                </button>
             }
         </div>
 
-        <div class="default-llms-card__title">{{ card().title }}</div>
+        <div
+            class="default-llms-card__title"
+            [id]="titleId()"
+        >
+            {{ card().title }}
+        </div>
     </div>
     <div class="default-llms-card__controls">
         <div class="default-llms-card__select-wrapper">
             <app-select
+                [ariaLabelledby]="titleId()"
+                [tooltip]="card().title"
                 [disabled]="!permissionService.can(ResourceCode.LlmConfigs, ActionCode.Update)"
                 [placeholder]="card().selectLabel"
                 [items]="selectItems()"
@@ -35,12 +47,12 @@
             />
         </div>
         <button
+            #addButton
             *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
             class="default-llms-card__add"
             type="button"
-            aria-label="Add"
+            aria-label="Add model"
             matTooltip="Add model"
-            matTooltipPosition="above"
             (click)="onAddModel()"
         >
             <i

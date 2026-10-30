@@ -1,5 +1,6 @@
 import { Component, computed, DestroyRef, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import {
     AppTableCellDirective,
@@ -48,6 +49,7 @@ const COLUMNS: AppTableColumnDef[] = [
         LoadingSpinnerComponent,
         PluginBadgeComponent,
         PluginIconComponent,
+        MatTooltip,
     ],
     templateUrl: './plugins-admin-page.component.html',
     styleUrl: './plugins-admin-page.component.scss',

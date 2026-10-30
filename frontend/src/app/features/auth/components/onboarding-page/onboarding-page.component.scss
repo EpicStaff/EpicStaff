@@ -76,7 +76,7 @@
                 background-color 0.2s ease;
             text-align: center;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 border-color: var(--accent-color);
                 background: var(--graphite-810);
             }

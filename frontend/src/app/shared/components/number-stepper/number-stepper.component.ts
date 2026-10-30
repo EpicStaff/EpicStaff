@@ -47,11 +47,15 @@ export class NumberStepperComponent implements ControlValueAccessor {
     onTouched: () => void = () => {};
     isDisabled = signal(false);
     hovered = signal(false);
+    /** Keyboard focus anywhere in the control (input or a step button) shows the buttons, so Tab can reach them. */
+    protected readonly focusWithin = signal(false);
     /** Shown as the input's tooltip. */
     protected readonly fieldName = computed(() => this.label() || this.ariaLabel() || '');
 
     showButtons = computed(
-        () => !this.readonly() && (this.hovered() || this.size() === 'lg' || this.alwaysShowButtons())
+        () =>
+            !this.readonly() &&
+            (this.hovered() || this.focusWithin() || this.size() === 'lg' || this.alwaysShowButtons())
     );
 
     hasError = computed(() => {
@@ -160,7 +164,7 @@ export class NumberStepperComponent implements ControlValueAccessor {
             'ArrowDown',
         ];
 
-        // The keyboard's step buttons: the ones beside the input are mouse-only.
+        // Steps from the input itself, as a native number field does.
         if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
             event.preventDefault();
             if (event.key === 'ArrowUp') this.onStepUp();
@@ -249,6 +253,8 @@ export class NumberStepperComponent implements ControlValueAccessor {
         if (minVal !== null && newValue < minVal) {
             newValue = minVal;
         }
+        // Already at the bound: nothing changed, so nothing is emitted and the form stays pristine.
+        if (newValue === this.value()) return;
         this.updateValue(newValue);
     }
 
@@ -260,7 +266,14 @@ export class NumberStepperComponent implements ControlValueAccessor {
         if (maxVal !== null && newValue > maxVal) {
             newValue = maxVal;
         }
+        // Already at the bound: nothing changed, so nothing is emitted and the form stays pristine.
+        if (newValue === this.value()) return;
         this.updateValue(newValue);
+    }
+
+    protected onFocusOut(event: FocusEvent): void {
+        const control = event.currentTarget as HTMLElement;
+        if (!control.contains(event.relatedTarget as Node | null)) this.focusWithin.set(false);
     }
 
     private updateValue(value: number | null) {

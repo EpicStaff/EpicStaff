@@ -1,6 +1,9 @@
+<!-- aria-disabled, not disabled: an arrow keeps the focus when its step reaches the first or last session. -->
 <button
-    [disabled]="!hasPreviousSession"
+    type="button"
+    [attr.aria-disabled]="!hasPreviousSession"
     (click)="goToPreviousSession()"
+    aria-label="Previous session"
     matTooltip="Previous session"
     class="btn-switch-session"
 >
@@ -14,7 +17,11 @@
 
 <div class="session-dropdown-wrapper">
     <button
+        type="button"
         class="session-dropdown-trigger"
+        aria-haspopup="dialog"
+        [attr.aria-expanded]="isDropdownOpen"
+        [matTooltip]="'Session: ' + selectedSessionLabel"
         (click)="toggleDropdown()"
     >
         <span class="session-dropdown-trigger__label">{{ selectedSessionLabel }}</span>
@@ -29,11 +36,21 @@
             class="session-dropdown-overlay"
             (click)="closeDropdown()"
         ></div>
-        <div class="session-dropdown">
+        <!-- Takes the focus when it opens and hands it back to the trigger when it closes. -->
+        <div
+            class="session-dropdown"
+            role="dialog"
+            aria-label="Sessions"
+            cdkTrapFocus
+            [cdkTrapFocusAutoCapture]="true"
+            (keydown.escape)="onDropdownEscape($event)"
+        >
             <div class="session-dropdown__search">
                 <input
                     type="text"
                     placeholder="Search by ID..."
+                    aria-label="Search by ID"
+                    matTooltip="Search by ID"
                     [(ngModel)]="searchQuery"
                     (click)="$event.stopPropagation()"
                     class="session-dropdown__input"
@@ -42,8 +59,11 @@
             <div class="session-dropdown__list">
                 @for (session of filteredSessions; track session.id) {
                     <button
+                        type="button"
                         class="session-dropdown__item"
                         [class.active]="session.id.toString() === selectedSessionId"
+                        [attr.aria-current]="session.id.toString() === selectedSessionId"
+                        [matTooltip]="'Session ID ' + session.id"
                         (click)="onSessionChange(session.id.toString())"
                     >
                         <span class="session-dropdown__item-id">ID {{ session.id }}</span>
@@ -59,8 +79,10 @@
 </div>
 
 <button
-    [disabled]="!hasNextSession"
+    type="button"
+    [attr.aria-disabled]="!hasNextSession"
     (click)="goToNextSession()"
+    aria-label="Next session"
     matTooltip="Next session"
     class="btn-switch-session"
 >

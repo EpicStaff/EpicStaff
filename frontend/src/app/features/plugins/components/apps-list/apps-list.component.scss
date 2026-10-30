@@ -60,7 +60,7 @@
     text-decoration: none;
     transition: background-color 0.2s ease-out;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 

@@ -1,7 +1,9 @@
 @if (isLoaded() && outputFiles().length > 0) {
     <ng-container *appHasPermission="[ResourceCode.Files, ActionCode.Export]">
         <button
+            type="button"
             class="session-files-btn"
+            aria-label="Download files"
             [appCollapseOnOverflow]="true"
             collapseOnOverflowTarget=".session-files-btn__label"
             collapseOnOverflowClass="session-files-btn--icon-only"

@@ -15,6 +15,7 @@
         <div class="config__grid-item config__grid-item--short">
             @if (canUpdate()) {
                 <app-input-number
+                    ariaLabel="Chunk Size"
                     formControlName="chunk_size"
                     [alwaysShowSteps]="true"
                     [stepSize]="DEFAULT_STEP_SIZE"
@@ -38,6 +39,7 @@
         <div class="config__grid-item config__grid-item--short">
             @if (canUpdate()) {
                 <app-input-number
+                    ariaLabel="Chunk Overlap"
                     formControlName="chunk_overlap"
                     [alwaysShowSteps]="true"
                     [stepSize]="DEFAULT_STEP_SIZE"
@@ -71,6 +73,7 @@
         <div class="config__grid-item">
             @if (canUpdate()) {
                 <app-custom-input
+                    ariaLabel="Regex"
                     class="config__input"
                     formControlName="regex"
                     type="text"

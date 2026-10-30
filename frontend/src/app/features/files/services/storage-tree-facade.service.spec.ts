@@ -216,6 +216,47 @@ describe('StorageTreeFacade loading state', () => {
     });
 });
 
+describe('StorageTreeFacade rename', () => {
+    function setUp(rename: () => Observable<void>): { facade: StorageTreeFacade; failedPaths: string[] } {
+        TestBed.configureTestingModule({
+            providers: [
+                StorageTreeFacade,
+                {
+                    provide: StorageApiService,
+                    useValue: { refreshTick: signal(0), triggerRefresh: vi.fn(), list: vi.fn(() => of([])), rename },
+                },
+                { provide: ToastService, useValue: { error: vi.fn(), success: vi.fn() } },
+                { provide: ConfirmationDialogService, useValue: {} },
+                { provide: Dialog, useValue: {} },
+            ],
+        });
+        const facade = TestBed.inject(StorageTreeFacade);
+        const failedPaths: string[] = [];
+        facade.renameFailed.subscribe((path) => failedPaths.push(path));
+        return { facade, failedPaths };
+    }
+
+    function renameNotes(facade: StorageTreeFacade): void {
+        facade.onContextAction({ action: 'rename', item: file('docs/memo.txt'), renameFromPath: 'docs/notes.txt' });
+    }
+
+    it('reports the path a failed rename asked for, so the tree stops waiting for that row', () => {
+        const { facade, failedPaths } = setUp(() => throwError(() => new Error('name taken')));
+
+        renameNotes(facade);
+
+        expect(failedPaths).toEqual(['docs/memo.txt']);
+    });
+
+    it('reports nothing when the rename succeeds', () => {
+        const { facade, failedPaths } = setUp(() => of(undefined));
+
+        renameNotes(facade);
+
+        expect(failedPaths).toEqual([]);
+    });
+});
+
 describe('StorageTreeFacade merge refresh', () => {
     let facade: StorageTreeFacade;
     let toast: {

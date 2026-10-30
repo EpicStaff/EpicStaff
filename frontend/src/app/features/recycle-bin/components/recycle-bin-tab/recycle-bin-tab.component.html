@@ -26,7 +26,7 @@
                     class="bin-toolbar__restore-selected"
                     type="outline-primary"
                     leftIcon="refresh"
-                    [disabled]="bulkBusy()"
+                    [ariaDisabled]="bulkBusy()"
                     (click)="onRestoreSelected()"
                 >
                     {{ restoreSelectedLabel() }}
@@ -37,7 +37,7 @@
                     class="bin-toolbar__delete-selected"
                     type="outline-danger"
                     leftIcon="trash"
-                    [disabled]="bulkBusy()"
+                    [ariaDisabled]="bulkBusy()"
                     (click)="onDeleteSelected()"
                 >
                     {{ deleteSelectedLabel() }}

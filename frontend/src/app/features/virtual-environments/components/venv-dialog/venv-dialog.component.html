@@ -1,4 +1,8 @@
-<div class="venv-dialog">
+<div
+    class="venv-dialog"
+    (appEnterSubmit)="submit()"
+    [appEnterSubmitDisabled]="isSubmitting()"
+>
     <header class="venv-dialog__header">
         <h2 class="venv-dialog__title text-h3">{{ title() }}</h2>
         <div class="venv-dialog__header-actions">
@@ -34,8 +38,11 @@
                     <app-help-tooltip text="Unique name of the virtual environment within your organization" />
                 </div>
                 <div class="venv-dialog__name-field">
+                    <!-- The dialog opens with the focus here, its first field. -->
                     <app-custom-input
+                        cdkFocusInitial
                         [id]="'venv-dialog-name'"
+                        ariaLabel="Name"
                         formControlName="name"
                         placeholder="e.g. data science base"
                     />
@@ -89,9 +96,8 @@
                                     class="venv-dialog__icon-btn venv-dialog__icon-btn--accent"
                                     aria-label="Remove all libraries"
                                     matTooltip="Remove all libraries"
-                                    matTooltipPosition="above"
                                     [disabled]="libs.length === 0"
-                                    (click)="removeAllLibraries()"
+                                    (click)="removeAllLibraries(); addLibraryButton.focus()"
                                 >
                                     <app-svg-icon
                                         icon="trash"
@@ -101,6 +107,7 @@
                             </th>
                         </tr>
                     </thead>
+                    <!-- Enter in a library cell is easy to hit while typing a row: it doesn't save the dialog. -->
                     <tbody
                         class="text-body-small"
                         formArrayName="libs"
@@ -112,14 +119,14 @@
                                 <td class="venv-dialog__cell--center venv-dialog__cell--muted">{{ index + 1 }}</td>
                                 <td>
                                     <input
+                                        #libraryNameInput
                                         class="venv-dialog__cell-input"
+                                        (keydown.enter)="$event.preventDefault()"
                                         type="text"
                                         formControlName="name"
                                         placeholder="e.g. requests"
                                         aria-label="Library name"
-                                        appTooltipOnOverflow
-                                        matTooltipPosition="above"
-                                        [matTooltip]="row.controls.name.value"
+                                        [matTooltip]="cellTooltip('Library name', row.controls.name.value)"
                                         [class.venv-dialog__cell-input--invalid]="
                                             row.controls.name.invalid && row.controls.name.touched
                                         "
@@ -128,48 +135,45 @@
                                 <td>
                                     <input
                                         class="venv-dialog__cell-input"
+                                        (keydown.enter)="$event.preventDefault()"
                                         type="text"
                                         formControlName="description"
                                         placeholder="e.g. HTTP client"
                                         aria-label="Description"
-                                        appTooltipOnOverflow
-                                        matTooltipPosition="above"
-                                        [matTooltip]="row.controls.description.value"
+                                        [matTooltip]="cellTooltip('Description', row.controls.description.value)"
                                     />
                                 </td>
                                 <td>
                                     <input
                                         class="venv-dialog__cell-input"
+                                        (keydown.enter)="$event.preventDefault()"
                                         type="text"
                                         formControlName="version"
                                         placeholder="e.g. 2.31.0"
                                         aria-label="Version"
-                                        matTooltipPosition="above"
-                                        [matTooltip]="versionError ?? ''"
-                                        [matTooltipDisabled]="!versionError"
+                                        [matTooltip]="versionError ?? 'Version'"
                                         [class.venv-dialog__cell-input--invalid]="!!versionError"
                                     />
                                 </td>
                                 <td>
                                     <input
                                         class="venv-dialog__cell-input"
+                                        (keydown.enter)="$event.preventDefault()"
                                         type="text"
                                         formControlName="specification"
                                         placeholder="e.g. >=1.0,<2.0"
                                         aria-label="Specification"
-                                        matTooltipPosition="above"
-                                        [matTooltip]="specificationError ?? ''"
-                                        [matTooltipDisabled]="!specificationError"
+                                        [matTooltip]="specificationError ?? 'Specification'"
                                         [class.venv-dialog__cell-input--invalid]="!!specificationError"
                                     />
                                 </td>
                                 <td class="venv-dialog__cell--center">
                                     <button
+                                        #removeLibraryButton
                                         type="button"
                                         class="venv-dialog__icon-btn venv-dialog__icon-btn--remove"
                                         aria-label="Remove library"
                                         matTooltip="Remove library"
-                                        matTooltipPosition="above"
                                         (click)="removeLibrary(index)"
                                     >
                                         <app-svg-icon
@@ -185,8 +189,10 @@
             </div>
 
             <button
+                #addLibraryButton
                 type="button"
                 class="venv-dialog__add-lib text-body-small"
+                matTooltip="Add library"
                 (click)="addLibrary()"
             >
                 + Add library

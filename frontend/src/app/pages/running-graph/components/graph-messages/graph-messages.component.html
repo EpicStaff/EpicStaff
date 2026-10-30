@@ -1,8 +1,10 @@
 <!-- graph-messages.component.html -->
+<!-- Not a Tab stop: it takes the focus from a scroll button that its own scroll hides. -->
 <div
     class="messages-container"
     [class.messages-container--compact]="compact"
     #messagesContainer
+    tabindex="-1"
     (scroll)="onMessagesScroll()"
 >
     <!-- Connection status indicator -->
@@ -64,6 +66,7 @@
                                         type="button"
                                         class="breadcrumbs-arrow"
                                         aria-label="Scroll breadcrumbs left"
+                                        matTooltip="Scroll breadcrumbs left"
                                         (click)="scrollBreadcrumbs(breadcrumbsScroller, 'left')"
                                     >
                                         <app-svg-icon
@@ -77,10 +80,13 @@
                                     [class.is-expanded]="rootView.breadcrumbSearchExpanded"
                                 >
                                     <button
+                                        #breadcrumbSearchButton
                                         type="button"
                                         class="breadcrumbs-search-button"
                                         aria-label="Search subflow"
-                                        (click)="toggleBreadcrumbSearch(rootView.rootKey)"
+                                        matTooltip="Search subflow"
+                                        [attr.aria-expanded]="rootView.breadcrumbSearchExpanded"
+                                        (click)="onBreadcrumbSearchButton(rootView.rootKey, breadcrumbSearchInput)"
                                     >
                                         <app-svg-icon
                                             icon="search"
@@ -88,13 +94,21 @@
                                             class="search-icon"
                                         />
                                     </button>
+                                    <!-- Out of the Tab order while folded away behind the search button. -->
                                     <input
+                                        #breadcrumbSearchInput
                                         type="text"
                                         class="breadcrumbs-search-input"
                                         placeholder="Search subflow"
+                                        aria-label="Search subflow"
+                                        matTooltip="Search subflow"
+                                        [attr.tabindex]="rootView.breadcrumbSearchExpanded ? null : -1"
                                         [value]="rootView.breadcrumbSearchTerm"
                                         (input)="onBreadcrumbSearch(rootView.rootKey, $any($event.target).value)"
                                         (blur)="onBreadcrumbSearchBlur(rootView.rootKey)"
+                                        (keydown.escape)="
+                                            closeBreadcrumbSearch($event, rootView.rootKey, breadcrumbSearchButton)
+                                        "
                                     />
                                 </div>
                             </div>
@@ -109,6 +123,7 @@
                                         <button
                                             type="button"
                                             class="breadcrumb-button"
+                                            [matTooltip]="crumb.label"
                                             (click)="onBreadcrumbClick(rootView.rootKey, crumb.index)"
                                         >
                                             {{ crumb.label }}
@@ -136,6 +151,7 @@
                                         type="button"
                                         class="breadcrumbs-arrow"
                                         aria-label="Scroll breadcrumbs right"
+                                        matTooltip="Scroll breadcrumbs right"
                                         (click)="scrollBreadcrumbs(breadcrumbsScroller, 'right')"
                                     >
                                         <app-svg-icon
@@ -383,9 +399,11 @@
 
     @if (showScrollToTop) {
         <button
+            type="button"
             class="scroll-to-top-btn"
             (click)="scrollToTop()"
             aria-label="Scroll to top"
+            matTooltip="Scroll to top"
         >
             <app-svg-icon
                 icon="arrow-up"
@@ -396,9 +414,11 @@
 
     @if (showScrollToBottom) {
         <button
+            type="button"
             class="scroll-to-bottom-btn"
             (click)="scrollToBottomAndReengage()"
             aria-label="Scroll to bottom"
+            matTooltip="Scroll to bottom"
         >
             <app-svg-icon
                 icon="arrow-down"

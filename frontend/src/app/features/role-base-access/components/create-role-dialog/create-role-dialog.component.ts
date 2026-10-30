@@ -1,4 +1,5 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
@@ -14,7 +15,7 @@ import { EnterSubmitDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, CatalogResponse, GetRoleResponse, ResourceCode } from '@shared/models';
 import { rolePermissionsToSet, setToRolePermissions } from '@shared/utils';
-import { distinctUntilChanged, finalize, map, switchMap } from 'rxjs';
+import { distinctUntilChanged, filter, finalize, map, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -245,6 +246,18 @@ export class CreateRoleDialogComponent implements OnInit {
     }
 
     ngOnInit(): void {
+        // disableClose keeps a stray backdrop click from losing the form; Escape is asked for, so it cancels.
+        // A dropdown that closed on this Escape has taken it.
+        this.dialogRef.keydownEvents
+            .pipe(
+                filter((event) => event.key === 'Escape' && !hasModifierKey(event) && !event.defaultPrevented),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((event) => {
+                event.preventDefault();
+                this.onCancel();
+            });
+
         this.permissionsService.loadCatalog().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
 
         const editedRole = this.editedRole();

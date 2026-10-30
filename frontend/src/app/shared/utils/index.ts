@@ -9,6 +9,7 @@ export * from './escape-html.util';
 export * from './export-exclusion-warning.util';
 export * from './fetch-all-pages.util';
 export * from './flow-links';
+export * from './focus.util';
 export * from './format-file-size.util';
 export * from './format-node-label.util';
 export * from './format-usage.util';

@@ -10,7 +10,9 @@ import {
     output,
     signal,
     viewChild,
+    viewChildren,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 export interface BreadcrumbItem {
@@ -20,7 +22,7 @@ export interface BreadcrumbItem {
 
 @Component({
     selector: 'app-variables-breadcrumb',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
     templateUrl: './variables-breadcrumb.component.html',
     styleUrls: ['./variables-breadcrumb.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,7 +35,11 @@ export class VariablesBreadcrumbComponent {
 
     readonly hasOverflow = signal(false);
 
+    /** The name of the first crumb, which shows only an icon. */
+    protected readonly rootLabel = 'All parameters';
+
     private readonly track = viewChild<ElementRef<HTMLElement>>('track');
+    private readonly crumbButtons = viewChildren<ElementRef<HTMLButtonElement>>('crumbButton');
     private resizeObserver: ResizeObserver | null = null;
 
     constructor() {
@@ -55,6 +61,11 @@ export class VariablesBreadcrumbComponent {
             this.resizeObserver?.disconnect();
             this.resizeObserver = null;
         });
+    }
+
+    /** Focuses the crumb of the level shown. */
+    focusCurrent(): void {
+        this.crumbButtons().at(-1)?.nativeElement.focus();
     }
 
     scrollToStart(): void {

@@ -137,12 +137,14 @@
             background-color: var(--color-ks-transparent-black-28);
         }
 
-        &:is(:hover, :focus-visible) {
+        &:is(:hover, :has(> .picker__item-name:focus-visible)) {
             background-color: var(--purple-alpha-8);
         }
 
-        // Drawn inside: the list scrolls and clips its rows.
-        &:focus-visible {
+        // The name button does the row's action, so the row shows its keyboard focus;
+        // drawn inside, as the list scrolls and clips its rows.
+        &:has(> .picker__item-name:focus-visible) {
+            outline: 2px solid var(--accent-color);
             outline-offset: -2px;
         }
     }
@@ -177,13 +179,25 @@
         flex-shrink: 0;
     }
 
+    // A button that looks like the text it replaced.
     &__item-name {
+        padding: 0;
+        border: none;
+        background: none;
+        font: inherit;
+        text-align: left;
+        cursor: inherit;
         flex: 1 1 auto;
         min-width: 0;
         margin-left: 6px;
         font-size: 0.875rem;
         color: var(--color-text-primary);
         white-space: nowrap;
+
+        // The row draws it.
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     &__node-spinner {

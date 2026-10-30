@@ -3,16 +3,18 @@ import { DatePipe } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
+    ElementRef,
     EventEmitter,
-    HostListener,
     Input,
     OnChanges,
     OnDestroy,
     Output,
     SimpleChanges,
+    viewChild,
 } from '@angular/core';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
+import { MatTooltip } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 import { AppSvgIconComponent, StatusBadgeComponent } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
@@ -50,6 +52,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
         StopButtonComponent,
         SessionIdSwitcherComponent,
         HasPermissionDirective,
+        MatTooltip,
     ],
     templateUrl: './run-graph-header.component.html',
     styleUrls: ['./run-graph-header.component.scss'],
@@ -62,6 +65,10 @@ export class RunningGraphHeaderComponent implements OnChanges, OnDestroy {
     @Input() sessionStatus: GraphSessionStatus | null = null;
     @Input() graphData: GraphDto | null = null;
     @Output() stopSession = new EventEmitter<void>();
+
+    // The memories sidebar takes the focus when it opens and hands it back to this button when it closes.
+    private readonly memoriesButton = viewChild.required('memoriesButton', { read: ElementRef<HTMLButtonElement> });
+    private readonly memoriesSidebar = viewChild.required(MemoriesSidebarComponent);
 
     public readonly DATE_TIME_FORMAT_24H = DATE_TIME_FORMAT_24H;
     protected readonly ResourceCode = ResourceCode;
@@ -132,11 +139,6 @@ export class RunningGraphHeaderComponent implements OnChanges, OnDestroy {
             });
     }
 
-    @HostListener('document:keydown.escape')
-    handleEscapeKey() {
-        this.closeSidebar();
-    }
-
     get memories() {
         return this.runGraphPageService.getMemories();
     }
@@ -146,17 +148,18 @@ export class RunningGraphHeaderComponent implements OnChanges, OnDestroy {
     }
 
     toggleMemoriesSidebar(): void {
-        this.showMemoriesSidebar = !this.showMemoriesSidebar;
+        if (this.showMemoriesSidebar) {
+            this.closeSidebar();
+            return;
+        }
+        this.showMemoriesSidebar = true;
+        this.memoriesSidebar().focusWhenOpen();
     }
 
     closeSidebar(): void {
+        if (!this.showMemoriesSidebar) return;
         this.showMemoriesSidebar = false;
-    }
-
-    onFlowClick() {
-        if (this.graphId) {
-            this.router.navigate(['flows', this.graphId]);
-        }
+        this.memoriesButton().nativeElement.focus();
     }
     openSessionsDialog(): void {
         if (this.graphData) {
@@ -172,6 +175,8 @@ export class RunningGraphHeaderComponent implements OnChanges, OnDestroy {
             next: () => {
                 // On successful deletion, update local state
                 this.runGraphPageService.deleteMemory(memoryId);
+                // its delete button went with it
+                this.memoriesSidebar().focus();
             },
             error: (error) => {
                 console.error('Error deleting memory:', error);

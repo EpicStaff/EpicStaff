@@ -21,6 +21,7 @@
                         class="provider-btn"
                         [class.active]="selectedProvider() === provider.key"
                         [attr.aria-pressed]="selectedProvider() === provider.key"
+                        [matTooltip]="'Provider: ' + provider.label"
                         [disabled]="isEditMode() && selectedProvider() !== provider.key"
                         (click)="selectProvider(provider.key)"
                     >
@@ -30,7 +31,9 @@
             </div>
         </div>
         <div>
+            <!-- The edit dialog opens with the focus here: its provider is fixed, so this is its first field. -->
             <app-select
+                cdkFocusInitial
                 formControlName="api_key_secret_id"
                 label="API Key"
                 variant="boxed"

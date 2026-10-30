@@ -19,7 +19,10 @@
         </div>
         <div class="config__grid-item config__grid-item--short">
             @if (canUpdate()) {
-                <app-input-number formControlName="rows_in_chunk" />
+                <app-input-number
+                    ariaLabel="Rows In Chunk"
+                    formControlName="rows_in_chunk"
+                />
             } @else {
                 <span>{{ params().rows_in_chunk || 0 }}</span>
             }
@@ -36,7 +39,10 @@
         </div>
         <div class="config__grid-item config__grid-item--short">
             @if (canUpdate()) {
-                <app-input-number formControlName="headers_level" />
+                <app-input-number
+                    ariaLabel="Headers level"
+                    formControlName="headers_level"
+                />
             } @else {
                 <span>{{ params().headers_level || 0 }}</span>
             }

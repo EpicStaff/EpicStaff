@@ -25,7 +25,7 @@ app-audit-condition-row {
     cursor: grab;
     color: var(--color-text-secondary);
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 
@@ -70,7 +70,7 @@ app-audit-condition-row {
     font-size: 13px;
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--color-input-background-hover);
     }
 

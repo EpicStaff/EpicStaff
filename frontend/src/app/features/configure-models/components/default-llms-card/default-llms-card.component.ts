@@ -5,11 +5,13 @@ import {
     Component,
     computed,
     DestroyRef,
+    ElementRef,
     inject,
     input,
     OnInit,
     output,
     Signal,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -62,6 +64,11 @@ export class DefaultLlmsCardComponent implements OnInit {
     public readonly selectedConfigId = input<number | null>(null);
     public readonly modelSelected = output<{ cardId: string; configId: number | null }>();
 
+    private readonly addButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
+
+    /** Names the card's select: the card title is its label. */
+    protected readonly titleId = computed(() => `default-llms-card-title-${this.card().id}`);
+
     private readonly configSignals: Record<ModelTypes, Signal<{ id: number; custom_name: string }[]>> = {
         [ModelTypes.LLM]: this.llmConfigStorageService.configs,
         [ModelTypes.EMBEDDING]: this.embeddingConfigStorage.configs,
@@ -100,6 +107,7 @@ export class DefaultLlmsCardComponent implements OnInit {
 
     public onResetConfig(): void {
         this.modelSelected.emit({ cardId: this.card().id, configId: null });
+        this.addButton()?.nativeElement.focus();
     }
 
     public onAddModel(): void {

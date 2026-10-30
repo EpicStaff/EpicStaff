@@ -10,6 +10,7 @@
             class="dialog__close"
             type="button"
             aria-label="Close"
+            matTooltip="Close"
             [disabled]="isRestoring()"
             (click)="close()"
         >
@@ -36,6 +37,8 @@
             <input
                 id="plugin-restore-verification"
                 class="restore__verification-input text-body"
+                cdkFocusInitial
+                matTooltip="Confirmation phrase"
                 type="text"
                 autocomplete="off"
                 autocapitalize="off"

@@ -14,7 +14,7 @@
             type="button"
             class="basics__menu-trigger"
             aria-label="More actions"
-            matTooltip="More"
+            matTooltip="More actions"
             matTooltipPosition="left"
             [cdkMenuTriggerFor]="menu"
             [cdkMenuPosition]="menuPositions"
@@ -34,6 +34,7 @@
                     cdkMenuItem
                     type="button"
                     class="basics-menu__item"
+                    matTooltip="View Details"
                     (cdkMenuItemTriggered)="onViewDetails()"
                 >
                     View Details
@@ -43,6 +44,7 @@
                     cdkMenuItem
                     type="button"
                     class="basics-menu__item"
+                    matTooltip="Delete"
                     (cdkMenuItemTriggered)="onDelete()"
                 >
                     Delete
@@ -69,6 +71,7 @@
                 type="text"
                 placeholder="Enter collection name"
                 aria-required="true"
+                matTooltip="Collection Name"
                 [formControl]="nameControl"
             />
             <app-validation-errors [control]="nameControl" />
@@ -91,6 +94,7 @@
                 class="basics__input basics__textarea"
                 rows="1"
                 placeholder="Describe what's inside and which questions this collection can answer..."
+                matTooltip="Guidance for Agents"
                 [style.max-height.px]="guidanceMaxHeightPx"
                 [formControl]="guidanceControl"
                 (input)="resizeGuidance()"

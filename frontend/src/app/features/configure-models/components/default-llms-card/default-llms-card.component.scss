@@ -38,6 +38,8 @@
     }
 
     &__close-icon {
+        display: inline-flex;
+        background: none;
         cursor: pointer;
         padding: 4px;
         border-radius: 50%;
@@ -88,7 +90,7 @@
             line-height: 1;
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--purple-415);
         }
 

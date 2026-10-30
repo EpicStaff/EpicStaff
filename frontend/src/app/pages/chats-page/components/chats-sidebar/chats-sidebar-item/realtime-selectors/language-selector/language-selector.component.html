@@ -4,13 +4,19 @@
     (appClickOutside)="isOpen = false"
 >
     <!-- <label *ngIf="label">{{ label }}</label> -->
-    <div
+    <button
+        type="button"
         class="selector"
+        aria-haspopup="listbox"
         [class.disabled]="disabled"
+        [disabled]="disabled"
+        [attr.aria-expanded]="isOpen"
+        [attr.aria-label]="label + ': ' + getSelectedLanguageName()"
+        [matTooltip]="label + ': ' + getSelectedLanguageName()"
         (click)="toggleDropdown()"
     >
-        <div class="selected-language">{{ getSelectedLanguageName() }}</div>
-        <div
+        <span class="selected-language">{{ getSelectedLanguageName() }}</span>
+        <span
             class="selector-arrow"
             [class.open]="isOpen"
         >
@@ -29,19 +35,32 @@
                     stroke-linejoin="round"
                 />
             </svg>
-        </div>
-    </div>
+        </span>
+    </button>
 
     @if (isOpen) {
-        <div class="dropdown-menu">
+        <!-- Takes the focus when it opens and hands it back to the trigger when it closes; Escape closes only it. -->
+        <div
+            class="dropdown-menu"
+            role="listbox"
+            [attr.aria-label]="label"
+            cdkTrapFocus
+            [cdkTrapFocusAutoCapture]="true"
+            (keydown.escape)="closeOnEscape($event)"
+        >
             @for (lang of languages; track lang) {
-                <div
+                <button
+                    type="button"
                     class="dropdown-item"
+                    role="option"
                     [class.selected]="lang.id === selectedLanguage"
+                    [attr.aria-selected]="lang.id === selectedLanguage"
+                    [attr.cdkFocusInitial]="lang.id === selectedLanguage ? '' : null"
+                    [matTooltip]="lang.name"
                     (click)="selectLanguage(lang.id)"
                 >
                     {{ lang.name }}
-                </div>
+                </button>
             }
         </div>
     }

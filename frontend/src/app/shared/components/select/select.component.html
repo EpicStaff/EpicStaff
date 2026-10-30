@@ -42,7 +42,7 @@
                 [class.selector__btn--placeholder]="!selectedItem() && !(allowCustomValue() && selectedValue())"
                 [class.selector__btn--transparent]="transparent()"
                 [attr.aria-expanded]="open()"
-                [matTooltip]="label() || placeholder()"
+                [matTooltip]="label() || tooltip() || placeholder()"
                 (click)="toggle()"
             >
                 @if (loading()) {

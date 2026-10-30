@@ -1,7 +1,14 @@
 <div class="header">
     <div class="name-row">
         <app-org-avatar [name]="organization().name" />
-        <span class="name">{{ organization().name }}</span>
+        <!-- Opens the organization, from the keyboard too; its click reaches the card's handler. -->
+        <button
+            type="button"
+            class="name"
+            [matTooltip]="organization().name"
+        >
+            {{ organization().name }}
+        </button>
     </div>
 </div>
 <div class="footer">

@@ -10,10 +10,12 @@ import { InputNumberComponent } from './input-number.component';
     template: `<app-input-number
         [formControl]="control"
         [allowDecimal]="allowDecimal()"
+        [max]="max()"
     />`,
 })
 class HostComponent {
     readonly allowDecimal = signal(false);
+    readonly max = signal<number | null>(null);
     readonly control = new FormControl<number | null>(null);
 }
 
@@ -53,6 +55,32 @@ describe('InputNumberComponent', () => {
         input.dispatchEvent(new Event('input'));
         fixture.detectChanges();
     }
+
+    describe('ArrowUp at max', () => {
+        it('leaves the value and the form untouched', () => {
+            const host = createHost(false);
+            host.max.set(5);
+            host.control.setValue(5);
+            fixture.detectChanges();
+
+            pressKey('ArrowUp');
+
+            expect(host.control.value).toBe(5);
+            expect(host.control.dirty).toBe(false);
+        });
+
+        it('still steps, and dirties the form, below max', () => {
+            const host = createHost(false);
+            host.max.set(5);
+            host.control.setValue(4);
+            fixture.detectChanges();
+
+            pressKey('ArrowUp');
+
+            expect(host.control.value).toBe(5);
+            expect(host.control.dirty).toBe(true);
+        });
+    });
 
     describe('without allowDecimal', () => {
         it('blocks the decimal point, as before', () => {
@@ -150,14 +178,15 @@ function renderWithError(value: number): HTMLElement {
     return fixture.nativeElement as HTMLElement;
 }
 
-// The step buttons react to mousedown, not click, so the input keeps focus while stepping.
+function stepButton(fixture: ComponentFixture<InputNumberComponent>, direction: 'plus' | 'minus'): HTMLButtonElement {
+    return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(`.input__step--${direction}`)!;
+}
+
+// The step buttons step on click, so a keyboard user can Tab to them and press Enter or Space.
 function step(fixture: ComponentFixture<InputNumberComponent>, direction: 'plus' | 'minus'): number | null {
     const emitted: (number | null)[] = [];
     fixture.componentInstance.changed.subscribe((value) => emitted.push(value));
-    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
-        `.input__step--${direction}`
-    );
-    button?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    stepButton(fixture, direction).click();
     fixture.detectChanges();
     return emitted.at(-1) ?? null;
 }
@@ -171,6 +200,27 @@ describe('InputNumberComponent stepping', () => {
     it('clamps the stepped value to min and max', () => {
         expect(step(render(15), 'minus')).toBe(10);
         expect(step(render(95), 'plus')).toBe(100);
+    });
+
+    it.each<[string, number, 'plus' | 'minus']>([
+        ['up at max', 100, 'plus'],
+        ['down at min', 10, 'minus'],
+    ])('emits nothing when stepping %s, where the value cannot change', (_case, value, direction) => {
+        const fixture = render(value);
+        const emitted: (number | null)[] = [];
+        fixture.componentInstance.changed.subscribe((next) => emitted.push(next));
+
+        stepButton(fixture, direction).click();
+
+        expect(emitted).toEqual([]);
+    });
+
+    it('keeps focus in the input when a step button is pressed with the mouse', () => {
+        const mousedown = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+
+        stepButton(render(15), 'plus').dispatchEvent(mousedown);
+
+        expect(mousedown.defaultPrevented).toBe(true);
     });
 
     it('names the field for assistive technology', () => {

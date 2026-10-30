@@ -1,6 +1,19 @@
 import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import {
+    afterNextRender,
+    Component,
+    computed,
+    ElementRef,
+    inject,
+    Injector,
+    input,
+    output,
+    signal,
+    viewChild,
+    viewChildren,
+} from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     AuthorshipDetailsDialogService,
@@ -26,6 +39,7 @@ interface TruncatedName {
         CdkMenu,
         CdkMenuItem,
         CdkMenuTrigger,
+        MatTooltip,
         OverlayModule,
         SearchComponent,
     ],
@@ -43,6 +57,9 @@ export class KeyValueTableListComponent {
     readonly selected = output<KeyValueTable>();
     readonly renameRequested = output<KeyValueTable>();
     readonly deleteRequested = output<KeyValueTable>();
+
+    private readonly addButton = viewChild('addButton', { read: ButtonComponent });
+    private readonly selectButtons = viewChildren<ElementRef<HTMLButtonElement>>('selectButton');
 
     readonly filterText = signal('');
     readonly showFilter = computed(() => this.tables().length > FILTER_THRESHOLD);
@@ -66,6 +83,20 @@ export class KeyValueTableListComponent {
     ];
 
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
+    private readonly injector = inject(Injector);
+
+    /** Moves the focus to the row of `tableId` once the list shows it, or to Add when there is no such row. */
+    focusTable(tableId: number | null): void {
+        afterNextRender(
+            () => {
+                const index = this.visibleTables().findIndex((table) => table.id === tableId);
+                const button = this.selectButtons()[index];
+                if (button) button.nativeElement.focus();
+                else this.addButton()?.focus();
+            },
+            { injector: this.injector }
+        );
+    }
 
     protected onRename(table: KeyValueTable, menuTrigger: CdkMenuTrigger, triggerButton: HTMLElement): void {
         this.closeMenuToTrigger(menuTrigger, triggerButton);

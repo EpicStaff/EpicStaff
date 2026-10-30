@@ -7,10 +7,12 @@
         />
         <span class="filters-panel__title">Filters</span>
         <button
+            #closeButton
             class="filters-panel__close"
             type="button"
             (click)="closed.emit()"
             aria-label="Close filters"
+            matTooltip="Close filters"
         >
             ✕
         </button>
@@ -22,6 +24,7 @@
             type="button"
             [class.is-active]="activeTab() === 'builder'"
             [attr.aria-pressed]="activeTab() === 'builder'"
+            matTooltip="Filters: Builder"
             (click)="setActiveTab('builder')"
         >
             Builder
@@ -36,6 +39,7 @@
             type="button"
             [class.is-active]="activeTab() === 'query'"
             [attr.aria-pressed]="activeTab() === 'query'"
+            matTooltip="Filters: Query Code"
             (click)="setActiveTab('query')"
         >
             Query Code
@@ -46,6 +50,7 @@
             type="button"
             [class.is-active]="activeTab() === 'mine'"
             [attr.aria-pressed]="activeTab() === 'mine'"
+            matTooltip="Filters: My Presets"
             (click)="setActiveTab('mine')"
         >
             My Presets <span class="filters-panel__tab-count">({{ myPresetsCount() }})</span>
@@ -60,6 +65,7 @@
             type="button"
             [class.is-active]="activeTab() === 'shared'"
             [attr.aria-pressed]="activeTab() === 'shared'"
+            matTooltip="Filters: Shared Presets"
             (click)="setActiveTab('shared')"
         >
             Shared Presets <span class="filters-panel__tab-count">({{ sharedPresetsCount() }})</span>
@@ -331,6 +337,7 @@
                         class="filters-panel__copy"
                         type="button"
                         [disabled]="isQueryEmpty()"
+                        matTooltip="Copy query"
                         (click)="copyQuery()"
                     >
                         <app-svg-icon
@@ -345,6 +352,7 @@
                         <button
                             class="filters-panel__operator"
                             type="button"
+                            [matTooltip]="'Insert ' + operator.label"
                             (click)="insertField(queryInput, operator.text, operator.caretFromEnd)"
                         >
                             {{ operator.label }}
@@ -355,6 +363,7 @@
                     #queryInput
                     id="audit-query"
                     class="filters-panel__query-input"
+                    matTooltip="Query"
                     rows="4"
                     placeholder='e.g. status in (failed) and name == "Session Start"'
                     [value]="filter().query"
@@ -374,7 +383,12 @@
                     class="filters-panel__help"
                     open
                 >
-                    <summary class="filters-panel__section">Syntax</summary>
+                    <summary
+                        class="filters-panel__section"
+                        matTooltip="Syntax"
+                    >
+                        Syntax
+                    </summary>
                     <p>
                         <strong>column</strong> or <strong>value</strong>, combined with <strong>and</strong> /
                         <strong>or</strong> / <strong>not</strong> and parentheses.
@@ -392,11 +406,17 @@
                     class="filters-panel__help"
                     open
                 >
-                    <summary class="filters-panel__section">Example</summary>
+                    <summary
+                        class="filters-panel__section"
+                        matTooltip="Example"
+                    >
+                        Example
+                    </summary>
                     @for (example of queryExamples; track example) {
                         <button
                             class="filters-panel__example"
                             type="button"
+                            [matTooltip]="'Use example: ' + example"
                             (click)="useExample(example)"
                         >
                             {{ example }}
@@ -408,12 +428,18 @@
                     class="filters-panel__help"
                     open
                 >
-                    <summary class="filters-panel__section">Fields you can use</summary>
+                    <summary
+                        class="filters-panel__section"
+                        matTooltip="Fields you can use"
+                    >
+                        Fields you can use
+                    </summary>
                     <div class="filters-panel__fields">
                         @for (field of queryFields; track field) {
                             <button
                                 class="filters-panel__field"
                                 type="button"
+                                [matTooltip]="'Insert ' + field"
                                 (click)="insertField(queryInput, field)"
                             >
                                 {{ field }}
@@ -449,6 +475,7 @@
             <button
                 class="filters-panel__btn"
                 type="button"
+                matTooltip="Clear Filters"
                 (click)="cleared.emit()"
             >
                 Clear Filters
@@ -457,6 +484,7 @@
             <button
                 class="filters-panel__btn"
                 type="button"
+                matTooltip="Cancel"
                 (click)="closed.emit()"
             >
                 Cancel
@@ -464,6 +492,7 @@
             <button
                 class="filters-panel__btn filters-panel__btn--accent"
                 type="button"
+                matTooltip="Create & Apply Preset"
                 (click)="createPreset()"
             >
                 Create & Apply Preset
@@ -471,6 +500,7 @@
             <button
                 class="filters-panel__btn filters-panel__btn--primary"
                 type="button"
+                matTooltip="Apply Filters"
                 (click)="applied.emit()"
             >
                 Apply Filters

@@ -16,6 +16,8 @@
         [class.number-stepper__control--readonly]="readonly()"
         (mouseenter)="hovered.set(true)"
         (mouseleave)="hovered.set(false)"
+        (focusin)="focusWithin.set(true)"
+        (focusout)="onFocusOut($event)"
     >
         @if (showButtons()) {
             <button
@@ -24,9 +26,10 @@
                 [class]="'number-stepper__btn--' + size()"
                 aria-label="Decrease"
                 matTooltip="Decrease"
-                tabindex="-1"
-                (mousedown)="onStepDown(); $event.preventDefault()"
-                [disabled]="isDisabled() || !canStepDown()"
+                [disabled]="isDisabled()"
+                [attr.aria-disabled]="!canStepDown()"
+                (mousedown)="$event.preventDefault()"
+                (click)="onStepDown()"
             >
                 <app-svg-icon
                     icon="minus-fit"
@@ -58,9 +61,10 @@
                 [class]="'number-stepper__btn--' + size()"
                 aria-label="Increase"
                 matTooltip="Increase"
-                tabindex="-1"
-                (mousedown)="onStepUp(); $event.preventDefault()"
-                [disabled]="isDisabled() || !canStepUp()"
+                [disabled]="isDisabled()"
+                [attr.aria-disabled]="!canStepUp()"
+                (mousedown)="$event.preventDefault()"
+                (click)="onStepUp()"
             >
                 <app-svg-icon
                     icon="plus-fit"

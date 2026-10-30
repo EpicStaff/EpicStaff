@@ -8,9 +8,11 @@
 >
     <div class="filter-group__header-row">
         <button
+            #header
             class="filter-group__header"
             type="button"
             [attr.aria-expanded]="isOpen()"
+            [matTooltip]="headerTooltip()"
             [attr.aria-description]="disabled() && hint() ? hint() : null"
             [disabled]="disabled()"
             (click)="toggle()"
@@ -26,11 +28,7 @@
                 <span class="filter-group__hint">{{ hint() }}</span>
             }
             @if (summary()) {
-                <span
-                    class="filter-group__summary"
-                    [title]="summary()"
-                    >{{ summary() }}</span
-                >
+                <span class="filter-group__summary">{{ summary() }}</span>
             }
         </button>
         <!-- a sibling of the header, since a button cannot sit inside another button -->
@@ -39,7 +37,8 @@
                 class="filter-group__clear"
                 type="button"
                 [attr.aria-label]="'Clear ' + label()"
-                (click)="cleared.emit()"
+                [matTooltip]="'Clear ' + label()"
+                (click)="clear()"
             >
                 <app-svg-icon
                     icon="x"

@@ -1,5 +1,7 @@
-import { NgTemplateOutlet } from '@angular/common';
+import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { DOCUMENT, NgTemplateOutlet } from '@angular/common';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
@@ -7,16 +9,19 @@ import {
     effect,
     ElementRef,
     inject,
+    Injector,
     input,
     output,
     signal,
     untracked,
     viewChild,
+    viewChildren,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
-import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
+import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { isFocusLost } from '@shared/utils';
 
 import { PermissionsService } from '../../../../../../../../services/auth/permissions.service';
 import { canImportStorageToKnowledge } from '../../../../../../../knowledge-sources/helpers/storage-import.util';
@@ -26,13 +31,7 @@ import { getFileExtension } from '../../../../../../utils/storage-file.utils';
 
 @Component({
     selector: 'app-storage-tree',
-    imports: [
-        NgTemplateOutlet,
-        AppSvgIconComponent,
-        MatTooltipModule,
-        HasPermissionDirective,
-        TooltipOnOverflowDirective,
-    ],
+    imports: [NgTemplateOutlet, CdkTrapFocus, AppSvgIconComponent, MatTooltipModule, HasPermissionDirective],
     templateUrl: './storage-tree.component.html',
     styleUrls: ['./storage-tree.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -40,6 +39,8 @@ import { getFileExtension } from '../../../../../../utils/storage-file.utils';
 export class StorageTreeComponent {
     private readonly storageDrag = inject(StorageDragService);
     private readonly permissionsService = inject(PermissionsService);
+    private readonly injector = inject(Injector);
+    private readonly document = inject(DOCUMENT);
 
     items = input<StorageItem[]>([]);
     showHeader = input<boolean>(true);
@@ -66,8 +67,20 @@ export class StorageTreeComponent {
 
     private readonly renameInputRef = viewChild<ElementRef<HTMLInputElement>>('renameInput');
     private readonly listElRef = viewChild<ElementRef<HTMLElement>>('listEl');
+    private readonly rowRefs = viewChildren<ElementRef<HTMLElement>>('treeRow');
+    private readonly nameButtonRefs = viewChildren<ElementRef<HTMLButtonElement>>('nameButton');
+    private readonly toolbarButtonRefs = viewChildren<ElementRef<HTMLButtonElement>>('toolbarButton');
+    /** Rendered rows and their name buttons by item path (both carry `data-path`). */
+    private readonly rowsByPath = computed(() => elementsByPath(this.rowRefs()));
+    private readonly nameButtonsByPath = computed(() => elementsByPath(this.nameButtonRefs()));
 
     private hoveredItemEl: HTMLElement | null = null;
+    /** What opened the open menu; an action that opens a dialog moves the focus here first, so the dialog returns it. */
+    private menuTrigger: HTMLElement | null = null;
+    /** The row control that last had the focus and the row's place among the shown rows, to recover the focus if it goes away. */
+    private lastFocusedRow: { element: HTMLElement; index: number } | null = null;
+    /** A renamed row comes back under this path after the reload; the focus goes there rather than by position. */
+    private pendingFocusPath: string | null = null;
 
     selectedItem = signal<StorageItem | null>(null);
     selectedPaths = signal<Set<string>>(new Set<string>());
@@ -117,6 +130,12 @@ export class StorageTreeComponent {
         });
     });
 
+    /** A deleted or moved row takes the focus with it: once the list re-renders, hand it to the row now in its place. */
+    private readonly recoverFocusAfterListChange = effect(() => {
+        this.items();
+        untracked(() => afterNextRender(() => this.restoreLostRowFocus(), { injector: this.injector }));
+    });
+
     constructor() {
         // A destroyed drag source never fires `dragend`, so end the drag here.
         inject(DestroyRef).onDestroy(() => {
@@ -158,6 +177,7 @@ export class StorageTreeComponent {
             this.selectedItem.set(item);
             this.selectionAnchorPath = item.path;
         }
+        this.menuTrigger = this.nameButtonOf(item.path);
         this.contextMenuPosition.set(this.clampMenuPosition(event.clientX, event.clientY));
         this.contextMenuItem.set(item);
         this.contextMenuOpen.set(true);
@@ -170,9 +190,35 @@ export class StorageTreeComponent {
             this.selectedItem.set(item);
             this.selectionAnchorPath = item.path;
         }
-        this.contextMenuPosition.set(this.clampMenuPosition(event.clientX, event.clientY));
+        const trigger = event.currentTarget as HTMLElement;
+        this.menuTrigger = trigger;
+        // A click from the keyboard (detail 0) has no pointer position: open the menu under the button instead.
+        const rect = trigger.getBoundingClientRect();
+        const position =
+            event.detail === 0
+                ? this.clampMenuPosition(rect.left, rect.bottom + 4)
+                : this.clampMenuPosition(event.clientX, event.clientY);
+        this.contextMenuPosition.set(position);
         this.contextMenuItem.set(item);
         this.contextMenuOpen.set(true);
+    }
+
+    /** Escape closes the open menu, not a dialog around the page; its focus trap returns the focus to the opener. */
+    closeMenuOnEscape(event: Event): void {
+        event.stopPropagation();
+        this.closeContextMenu();
+        this.closeMoreMenu();
+    }
+
+    /** Remembers the focused row control, so `restoreLostRowFocus` can recover the focus when that row goes away. */
+    onRowFocusIn(event: FocusEvent, node: StorageItem): void {
+        const index = this.collectVisibleNodes(this.items()).findIndex((visible) => visible.path === node.path);
+        this.lastFocusedRow = { element: event.target as HTMLElement, index };
+    }
+
+    /** The host's rename request failed: the row keeps its old path, so the focus must not wait for the new one. */
+    onRenameFailed(newPath: string): void {
+        if (this.pendingFocusPath === newPath) this.pendingFocusPath = null;
     }
 
     private clampMenuPosition(x: number, y: number): { x: number; y: number } {
@@ -198,10 +244,7 @@ export class StorageTreeComponent {
     }
 
     private scrollItemIntoView(item: StorageItem): void {
-        const listEl = this.listElRef()?.nativeElement;
-        if (!listEl) return;
-        const el = listEl.querySelector(`[data-path="${CSS.escape(item.path)}"]`) as HTMLElement | null;
-        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        this.rowsByPath().get(item.path)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     startRename(item: StorageItem): void {
@@ -212,7 +255,7 @@ export class StorageTreeComponent {
         const listEl = this.listElRef()?.nativeElement;
         const itemEl =
             (this.hoveredItemEl?.getAttribute('data-path') === path ? this.hoveredItemEl : null) ??
-            (listEl?.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null);
+            this.rowsByPath().get(path);
         if (itemEl && listEl) {
             itemEl.scrollIntoView({ block: 'nearest' });
             const itemRect = itemEl.getBoundingClientRect();
@@ -241,9 +284,7 @@ export class StorageTreeComponent {
      */
     startRenameWhenReady(item: StorageItem, retriesLeft = 20): void {
         const path = item.path || item.name;
-        const listEl = this.listElRef()?.nativeElement;
-        const exists = listEl?.querySelector(`[data-path="${CSS.escape(path)}"]`);
-        if (exists || retriesLeft <= 0) {
+        if (this.rowsByPath().has(path) || retriesLeft <= 0) {
             this.startRename(item);
             return;
         }
@@ -253,6 +294,8 @@ export class StorageTreeComponent {
     onContextMenuAction(action: string): void {
         const item = this.contextMenuItem();
         if (!item) return;
+        // Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away.
+        this.menuTrigger?.focus();
 
         if (action === 'rename') {
             this.startRename(item);
@@ -284,10 +327,14 @@ export class StorageTreeComponent {
 
         const newName = this.renameValue.trim();
         const currentPath = this.renamingFromPath;
+        // Back to the row the field covered (Enter or the confirm button took the focus away with the field).
+        this.focusRow(currentPath);
         if (newName && newName !== item.name) {
             const slashIndex = currentPath.lastIndexOf('/');
             const parentPath = slashIndex >= 0 ? currentPath.substring(0, slashIndex) : '';
             const newPath = parentPath ? `${parentPath}/${newName}` : newName;
+            // The tree reloads with the row under its new path; `restoreLostRowFocus` moves the focus there.
+            this.pendingFocusPath = newPath;
             this.contextAction.emit({
                 action: 'rename',
                 item: { ...item, name: newName, path: newPath },
@@ -296,11 +343,19 @@ export class StorageTreeComponent {
         }
     }
 
+    /** Escape or the cancel button: back to the renamed row. */
     onRenameCancel(event?: Event): void {
         event?.preventDefault();
         event?.stopPropagation();
-        this.renamingItem.set(null);
-        this.renamePos.set(null);
+        this.dismissRename();
+        this.focusRow(this.renamingFromPath);
+    }
+
+    /** The focus left the rename box (Tab past its buttons, a click elsewhere): drop the rename and leave the focus be. */
+    onRenameFocusOut(event: FocusEvent): void {
+        const overlay = event.currentTarget as HTMLElement;
+        if (overlay.contains(event.relatedTarget as Node | null)) return;
+        this.dismissRename();
     }
 
     onRenameEnter(event: Event): void {
@@ -382,6 +437,7 @@ export class StorageTreeComponent {
         event.preventDefault();
         event.stopPropagation();
         const btn = event.currentTarget as HTMLElement;
+        this.menuTrigger = btn;
         const rect = btn.getBoundingClientRect();
         const menuWidth = 180;
         const menuHeight = 140;
@@ -397,6 +453,8 @@ export class StorageTreeComponent {
     }
 
     onMoreMenuAction(action: string): void {
+        // Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away.
+        this.menuTrigger?.focus();
         this.closeMoreMenu();
         const selectedSet = this.selectedPaths();
         const selectedItems = this.collectVisibleNodes(this.items()).filter((node) => selectedSet.has(node.path));
@@ -726,6 +784,36 @@ export class StorageTreeComponent {
         return flat;
     }
 
+    private dismissRename(): void {
+        this.renamingItem.set(null);
+        this.renamePos.set(null);
+    }
+
+    private nameButtonOf(path: string): HTMLElement | null {
+        return path ? (this.nameButtonsByPath().get(path) ?? null) : null;
+    }
+
+    private focusRow(path: string): void {
+        this.nameButtonOf(path)?.focus();
+    }
+
+    /** Only when the focused row control left the page and nothing else took the focus (it fell to `<body>`). */
+    private restoreLostRowFocus(): void {
+        const lastFocused = this.lastFocusedRow;
+        if (!lastFocused || lastFocused.element.isConnected) return;
+        const pendingPath = this.pendingFocusPath;
+        this.lastFocusedRow = null;
+        this.pendingFocusPath = null;
+        if (!isFocusLost(this.document)) return;
+        const visibleNodes = this.collectVisibleNodes(this.items());
+        const nodeInPlace = visibleNodes[Math.min(lastFocused.index, visibleNodes.length - 1)];
+        const target =
+            (pendingPath ? this.nameButtonOf(pendingPath) : null) ??
+            (nodeInPlace ? this.nameButtonOf(nodeInPlace.path) : null) ??
+            this.toolbarButtonRefs()[0]?.nativeElement;
+        target?.focus();
+    }
+
     private collectLoadedNodes(nodes: StorageItem[]): StorageItem[] {
         const flat: StorageItem[] = [];
         for (const node of nodes) {
@@ -739,4 +827,8 @@ export class StorageTreeComponent {
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+}
+
+function elementsByPath<T extends HTMLElement>(refs: readonly ElementRef<T>[]): Map<string, T> {
+    return new Map(refs.map((ref) => [ref.nativeElement.dataset['path'] ?? '', ref.nativeElement]));
 }

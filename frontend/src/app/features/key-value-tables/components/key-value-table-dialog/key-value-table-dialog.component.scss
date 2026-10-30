@@ -20,10 +20,15 @@
     }
 
     &__close-btn {
+        display: inline-flex;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: none;
         cursor: pointer;
         color: var(--color-text-primary);
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             opacity: 0.8;
         }
     }

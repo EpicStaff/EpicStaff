@@ -2,8 +2,18 @@ import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    DestroyRef,
+    ElementRef,
+    inject,
+    OnInit,
+    signal,
+    viewChildren,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import {
     AppIconComponent,
@@ -74,10 +84,13 @@ const CONFIG_TYPE_LABELS = new Map<SecretUsageResourceType, string>([
         LoadingSpinnerComponent,
         ButtonComponent,
         HelpTooltipComponent,
+        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SecretUsageDialogComponent implements OnInit {
+    private readonly categoryTitles = viewChildren<ElementRef<HTMLElement>>('categoryTitle');
+
     private readonly dialogRef = inject(DialogRef<void>);
     private readonly data = inject<SecretUsageDialogData>(DIALOG_DATA);
     private readonly router = inject(Router);
@@ -142,6 +155,11 @@ export class SecretUsageDialogComponent implements OnInit {
 
     public scrollToCategory(key: string): void {
         document.getElementById(`secret-usage-category-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    /** A chip scrolls to its category; the focus follows, so Tab goes on from there rather than from the chips. */
+    public focusCategory(index: number): void {
+        this.categoryTitles()[index]?.nativeElement.focus({ preventScroll: true });
     }
 
     public navigateToFlow(flow: SecretUsageFlowItem): void {

@@ -56,7 +56,7 @@
             font-weight: 500;
             transition: background-color 0.2s;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--accent-color-hover);
                 cursor: pointer;
             }

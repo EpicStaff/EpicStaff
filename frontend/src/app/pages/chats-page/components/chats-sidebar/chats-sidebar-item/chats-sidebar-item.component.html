@@ -3,9 +3,19 @@
     [class.active]="isSelected()"
     (click)="onSelect()"
 >
-    <div class="agent-role">{{ title }}</div>
+    <!-- Opens the chat, from the keyboard too; its click reaches the row's handler. -->
     <button
+        type="button"
+        class="agent-role"
+        [attr.aria-current]="isSelected() ? 'true' : null"
+        [matTooltip]="title"
+    >
+        {{ title }}
+    </button>
+    <button
+        type="button"
         class="settings-btn"
+        [attr.aria-label]="'Agent settings: ' + title"
         matTooltip="Agent settings"
         matTooltipPosition="right"
         (click)="openSettings($event)"

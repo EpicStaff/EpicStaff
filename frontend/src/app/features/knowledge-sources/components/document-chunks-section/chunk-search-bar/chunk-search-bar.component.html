@@ -4,6 +4,9 @@
             #idInput
             class="search-bar__id-input"
             type="text"
+            aria-label="Chunk ID"
+            matTooltip="Chunk ID"
+            [attr.aria-expanded]="dropdownOpen()"
             [value]="idInputValue()"
             (focus)="onIdInputFocus()"
             (blur)="onIdInputBlur()"
@@ -55,6 +58,8 @@
                 class="search-bar__text-input"
                 type="text"
                 placeholder="Search..."
+                aria-label="Search chunks"
+                matTooltip="Search chunks"
                 [ngModel]="textQuery()"
                 (ngModelChange)="onTextInput($event)"
             />
@@ -62,12 +67,13 @@
 
         <div class="search-bar__nav">
             <button
+                type="button"
                 class="search-bar__nav-btn"
                 [class.search-bar__nav-btn--disabled]="isPrevDisabled()"
                 [disabled]="isPrevDisabled()"
+                aria-label="Previous match"
                 (click)="onPrev()"
                 matTooltip="Previous match"
-                matTooltipPosition="above"
             >
                 <app-svg-icon
                     icon="chevron-left"
@@ -76,12 +82,13 @@
             </button>
             <span class="search-bar__match-count">{{ matchDisplay() }}</span>
             <button
+                type="button"
                 class="search-bar__nav-btn"
                 [class.search-bar__nav-btn--disabled]="isNextDisabled()"
                 [disabled]="isNextDisabled()"
+                aria-label="Next match"
                 (click)="onNext()"
                 matTooltip="Next match"
-                matTooltipPosition="above"
             >
                 <app-svg-icon
                     icon="chevron-right"

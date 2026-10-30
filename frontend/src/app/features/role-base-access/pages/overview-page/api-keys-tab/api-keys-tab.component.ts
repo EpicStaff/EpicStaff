@@ -1,7 +1,18 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { CdkConnectedOverlay, CdkOverlayOrigin } from '@angular/cdk/overlay';
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    ElementRef,
+    inject,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     AppTableCellDirective,
@@ -67,10 +78,15 @@ const STATUS_ITEMS: SelectItem[] = [
         DatePipe,
         DeleteButtonComponent,
         StopButtonComponent,
+        CdkTrapFocus,
+        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ApiKeysTabComponent {
+    // Takes the focus back when a menu action or a row action removes the control that had it.
+    private readonly bulkButton = viewChild.required<ElementRef<HTMLButtonElement>>('bulkButton');
+
     private readonly apiKeysService = inject(AdminApiKeysService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly organizationsService = inject(OrganizationsStorageService);
@@ -83,6 +99,7 @@ export class ApiKeysTabComponent {
     protected readonly isBulkLoading = signal(false);
     protected readonly isBulkMenuOpen = signal(false);
     protected readonly selectedItems = signal<TableRow[]>([]);
+    protected readonly isBulkDisabled = computed(() => this.selectedItems().length === 0 || this.isBulkLoading());
     protected readonly keys = signal<GetApiKeyWithOwnerResponse[]>([]);
 
     protected readonly searchTerm = signal('');
@@ -241,6 +258,7 @@ export class ApiKeysTabComponent {
     }
 
     toggleBulkMenu(): void {
+        if (this.isBulkDisabled()) return;
         this.isBulkMenuOpen.update((v) => !v);
     }
 
@@ -249,7 +267,7 @@ export class ApiKeysTabComponent {
     }
 
     onBulkRevoke(): void {
-        this.closeBulkMenu();
+        this.closeMenuBeforeDialog();
         const isSomeRevoked = this.selectedItems().some((r) => r['status'] === ApiKeyStatus.REVOKED);
         const activeRows = this.selectedItems().filter((r) => r['status'] === ApiKeyStatus.ACTIVE);
         const count = activeRows.length;
@@ -288,7 +306,7 @@ export class ApiKeysTabComponent {
     }
 
     onBulkDelete(): void {
-        this.closeBulkMenu();
+        this.closeMenuBeforeDialog();
         const rows = this.selectedItems();
         if (!rows.length) return;
         const count = rows.length;
@@ -331,7 +349,10 @@ export class ApiKeysTabComponent {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => this.toast.success(`"${row['name']}" was revoked`),
+                next: () => {
+                    this.toast.success(`"${row['name']}" was revoked`);
+                    this.bulkButton().nativeElement.focus();
+                },
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to revoke API key'),
             });
     }
@@ -346,9 +367,18 @@ export class ApiKeysTabComponent {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => this.toast.success(`"${row['name']}" was deleted`),
+                next: () => {
+                    this.toast.success(`"${row['name']}" was deleted`);
+                    this.bulkButton().nativeElement.focus();
+                },
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to delete API key'),
             });
+    }
+
+    // The confirmation dialog hands the focus back to what had it on open: the trigger, not the menu item going away.
+    private closeMenuBeforeDialog(): void {
+        this.bulkButton().nativeElement.focus();
+        this.closeBulkMenu();
     }
 
     /** Triggers a re-fetch by bumping `refreshTrigger`; `switchMap` cancels any in-flight request. */

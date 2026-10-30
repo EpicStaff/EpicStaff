@@ -45,7 +45,7 @@
     color: var(--color-text-secondary);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 
@@ -129,7 +129,7 @@
     white-space: nowrap;
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--color-secondary-btn-background-hover);
     }
 
@@ -143,7 +143,7 @@
     border-color: var(--accent-color);
     color: var(--accent-color);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--color-ghost-btn-hover);
     }
 }
@@ -152,7 +152,7 @@
     background-color: var(--accent-color);
     border-color: var(--accent-color);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--accent-color-hover);
     }
 }

@@ -70,6 +70,9 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     readonly nativeInput = viewChild<ElementRef<HTMLInputElement>>('nativeInput');
 
     hovered = signal<boolean>(false);
+    // Keyboard focus anywhere in the field (input or a step button) shows the steps, so Tab can reach them.
+    protected readonly focusWithin = signal(false);
+    protected readonly stepsShown = computed(() => this.hovered() || this.focusWithin() || !!this.alwaysShowSteps());
     // The browser holds text it cannot parse as a number (e.g. "1.2.3" or a pasted "1,5") and reports it as empty.
     private readonly hasBadInput = signal(false);
 
@@ -145,6 +148,8 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
         if (min !== null && next < min) next = min;
         if (max !== null && next > max) next = max;
 
+        // Already at the bound: nothing changed, so nothing is emitted and the form stays pristine.
+        if (next === this.value()) return;
         this.updateValue(next);
     }
 
@@ -173,7 +178,7 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     onKeyDown(event: KeyboardEvent) {
         const allowedKeys = ['Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End'];
         if (allowedKeys.includes(event.key)) return;
-        // The keyboard's step buttons: the ones beside the input are mouse-only.
+        // Steps from the input itself, as a native number field does.
         if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
             event.preventDefault();
             this.onStep(event.key === 'ArrowUp' ? 1 : -1);
@@ -184,6 +189,11 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
         if (!/^\d$/.test(event.key)) {
             event.preventDefault();
         }
+    }
+
+    protected onFocusOut(event: FocusEvent): void {
+        const wrapper = event.currentTarget as HTMLElement;
+        if (!wrapper.contains(event.relatedTarget as Node | null)) this.focusWithin.set(false);
     }
 
     private updateValue(value: number | null) {

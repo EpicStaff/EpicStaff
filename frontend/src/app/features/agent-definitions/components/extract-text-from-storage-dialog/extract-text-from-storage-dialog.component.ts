@@ -91,13 +91,6 @@ export class ExtractTextFromStorageDialogComponent implements OnInit {
         this.dialogRef.close({ item: this.toStorageItem(node) });
     }
 
-    /** Enter/Space on a focused row act as its click: a folder opens or closes, a file is picked. */
-    onNodeKeydown(event: KeyboardEvent, node: TreeNode): void {
-        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
-        event.preventDefault();
-        this.onNodeClick(node);
-    }
-
     onCancel(): void {
         this.dialogRef.close(undefined);
     }

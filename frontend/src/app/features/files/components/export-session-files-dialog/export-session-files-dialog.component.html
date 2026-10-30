@@ -3,8 +3,10 @@
         <h2 class="files-dialog__title">Export Files from Session</h2>
         <div class="files-dialog__header-actions">
             <button
+                type="button"
                 class="files-dialog__icon-btn files-dialog__icon-btn--cancel"
                 aria-label="Cancel"
+                matTooltip="Cancel"
                 (click)="onCancel()"
             >
                 <app-svg-icon
@@ -13,8 +15,10 @@
                 ></app-svg-icon>
             </button>
             <button
+                type="button"
                 class="files-dialog__icon-btn files-dialog__icon-btn--confirm"
                 aria-label="Download files"
+                matTooltip="Download files"
                 [disabled]="isDownloading() || allFilePaths().length === 0"
                 (click)="onConfirm()"
             >
@@ -42,10 +46,14 @@
                     size="0.875rem"
                     class="files-dialog__search-icon"
                 ></app-svg-icon>
+                <!-- The dialog opens with the focus here: the list below is what it asks to pick from. -->
                 <input
                     class="files-dialog__search-input"
                     type="text"
                     placeholder="Search folders, files..."
+                    aria-label="Search folders, files"
+                    matTooltip="Search folders, files"
+                    cdkFocusInitial
                     [ngModel]="searchQuery()"
                     (ngModelChange)="searchQuery.set($event)"
                 />
@@ -67,8 +75,12 @@
                     >
                         @if (node.type === 'folder' && node.hasChildren) {
                             <button
+                                type="button"
                                 class="files-dialog__chevron"
                                 [class.files-dialog__chevron--open]="node.isExpanded"
+                                [attr.aria-expanded]="node.isExpanded"
+                                [attr.aria-label]="(node.isExpanded ? 'Collapse ' : 'Expand ') + node.name"
+                                [matTooltip]="(node.isExpanded ? 'Collapse ' : 'Expand ') + node.name"
                                 (click)="toggleExpand($event, node)"
                             >
                                 <app-svg-icon
@@ -106,20 +118,27 @@
                             size="12px"
                         ></app-svg-icon>
 
-                        <span
+                        <!-- Checks the item, from the keyboard too; its click reaches the row's handler. -->
+                        <button
+                            type="button"
                             class="files-dialog__item-name"
-                            [title]="node.name"
-                            >{{ node.name }}</span
+                            role="checkbox"
+                            [attr.aria-checked]="isIndeterminate(node) ? 'mixed' : isChecked(node)"
+                            [matTooltip]="node.name"
                         >
+                            {{ node.name }}
+                        </button>
 
                         @if (node.type === 'file' && node.size != null) {
                             <span class="files-dialog__item-size">({{ node.size | fileSize: 'auto' }})</span>
                         }
 
                         <button
+                            type="button"
                             class="files-dialog__link-btn"
+                            aria-label="Open in storage"
+                            matTooltip="Open in storage"
                             (click)="onDeepLink($event, node)"
-                            title="Open in storage"
                         >
                             <app-svg-icon
                                 icon="external-link"

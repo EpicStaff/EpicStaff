@@ -16,12 +16,14 @@
     user-select: none;
     position: relative;
 
-    &:is(:hover, :focus-visible) {
+    &:is(:hover, :has(> .row__name:focus-visible)) {
         background-color: var(--color-ghost-btn-hover);
     }
 
-    // Drawn inside: the rows sit tight in a clipped section.
-    &:focus-visible {
+    // The name button does the row's action, so the row shows its keyboard focus;
+    // drawn inside, as the rows sit tight in a clipped section.
+    &:has(> .row__name:focus-visible) {
+        outline: 2px solid var(--accent-color);
         outline-offset: -2px;
     }
 
@@ -99,6 +101,22 @@
         &--surface {
             color: var(--color-text-primary);
             flex: 0 1 auto;
+        }
+    }
+
+    // The label is a button; it looks like the text it replaced.
+    &__name {
+        padding: 0;
+        border: none;
+        background: none;
+        font-family: inherit;
+        line-height: inherit;
+        text-align: left;
+        cursor: inherit;
+
+        // The row draws it.
+        &:focus-visible {
+            outline: none;
         }
     }
 

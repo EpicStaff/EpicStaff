@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, effect, inject, OnInit, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    effect,
+    ElementRef,
+    inject,
+    OnInit,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
@@ -11,6 +20,8 @@ import { ConsoleService } from '../../../../services/console.service';
 import { WavRecorderService } from '../../../../services/wav-recorder.service';
 import { MicrophoneSelectorComponent } from './microphone-selector/microphone-selector.component';
 import { VoiceVisualizerComponent } from './voice-visualizer/voice-visualizer.component';
+
+type ChatControlsFocusTarget = 'recording-controls' | 'start-speaking' | 'message';
 
 @Component({
     selector: 'app-chat-controls',
@@ -27,11 +38,31 @@ import { VoiceVisualizerComponent } from './voice-visualizer/voice-visualizer.co
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChatControlsComponent implements OnInit {
+    // Each control set replaces the other, and keyboard mode adds the message field: the focus follows to the new
+    // set instead of falling to the page.
+    private readonly startSpeakingButton = viewChild<ElementRef<HTMLButtonElement>>('startSpeakingButton');
+    private readonly keyboardToggle = viewChild<ElementRef<HTMLButtonElement>>('keyboardToggle');
+    private readonly messageInput = viewChild<ElementRef<HTMLTextAreaElement>>('messageInput');
+
     // Use signals for reactive state management
     isKeyboardMode = signal<boolean>(false);
     isMicrophoneMuted = signal<boolean>(false);
     isConnecting = signal<boolean>(false);
     isRecorderInitialized = signal<boolean>(false);
+    private readonly pendingFocus = signal<ChatControlsFocusTarget | null>(null);
+
+    private readonly movePendingFocus = effect(() => {
+        const target = this.pendingFocus();
+        if (target === null) return;
+        const element = {
+            'recording-controls': this.keyboardToggle(),
+            'start-speaking': this.startSpeakingButton(),
+            message: this.messageInput(),
+        }[target];
+        if (!element) return;
+        element.nativeElement.focus();
+        this.pendingFocus.set(null);
+    });
 
     messageText = '';
 
@@ -62,6 +93,7 @@ export class ChatControlsComponent implements OnInit {
         }
 
         this.isConnecting.set(true);
+        this.pendingFocus.set('recording-controls');
 
         from(this.wavRecorderService.ensureDevicesReady())
             .pipe(
@@ -79,11 +111,13 @@ export class ChatControlsComponent implements OnInit {
                     if (result.success) {
                         this.updateMicrophoneState();
                     } else {
+                        this.pendingFocus.set(null);
                         console.error('Failed to connect conversation:', result.error);
                     }
                 },
                 error: (error) => {
                     this.isConnecting.set(false);
+                    this.pendingFocus.set(null);
                     console.error('Error connecting conversation:', error);
                 },
             });
@@ -135,6 +169,7 @@ export class ChatControlsComponent implements OnInit {
         // Reset UI state
         this.isKeyboardMode.set(false);
         this.isMicrophoneMuted.set(false);
+        this.pendingFocus.set('start-speaking');
     }
 
     /**
@@ -145,6 +180,7 @@ export class ChatControlsComponent implements OnInit {
         this.isKeyboardMode.set(newKeyboardMode);
 
         if (newKeyboardMode) {
+            this.pendingFocus.set('message');
             // Switching to keyboard mode - pause microphone if active
             if (!this.isMicrophoneMuted()) {
                 this.wavRecorderService.pauseRecording().then((success) => {

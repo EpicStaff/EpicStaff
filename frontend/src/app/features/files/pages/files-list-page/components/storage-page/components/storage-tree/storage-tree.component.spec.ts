@@ -32,6 +32,14 @@ function click(modifiers: Partial<MouseEvent> = {}): MouseEvent {
     return { ctrlKey: false, metaKey: false, shiftKey: false, ...modifiers } as MouseEvent;
 }
 
+/** Right-clicks the rendered row of `path`, which opens the context menu for it. */
+function rightClickRow(fixture: ComponentFixture<StorageTreeComponent>, path: string): void {
+    fixture.detectChanges();
+    const row = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(`[data-path="${path}"]`)!;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+}
+
 /**
  * reports/            (folder, expanded)
  *   reports/q1.csv
@@ -233,11 +241,7 @@ describe('StorageTreeComponent drag and drop', () => {
 
     it('offers "Add to collection…" only when the host enables it', () => {
         const menuLabels = (): string[] => {
-            component.onContextMenu(
-                { preventDefault: vi.fn(), stopPropagation: vi.fn(), clientX: 0, clientY: 0 } as unknown as MouseEvent,
-                nodes['notes']
-            );
-            fixture.detectChanges();
+            rightClickRow(fixture, 'notes.txt');
             const labels = Array.from(
                 (fixture.nativeElement as HTMLElement).querySelectorAll('.storage-tree__context-menu-item')
             ).map((button) => button.textContent?.trim() ?? '');
@@ -325,10 +329,7 @@ describe('StorageTreeComponent drag and drop', () => {
     it('sends the selection with the "add-to-collection" context action', () => {
         component.onItemClick(click(), nodes['notes']);
         component.onItemClick(click({ ctrlKey: true }), nodes['q1']);
-        component.onContextMenu(
-            { preventDefault: vi.fn(), stopPropagation: vi.fn(), clientX: 0, clientY: 0 } as unknown as MouseEvent,
-            nodes['notes']
-        );
+        rightClickRow(fixture, 'notes.txt');
 
         component.onContextMenuAction('add-to-collection');
 
@@ -378,18 +379,111 @@ describe('StorageTreeComponent "Add to flow" permission', () => {
             providers: [{ provide: PermissionsService, useValue: { can, canAny: () => false } }],
         });
         const fixture = TestBed.createComponent(StorageTreeComponent);
-        const { tree, nodes } = buildTree();
-        fixture.componentRef.setInput('items', tree);
+        fixture.componentRef.setInput('items', buildTree().tree);
 
-        fixture.componentInstance.onContextMenu(
-            { preventDefault: vi.fn(), stopPropagation: vi.fn(), clientX: 0, clientY: 0 } as unknown as MouseEvent,
-            nodes['notes']
-        );
-        fixture.detectChanges();
+        rightClickRow(fixture, 'notes.txt');
         const labels = Array.from(
             (fixture.nativeElement as HTMLElement).querySelectorAll('.storage-tree__context-menu-item')
         ).map((button) => button.textContent?.trim() ?? '');
 
         expect(labels.includes('Add to flow')).toBe(offered);
+    });
+});
+
+describe('StorageTreeComponent focus when the focused row goes away', () => {
+    let fixture: ComponentFixture<StorageTreeComponent>;
+    let component: StorageTreeComponent;
+
+    beforeEach(() => {
+        // jsdom has no ResizeObserver; TooltipOnOverflowDirective needs one once rows render.
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        );
+        // jsdom lays nothing out and has no scrollIntoView; the rename box only scrolls its row into view with it.
+        Element.prototype.scrollIntoView = (): void => {};
+        TestBed.configureTestingModule({
+            imports: [StorageTreeComponent],
+            providers: [{ provide: PermissionsService, useValue: { can: () => true, canAny: () => true } }],
+        });
+        fixture = TestBed.createComponent(StorageTreeComponent);
+        component = fixture.componentInstance;
+        fixture.componentRef.setInput('items', buildTree().tree);
+        fixture.detectChanges();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        delete (Element.prototype as Partial<Element>).scrollIntoView;
+    });
+
+    function nameButton(path: string): HTMLButtonElement {
+        return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+            `[data-path="${path}"] .storage-tree__name`
+        )!;
+    }
+
+    function focusedText(): string {
+        return document.activeElement?.textContent?.trim() ?? '';
+    }
+
+    /** The host reloads the tree with `tree` (the item went away or came back under another path). */
+    async function reload(tree: StorageItem[]): Promise<void> {
+        fixture.componentRef.setInput('items', tree);
+        fixture.detectChanges();
+        await fixture.whenStable();
+    }
+
+    function renameNotesTo(newName: string): void {
+        component.startRename(buildTree().nodes['notes']);
+        component.renameValue = newName;
+        component.onRenameConfirm();
+    }
+
+    function withoutNotes(): StorageItem[] {
+        return buildTree().tree.filter((item) => item.path !== 'notes.txt');
+    }
+
+    it('moves the focus to the row now in the place of a deleted one', async () => {
+        nameButton('notes.txt').focus();
+
+        await reload(withoutNotes());
+
+        expect(focusedText()).toBe('archive');
+    });
+
+    it('moves the focus to "Create folder" once no row is left', async () => {
+        nameButton('notes.txt').focus();
+
+        await reload([]);
+
+        expect(document.activeElement?.getAttribute('aria-label')).toBe('Create folder');
+    });
+
+    it('follows a renamed row to its new path after the reload', async () => {
+        nameButton('notes.txt').focus();
+        renameNotesTo('memo.txt');
+
+        const renamed = buildTree().tree.map((item) =>
+            item.path === 'notes.txt' ? { ...item, name: 'memo.txt', path: 'memo.txt' } : item
+        );
+        await reload(renamed);
+
+        expect(focusedText()).toBe('memo.txt');
+    });
+
+    it('forgets the path of a failed rename, so deleting the row later focuses the row in its place', async () => {
+        nameButton('notes.txt').focus();
+        // "reports" is taken, so the server refuses the rename.
+        renameNotesTo('reports');
+        component.onRenameFailed('reports');
+
+        await reload(withoutNotes());
+
+        expect(focusedText()).toBe('archive');
     });
 });

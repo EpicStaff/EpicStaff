@@ -10,6 +10,7 @@
             class="dialog__close"
             type="button"
             aria-label="Close"
+            matTooltip="Close"
             [disabled]="isPurging()"
             (click)="close()"
         >
@@ -109,6 +110,7 @@
                 <input
                     id="plugin-purge-verification"
                     class="purge__verification-input text-body"
+                    matTooltip="Confirmation phrase"
                     type="text"
                     autocomplete="off"
                     autocapitalize="off"

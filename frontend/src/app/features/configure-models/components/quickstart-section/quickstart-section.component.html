@@ -12,9 +12,11 @@
             >
                 <div class="quickstart-section__row">
                     <div class="quickstart-section__label">
-                        <span>Recommended Provider</span>
+                        <span id="quickstart-provider-label">Recommended Provider</span>
                     </div>
                     <app-select
+                        ariaLabelledby="quickstart-provider-label"
+                        tooltip="Recommended Provider"
                         [attr.data-tour]="tourAnchors.quickstartProvider"
                         [dropdownDataAnchor]="tourAnchors.quickstartProviderList"
                         formControlName="provider"
@@ -38,6 +40,7 @@
                         />
                     </div>
                     <app-custom-input
+                        ariaLabel="API Key"
                         formControlName="apiKey"
                         type="secret"
                         placeholder="Enter API key"
@@ -56,7 +59,8 @@
                             type="primary"
                             [attr.data-tour]="tourAnchors.quickstartActivate"
                             (click)="onQuickStart()"
-                            [disabled]="quickStartForm.invalid || isSaving()"
+                            [disabled]="quickStartForm.invalid"
+                            [ariaDisabled]="isSaving()"
                         >
                             Activate
                         </app-button>

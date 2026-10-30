@@ -34,7 +34,7 @@
         color: var(--color-text-primary);
         border-radius: 0.25rem;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-ghost-btn-hover);
         }
     }
@@ -72,12 +72,15 @@
         background-color: var(--graphite-750);
         border: 1px solid var(--fog-alpha-16);
         border-radius: 4px;
+        color: inherit;
+        font-family: inherit;
+        text-align: left;
         cursor: pointer;
         min-width: 0;
         overflow: hidden;
         transition: border-color 0.15s ease;
 
-        &:hover,
+        &:is(:hover, :focus-visible),
         &--open {
             border-color: var(--fog-alpha-40);
         }
@@ -133,6 +136,11 @@
         height: 40px;
         border-bottom: 1px solid var(--graphite-750);
         flex-shrink: 0;
+
+        // The input draws no border of its own, so the box's divider shows its focus.
+        &:focus-within {
+            border-bottom-color: var(--accent-color);
+        }
     }
 
     &__search-icon {
@@ -180,8 +188,15 @@
         cursor: pointer;
         flex-shrink: 0;
 
-        &:hover:not(&--selected) {
+        &:is(:hover, :has(> .copy-to-dialog__node-name:focus-visible)):not(&--selected) {
             background-color: var(--fog-alpha-4);
+        }
+
+        // The name button picks the folder, so the row shows its keyboard focus; drawn inside, as the scrolling tree
+        // clips the full-width rows.
+        &:has(> .copy-to-dialog__node-name:focus-visible) {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
         }
 
         &--selected {
@@ -212,7 +227,7 @@
             transform: rotate(90deg);
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--fog-alpha-8);
         }
     }
@@ -233,12 +248,23 @@
     }
 
     &__node-name {
+        padding: 0;
+        border: none;
+        background: none;
+        font-family: inherit;
         font-size: 0.875rem;
         color: var(--color-text-primary);
+        text-align: left;
+        cursor: inherit;
         flex: 1;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+
+        // The row draws it.
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     &__empty-badge {
@@ -279,7 +305,7 @@
             border: 1px solid var(--accent-color);
             color: var(--accent-color);
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--purple-alpha-8);
             }
         }
@@ -289,7 +315,7 @@
             border: none;
             color: var(--color-text-primary);
 
-            &:hover:not(:disabled) {
+            &:not(:disabled):is(:hover, :focus-visible) {
                 background-color: var(--purple-alpha-85);
             }
 

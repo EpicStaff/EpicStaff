@@ -8,6 +8,8 @@
         <button
             class="close"
             type="button"
+            aria-label="Close"
+            matTooltip="Close"
             (click)="onClose()"
         >
             <app-svg-icon
@@ -24,7 +26,9 @@
                 [formGroup]="form"
             >
                 <div>
+                    <!-- The dialog opens with the focus here, its first field. -->
                     <app-custom-input
+                        cdkFocusInitial
                         formControlName="name"
                         label="Name"
                         placeholder="e.g. Deploy Bot"
@@ -54,13 +58,20 @@
                 }
             </form>
         } @else {
-            <app-copy-field
-                label="Your new API key"
-                [value]="apiKey"
-                infoType="warning"
-                info="This is the only time the key is shown. Store it securely — you won't be able to see it again."
-                (onCopied)="copiedToClipboard.set(true)"
-            />
+            <!-- Not a Tab stop: it takes the focus from the Create Key button, which this step removes. -->
+            <div
+                #createdStep
+                class="created-step"
+                tabindex="-1"
+            >
+                <app-copy-field
+                    label="Your new API key"
+                    [value]="apiKey"
+                    infoType="warning"
+                    info="This is the only time the key is shown. Store it securely — you won't be able to see it again."
+                    (onCopied)="copiedToClipboard.set(true)"
+                />
+            </div>
         }
     </div>
 
@@ -73,7 +84,8 @@
             </app-button>
             <app-button
                 type="primary"
-                [disabled]="loading() || form.invalid"
+                [disabled]="form.invalid"
+                [ariaDisabled]="loading()"
                 (click)="onCreate()"
                 >Create Key
             </app-button>

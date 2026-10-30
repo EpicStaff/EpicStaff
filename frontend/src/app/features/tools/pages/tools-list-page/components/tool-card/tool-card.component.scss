@@ -13,8 +13,14 @@
         border-color 0.15s ease,
         box-shadow 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :has(.card-name:focus-visible)) {
         border-color: var(--color-text-secondary);
+    }
+
+    // The name button opens the tool, so the card shows its keyboard focus.
+    &:has(.card-name:focus-visible) {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
     }
 
     &.selected {
@@ -68,6 +74,9 @@
                     padding: 4px;
                     border: 1px solid var(--transparent-white-8);
                     border-radius: 4px;
+                    background: transparent;
+                    font-family: inherit;
+                    cursor: pointer;
                     color: var(--accent-color);
                     font-size: 0.625rem;
                     white-space: nowrap;
@@ -103,7 +112,7 @@
                         background 0.1s ease,
                         color 0.1s ease;
 
-                    &:hover {
+                    &:is(:hover, :focus-visible) {
                         color: var(--color-text-primary);
                     }
 
@@ -131,6 +140,18 @@
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
+                    // A button that opens its card, drawn as the plain title it was.
+                    padding: 0;
+                    border: none;
+                    background: none;
+                    font-family: inherit;
+                    text-align: left;
+                    cursor: inherit;
+
+                    // The card draws it.
+                    &:focus-visible {
+                        outline: none;
+                    }
                 }
 
                 .card-description {

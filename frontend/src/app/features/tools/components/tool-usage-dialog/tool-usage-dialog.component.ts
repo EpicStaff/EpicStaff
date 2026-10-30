@@ -52,6 +52,8 @@ export class ToolUsageDialogComponent {
                   ? this.sharedSection()
                   : this.inlineSection();
         el?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // The keyboard lands where the list scrolled to, not back on the summary.
+        el?.nativeElement.querySelector<HTMLElement>('.nav-btn')?.focus({ preventScroll: true });
     }
 
     public openAgentsForSurface(surfaceId: number): void {

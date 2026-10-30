@@ -14,6 +14,12 @@
         border: 1px solid var(--accent-color);
     }
 
+    // The name button picks the RAG type, so the card shows its keyboard focus.
+    &:has(.rag__pick:focus-visible) {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+
     &__header {
         display: flex;
         justify-content: space-between;
@@ -33,6 +39,22 @@
     &__name {
         font-size: 1.125rem;
         color: var(--accent-color);
+    }
+
+    // A button that picks its card, drawn as the plain name it was.
+    &__pick {
+        padding: 0;
+        border: none;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: inherit;
+
+        // The card draws it.
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     &__description {

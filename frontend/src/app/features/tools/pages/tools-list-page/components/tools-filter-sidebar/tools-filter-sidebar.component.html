@@ -8,9 +8,11 @@
         />
         <span class="filter-sidebar__title">Filters</span>
         <button
+            #closeButton
             class="filter-sidebar__close"
             type="button"
             aria-label="Close filters"
+            matTooltip="Close filters"
             (click)="cancel()"
         >
             <app-svg-icon
@@ -26,6 +28,8 @@
             class="filter-sidebar__tab"
             type="button"
             [class.is-active]="activeTab() === 'builder'"
+            [attr.aria-pressed]="activeTab() === 'builder'"
+            matTooltip="Builder"
             (click)="setActiveTab('builder')"
         >
             Builder
@@ -39,6 +43,8 @@
             class="filter-sidebar__tab"
             type="button"
             [class.is-active]="activeTab() === 'presets'"
+            [attr.aria-pressed]="activeTab() === 'presets'"
+            matTooltip="Presets"
             (click)="setActiveTab('presets')"
         >
             Presets <span class="filter-sidebar__tab-count">({{ presetsCount() }})</span>
@@ -155,6 +161,7 @@
             <button
                 class="filter-sidebar__btn"
                 type="button"
+                matTooltip="Clear Filters"
                 (click)="clearAllFilters()"
             >
                 Clear Filters
@@ -163,6 +170,7 @@
             <button
                 class="filter-sidebar__btn"
                 type="button"
+                matTooltip="Cancel"
                 (click)="cancel()"
             >
                 Cancel
@@ -170,6 +178,7 @@
             <button
                 class="filter-sidebar__btn filter-sidebar__btn--accent"
                 type="button"
+                matTooltip="Create & Apply Preset"
                 (click)="createPreset()"
             >
                 Create & Apply Preset
@@ -177,6 +186,7 @@
             <button
                 class="filter-sidebar__btn filter-sidebar__btn--primary"
                 type="button"
+                matTooltip="Apply Filters"
                 (click)="applyFilters()"
             >
                 Apply Filters

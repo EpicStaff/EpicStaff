@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
 import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-execution-data.pipe';
@@ -7,7 +8,14 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
 @Component({
     selector: 'app-python-message',
-    imports: [CommonModule, JsonViewerComponent, FormatExecutionDataPipe, AppSvgIconComponent, CopyButtonComponent],
+    imports: [
+        MatTooltip,
+        CommonModule,
+        JsonViewerComponent,
+        FormatExecutionDataPipe,
+        AppSvgIconComponent,
+        CopyButtonComponent,
+    ],
     template: `
         <div class="python-flow-container">
             <!-- Python Message Header with Toggle -->
@@ -27,7 +35,16 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                         size="1.25rem"
                     />
                 </div>
-                <h3>Python Code Execution</h3>
+                <h3>
+                    <button
+                        type="button"
+                        class="message-toggle"
+                        matTooltip="Python Code Execution"
+                        [attr.aria-expanded]="isMessageExpanded"
+                    >
+                        Python Code Execution
+                    </button>
+                </h3>
             </div>
 
             <!-- Collapsible Python Content -->
@@ -39,8 +56,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                     <!-- Code Section -->
                     @if (hasCode()) {
                         <div class="code-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isCodeExpanded"
+                                matTooltip="Python Code"
                                 (click)="toggleSection('code')"
                             >
                                 <app-svg-icon
@@ -48,7 +68,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                     size="1.1rem"
                                 />
                                 Python Code
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isCodeExpanded"
@@ -67,8 +87,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                     <!-- Input Section -->
                     @if (hasInput()) {
                         <div class="input-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isInputExpanded"
+                                matTooltip="Input"
                                 (click)="toggleSection('input')"
                             >
                                 <app-svg-icon
@@ -76,7 +99,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                     size="1.1rem"
                                 />
                                 Input
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isInputExpanded"
@@ -103,8 +126,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                     <!-- Output Section -->
                     @if (hasOutput()) {
                         <div class="output-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isOutputExpanded"
+                                matTooltip="Output"
                                 (click)="toggleSection('output')"
                             >
                                 <app-svg-icon
@@ -112,7 +138,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                     size="1.1rem"
                                 />
                                 Output
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isOutputExpanded"
@@ -129,7 +155,9 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                         </div>
                                         @if (shouldShowToggle() && isOutputExpanded) {
                                             <button
+                                                type="button"
                                                 class="toggle-button"
+                                                [matTooltip]="isCollapsed ? 'Show more' : 'Show less'"
                                                 (click)="toggleCollapse()"
                                             >
                                                 {{ isCollapsed ? 'Show more' : 'Show less' }}
@@ -144,8 +172,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                     <!-- Error Section -->
                     @if (hasError()) {
                         <div class="error-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isErrorExpanded"
+                                matTooltip="Error"
                                 (click)="toggleSection('error')"
                             >
                                 <app-svg-icon
@@ -153,7 +184,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                     size="1.1rem"
                                 />
                                 Error
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isErrorExpanded"
@@ -171,8 +202,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
                     <!-- Raw Data Section -->
                     <div class="raw-data-container">
-                        <div
+                        <button
+                            type="button"
                             class="section-heading"
+                            [attr.aria-expanded]="isRawDataExpanded"
+                            matTooltip="Raw Execution Data"
                             (click)="toggleSection('rawData')"
                         >
                             <app-svg-icon
@@ -180,7 +214,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 size="1.1rem"
                             />
                             Raw Execution Data
-                        </div>
+                        </button>
                         <div
                             class="collapsible-content grid-collapsible"
                             [class.expanded]="isRawDataExpanded"
@@ -205,6 +239,18 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .python-flow-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
@@ -277,7 +323,14 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             }
 
             /* Section styling */
+            // The button that folds its section, drawn as the heading row it was.
             .section-heading {
+                width: 100%;
+                padding: 0;
+                border: none;
+                background: none;
+                font-family: inherit;
+                text-align: left;
                 font-size: var(--text-body-medium-size);
                 font-weight: var(--text-body-medium-weight);
                 line-height: var(--text-body-medium-line-height);
@@ -287,6 +340,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 user-select: none;
                 display: flex;
                 align-items: center;
+            }
+
+            // Drawn inside: the collapsible content around clips it.
+            .section-heading:focus-visible {
+                outline-offset: -2px;
             }
 
             .section-heading app-svg-icon {
@@ -357,7 +415,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 margin-top: 0.25rem;
             }
 
-            .toggle-button:hover {
+            .toggle-button:is(:hover, :focus-visible) {
                 text-decoration: underline;
             }
 

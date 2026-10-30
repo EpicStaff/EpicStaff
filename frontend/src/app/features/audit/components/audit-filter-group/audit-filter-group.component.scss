@@ -96,7 +96,7 @@ $padding-x: 10px;
     color: var(--color-text-secondary);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
         color: var(--color-text-primary);
     }

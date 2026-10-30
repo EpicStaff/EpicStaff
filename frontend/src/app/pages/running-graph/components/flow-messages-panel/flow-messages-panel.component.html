@@ -25,8 +25,10 @@
     />
 
     <button
+        type="button"
         [disabled]="!selectedSessionId"
         (click)="openSessionPage()"
+        aria-label="Open full session page"
         matTooltip="Open full session page"
         class="btn-go-to-arrow"
     >
@@ -38,7 +40,10 @@
     </button>
 
     <button
+        #closeButton
+        type="button"
         (click)="close.emit()"
+        aria-label="Close"
         matTooltip="Close"
         class="panel-header__close"
     >

@@ -11,7 +11,8 @@
     <button
         class="audit-select__trigger"
         type="button"
-        [attr.aria-label]="ariaLabel() || null"
+        [attr.aria-label]="triggerName()"
+        [matTooltip]="triggerName()"
         appSelectDropdownTrigger
     >
         <span class="audit-select__label">{{ selectedLabel() }}</span>

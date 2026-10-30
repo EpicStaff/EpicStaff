@@ -52,7 +52,7 @@ describe('SecretUsageDialogComponent', () => {
 
     /** The dialog's own "Open node" button, one per node row. */
     function openNodeButtons(): HTMLElement[] {
-        return Array.from(element.querySelectorAll<HTMLElement>('button[title="Open node"]'));
+        return Array.from(element.querySelectorAll<HTMLElement>('button[aria-label="Open node"]'));
     }
 
     it('lists two same-named nodes as two rows and counts both', () => {

@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     ButtonComponent,
     CustomInputComponent,
@@ -64,6 +65,7 @@ const DUPLICATE_EMBEDDING_NAME_MESSAGE =
         LlmModelSelectorComponent,
         LlmReasoningEffortFieldComponent,
         EnterSubmitDirective,
+        MatTooltip,
         RealtimeConfigFormComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,

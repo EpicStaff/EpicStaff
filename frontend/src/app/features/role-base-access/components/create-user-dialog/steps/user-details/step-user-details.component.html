@@ -27,9 +27,12 @@
                 ></app-help-tooltip>
             </label>
 
+            <!-- The dialog opens with the focus here, its first field. -->
             <app-custom-input
+                cdkFocusInitial
                 (blur)="trimEmail()"
                 placeholder="Enter user email..."
+                ariaLabel="Email"
                 formControlName="email"
             />
         </div>
@@ -47,6 +50,7 @@
                 <app-custom-input
                     type="password"
                     [placeholder]="editMode() ? 'Leave blank to keep current...' : 'Enter user password...'"
+                    ariaLabel="Password"
                     formControlName="password"
                 />
             </div>
@@ -73,6 +77,9 @@
             ></app-help-tooltip>
         </label>
 
-        <app-toggle-switch formControlName="superadmin" />
+        <app-toggle-switch
+            ariaLabel="Make Superadmin"
+            formControlName="superadmin"
+        />
     </div>
 </form>

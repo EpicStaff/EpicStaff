@@ -55,13 +55,20 @@ input[type='number'] {
         font-size: 1.75rem;
         line-height: 100%;
 
-        &:disabled {
+        // At the bound the button stays focusable (aria-disabled), so stepping up to the max keeps the focus.
+        &:disabled,
+        &[aria-disabled='true'] {
             opacity: 0.6;
             cursor: not-allowed;
         }
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
             background-color: var(--color-ks-button-activated);
+        }
+
+        // The wrapper clips (overflow: hidden): the ring is drawn inside.
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         &--minus {

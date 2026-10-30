@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, LoadingSpinnerComponent } from '@shared/components';
 import { finalize } from 'rxjs';
 
@@ -26,7 +27,7 @@ export const PLUGIN_REVIEW_DIALOG_TITLE_ID = 'plugin-review-dialog-title';
  */
 @Component({
     selector: 'app-plugin-review-dialog',
-    imports: [AppSvgIconComponent, LoadingSpinnerComponent, PluginReviewPanelComponent],
+    imports: [MatTooltip, AppSvgIconComponent, LoadingSpinnerComponent, PluginReviewPanelComponent],
     templateUrl: './plugin-review-dialog.component.html',
     styleUrl: './plugin-review-dialog.component.scss',
 })

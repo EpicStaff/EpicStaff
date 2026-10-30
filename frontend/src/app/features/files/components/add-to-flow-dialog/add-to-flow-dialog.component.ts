@@ -1,5 +1,7 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
@@ -7,8 +9,9 @@ import {
     ElementRef,
     HostListener,
     inject,
+    Injector,
     signal,
-    ViewChild,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -38,7 +41,7 @@ interface FlowOption {
 
 @Component({
     selector: 'app-add-to-flow-dialog',
-    imports: [FormsModule, AppSvgIconComponent, MatTooltipModule, EnterSubmitDirective],
+    imports: [FormsModule, CdkTrapFocus, AppSvgIconComponent, MatTooltipModule, EnterSubmitDirective],
     templateUrl: './add-to-flow-dialog.component.html',
     styleUrls: ['./add-to-flow-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,7 +54,9 @@ export class AddToFlowDialogComponent {
     private confirmationDialogService = inject(ConfirmationDialogService);
     private destroyRef = inject(DestroyRef);
 
-    @ViewChild('selectorEl') selectorElRef?: ElementRef<HTMLElement>;
+    private readonly selectorElRef = viewChild<ElementRef<HTMLButtonElement>>('selectorEl');
+    private readonly flowSearchInput = viewChild<ElementRef<HTMLInputElement>>('flowSearchInput');
+    private readonly injector = inject(Injector);
 
     readonly searchQuery = signal('');
     readonly flows = signal<FlowOption[]>([]);
@@ -112,11 +117,24 @@ export class AddToFlowDialogComponent {
     toggleDropdown(event: MouseEvent): void {
         event.stopPropagation();
         const opening = !this.dropdownOpen();
-        if (opening && this.selectorElRef) {
-            const rect = this.selectorElRef.nativeElement.getBoundingClientRect();
+        const selector = this.selectorElRef()?.nativeElement;
+        if (opening && selector) {
+            const rect = selector.getBoundingClientRect();
             this.dropdownMaxHeight.set(Math.max(120, window.innerHeight - rect.bottom - 12));
         }
         this.dropdownOpen.update((v) => !v);
+        if (opening) {
+            afterNextRender(() => this.flowSearchInput()?.nativeElement.focus(), { injector: this.injector });
+        }
+    }
+
+    /** Closes only the flow list: the dialog's own Escape handling never sees the key. */
+    onFlowListEscape(event: Event): void {
+        if (!this.dropdownOpen()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.dropdownOpen.set(false);
+        this.selectorElRef()?.nativeElement.focus();
     }
 
     stopPropagation(event: MouseEvent): void {

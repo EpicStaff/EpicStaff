@@ -1,10 +1,23 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
+import {
+    afterNextRender,
+    ChangeDetectionStrategy,
+    Component,
+    DestroyRef,
+    ElementRef,
+    inject,
+    Injector,
+    signal,
+    viewChild,
+    viewChildren,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, AuthorshipDetailsComponent, ConfirmationDialogService } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
+import { isFocusLost } from '@shared/utils';
 
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { StorageGraph, StorageItemInfo } from '../../models/storage.models';
@@ -22,9 +35,14 @@ interface StorageDetailsDialogData extends StorageItemInfo {
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StorageDetailsDialogComponent {
+    private readonly closeButton = viewChild.required<ElementRef<HTMLButtonElement>>('closeButton');
+    private readonly removeButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeButton');
+
     readonly dialogRef = inject(DialogRef<void>);
     readonly data = inject<StorageDetailsDialogData>(DIALOG_DATA);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
+    private readonly document = inject(DOCUMENT);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly storageApiService = inject(StorageApiService);
 
@@ -103,10 +121,29 @@ export class StorageDetailsDialogComponent {
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: () => {
+                            const removedIndex = this.usedInFlows.findIndex((flow) => flow.id === graph.id);
                             this.usedInFlowsSignal.update((flows) => flows.filter((f) => f.id !== graph.id));
+                            this.keepFocusAfterRemoval(removedIndex);
                         },
                     });
             });
+    }
+
+    /**
+     * The removed chip takes its focused Remove button along, which would drop the focus out of the dialog. It moves to
+     * the Remove button now in that place (or the last one), or to Close once no flow is left. Focus the user moved
+     * elsewhere meanwhile stays where it is.
+     */
+    private keepFocusAfterRemoval(index: number): void {
+        afterNextRender(
+            () => {
+                if (!isFocusLost(this.document)) return;
+                const buttons = this.removeButtons();
+                const next = buttons[Math.min(index, buttons.length - 1)];
+                (next ?? this.closeButton()).nativeElement.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     private formatDate(value?: string): string {

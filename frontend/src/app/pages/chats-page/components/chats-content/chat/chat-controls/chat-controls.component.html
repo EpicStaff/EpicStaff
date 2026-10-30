@@ -3,14 +3,20 @@
     <!-- Text input area that shows when keyboard mode is active -->
     @if (isKeyboardMode() && isConversationSetuped) {
         <div class="text-input-container">
+            <!-- Enter sends, Shift+Enter starts a new line, Tab leaves the field. -->
             <textarea
+                #messageInput
                 class="message-input"
                 placeholder="Enter your message..."
+                aria-label="Message"
+                matTooltip="Message"
                 [(ngModel)]="messageText"
                 (keydown.enter)="$event.preventDefault(); sendMessage()"
             ></textarea>
             <button
+                type="button"
                 class="send-btn"
+                aria-label="Send message"
                 matTooltip="Send message"
                 (click)="sendMessage()"
             >
@@ -25,7 +31,10 @@
     <!-- Initial controls for starting conversation -->
     @if (!isConversationSetuped) {
         <div class="controls-container">
+            <!-- aria-disabled, not disabled: it keeps the focus while it connects. -->
             <button
+                #startSpeakingButton
+                type="button"
                 class="start-speaking-btn"
                 [appCollapseOnOverflow]="true"
                 collapseOnOverflowTarget=".start-speaking-btn__label"
@@ -35,7 +44,7 @@
                 [matTooltip]="isConnecting() ? 'Connecting...' : 'Start Speaking'"
                 matTooltipShowDelay="400"
                 (click)="onStartSpeaking()"
-                [disabled]="!canStartSpeaking()"
+                [attr.aria-disabled]="!canStartSpeaking()"
             >
                 @if (!isConnecting()) {
                     <app-svg-icon
@@ -63,9 +72,13 @@
             <div class="recording-controls">
                 <!-- Switch to keyboard/mic button -->
                 <button
+                    #keyboardToggle
+                    type="button"
                     class="control-btn"
                     [class.active]="isKeyboardMode()"
-                    matTooltip="Toggle keyboard input"
+                    aria-label="Keyboard input"
+                    [attr.aria-pressed]="isKeyboardMode()"
+                    [matTooltip]="isKeyboardMode() ? 'Keyboard input: On' : 'Keyboard input: Off'"
                     (click)="toggleInputMode()"
                 >
                     <app-svg-icon
@@ -75,9 +88,12 @@
                 </button>
                 <!-- Pause/Resume microphone button -->
                 <button
+                    type="button"
                     class="control-btn"
                     [class.active]="isMicrophoneMuted()"
-                    matTooltip="Mute microphone"
+                    aria-label="Mute microphone"
+                    [attr.aria-pressed]="isMicrophoneMuted()"
+                    [matTooltip]="isMicrophoneMuted() ? 'Mute microphone: On' : 'Mute microphone: Off'"
                     (click)="toggleRecording()"
                 >
                     <app-svg-icon
@@ -89,7 +105,9 @@
                 <span class="control-divider"></span>
                 <!-- End conversation button -->
                 <button
+                    type="button"
                     class="control-btn end-btn"
+                    aria-label="End conversation"
                     matTooltip="End conversation"
                     (click)="stopConversation()"
                 >

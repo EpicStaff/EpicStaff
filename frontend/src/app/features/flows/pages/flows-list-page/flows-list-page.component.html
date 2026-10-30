@@ -223,6 +223,7 @@
                         [class.active]="showFilterSidebar() || activeFilterCount() > 0"
                     >
                         <button
+                            #filterToggle
                             type="button"
                             class="filter-trigger__toggle"
                             matTooltip="Filter"
@@ -246,7 +247,7 @@
                                 class="filter-clear-inline"
                                 aria-label="Clear all filters"
                                 matTooltip="Clear all filters"
-                                (click)="clearAllFilters()"
+                                (click)="clearAllFilters(); filterToggle.focus()"
                             >
                                 <app-svg-icon
                                     icon="x"
@@ -313,6 +314,7 @@
             <aside
                 #filterPanel
                 class="filter-panel"
+                (keydown.escape)="closeFilterSidebarOnEscape($event)"
                 [style.flex-basis.px]="filterPanelWidth()"
             >
                 <div
@@ -324,7 +326,7 @@
                     [sidebarMinWidth]="filterPanelWidthOptions.minWidth"
                     [sidebarMaxWidth]="filterPanelWidthOptions.maxWidth"
                 ></div>
-                <app-flows-filter-sidebar (closeSidebar)="toggleFilterSidebar()" />
+                <app-flows-filter-sidebar (closeSidebar)="closeFilterSidebar()" />
             </aside>
         }
     </section>

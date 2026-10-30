@@ -1,7 +1,17 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    DestroyRef,
+    effect,
+    ElementRef,
+    inject,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import {
     AppSvgIconComponent,
@@ -25,12 +35,15 @@ import { OrganizationsStorageService } from '../../../role-base-access/services/
         CustomInputComponent,
         AppSvgIconComponent,
         ValidationErrorsComponent,
+        MatTooltip,
     ],
     templateUrl: './onboarding-page.component.html',
     styleUrls: ['./onboarding-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class OnboardingPageComponent {
+    private readonly firstChoice = viewChild<ElementRef<HTMLButtonElement>>('firstChoice');
+
     private readonly router = inject(Router);
     private readonly authService = inject(AuthService);
     private readonly organizationsStorageService = inject(OrganizationsStorageService);
@@ -43,6 +56,8 @@ export class OnboardingPageComponent {
         nonNullable: true,
         validators: [Validators.required, notWhitespaceValidator(), Validators.minLength(3), Validators.maxLength(50)],
     });
+
+    private readonly focusFirstChoice = effect(() => this.firstChoice()?.nativeElement.focus());
 
     onContinue(): void {
         if (this.orgNameControl.invalid) {

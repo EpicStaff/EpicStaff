@@ -26,7 +26,16 @@
         </div>
     </div>
     <h4 class="rag__name">
-        {{ rag().name }}
+        <!-- Picks the RAG type, from the keyboard too; its click reaches the card's handler. -->
+        <button
+            type="button"
+            class="rag__pick"
+            [attr.aria-pressed]="selected()"
+            [attr.aria-disabled]="rag().disabled || null"
+            [matTooltip]="rag().name"
+        >
+            {{ rag().name }}
+        </button>
     </h4>
     <span class="rag__description">
         {{ rag().description }}

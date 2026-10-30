@@ -3,9 +3,10 @@
         <div class="storage-tree__header">
             <span class="storage-tree__header-label">Folder Branches</span>
             <button
+                type="button"
                 class="storage-tree__header-close"
                 aria-label="Close panel"
-                matTooltip="Close"
+                matTooltip="Close panel"
                 matTooltipPosition="below"
                 (click)="closeSidebar.emit()"
             >
@@ -20,10 +21,11 @@
             <span class="storage-tree__toolbar-label">Folders</span>
             <button
                 *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
+                #toolbarButton
+                type="button"
                 class="storage-tree__toolbar-btn"
-                aria-label="Add folder"
+                aria-label="Create folder"
                 matTooltip="Create folder"
-                matTooltipPosition="above"
                 (click)="onAddFolderClick()"
             >
                 <app-svg-icon
@@ -33,10 +35,13 @@
             </button>
             <button
                 *appHasPermission="[ResourceCode.Files, [ActionCode.Export, ActionCode.Delete]]"
+                #toolbarButton
+                type="button"
                 class="storage-tree__toolbar-btn"
                 aria-label="More options"
+                aria-haspopup="menu"
+                [attr.aria-expanded]="moreMenuOpen()"
                 matTooltip="More options"
-                matTooltipPosition="above"
                 (click)="onMoreOptionsClick($event)"
             >
                 <app-svg-icon
@@ -68,6 +73,7 @@
 >
     @for (node of asStorageItems(nodes); track node.path || node.name + '-' + $index) {
         <div
+            #treeRow
             class="storage-tree__item"
             [attr.data-path]="node.path"
             [class.storage-tree__item--selected]="isItemSelected(node)"
@@ -87,11 +93,16 @@
             (dragleave)="onDragLeave($event, node)"
             (drop)="onDrop($event, node)"
             (dragend)="onDragEnd()"
+            (focusin)="onRowFocusIn($event, node)"
         >
             @if (node.type === 'folder' && !node.is_empty) {
                 <button
+                    type="button"
                     class="storage-tree__chevron-btn"
                     [class.storage-tree__chevron-btn--expanded]="node.isExpanded"
+                    [attr.aria-expanded]="!!node.isExpanded"
+                    [attr.aria-label]="(node.isExpanded ? 'Collapse ' : 'Expand ') + node.name"
+                    [matTooltip]="node.isExpanded ? 'Collapse folder' : 'Expand folder'"
                     (click)="onFolderChevronClick($event, node)"
                 >
                     <app-svg-icon
@@ -111,28 +122,35 @@
 
             @if (node.type === 'folder' && node.is_empty) {
                 <div class="storage-tree__folder-meta">
-                    <span
+                    <!-- Selects the item, from the keyboard too; its click reaches the row's handler. -->
+                    <button
+                        #nameButton
+                        type="button"
                         class="storage-tree__name storage-tree__name--folder-meta"
-                        appTooltipOnOverflow
+                        [attr.data-path]="node.path"
+                        [attr.aria-pressed]="isItemSelected(node)"
                         [matTooltip]="node.name"
-                        matTooltipPosition="above"
                         matTooltipShowDelay="500"
                         matTooltipClass="tree-name-tooltip"
                     >
                         {{ node.name }}
-                    </span>
+                    </button>
                     <span class="storage-tree__empty-badge">Empty</span>
                 </div>
             } @else {
-                <span
+                <!-- Selects the item, from the keyboard too; its click reaches the row's handler. -->
+                <button
+                    #nameButton
+                    type="button"
                     class="storage-tree__name"
-                    appTooltipOnOverflow
+                    [attr.data-path]="node.path"
+                    [attr.aria-pressed]="isItemSelected(node)"
                     [matTooltip]="node.name"
-                    matTooltipPosition="above"
                     matTooltipShowDelay="500"
                     matTooltipClass="tree-name-tooltip"
-                    >{{ node.name }}</span
                 >
+                    {{ node.name }}
+                </button>
             }
 
             @if (!renamingItem() || renamingItem()?.path !== node.path) {
@@ -142,10 +160,10 @@
                 >
                     <button
                         *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
+                        type="button"
                         class="storage-tree__hover-btn storage-tree__hover-btn--plus"
-                        aria-label="Add folder"
+                        aria-label="Create folder"
                         matTooltip="Create folder"
-                        matTooltipPosition="above"
                         (click)="onAddFolderClickForNode($event, node)"
                     >
                         <app-svg-icon
@@ -154,10 +172,12 @@
                         ></app-svg-icon>
                     </button>
                     <button
+                        type="button"
                         class="storage-tree__hover-btn"
-                        aria-label="More"
+                        aria-label="More options"
+                        aria-haspopup="menu"
+                        [attr.aria-expanded]="contextMenuOpen() && contextMenuItem() === node"
                         matTooltip="More options"
-                        matTooltipPosition="above"
                         (click)="onKebabClick($event, node)"
                     >
                         <app-svg-icon
@@ -185,23 +205,24 @@
         [style.left.px]="renamePos()?.left"
         [style.right.px]="renamePos()?.right"
         (click)="$event.stopPropagation()"
+        (focusout)="onRenameFocusOut($event)"
+        (keydown.escape)="onRenameCancel($event)"
     >
         <input
             #renameInput
             class="storage-tree__rename-input"
             type="text"
+            aria-label="New name"
+            matTooltip="New name"
             [value]="renameValue"
             (input)="renameValue = renameInput.value"
             (keydown.enter)="onRenameEnter($event)"
-            (keydown.escape)="onRenameCancel($event)"
-            (blur)="onRenameCancel($event)"
         />
         <button
             class="storage-tree__rename-btn storage-tree__rename-btn--cancel"
             type="button"
             aria-label="Cancel rename"
-            matTooltip="Cancel"
-            matTooltipPosition="above"
+            matTooltip="Cancel rename"
             (mousedown)="$event.preventDefault()"
             (click)="onRenameCancel($event)"
         >
@@ -214,8 +235,7 @@
             class="storage-tree__rename-btn storage-tree__rename-btn--confirm"
             type="button"
             aria-label="Confirm rename"
-            matTooltip="Confirm"
-            matTooltipPosition="above"
+            matTooltip="Confirm rename"
             (mousedown)="$event.preventDefault()"
             (click)="onRenameConfirm()"
         >
@@ -233,23 +253,34 @@
         class="storage-tree__overlay"
         (click)="closeMoreMenu()"
     ></div>
+    <!-- Takes the focus on opening and hands it back to the button that opened it when it closes. -->
     <div
         class="storage-tree__context-menu"
+        role="menu"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
         [style.left.px]="moreMenuPosition().x"
         [style.top.px]="moreMenuPosition().y"
+        (keydown.escape)="closeMenuOnEscape($event)"
     >
         <button
             *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
+            type="button"
+            role="menuitem"
             class="storage-tree__context-menu-item"
             [class.storage-tree__context-menu-item--disabled]="selectedPaths().size === 0"
             [disabled]="selectedPaths().size === 0"
+            matTooltip="Download Selected"
             (click)="onMoreMenuAction('download-selected')"
         >
             Download Selected
         </button>
         <button
             *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
+            type="button"
+            role="menuitem"
             class="storage-tree__context-menu-item"
+            matTooltip="Download All"
             (click)="onMoreMenuAction('download-all')"
         >
             Download All
@@ -257,9 +288,12 @@
         <div class="storage-tree__context-menu-divider"></div>
         <button
             *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
+            type="button"
+            role="menuitem"
             class="storage-tree__context-menu-item"
             [class.storage-tree__context-menu-item--disabled]="selectedPaths().size === 0"
             [disabled]="selectedPaths().size === 0"
+            matTooltip="Delete Selected"
             (click)="onMoreMenuAction('delete-selected')"
         >
             Delete Selected
@@ -273,15 +307,23 @@
         class="storage-tree__overlay"
         (click)="closeContextMenu()"
     ></div>
+    <!-- Takes the focus on opening and hands it back to what had it (the row's ⋮ button) when it closes. -->
     <div
         class="storage-tree__context-menu"
+        role="menu"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
         [style.left.px]="contextMenuPosition().x"
         [style.top.px]="contextMenuPosition().y"
+        (keydown.escape)="closeMenuOnEscape($event)"
     >
         @if (canGroupSelected()) {
             <button
                 *appHasPermission="[ResourceCode.Files, [ActionCode.Create, ActionCode.Update]]"
+                type="button"
+                role="menuitem"
                 class="storage-tree__context-menu-item"
+                matTooltip="Group"
                 (click)="onContextMenuAction('group-selected')"
             >
                 Group
@@ -291,7 +333,10 @@
         <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Read]">
             <button
                 *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                type="button"
+                role="menuitem"
                 class="storage-tree__context-menu-item"
+                matTooltip="Add to flow"
                 (click)="onContextMenuAction('add-to-flow')"
             >
                 Add to flow
@@ -299,7 +344,10 @@
         </ng-container>
         @if (canAddToCollection()) {
             <button
+                type="button"
+                role="menuitem"
                 class="storage-tree__context-menu-item"
+                matTooltip="Add to collection…"
                 (click)="onContextMenuAction('add-to-collection')"
             >
                 Add to collection…
@@ -307,34 +355,49 @@
         }
         <button
             *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
+            type="button"
+            role="menuitem"
             class="storage-tree__context-menu-item"
+            matTooltip="Download"
             (click)="onContextMenuAction('download')"
         >
             Download
         </button>
         <button
             *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
+            type="button"
+            role="menuitem"
             class="storage-tree__context-menu-item"
+            matTooltip="Copy to..."
             (click)="onContextMenuAction('copy')"
         >
             Copy to...
         </button>
         <button
             *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
+            type="button"
+            role="menuitem"
             class="storage-tree__context-menu-item"
+            matTooltip="Duplicate here"
             (click)="onContextMenuAction('duplicate-here')"
         >
             Duplicate here
         </button>
         <button
             *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
+            type="button"
+            role="menuitem"
             class="storage-tree__context-menu-item"
+            matTooltip="Rename"
             (click)="onContextMenuAction('rename')"
         >
             Rename
         </button>
         <button
+            type="button"
+            role="menuitem"
             class="storage-tree__context-menu-item"
+            matTooltip="View details"
             (click)="onContextMenuAction('view-details')"
         >
             View details
@@ -342,7 +405,10 @@
         <div class="storage-tree__context-menu-divider"></div>
         <button
             *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
+            type="button"
+            role="menuitem"
             class="storage-tree__context-menu-item"
+            matTooltip="Delete"
             (click)="onContextMenuAction('delete')"
         >
             Delete

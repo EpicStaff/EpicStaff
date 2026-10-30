@@ -17,7 +17,7 @@
                         type="outline-primary"
                         leftIcon="trash"
                         iconSize="14px"
-                        [disabled]="emptying()"
+                        [ariaDisabled]="emptying()"
                         (click)="onEmptyRecycleBin()"
                     >
                         {{ emptyButtonLabel() }}

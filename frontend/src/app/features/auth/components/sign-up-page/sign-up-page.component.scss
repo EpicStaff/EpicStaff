@@ -57,7 +57,7 @@
             text-decoration: none;
             cursor: pointer;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 text-decoration: underline;
             }
         }

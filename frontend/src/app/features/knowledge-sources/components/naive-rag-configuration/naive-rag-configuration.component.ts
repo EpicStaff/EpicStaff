@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -57,6 +58,7 @@ import { DocumentStatusFilter } from './configuration-table/configuration-table.
         AppSvgIconComponent,
         SelectComponent,
         HasPermissionDirective,
+        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

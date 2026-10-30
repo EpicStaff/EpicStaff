@@ -64,7 +64,7 @@
     &__tooltip-icon {
         color: var(--accent-color);
 
-        &:hover {
+        &:is(:hover, :focus-within) {
             opacity: 0.7;
         }
     }

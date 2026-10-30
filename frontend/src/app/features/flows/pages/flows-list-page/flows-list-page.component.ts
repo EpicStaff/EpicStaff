@@ -2,16 +2,20 @@ import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
     computed,
     DestroyRef,
     effect,
+    ElementRef,
     inject,
+    Injector,
     OnDestroy,
     OnInit,
     signal,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -184,6 +188,10 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         FILTER_PANEL_WIDTH_KEY,
         FILTER_PANEL_WIDTH_OPTIONS
     );
+
+    private readonly filterToggle = viewChild.required<ElementRef<HTMLButtonElement>>('filterToggle');
+    private readonly filterSidebar = viewChild(FlowsFilterSidebarComponent);
+    private readonly injector = inject(Injector);
 
     private readonly sortDropdownOrders: readonly FlowSortOrder[] = FLOWS_SORT_MENU_ITEMS.map((i) => i.value);
 
@@ -365,7 +373,21 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
     // --- Filter sidebar ---
     public toggleFilterSidebar(): void {
-        this.showFilterSidebar.update((v) => !v);
+        const opening = !this.showFilterSidebar();
+        this.showFilterSidebar.set(opening);
+        // The panel comes after the page content, so without this Tab would walk the whole list to reach it.
+        if (opening) afterNextRender(() => this.filterSidebar()?.focus(), { injector: this.injector });
+    }
+
+    public closeFilterSidebar(): void {
+        this.showFilterSidebar.set(false);
+        this.filterToggle().nativeElement.focus();
+    }
+
+    /** Escape inside the filter panel closes only the panel; page-level Escape handlers never see it. */
+    public closeFilterSidebarOnEscape(event: Event): void {
+        event.stopPropagation();
+        this.closeFilterSidebar();
     }
 
     // --- Sort menu ---

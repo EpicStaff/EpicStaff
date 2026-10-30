@@ -12,6 +12,8 @@
             type="button"
             [attr.aria-expanded]="isOpen()"
             [attr.aria-description]="disabled() && hint() ? hint() : null"
+            [matTooltip]="label()"
+            [matTooltipDisabled]="disabled()"
             [disabled]="disabled()"
             (click)="toggle()"
         >
@@ -28,7 +30,7 @@
             @if (summary()) {
                 <span
                     class="filter-group__summary"
-                    [title]="summary()"
+                    [matTooltip]="summary()"
                     >{{ summary() }}</span
                 >
             }
@@ -39,6 +41,7 @@
                 class="filter-group__clear"
                 type="button"
                 [attr.aria-label]="'Clear ' + label()"
+                [matTooltip]="'Clear ' + label()"
                 (click)="cleared.emit()"
             >
                 <app-svg-icon

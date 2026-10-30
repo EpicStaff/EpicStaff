@@ -6,10 +6,10 @@
     <div class="copy-to-dialog__header">
         <h2 class="copy-to-dialog__title">Copy to Folder</h2>
         <button
+            type="button"
             class="copy-to-dialog__close"
             aria-label="Close"
             matTooltip="Close"
-            matTooltipPosition="above"
             (click)="onCancel()"
         >
             <app-svg-icon
@@ -20,13 +20,23 @@
     </div>
 
     <div class="copy-to-dialog__body">
-        <div class="copy-to-dialog__field">
+        <!-- Escape here closes only the folder list, not the dialog. -->
+        <div
+            class="copy-to-dialog__field"
+            (keydown.escape)="onFolderListEscape($event)"
+        >
             <label class="copy-to-dialog__label">Folder <span class="copy-to-dialog__required">*</span></label>
-            <div
+            <!-- The dialog opens with the focus here: the only choice the form asks for. -->
+            <button
                 #selectorEl
+                type="button"
                 class="copy-to-dialog__selector"
                 [class.copy-to-dialog__selector--filled]="selectedPath() !== null"
                 [class.copy-to-dialog__selector--open]="dropdownOpen()"
+                cdkFocusInitial
+                [attr.aria-expanded]="dropdownOpen()"
+                [attr.aria-label]="'Folder: ' + (selectedPath() !== null ? selectedFolderLabel : 'Select folder')"
+                matTooltip="Folder"
                 (click)="toggleDropdown($event)"
             >
                 <span class="copy-to-dialog__selector-text">
@@ -38,11 +48,13 @@
                     class="copy-to-dialog__selector-chevron"
                     [class.copy-to-dialog__selector-chevron--open]="dropdownOpen()"
                 ></app-svg-icon>
-            </div>
+            </button>
 
             @if (dropdownOpen()) {
+                <!-- Tab cycles inside the open list; Escape or picking a folder hands the focus back to the selector. -->
                 <div
                     class="copy-to-dialog__dropdown"
+                    cdkTrapFocus
                     [style.max-height.px]="dropdownMaxHeight()"
                     (click)="stopPropagation($event)"
                 >
@@ -53,11 +65,15 @@
                             class="copy-to-dialog__search-icon"
                         ></app-svg-icon>
                         <input
+                            #folderSearchInput
                             class="copy-to-dialog__search-input"
                             type="text"
                             placeholder="Search folder..."
+                            aria-label="Search folder"
+                            matTooltip="Search folder"
                             [ngModel]="searchQuery()"
                             (ngModelChange)="searchQuery.set($event)"
+                            (keydown.enter)="$event.preventDefault()"
                         />
                     </div>
 
@@ -73,7 +89,10 @@
                                 [style.padding-left.px]="12"
                                 (click)="selectFolder('')"
                             >
-                                <span class="copy-to-dialog__chevron-btn copy-to-dialog__chevron-btn--open">
+                                <span
+                                    class="copy-to-dialog__chevron-btn copy-to-dialog__chevron-btn--open"
+                                    aria-hidden="true"
+                                >
                                     <app-svg-icon
                                         icon="expand"
                                         size="0.5rem"
@@ -84,7 +103,15 @@
                                     icon="folder-storage"
                                     size="12px"
                                 ></app-svg-icon>
-                                <span class="copy-to-dialog__node-name">/</span>
+                                <!-- Picks the folder, from the keyboard too; its click reaches the row's handler. -->
+                                <button
+                                    type="button"
+                                    class="copy-to-dialog__node-name"
+                                    [attr.aria-pressed]="isSelected('')"
+                                    matTooltip="/"
+                                >
+                                    /
+                                </button>
                             </div>
                             @for (node of visibleNodes(); track node.path) {
                                 <div
@@ -93,10 +120,14 @@
                                     [style.padding-left.px]="32 + node.level * 20"
                                     (click)="selectFolder(node.path)"
                                 >
-                                    @if (node.hasChildren && !searchQuery().trim()) {
+                                    @if (canExpand(node)) {
                                         <button
+                                            type="button"
                                             class="copy-to-dialog__chevron-btn"
                                             [class.copy-to-dialog__chevron-btn--open]="node.isExpanded"
+                                            [attr.aria-expanded]="node.isExpanded"
+                                            [attr.aria-label]="(node.isExpanded ? 'Collapse ' : 'Expand ') + node.name"
+                                            [matTooltip]="(node.isExpanded ? 'Collapse ' : 'Expand ') + node.name"
                                             (click)="toggleExpand($event, node)"
                                         >
                                             <app-svg-icon
@@ -115,7 +146,17 @@
                                         size="12px"
                                     ></app-svg-icon>
 
-                                    <span class="copy-to-dialog__node-name">{{ node.name }}</span>
+                                    <!-- Picks the folder, from the keyboard too (its click reaches the row's handler);
+                                         Right and Left arrows expand and collapse it. -->
+                                    <button
+                                        type="button"
+                                        class="copy-to-dialog__node-name"
+                                        [attr.aria-pressed]="isSelected(node.path)"
+                                        [matTooltip]="'/' + node.path"
+                                        (keydown)="onFolderKeydown($event, node)"
+                                    >
+                                        {{ node.name }}
+                                    </button>
 
                                     @if (node.isEmpty) {
                                         <span class="copy-to-dialog__empty-badge">Empty</span>
@@ -131,13 +172,17 @@
 
     <div class="copy-to-dialog__footer">
         <button
+            type="button"
             class="copy-to-dialog__btn copy-to-dialog__btn--cancel"
+            matTooltip="Cancel"
             (click)="onCancel()"
         >
             Cancel
         </button>
         <button
+            type="button"
             class="copy-to-dialog__btn copy-to-dialog__btn--confirm"
+            matTooltip="Copy"
             [disabled]="!isValid"
             (click)="onConfirm()"
         >

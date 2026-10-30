@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { AppSvgIconComponent, ButtonComponent, SpinnerComponent, TabButtonComponent } from '@shared/components';
 import { DragHoverDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
@@ -65,6 +66,7 @@ interface FilesTabConfig {
         CollectionsListPageComponent,
         StoragePageComponent,
         KeyValueTablesPageComponent,
+        MatTooltip,
     ],
     templateUrl: './files-list-page.component.html',
     styleUrls: ['./files-list-page.component.scss'],

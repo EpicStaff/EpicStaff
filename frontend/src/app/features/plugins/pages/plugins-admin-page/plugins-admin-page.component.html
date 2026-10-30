@@ -34,7 +34,14 @@
         let-row
     >
         @if (pluginOf(row); as plugin) {
-            <span class="cell-text cell-text--strong">{{ plugin.name }}</span>
+            <!-- Opens the plugin, from the keyboard too; its click reaches the row's handler. -->
+            <button
+                type="button"
+                class="cell-text cell-text--strong cell-name"
+                [matTooltip]="plugin.name"
+            >
+                {{ plugin.name }}
+            </button>
         }
     </ng-template>
     <ng-template

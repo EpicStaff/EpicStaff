@@ -103,7 +103,7 @@
     font-size: 13px;
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--color-secondary-btn-background-hover);
     }
 
@@ -184,7 +184,8 @@
         font-weight: 500;
     }
 
-    tbody tr:hover {
+    // A row is not focused itself: a control in it is.
+    tbody tr:is(:hover, :has(:focus-visible)) {
         background-color: var(--color-ghost-btn-hover);
     }
 }
@@ -303,8 +304,7 @@
     text-overflow: ellipsis;
     cursor: pointer;
 
-    &:focus-visible,
-    &.is-viewed {
+    &.is-viewed:not(:focus-visible) {
         outline: 1px solid var(--accent-color);
     }
 }
@@ -385,11 +385,11 @@
     font-size: 13px;
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
         background-color: var(--color-secondary-btn-background-hover);
     }
 
-    &:disabled {
+    &:is(:disabled, [aria-disabled='true']) {
         opacity: 0.35;
         cursor: default;
     }
@@ -399,7 +399,7 @@
     background-color: var(--accent-color);
     border-color: var(--accent-color);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
         background-color: var(--accent-color-hover);
     }
 }

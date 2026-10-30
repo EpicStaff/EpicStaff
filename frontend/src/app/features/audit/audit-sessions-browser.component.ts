@@ -1,17 +1,22 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
     DOCUMENT,
     effect,
+    ElementRef,
     inject,
+    Injector,
     OnInit,
     signal,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     ActionDropdownButtonComponent,
     ActionDropdownItem,
@@ -129,12 +134,19 @@ interface ViewedValue {
         ActionDropdownButtonComponent,
         HasPermissionDirective,
         ResizableSidebarDirective,
+        MatTooltip,
     ],
     templateUrl: './audit-sessions-browser.component.html',
     styleUrls: ['./audit-sessions-browser.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AuditSessionsBrowserComponent implements OnInit {
+    // The side panel comes after the table, so opening it moves the focus in and closing it hands it back.
+    private readonly filtersToggle = viewChild.required<ElementRef<HTMLButtonElement>>('filtersToggle');
+    private readonly filtersPanel = viewChild(AuditFiltersPanelComponent);
+    private readonly valueViewer = viewChild(AuditValueViewerComponent);
+    private readonly filterChips = viewChild(AuditFilterChipsComponent);
+
     private auditApiService = inject(AuditApiService);
     private flowApiService = inject(FlowsApiService);
     private agentService = inject(AgentDefinitionsApiService);
@@ -142,6 +154,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private mcpToolsService = inject(McpToolsService);
     private destroyRef = inject(DestroyRef);
     private document = inject(DOCUMENT);
+    private injector = inject(Injector);
     private toastService = inject(ToastService);
     // Read once: an org switch remounts this page, so a later org change must not redirect writes.
     private readonly activeOrgId = inject(ActiveOrgService).activeOrgId();
@@ -355,22 +368,29 @@ export class AuditSessionsBrowserComponent implements OnInit {
             this.viewedValue.set(null);
             this.valueViewerTrigger = null;
             this.isFiltersPanelOpen.set(true);
+            this.focusAfterRender(() => this.filtersPanel()?.focus());
             return;
         }
-        this.isFiltersPanelOpen.update((isOpen) => !isOpen);
+        const opening = !this.isFiltersPanelOpen();
+        this.isFiltersPanelOpen.set(opening);
+        if (opening) this.focusAfterRender(() => this.filtersPanel()?.focus());
     }
 
     public closeFiltersPanel(): void {
         this.draftFilter.set(this.appliedFilter());
         this.isFiltersPanelOpen.set(false);
+        this.filtersToggle().nativeElement.focus();
     }
 
     public applyFilters(state: AuditFilterState = this.draftFilter()): void {
+        const wasPanelOpen = this.isFiltersPanelOpen();
         this.draftFilter.set(state);
         this.appliedFilter.set(state);
         this.cursorStack.set([null]);
         this.isFiltersPanelOpen.set(false);
         this.loadSessions();
+        // the button that applied them goes with the panel
+        if (wasPanelOpen) this.filtersToggle().nativeElement.focus();
     }
 
     public removeFilter(key: string): void {
@@ -379,6 +399,24 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.draftFilter.set(next);
         this.cursorStack.set([null]);
         this.loadSessions();
+    }
+
+    // A chip's remove button goes with its chip: the focus moves to the chip now in its place, or to Filters when
+    // none is left.
+    protected removeChip(key: string): void {
+        const index = this.appliedChips().findIndex((chip) => chip.key === key);
+        this.removeFilter(key);
+        this.focusAfterRender(() => {
+            const chips = this.filterChips();
+            if (chips) chips.focusChip(index);
+            else this.filtersToggle().nativeElement.focus();
+        });
+    }
+
+    // Clear all goes with the chips it clears.
+    protected clearChips(): void {
+        this.clearFilters();
+        this.filtersToggle().nativeElement.focus();
     }
 
     public clearFilters(): void {
@@ -545,6 +583,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
         const rowName = row.event.name || row.nameLabel || '';
         this.valueViewerTrigger = trigger;
         this.viewedValue.set({ rowId: row.event.id, field, rowName, value, isPlainText });
+        this.focusAfterRender(() => this.valueViewer()?.focus());
     }
 
     protected isValueViewed(field: string, row: AuditRow): boolean {
@@ -557,6 +596,16 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.viewedValue.set(null);
         this.valueViewerTrigger?.focus();
         this.valueViewerTrigger = null;
+    }
+
+    // Escape in the value viewer is its own (it listens on the document); a dropdown that took this Escape marks it.
+    protected onPanelEscape(event: Event): void {
+        if (event.defaultPrevented || this.viewedValue() || !this.isFiltersPanelOpen()) return;
+        this.closeFiltersPanel();
+    }
+
+    private focusAfterRender(focus: () => void): void {
+        afterNextRender(focus, { injector: this.injector });
     }
 }
 

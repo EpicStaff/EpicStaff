@@ -56,7 +56,8 @@ export class ForgotPasswordPageComponent {
 
     onRequestReset(): void {
         this.emailControl.markAsTouched();
-        if (this.emailControl.invalid) return;
+        // Enter submits the form while the button waits too, so the in-flight guard lives here.
+        if (this.emailControl.invalid || this.loading()) return;
         const email = this.emailControl.getRawValue().toString();
 
         this.loading.set(true);

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     SelectDropdownComponent,
@@ -11,7 +12,7 @@ import { AuditEnumOption } from '../../models/audit-filter.models';
 @Component({
     selector: 'app-audit-select',
     standalone: true,
-    imports: [SelectDropdownComponent, SelectDropdownTriggerDirective, AppSvgIconComponent],
+    imports: [SelectDropdownComponent, SelectDropdownTriggerDirective, AppSvgIconComponent, MatTooltip],
     templateUrl: './audit-select.component.html',
     styleUrls: ['./audit-select.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -29,6 +30,11 @@ export class AuditSelectComponent {
 
     protected readonly selectedLabel = computed(
         () => this.options().find((option) => option.value === this.value())?.label ?? this.value()
+    );
+
+    // "<field>: <value>", so the name keeps the value the trigger shows
+    protected readonly triggerName = computed(() =>
+        this.ariaLabel() ? `${this.ariaLabel()}: ${this.selectedLabel()}` : this.selectedLabel()
     );
 
     protected onSelectionChange(values: unknown[]): void {

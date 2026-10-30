@@ -144,6 +144,11 @@ describe('CreateOrganizationDialogComponent saving an organization', () => {
         return element.querySelector<HTMLButtonElement>('.header app-button[type="primary"] button')!;
     }
 
+    /** Save is blocked while a save is running (aria-disabled, so it keeps the focus) or the input is invalid (disabled). */
+    function saveIsBlocked(): boolean {
+        return saveButton().disabled || saveButton().getAttribute('aria-disabled') === 'true';
+    }
+
     function clickSave(): void {
         saveButton().click();
         settle();
@@ -220,7 +225,7 @@ describe('CreateOrganizationDialogComponent saving an organization', () => {
         expectNoMembersRequest();
         expect(dialogRef.close).not.toHaveBeenCalled();
         expect(toast.error).toHaveBeenCalledTimes(1);
-        expect(saveButton().disabled).toBe(false);
+        expect(saveIsBlocked()).toBe(false);
     });
 
     it('shows retention field errors inline under their select, without a toast', () => {
@@ -241,20 +246,20 @@ describe('CreateOrganizationDialogComponent saving an organization', () => {
         expect(toast.error).not.toHaveBeenCalled();
         expectNoMembersRequest();
         expect(dialogRef.close).not.toHaveBeenCalled();
-        expect(saveButton().disabled).toBe(false);
+        expect(saveIsBlocked()).toBe(false);
     });
 
     it('re-enables Save and sends nothing when the retention lowering is cancelled', () => {
         chooseRetention('Sessions', '30 days');
 
         clickSave();
-        expect(saveButton().disabled).toBe(true);
+        expect(saveIsBlocked()).toBe(true);
 
         confirmation.next(false);
         confirmation.complete();
         settle();
 
-        expect(saveButton().disabled).toBe(false);
+        expect(saveIsBlocked()).toBe(false);
         expect(dialogRef.close).not.toHaveBeenCalled();
         http.verify();
     });

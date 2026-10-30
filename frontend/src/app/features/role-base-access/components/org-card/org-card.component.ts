@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { GetOrganizationResponse } from '@shared/models';
 import { EMPTY } from 'rxjs';
@@ -10,7 +11,7 @@ import { OrgAvatarComponent } from '../org-avatar/org-avatar.component';
 
 @Component({
     selector: 'app-org-card',
-    imports: [OrgAvatarComponent],
+    imports: [OrgAvatarComponent, MatTooltip],
     templateUrl: './org-card.component.html',
     styleUrls: ['./org-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

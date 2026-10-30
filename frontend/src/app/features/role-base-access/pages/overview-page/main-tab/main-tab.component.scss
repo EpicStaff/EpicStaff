@@ -48,6 +48,8 @@
 
 .org-card-create {
     height: 130px;
+    padding: 0;
+    font-family: inherit;
     background: transparent;
     border-radius: 10px;
     border: 1px dashed var(--color-divider-subtle);
@@ -68,7 +70,12 @@
         color: var(--text-secondary-60);
     }
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--color-drag-drop-active);
+    }
+
+    // Drawn inside: the grid scrolls and would clip it.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 }
