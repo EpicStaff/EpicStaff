@@ -57,9 +57,6 @@ async function mount(isPreview: boolean): Promise<ComponentFixture<NodePanelShel
             { provide: PermissionsService, useValue: { can: () => true } },
             NodeAuthorshipStore,
         ],
-        // The shell passes `graphId` to every panel; the End panel does not declare it
-        // (a dev-mode console error in the app, a thrown error under TestBed's default).
-        errorOnUnknownProperties: false,
     });
     TestBed.overrideComponent(EndNodePanelComponent, { set: { template: '', imports: [] } });
     TestBed.inject(FlowService).setFlow({ nodes: [endNode], connections: [] });
@@ -367,7 +364,6 @@ describe('NodePanelShellComponent', () => {
                     { provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } },
                     NodeAuthorshipStore,
                 ],
-                errorOnUnknownProperties: false,
             });
             // The panels' own forms are their specs' subject; here only the shell around them is.
             TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
