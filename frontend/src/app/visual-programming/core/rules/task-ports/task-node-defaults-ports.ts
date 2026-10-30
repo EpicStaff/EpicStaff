@@ -1,3 +1,5 @@
+import { NODE_COLORS, NodeType } from '@shared/models';
+
 import { BasePort } from '../../models/port.model';
 
 // Simple Task node (NodeType.TASK) — single In/Out ports, mirrors the
@@ -29,7 +31,7 @@ export const DEFAULT_TASK_NODE_PORTS: BasePort[] = [
             'key-value-out',
         ],
         position: 'left',
-        color: '#2aba6b',
+        color: NODE_COLORS[NodeType.TASK],
     },
     {
         port_type: 'output',
@@ -50,6 +52,6 @@ export const DEFAULT_TASK_NODE_PORTS: BasePort[] = [
             'key-value-in',
         ],
         position: 'right',
-        color: '#2aba6b',
+        color: NODE_COLORS[NodeType.TASK],
     },
 ];

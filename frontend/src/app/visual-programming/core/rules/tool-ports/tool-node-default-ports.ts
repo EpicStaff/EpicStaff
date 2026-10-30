@@ -1,3 +1,5 @@
+import { NODE_COLORS, NodeType } from '@shared/models';
+
 import { BasePort } from '../../models/port.model';
 
 export const DEFAULT_TOOL_NODE_PORTS: BasePort[] = [
@@ -8,7 +10,7 @@ export const DEFAULT_TOOL_NODE_PORTS: BasePort[] = [
         label: 'Out Top',
         allowedConnections: ['agent-out-tools'],
         position: 'top',
-        color: '#9f6a00',
+        color: NODE_COLORS[NodeType.TOOL],
     },
     {
         port_type: 'output',
@@ -17,7 +19,7 @@ export const DEFAULT_TOOL_NODE_PORTS: BasePort[] = [
         label: 'Out Right',
         allowedConnections: ['agent-out-tools'],
         position: 'right',
-        color: '#9f6a00',
+        color: NODE_COLORS[NodeType.TOOL],
     },
     {
         port_type: 'output',
@@ -26,7 +28,7 @@ export const DEFAULT_TOOL_NODE_PORTS: BasePort[] = [
         label: 'Out Bottom',
         allowedConnections: ['agent-out-tools'],
         position: 'bottom',
-        color: '#9f6a00',
+        color: NODE_COLORS[NodeType.TOOL],
     },
     {
         port_type: 'output',
@@ -35,6 +37,6 @@ export const DEFAULT_TOOL_NODE_PORTS: BasePort[] = [
         label: 'Out Left',
         allowedConnections: ['agent-out-tools'],
         position: 'left',
-        color: '#9f6a00',
+        color: NODE_COLORS[NodeType.TOOL],
     },
 ];
