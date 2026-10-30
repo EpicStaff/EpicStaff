@@ -6,12 +6,12 @@ import {
     ChipsInputComponent,
     CustomInputComponent,
     DeleteButtonComponent,
-    HelpTooltipComponent,
     HintMessageComponent,
     KeyValueListComponent,
     SelectComponent,
     SelectItem,
     TextareaComponent,
+    TooltipComponent,
 } from '@shared/components';
 import { SystemOneConfig, SystemOneQuestion } from '@shared/models';
 import { FullLLMConfigService, SystemOneConfigStorageService } from '@shared/services';
@@ -55,6 +55,9 @@ const QUESTION_TYPE_ITEMS: SelectItem<QuestionType>[] = [
     { name: 'Score', value: 'score' },
 ];
 
+const TYPE_HELP =
+    'Noul: the probability, 0–1, that the answer is true. Choice: picks one of your options and gives a confidence for each. Score: picks a level on your ordered scale (0 = the first level) and gives a confidence.';
+
 @Component({
     selector: 'app-cdt-system-one-entry',
     imports: [
@@ -64,12 +67,12 @@ const QUESTION_TYPE_ITEMS: SelectItem<QuestionType>[] = [
         ChipsInputComponent,
         CustomInputComponent,
         DeleteButtonComponent,
-        HelpTooltipComponent,
         HintMessageComponent,
         InputMapComponent,
         KeyValueListComponent,
         SelectComponent,
         TextareaComponent,
+        TooltipComponent,
     ],
     templateUrl: './cdt-system-one-entry.component.html',
     styleUrl: './cdt-system-one-entry.component.scss',
@@ -80,6 +83,7 @@ export class CdtSystemOneEntryComponent implements OnInit {
     readonly promptChange = output<Partial<PromptConfig>>();
 
     protected readonly typeItems = QUESTION_TYPE_ITEMS;
+    protected readonly typeHelp = TYPE_HELP;
     protected readonly inputMapForm = new FormGroup({
         input_map: new FormArray<FormGroup>([]),
         test_input: new FormArray<FormGroup>([]),

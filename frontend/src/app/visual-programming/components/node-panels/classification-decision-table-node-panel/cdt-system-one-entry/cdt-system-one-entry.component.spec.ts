@@ -143,6 +143,19 @@ describe('CdtSystemOneEntryComponent', () => {
         expect(changes).toEqual([{ result_variable: 'verdict' }]);
     });
 
+    it('labels the name and type fields and explains all three types in one help text', () => {
+        mount();
+
+        addQuestion();
+
+        const labels = [...host().querySelectorAll('.question__header .tooltip-label-text')].map((label) =>
+            label.textContent?.trim()
+        );
+        expect(labels).toEqual(['Question name', 'Question type']);
+        expect(host().querySelectorAll('.question__header app-help-tooltip')).toHaveLength(1);
+        expect(field('input[aria-label="Question name"]').getAttribute('placeholder')).toBe('e.g. correctness');
+    });
+
     it('emits a new Noul question once it has a name and instructions', () => {
         mount();
 

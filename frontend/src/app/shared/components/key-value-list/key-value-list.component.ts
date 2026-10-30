@@ -94,6 +94,8 @@ export class KeyValueListComponent implements OnInit, ControlValueAccessor, Vali
     secretSuggestions = input<boolean>(true);
     /** Check rows as HTTP headers (token names, case-insensitive duplicates, line breaks). Off: any name, exact duplicates. */
     headerRules = input<boolean>(true);
+    /** Drop the frame and padding and use the standard input surface, for a list that sits inside a card. */
+    compact = input<boolean>(false);
 
     items = signal<KeyValueItem[]>([]);
     isDisabled = signal<boolean>(false);

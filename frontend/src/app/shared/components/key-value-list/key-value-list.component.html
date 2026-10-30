@@ -7,7 +7,10 @@
     />
 }
 
-<div class="kv-list">
+<div
+    class="kv-list"
+    [class.kv-list--compact]="compact()"
+>
     @for (item of items(); track $index; let i = $index) {
         <div class="kv-list__row">
             <input

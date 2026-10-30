@@ -22,30 +22,35 @@
     flex-direction: column;
     gap: 0.75rem;
     padding: 0.75rem;
-    background: var(--graphite-750);
+    background: var(--color-card-background);
     border: 1px solid var(--fog-alpha-8);
     border-radius: 8px;
 
     &__header {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.5rem;
-    }
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 8.5rem auto;
+        column-gap: 0.5rem;
 
-    &__name {
-        flex: 1;
-        min-width: 0;
+        // Labels fill row 1; the controls start row 2 once their column is behind the cursor.
+        > app-tooltip:nth-child(1),
+        > .question__name {
+            grid-column: 1;
+        }
+
+        > app-tooltip:nth-child(2),
+        > .question__type {
+            grid-column: 2;
+        }
     }
 
     &__type {
-        width: 8.5rem;
-        flex-shrink: 0;
+        min-width: 0;
     }
 
-    app-help-tooltip,
     app-delete-button {
+        grid-column: 3;
+        align-self: start;
         margin-top: 0.5rem;
-        flex-shrink: 0;
     }
 
     &__meanings {

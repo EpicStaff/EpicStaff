@@ -33,10 +33,15 @@
     @for (item of questionViews(); track item.row.uid) {
         <div class="question">
             <div class="question__header">
+                <app-tooltip label="Question name" />
+                <app-tooltip
+                    label="Question type"
+                    [tooltipText]="typeHelp"
+                />
                 <app-custom-input
                     class="question__name"
                     ariaLabel="Question name"
-                    placeholder="Question name"
+                    placeholder="e.g. correctness"
                     [ngModel]="item.row.name"
                     [errorMessage]="item.view.nameError ?? ''"
                     [readonly]="readOnly()"
@@ -47,10 +52,8 @@
                     [items]="typeItems"
                     [selectedValue]="item.row.question.type"
                     [readonly]="readOnly()"
-                    [transparent]="true"
                     (changed)="onTypeChange(item.row, $event)"
                 />
-                <app-help-tooltip text="Noul: the probability, 0–1, that the answer is true" />
                 <app-delete-button
                     tooltip="Delete question"
                     ariaLabel="Delete question"
@@ -93,6 +96,7 @@
                         rowLabel="Option"
                         [secretSuggestions]="false"
                         [headerRules]="false"
+                        [compact]="true"
                         [ngModel]="choiceOptions(item.row.question)"
                         [disabled]="readOnly()"
                         (ngModelChange)="onChoiceOptionsChange(item.row, $event)"

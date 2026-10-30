@@ -319,6 +319,36 @@ describe('KeyValueListComponent as a plain name-to-text list', () => {
     });
 });
 
+@Component({
+    imports: [KeyValueListComponent, ReactiveFormsModule],
+    template: `<app-key-value-list
+        [formControl]="control"
+        [compact]="true"
+    />`,
+})
+class CompactHostComponent {
+    readonly control = new FormControl<Record<string, string>>({});
+}
+
+describe('KeyValueListComponent compact', () => {
+    function render<T>(host: new () => T): HTMLElement {
+        TestBed.configureTestingModule({
+            providers: [{ provide: SecretsStorageService, useValue: { secrets: () => [], getSecrets: () => of([]) } }],
+        });
+        const fixture = TestBed.createComponent(host);
+        fixture.detectChanges();
+        return fixture.nativeElement as HTMLElement;
+    }
+
+    it('is framed by default and drops the frame only when asked', () => {
+        expect(render(HostComponent).querySelector('.kv-list--compact')).toBeNull();
+    });
+
+    it('marks the list compact when the input is set', () => {
+        expect(render(CompactHostComponent).querySelector('.kv-list--compact')).not.toBeNull();
+    });
+});
+
 describe('KeyValueListComponent defaults', () => {
     it('keeps header rules and the secrets picker for callers that set nothing', () => {
         const getSecrets = vi.fn(() => of([]));
