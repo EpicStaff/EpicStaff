@@ -1,3 +1,5 @@
+import re
+
 from loguru import logger
 from packaging.requirements import InvalidRequirement, Requirement
 
@@ -65,7 +67,12 @@ class _Environments:
 
     def _name_for(self, owner: str | None) -> str:
         """Name the environment after what first asked for it, so the list stays readable."""
-        base = f"{owner}-venv" if owner else f"imported-venv-{len(self.entries) + 1}"
+        sanitized_owner = _sanitize_venv_name(owner)
+        base = (
+            f"{sanitized_owner}{_VENV_NAME_SUFFIX}"
+            if sanitized_owner
+            else f"imported-venv-{len(self.entries) + 1}"
+        )
         name = base
         suffix = 2
         while name in self._used_names:
@@ -73,6 +80,27 @@ class _Environments:
             suffix += 1
         self._used_names.add(name)
         return name
+
+
+_SEPARATORS = " _-"
+
+# Mirrors Venv.name's pattern in sandbox_new/manager/domain/models.py (Django can't import it).
+_REJECTED_RUN_PATTERN = re.compile(r"_*(?:[^A-Za-z0-9 _-]_*)+")
+
+# Venv.name is a varchar(255) upstream; leave room for `_name_for`'s "-venv" + collision suffix.
+_MAX_VENV_NAME_LENGTH = 255
+_VENV_NAME_SUFFIX = "-venv"
+_COLLISION_SUFFIX_LENGTH = len("-99")
+_MAX_SANITIZED_LENGTH = _MAX_VENV_NAME_LENGTH - len(_VENV_NAME_SUFFIX) - _COLLISION_SUFFIX_LENGTH
+
+
+def _sanitize_venv_name(owner: str | None) -> str | None:
+    """Reduce a v4 code name to something the sandbox accepts as a venv name, or None."""
+    if not owner:
+        return None
+
+    name = _REJECTED_RUN_PATTERN.sub("_", owner).strip(_SEPARATORS)
+    return name[:_MAX_SANITIZED_LENGTH].strip(_SEPARATORS) or None
 
 
 def _parse_libraries(value: str, *, owner: str | None) -> list[dict]:

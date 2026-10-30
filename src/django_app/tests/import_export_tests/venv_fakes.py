@@ -5,10 +5,18 @@ sandbox is the external boundary these tests replace. Shared by every test that
 exports or imports an environment; the `sandbox` fixture in `conftest.py` patches it in.
 """
 
+import re
+
+import httpx
+from foundation.transport.http import ClientValidationError
 from proxies.sandbox.models import SandboxVenvBinding
 
 # Both the strategy and the rollback reach the sandbox through the same service.
 SANDBOX_CLIENT = "proxies.sandbox.services.VenvService.client_class"
+
+# Mirrors Venv.name's pattern in sandbox_new/manager/domain/models.py. Match with
+# `fullmatch`, not `match`: pydantic's regex engine treats `$` as true end-of-text.
+VENV_NAME_PATTERN = re.compile(r"^[A-Za-z0-9 _-]+$")
 
 
 class FakeSandbox:
@@ -30,6 +38,7 @@ class FakeSandbox:
         return False
 
     def create(self, data: dict) -> dict:
+        self._refuse_a_name_the_sandbox_would_refuse(data["name"])
         self._next_id += 1
         venv = {
             "id": self._next_id,
@@ -49,6 +58,17 @@ class FakeSandbox:
 
     def remove(self, venv_id: str) -> None:
         self.removed.append(venv_id)
+
+    @staticmethod
+    def _refuse_a_name_the_sandbox_would_refuse(name: str | None) -> None:
+        """Reject a name outside `VENV_NAME_PATTERN` like the real client does."""
+        if name and VENV_NAME_PATTERN.fullmatch(name):
+            return
+        request = httpx.Request("POST", "http://sandbox/venvs")
+        raise ClientValidationError(
+            f"name '{name}' does not match {VENV_NAME_PATTERN.pattern}",
+            response=httpx.Response(400, request=request),
+        )
 
 
 def upstream_venv(sandbox, org, *, name="scraper-venv", libs=None, status="completed", venv_id):

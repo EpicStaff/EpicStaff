@@ -25,6 +25,7 @@ from tables.import_export.version_conversions.convertions import (
     v4_to_v5,
 )
 from tables.utils.legacy_node_number import split_legacy_node_name
+from tests.import_export_tests.venv_fakes import VENV_NAME_PATTERN
 
 
 # ──────────────────────────────────────────
@@ -942,3 +943,93 @@ class TestV4ToV5:
         for venv in data.get(EntityType.VENV, []):
             serializer = VenvImportSerializer(data=venv)
             assert serializer.is_valid(), serializer.errors
+
+
+# `venv.name` is a `Varchar()` in src/sandbox_new/manager/infrastructure/database/venvs/
+# tables.py, so piccolo's default of 255 is what a converted name has to fit into.
+MAX_VENV_NAME_LENGTH = 255
+
+
+def _venv_names(*owners: str) -> list[str]:
+    """Names of the environments a v4 file with these code owners converts into."""
+    data = v4_to_v5(
+        {
+            EntityType.PYTHON_CODE_TOOL: [
+                _tool(owner, f"library-{index}") for index, owner in enumerate(owners)
+            ]
+        }
+    )
+    names = [venv["name"] for venv in data[EntityType.VENV]]
+    for name in names:
+        assert VENV_NAME_PATTERN.fullmatch(name), f"'{name}' is not a name the sandbox accepts"
+        assert len(name) <= MAX_VENV_NAME_LENGTH, f"'{name}' is longer than the sandbox stores"
+    return names
+
+
+class TestV4ToV5VenvNaming:
+    """A v4 node/tool name must be reduced to what the sandbox accepts: `[A-Za-z0-9 _-]`."""
+
+    @pytest.mark.parametrize(
+        "owner, expected",
+        [
+            ("Scraper (v2)", "Scraper _v2-venv"),
+            ("tool#1", "tool_1-venv"),
+            ("node.py", "node_py-venv"),
+            ("Парсер tool", "tool-venv"),
+            ("scraper", "scraper-venv"),
+            ("my-tool_2 final", "my-tool_2 final-venv"),
+        ],
+    )
+    def test_the_name_is_reduced_to_what_the_sandbox_accepts(self, owner, expected):
+        assert _venv_names(owner) == [expected]
+
+    @pytest.mark.parametrize("owner", ["Скрапер", "#!?", ".", "()", " ", "-", "_"])
+    def test_an_owner_that_leaves_nothing_usable_falls_back_to_a_generated_name(self, owner):
+        assert _venv_names(owner) == ["imported-venv-1"]
+
+    def test_the_generated_name_counts_the_environments_already_collected(self):
+        assert _venv_names("scraper", "Скрапер") == ["scraper-venv", "imported-venv-2"]
+
+    @pytest.mark.parametrize(
+        "owner, expected",
+        [
+            ("a((((b", "a_b-venv"),
+            ("a(.#)b", "a_b-venv"),
+            ("a_(_b", "a_b-venv"),
+            ("a (b", "a _b-venv"),
+        ],
+    )
+    def test_a_run_of_rejected_characters_collapses_into_one_separator(self, owner, expected):
+        assert _venv_names(owner) == [expected]
+
+    @pytest.mark.parametrize(
+        "owner, expected",
+        [
+            ("a__b", "a__b-venv"),
+            ("a  b", "a  b-venv"),
+            ("a--b", "a--b-venv"),
+            ("a _- b", "a _- b-venv"),
+        ],
+    )
+    def test_separators_the_owner_already_had_are_left_alone(self, owner, expected):
+        assert _venv_names(owner) == [expected]
+
+    def test_a_name_too_long_for_the_sandbox_is_truncated(self):
+        names = _venv_names("a" * 300)
+
+        assert len(names[0]) <= MAX_VENV_NAME_LENGTH
+        assert names[0].endswith("-venv")
+        assert names[0].startswith("aaaa")
+
+    def test_truncation_does_not_leave_a_separator_against_the_suffix(self):
+        assert _venv_names(f"{'a' * 240}{'_' * 20}tail")[0] == f"{'a' * 240}-venv"
+
+    @pytest.mark.parametrize("owner", ["(start)", "#start.", "_start_", " start ", "-start-"])
+    def test_a_separator_left_at_either_end_is_dropped(self, owner):
+        assert _venv_names(owner) == ["start-venv"]
+
+    def test_two_owners_that_reduce_to_the_same_name_still_get_one_each(self):
+        assert _venv_names("Scraper (v2)", "Scraper [v2]") == [
+            "Scraper _v2-venv",
+            "Scraper _v2-venv-2",
+        ]
