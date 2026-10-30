@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Sequence
 
 from django.db import transaction
-from rbac.authorship import RecordedLastEdit, record_last_edits, restore_last_edits
+from rbac.authorship import RecordedLastEdit, resolve_author, restore_last_edits
 from rbac.models import LastEditTrackedModel
 
 
@@ -42,9 +42,9 @@ def record_deleter(
     Only the entries, not the rows binned with them. No person (None) and a user that
     resolves to no author (a system API key) both record a NULL editor, so "Deleted by"
     never shows whoever edited the row before. Rows that opt out via
-    `records_last_edit()` (built-in tools) get no record.
+    `records_last_edit()` (built-in tools) get no record. Records no `updated` user
+    action: a deletion is an action of its own.
     """
-    if user is None:
-        restore_last_edits(RecordedLastEdit(root, None, deleted_at) for root in roots)
-    else:
-        record_last_edits(roots, user, edited_at=deleted_at)
+    deleter = resolve_author(user)
+    deleter_id = deleter.pk if deleter is not None else None
+    restore_last_edits(RecordedLastEdit(root, deleter_id, deleted_at) for root in roots)

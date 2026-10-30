@@ -19,22 +19,6 @@ from user_audit.targets import TargetDescription, describe
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
-class RecordingSender:
-    def __init__(self):
-        self.events = []
-
-    def send(self, events):
-        self.events.extend(events)
-
-
-@pytest.fixture
-def sent_events(monkeypatch, settings):
-    settings.USER_AUDIT_TRAIL_ENABLED = True
-    sender = RecordingSender()
-    monkeypatch.setattr(recorder, "get_user_audit_sender", lambda: sender)
-    return sender.events
-
-
 @pytest.fixture
 def flow(acme):
     return Graph.objects.create(name="Billing flow", org=acme)
@@ -43,7 +27,9 @@ def flow(acme):
 @pytest.fixture
 def python_node(flow):
     python_code = PythonCode.objects.create(code="def main():\n    return 1\n", entrypoint="main")
-    return PythonNode.objects.create(graph=flow, python_code=python_code, node_name="Fetch invoices")
+    return PythonNode.objects.create(
+        graph=flow, python_code=python_code, node_name="Fetch invoices"
+    )
 
 
 def request_as(user):
@@ -110,7 +96,9 @@ def test_record_is_noop_when_switch_off(
 
 
 @pytest.mark.django_db
-def test_record_is_noop_without_context(acme, flow, sent_events, django_capture_on_commit_callbacks):
+def test_record_is_noop_without_context(
+    acme, flow, sent_events, django_capture_on_commit_callbacks
+):
     with django_capture_on_commit_callbacks(execute=True):
         record_user_action(action=UserAction.CREATED, org_id=acme.id, target=flow)
 
@@ -180,7 +168,9 @@ def test_actor_for_personal_api_key_is_owner_with_key_name(regular_user, user_ap
 
     actor = actor_from_request(authenticated_http_request(raw_key))
 
-    assert actor == Actor(user_id=regular_user.id, email="user@example.com", api_key_name="user-key")
+    assert actor == Actor(
+        user_id=regular_user.id, email="user@example.com", api_key_name="user-key"
+    )
 
 
 @pytest.mark.django_db
