@@ -187,7 +187,7 @@ class FlowHeaderStubComponent {
     readonly isRunning = input(false);
     readonly isPreviewMode = input(false);
     readonly runStatus = input<unknown>(null);
-    readonly hasUnsavedChanges = input(false);
+    readonly saveStatus = input<unknown>(null);
     readonly editors = input<unknown[]>([]);
     readonly save = output<void>();
     readonly saveVersion = output<void>();
@@ -2236,7 +2236,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 openFlow(legacyGraph);
 
                 expect(nodeOfType(NodeType.SCHEDULE_TRIGGER).node_name).toBe(shownName);
-                expect(header().hasUnsavedChanges()).toBe(unsaved);
+                expect(header().saveStatus() === 'unsaved').toBe(unsaved);
             });
         });
 
@@ -2371,7 +2371,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             it('takes the backend value on the canvas and in the saved baseline, leaving the flow clean', () => {
                 expect(nodeOfType<ScheduleTriggerNodeModel>(NodeType.SCHEDULE_TRIGGER).data.isActive).toBe(false);
-                expect(header().hasUnsavedChanges()).toBe(false);
+                expect(header().saveStatus() === 'unsaved').toBe(false);
             });
 
             it('sends no schedule update with the next save', () => {
@@ -2396,7 +2396,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             it('is not an unsaved change', () => {
                 expect(nodeOfType<ScheduleTriggerNodeModel>(NodeType.SCHEDULE_TRIGGER).data.isActive).toBe(false);
-                expect(header().hasUnsavedChanges()).toBe(false);
+                expect(header().saveStatus() === 'unsaved').toBe(false);
             });
 
             it('is not in the next save, which a user without Run can therefore send', () => {
@@ -2416,7 +2416,7 @@ describe('FlowVisualProgrammingComponent', () => {
             function expectSaveRefused(): void {
                 expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
                 expect(warningsShown()).toEqual([TRIGGER_CHANGES_WARNING]);
-                expect(header().hasUnsavedChanges()).toBe(true);
+                expect(header().saveStatus() === 'unsaved').toBe(true);
                 expect(header().isSaving()).toBe(false);
             }
 

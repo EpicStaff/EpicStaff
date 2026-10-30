@@ -28,6 +28,7 @@ import { PermissionsService } from '../../../../../../services/auth/permissions.
 import { FLOW_ACTION_PERMISSIONS } from '../../../../../../visual-programming/core/constants/flow-action-permissions';
 import { KeymapService } from '../../../../../../visual-programming/services/keymap.service';
 import { PREVIEW_BLOCKED_MESSAGES } from './flow-header.constants';
+import { FlowSaveStatus } from './flow-save-status.model';
 import { GraphPresenceIndicatorsComponent } from './presence-indicator/graph-presence-indicators.component';
 import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
 
@@ -60,7 +61,7 @@ export class FlowHeaderComponent {
     readonly isPreviewMode = input(false);
     /** The status of the run in progress (regular or test); null hides the badge. */
     readonly runStatus = input<GraphSessionStatus | null>(null);
-    @Input() hasUnsavedChanges = false;
+    readonly saveStatus = input<FlowSaveStatus | null>(null);
     @Input() editors: PresentEditor[] = [];
     @Output() save = new EventEmitter<void>();
     @Output() back = new EventEmitter<void>();

@@ -29,22 +29,41 @@
                         size="16px"
                     />
                 </button>
-                @if (hasUnsavedChanges) {
-                    <span
-                        class="unsaved-indicator"
-                        matTooltip="Unsaved changes"
-                        matTooltipPosition="below"
-                        [appCollapseOnOverflow]="true"
-                        collapseOnOverflowTarget=".unsaved-text"
-                        collapseOnOverflowClass="unsaved-indicator--icon-only"
-                        collapseOnOverflowRequireSelector="app-svg-icon"
-                    >
-                        <app-svg-icon
-                            icon="circle"
-                            size="10px"
-                        />
-                        <span class="unsaved-text">Unsaved changes</span>
-                    </span>
+                @switch (saveStatus()) {
+                    @case ('unsaved') {
+                        <span
+                            class="unsaved-indicator"
+                            matTooltip="Unsaved changes"
+                            matTooltipPosition="below"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".unsaved-text"
+                            collapseOnOverflowClass="unsaved-indicator--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                        >
+                            <app-svg-icon
+                                icon="circle"
+                                size="10px"
+                            />
+                            <span class="unsaved-text">Unsaved changes</span>
+                        </span>
+                    }
+                    @case ('saved') {
+                        <span
+                            class="save-status-chip save-status-chip--saved"
+                            matTooltip="All changes saved"
+                            matTooltipPosition="below"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".save-status-chip__label"
+                            collapseOnOverflowClass="save-status-chip--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                        >
+                            <app-svg-icon
+                                icon="checkmark-filled"
+                                size="20px"
+                            />
+                            <span class="save-status-chip__label">Saved</span>
+                        </span>
+                    }
                 }
                 @if (runStatus(); as status) {
                     <app-status-badge [sessionStatus]="status" />

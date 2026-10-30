@@ -261,3 +261,39 @@
         display: none;
     }
 }
+
+.save-status-chip {
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
+    flex-shrink: 0;
+    gap: 4px;
+    height: 28px;
+    padding: 4px 8px 4px 4px;
+    margin-left: 8px;
+    border-radius: 4px;
+    color: var(--save-status-color);
+    background-color: var(--save-status-background);
+    white-space: nowrap;
+
+    .save-status-chip__label {
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+    }
+
+    &.save-status-chip--icon-only {
+        justify-content: center;
+        width: 28px;
+        padding: 4px;
+
+        .save-status-chip__label {
+            display: none;
+        }
+    }
+
+    &--saved {
+        --save-status-color: var(--purple-500);
+        --save-status-background: var(--purple-alpha-8);
+    }
+}
