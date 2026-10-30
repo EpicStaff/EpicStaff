@@ -27,10 +27,12 @@ import {
     ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { NodeType, WebhookTriggerModel, WebhookTriggerWrite } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode, WebhookTriggerModel, WebhookTriggerWrite } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { tap } from 'rxjs/operators';
 
+import { AddSecretDialogComponent } from '../../../../features/configure-models/components/add-secret-dialog/add-secret-dialog.component';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
@@ -90,6 +92,7 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     private readonly savedFlowStateService = inject(SavedFlowStateService);
     private readonly sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly permissionService = inject(PermissionsService);
 
     protected readonly leftColumnWidth = createColumnWidthState('telegram-trigger-node', 550);
 
@@ -103,6 +106,8 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
         if (trigger == null) return null;
         return trigger.live_url ? WebhookStatus.SUCCESS : WebhookStatus.FAIL;
     });
+
+    canCreateSecrets = computed<boolean>(() => this.permissionService.can(ResourceCode.Secrets, ActionCode.Create));
 
     /**
      * This node as last saved to the backend; null until its first save. Not `node()`: switching
@@ -283,6 +288,12 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
 
     protected expandPanel(): void {
         this.sidePanelService.requestExpand();
+    }
+
+    protected triggerCreateSecrets(): void {
+        this.dialog.open(AddSecretDialogComponent, {
+            width: '480px',
+        });
     }
 
     onEditing(): void {

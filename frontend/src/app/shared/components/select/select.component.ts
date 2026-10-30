@@ -81,6 +81,7 @@ export class SelectComponent implements ControlValueAccessor {
     panelClass = input<string | string[]>('');
     variant = input<SelectVariant>('default');
     showSearch = input<boolean>(false);
+    showCreate = input<boolean>(false);
     /**
      * Render each item under a heading taken from its `group`. Off by default: panels that
      * already set `group` on their items were written before any heading was rendered.
@@ -88,6 +89,7 @@ export class SelectComponent implements ControlValueAccessor {
     grouped = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
     transparent = input<boolean>(false);
+    searchNotFoundText = input<string>('No items available');
     /** When true, the selected item's tip is shown at the end of the closed trigger too, not only in the list. */
     showTipInTrigger = input<boolean>(false);
     /** When true, the user can commit the search text as a custom value (Enter or clicking the "Use ..." row). */
@@ -113,6 +115,7 @@ export class SelectComponent implements ControlValueAccessor {
 
     changed = output<unknown>();
     opened = output<void>();
+    onCreate = output<void>();
 
     selectedValue = model<unknown | null>(null);
 

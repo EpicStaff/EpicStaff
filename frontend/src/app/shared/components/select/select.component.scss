@@ -159,10 +159,12 @@
     }
 
     &__search-wrapper {
-        display: block;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-shrink: 0;
         overflow-y: auto;
         scrollbar-gutter: stable;
-        flex-shrink: 0;
     }
 
     &__list {
@@ -215,24 +217,60 @@
     }
 
     &__search {
-        width: 100%;
-        padding: 0.25rem 0.75rem;
+        flex: 1;
+        min-width: 0;
         height: 40px;
-        font-size: 0.875rem;
+        padding: 0 0.75rem;
         border-radius: 4px;
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        transition: border-color 0.15s ease;
-        flex-shrink: 0;
-
-        &:focus {
-            outline: none;
-            border-color: var(--accent-color);
-        }
+        font-size: 0.875rem;
+        outline: none;
 
         &::placeholder {
             color: var(--color-input-text-placeholder);
+        }
+
+        &:focus {
+            border-color: var(--purple-primary);
+        }
+    }
+
+    &__add-btn {
+        flex-shrink: 0;
+        width: 40px;
+        height: 40px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        border-radius: 4px;
+        background-color: var(--purple-primary);
+        color: var(--white);
+        cursor: pointer;
+        font-size: 1.125rem;
+        line-height: 1;
+        transition: filter 0.15s ease;
+
+        &:hover {
+            opacity: 0.8;
+        }
+    }
+
+    &__search-not-found {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.875rem;
+
+        &--primary {
+            color: var(--text);
+        }
+
+        &--secondary {
+            color: var(--text-secondary-60);
         }
     }
 
@@ -337,11 +375,6 @@
             &:hover {
                 background: transparent;
             }
-        }
-
-        &--empty {
-            padding: 0.5rem 0.75rem;
-            color: var(--color-input-text-placeholder);
         }
     }
 }
