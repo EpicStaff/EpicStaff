@@ -32,19 +32,19 @@
                 @switch (saveStatus()) {
                     @case ('unsaved') {
                         <span
-                            class="unsaved-indicator"
+                            class="save-status-chip save-status-chip--unsaved"
                             matTooltip="Unsaved changes"
                             matTooltipPosition="below"
                             [appCollapseOnOverflow]="true"
-                            collapseOnOverflowTarget=".unsaved-text"
-                            collapseOnOverflowClass="unsaved-indicator--icon-only"
+                            collapseOnOverflowTarget=".save-status-chip__label"
+                            collapseOnOverflowClass="save-status-chip--icon-only"
                             collapseOnOverflowRequireSelector="app-svg-icon"
                         >
                             <app-svg-icon
-                                icon="circle"
-                                size="10px"
+                                icon="timer-zero"
+                                size="20px"
                             />
-                            <span class="unsaved-text">Unsaved changes</span>
+                            <span class="save-status-chip__label">Unsaved changes</span>
                         </span>
                     }
                     @case ('saved') {

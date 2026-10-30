@@ -235,33 +235,6 @@
         color: var(--fog-200);
     }
 }
-.unsaved-indicator {
-    display: inline-flex;
-    align-items: center;
-    align-self: center;
-    gap: 6px;
-    margin-left: 8px;
-    color: var(--accent-color);
-    font-size: 0.875rem;
-    white-space: nowrap;
-
-    i {
-        font-size: 0.625rem;
-        margin-right: 6px;
-        color: var(--accent-color);
-    }
-
-    .unsaved-text {
-        font-size: var(--text-body-small-large-size);
-        font-weight: var(--text-body-small-large-weight);
-        color: var(--accent-color);
-    }
-
-    &.unsaved-indicator--icon-only .unsaved-text {
-        display: none;
-    }
-}
-
 .save-status-chip {
     display: inline-flex;
     align-items: center;
@@ -330,6 +303,11 @@
     &--saving {
         --save-status-color: var(--sky-500);
         --save-status-background: var(--sky-alpha-6);
+    }
+
+    &--unsaved {
+        --save-status-color: var(--color-text-primary);
+        --save-status-background: var(--fog-alpha-8);
     }
 }
 
