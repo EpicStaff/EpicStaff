@@ -32,3 +32,7 @@ class RedisService:
     async def async_publish(self, channel: str, message: object):
         await self.aioredis_client.publish(channel, json.dumps(message))
         logger.info(f"Message published to channel '{channel}'.")
+
+    async def async_stream_add(self, stream: str, fields: dict[str, str], maxlen: int) -> str:
+        """XADD one entry to ``stream``, trimming it to about ``maxlen`` entries."""
+        return await self.aioredis_client.xadd(stream, fields, maxlen=maxlen, approximate=True)
