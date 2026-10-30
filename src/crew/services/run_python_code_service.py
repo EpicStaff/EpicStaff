@@ -82,6 +82,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         }
         if python_code_data.org_id is not None:
             merged_global_kwargs["org_id"] = python_code_data.org_id
+        if python_code_data.session_id is not None:
+            merged_global_kwargs["session_id"] = python_code_data.session_id
 
         unique_task_id = str(uuid.uuid4())
 
