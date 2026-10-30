@@ -30,6 +30,7 @@ import { map } from 'rxjs/operators';
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
@@ -101,6 +102,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+    protected readonly tourAnchors = CREATE_AGENT_TOUR_ANCHORS;
 
     /** Read-only mode when the active org can't mutate agents/surfaces. */
     protected readonly agentsReadOnly = computed<boolean>(() => {

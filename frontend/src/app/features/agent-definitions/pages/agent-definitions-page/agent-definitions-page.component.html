@@ -18,6 +18,7 @@
                 type="primary"
                 leftIcon="plus-fit"
                 iconSize="10px"
+                [attr.data-tour]="tourAnchors.addAgent"
                 (click)="onAddAgent()"
             >
                 Add Agent
@@ -208,6 +209,7 @@
                         </div>
                     } @else if (store.selectedAgent()) {
                         <app-agent-detail
+                            [attr.data-tour]="store.isSelectedAgentFromLatestDraft() ? tourAnchors.createdAgent : null"
                             [agent]="store.selectedAgent()!"
                             [focusRequest]="store.selectedAgentFocus()"
                             [saving]="store.saving()"
