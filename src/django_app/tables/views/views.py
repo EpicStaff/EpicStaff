@@ -24,6 +24,7 @@ from rbac.access.org_context import OrgContextService
 from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.fields import resolve_active_org_id
 from rbac.scoping.mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedServiceViewSetMixin,
@@ -900,7 +901,8 @@ class QuickstartView(APIView):
         provider = serializer.validated_data["provider"]
         api_key = serializer.validated_data.get("api_key")
         secret = serializer.validated_data.get("api_key_secret_id")
-        org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        # Cached on the request, so the user-action fallback records the run in this org.
+        org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
             org_id=org_id,
@@ -963,11 +965,11 @@ class QuickstartApplyView(APIView):
     rbac_resource_type = ResourceType.LLM_CONFIGS
     # Checked one by one: a combined IntFlag passes `can()` when either bit is held.
     rbac_required_actions = (Permission.CREATE, Permission.UPDATE)
-    _org_context = OrgContextService()
 
     @extend_schema(**QUICKSTART_APPLY_POST)
     def post(self, request):
-        org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        # Cached on the request, so the user-action fallback records the apply in this org.
+        org_id = resolve_active_org_id(request)
         for required_action in self.rbac_required_actions:
             assert_org_permission(
                 user=request.user,

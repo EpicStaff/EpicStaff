@@ -2,19 +2,18 @@ import pytest
 from django.http import HttpResponse
 from django.test import RequestFactory
 from django.urls import ResolverMatch, reverse
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.views import APIView
 
 from rbac.models import OrganizationUser
-from rbac.views.auth import CookieTokenRefreshView, SseTicketView, WsTicketView
-from tables.models import Graph
+from tables.models import Graph, Provider, SourceCollection
+from tables.services.quickstart_service import QuickstartService
 from tables.services.storage_service.upload import admission, archive_upload, file_upload
-from tables.views.audit_token_views import AuditTokenView
 from tables.views.model_view_sets import GraphViewSet
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 from tests.storage_tests.storage_writes import stream_upload
-from user_audit.middleware import UserActionMiddleware
+from user_audit.middleware import FALLBACK_EXCLUDED_VIEWS, UserActionMiddleware
 
 pytestmark = pytest.mark.django_db
 
@@ -39,6 +38,12 @@ def admin_in_two_orgs(admin_acme, beta, role_member):
 
 class _PlainChangeView(APIView):
     """A view the fallback has no reason to skip."""
+
+
+class _CollectionViewSet(viewsets.GenericViewSet):
+    """Serves source collections, which are named by `collection_name`."""
+
+    queryset = SourceCollection.objects.all()
 
 
 def _serve(request, *, view_class, actions=None, route="api/things/", kwargs=None):
@@ -126,7 +131,9 @@ def test_fallback_skips_safe_methods_and_failures(
 
 
 @pytest.mark.parametrize(
-    "view_class", [CookieTokenRefreshView, SseTicketView, WsTicketView, AuditTokenView]
+    "view_class",
+    sorted(FALLBACK_EXCLUDED_VIEWS, key=lambda view_class: view_class.__name__),
+    ids=lambda view_class: view_class.__name__,
 )
 def test_fallback_skips_excluded_views(
     view_class, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
@@ -146,6 +153,48 @@ def test_fallback_records_a_view_it_does_not_exclude(
     [event] = sent_events
     assert (event.action, event.org_id, event.route) == ("destroy", acme.id, "DELETE api/things/")
     assert event.target_type is None
+
+
+@pytest.mark.parametrize(
+    "collection_name, expected_name", [("Contracts", "Contracts"), ("", None)]
+)
+def test_fallback_labels_a_collection_by_its_collection_name(
+    collection_name, expected_name, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
+):
+    collection = SourceCollection.objects.create(org=acme, collection_name="Contracts")
+    # Saving fills an empty name in, so the empty case is written past save().
+    SourceCollection.objects.filter(pk=collection.pk).update(collection_name=collection_name)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        _serve(
+            _checked_request(admin_acme, acme.id),
+            view_class=_CollectionViewSet,
+            actions={"post": "copy"},
+            route="api/^source-collections/(?P<pk>[^/.]+)/copy/$",
+            kwargs={"pk": str(collection.pk)},
+        )
+
+    [event] = sent_events
+    assert (event.target_type, event.target_id, event.target_name) == (
+        "source collection",
+        str(collection.pk),
+        expected_name,
+    )
+
+
+def test_fallback_records_a_quickstart_apply_in_the_checked_org(
+    admin_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
+):
+    Provider.objects.create(name="openai")
+    QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=acme.id, user=None)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.post("/api/quickstart/apply/", {}, format="json")
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert [(event.action, event.org_id, event.actor_user_id, event.route) for event in sent_events] == [
+        ("create", acme.id, admin_acme.id, "POST api/quickstart/apply/")
+    ]
 
 
 def test_fallback_ignores_unverified_org_header(

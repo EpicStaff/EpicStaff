@@ -21,6 +21,7 @@ from rbac.access.gates import DenyPluginCredential, IsSuperadmin
 from rbac.access.org_context import OrgContextService
 from rbac.identity.tickets import sse_ticket_service
 from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.fields import resolve_active_org_id
 from rest_framework import status
 from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.pagination import LimitOffsetPagination
@@ -126,7 +127,8 @@ class FlowAssistantConfigView(APIView):
         return Response(serializer.data)
 
     def patch(self, request, graph_id: int):
-        org_id = self._org_service.resolve(request=request)
+        # Cached on the request, so the user-action fallback records the change in this org.
+        org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
             org_id=org_id,

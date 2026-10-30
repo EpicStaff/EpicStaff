@@ -50,23 +50,30 @@ def _end_of_group(route: str, position: int) -> int:
     return position
 
 
-def target_from_url(view_class, match, org_id: int) -> tuple[str, str | None] | None:
-    """The object a detail route names, labelled when the organization still has it."""
+def target_from_url(
+    view_class, match, org_id: int, label_fields: tuple[str, ...] = TARGET_LABEL_FIELDS
+) -> tuple[str, str | None] | None:
+    """The object a detail route names, labelled when the organization still has it.
+
+    Args:
+        label_fields: The columns the label may come from; the first one the model has
+            is read, and an empty value is no label.
+    """
     kwargs = match.kwargs if match is not None else {}
     value = next((kwargs[name] for name in TARGET_URL_KWARGS if name in kwargs), None)
     if value is None:
         return None
-    return str(value), _label_of_row(view_class, value, org_id)
+    return str(value), _label_of_row(view_class, value, org_id, label_fields)
 
 
-def _label_of_row(view_class, value, org_id: int) -> str | None:
-    """The row's name (or custom name), read in `org_id` only, so a label never comes from
-    another organization's row; None for a model without an organization."""
+def _label_of_row(view_class, value, org_id: int, label_fields: tuple[str, ...]) -> str | None:
+    """The row's label, read in `org_id` only, so a label never comes from another
+    organization's row; None for a model without an organization."""
     model = model_of(view_class)
     if model is None:
         return None
     field_names = {field.name for field in model._meta.concrete_fields}
-    label_field = next((name for name in TARGET_LABEL_FIELDS if name in field_names), None)
+    label_field = next((name for name in label_fields if name in field_names), None)
     if "org" not in field_names or label_field is None:
         return None
     try:
@@ -77,7 +84,7 @@ def _label_of_row(view_class, value, org_id: int) -> str | None:
         )
     except (TypeError, ValueError):
         return None
-    return label if isinstance(label, str) else None
+    return label if isinstance(label, str) and label else None
 
 
 def model_of(view_class) -> type[Model] | None:

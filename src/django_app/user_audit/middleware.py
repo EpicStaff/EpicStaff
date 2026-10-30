@@ -29,7 +29,7 @@ from utils.request_target import model_of, target_from_url, url_path_pattern
 from user_audit.actor import actor_from_request
 from user_audit.context import UserActionContext, user_action_context
 from user_audit.recorder import record_for_user_orgs, record_user_action
-from user_audit.targets import TargetDescription, target_type
+from user_audit.targets import TARGET_NAME_FIELDS, TargetDescription, target_type
 
 # A request answered with a status at or above this changed nothing worth recording.
 FIRST_FAILURE_STATUS = 400
@@ -179,7 +179,7 @@ def _record_unhandled_change(
 
 
 def _url_target(view_class, match, org_id: int) -> TargetDescription | None:
-    target = target_from_url(view_class, match, org_id)
+    target = target_from_url(view_class, match, org_id, label_fields=TARGET_NAME_FIELDS)
     model = model_of(view_class)
     if target is None or model is None:
         return None
