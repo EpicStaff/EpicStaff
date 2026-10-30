@@ -233,11 +233,10 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     // Each Builder card shows its applied value, worded like the preset chips.
     private readonly fieldSummaries = computed<Map<string, string>>(() => {
-        const chips = describeAuditFilter(
-            { ...this.filter(), mode: 'builder' },
-            { agents: this.agentOptions(), tools: this.toolOptions() },
-            this.catalog
-        );
+        const chips = describeAuditFilter({ ...this.filter(), mode: 'builder' }, this.catalog, {
+            agents: this.agentOptions(),
+            tools: this.toolOptions(),
+        });
         return new Map(chips.map((chip) => [chip.key, chip.value]));
     });
 

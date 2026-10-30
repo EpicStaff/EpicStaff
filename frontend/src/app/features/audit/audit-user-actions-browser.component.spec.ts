@@ -143,4 +143,28 @@ describe('AuditUserActionsBrowserComponent', () => {
 
         expect(root.querySelectorAll('app-action-dropdown-button')).toHaveLength(exportButtons);
     });
+
+    it('exports the filtered actions as a user actions job, without a match scope', async () => {
+        const downloads: string[] = [];
+        vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:export');
+        vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+            downloads.push(this.download);
+        });
+        const { fixture, http, root } = setup();
+        flushSearch(http, [renamedFlow]);
+        await render(fixture);
+
+        root.querySelector<HTMLButtonElement>('app-action-dropdown-button .adb__main')!.click();
+        const start = http.expectOne('/auditor/api/audit/user_actions/export');
+        expect(start.request.method).toBe('POST');
+        expect(start.request.body).toEqual({ format: 'json' });
+        start.flush({ job_id: 'job-7' });
+        // the first poll fires on timer(0); whenStable would wait for the whole polling interval
+        await new Promise((resolve) => setTimeout(resolve));
+        http.expectOne('/auditor/api/audit/user_actions/export/job-7').flush(new Blob(['[]']));
+
+        expect(downloads).toHaveLength(1);
+        expect(downloads[0]).toMatch(/^audit_user_actions_export_\d+\.json$/);
+    });
 });

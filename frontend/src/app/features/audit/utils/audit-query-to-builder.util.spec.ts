@@ -8,7 +8,7 @@ import {
     DEFAULT_MATCH_SCOPE,
     EMPTY_AUDIT_FILTER,
 } from '../models/audit-filter.models';
-import { QUERY_EXAMPLES } from '../models/audit-filter-options';
+import { QUERY_EXAMPLES, SESSION_FIELD_CATALOG } from '../models/audit-filter-options';
 import { USER_ACTION_FIELD_CATALOG } from '../models/audit-user-action-filter-options';
 import { auditFilterToQueryText } from './audit-query-text.util';
 import { queryToBuilderState } from './audit-query-to-builder.util';
@@ -64,7 +64,7 @@ function expected(fields: Partial<AuditFilterState>): unknown {
 }
 
 function toBuilder(query: string): unknown {
-    return withoutIds(queryToBuilderState(query, current));
+    return withoutIds(queryToBuilderState(query, current, SESSION_FIELD_CATALOG));
 }
 
 describe('queryToBuilderState', () => {
@@ -149,7 +149,7 @@ describe('queryToBuilderState', () => {
 
         it.each(cases)('%s', (_name, fields) => {
             const state: AuditFilterState = { ...EMPTY_AUDIT_FILTER, ...fields };
-            const filters = compileAuditFilter(state).filters;
+            const filters = compileAuditFilter(state, SESSION_FIELD_CATALOG).filters;
             expect(filters).toBeDefined();
             const text = auditFilterToQueryText(filters!);
             expect(toBuilder(text)).toEqual(expected(fields));
@@ -159,7 +159,7 @@ describe('queryToBuilderState', () => {
     describe('hand-written queries', () => {
         it('clears the Builder for an empty query and keeps the non-Builder fields', () => {
             expect(toBuilder('   ')).toEqual(expected({}));
-            expect(queryToBuilderState('', current)?.mode).toBe('builder');
+            expect(queryToBuilderState('', current, SESSION_FIELD_CATALOG)?.mode).toBe('builder');
         });
 
         it.each<[string, Partial<AuditFilterState>]>([
@@ -295,7 +295,7 @@ describe('queryToBuilderState', () => {
             ['agent together with tool', 'agent = 1 and tool = a'],
             ['field unavailable for the chosen kind', 'kind = session and status = failed'],
         ])('%s', (_name, query) => {
-            expect(queryToBuilderState(query, current)).toBeNull();
+            expect(queryToBuilderState(query, current, SESSION_FIELD_CATALOG)).toBeNull();
         });
     });
 
@@ -362,6 +362,6 @@ describe('queryToBuilderState for user actions', () => {
     });
 
     it('leaves a user action field to Query Code on the sessions tab', () => {
-        expect(queryToBuilderState('action in (created)', current)).toBeNull();
+        expect(queryToBuilderState('action in (created)', current, SESSION_FIELD_CATALOG)).toBeNull();
     });
 });

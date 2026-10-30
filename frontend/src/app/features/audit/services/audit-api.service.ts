@@ -1,6 +1,6 @@
 import { HttpClient, HttpContext, HttpResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Observable, switchMap } from 'rxjs';
+import { exhaustMap, first, Observable, switchMap, timeout, timer } from 'rxjs';
 
 import { SKIP_AUTH_HEADER_OVERRIDE } from '../../../core/interceptors/skip-auth-header-override.context';
 import { SKIP_FORBIDDEN_RELOAD } from '../../../core/interceptors/skip-forbidden-reload.context';
@@ -8,6 +8,9 @@ import { ConfigService } from '../../../services/config';
 import { AuditDomainName } from '../models/audit-domain.models';
 import { AuditExportRequest } from '../models/audit-session.models';
 import { AuditTokenService } from './audit-token.service';
+
+const EXPORT_POLL_INTERVAL_MS = 1_000;
+const EXPORT_TIMEOUT_MS = 5 * 60_000;
 
 @Injectable({ providedIn: 'root' })
 export class AuditApiService {
@@ -44,6 +47,19 @@ export class AuditApiService {
                     context,
                 })
             )
+        );
+    }
+
+    // Starts an export job and polls it until the file is ready; errors with a TimeoutError if that takes too long.
+    downloadExport(domain: AuditDomainName, request: AuditExportRequest): Observable<HttpResponse<Blob>> {
+        return this.startExport(domain, request).pipe(
+            switchMap(({ job_id }) =>
+                timer(0, EXPORT_POLL_INTERVAL_MS).pipe(
+                    exhaustMap(() => this.getExportFile(domain, job_id)),
+                    first((response) => response.status === 200)
+                )
+            ),
+            timeout({ first: EXPORT_TIMEOUT_MS })
         );
     }
 

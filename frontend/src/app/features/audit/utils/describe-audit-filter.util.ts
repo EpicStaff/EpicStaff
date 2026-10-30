@@ -20,7 +20,6 @@ import {
     KIND_OPTIONS,
     NODE_TYPE_OPTIONS,
     OPERATOR_LABELS,
-    SESSION_FIELD_CATALOG,
     STATUS_OPTIONS,
     TOKEN_OPERATOR_LABELS,
 } from '../models/audit-filter-options';
@@ -229,8 +228,8 @@ export interface AuditFilterVocabularies {
 
 export function describeAuditFilter(
     state: AuditFilterState,
-    vocabularies: AuditFilterVocabularies = {},
-    catalog: AuditFieldCatalog = SESSION_FIELD_CATALOG
+    catalog: AuditFieldCatalog,
+    vocabularies: AuditFilterVocabularies = {}
 ): AuditFilterChip[] {
     const chips: AuditFilterChip[] = [];
     const isSessions = catalog.domain === 'sessions';

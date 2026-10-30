@@ -186,7 +186,7 @@ export class AuditPresetsComponent implements OnInit {
         if (editor === null) {
             return [];
         }
-        return describeAuditFilter({ ...editor.state, mode: 'builder' }, this.vocabularies(), this.catalog).filter(
+        return describeAuditFilter({ ...editor.state, mode: 'builder' }, this.catalog, this.vocabularies()).filter(
             (chip) => chip.key !== 'matchScope'
         );
     });
@@ -478,7 +478,7 @@ export class AuditPresetsComponent implements OnInit {
 
     private toCard(preset: AuditPreset): AuditPresetCard {
         const state = restorePresetState(preset.filter_body);
-        const chips = state === null ? [] : describeAuditFilter(state, this.vocabularies(), this.catalog);
+        const chips = state === null ? [] : describeAuditFilter(state, this.catalog, this.vocabularies());
         return {
             preset,
             state,

@@ -1,4 +1,5 @@
 import { AuditFilterState, DEFAULT_MATCH_SCOPE, EMPTY_AUDIT_FILTER } from '../models/audit-filter.models';
+import { SESSION_FIELD_CATALOG } from '../models/audit-filter-options';
 import { USER_ACTION_FIELD_CATALOG } from '../models/audit-user-action-filter-options';
 import { buildPresetBody, restorePresetState } from './audit-preset-body.util';
 import { compileAuditFilter } from './compile-audit-filter.util';
@@ -6,8 +7,8 @@ import { compileAuditFilter } from './compile-audit-filter.util';
 describe('audit preset body', () => {
     it('stores the same search as compileAuditFilter plus the panel state', () => {
         const state: AuditFilterState = { ...EMPTY_AUDIT_FILTER, kinds: ['event'] };
-        const body = buildPresetBody(state);
-        const compiled = compileAuditFilter(state);
+        const body = buildPresetBody(state, SESSION_FIELD_CATALOG);
+        const compiled = compileAuditFilter(state, SESSION_FIELD_CATALOG);
 
         expect(body.filters).toEqual(compiled.filters);
         expect(body.query).toBeUndefined();
@@ -16,7 +17,10 @@ describe('audit preset body', () => {
     });
 
     it('stores a query-mode search as a query, not as filters', () => {
-        const body = buildPresetBody({ ...EMPTY_AUDIT_FILTER, mode: 'query', query: 'status in ["failed"]' });
+        const body = buildPresetBody(
+            { ...EMPTY_AUDIT_FILTER, mode: 'query', query: 'status in ["failed"]' },
+            SESSION_FIELD_CATALOG
+        );
 
         expect(body.query).toBe('status in ["failed"]');
         expect(body.filters).toBeUndefined();
@@ -25,7 +29,7 @@ describe('audit preset body', () => {
     it('round-trips a saved state unchanged', () => {
         const state: AuditFilterState = { ...EMPTY_AUDIT_FILTER, mode: 'query', query: 'status in ["failed"]' };
 
-        expect(restorePresetState(buildPresetBody(state))).toEqual(state);
+        expect(restorePresetState(buildPresetBody(state, SESSION_FIELD_CATALOG))).toEqual(state);
     });
 
     it('fills fields a preset saved before they existed', () => {

@@ -11,7 +11,6 @@ import {
     MAX_ROWS_BEFORE,
     VALUE_FREE_OPS,
 } from '../models/audit-filter.models';
-import { SESSION_FIELD_CATALOG } from '../models/audit-filter-options';
 import { AuditMatchScope } from '../models/audit-session.models';
 
 export const TOOL_NAME_FIELD = 'details.data.name';
@@ -205,10 +204,7 @@ function compileCatalogFilters(state: AuditFilterState, catalog: AuditFieldCatal
 }
 
 // `catalog` is the domain whose fields the state is read and compiled for; only sessions carry a match scope.
-export function compileAuditFilter(
-    state: AuditFilterState,
-    catalog: AuditFieldCatalog = SESSION_FIELD_CATALOG
-): AuditFilterQuery {
+export function compileAuditFilter(state: AuditFilterState, catalog: AuditFieldCatalog): AuditFilterQuery {
     const isSessions = catalog.domain === 'sessions';
     const scope: Pick<AuditFilterQuery, 'matchScope'> = isSessions
         ? { matchScope: compileMatchScope(state.matchScope) }

@@ -1,7 +1,8 @@
 import { provideHttpClient } from '@angular/common/http';
+import { HttpResponse } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, TimeoutError } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
 import { AuditApiService } from './audit-api.service';
@@ -43,5 +44,46 @@ describe('AuditApiService', () => {
         service.getExportFile('user_actions', 'job 1').subscribe();
 
         http.expectOne('/auditor/api/audit/user_actions/export/job%201');
+    });
+
+    describe('downloadExport', () => {
+        const EXPORT_URL = '/auditor/api/audit/sessions/export';
+        const FILE_URL = '/auditor/api/audit/sessions/export/job%201';
+
+        beforeEach(() => vi.useFakeTimers());
+        afterEach(() => vi.useRealTimers());
+
+        it('starts the job, polls once a second while it answers 202, and emits the 200 file', () => {
+            const responses: HttpResponse<Blob>[] = [];
+            const file = new Blob(['{}']);
+            service.downloadExport('sessions', { format: 'json' }).subscribe((response) => responses.push(response));
+
+            http.expectOne({ method: 'POST', url: EXPORT_URL }).flush({ job_id: 'job 1' });
+            vi.advanceTimersByTime(0);
+            http.expectOne(FILE_URL).flush(new Blob(), { status: 202, statusText: 'Accepted' });
+            vi.advanceTimersByTime(999);
+            http.expectNone(FILE_URL);
+            vi.advanceTimersByTime(1);
+            http.expectOne(FILE_URL).flush(file);
+            vi.advanceTimersByTime(5_000);
+
+            expect(responses.map((response) => response.body)).toEqual([file]);
+            http.expectNone(FILE_URL);
+        });
+
+        it('fails with a timeout when the file is not ready within five minutes', () => {
+            let failure: unknown = null;
+            service.downloadExport('sessions', { format: 'csv' }).subscribe({ error: (error) => (failure = error) });
+
+            http.expectOne({ method: 'POST', url: EXPORT_URL }).flush({ job_id: 'job 1' });
+            vi.advanceTimersByTime(0);
+            const pendingPoll = http.expectOne(FILE_URL);
+            vi.advanceTimersByTime(5 * 60_000 - 1);
+            expect(failure).toBeNull();
+            vi.advanceTimersByTime(1);
+
+            expect(failure).toBeInstanceOf(TimeoutError);
+            expect(pendingPoll.cancelled).toBe(true);
+        });
     });
 });

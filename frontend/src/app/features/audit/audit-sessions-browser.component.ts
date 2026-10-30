@@ -25,10 +25,8 @@ import { downloadBlob } from '@shared/utils';
 import {
     catchError,
     debounceTime,
-    exhaustMap,
     filter,
     finalize,
-    first,
     forkJoin,
     fromEvent,
     interval,
@@ -36,9 +34,6 @@ import {
     of,
     Subject,
     Subscription,
-    switchMap,
-    timeout,
-    timer,
 } from 'rxjs';
 
 import { ExportFormat } from '../../core/services/import-export.service';
@@ -79,8 +74,6 @@ const MAX_PAGE_SIZE = 100;
 const PAGE_SIZE_STEP = 10;
 const POLL_INTERVAL_MS = 10_000;
 const SEARCH_DEBOUNCE_MS = 400;
-const EXPORT_POLL_INTERVAL_MS = 1_000;
-const EXPORT_TIMEOUT_MS = 5 * 60_000;
 // narrow enough to tuck a column away, wide enough to keep its handle and an ellipsis grabbable
 const COLUMN_MIN_WIDTH = 48;
 const PANEL_WIDTH_KEY = 'audit-side-panel';
@@ -237,7 +230,10 @@ export class AuditSessionsBrowserComponent implements OnInit {
     });
 
     public appliedChips = computed(() =>
-        describeAuditFilter(this.appliedFilter(), { agents: this.agentOptions(), tools: this.toolOptions() })
+        describeAuditFilter(this.appliedFilter(), SESSION_FIELD_CATALOG, {
+            agents: this.agentOptions(),
+            tools: this.toolOptions(),
+        })
     );
     public activeFilterCount = computed(() => this.appliedChips().length);
     protected appliedSearchText = computed(() => this.appliedFilter().searchText);
@@ -399,7 +395,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
     public loadSessions(silent = false): void {
         this.searchSubscription?.unsubscribe();
         const stack = this.cursorStack();
-        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter());
+        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter(), SESSION_FIELD_CATALOG);
         if (!silent) {
             this.isLoading.set(true);
             this.loadError.set(false);
@@ -518,20 +514,13 @@ export class AuditSessionsBrowserComponent implements OnInit {
     }
 
     public exportFiltered(format: ExportFormat): void {
-        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter());
+        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter(), SESSION_FIELD_CATALOG);
         const request: AuditExportRequest = { format, filters, query, match_scope: matchScope };
         this.exportingFormat.set(format);
 
         this.auditApiService
-            .startExport('sessions', request)
+            .downloadExport('sessions', request)
             .pipe(
-                switchMap(({ job_id }) =>
-                    timer(0, EXPORT_POLL_INTERVAL_MS).pipe(
-                        exhaustMap(() => this.auditApiService.getExportFile('sessions', job_id)),
-                        first((response) => response.status === 200)
-                    )
-                ),
-                timeout({ first: EXPORT_TIMEOUT_MS }),
                 finalize(() => this.exportingFormat.set(null)),
                 takeUntilDestroyed(this.destroyRef)
             )

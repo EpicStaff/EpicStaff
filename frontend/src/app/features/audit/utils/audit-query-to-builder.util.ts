@@ -22,7 +22,6 @@ import {
     JSON_OPERATORS,
     KIND_OPTIONS,
     NODE_TYPE_OPTIONS,
-    SESSION_FIELD_CATALOG,
     STATUS_OPTIONS,
     TOKEN_OPERATORS,
 } from '../models/audit-filter-options';
@@ -452,7 +451,7 @@ function isAllowedCombination(state: AuditFilterState): boolean {
 export function queryToBuilderState(
     query: string,
     current: AuditFilterState,
-    catalog: AuditFieldCatalog = SESSION_FIELD_CATALOG
+    catalog: AuditFieldCatalog
 ): AuditFilterState | null {
     const fields = builderFieldsOf(catalog);
     const base: AuditFilterState = {

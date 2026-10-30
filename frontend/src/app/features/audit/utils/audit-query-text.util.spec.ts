@@ -6,6 +6,7 @@ import {
     createAuditCondition,
     EMPTY_AUDIT_FILTER,
 } from '../models/audit-filter.models';
+import { SESSION_FIELD_CATALOG } from '../models/audit-filter-options';
 import { parseAuditQuery } from './audit-query-language.util';
 import { auditFilterToQueryText } from './audit-query-text.util';
 import { compileAuditFilter } from './compile-audit-filter.util';
@@ -120,7 +121,7 @@ describe('Builder state round-trip through query text', () => {
     ];
 
     it.each(states)('preserves %s', (_label, overrides) => {
-        const { filters } = compileAuditFilter({ ...EMPTY_AUDIT_FILTER, ...overrides });
+        const { filters } = compileAuditFilter({ ...EMPTY_AUDIT_FILTER, ...overrides }, SESSION_FIELD_CATALOG);
         if (filters === undefined) {
             throw new Error('state compiled to no filter');
         }

@@ -12,7 +12,7 @@ import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/direc
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SidebarWidthOptions, SidebarWidthService } from '@shared/services';
 import { downloadBlob } from '@shared/utils';
-import { debounceTime, exhaustMap, finalize, first, Subject, Subscription, switchMap, timeout, timer } from 'rxjs';
+import { debounceTime, finalize, Subject, Subscription } from 'rxjs';
 
 import { ExportFormat } from '../../core/services/import-export.service';
 import { ToastService } from '../../services/notifications';
@@ -36,8 +36,6 @@ const MIN_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 100;
 const PAGE_SIZE_STEP = 10;
 const SEARCH_DEBOUNCE_MS = 400;
-const EXPORT_POLL_INTERVAL_MS = 1_000;
-const EXPORT_TIMEOUT_MS = 5 * 60_000;
 // the same side panel width as the Sessions tab, so switching tabs keeps it
 const PANEL_WIDTH_KEY = 'audit-side-panel';
 const PANEL_WIDTH_OPTIONS = { defaultWidth: 480, minWidth: 360, maxWidth: 960 } satisfies SidebarWidthOptions;
@@ -85,7 +83,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     protected readonly rows = computed<UserActionRow[]>(() =>
         this.events().map((event) => ({ event, description: describeUserAction(event) }))
     );
-    protected readonly appliedChips = computed(() => describeAuditFilter(this.appliedFilter(), {}, this.catalog));
+    protected readonly appliedChips = computed(() => describeAuditFilter(this.appliedFilter(), this.catalog));
     protected readonly appliedSearchText = computed(() => this.appliedFilter().searchText);
     protected readonly highlightTerm = computed(() => this.appliedSearchText().trim());
     protected readonly queryError = computed(() =>
@@ -207,15 +205,8 @@ export class AuditUserActionsBrowserComponent implements OnInit {
         this.exportingFormat.set(format);
 
         this.auditApiService
-            .startExport('user_actions', { format, filters, query })
+            .downloadExport('user_actions', { format, filters, query })
             .pipe(
-                switchMap(({ job_id }) =>
-                    timer(0, EXPORT_POLL_INTERVAL_MS).pipe(
-                        exhaustMap(() => this.auditApiService.getExportFile('user_actions', job_id)),
-                        first((response) => response.status === 200)
-                    )
-                ),
-                timeout({ first: EXPORT_TIMEOUT_MS }),
                 finalize(() => this.exportingFormat.set(null)),
                 takeUntilDestroyed(this.destroyRef)
             )
