@@ -42,6 +42,22 @@ paired Start/Finish-or-Error event timestamps — it is never sent to
 OpenSearch directly, and it may only be combined with other conditions via
 top-level `and` (never `or`/`not` — see `src/auditor/app/services/duration_filter.py`).
 
+### `user_actions` fields
+
+The `user_actions` domain (`/api/audit/user_actions/...`, catalog in
+`src/auditor/app/domains/user_actions/fields.py`) has its own field set. It has no
+`match_scope` and no computed `duration`; the operators and query language are the same.
+
+| Field | Allowed ops |
+|---|---|
+| `action`, `target_type`, `parent_type` (select) | `in`, `not_in`, `equals`, `not_equal` |
+| `actor_user_id` (numeric) | `in`, `not_in`, `equals`, `not_equal`, `gt`, `lt`, `gte`, `lte` |
+| `target_id`, `parent_id`, `actor_api_key_name`, `route` | `in`, `not_in`, `equals`, `not_equal` |
+| `id` | `in`, `not_in`, `equals`, `not_equal`, `gt`, `lt`, `gte`, `lte` |
+| `event_time` | `equals`, `gt`, `lt`, `gte`, `lte` (see "Working with dates") |
+| `actor_email`, `target_name`, `parent_name`, `previous_name` | same set as `name` above; pattern ops run against the `.raw` wildcard sub-field |
+| *(bare word / `text:` prefix)* | free text - `contains` across the four text fields above |
+
 ## Operators — query symbol → canonical AST `op`
 
 | Query symbol | AST `op` | Notes |
