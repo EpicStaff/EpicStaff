@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 from rbac.access.principals import is_pinned_org_principal
 from rbac.governance.organization_retention import effective_retention_days_for_org
@@ -35,6 +36,7 @@ from tables.models.graph_models import (
     AgentNode,
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
     ConditionGroup,
     DecisionTableNode,
     GraphSessionMessage,
@@ -500,9 +502,20 @@ class SessionManagerService(metaclass=SingletonMeta):
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = (
             ClassificationDecisionTableNode.objects.filter(graph=graph.pk)
-            .select_related("pre_python_code__venv", "post_python_code__venv")
+            .select_related(
+                "pre_python_code__venv",
+                "post_python_code__venv",
+                "default_llm_config__model__llm_provider",
+            )
             .prefetch_related(
                 "condition_groups",
+                Prefetch(
+                    "prompt_configs",
+                    queryset=ClassificationDecisionTablePrompt.objects.select_related(
+                        "llm_config__model__llm_provider",
+                        "system_one_config__llm_config__model__llm_provider",
+                    ),
+                ),
                 secret_names_prefetch("pre_python_code__secrets"),
                 secret_names_prefetch("post_python_code__secrets"),
             )

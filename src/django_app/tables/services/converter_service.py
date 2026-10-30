@@ -40,6 +40,7 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
+from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND, SystemOneConfigData
 from storage_credentials.exceptions import (
     CredentialScopeValidationError,
     TemporaryCredentialIssueError,
@@ -68,7 +69,7 @@ from tables.models.graph_models import (
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
-from tables.models.llm_models import LLMConfig
+from tables.models.llm_models import LLMConfig, SystemOneConfig
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import (
@@ -625,6 +626,23 @@ class ConverterService(metaclass=SingletonMeta):
             config=self.convert_llm_config_data(config),
         )
 
+    def convert_system_one_config_to_pydantic(self, config: SystemOneConfig) -> SystemOneConfigData:
+        """Convert a System One config into the payload sent to crew.
+
+        `api_key` stays empty here: SecretResolver fills it from `api_key_secret_id`.
+        """
+        return SystemOneConfigData(
+            id=config.id,
+            provider=config.provider,
+            model_name=config.model_name,
+            api_key_secret_id=config.api_key_secret_id,
+            llm_data=(
+                self.convert_llm_config_to_pydantic(config.llm_config)
+                if config.llm_config
+                else None
+            ),
+        )
+
     def convert_llm_config_data(self, config: LLMConfig) -> LLMConfigData:
         """Convert an LLMConfig that has a model into its provider-independent LLMConfigData.
 
@@ -794,6 +812,23 @@ class ConverterService(metaclass=SingletonMeta):
         default_llm_config = node.default_llm_config
 
         for pc in node.prompt_configs.all():
+            if pc.kind == SYSTEM_ONE_PROMPT_KIND:
+                prompts_dict[pc.prompt_key] = PromptConfigData(
+                    kind=SYSTEM_ONE_PROMPT_KIND,
+                    prompt_text="",
+                    llm_id=None,
+                    llm_data=None,
+                    result_variable=pc.result_variable or "prompt_result",
+                    variable_mappings=pc.variable_mappings or {},
+                    questions=pc.questions or {},
+                    input_map=pc.input_map or {},
+                    system_one_config=(
+                        self.convert_system_one_config_to_pydantic(pc.system_one_config)
+                        if pc.system_one_config
+                        else None
+                    ),
+                )
+                continue
             llm_config_obj = pc.llm_config or default_llm_config
             llm_data = None
             llm_id = None
