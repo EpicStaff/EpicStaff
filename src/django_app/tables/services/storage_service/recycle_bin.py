@@ -319,6 +319,8 @@ class StorageRecycleBinService:
         4. The objects move from the trash to the final path. A batch left with
            no binned rows left has its trash prefix deleted.
 
+        Records the restore as a user action, under the name it came back with.
+
         Raises:
             NotInRecycleBinError: `row_id` isn't in this org's bin.
             StorageRestoreConflictError: an unindexed object already sits at the target path.
@@ -351,6 +353,7 @@ class StorageRecycleBinService:
                 raise StorageRestoreConflictError(final_path) from error
             self._drop_trash_if_empty(org_id, batch)
             root.refresh_from_db()
+            record_user_action(action=UserAction.RESTORED, org_id=org_id, target=root)
 
         logger.info(
             "Restored storage {} {} of org {} (batch {})", root.item_type, root.pk, org_id, batch
@@ -403,7 +406,8 @@ class StorageRecycleBinService:
 
         Rows go first and objects second, inside the transaction: if storage
         fails the rows come back and the purge can be retried. Logged with
-        `actor`, since it can't be undone, and recorded as a user action.
+        `actor`, since it can't be undone, and recorded as a user action unless the
+        retention job asked for it.
 
         Raises:
             NotInRecycleBinError: `row_id` isn't in this org's bin.
@@ -425,9 +429,13 @@ class StorageRecycleBinService:
             else:
                 self._manager.delete_trash_path(org_id, batch, root.path)
 
-        record_user_action(
-            action=UserAction.PERMANENTLY_DELETED, org_id=org_id, target_description=target
-        )
+        # Imported here: purge_service imports this module.
+        from tables.services.recycle_bin.purge_service import RETENTION_JOB_ACTOR
+
+        if actor != RETENTION_JOB_ACTOR:
+            record_user_action(
+                action=UserAction.PERMANENTLY_DELETED, org_id=org_id, target_description=target
+            )
         logger.info(
             "Purged storage {item_type} {pk} of org {org_id} (batch {batch}, {count} rows) by {actor}",
             item_type=root.item_type,

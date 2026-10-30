@@ -9,10 +9,12 @@ from django.db.models.functions import Concat, Substr
 from django.utils import timezone
 from rbac.authorship import record_last_edits, resolve_author
 from rbac.models import Organization
+from src.shared.models import UserAction
 from tables.models import StorageFile, User
 from tables.services.recycle_bin.deleting import record_deleter
 from tables.services.storage_service.path_utils import is_trash_path
 from tables.signals import rows_bulk_created
+from user_audit.recorder import record_user_action
 
 
 def _name_of(path: str) -> str:
@@ -276,7 +278,9 @@ class StorageFileSync:
         is a folder. Every row pointing at a binned row (flow attachments,
         session outputs, surface grants) is hard-deleted: a binned file is
         linked to nothing, and a restore brings it back without its links.
-        `user` is recorded as who deleted each recycle-bin entry the batch makes.
+        `user` is recorded as who deleted each recycle-bin entry the batch makes,
+        and each entry's deletion as a user action (not the rows binned under a
+        folder). Pass None when no person asked for it: nothing is recorded then.
         Returns None when nothing live sits at `path`.
         """
         clean_path = path.rstrip("/")
@@ -299,7 +303,11 @@ class StorageFileSync:
             return None
         batch_rows = StorageFile.all_objects.filter(soft_delete_batch=batch)
         _delete_links_to(batch_rows)
-        record_deleter(_bin_entries_of(batch_rows), user, deleted_at=deleted_at)
+        bin_entries = _bin_entries_of(batch_rows)
+        record_deleter(bin_entries, user, deleted_at=deleted_at)
+        if user is not None:
+            for entry in bin_entries:
+                record_user_action(action=UserAction.DELETED, org_id=org_id, target=entry)
         return SoftDeletedSubtree(batch=batch, root_path=root_path)
 
     @staticmethod
@@ -390,7 +398,8 @@ def _bin_entries_of(batch_rows: QuerySet) -> list[StorageFile]:
     file or folder; more only when the folder had no row of its own.
     """
     deleted_with_its_folder = batch_rows.filter(path=OuterRef("parent_path"))
-    return list(batch_rows.exclude(Exists(deleted_with_its_folder)).only("pk"))
+    # name and path: what describes the entry as a user action.
+    return list(batch_rows.exclude(Exists(deleted_with_its_folder)).only("pk", "name", "path"))
 
 
 def _delete_links_to(rows: QuerySet) -> None:

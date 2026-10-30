@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
@@ -7,9 +8,10 @@ from rest_framework import status
 
 from tables.models import Edge, Graph, PythonCode, PythonNode, Secret, StorageFile
 from tables.services.recycle_bin import empty_service
-from tables.services.recycle_bin.purge_service import PurgeService
+from tables.services.recycle_bin.purge_service import RETENTION_JOB_ACTOR, PurgeService
 from tables.services.secrets import secret_service
 from tables.services.storage_service.manager import StorageManager
+from tables.services.storage_service.recycle_bin import StorageRecycleBinService
 from user_audit.context import user_action_context
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -18,6 +20,7 @@ from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_f
 pytestmark = pytest.mark.django_db
 
 FLOWS_URL = "/api/graphs/"
+STORAGE_URL = "/api/storage/"
 
 
 @pytest.fixture
@@ -41,6 +44,13 @@ def _binned_flow(org, name) -> Graph:
     flow = Graph.objects.create(name=name, org=org)
     flow.delete()
     return flow
+
+
+@pytest.fixture
+def storage_manager():
+    manager = StorageManager(InMemoryStorageBackend(organization_prefix=""))
+    with patch("tables.views.storage_views.get_storage_manager", return_value=manager):
+        yield manager
 
 
 def _target(event) -> tuple:
@@ -254,3 +264,71 @@ def test_rest_edge_delete_records_updated_flow(
     assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
     [event] = sent_events
     assert _target(event) == ("updated", "flow", str(flow.id), "Billing flow")
+
+
+def _delete_storage_paths(client, paths, capture):
+    with capture(execute=True):
+        response = client.delete(f"{STORAGE_URL}delete/", {"paths": paths}, format="json")
+    assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
+
+
+def test_storage_file_delete_records_deleted(
+    admin_client, acme, admin_acme, storage_manager, sent_events, django_capture_on_commit_callbacks
+):
+    seed_file(storage_manager._backend, acme.id, "reports/march.pdf", b"pdf")
+
+    _delete_storage_paths(admin_client, ["reports/march.pdf"], django_capture_on_commit_callbacks)
+
+    binned = StorageFile.deleted_objects.get(org=acme, path="reports/march.pdf")
+    [event] = sent_events
+    assert _target(event) == ("deleted", "storage file", str(binned.id), "march.pdf")
+    assert (event.org_id, event.actor_user_id) == (acme.id, admin_acme.id)
+
+
+def test_storage_folder_delete_records_one_not_per_file(
+    admin_client, acme, storage_manager, sent_events, django_capture_on_commit_callbacks
+):
+    storage_manager.mkdir(acme.id, "reports", user=None)
+    seed_file(storage_manager._backend, acme.id, "reports/march.pdf", b"pdf")
+    seed_file(storage_manager._backend, acme.id, "reports/april.pdf", b"pdf")
+
+    _delete_storage_paths(admin_client, ["reports"], django_capture_on_commit_callbacks)
+
+    folder = StorageFile.deleted_objects.get(org=acme, path="reports/")
+    [event] = sent_events
+    assert _target(event) == ("deleted", "storage file", str(folder.id), "reports")
+
+
+def test_storage_restore_records_restored(
+    admin_client, acme, storage_manager, sent_events, django_capture_on_commit_callbacks
+):
+    seed_file(storage_manager._backend, acme.id, "reports/march.pdf", b"pdf")
+    storage_manager.delete(acme.id, "reports/march.pdf", user=None)
+    binned = StorageFile.deleted_objects.get(org=acme, path="reports/march.pdf")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.post(
+            f"{STORAGE_URL}recycle-bin/restore/", {"ids": [binned.id]}, format="json"
+        )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    [event] = sent_events
+    assert _target(event) == ("restored", "storage file", str(binned.id), "march.pdf")
+    assert event.org_id == acme.id
+
+
+def test_storage_purge_by_retention_job_records_nothing(
+    rf, acme, admin_acme, sent_events, django_capture_on_commit_callbacks
+):
+    manager = StorageManager(InMemoryStorageBackend(organization_prefix=""))
+    seed_file(manager._backend, acme.id, "reports/march.pdf", b"pdf")
+    manager.delete(acme.id, "reports/march.pdf", user=None)
+    binned = StorageFile.deleted_objects.get(org=acme, path="reports/march.pdf")
+    request = rf.post("/api/storage/recycle-bin/purge/")
+    request.user = admin_acme
+
+    with user_action_context(request), django_capture_on_commit_callbacks(execute=True):
+        StorageRecycleBinService(manager).purge(acme.id, binned.id, actor=RETENTION_JOB_ACTOR)
+
+    assert not StorageFile.all_objects.filter(pk=binned.pk).exists()
+    assert sent_events == []
