@@ -241,17 +241,17 @@
                                             </button>
                                         }
                                     </ng-template>
-                                    <td>
+                                    <td class="audit-table__value">
                                         <ng-container
                                             *ngTemplateOutlet="valueCell; context: { field: 'Input', text: input }"
                                         />
                                     </td>
-                                    <td>
+                                    <td class="audit-table__value">
                                         <ng-container
                                             *ngTemplateOutlet="valueCell; context: { field: 'Output', text: output }"
                                         />
                                     </td>
-                                    <td>
+                                    <td class="audit-table__value">
                                         <ng-container
                                             *ngTemplateOutlet="
                                                 valueCell;
@@ -259,7 +259,7 @@
                                             "
                                         />
                                     </td>
-                                    <td>
+                                    <td class="audit-table__value">
                                         <ng-container
                                             *ngTemplateOutlet="valueCell; context: { field: 'Details', text: details }"
                                         />

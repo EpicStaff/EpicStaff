@@ -289,6 +289,16 @@
     border-left: 1px solid var(--audit-tree-color);
 }
 
+.audit-table__value {
+    // anchors the value button's overlay, which stretches its hover and click area over the whole cell
+    position: relative;
+    transition: background-color 0.15s ease;
+
+    &:has(.audit-value-cell:hover) {
+        background-color: var(--color-ghost-btn-hover);
+    }
+}
+
 .audit-value-cell {
     display: block;
     width: 100%;
@@ -303,9 +313,21 @@
     text-overflow: ellipsis;
     cursor: pointer;
 
+    // covers the cell padding and the space below the text when a neighbouring cell makes the row taller
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+    }
+
     &:focus-visible,
     &.is-viewed {
-        outline: 1px solid var(--accent-color);
+        outline: none;
+
+        &::after {
+            outline: 1px solid var(--accent-color);
+            outline-offset: -1px;
+        }
     }
 }
 
