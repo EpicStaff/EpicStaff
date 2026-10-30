@@ -14,16 +14,18 @@ org-owned custom tools are scoped.
 """
 
 import pytest
+from django.utils import timezone
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from agents.models.surface_models import AgentInlineSurface, InlineSurface
+from agents.models.surface_models import AgentInlineSurface, InlineSurface, Surface
 from tables.models.graph_models import AgentNode, Graph, StorageFile, TaskNode
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
+from agents.serializers.surface_serializers import SurfaceStorageItemWriteSerializer
 
 pytestmark = pytest.mark.django_db
 
@@ -94,10 +96,14 @@ NODES = {
 }
 EACH_REFERENCE = pytest.mark.parametrize("reference", list(REFERENCES))
 EACH_NODE = pytest.mark.parametrize("node_kind", list(NODES))
+# A storage file outside the caller's reach is dropped, not rejected: see the
+# storage-file tests below.
+REJECTED_WHEN_FOREIGN = [reference for reference in REFERENCES if reference != "storage_file"]
+EACH_REJECTED_REFERENCE = pytest.mark.parametrize("reference", REJECTED_WHEN_FOREIGN)
 
 
 @EACH_NODE
-@EACH_REFERENCE
+@EACH_REJECTED_REFERENCE
 @pytest.mark.parametrize("write", ["create", "update"])
 def test_inline_reference_to_another_orgs_object_is_rejected(client_a, org_a, org_b, node_kind, reference, write):
     make, payload, _ = REFERENCES[reference]
@@ -136,7 +142,7 @@ def test_inline_reference_in_reach_is_attached(client_a, org_a, org_b, node_kind
 @pytest.mark.parametrize(
     ("reference", "owner", "expected_status"),
     [
-        *[(reference, "another-org", 400) for reference in REFERENCES],
+        *[(reference, "another-org", 400) for reference in REJECTED_WHEN_FOREIGN],
         *[(reference, "own-org", 200) for reference in REFERENCES],
         ("python_tool", "built-in-of-another-org", 200),
     ],
@@ -164,3 +170,219 @@ def test_bulk_save_applies_the_same_inline_reference_rules(client_a, org_a, org_
     assert saved.exists() is (expected_status == 200)
     if expected_status == 200:
         assert attached(saved.get().inline_surface, target).exists()
+
+
+def _bin(storage_file):
+    StorageFile.objects.filter(pk=storage_file.pk).update(active=False, soft_deleted_at=timezone.now())
+
+
+def _save_nodes(client, graph, node_kind, storage_items):
+    node_list_key = {"tasknode": "task_node_list", "agentnode": "agent_node_list"}[node_kind]
+    return client.post(
+        reverse("graphs-save-flow", args=[graph.id]),
+        {
+            "save_version": graph.save_version,
+            node_list_key: [
+                {
+                    "graph": graph.id,
+                    "node_name": "bulk-node",
+                    "inline_surface": {"storage_items": storage_items},
+                }
+            ],
+        },
+        format="json",
+    )
+
+
+def _stored_file_ids(node_kind, graph):
+    model = {"tasknode": TaskNode, "agentnode": AgentNode}[node_kind]
+    node = model.objects.get(graph=graph, node_name="bulk-node")
+    return set(node.inline_surface.storage_items.values_list("storage_file_id", flat=True))
+
+
+def _file(org, name):
+    return StorageFile.objects.create(org=org, path=f"{name}.txt", name=f"{name}.txt")
+
+
+@EACH_NODE
+def test_bulk_save_drops_a_binned_storage_file_and_keeps_the_live_one(client_a, org_a, node_kind):
+    graph = Graph.objects.create(name="a-graph", org=org_a)
+    binned, live = _file(org_a, "binned"), _file(org_a, "live")
+    _bin(binned)
+
+    resp = _save_nodes(
+        client_a,
+        graph,
+        node_kind,
+        [
+            {"storage_file": binned.id, "can_view": "allow"},
+            {"storage_file": live.id, "can_view": "allow", "can_edit": "deny"},
+        ],
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert _stored_file_ids(node_kind, graph) == {live.id}
+    node = {"tasknode": TaskNode, "agentnode": AgentNode}[node_kind].objects.get(graph=graph)
+    item = node.inline_surface.storage_items.get()
+    assert (item.can_view, item.can_edit, item.can_delete) == ("allow", "deny", "unset")
+
+
+@EACH_NODE
+@pytest.mark.parametrize("origin", ["another-org", "nonexistent", "purged"])
+def test_bulk_save_drops_an_unreachable_storage_file_like_a_binned_one(
+    client_a, org_a, org_b, node_kind, origin
+):
+    graph = Graph.objects.create(name="a-graph", org=org_a)
+    live = _file(org_a, "live")
+    if origin == "another-org":
+        unreachable_id = _file(org_b, "foreign").id
+    elif origin == "purged":
+        purged = _file(org_a, "purged")
+        unreachable_id = purged.id
+        purged.delete()
+    else:
+        unreachable_id = StorageFile.all_objects.order_by("-id").first().id + 1000
+
+    resp = _save_nodes(
+        client_a,
+        graph,
+        node_kind,
+        [{"storage_file": unreachable_id}, {"storage_file": live.id}],
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert _stored_file_ids(node_kind, graph) == {live.id}
+
+
+@pytest.mark.parametrize("malformed", ["abc", None, [1], True, {"id": 1}])
+def test_bulk_save_still_rejects_a_malformed_storage_file_value(client_a, org_a, malformed):
+    graph = Graph.objects.create(name="a-graph", org=org_a)
+
+    resp = _save_nodes(client_a, graph, "tasknode", [{"storage_file": malformed}])
+
+    assert resp.status_code == 400, resp.data
+    assert not TaskNode.objects.filter(graph=graph).exists()
+
+
+def test_bulk_save_still_rejects_a_duplicate_live_storage_file(client_a, org_a):
+    graph = Graph.objects.create(name="a-graph", org=org_a)
+    live = _file(org_a, "live")
+
+    resp = _save_nodes(
+        client_a, graph, "tasknode", [{"storage_file": live.id}, {"storage_file": str(live.id)}]
+    )
+
+    assert resp.status_code == 400, resp.data
+
+
+def test_shared_surface_write_drops_a_binned_storage_file(client_a, org_a):
+    binned, live = _file(org_a, "binned"), _file(org_a, "live")
+    _bin(binned)
+
+    resp = client_a.post(
+        "/api/surfaces/",
+        {
+            "name": "shared",
+            "storage_items": [{"storage_file": binned.id}, {"storage_file": live.id, "can_list": "allow"}],
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 201, resp.data
+    surface = Surface.objects.get(org=org_a, name="shared")
+    assert list(surface.storage_items.values_list("storage_file_id", "can_list")) == [(live.id, "allow")]
+
+
+def test_shared_surface_patch_drops_a_binned_storage_file(client_a, org_a):
+    binned = _file(org_a, "binned")
+    surface = Surface.objects.create(name="shared", org=org_a)
+    _bin(binned)
+
+    resp = client_a.patch(
+        f"/api/surfaces/{surface.id}/", {"storage_items": [{"storage_file": binned.id}]}, format="json"
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert not surface.storage_items.exists()
+
+
+def _unreachable_file_id(org_b, origin):
+    if origin == "another-org":
+        return _file(org_b, "foreign").id
+    return 10**9
+
+
+@pytest.mark.parametrize("origin", ["another-org", "nonexistent"])
+def test_shared_surface_create_drops_an_unreachable_storage_file(client_a, org_a, org_b, origin):
+    live = _file(org_a, "live")
+
+    resp = client_a.post(
+        "/api/surfaces/",
+        {
+            "name": "shared",
+            "storage_items": [{"storage_file": _unreachable_file_id(org_b, origin)}, {"storage_file": live.id}],
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 201, resp.data
+    surface = Surface.objects.get(org=org_a, name="shared")
+    assert set(surface.storage_items.values_list("storage_file_id", flat=True)) == {live.id}
+
+
+@pytest.mark.parametrize("origin", ["another-org", "nonexistent"])
+def test_shared_surface_patch_drops_an_unreachable_storage_file(client_a, org_a, org_b, origin):
+    surface = Surface.objects.create(name="shared", org=org_a)
+
+    resp = client_a.patch(
+        f"/api/surfaces/{surface.id}/",
+        {"storage_items": [{"storage_file": _unreachable_file_id(org_b, origin)}]},
+        format="json",
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert not surface.storage_items.exists()
+
+
+def test_shared_surface_patch_with_only_a_binned_file_clears_the_existing_items(client_a, org_a):
+    kept, binned = _file(org_a, "kept"), _file(org_a, "binned")
+    surface = Surface.objects.create(name="shared", org=org_a)
+    surface.storage_items.create(storage_file=kept)
+    _bin(binned)
+
+    resp = client_a.patch(
+        f"/api/surfaces/{surface.id}/", {"storage_items": [{"storage_file": binned.id}]}, format="json"
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert not surface.storage_items.exists()
+
+
+@EACH_NODE
+@pytest.mark.parametrize("write", ["create", "update"])
+def test_node_endpoint_drops_binned_and_another_orgs_storage_files(client_a, org_a, org_b, node_kind, write):
+    url, model, surfaces = NODES[node_kind]
+    graph = Graph.objects.create(name="a-graph", org=org_a)
+    binned, foreign = _file(org_a, "binned"), _file(org_b, "foreign")
+    _bin(binned)
+    inline_surface = {"storage_items": [{"storage_file": binned.id}, {"storage_file": foreign.id}]}
+
+    if write == "create":
+        resp = client_a.post(url, {"graph": graph.id, "inline_surface": inline_surface}, format="json")
+        assert resp.status_code == 201, resp.data
+        node_id = resp.data["id"]
+    else:
+        node_id = model.objects.create(graph=graph, node_name="n").id
+        resp = client_a.patch(f"{url}{node_id}/", {"inline_surface": inline_surface}, format="json")
+        assert resp.status_code == 200, resp.data
+
+    assert not model.objects.get(id=node_id).inline_surface.storage_items.exists()
+
+
+def test_storage_items_without_a_request_in_context_are_still_rejected(org_a):
+    live = _file(org_a, "live")
+
+    serializer = SurfaceStorageItemWriteSerializer(data=[{"storage_file": live.id}], many=True)
+
+    assert not serializer.is_valid()
+    assert "does not exist" in str(serializer.errors)

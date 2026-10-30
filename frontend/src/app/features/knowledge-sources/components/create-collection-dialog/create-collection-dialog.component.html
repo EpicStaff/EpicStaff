@@ -40,14 +40,20 @@
                 }
             }
 
-            <app-svg-icon
-                icon="x"
+            <button
+                type="button"
                 class="dialog__actions--close"
-                size="1.5rem"
+                cdkMonitorElementFocus
+                aria-label="Close"
                 matTooltip="Close"
                 matTooltipPosition="below"
                 (click)="onClose()"
-            />
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="1.5rem"
+                />
+            </button>
         </div>
     </div>
 

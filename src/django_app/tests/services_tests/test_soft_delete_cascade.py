@@ -7,7 +7,7 @@ Covers, per root and per mechanism rule:
 - `purge()` removes a root and its whole subtree, binned rows included.
 - A model with only `SoftDeleteFields` (no `SoftDeleteMixin`) always hard-deletes
   on a direct `.delete()`.
-- `Session.graph` is nulled rather than cascaded (nullable-fallback branch).
+- `Session.graph` is a kept link: the session follows its binned flow untouched.
 - Forward-FK targets (`PythonCode`, `DocumentContent`, `GraphRagIndexConfig`)
   are never visited by the reverse-relation walker.
 - `ScheduleTriggerNode.is_active` (business field) is untouched by the cascade,
@@ -48,6 +48,8 @@ from tables.models import (
     DocumentMetadata,
     Graph,
     GraphNote,
+    GraphOrganizationUser,
+    GraphSessionMessage,
     GraphVersion,
     KnowledgeNode,
     PythonCode,
@@ -87,6 +89,7 @@ from tables.import_export.strategies.nodes.knowledge_node import KnowledgeNodeSt
 from tables.services.copy_services.inline_surface_copy_helpers import _copy_field_values
 from tables.services.copy_services.node_copy_handlers import copy_knowledge_node
 from tables.models.session_models import SessionTrigger
+from rbac.models import OrganizationUser
 from tables.models.webhook_models import (
     WebhookTrigger,
     WebhookTriggerAuth,
@@ -273,24 +276,67 @@ class TestDirectDeleteOnGroup2OnlyModel:
 
 
 @pytest.mark.django_db
-class TestSessionGraphNulledNotCascaded:
-    """Item 4: `Session.graph` is CASCADE + nullable. The nullable-fallback
-    branch in `_process_related_object` fires before the CASCADE branch, so
-    the Session survives with its FK cleared instead of being hard-deleted."""
+class TestSessionKeepsItsBinnedFlow:
+    """`Session.graph` and `Session.graph_user` (and `SessionTrigger.triggered_by_user`)
+    are kept links: binning the flow, and with it its GraphOrganizationUser rows,
+    writes nothing to its sessions, so a restore brings them back as they were."""
 
-    def test_session_survives_graph_soft_delete_with_graph_id_nulled(self, graph):
+    @staticmethod
+    def _session_with_message(graph, organization_user):
+        graph_user = GraphOrganizationUser.objects.get_or_create(
+            graph=graph, organization_user=organization_user
+        )[0]
         session = Session.objects.create(
-            graph=graph,
-            status=Session.SessionStatus.PENDING,
-            status_updated_at=timezone.now(),
+            graph=graph, graph_user=graph_user, status=Session.SessionStatus.RUN
         )
-        session_id = session.id
+        SessionTrigger.objects.create(
+            session=session,
+            trigger_type=SessionTrigger.TriggerType.MANUAL,
+            triggered_by_user=graph_user,
+        )
+        GraphSessionMessage.objects.create(
+            session=session,
+            created_at=timezone.now(),
+            message_data={"message_type": "start"},
+            uuid=uuid.uuid4(),
+        )
+        return session
+
+    def test_session_and_its_messages_stay_as_they_were(self, graph, regular_user):
+        membership = OrganizationUser.objects.get(user=regular_user, org=graph.org)
+        session = self._session_with_message(graph, membership)
+        graph_user_id = session.graph_user_id
+        before = Session.objects.values().get(pk=session.pk)
 
         graph.delete()
 
-        session.refresh_from_db()
-        assert Session.objects.filter(id=session_id).exists()
-        assert session.graph_id is None
+        assert GraphOrganizationUser.all_objects.get(pk=graph_user_id).active is False
+        assert Session.objects.values().get(pk=session.pk) == before
+        assert Session.objects.get(pk=session.pk).graph_user_id == graph_user_id
+        assert SessionTrigger.objects.get(session=session).triggered_by_user_id == graph_user_id
+        assert GraphSessionMessage.objects.filter(session=session).count() == 1
+
+    def test_binning_a_flow_costs_the_same_however_many_sessions_it_has(
+        self, default_org, regular_user
+    ):
+        membership = OrganizationUser.objects.get(user=regular_user, org=default_org)
+
+        def queries_to_bin(session_count):
+            flow = Graph.objects.create(name=f"flow with {session_count}", org=default_org)
+            sessions = [
+                self._session_with_message(flow, membership) for _ in range(session_count)
+            ]
+            with CaptureQueriesContext(connection) as queries:
+                flow.delete()
+            for session in sessions:
+                session.refresh_from_db()
+                assert session.graph_user_id is not None
+                assert SessionTrigger.objects.get(session=session).triggered_by_user_id == (
+                    session.graph_user_id
+                )
+            return len(queries)
+
+        assert queries_to_bin(5) == queries_to_bin(1)
 
 
 @pytest.mark.django_db
@@ -380,29 +426,18 @@ class TestScheduleTriggerNodeIsActiveUntouched:
 
 
 @pytest.mark.django_db
-class TestHiddenReverseRelationSetNull:
-    """related_name="+" reverse relations are
-    hidden from Model._meta.get_fields() by default, so
-    SessionTrigger.schedule_trigger_node (SET_NULL) was previously invisible
-    to the cascade walker — the FK never got nulled out when its
-    ScheduleTriggerNode was soft-deleted. _get_reverse_relations now passes
-    include_hidden=True and _get_related_objects fetches hidden relations
-    via a direct queryset filter (no reverse accessor exists for them).
+class TestSessionTriggerKeepsBinnedTriggerNodes:
+    """The trigger-node links on SessionTrigger (related_name="+", hidden from
+    Model._meta.get_fields() by default) are listed in
+    SessionTrigger.soft_delete_kept_link_fields, so a restored session still names
+    the node that started it. The nodes only have `SoftDeleteFields`, so they are
+    binned through the graph root here."""
 
-    ScheduleTriggerNode only has `SoftDeleteFields` (no `SoftDeleteMixin`),
-    so a direct `.delete()` on it is always a hard delete (see
-    TestDirectDeleteOnGroup2OnlyModel). To exercise the cascade path we
-    soft-delete via the graph root, exactly like
-    TestScheduleTriggerNodeIsActiveUntouched does."""
-
-    def test_schedule_trigger_node_soft_delete_nulls_session_trigger_fk(self, graph):
+    def test_schedule_trigger_node_soft_delete_keeps_session_trigger_fk(self, graph):
         node = ScheduleTriggerNode.objects.create(
             graph=graph, node_name="trigger_node", is_active=True
         )
-        session = Session.objects.create(
-            status=Session.SessionStatus.PENDING,
-            status_updated_at=timezone.now(),
-        )
+        session = Session.objects.create(graph=graph, status=Session.SessionStatus.PENDING)
         trigger = SessionTrigger.objects.create(
             session=session,
             trigger_type=SessionTrigger.TriggerType.SCHEDULE,
@@ -413,16 +448,10 @@ class TestHiddenReverseRelationSetNull:
 
         node.refresh_from_db()
         assert node.active is False
-        assert node.soft_deleted_at is not None
-
         trigger.refresh_from_db()
-        assert trigger.schedule_trigger_node_id is None
+        assert trigger.schedule_trigger_node_id == node.pk
 
-        session.refresh_from_db()
-        assert SessionTrigger.objects.filter(pk=trigger.pk).exists()
-        assert Session.objects.filter(pk=session.pk).exists()
-
-    def test_webhook_trigger_node_soft_delete_nulls_session_trigger_fk(self, graph):
+    def test_webhook_trigger_node_soft_delete_keeps_session_trigger_fk(self, graph):
         python_code = PythonCode.objects.create(
             code="def main(): return 1", entrypoint="main"
         )
@@ -442,10 +471,7 @@ class TestHiddenReverseRelationSetNull:
         node_auth = WebhookTriggerAuth.objects.create(
             trigger=webhook_trigger, kind=WebhookTriggerAuthKind.WEBHOOK
         )
-        session = Session.objects.create(
-            status=Session.SessionStatus.PENDING,
-            status_updated_at=timezone.now(),
-        )
+        session = Session.objects.create(graph=graph, status=Session.SessionStatus.PENDING)
         trigger = SessionTrigger.objects.create(
             session=session,
             trigger_type=SessionTrigger.TriggerType.WEBHOOK,
@@ -456,14 +482,8 @@ class TestHiddenReverseRelationSetNull:
 
         node.refresh_from_db()
         assert node.active is False
-        assert node.soft_deleted_at is not None
-
         trigger.refresh_from_db()
-        assert trigger.webhook_trigger_node_id is None
-
-        session.refresh_from_db()
-        assert SessionTrigger.objects.filter(pk=trigger.pk).exists()
-        assert Session.objects.filter(pk=session.pk).exists()
+        assert trigger.webhook_trigger_node_id == node.pk
 
         # WebhookTriggerAuth carries SoftDeleteFields, so when the graph
         # cascade reaches WebhookTrigger (via WebhookTriggerNode.webhook_trigger,

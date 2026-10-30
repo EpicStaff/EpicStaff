@@ -30,6 +30,7 @@
                 <button
                     class="delete-btn"
                     [class.delete-btn--hidden]="selectedIds().size === 0"
+                    [disabled]="isDeleting()"
                     (click)="onBulkDelete()"
                 >
                     Delete Selected

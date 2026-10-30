@@ -6,6 +6,24 @@ from tables.models.base_models import CrewSessionMessage
 from tables.models.graph_models import GraphOrganizationUser
 
 
+class SessionQuerySet(models.QuerySet):
+    def visible(self) -> "SessionQuerySet":
+        """Sessions a user may see: their flow exists and is not in the recycle bin.
+
+        A session follows its flow (see `Session.soft_delete_kept_link_fields`), so a
+        session of a binned flow answers like a missing one until a restore brings it
+        back or a purge deletes it. Code that only records a running session's progress
+        uses the unfiltered manager instead, so a run whose flow is binned mid-way
+        can still record its status and messages. What it reaches through the binned
+        flow's nodes (a key-value table, a subflow) is gone with them.
+        """
+        return self.filter(graph__active=True)
+
+    def visible_in_org(self, org_id: int) -> "SessionQuerySet":
+        """Visible sessions (see `visible`) of the flows organization `org_id` owns."""
+        return self.visible().filter(graph__org_id=org_id)
+
+
 class Session(models.Model):
     class SessionStatus(models.TextChoices):
         PENDING = "pending"
@@ -40,6 +58,16 @@ class Session(models.Model):
     )
     entrypoint = models.CharField(null=True, default=None)
     token_usage = models.JSONField(default=dict)
+
+    # Binning the flow leaves `graph` set, so a restore brings its sessions back
+    # and a purge deletes them (the FK's CASCADE). `graph_user` is binned with the
+    # flow, so it is kept too; a purge applies its SET_NULL.
+    # See tables/services/soft_delete.py.
+    soft_delete_kept_link_fields = ("graph", "graph_user")
+
+    # Not filtered: the runtime keeps updating sessions of a flow binned mid-run.
+    # User-facing reads go through `visible()` / `visible_in_org()`.
+    objects = SessionQuerySet.as_manager()
 
     def save(self, *args, **kwargs):
         now = timezone.now()
@@ -164,6 +192,16 @@ class SessionTrigger(models.Model):
 
     # non-relational bits: telegram chat_id, webhook path, ngrok config name, test-run flag
     extra = models.JSONField(default=dict)
+
+    # The trigger nodes and the GraphOrganizationUser are binned with their flow;
+    # keeping the links lets a restored session still name the node and the user that
+    # started it. See Session.soft_delete_kept_link_fields.
+    soft_delete_kept_link_fields = (
+        "schedule_trigger_node",
+        "webhook_trigger_node",
+        "telegram_trigger_node",
+        "triggered_by_user",
+    )
 
     TEST_RUN_EXTRA_KEY = "test_run"
 

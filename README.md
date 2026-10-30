@@ -48,7 +48,7 @@ Keep your coding agent. It writes tools, flows, and routing rules brilliantly â€
     
 ## Visual Agent Orchestrator in Action
 
-![Watch the EpicStaff Demo](https://github.com/EpicStaff/EpicStaff-resources/blob/main/how_to_create_flow.gif?raw=true)
+![Watch the EpicStaff Demo](https://github.com/user-attachments/assets/1b4659da-a79a-4da7-ab33-745702befd75)
 </div>
     
 ---
@@ -95,8 +95,8 @@ git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && 
 These blocks build every image locally from the cloned source (`docker compose up --build`). The signature and SBOM checks under [How to verify a release](#how-to-verify-a-release) apply only to images pulled from `ghcr.io/epicstaff`, never to images built on your machine. To run the signed, digest-pinned images of a release instead, see [Running a verified release](#running-a-verified-release).
 
 The blocks generate `src/.env` with `python scripts/envtool.py --setup --dev`, run inside a
-`python` container so only Docker is needed. It asks which optional features to turn on (chat
-and the audit trail) and fills in everything else. These are **development defaults, for trying
+`python` container so only Docker is needed. It asks which optional features to turn on (chat,
+the audit trail and plugins) and fills in everything else. These are **development defaults, for trying
 EpicStaff on your own machine only**.
 
 **Before running EpicStaff in production, replace this development configuration.** On the

@@ -5,7 +5,7 @@ from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.python_node import PythonNodeImportSerializer
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.utils import remap_python_code_venv
+from tables.import_export.utils import python_code_venv_ids, remap_python_code_venv
 from tables.models import PythonNode
 
 
@@ -20,7 +20,17 @@ class PythonNodeStrategy(EntityImportExportStrategy):
         return {"id": instance.id, "graph": instance.graph_id}
 
     def extract_dependencies_from_instance(self, instance: PythonNode) -> dict:
-        return {EntityType.GRAPH: [instance.graph_id]}
+        return self._dependencies(instance, org_id=None)
+
+    def extract_org_scoped_dependencies(self, instance: PythonNode, org_id: int) -> dict:
+        return self._dependencies(instance, org_id=org_id)
+
+    @staticmethod
+    def _dependencies(instance: PythonNode, *, org_id: int | None) -> dict:
+        return {
+            EntityType.GRAPH: [instance.graph_id],
+            EntityType.VENV: python_code_venv_ids(instance.python_code, org_id=org_id),
+        }
 
     def export_entity(self, instance: PythonNode) -> dict:
         return self.serializer_class(instance).data

@@ -41,9 +41,6 @@ package = false
 
 [tool.pytest.ini_options]
 pythonpath = [".", "../.."]
-markers = [
-    "integration: runs against a live crewdb - skips itself if unreachable, fails instead when REQUIRE_CREWDB is true",
-]
 
 [tool.ruff]
 select = ["E"]

@@ -24,7 +24,13 @@ import {
     LoadingSpinnerComponent,
 } from '@shared/components';
 import { LABELS_STORE } from '@shared/services';
-import { buildPreviewImportResult, downloadBlob, extractHttpErrorMessage, ImportFileData } from '@shared/utils';
+import {
+    buildPreviewImportResult,
+    downloadBlob,
+    extractHttpErrorMessage,
+    ImportFileData,
+    movedToRecycleBinMessage,
+} from '@shared/utils';
 import { EMPTY, from, Observable, of } from 'rxjs';
 import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
@@ -604,7 +610,7 @@ export class ToolsListComponent implements OnInit {
                 next: () => {
                     this.allTools.update((list) => list.filter((t) => t.id !== tool.id));
                     this.toastService.success(
-                        `${capitalise(this.port.entityLabel)} "${tool.name}" has been deleted successfully.`
+                        movedToRecycleBinMessage(1, this.port.entityLabel, this.port.entityLabelPlural)
                     );
                 },
                 error: (err: HttpErrorResponse) => {
@@ -642,6 +648,7 @@ export class ToolsListComponent implements OnInit {
                         allTools: this.allTools,
                         bulkDelete: (deleteIds) => this.port.bulkDelete(deleteIds),
                         entityLabel: this.port.entityLabel,
+                        entityLabelPlural: this.port.entityLabelPlural,
                         scopeLabel: 'selected',
                         dialogData: buildBulkSelectedDeleteDialog(tools, this.recycleBinSettings.retentionDays()),
                         onError: () => this.loadTools(),

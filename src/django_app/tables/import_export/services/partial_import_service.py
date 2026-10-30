@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from django.db import transaction
 from loguru import logger
+from proxies.sandbox.services import VenvService
 from rbac.authorship import record_last_edits
 from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
@@ -97,12 +98,14 @@ class PartialImportService:
             serializer_context: Context for the read serializers rendering
                 `content`, normally the view's serializer context.
         """
+        # Nodes are collected from the prepared bundle: preparation may repoint
+        # their surface lists.
+        export_data = prepare_import_data(export_data)
         nodes_data = self._collect_nodes(export_data)
         if not nodes_data:
             raise ValidationError({"detail": "No nodes found in the import file."})
 
         id_mapper = IDMapper()
-        export_data = prepare_import_data(export_data)
         # A trigger node among the imported nodes is live once saved, so the import
         # needs flows:USE; refused here, before the transaction opens, so nothing is
         # written. Only the collected node entries are imported, so only they count.
@@ -111,44 +114,53 @@ class PartialImportService:
         ):
             trigger_node_access.assert_may_recreate(effective_permissions)
 
-        with transaction.atomic():
-            # Step 1: import non-node dependencies (LLM configs, crews, etc.)
-            # into the active org, enforcing per-resource CREATE permission.
-            created_dependencies = self._import_dependencies(
-                export_data,
-                id_mapper,
-                org_id=org_id,
-                user=user,
-                effective_permissions=effective_permissions,
-            )
-            record_last_edits(created_dependencies, user)
+        # Venvs are created in the sandbox service, which the transaction does not
+        # cover; a rollback has to undo them by hand.
+        created_venv_ids: list[int] = []
 
-            # Step 2: create the nodes and edges in the target graph, render them, then
-            # roll them back. Creating them runs every node strategy's validation,
-            # reference remapping and normalization, and lets the response reuse the
-            # exact GET-graph serializers; rolling back persists none of it (nodes,
-            # edges, node-number counter, node last edits). The user persists the
-            # content by saving the flow, and "exit without saving" discards it.
-            # Do not replace this with in-memory conversion: it would duplicate each
-            # node strategy and drift from it.
-            graph_strategy: GraphStrategy = self.registry.get_strategy(EntityType.GRAPH)
+        try:
             with transaction.atomic():
-                node_mapper = graph_strategy.recreate_graph_children(
-                    graph,
-                    {
-                        "nodes": nodes_data,
-                        "edge_list": export_data.get("edge_list", []),
-                    },
+                # Step 1: import non-node dependencies (LLM configs, crews, etc.)
+                # into the active org, enforcing per-resource CREATE permission.
+                created_dependencies = self._import_dependencies(
+                    export_data,
                     id_mapper,
-                    is_partial=True,
+                    org_id=org_id,
                     user=user,
+                    effective_permissions=effective_permissions,
+                    created_venv_ids=created_venv_ids,
                 )
-                content = self._serialize_content(
-                    graph,
-                    set(node_mapper.get_new_ids(NODE_MAPPING_KEY)),
-                    serializer_context or {},
-                )
-                transaction.set_rollback(True)
+                record_last_edits(created_dependencies, user)
+
+                # Step 2: create the nodes and edges in the target graph, render them, then
+                # roll them back. Creating them runs every node strategy's validation,
+                # reference remapping and normalization, and lets the response reuse the
+                # exact GET-graph serializers; rolling back persists none of it (nodes,
+                # edges, node-number counter, node last edits). The user persists the
+                # content by saving the flow, and "exit without saving" discards it.
+                # Do not replace this with in-memory conversion: it would duplicate each
+                # node strategy and drift from it.
+                graph_strategy: GraphStrategy = self.registry.get_strategy(EntityType.GRAPH)
+                with transaction.atomic():
+                    node_mapper = graph_strategy.recreate_graph_children(
+                        graph,
+                        {
+                            "nodes": nodes_data,
+                            "edge_list": export_data.get("edge_list", []),
+                        },
+                        id_mapper,
+                        is_partial=True,
+                        user=user,
+                    )
+                    content = self._serialize_content(
+                        graph,
+                        set(node_mapper.get_new_ids(NODE_MAPPING_KEY)),
+                        serializer_context or {},
+                    )
+                    transaction.set_rollback(True)
+        except Exception:
+            VenvService().remove_upstream(created_venv_ids)
+            raise
 
         return PartialImportResult(id_mapper=id_mapper, content=content)
 
@@ -177,6 +189,7 @@ class PartialImportService:
         org_id: int | None = None,
         user=None,
         effective_permissions=None,
+        created_venv_ids: list[int] | None = None,
     ) -> list[LastEditTrackedModel]:
         """Import all non-node, non-graph entity types in dependency order.
 
@@ -220,7 +233,12 @@ class PartialImportService:
                             denied_resources.add(resource)
 
                 instance = strategy.import_entity(
-                    entity_data, id_mapper, is_main=False, org_id=org_id, user=user
+                    entity_data,
+                    id_mapper,
+                    is_main=False,
+                    org_id=org_id,
+                    user=user,
+                    created_venv_ids=created_venv_ids,
                 )
                 if instance is not None:
                     id_mapper.map(entity_type, old_id, instance.id, was_created)

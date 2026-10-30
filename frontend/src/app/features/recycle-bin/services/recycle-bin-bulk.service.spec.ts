@@ -21,6 +21,7 @@ function binItem(source: RecycleBinSourceKey, id: number): RecycleBinItem {
         details: [],
         contents: [],
         contentsTotal: 0,
+        hiddenContentsCount: 0,
     };
 }
 

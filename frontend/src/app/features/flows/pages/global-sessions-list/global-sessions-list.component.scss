@@ -149,6 +149,11 @@
                 background: var(--red-700);
             }
 
+            &:disabled {
+                opacity: 0.4;
+                cursor: not-allowed;
+            }
+
             &.invisible {
                 visibility: hidden;
                 pointer-events: none;
