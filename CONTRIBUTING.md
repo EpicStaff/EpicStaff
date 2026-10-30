@@ -77,7 +77,7 @@ These steps start the dev stack with Docker Compose directly. If you prefer `mak
       ```bash
       cp src/.env.example src/.env
       ```
-      `.env.example` is the **production** template, so edit `src/.env` afterwards: fill in every value marked `CHANGE ME`.
+      `.env.example` is the **production** template, so edit `src/.env` afterwards: every variable that has no default (database, Redis and storage users and passwords, `DJANGO_SECRET_KEY` and the other secrets, the public URLs) is commented out as `# NAME=<enter your value>` — uncomment each one and set a value. Compose refuses to start while one of them is missing.
 
 5.  **Create the external Docker volumes and network** (one time per machine — Compose will not create these automatically):
     ```bash
