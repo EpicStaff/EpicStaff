@@ -6,7 +6,7 @@ from django.utils import timezone
 from loguru import logger
 from src.shared.models import UserAction
 from user_audit.actor import actor_from_request
-from user_audit.context import current_context
+from user_audit.context import current_context, mark_request_handled
 from user_audit.recorder import record_for_user_orgs
 
 from rbac.access.cross_org_resolver import OrgScope
@@ -18,14 +18,12 @@ from rbac.models.enums import Permission, ResourceType
 OWNER_ORG_PATH = "created_by__organization_memberships__org_id"
 
 
-def _record_revoked(key: ApiKey) -> None:
-    """Record the revoke in each org of the key's owner, as the requester."""
+def _record_for_owner_orgs(key: ApiKey, action: str) -> None:
+    """Record the action in each org of the key's owner, as the requester."""
     context = current_context()
     actor = actor_from_request(context.request) if context is not None else None
     if actor is not None:
-        record_for_user_orgs(
-            action=UserAction.UPDATED, actor=actor, target=key, org_user_id=key.created_by_id
-        )
+        record_for_user_orgs(action=action, actor=actor, target=key, org_user_id=key.created_by_id)
 
 
 class ApiKeyManagementService(CrossOrgResourceService):
@@ -75,7 +73,9 @@ class ApiKeyManagementService(CrossOrgResourceService):
         if key.revoked_at is None:
             key.revoked_at = timezone.now()
             key.save(update_fields=["revoked_at"])
-            _record_revoked(key)
+            _record_for_owner_orgs(key, UserAction.UPDATED)
+        else:
+            mark_request_handled()
         logger.info(
             "ApiKeyManagementService.revoke_key actor={a} key={k} owner={o}",
             a=getattr(actor, "email", "system"),
@@ -93,6 +93,8 @@ class ApiKeyManagementService(CrossOrgResourceService):
             k=key.pk,
             o=key.created_by_id,
         )
+        # Before the delete: the record names the key, and a deleted instance loses its pk.
+        _record_for_owner_orgs(key, UserAction.DELETED)
         key.delete()
 
     def attach_visible_orgs(

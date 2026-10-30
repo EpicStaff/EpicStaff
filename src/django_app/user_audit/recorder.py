@@ -112,7 +112,8 @@ def record_for_user_orgs(
         with transaction.atomic():
             org_ids = list(
                 OrganizationUser.objects.filter(
-                    user_id=org_user_id or actor.user_id, org__is_active=True
+                    user_id=org_user_id if org_user_id is not None else actor.user_id,
+                    org__is_active=True,
                 ).values_list("org_id", flat=True)
             )
         for org_id in org_ids:

@@ -9,6 +9,7 @@ from storage_credentials.services.org_provisioning_service import (
     org_storage_provisioning_service,
 )
 from tables.models.user import User
+from user_audit.context import mark_request_handled
 from user_audit.recorder import record_user_action
 
 from rbac.exceptions import (
@@ -144,6 +145,7 @@ class OrganizationManagementService(CrossOrgResourceService):
         self.assert_can(effective, Permission.UPDATE)
         org = self._get_locked_org(org_id)
         if org.name == name:
+            mark_request_handled()
             return self._get_organization_with_member_count(org.pk)
         previous_name = org.name
         org.name = name
@@ -178,6 +180,8 @@ class OrganizationManagementService(CrossOrgResourceService):
             config.audit_retention_days = audit_retention_days
             config.save(update_fields=["audit_retention_days"])
             record_user_action(action=UserAction.UPDATED, org_id=org.pk, target=org)
+        else:
+            mark_request_handled()
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic

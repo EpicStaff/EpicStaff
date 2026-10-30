@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from loguru import logger
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed, UnsupportedMediaType
 from rest_framework.parsers import JSONParser
@@ -124,11 +125,18 @@ class LoginView(TokenObtainPairView):
 
     @staticmethod
     def _record_sign_in(login: str, action: str) -> None:
-        # The login is read only to find the account, the way the serializer's backend
-        # does; an unknown login records nothing, and the password is never read.
-        user = get_user_model().objects.filter(**{get_user_model().USERNAME_FIELD: login}).first()
-        if user is not None:
-            record_for_user_orgs(action=action, actor=_user_actor(user))
+        # Best-effort, and skipped with the switch off: it must never change the login's
+        # response. The login is read only to find the account, the way the serializer's
+        # backend does; an unknown login records nothing, and the password is never read.
+        if not settings.USER_AUDIT_TRAIL_ENABLED:
+            return
+        try:
+            user_model = get_user_model()
+            user = user_model.objects.filter(**{user_model.USERNAME_FIELD: login}).first()
+            if user is not None:
+                record_for_user_orgs(action=action, actor=_user_actor(user))
+        except Exception:
+            logger.exception("Failed to record user action {} for a login", action)
 
 
 class LogoutView(APIView):

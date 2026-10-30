@@ -5,6 +5,7 @@ from django.db.models.functions import Lower
 from loguru import logger
 from rest_framework.exceptions import PermissionDenied
 from src.shared.models import UserAction
+from user_audit.context import mark_request_handled
 from user_audit.recorder import record_user_action
 from user_audit.targets import TargetDescription
 
@@ -218,6 +219,8 @@ class MembershipManagementService(CrossOrgResourceService):
                 target_description=_member_description(membership, membership.user),
                 previous_name=previous_role_name,
             )
+        else:
+            mark_request_handled()
         return self._refetch(membership.pk)
 
     # ---- delete ----
@@ -238,6 +241,7 @@ class MembershipManagementService(CrossOrgResourceService):
         )  # no-leak 404
         self._assert_not_self(actor, membership)
         self.assert_can(effective, Permission.DELETE)
+        removed_member = _member_description(membership, membership.user)
         membership.delete()
         released = AuthorshipReleaseService().release(
             user_id=membership.user_id, org_id=membership.org_id
@@ -256,7 +260,7 @@ class MembershipManagementService(CrossOrgResourceService):
         record_user_action(
             action=UserAction.DELETED,
             org_id=membership.org_id,
-            target_description=_member_description(membership, membership.user),
+            target_description=removed_member,
         )
 
     # ---- internals ----

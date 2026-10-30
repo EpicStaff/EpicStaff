@@ -38,6 +38,13 @@ def user_action_context(request: HttpRequest) -> Iterator[UserActionContext]:
         _current_context.reset(token)
 
 
+def mark_request_handled() -> None:
+    """Tell the middleware's fallback that this request needed no record, such as a no-op."""
+    context = current_context()
+    if context is not None:
+        context.recorded = True
+
+
 def current_context() -> UserActionContext | None:
     """The context of the request being served, or None outside a request."""
     return _current_context.get()

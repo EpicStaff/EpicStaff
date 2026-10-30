@@ -7,6 +7,7 @@ from django.utils import timezone
 from rest_framework_simplejwt.tokens import Token
 from src.shared.models import UserAction
 from user_audit.actor import Actor
+from user_audit.context import mark_request_handled
 from user_audit.recorder import record_for_user_orgs
 
 from rbac.exceptions import (
@@ -102,10 +103,15 @@ class ApiKeyService:
             key.revoked_at = timezone.now()
             key.save(update_fields=["revoked_at"])
             record_for_user_orgs(action=UserAction.UPDATED, actor=_owner_actor(user), target=key)
+        else:
+            mark_request_handled()
         return key
 
     def delete_key(self, user, key_id) -> None:
-        self._get_own_key(user, key_id).delete()
+        key = self._get_own_key(user, key_id)
+        # Before the delete: the record names the key, and a deleted instance loses its pk.
+        record_for_user_orgs(action=UserAction.DELETED, actor=_owner_actor(user), target=key)
+        key.delete()
 
     def _get_own_key(self, user, key_id) -> ApiKey:
         key = ApiKey.objects.filter(
