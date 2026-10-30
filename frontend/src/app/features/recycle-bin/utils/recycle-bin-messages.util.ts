@@ -20,22 +20,26 @@ export type RecycleBinAction = 'restore' | 'delete';
  * were removed for good.
  */
 export function restoreSuccessMessage(outcome: RecycleBinRestoreOutcome): string {
-    if (outcome.renamedFrom === null) return `"${outcome.name}" restored. ${linksNote([outcome], 'it', 'Its')}`;
-    // Tools stay linked to a renamed secret, but their code still asks for it by the old name. The toast shows
-    // about 90 characters, so the instruction comes first and a long new name is what gets cut.
+    if (outcome.renamedFrom === null) return `"${outcome.name}" restored. ${linksNote([outcome], 'it')}`;
+    // Tools stay linked to a renamed secret, but their code still asks for it by the old name, so the
+    // instruction comes first.
     if (isRenamedSecret(outcome)) return `Update tools that read the old name. It's now "${outcome.name}".`;
-    return `"${outcome.renamedFrom}" restored as "${outcome.name}", because that name was taken. ${linksNote([outcome], 'it', 'Its')}`;
+    return `"${outcome.renamedFrom}" restored as "${outcome.name}", because that name was taken. ${linksNote([outcome], 'it')}`;
 }
 
 function isRenamedSecret(outcome: RecycleBinRestoreOutcome): boolean {
     return outcome.source === 'secret' && outcome.renamedFrom !== null;
 }
 
-/** What happened to the links: connected again when every item kept them, otherwise not restored. */
-function linksNote(outcomes: readonly RecycleBinRestoreOutcome[], object: string, possessive: string): string {
+/**
+ * What happened to the links: connected again when every item kept them, otherwise not restored. The backend
+ * sets `links_restored` from a fixed flag per item type, so it is false even for an item nothing linked to:
+ * the "not restored" sentence has to hold when there were no links.
+ */
+function linksNote(outcomes: readonly RecycleBinRestoreOutcome[], object: string): string {
     return outcomes.every((outcome) => outcome.linksRestored)
         ? `Everything that used ${object} is connected again.`
-        : `${possessive} links to other items aren't restored.`;
+        : "Links from other items, if any, aren't restored.";
 }
 
 /**
@@ -150,9 +154,8 @@ export function restoreResultMessage(result: RecycleBinRestoreResult): string | 
     const renames = renamed.slice(0, LISTED_NAMES).map((outcome) => `${outcome.renamedFrom} → ${outcome.name}`);
     const moreRenames = renamed.length - renames.length;
     const renameList = `${renames.join(', ')}${moreRenames > 0 ? ` and ${moreRenames} more` : ''}`;
-    const links = linksNote(restored, 'them', 'Their');
-    // A bulk restore is one tab, so these are all secrets. The toast shows about 90 characters: the instruction
-    // goes before the list, so a long list is what gets cut.
+    const links = linksNote(restored, 'them');
+    // A bulk restore is one tab, so these are all secrets. The instruction goes before the list of renames.
     if (restored.some(isRenamedSecret)) {
         const oldNames = renamed.length === 1 ? 'the old name' : 'the old names';
         return `${restored.length} restored. Update tools that read ${oldNames}: ${renameList}. ${links}`;

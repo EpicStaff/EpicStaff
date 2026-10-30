@@ -3,6 +3,7 @@
 from copy import deepcopy
 
 from agents.models import SurfacePlace, ToolMode
+from loguru import logger
 from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
@@ -30,6 +31,9 @@ def prepare_import_data(export_data: dict) -> dict:
     The one boundary step ImportService and PartialImportService share, run
     before their transaction opens, so a rejected file writes nothing.
 
+    An agent that borrows another agent's owned surface is given its own copy
+    first (see `_copy_borrowed_owned_surfaces`). The input is not modified.
+
     Raises:
         ValidationError: A Surface, tool or AgentDefinition entry is malformed,
             or AgentDefinition ids repeat.
@@ -41,7 +45,7 @@ def prepare_import_data(export_data: dict) -> dict:
     ]
     if errors:
         raise ValidationError({"detail": errors})
-    return nest_owned_surface_entries(export_data)
+    return nest_owned_surface_entries(_copy_borrowed_owned_surfaces(export_data))
 
 
 def _surface_tool_errors(export_data: dict) -> list[str]:
@@ -96,13 +100,9 @@ def _agent_surface_errors(export_data: dict) -> list[str]:
 
     An export always writes `owned_surfaces` and `default_surfaces` as lists and
     llm configs as ids; a null list or a malformed value would fail mid-import
-    as a 500. A default row may not point at a surface another agent in the file
-    owns -- the state the agents API rejects. A surface listed by several agents
-    belongs to the first, as in nest_owned_surface_entries.
+    as a 500.
     """
     errors = []
-    owner_by_surface_id = {}
-    default_rows_by_agent = []
     for entry in export_data.get(EntityType.AGENT_DEFINITION, []):
         agent_id = entry.get("id") if isinstance(entry, dict) else None
         if not _is_int(agent_id):
@@ -118,9 +118,6 @@ def _agent_surface_errors(export_data: dict) -> list[str]:
             _is_int(surface_id) for surface_id in owned_surface_ids
         ):
             errors.append(f"{label}: owned_surfaces must be a list of integer ids.")
-            owned_surface_ids = []
-        for surface_id in owned_surface_ids:
-            owner_by_surface_id.setdefault(surface_id, agent_id)
 
         default_rows = entry.get("default_surfaces", [])
         if not isinstance(default_rows, list) or not all(
@@ -133,18 +130,145 @@ def _agent_surface_errors(export_data: dict) -> list[str]:
                 f"{label}: default_surfaces must be a list of objects with an integer "
                 f"surface_id and a place of {sorted(SurfacePlace.values)}."
             )
-            default_rows = []
-        default_rows_by_agent.append((label, agent_id, default_rows))
-
-    for label, agent_id, default_rows in default_rows_by_agent:
-        for row in default_rows:
-            owner_id = owner_by_surface_id.get(row["surface_id"])
-            if owner_id is not None and owner_id != agent_id:
-                errors.append(
-                    f"{label}: default surface {row['surface_id']} is owned by "
-                    f"AgentDefinition {owner_id}."
-                )
     return errors
+
+
+def _surface_owner_ids(agent_entries: list[dict]) -> dict[int, int]:
+    """Map each owned surface id to its owner's id.
+
+    A surface listed by several agents belongs to the first, as in
+    nest_owned_surface_entries.
+    """
+    owner_by_surface_id = {}
+    for agent_entry in agent_entries:
+        for surface_id in agent_entry.get("owned_surfaces", []):
+            owner_by_surface_id.setdefault(surface_id, agent_entry["id"])
+    return owner_by_surface_id
+
+
+def _copy_borrowed_owned_surfaces(export_data: dict) -> dict:
+    """Return the bundle with every borrowed owned surface replaced by the borrower's copy.
+
+    A surface owned by agent A is borrowed when the file points at it on behalf
+    of another agent B: a row of B's `default_surfaces`, or the `surface_list` of
+    an AgentNode or TaskNode whose `agent_definition` is B. The agents API
+    rejects that state, and an owned surface is deleted together with its
+    owner. Release 1.3.2 nonetheless wrote it when it re-imported an agent that
+    owns surfaces as a renamed copy, so exports of those databases carry it.
+
+    B gets its own copy of the Surface entry, owned by B, under an id no
+    surface reference in the file uses -- one copy per (B, surface) pair, shared
+    by all of B's references. That matches what an import creates for an agent
+    otherwise: its owned surfaces are always fresh rows of its own. A surface
+    with no Surface entry in the file is left alone. Expects the AgentDefinition
+    and Surface entries to be well-formed.
+
+    Returns:
+        `export_data` itself when nothing is borrowed, otherwise a repaired copy.
+    """
+    agent_entries = export_data.get(EntityType.AGENT_DEFINITION, [])
+    owner_by_surface_id = _surface_owner_ids(agent_entries)
+    surface_entry_by_id = {entry["id"]: entry for entry in export_data.get(EntityType.SURFACE, [])}
+
+    def is_borrowed(borrower_id: int, surface_id: object) -> bool:
+        owner_id = owner_by_surface_id.get(surface_id) if _is_int(surface_id) else None
+        return (
+            owner_id is not None and owner_id != borrower_id and surface_id in surface_entry_by_id
+        )
+
+    agent_ids = {agent_entry["id"] for agent_entry in agent_entries}
+    referenced_surface_ids = set()
+    borrows = set()
+    for agent_entry in agent_entries:
+        for row in agent_entry.get("default_surfaces", []):
+            referenced_surface_ids.add(row["surface_id"])
+            if is_borrowed(agent_entry["id"], row["surface_id"]):
+                borrows.add((agent_entry["id"], row["surface_id"]))
+    for node_entry in _surface_listing_node_entries(export_data):
+        borrower_id = node_entry.get("agent_definition")
+        for surface_id in node_entry["surface_list"]:
+            if _is_int(surface_id):
+                referenced_surface_ids.add(surface_id)
+            if (
+                _is_int(borrower_id)
+                and borrower_id in agent_ids
+                and is_borrowed(borrower_id, surface_id)
+            ):
+                borrows.add((borrower_id, surface_id))
+    if not borrows:
+        return export_data
+
+    repaired_data = deepcopy(export_data)
+    repaired_agent_by_id = {
+        agent_entry["id"]: agent_entry for agent_entry in repaired_data[EntityType.AGENT_DEFINITION]
+    }
+    last_used_surface_id = max(
+        {*surface_entry_by_id, *owner_by_surface_id, *referenced_surface_ids}
+    )
+    copy_id_by_borrow = {}
+    for borrower_id, surface_id in sorted(borrows):
+        last_used_surface_id += 1
+        copy_id_by_borrow[(borrower_id, surface_id)] = last_used_surface_id
+        repaired_data[EntityType.SURFACE].append(
+            {**deepcopy(surface_entry_by_id[surface_id]), "id": last_used_surface_id}
+        )
+        borrower = repaired_agent_by_id[borrower_id]
+        borrower["owned_surfaces"] = [*borrower.get("owned_surfaces", []), last_used_surface_id]
+        logger.warning(
+            "Import: AgentDefinition {} uses surface {}, which AgentDefinition {} owns; "
+            "it gets its own copy as surface {}.",
+            borrower_id,
+            surface_id,
+            owner_by_surface_id[surface_id],
+            last_used_surface_id,
+        )
+
+    for agent_entry in repaired_data[EntityType.AGENT_DEFINITION]:
+        for row in agent_entry.get("default_surfaces", []):
+            row["surface_id"] = copy_id_by_borrow.get(
+                (agent_entry["id"], row["surface_id"]), row["surface_id"]
+            )
+    for node_entry in _surface_listing_node_entries(repaired_data):
+        borrower_id = node_entry.get("agent_definition")
+        if not _is_int(borrower_id):
+            continue
+        node_entry["surface_list"] = [
+            copy_id_by_borrow.get((borrower_id, surface_id), surface_id)
+            if _is_int(surface_id)
+            else surface_id
+            for surface_id in node_entry["surface_list"]
+        ]
+    return repaired_data
+
+
+_SURFACE_LISTING_NODE_TYPES = (EntityType.AGENT_NODE, EntityType.TASK_NODE)
+
+
+def _surface_listing_node_entries(export_data: dict) -> list[dict]:
+    """Return the bundle's AgentNode and TaskNode entries that list surfaces.
+
+    Full exports nest nodes in each Flow entry, tagged by `node_type`; partial
+    bundles list them top-level by entity type. Node entries are not validated
+    before import, so malformed ones are skipped here and left to the node
+    strategies.
+    """
+    node_entries = [
+        node_entry
+        for flow_entry in export_data.get(EntityType.GRAPH, [])
+        if isinstance(flow_entry, dict) and isinstance(flow_entry.get("nodes"), list)
+        for node_entry in flow_entry["nodes"]
+        if isinstance(node_entry, dict)
+        and node_entry.get("node_type") in _SURFACE_LISTING_NODE_TYPES
+    ]
+    for node_type in _SURFACE_LISTING_NODE_TYPES:
+        top_level_entries = export_data.get(node_type, [])
+        if isinstance(top_level_entries, list):
+            node_entries.extend(top_level_entries)
+    return [
+        node_entry
+        for node_entry in node_entries
+        if isinstance(node_entry, dict) and isinstance(node_entry.get("surface_list"), list)
+    ]
 
 
 def _is_int(value) -> bool:

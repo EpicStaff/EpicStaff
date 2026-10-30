@@ -1,7 +1,7 @@
 ﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { computeUniqueCopyName, computeUniqueName } from '@shared/utils';
+import { computeUniqueCopyName, computeUniqueName, movedToRecycleBinMessage } from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap } from 'rxjs/operators';
 
@@ -961,7 +961,7 @@ export class AgentsPageStore {
                     this.clearSelection();
                 }
                 this.saving.set(false);
-                this.toast.success('Agent deleted');
+                this.toast.success(movedToRecycleBinMessage(1, 'agent', 'agents'));
             },
             error: (err) => {
                 this.saving.set(false);
@@ -987,7 +987,7 @@ export class AgentsPageStore {
                     this.clearSelection();
                 }
                 this.saving.set(false);
-                this.toast.success('Surface deleted');
+                this.toast.success(movedToRecycleBinMessage(1, 'surface', 'surfaces'));
             },
             error: (err) => {
                 this.saving.set(false);

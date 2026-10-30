@@ -27,6 +27,7 @@
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
                         class="delete-btn"
                         [class.invisible]="selectedIds().size === 0"
+                        [disabled]="isDeleting()"
                         (click)="onBulkDelete()"
                     >
                         Delete Selected ({{ selectedIds().size }})

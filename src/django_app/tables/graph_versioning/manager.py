@@ -12,13 +12,16 @@ from rbac.authorship import (
     restore_last_edits,
 )
 from rbac.authorship.user_summary import USER_SUMMARY_FIELDS
+from proxies.sandbox.models import SandboxVenvBinding
 from rbac.models import AuthorModel, LastEditTrackedModel, ResourceLastEdit
+from rbac.scoping.fields import org_visible_q
 from utils.logger import logger
 
 from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
     _DEPENDENCY_MODELS,
     _EXCLUDED_GRAPH_SCALARS,
+    _VENV_CODE_FIELDS_BY_NODE_TYPE,
 )
 from tables.graph_versioning.handlers import HANDLER_REGISTRY, _MissingSets
 from tables.import_export.constants import NODE_MAPPING_KEY
@@ -562,10 +565,15 @@ class GraphVersioningManager:
         }
         return light_deps
 
-    def validate_dependencies(self, dependencies: dict) -> dict:
+    def validate_dependencies(self, dependencies: dict, org_id: int) -> dict:
         """
         Split dependency IDs into available/missing buckets via bulk DB lookups,
         keyed by EntityType.value strings.
+
+        Args:
+            dependencies: Recorded dependency ids, keyed by ``EntityType.value``.
+            org_id: Organization the restore happens in — a venv binding outside it
+                reads as missing.
         """
         available_deps: dict[str, list[int]] = {}
         missing_deps: dict[str, list[int]] = {}
@@ -580,7 +588,12 @@ class GraphVersioningManager:
                 missing_deps[entity_type_value] = []
                 continue
 
-            existing_ids = set(model.objects.filter(id__in=ids).values_list("id", flat=True))
+            candidates = model.objects.filter(id__in=ids)
+
+            if entity_type_value == EntityType.VENV.value:
+                candidates = candidates.filter(org_visible_q(model, org_id))
+
+            existing_ids = set(candidates.values_list("id", flat=True))
 
             # set as missing webhook triggers without any tunnel config
             # (provider_type=None means no NgrokWebhookConfig or LocalhostWebhookConfig attached)
@@ -597,6 +610,40 @@ class GraphVersioningManager:
             missing_deps[entity_type_value] = [i for i in ids if i not in existing_ids]
 
         return {"available": available_deps, "missing": missing_deps}
+
+    def collect_snapshot_venv_ids(self, snapshot_nodes: list[dict]) -> set[int]:
+        """Venv ids referenced by the snapshot's own nodes, which can list ids the
+        recorded ``dependencies`` never captured."""
+        venv_ids: set[int] = set()
+        for node in snapshot_nodes:
+            code_fields = _VENV_CODE_FIELDS_BY_NODE_TYPE.get(node.get("node_type"))
+            if not code_fields:
+                continue
+            for code_field in code_fields:
+                python_code = node.get(code_field)
+                if not python_code:
+                    continue
+                venv_id = python_code.get("venv")
+                if venv_id is not None:
+                    venv_ids.add(venv_id)
+        return venv_ids
+
+    def resolve_venv_availability(self, snapshot: dict, available: dict, org_id: int) -> None:
+        """Add snapshot-referenced venv ids missing from ``available["Venv"]``,
+        re-validated against ``org_id``."""
+        referenced_ids = self.collect_snapshot_venv_ids(snapshot.get("nodes", []))
+        known_ids = set(available.get(EntityType.VENV.value, []))
+        unverified_ids = referenced_ids - known_ids
+        if not unverified_ids:
+            return
+
+        verified_ids = set(
+            SandboxVenvBinding.objects.filter(
+                org_visible_q(SandboxVenvBinding, org_id), id__in=unverified_ids
+            ).values_list("id", flat=True)
+        )
+        if verified_ids:
+            available[EntityType.VENV.value] = list(known_ids | verified_ids)
 
     def _build_missing_sets(self, missing: dict) -> _MissingSets:
         """Gather all missing dependencies ids into dataclass structure"""
@@ -707,6 +754,35 @@ class GraphVersioningManager:
                             "reason": f"Referenced Node #{target} no longer exists.",
                         }
                     )
+
+        return warnings
+
+    def _clean_venv_refs(self, snapshot_nodes: list[dict], allowed_venv_ids: set) -> list[dict]:
+        """Null any code slot's venv that isn't in ``allowed_venv_ids`` (deleted,
+        foreign, or a v4-conversion synthetic id); cleared code falls back to the
+        default environment."""
+        warnings: list[dict] = []
+
+        for node in snapshot_nodes:
+            code_fields = _VENV_CODE_FIELDS_BY_NODE_TYPE.get(node.get("node_type"))
+            if not code_fields:
+                continue
+            for code_field in code_fields:
+                python_code = node.get(code_field)
+                if not python_code:
+                    continue
+                venv_id = python_code.get("venv")
+                if venv_id is None or venv_id in allowed_venv_ids:
+                    continue
+                python_code["venv"] = None
+                warnings.append(
+                    {
+                        "type": "venv_ref_cleared",
+                        "node_name": node.get("node_name") or node.get("node_type"),
+                        "node_id": node.get("id"),
+                        "reason": "venv not found or not in org",
+                    }
+                )
 
         return warnings
 
@@ -894,11 +970,21 @@ class GraphVersioningManager:
             }
         ]
 
-    def filter_snapshot(self, snapshot: dict, missing: dict) -> tuple[dict, list[dict]]:
+    def filter_snapshot(
+        self, snapshot: dict, missing: dict, available: dict
+    ) -> tuple[dict, list[dict]]:
         """
         Strip missing-dependency nodes, null orphaned FKs,
         and drop dangling edges, returning the pipeline-ready snapshot
         and warnings.
+
+        Args:
+            missing: Recorded dependency ids that no longer resolve, keyed by
+                ``EntityType.value``.
+            available: Recorded dependency ids that still resolve for this
+                organization, keyed the same way. Venv references are checked against
+                this rather than against ``missing``: a snapshot can name a venv that
+                its recorded dependencies never listed.
         """
         filtered_snapshot = deepcopy(snapshot)
         warnings: list[dict] = []
@@ -916,6 +1002,13 @@ class GraphVersioningManager:
         )
 
         warnings.extend(self._clean_agent_task_node_refs(filtered_snapshot["nodes"], missing_sets))
+
+        warnings.extend(
+            self._clean_venv_refs(
+                filtered_snapshot["nodes"],
+                set(available.get(EntityType.VENV.value, [])),
+            )
+        )
 
         kept_edges, edge_warnings = self._filter_edges(
             filtered_snapshot.get("edge_list", []), skipped_node_ids

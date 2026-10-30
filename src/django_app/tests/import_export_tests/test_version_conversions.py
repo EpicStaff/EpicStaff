@@ -16,6 +16,7 @@ from src.shared.models.variable_conversion import (
 )
 from tables.import_export.constants import IMPORT_VERSION
 from tables.import_export.enums import EntityType
+from tables.import_export.constants import VENV_NAME_MAX_LENGTH
 from tables.import_export.serializers.venv import VenvImportSerializer
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.import_export.version_conversions.convertions import (
@@ -918,6 +919,43 @@ class TestV4ToV5:
 
         assert data[EntityType.VENV][0]["name"] == "scraper-venv"
 
+    @pytest.mark.parametrize(
+        ("owner", "expected"),
+        [
+            ("File Compressor Tool #2", "File Compressor Tool 2-venv"),
+            ("fetch (v1.2): main", "fetch v1 2 main-venv"),
+            ("Інструмент", "imported-venv-1"),
+            ("#!", "imported-venv-1"),
+        ],
+    )
+    def test_a_name_the_sandbox_would_refuse_is_reduced_to_the_characters_it_takes(
+        self, owner, expected
+    ):
+        """Tool and node names may hold any character, a venv name may not; copies made
+        by v1.3 are even named with a `#`, so a legacy file carries them routinely."""
+        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool(owner, "httpx")]})
+
+        assert data[EntityType.VENV][0]["name"] == expected
+
+    def test_a_long_owner_name_still_fits_the_sandbox(self):
+        data = v4_to_v5(
+            {
+                EntityType.PYTHON_CODE_TOOL: [
+                    _tool("x" * 400, "httpx"),
+                    _tool("x" * 400 + " copy", "pydantic"),
+                ]
+            }
+        )
+
+        names = [venv["name"] for venv in data[EntityType.VENV]]
+        assert all(len(name) <= VENV_NAME_MAX_LENGTH for name in names)
+        assert len(set(names)) == 2
+
+    def test_a_cut_owner_name_leaves_no_space_before_the_suffix(self):
+        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("a" * 249 + " b", "httpx")]})
+
+        assert data[EntityType.VENV][0]["name"] == "a" * 249 + "-venv"
+
     def test_an_entry_pip_cannot_read_is_dropped_and_the_rest_kept(self):
         """A legacy file cannot be edited to fix it, and a flow that arrives without
         one library is worth more than one that does not arrive."""
@@ -935,9 +973,10 @@ class TestV4ToV5:
         "libraries",
         ["httpx>=0.28", "requests[socks]>=2", "httpx ../../etc/passwd", "pydantic==2.0,<3"],
     )
-    def test_what_it_produces_is_accepted_by_the_importer(self, libraries):
+    @pytest.mark.parametrize("owner", ["x", "Tool #2", "Інструмент", "y" * 400])
+    def test_what_it_produces_is_accepted_by_the_importer(self, libraries, owner):
         """The converter feeds the venv serializer, so its output has to pass it."""
-        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("x", libraries)]})
+        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool(owner, libraries)]})
 
         for venv in data.get(EntityType.VENV, []):
             serializer = VenvImportSerializer(data=venv)

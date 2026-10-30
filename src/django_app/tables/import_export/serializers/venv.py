@@ -7,9 +7,11 @@ No installed `version`: that field holds the author's pin and the build's own
 result at once, so an export resolves a pin into `specification` instead.
 """
 
+from django.core.validators import RegexValidator
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from rest_framework import serializers
 
+from tables.import_export.constants import VENV_NAME_MAX_LENGTH, VENV_NAME_PATTERN
 from tables.validators.python_libraries_validator import validate_python_library_spec
 
 
@@ -62,5 +64,16 @@ class VenvLibraryImportSerializer(serializers.Serializer):
 
 
 class VenvImportSerializer(serializers.Serializer):
-    name = serializers.CharField()
+    # The sandbox's rule, checked here as well: a refused name becomes a 400 on this
+    # field instead of an upstream error, the length the sandbox only enforces at its
+    # column is caught before it, and converter output can be tested against it.
+    name = serializers.CharField(
+        max_length=VENV_NAME_MAX_LENGTH,
+        validators=[
+            RegexValidator(
+                VENV_NAME_PATTERN,
+                "A venv name may only hold letters, digits, spaces, underscores and hyphens.",
+            )
+        ],
+    )
     libs = VenvLibraryImportSerializer(many=True)

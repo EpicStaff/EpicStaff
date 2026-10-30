@@ -1,6 +1,6 @@
 import { ConfirmationBreakdownItem } from '@shared/components';
 import { OrganizationDeleteReport, UserDeleteReport } from '@shared/models';
-import { escapeHtml } from '@shared/utils';
+import { escapeHtml, pluralize } from '@shared/utils';
 
 import { HardDeleteContent } from '../models/hard-delete-content.model';
 import { UserDeleteIdentity } from '../models/user-delete-identity.model';
@@ -49,10 +49,6 @@ function buildUserDeleteCaution(report: UserDeleteReport): string | null {
     }
 
     return consequences.length > 0 ? `${capitalize(consequences.join(', and '))}.` : null;
-}
-
-function pluralize(count: number, singular: string, plural: string): string {
-    return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function capitalize(text: string): string {

@@ -22,6 +22,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { movedToRecycleBinMessage } from '@shared/utils';
 import { filter, switchMap, throwError } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
 
@@ -194,7 +195,7 @@ export class CollectionDetailsComponent {
             )
             .subscribe({
                 next: () => {
-                    this.toastService.success('Collection deleted successfully');
+                    this.toastService.success(movedToRecycleBinMessage(1, 'collection', 'collections'));
                     if (this.selectedCollectionId() === deletedId) {
                         this.collectionsStorageService.setSelectedCollectionId(null);
                         this.fullCollection.set(null);
