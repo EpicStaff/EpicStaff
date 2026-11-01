@@ -7,6 +7,7 @@ import {
     HostListener,
     inject,
     OnInit,
+    signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -172,7 +173,7 @@ export interface NoteEditDialogData {
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NoteEditDialogComponent implements OnInit {
-    noteContent: string = '';
+    noteContent = signal<string>('');
 
     public readonly dialogRef = inject<DialogRef<{ content: string }>>(DialogRef);
     public readonly data = inject<NoteEditDialogData>(DIALOG_DATA);
@@ -181,7 +182,7 @@ export class NoteEditDialogComponent implements OnInit {
 
     ngOnInit(): void {
         // Initialize with the current note content
-        this.noteContent = this.data.node.data.content || '';
+        this.noteContent.set(this.data.node.data.content || '');
         this.cdr.detectChanges();
 
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
@@ -193,7 +194,7 @@ export class NoteEditDialogComponent implements OnInit {
     }
 
     close(): void {
-        this.dialogRef.close({ content: this.noteContent });
+        this.dialogRef.close({ content: this.noteContent() });
     }
 
     @HostListener('document:keydown.escape', ['$event'])

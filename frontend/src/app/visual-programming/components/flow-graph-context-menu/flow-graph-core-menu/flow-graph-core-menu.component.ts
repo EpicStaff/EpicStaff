@@ -109,7 +109,7 @@ const MAC_KEY_GAP = '\u2009';
             }
 
             li:hover {
-                background: #2a2a2a;
+                background: var(--graphite-780);
             }
 
             /* The main clickable area fills the row except for the area-draw button */
@@ -140,7 +140,7 @@ const MAC_KEY_GAP = '\u2009';
 
             .plus-icon {
                 margin-left: auto;
-                color: #bbb;
+                color: var(--gray-475);
                 opacity: 0;
                 transition:
                     opacity 0.2s ease,
@@ -194,8 +194,8 @@ const MAC_KEY_GAP = '\u2009';
             }
 
             .area-draw-btn:hover {
-                background: #3a3a3a;
-                color: var(--color-text-primary, #fff);
+                background: var(--graphite-600);
+                color: var(--text);
             }
         `,
     ],

@@ -1,11 +1,10 @@
-import { ChangeDetectorRef, computed, inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, signal } from '@angular/core';
 import { IPoint, PointExtensions } from '@foblex/2d';
 import { FFlowComponent } from '@foblex/flow';
-import { NodeType } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 
-import { ProfileService } from '../../services/auth/profile.service';
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { GraphNoteModel, NoteLinkedRegion } from '../core/models/node.model';
-import { noteColorFromUserId } from '../core/utils/note-colors.util';
 import { FlowService } from '../services/flow.service';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { UndoRedoService } from '../services/undo-redo.service';
@@ -18,12 +17,6 @@ export interface NoteDrawState {
     currentFlowPoint: IPoint | null;
     /** When set, draw completion updates this note's region instead of creating a new note. */
     existingNoteId?: string;
-}
-
-export interface NoteDrawResult {
-    linkedRegion: NoteLinkedRegion | undefined;
-    placeAt: IPoint;
-    noteNode: GraphNoteModel;
 }
 
 const MIN_REGION_PX = 20;
@@ -43,10 +36,9 @@ export class NoteInteractionService {
     private readonly flowService = inject(FlowService);
     private readonly selectionManager = inject(FlowSelectionManagerService);
     private readonly nodeFactory = inject(NodeFactoryService);
-    private readonly profileService = inject(ProfileService);
+    private readonly permissionService = inject(PermissionsService);
     private readonly arrangeAnimator = inject(FlowArrangeAnimatorService);
     private readonly undoRedoService = inject(UndoRedoService);
-    private readonly cd = inject(ChangeDetectorRef);
 
     // ── Draw state ──────────────────────────────────────────────────
 
@@ -98,6 +90,8 @@ export class NoteInteractionService {
     });
 
     readonly isNoteRegionResizable = computed(() => {
+        if (!this.permissionService.can(ResourceCode.Flows, ActionCode.Update)) return false;
+
         const selectedIds = this.selectionManager.selectedNodeIds();
         if (selectedIds.length !== 1) return false;
         const node = this.flowService.nodes().find((n) => n.id === selectedIds[0]);
@@ -105,7 +99,7 @@ export class NoteInteractionService {
     });
 
     /** Injected by the component — the computed needs a hovered-node signal it does not own. */
-    hoveredNodeId!: () => string | null;
+    hoveredNodeId: () => string | null = () => null;
 
     // ── Region resize ───────────────────────────────────────────────
 
@@ -200,7 +194,6 @@ export class NoteInteractionService {
     private onRegionResizeEnd(): void {
         this.regionResizeState = null;
         this.regionResizeActive.set(false);
-        this.cd.detectChanges();
     }
 
     // ── Draw gesture pointer handlers ───────────────────────────────
@@ -297,13 +290,10 @@ export class NoteInteractionService {
 
     /** Merges user-derived default colour into note creation overrides. */
     buildNoteCreationOverrides(overrides: Partial<GraphNoteModel>): Partial<GraphNoteModel> {
-        const userId = this.profileService.currentUserSignal()?.id;
-        const defaultColor = userId != null ? noteColorFromUserId(userId) : undefined;
         return {
             ...overrides,
             data: {
                 content: 'Add your note here...',
-                backgroundColor: defaultColor,
                 ...(overrides.data ?? {}),
             },
         };
@@ -331,7 +321,6 @@ export class NoteInteractionService {
         this.flowService.updateNode(updatedNode);
         this.selectionManager.selectedNodeIds.set([existingNode.id]);
         fFlowComponent.select([existingNode.id], []);
-        this.cd.detectChanges();
     }
 
     private createNoteWithRegion(
@@ -342,15 +331,12 @@ export class NoteInteractionService {
         this.arrangeAnimator.markUnarranged();
         this.undoRedoService.stateChanged();
 
-        const userId = this.profileService.currentUserSignal()?.id;
-        const backgroundColor = userId != null ? noteColorFromUserId(userId) : undefined;
-
         const position = { x: snapToGrid(flowPosition.x), y: snapToGrid(flowPosition.y) };
         const newNode = this.nodeFactory.createNode(NodeType.NOTE, { position }) as GraphNoteModel;
         const withData: GraphNoteModel = {
             ...newNode,
             position,
-            data: { ...newNode.data, backgroundColor, linkedRegion },
+            data: { ...newNode.data, linkedRegion },
         };
         this.flowService.addNode(withData);
         return withData;

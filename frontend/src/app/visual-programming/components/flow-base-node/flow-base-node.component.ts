@@ -71,8 +71,6 @@ import { NoteColorPickerComponent } from '../note-color-picker/note-color-picker
         MatTooltipModule,
         FontSizeSelectComponent,
         NoteColorPickerComponent,
-        FontSizeSelectComponent,
-        NoteColorPickerComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {

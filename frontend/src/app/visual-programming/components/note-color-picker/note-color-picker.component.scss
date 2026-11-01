@@ -26,7 +26,7 @@
         height: 14px;
         border-radius: 50%;
         flex-shrink: 0;
-        border: 1px solid rgba(255, 255, 255, 0.15);
+        border: 1px solid var(--white-alpha-15);
     }
 
     &__chevron {
@@ -80,7 +80,7 @@
         height: 20px;
         border-radius: 50%;
         flex-shrink: 0;
-        border: 1px solid rgba(255, 255, 255, 0.15);
+        border: 1px solid var(--white-alpha-15);
     }
 
     &__preview {
