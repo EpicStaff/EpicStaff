@@ -1,25 +1,20 @@
+@use '../../../styles/header-layout' as header;
+
 .audit-page {
+    @include header.headerLayout();
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
     background-color: var(--color-background-body);
 
-    &__header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 16px 20px 12px;
+    // the shared 80px header, so its bottom line meets the one under the sidebar logo
+    .header {
+        @include header.pageHeader();
     }
 
-    &__title {
-        color: var(--color-text-primary);
-        font-size: var(--text-h1-size);
-        font-weight: var(--text-h1-weight);
-    }
-
-    &__tabs {
-        padding: 0 20px;
+    .tabs {
+        padding: 4px 1.5rem 0 header.$page-inset-left;
     }
 
     &__body {

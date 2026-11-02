@@ -16,11 +16,11 @@
     font-size: 13px;
 }
 
+// no top line of its own: the page header or the tab row above already draws one
 .audit-browser__body {
     display: flex;
     flex: 1;
     min-height: 0;
-    border-top: 1px solid var(--color-divider-regular);
 }
 
 .audit-browser__main {
