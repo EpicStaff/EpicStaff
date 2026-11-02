@@ -70,6 +70,7 @@ describe('LlmModelConfigDialogComponent pricing', () => {
                         getConfigById: () => of(loadedConfig),
                         createConfig,
                         updateConfig,
+                        getTimeoutLimits: () => EMPTY,
                     } as unknown as LlmConfigStorageService,
                 },
                 {
@@ -316,6 +317,7 @@ async function render(
                     getConfigById: () => (config ? of(config) : EMPTY),
                     createConfig,
                     updateConfig,
+                    getTimeoutLimits: () => EMPTY,
                 } as unknown as LlmConfigStorageService,
             },
             {

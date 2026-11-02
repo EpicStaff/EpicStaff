@@ -48,7 +48,10 @@ describe('AddConfigurationDialogComponent embedding extra headers and LLM pricin
                 },
                 {
                     provide: LlmConfigStorageService,
-                    useValue: { createConfig: createLlmConfig } as unknown as LlmConfigStorageService,
+                    useValue: {
+                        createConfig: createLlmConfig,
+                        getTimeoutLimits: () => EMPTY,
+                    } as unknown as LlmConfigStorageService,
                 },
                 {
                     provide: SecretsStorageService,
@@ -261,7 +264,10 @@ async function render(
                 useValue: { keydownEvents: new Subject<KeyboardEvent>(), close: vi.fn() } as unknown as DialogRef,
             },
             { provide: DIALOG_DATA, useValue: { initialTab: 'llm' } },
-            { provide: LlmConfigStorageService, useValue: { createConfig } as unknown as LlmConfigStorageService },
+            {
+                provide: LlmConfigStorageService,
+                useValue: { createConfig, getTimeoutLimits: () => EMPTY } as unknown as LlmConfigStorageService,
+            },
             {
                 provide: LlmModelsStorageService,
                 useValue: { getModelById } as unknown as LlmModelsStorageService,
