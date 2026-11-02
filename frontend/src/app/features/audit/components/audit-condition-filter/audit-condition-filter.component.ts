@@ -31,14 +31,14 @@ import { AuditSelectComponent } from '../audit-select/audit-select.component';
 })
 export class AuditConditionFilterComponent {
     public groups = model.required<AuditConditionGroup[]>();
-    public operators = input<AuditFilterOp[]>([]);
+    public operators = input.required<AuditFilterOp[]>();
     public showKey = input<boolean>(true);
     public keyOptions = input<{ value: string; label: string }[]>([]);
 
     protected readonly joinOptions = JOIN_OPTIONS;
 
     protected addGroup(): void {
-        this.groups.update((current) => [...current, createAuditConditionGroup()]);
+        this.groups.update((current) => [...current, createAuditConditionGroup(this.operators())]);
     }
 
     protected setGroupJoin(groupId: string, value: string): void {
@@ -47,7 +47,10 @@ export class AuditConditionFilterComponent {
     }
 
     protected addCondition(groupId: string): void {
-        this.updateGroup(groupId, (group) => ({ ...group, conditions: [...group.conditions, createAuditCondition()] }));
+        this.updateGroup(groupId, (group) => ({
+            ...group,
+            conditions: [...group.conditions, createAuditCondition(this.operators())],
+        }));
     }
 
     protected updateCondition(groupId: string, next: AuditCondition): void {

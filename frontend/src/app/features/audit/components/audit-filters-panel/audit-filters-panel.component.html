@@ -83,7 +83,7 @@
                             />
                         } @else {
                             <app-audit-condition-filter
-                                [groups]="textConditionsOf(builderField.field)"
+                                [groups]="textConditionsOf(builderField)"
                                 (groupsChange)="setTextConditions(builderField.field, $event)"
                                 [operators]="builderField.operators"
                                 [showKey]="false"

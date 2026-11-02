@@ -12,7 +12,11 @@ import { compileAuditFilter } from './compile-audit-filter.util';
 import { clearAuditFilterField, describeAuditFilter } from './describe-audit-filter.util';
 
 function group(join: AuditConditionJoin, ...values: string[]): AuditConditionGroup {
-    return { id: values.join('-'), join, conditions: values.map((value) => ({ ...createAuditCondition(), value })) };
+    return {
+        id: values.join('-'),
+        join,
+        conditions: values.map((value) => ({ ...createAuditCondition(['contains']), value })),
+    };
 }
 
 const leaf = (value: string) => ({ field: 'input', op: 'contains', value });
@@ -190,7 +194,7 @@ describe('audit free-text search', () => {
 });
 
 describe('sessions filter compatibility', () => {
-    const condition = (op: AuditFilterOp, value: string, key = '') => ({ ...createAuditCondition(), key, op, value });
+    const condition = (op: AuditFilterOp, value: string, key = '') => ({ ...createAuditCondition([op]), key, value });
     const sessionState: AuditFilterState = {
         ...EMPTY_AUDIT_FILTER,
         searchText: ' boom ',
@@ -234,7 +238,7 @@ describe('sessions filter compatibility', () => {
 
 describe('user actions filter', () => {
     const conditions = (op: AuditFilterOp, value: string): AuditConditionGroup[] => [
-        { id: 'group', join: 'or', conditions: [{ ...createAuditCondition(), op, value }] },
+        { id: 'group', join: 'or', conditions: [{ ...createAuditCondition([op]), value }] },
     ];
 
     it('compiles the catalog fields in catalog order, then the date, with no match scope', () => {

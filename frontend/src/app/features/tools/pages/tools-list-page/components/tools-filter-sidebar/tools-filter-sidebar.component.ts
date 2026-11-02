@@ -337,7 +337,7 @@ export class ToolsFilterSidebarComponent implements OnInit {
     }
 
     protected clearCustom(): void {
-        this.patchPending({ customConditions: [createAuditConditionGroup()] });
+        this.patchPending({ customConditions: [createAuditConditionGroup(this.customOperators)] });
     }
 
     protected clearAllFilters(): void {

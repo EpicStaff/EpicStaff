@@ -17,7 +17,12 @@ import { copyWithFeedback } from '@shared/utils';
 import { DateRangeFilter } from 'src/app/shared/models';
 
 import { ToastService } from '../../../../services/notifications';
-import { AUDIT_FIELD_CATALOG, AuditCatalogField, AuditLookupOptions } from '../../models/audit-domain.models';
+import {
+    AUDIT_FIELD_CATALOG,
+    AuditCatalogField,
+    AuditLookupOptions,
+    AuditTextField,
+} from '../../models/audit-domain.models';
 import {
     AuditConditionGroup,
     AuditEnumOption,
@@ -335,8 +340,8 @@ export class AuditFiltersPanelComponent implements OnInit {
         return catalogSelection(this.filter(), field);
     }
 
-    public textConditionsOf(field: string): AuditConditionGroup[] {
-        return catalogTextConditions(this.filter(), field);
+    public textConditionsOf(textField: AuditTextField): AuditConditionGroup[] {
+        return catalogTextConditions(this.filter(), textField);
     }
 
     public setSelection(field: string, selection: AuditValuesFilter): void {

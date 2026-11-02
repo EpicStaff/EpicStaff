@@ -78,10 +78,9 @@ describe('Builder state round-trip through query text', () => {
                 id: 'group',
                 join: 'or',
                 conditions: items.map(([key, op, value], index) => ({
-                    ...createAuditCondition(),
+                    ...createAuditCondition([op]),
                     join: index === 2 ? 'or' : 'and',
                     key,
-                    op,
                     value,
                 })),
             },

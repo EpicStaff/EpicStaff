@@ -24,7 +24,7 @@ const current: AuditFilterState = {
 };
 
 function condition(op: AuditFilterOp, value: string, key = '', join: AuditConditionJoin = 'and'): AuditCondition {
-    return { ...createAuditCondition(), join, key, op, value };
+    return { ...createAuditCondition([op]), join, key, value };
 }
 
 function group(join: AuditConditionJoin, ...conditions: AuditCondition[]): AuditConditionGroup {
@@ -384,6 +384,8 @@ describe('queryToBuilderState for user actions', () => {
         ['an action the Builder does not list', 'action in (frobnicate)'],
         ['a field kept for Query Code', 'route = "POST api/graphs/<pk>/copy/"'],
         ['an operator the field does not offer', 'target_type : flow'],
+        ['a list on a field offering only whole-value matches', 'target_type in ("flow")'],
+        ['an excluded list on a field offering only whole-value matches', 'target_type not in ("flow")'],
     ])('leaves %s to Query Code', (_case, query) => {
         expect(toUserActionBuilder(query)).toBeNull();
     });

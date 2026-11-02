@@ -392,7 +392,7 @@ function toCondition(
         return null;
     }
     const key = leaf.field === root ? '' : leaf.field.slice(root.length + 1);
-    return { ...createAuditCondition(), join, key, op: leaf.op, value };
+    return { ...createAuditCondition(spec.operators), join, key, op: leaf.op, value };
 }
 
 // A leaf is one group; an OR becomes groups joined by OR, where leaves extend the current
@@ -415,7 +415,7 @@ function conjunctGroups(node: AuditFilterNode, root: string, spec: ConditionFiel
         if (conditions.length === 0 || conditions.some((condition) => condition === null)) {
             return null;
         }
-        groups.push({ ...createAuditConditionGroup(), conditions: conditions as AuditCondition[] });
+        groups.push({ ...createAuditConditionGroup(spec.operators), conditions: conditions as AuditCondition[] });
     }
     return groups.length > 0 ? groups : null;
 }

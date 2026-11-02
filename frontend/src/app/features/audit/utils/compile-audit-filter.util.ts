@@ -202,7 +202,7 @@ function compileCatalogFilters(state: AuditFilterState, catalog: AuditFieldCatal
             }
             continue;
         }
-        const node = compileConditionGroups(builderField.field, catalogTextConditions(state, builderField.field));
+        const node = compileConditionGroups(builderField.field, catalogTextConditions(state, builderField));
         if (node !== null) {
             leaves.push(node);
         }

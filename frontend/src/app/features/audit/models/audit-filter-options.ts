@@ -85,13 +85,14 @@ export const JOIN_OPTIONS: AuditEnumOption[] = [
     { value: 'or', label: 'OR' },
 ];
 
+// The first operator is the one a new condition starts with.
 export const JSON_OPERATORS: AuditFilterOp[] = [
-    'equals',
-    'key_not_equals',
     'contains',
     'not_contains',
     'starts_with',
     'ends_with',
+    'equals',
+    'key_not_equals',
     'key_exists',
     'key_not_exists',
     'gt',

@@ -11,8 +11,8 @@ import {
     AuditNumberFilter,
     catalogSelection,
     catalogTextConditions,
-    createAuditConditionGroup,
     DEFAULT_MATCH_SCOPE,
+    EMPTY_AUDIT_FILTER,
     isUsableCondition,
 } from '../models/audit-filter.models';
 import {
@@ -167,7 +167,7 @@ function describeCatalogFilters(
             }
             continue;
         }
-        const chip = conditionChip(field, label, catalogTextConditions(state, field));
+        const chip = conditionChip(field, label, catalogTextConditions(state, builderField));
         if (chip !== null) {
             chips.push(chip);
         }
@@ -332,13 +332,13 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
         case 'nodeType':
             return { ...state, nodeTypes: [] };
         case 'input':
-            return { ...state, input: [createAuditConditionGroup()] };
+            return { ...state, input: EMPTY_AUDIT_FILTER.input };
         case 'output':
-            return { ...state, output: [createAuditConditionGroup()] };
+            return { ...state, output: EMPTY_AUDIT_FILTER.output };
         case 'error':
-            return { ...state, error: [createAuditConditionGroup()] };
+            return { ...state, error: EMPTY_AUDIT_FILTER.error };
         case 'details':
-            return { ...state, details: [createAuditConditionGroup()] };
+            return { ...state, details: EMPTY_AUDIT_FILTER.details };
         case 'date':
             return { ...state, dateFrom: null, dateTo: null };
         case 'agent':
@@ -346,11 +346,11 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
         case 'tool':
             return { ...state, tool: { op: 'in', values: [] } };
         case 'task':
-            return { ...state, task: [createAuditConditionGroup()] };
+            return { ...state, task: EMPTY_AUDIT_FILTER.task };
         case 'prompt':
-            return { ...state, prompt: [createAuditConditionGroup()] };
+            return { ...state, prompt: EMPTY_AUDIT_FILTER.prompt };
         case 'messageText':
-            return { ...state, messageText: [createAuditConditionGroup()] };
+            return { ...state, messageText: EMPTY_AUDIT_FILTER.messageText };
         case 'tokens':
             return { ...state, tokens: { op: 'gt', value: '' } };
         case 'query':

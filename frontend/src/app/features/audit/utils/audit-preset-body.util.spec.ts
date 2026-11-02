@@ -139,7 +139,10 @@ describe('user actions preset body', () => {
 
     it('drops the fields of a preset saved before the Builder stopped offering them', () => {
         const typed = (value: string) => [
-            { ...createAuditConditionGroup(), conditions: [{ ...createAuditCondition(), value }] },
+            {
+                ...createAuditConditionGroup(['contains']),
+                conditions: [{ ...createAuditCondition(['contains']), value }],
+            },
         ];
         const restored = restorePresetState(
             {
