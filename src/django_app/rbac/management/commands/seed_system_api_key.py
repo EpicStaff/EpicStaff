@@ -12,8 +12,9 @@ class Command(BaseCommand):
         if key is None:
             self.stderr.write(
                 self.style.WARNING(
-                    "DJANGO_API_KEY is not set — no system key seeded; "
-                    "internal services (realtime) cannot authenticate."
+                    "DJANGO_API_KEY is not set — no system key active, any "
+                    "earlier one revoked; internal services (realtime) cannot "
+                    "authenticate."
                 )
             )
             return

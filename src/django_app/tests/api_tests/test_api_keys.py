@@ -162,6 +162,34 @@ class TestSystemKeySeeding:
         assert SystemKeyService().seed_from_env("") is None
         assert SystemKeyService().seed_from_env(None) is None
 
+    @pytest.mark.parametrize("unset_value", ["", None, "none", " None ", "NONE"])
+    def test_unset_env_revokes_the_key_seeded_earlier(self, unset_value):
+        service = SystemKeyService()
+        earlier = service.seed_from_env("earlier-secret")
+
+        assert service.seed_from_env(unset_value) is None
+
+        earlier.refresh_from_db()
+        assert earlier.is_revoked
+        assert not ApiKey.objects.filter(
+            key_type=ApiKey.KeyType.SYSTEM, revoked_at__isnull=True
+        ).exists()
+
+    def test_literal_none_key_seeded_by_old_default_stops_authenticating(self, api_client):
+        legacy = ApiKey.objects.create(
+            name=SystemKeyService.KEY_NAME,
+            key_type=ApiKey.KeyType.SYSTEM,
+            prefix=ApiKeyGenerator.prefix_of("none"),
+            key_hash=ApiKeyGenerator.hash_key("none"),
+        )
+
+        SystemKeyService().seed_from_env("none")
+
+        legacy.refresh_from_db()
+        assert legacy.is_revoked
+        response = api_client.get("/api/auth/api-key/validate/", HTTP_X_API_KEY="none")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
 
 @pytest.mark.django_db
 class TestInternalEndpointHardening:
