@@ -14,14 +14,21 @@ class LoginThrottle(SimpleRateThrottle):
 
     It does not limit an IP that rotates emails (password spraying): every new
     email is a fresh bucket. `LoginIpThrottle` covers that, and both login
-    views apply both. `PasswordChangeRequestView`'s body has no email, so
-    there the key is the IP alone.
+    views apply both.
+
+    The email is read from the body field named by the view's
+    `throttle_account_field`: the field whose password the view checks. Any
+    other field would let a caller name the target in one field and rotate
+    the counted value in another. A view without the attribute
+    (`PasswordChangeRequestView`, whose account is the caller) is keyed on
+    the IP alone, whatever the body holds.
     """
 
     scope = "login"
 
     def get_cache_key(self, request, view):
-        raw = request.data.get("email") or request.data.get("username") or ""
+        account_field = getattr(view, "throttle_account_field", None)
+        raw = request.data.get(account_field) if account_field else None
         email = raw.lower().strip() if isinstance(raw, str) else ""
         ip = self.get_ident(request)
         ident = f"{ip}|{email}" if email else ip

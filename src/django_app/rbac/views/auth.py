@@ -112,6 +112,7 @@ def _log_failed_login(request, email) -> None:
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
     throttle_classes = [LoginThrottle, LoginIpThrottle]
+    throttle_account_field = "email"
     parser_classes = [JSONParser]
 
     _validator = AuthValidationService()
@@ -333,6 +334,7 @@ class SwaggerTokenView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
     throttle_classes = [LoginThrottle, LoginIpThrottle]
+    throttle_account_field = "username"
 
     @extend_schema(**SWAGGER_TOKEN_POST)
     def post(self, request):

@@ -51,6 +51,7 @@ from rbac.identity.passwords.token_repository import (
     hash_token,
 )
 from rbac.identity.superadmin_bootstrap import SuperadminBootstrap
+from rbac.throttles import LoginIpThrottle, LoginThrottle
 from utils.logger import logger
 
 LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"
@@ -411,6 +412,58 @@ def test_login_throttle_is_per_email(api_client, regular_user):
     )
     # Different email -> different bucket -> not throttled (would be 401 instead)
     assert r.status_code != 429
+
+
+@pytest.mark.django_db
+# Pinned so the 429 can only come from the per-account bucket, not the IP cap.
+@patch.object(LoginThrottle, "rate", "5/min", create=True)
+@patch.object(LoginIpThrottle, "rate", "1000/min", create=True)
+def test_swagger_token_throttle_counts_the_username_whatever_email_is_sent(
+    api_client, regular_user
+):
+    cache.clear()
+    url = reverse("swagger_token")
+
+    def guess(index):
+        return api_client.post(
+            url,
+            data={
+                "username": regular_user.email,
+                "email": f"decoy{index}@example.com",
+                "password": "wrong",
+            },
+            format="json",
+        )
+
+    for index in range(5):
+        assert guess(index).status_code != 429
+
+    assert guess(5).status_code == 429
+
+
+@pytest.mark.django_db
+# Pinned so the 429 can only come from the per-account bucket, not the IP cap.
+@patch.object(LoginThrottle, "rate", "5/min", create=True)
+@patch.object(LoginIpThrottle, "rate", "1000/min", create=True)
+def test_login_throttle_counts_the_email_whatever_username_is_sent(api_client, regular_user):
+    cache.clear()
+    url = reverse("login")
+
+    def guess(index):
+        return api_client.post(
+            url,
+            data={
+                "email": regular_user.email,
+                "username": f"decoy{index}@example.com",
+                "password": "wrong",
+            },
+            format="json",
+        )
+
+    for index in range(5):
+        assert guess(index).status_code != 429
+
+    assert guess(5).status_code == 429
 
 
 # The per-IP throttles on token-refresh and password-reset-confirm live in
