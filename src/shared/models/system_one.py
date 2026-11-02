@@ -91,6 +91,6 @@ class SystemOneConfigData(BaseModel):
     id: int
     provider: str  # a str, not a Literal: the adapter registry decides which providers exist
     model_name: str | None = None
-    api_key: str | None = None
+    api_key: str | None = Field(default=None, repr=False)
     api_key_secret_id: int | None = Field(default=None, exclude=True)
     llm_data: LLMData | None = None

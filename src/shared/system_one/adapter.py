@@ -1,27 +1,16 @@
-from typing import Any, Protocol
+from typing import Any
 
 from src.shared.models.sessions import TokenUsage
 from src.shared.models.system_one import SystemOneConfigData, SystemOneQuestion, SystemOneResult
+from src.shared.system_one.base import SystemOneAdapter, SystemOneError
+from src.shared.system_one.constants import LLM_PROVIDER, TYPESAFE_PROVIDER
+from src.shared.system_one.llm_adapter import LlmSystemOneAdapter
+from src.shared.system_one.typesafe_adapter import TypeSafeAdapter
 
-
-class SystemOneError(Exception):
-    """Message is written by us and safe to show in session messages.
-
-    Never carries provider response text or keys.
-    """
-
-
-class SystemOneAdapter(Protocol):
-    async def evaluate(
-        self,
-        *,
-        config: SystemOneConfigData,
-        state: dict[str, Any],
-        questions: dict[str, SystemOneQuestion],
-    ) -> tuple[SystemOneResult, TokenUsage]: ...
-
-
-SYSTEM_ONE_ADAPTERS: dict[str, SystemOneAdapter] = {}
+SYSTEM_ONE_ADAPTERS: dict[str, SystemOneAdapter] = {
+    TYPESAFE_PROVIDER: TypeSafeAdapter(),
+    LLM_PROVIDER: LlmSystemOneAdapter(),
+}
 
 
 def _check_answers(

@@ -8,6 +8,7 @@ from src.shared.models.system_one import (
     SystemOneConfigData,
     SystemOneResult,
 )
+from src.shared.system_one.constants import JEV_INPUT_PRICE_USD_PER_TOKEN, JEV_MODEL_VERSIONS
 
 NOUL = {"type": "noul", "instructions": "Is this an engineering company?"}
 
@@ -162,3 +163,13 @@ def test_answer_values_outside_zero_to_one_are_refused(build):
 
 def test_score_is_not_limited_to_zero_to_one():
     assert ScoreAnswer(type="score", score=2.4, confidence=1, probabilities={"2": 1}).score == 2.4
+
+
+def test_every_pinned_jev_version_has_a_price():
+    assert set(JEV_MODEL_VERSIONS) == set(JEV_INPUT_PRICE_USD_PER_TOKEN)
+
+
+def test_config_repr_hides_the_key():
+    config = SystemOneConfigData(id=1, provider="typesafe", api_key="ts-key")
+
+    assert "ts-key" not in repr(config)
