@@ -53,8 +53,10 @@ RUN_SESSION_POST = {
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
             description=(
-                "Total file size exceeds the limit, validation failed, or the "
-                "session failed to start."
+                "Total file size exceeds the limit, validation failed, the flow is not "
+                "ready to run, or the session failed to start. A flow that is not ready "
+                "returns a message naming the node to fix; an unexpected failure returns "
+                "a generic message and is logged on the server."
             ),
             examples=[
                 OpenApiExample(
@@ -70,10 +72,38 @@ RUN_SESSION_POST = {
                     status_codes=["400"],
                 ),
                 OpenApiExample(
-                    "Internal error",
-                    value={"error": "Connection refused"},
+                    "Flow not ready",
+                    value={"error": "Connect a node to Start."},
                     response_only=True,
                     status_codes=["400"],
+                ),
+                OpenApiExample(
+                    "Unexpected failure",
+                    value={
+                        "error": (
+                            "Something went wrong on the server. Try again or contact your "
+                            "administrator."
+                        )
+                    },
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+            ],
+        ),
+        500: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="File storage access for the run couldn't be prepared.",
+            examples=[
+                OpenApiExample(
+                    "Storage unavailable",
+                    value={
+                        "error": (
+                            "We couldn't grant access to file storage for this run. "
+                            "Please try again shortly."
+                        )
+                    },
+                    response_only=True,
+                    status_codes=["500"],
                 ),
             ],
         ),

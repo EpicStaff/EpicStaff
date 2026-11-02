@@ -5,6 +5,7 @@ from django.utils import timezone
 from rbac.access.principals import is_pinned_org_principal
 from rbac.governance.organization_retention import effective_retention_days_for_org
 from rbac.identity.api_keys.principals import SystemServicePrincipal
+from rest_framework.exceptions import APIException
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import (
     AgentNodeData,
@@ -61,6 +62,7 @@ from tables.services.run_admission import (
     assert_run_admitted,
     assert_still_admitted,
 )
+from tables.services.run_start_errors import user_facing_run_error
 from tables.services.secrets import (
     UndeclaredSecretError,
     secret_declaration_validator,
@@ -78,6 +80,7 @@ from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
 from utils.graph_utils import (
     NodeNameResolver,
+    flow_location,
     generate_node_name,
     resolve_node_names,
     runtime_node_name,
@@ -259,7 +262,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         now = timezone.now()
         Session.objects.filter(pk=session.pk).update(
             status=Session.SessionStatus.STOP,
-            status_data={"reason": str(refusal.detail)},
+            status_data={"reason": user_facing_run_error(refusal)},
             status_updated_at=now,
             finished_at=now,
         )
@@ -298,11 +301,58 @@ class SessionManagerService(metaclass=SingletonMeta):
         `callback_url` / `callback_secret`: delivered on the terminal status by the
         callback sender; validated by the caller.
 
+        Logs every failure here, once: an `APIException` (a run check such as a
+        validator, or an error with its own status such as a storage outage) as a
+        warning with its text, anything else with its traceback. Callers don't log
+        the traceback again. `RunAdmissionRefusedError` is not logged here: a trigger
+        that keeps firing while refused would flood the log, so callers log it through
+        `log_trigger_refusal_once`, or answer it with a 409.
+
         Raises:
             RunAdmissionRefusedError: The run is refused. Before the session is created,
                 nothing is written; refused again just before the publish, the session
                 is stopped and nothing is published.
         """
+        try:
+            return self._start_session(
+                graph_id,
+                variables=variables,
+                user=user,
+                trigger=trigger,
+                entrypoint=entrypoint,
+                parent_session_id=parent_session_id,
+                token_budget=token_budget,
+                api_key=api_key,
+                callback_url=callback_url,
+                callback_secret=callback_secret,
+                allow_persistent_override=allow_persistent_override,
+            )
+        except RunAdmissionRefusedError:
+            raise
+        except APIException as error:
+            logger.warning(
+                "Run of graph {} not started: {}", graph_id, user_facing_run_error(error)
+            )
+            raise
+        except Exception:
+            logger.exception("Run of graph {} failed to start", graph_id)
+            raise
+
+    def _start_session(
+        self,
+        graph_id: int,
+        *,
+        variables: dict | None,
+        user,
+        trigger: TriggerSpec,
+        entrypoint: str | None,
+        parent_session_id: int | None,
+        token_budget: int | None,
+        api_key,
+        callback_url: str | None,
+        callback_secret: str | None,
+        allow_persistent_override: bool,
+    ) -> int:
         variables = self._get_actual_variables(variables)
         # Keys only: values hold user input and base64-encoded uploads, and the log
         # truncation runs after the whole message has been formatted.
@@ -394,10 +444,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         except RunAdmissionRefusedError as refusal:
             self._stop_refused_session(session=session, refusal=refusal)
             raise
-        except Exception as e:
-            msg = f"Error occured running a session: {e}"
-            logger.exception(msg)
-            self._mark_session_error(session=session, reason=msg)
+        except Exception as error:
+            # Logged by run_session. The reason is shown to whoever reads the session,
+            # so it never carries an unexpected error's internals.
+            self._mark_session_error(session=session, reason=user_facing_run_error(error))
             raise
 
         if session.status == Session.SessionStatus.ERROR:
@@ -409,10 +459,17 @@ class SessionManagerService(metaclass=SingletonMeta):
             except Exception as exc:  # a callback failure must never mask the session error
                 logger.error("Session {} callback enqueue failed: {}", session.pk, exc)
 
-        surface_knowledge_warnings = self.surface_knowledge_warning_service.build_warnings(graph)
-        all_warnings = run_vars.warnings + surface_knowledge_warnings
-        if all_warnings:
-            SessionWarningMessage.objects.create(session_id=session.pk, messages=all_warnings)
+        # Crew may already be running the session: failing here would tell the caller
+        # the run didn't start, and a retry would start it twice.
+        try:
+            surface_knowledge_warnings = self.surface_knowledge_warning_service.build_warnings(
+                graph
+            )
+            all_warnings = run_vars.warnings + surface_knowledge_warnings
+            if all_warnings:
+                SessionWarningMessage.objects.create(session_id=session.pk, messages=all_warnings)
+        except Exception:
+            logger.exception("Session {} started, but its warnings could not be saved", session.pk)
         return session.pk
 
     # message_type values handled generically by the branch below: this is a
@@ -468,17 +525,26 @@ class SessionManagerService(metaclass=SingletonMeta):
             .select_related("python_code__venv")
             .prefetch_related(secret_names_prefetch("python_code__secrets"))
         )
-        knowledge_node_list = KnowledgeNode.objects.filter(graph=graph.pk).select_related(
-            "source_collection",
-            "naive_search_config",
-            "graph_basic_search_config",
-            "graph_local_search_config",
-            "graph_global_search_config",
-            "graph_drift_search_config",
+        # Ordered as the canvas numbers them, so a message listing several nodes is stable.
+        knowledge_node_list = (
+            KnowledgeNode.objects.filter(graph=graph.pk)
+            .select_related(
+                "source_collection",
+                "naive_search_config",
+                "graph_basic_search_config",
+                "graph_local_search_config",
+                "graph_global_search_config",
+                "graph_drift_search_config",
+            )
+            .order_by("node_number", "id")
         )
-        file_extractor_node_list = FileExtractorNode.objects.filter(graph=graph.pk)
+        file_extractor_node_list = FileExtractorNode.objects.filter(graph=graph.pk).order_by(
+            "node_number", "id"
+        )
         key_value_node_list = KeyValueNode.objects.filter(graph=graph.pk)
-        audio_transcription_node_list = AudioTranscriptionNode.objects.filter(graph=graph.pk)
+        audio_transcription_node_list = AudioTranscriptionNode.objects.filter(
+            graph=graph.pk
+        ).order_by("node_number", "id")
         edge_list = Edge.objects.filter(graph=graph.pk)
         decision_table_node_list = DecisionTableNode.objects.filter(
             graph=graph.pk
@@ -572,12 +638,17 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
         )
 
-        if file_extractor_node_list:
-            self.file_node_validator.validate_file_nodes(file_extractor_node_list)
-        if audio_transcription_node_list:
-            self.file_node_validator.validate_file_nodes(audio_transcription_node_list)
+        # Only a subflow is built without a session. Its name goes into every message
+        # about its nodes, since they aren't on the canvas the user ran.
+        subflow_name = graph.name if session is None else None
+        # Iterating fills each queryset's cache, so the conversion below reuses the rows.
+        self.file_node_validator.validate_file_nodes(
+            [*file_extractor_node_list, *audio_transcription_node_list], flow_name=subflow_name
+        )
         if knowledge_node_list:
-            self.knowledge_node_validator.validate_runnable(knowledge_node_list)
+            self.knowledge_node_validator.validate_runnable(
+                knowledge_node_list, flow_name=subflow_name
+            )
 
         condition_group_next_ids = list(
             ConditionGroup.objects.filter(
@@ -737,9 +808,10 @@ class SessionManagerService(metaclass=SingletonMeta):
             edge_data_list.append(edge_data)
 
         if entrypoint is None:
-            raise GraphEntryPointException()
-
-        if start_node is None and entrypoint is None:
+            if subflow_name is not None:
+                raise GraphEntryPointException(
+                    f"Connect a node to Start{flow_location(subflow_name)}."
+                )
             raise GraphEntryPointException()
 
         decision_table_node_data_list = [
@@ -782,7 +854,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
             )
 
-        end_node = self.end_node_validator.validate(graph_id=graph.pk)
+        end_node = self.end_node_validator.validate(graph_id=graph.pk, flow_name=subflow_name)
 
         # TODO: remove validation
         end_node_data = (

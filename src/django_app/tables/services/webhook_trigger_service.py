@@ -213,7 +213,8 @@ class WebhookTriggerService(metaclass=SingletonMeta):
                     error=error,
                 )
             except Exception:
-                logger.exception(
+                # run_session has already logged the traceback.
+                logger.error(
                     "Webhook trigger node {} could not start graph {}",
                     webhook_trigger_node.pk,
                     webhook_trigger_node.graph_id,

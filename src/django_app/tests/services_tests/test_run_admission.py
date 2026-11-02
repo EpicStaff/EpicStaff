@@ -696,6 +696,8 @@ def test_a_refused_webhook_node_is_logged_once_and_the_other_node_still_runs(
         f"{REFUSAL_MESSAGE} (test_refused)"
     ]
     assert not [line for line in logged_warnings if "could not start graph" in line]
+    # Only the throttled line: nothing else on the way logs the refusal again.
+    assert len([line for line in logged_warnings if REFUSAL_MESSAGE in line]) == 1
 
 
 @pytest.mark.django_db
@@ -726,3 +728,5 @@ def test_a_refused_telegram_node_is_logged_once_and_the_other_node_still_runs(
         f"{REFUSAL_MESSAGE} (test_refused)"
     ]
     assert not [line for line in logged_warnings if "could not start graph" in line]
+    # Only the throttled line: nothing else on the way logs the refusal again.
+    assert len([line for line in logged_warnings if REFUSAL_MESSAGE in line]) == 1

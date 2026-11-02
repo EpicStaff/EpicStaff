@@ -18,8 +18,10 @@ __all__ = ["CustomAPIExeption"]
 
 
 class GraphEntryPointException(CustomAPIExeption):
+    """Raised on run when no node is connected to the flow's Start node."""
+
     status_code = 400
-    default_detail = "No node connected to start node"
+    default_detail = "Connect a node to Start."
 
 
 class GraphNotFoundError(CustomAPIExeption):
@@ -94,29 +96,25 @@ class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
     default_detail = "ValidationError occured in UploadSourceCollectionSerializer"
 
 
-class TaskSerializerError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "SerializerError occured during Task serialization"
-
-
-class AgentSerializerError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "SerializerError occurred during Agent serialization"
-
-
 class EndNodeValidationError(CustomAPIExeption):
+    """Raised on run when the End node's outputs can't be read."""
+
     status_code = 400
-    default_detail = "ValidationError occured in session_manager_service"
+    default_detail = "The End node's Output Map is broken. Set it again."
 
 
 class FileNodeValidationError(CustomAPIExeption):
+    """Raised on run when a file or audio node has no input to read."""
+
     status_code = 400
-    default_detail = "FileExtractorNode requires input arguments"
+    default_detail = "A node has no input file."
 
 
 class KnowledgeNodeRunValidationError(CustomAPIExeption):
+    """Raised on run when a knowledge node is missing settings it needs."""
+
     status_code = 400
-    default_detail = "KnowledgeNode is not fully configured to run"
+    default_detail = "A Knowledge Retriever node isn't set up."
 
 
 class InvalidTaskOrderError(CustomAPIExeption):
@@ -146,8 +144,14 @@ class GraphSaveVersionConflictError(CustomAPIExeption):
 
 
 class SubGraphValidationError(CustomAPIExeption):
+    """Raised on run when a subflow node has no flow chosen, or a chain of subflows loops.
+
+    A loop is any chain that runs a flow already on it, whether or not that flow is
+    the one being run.
+    """
+
     status_code = 400
-    default_detail = "ValidationError occured in SubGraphValidator during subgraph validation"
+    default_detail = "A subflow node can't run. Check its flow."
 
 
 class BuiltInToolModificationError(CustomAPIExeption):

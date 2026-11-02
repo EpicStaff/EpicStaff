@@ -24,6 +24,24 @@ def node_label(*, node_name: str, node_number: int | None) -> str:
     return f"{node_name} #{node_number}"
 
 
+def join_with_and(items: list[str]) -> str:
+    """Join words for a message: "A", "A and B", "A, B and C". `items` must not be empty."""
+    if len(items) == 1:
+        return items[0]
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def flow_location(flow_name: str | None) -> str:
+    """Return ' in flow "<name>"' for a node inside a subflow, or "" for one in the flow that was run.
+
+    A message about a node in a subflow names that flow, since the node isn't on the
+    canvas the user ran.
+    """
+    if flow_name is None:
+        return ""
+    return f' in flow "{flow_name}"'
+
+
 def runtime_node_name(*, node_name: str, node_number: int | None, node_id: int) -> str:
     """Return the name a node runs under: its label followed by " #<global id>".
 

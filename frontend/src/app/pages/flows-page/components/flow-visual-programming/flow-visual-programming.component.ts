@@ -86,6 +86,7 @@ import { FlowsApiService } from '../../../../features/flows/services/flows-api.s
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
 import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
+import { showRunFlowError } from '../../../../features/flows/utils/run-flow-error.util';
 import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -1493,7 +1494,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public handleRunFlow(): void {
         this.runAfterSave(
             () => this.runGraphService.runGraph(this.graph.id, this.graph.start_node_list[0].variables),
-            (error) => this.toastService.error(`Failed to run graph: ${extractHttpErrorMessage(error)}`)
+            (error) => showRunFlowError(this.toastService, "Couldn't run the flow.", error)
         );
     }
 

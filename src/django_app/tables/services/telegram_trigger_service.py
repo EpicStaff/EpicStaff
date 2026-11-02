@@ -566,7 +566,8 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                     error=error,
                 )
             except Exception:
-                logger.exception(
+                # run_session has already logged the traceback.
+                logger.error(
                     "Telegram trigger node {} could not start graph {}",
                     telegram_trigger_node.pk,
                     telegram_trigger_node.graph_id,

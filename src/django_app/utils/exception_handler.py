@@ -22,18 +22,18 @@ from utils.logger import logger
 _UNLABELLED_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})
 
 
-def _flatten_detail(detail) -> str:
+def flatten_error_detail(detail) -> str:
     """Render DRF's nested error detail as plain text, one message per error."""
     if isinstance(detail, dict):
         return "; ".join(
-            _flatten_detail(value)
+            flatten_error_detail(value)
             if key in _UNLABELLED_KEYS
-            else f"{key}: {_flatten_detail(value)}"
+            else f"{key}: {flatten_error_detail(value)}"
             for key, value in detail.items()
         )
 
     if isinstance(detail, (list, tuple)):
-        return "; ".join(_flatten_detail(item) for item in detail)
+        return "; ".join(flatten_error_detail(item) for item in detail)
 
     return str(detail)
 
@@ -158,7 +158,7 @@ def custom_exception_handler(exc, context):
         response.data = {
             "status_code": exc.status_code,
             "code": exc.default_code,
-            "message": _flatten_detail(detail),
+            "message": flatten_error_detail(detail),
         }
         errors = getattr(exc, "errors", None)
         if isinstance(errors, list):

@@ -30,7 +30,7 @@ from rbac.scoping.mixins import (
 )
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.settings import api_settings
 from src.shared.bench_log import BENCH_LEVEL
@@ -102,6 +102,7 @@ from tables.services.run_admission import (
     assert_run_admitted,
 )
 from tables.services.run_python_code_service import RunPythonCodeService
+from tables.services.run_start_errors import user_facing_run_error
 from tables.services.secrets import SecretResolver
 from tables.services.secrets.pinned_principal_rules import (
     assert_may_resolve_markers,
@@ -533,9 +534,24 @@ class RunSession(APIView):
         except RunAdmissionRefusedError:
             # A refusal is the caller's answer (409), not a failure to start.
             raise
-        except Exception as e:
-            logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
-            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
+        except APIException as error:
+            # Its text is written for the user and its status is its own: a run check
+            # answers 400, a temporary storage outage 500, which fanout_tool retries on
+            # purpose. run_session has already logged it.
+            return Response(status=error.status_code, data={"error": user_facing_run_error(error)})
+        except Exception as error:
+            # A bug: the caller gets the generic text, and run_session has already
+            # logged the traceback. A 400, not a 500: fanout_tool retries a 5xx, and
+            # retrying a bug only creates one more ERROR session each time.
+            logger.error(
+                "Session for graph_id {} failed to start: {}: {}",
+                graph_id,
+                type(error).__name__,
+                error,
+            )
+            return Response(
+                status=status.HTTP_400_BAD_REQUEST, data={"error": user_facing_run_error(error)}
+            )
 
         return Response(
             data={"session_id": session_id},

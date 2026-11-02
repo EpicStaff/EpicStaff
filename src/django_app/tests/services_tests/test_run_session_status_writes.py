@@ -99,7 +99,10 @@ def test_failure_before_publish_marks_session_error(graph, session_manager, monk
 
     session = _latest_session(graph)
     assert session.status == Session.SessionStatus.ERROR
-    assert "redis is down" in session.status_data["reason"]
+    # The stored reason is readable by anyone who can see the session: no internals.
+    assert session.status_data["reason"] == (
+        "Something went wrong on the server. Try again or contact your administrator."
+    )
     assert session.finished_at is not None
     assert session.status_updated_at >= session.created_at
 
