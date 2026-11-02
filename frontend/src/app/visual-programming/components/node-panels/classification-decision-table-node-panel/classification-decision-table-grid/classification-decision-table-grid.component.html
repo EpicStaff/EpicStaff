@@ -10,7 +10,8 @@
                     <button
                         type="button"
                         class="grid-header-icon-btn"
-                        title="Delete selected"
+                        aria-label="Delete selected"
+                        matTooltip="Delete selected"
                         (click)="deleteSelectedRows()"
                     >
                         <app-svg-icon
@@ -52,7 +53,8 @@
                 class="col-above-add-btn"
                 [style.left.px]="exprAddPos()!.x"
                 (click)="toggleFieldPicker($event)"
-                title="Add expression variable"
+                aria-label="Add expression variable"
+                matTooltip="Add expression variable"
             >
                 <i class="ti ti-plus"></i>
             </button>
@@ -62,7 +64,8 @@
                 class="col-above-add-btn"
                 [style.left.px]="manipAddPos()!.x"
                 (click)="toggleManipFieldPicker($event)"
-                title="Add manipulation variable"
+                aria-label="Add manipulation variable"
+                matTooltip="Add manipulation variable"
             >
                 <i class="ti ti-plus"></i>
             </button>
@@ -92,7 +95,8 @@
                             (click)="toggleGroupFromOverlay(item, $event)"
                             (contextmenu)="openGroupMenuFromOverlay(item, $event)"
                             (mouseenter)="hoveredSectionId.set(item.key)"
-                            [title]="groupOverlayIconTitle(item)"
+                            [attr.aria-label]="groupOverlayIconTitle(item)"
+                            [matTooltip]="groupOverlayIconTitle(item)"
                         >
                             @if (item.members) {
                                 <app-svg-icon
@@ -138,14 +142,16 @@
                         >
                             <span
                                 class="group-overlay-chip-name"
-                                [title]="item.name"
+                                appTooltipOnOverflow
+                                [matTooltip]="item.name"
                                 >{{ item.name }}</span
                             >
                             @if (!item.members) {
                                 <button
                                     type="button"
                                     class="group-overlay-chip-btn"
-                                    title="Edit group"
+                                    aria-label="Edit group"
+                                    matTooltip="Edit group"
                                     (click)="openEditGroupDialog(item.sectionId, $event)"
                                 >
                                     <app-svg-icon
@@ -156,7 +162,8 @@
                                 <button
                                     type="button"
                                     class="group-overlay-chip-btn group-overlay-chip-btn--delete"
-                                    title="Ungroup"
+                                    aria-label="Ungroup"
+                                    matTooltip="Ungroup"
                                     (click)="handleChipUngroup(item.sectionId, $event)"
                                 >
                                     <app-svg-icon
@@ -198,11 +205,8 @@
                 class="hidden-col-badge"
                 [style.left.px]="badge.x"
                 [style.top.px]="badge.y"
-                [title]="
-                    badge.entries.length === 1
-                        ? 'Expand ' + badge.entries[0].label
-                        : badge.entries.length + ' hidden columns'
-                "
+                [attr.aria-label]="hiddenBadgeLabel(badge)"
+                [matTooltip]="hiddenBadgeLabel(badge)"
                 (click)="onHiddenBadgeClick($event, badge)"
             >
                 <i class="ti ti-arrows-horizontal"></i>

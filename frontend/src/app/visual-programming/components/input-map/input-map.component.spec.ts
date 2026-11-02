@@ -1,8 +1,16 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ChangeDetectorRef, Component, CUSTOM_ELEMENTS_SCHEMA, NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import {
+    ChangeDetectorRef,
+    Component,
+    CUSTOM_ELEMENTS_SCHEMA,
+    getDebugNode,
+    NO_ERRORS_SCHEMA,
+    signal,
+} from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 
 import { GraphSessionService } from '../../../features/flows/services/flows-sessions.service';
@@ -32,8 +40,10 @@ describe('InputMapComponent variable picker', () => {
     let fixture: ComponentFixture<PythonPanelHostComponent>;
 
     const valueInput = (): HTMLInputElement => fixture.nativeElement.querySelector('input[formControlName="value"]');
+    // Each row's full variable path, shown in its tooltip.
+    const fullPath = (item: HTMLElement): string => getDebugNode(item)!.injector.get(MatTooltip).message;
     const listed = (): string[] =>
-        Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), (item) => item.title);
+        Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), fullPath);
     const typeValue = (text: string): void => {
         valueInput().value = text;
         valueInput().dispatchEvent(new Event('input'));
@@ -108,9 +118,9 @@ describe('InputMapComponent variable picker', () => {
                 'variables.my_object.user_id',
                 'variables.my_object.user_email',
             ]);
-            expect(
-                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), (item) => item.title)
-            ).toEqual(['variables.my_object']);
+            expect(Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), fullPath)).toEqual([
+                'variables.my_object',
+            ]);
             expect(valueInputs()[1].getAttribute('aria-expanded')).toBe('true');
         });
 

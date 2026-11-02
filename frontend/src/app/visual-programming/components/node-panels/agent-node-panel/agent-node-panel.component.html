@@ -106,7 +106,8 @@
                                 <button
                                     type="button"
                                     class="view-summary-btn"
-                                    title="View combined surface summary"
+                                    aria-label="View combined surface summary"
+                                    matTooltip="View combined surface summary"
                                     (click)="onViewSummary()"
                                 >
                                     <app-svg-icon
@@ -159,6 +160,7 @@
                                 [readonly]="isReadOnly()"
                                 (tasksChange)="onTasksChange($event)"
                                 (cellSelect)="onCellSelect($event)"
+                                (instructionsFocus)="onInstructionsFocus($event)"
                             ></app-agent-tasks-table>
 
                             <button
@@ -235,7 +237,8 @@
                                     <button
                                         type="button"
                                         class="icon-button"
-                                        title="Copy"
+                                        aria-label="Copy"
+                                        matTooltip="Copy"
                                         (click)="copyRightInstructions()"
                                     >
                                         <app-svg-icon
@@ -246,7 +249,8 @@
                                     <button
                                         type="button"
                                         class="icon-button"
-                                        title="Collapse"
+                                        aria-label="Collapse"
+                                        matTooltip="Collapse"
                                         (click)="toggleRightPaneField()"
                                     >
                                         <app-svg-icon
@@ -367,7 +371,8 @@
                             <button
                                 type="button"
                                 class="view-summary-btn"
-                                title="View combined surface summary"
+                                aria-label="View combined surface summary"
+                                matTooltip="View combined surface summary"
                                 (click)="onViewSummary()"
                             >
                                 <app-svg-icon
@@ -420,6 +425,7 @@
                             [readonly]="isReadOnly()"
                             (tasksChange)="onTasksChange($event)"
                             (cellSelect)="onCellSelect($event)"
+                            (instructionsFocus)="onInstructionsFocus($event)"
                         ></app-agent-tasks-table>
 
                         <button

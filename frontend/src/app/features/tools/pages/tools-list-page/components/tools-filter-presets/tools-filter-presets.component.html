@@ -82,7 +82,8 @@
                                     <button
                                         class="preset-card__action"
                                         type="button"
-                                        title="Overwrite with current filters"
+                                        matTooltip="Overwrite with current filters"
+                                        aria-label="Overwrite with current filters"
                                         (click)="overwritePreset(card.preset)"
                                     >
                                         <app-svg-icon
@@ -93,7 +94,8 @@
                                     <button
                                         class="preset-card__action"
                                         type="button"
-                                        title="Rename preset"
+                                        matTooltip="Rename preset"
+                                        aria-label="Rename preset"
                                         (click)="startRename(card.preset)"
                                     >
                                         <app-svg-icon
@@ -104,7 +106,8 @@
                                     <button
                                         class="preset-card__action"
                                         type="button"
-                                        title="Delete preset"
+                                        matTooltip="Delete preset"
+                                        aria-label="Delete preset"
                                         (click)="confirmDelete(card.preset)"
                                     >
                                         <app-svg-icon
@@ -119,7 +122,8 @@
                                     @for (chip of card.chips; track chip.label) {
                                         <span
                                             class="preset-chip"
-                                            [title]="chip.label + ' ' + chip.value"
+                                            appTooltipOnOverflow=".preset-chip__value"
+                                            [matTooltip]="chip.label + ' ' + chip.value"
                                         >
                                             <span class="preset-chip__label">{{ chip.label }}</span>
                                             <span class="preset-chip__value">{{ chip.value }}</span>

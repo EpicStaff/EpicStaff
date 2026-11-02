@@ -12,7 +12,7 @@
    
 [![GitHub Stars](https://img.shields.io/github/stars/EpicStaff/EpicStaff?style=social)](https://github.com/EpicStaff/EpicStaff/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/EpicStaff/EpicStaff?style=social)](https://github.com/EpicStaff/EpicStaff/network/members)
-[![License](https://img.shields.io/github/license/EpicStaff/EpicStaff)](https://github.com/EpicStaff/EpicStaff/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/EpicStaff/EpicStaff)](https://github.com/EpicStaff/EpicStaff/blob/main/LICENSE.md)
 [![Last Commit](https://img.shields.io/github/last-commit/EpicStaff/EpicStaff)](https://github.com/EpicStaff/EpicStaff/commits/main)
 [![Open Issues](https://img.shields.io/github/issues/EpicStaff/EpicStaff)](https://github.com/EpicStaff/EpicStaff/issues)
 
@@ -95,8 +95,8 @@ git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && 
 These blocks build every image locally from the cloned source (`docker compose up --build`). The signature and SBOM checks under [How to verify a release](#how-to-verify-a-release) apply only to images pulled from `ghcr.io/epicstaff`, never to images built on your machine. To run the signed, digest-pinned images of a release instead, see [Running a verified release](#running-a-verified-release).
 
 The blocks generate `src/.env` with `python scripts/envtool.py --setup --dev`, run inside a
-`python` container so only Docker is needed. It asks which optional features to turn on (chat
-and the audit trail) and fills in everything else. These are **development defaults, for trying
+`python` container so only Docker is needed. It asks which optional features to turn on (chat,
+the audit trail and plugins) and fills in everything else. These are **development defaults, for trying
 EpicStaff on your own machine only**.
 
 **Before running EpicStaff in production, replace this development configuration.** On the
@@ -110,8 +110,8 @@ docker run --rm -it -v "${PWD}:/repo" -w /repo python:3.12.10-slim sh -c "pip in
 docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --user --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --setup"
 ```
 
-It asks for the public URL, how HTTPS is handled, which features to turn on and which release
-tag to pull, and generates every password and key into `src/.env` (keep that file private). It can
+It asks for the public URL, how HTTPS is handled, which features to turn on, which release
+tag to pull and how long to keep sessions, conversations and audit events, and generates every password and key into `src/.env` (keep that file private). It can
 also size the server and set the longest a code node may run. Run it again later to turn
 features on or off, tune those limits, add settings a newer release introduced, or start over; it
 keeps the existing credentials, because the databases were created with them.
@@ -269,6 +269,18 @@ EpicStaff accepts contributions on GitHub. Pull requests, issues, and new tool c
 
 * **⭐ Star the repository** if EpicStaff solves a problem you recognise.
 * **🤝 Contribute** — see [CONTRIBUTING.md](CONTRIBUTING.md) to add a feature, fix a bug, or build a new tool.
+
+## License
+
+This repository is licensed under the *PolyForm Perimeter License 1.0.0*.
+
+Licensor: HYS Enterprise B.V. Full text: [LICENSE.md](LICENSE.md).
+
+In short - and the licence text governs, not this summary: you may use, modify
+and redistribute EpicStaff for any purpose, including commercially and inside
+your own organisation. The one exception is competition: you may not provide
+others a product that competes with EpicStaff, and a product can compete even
+if it is given away free. If you redistribute, pass these terms on.
 
 ## 🙏 Special Thanks
 

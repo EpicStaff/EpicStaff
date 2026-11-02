@@ -120,7 +120,8 @@ function select(fixture: ComponentFixture<LlmReasoningEffortFieldComponent>): HT
 }
 
 function optionLabels(fixture: ComponentFixture<LlmReasoningEffortFieldComponent>): (string | undefined)[] {
-    select(fixture)!.querySelector<HTMLButtonElement>('button')!.click();
+    // The select trigger, not the help button its label row renders first.
+    select(fixture)!.querySelector<HTMLButtonElement>('.selector__btn')!.click();
     fixture.detectChanges();
     return Array.from(
         TestBed.inject(OverlayContainer).getContainerElement().querySelectorAll('.selector__option .selector__text')
@@ -137,6 +138,16 @@ function errorText(fixture: ComponentFixture<LlmReasoningEffortFieldComponent>):
 function hintText(fixture: ComponentFixture<LlmReasoningEffortFieldComponent>): string {
     return (fixture.nativeElement as HTMLElement).querySelector('app-hint-message')?.textContent ?? '';
 }
+
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
 
 describe('LlmReasoningEffortFieldComponent', () => {
     it('stays hidden and submits null for a model without reasoning support', async () => {

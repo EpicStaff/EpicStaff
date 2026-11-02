@@ -87,7 +87,7 @@
                     [class.wts__item--selected]="t.id === selectedId()"
                     [class.wts__item--disabled]="isTriggerDisallowed(t)"
                     [attr.aria-disabled]="isTriggerDisallowed(t) ? 'true' : null"
-                    [attr.title]="isTriggerDisallowed(t) ? disallowedProviderMessage() : null"
+                    [matTooltip]="isTriggerDisallowed(t) ? disallowedProviderMessage() : ''"
                     (click)="onSelect(t)"
                 >
                     {{ displayLabel(t) }}

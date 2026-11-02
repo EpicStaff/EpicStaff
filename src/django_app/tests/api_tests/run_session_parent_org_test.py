@@ -197,3 +197,28 @@ def test_cross_org_and_nonexistent_parent_get_the_same_response(
         "code": "parent_session_not_found",
         "message": "Parent session not found.",
     }
+
+
+@pytest.mark.django_db
+def test_parent_session_of_a_binned_flow_is_rejected(
+    auth_client, redis_client_mock, graph_in_org_a, org_a
+):
+    binned_parent_flow = _build_runnable_graph("binned-parent-flow", org_a)
+    parent_session = Session.objects.create(
+        graph=binned_parent_flow, status=Session.SessionStatus.RUN
+    )
+    binned_parent_flow.delete()
+
+    response = auth_client.post(
+        reverse("run-session"),
+        {
+            "graph_id": graph_in_org_a.pk,
+            "variables": {},
+            "parent_session_id": parent_session.pk,
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data["code"] == "parent_session_not_found"
+    assert not Session.objects.filter(parent_session_id=parent_session.pk).exists()

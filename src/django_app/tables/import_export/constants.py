@@ -1,6 +1,14 @@
+import re
+
 from tables.import_export.enums import EntityType
 
 IMPORT_VERSION = 5
+
+# The sandbox's rule for a venv name, mirrored: `Venv.name` in
+# src/sandbox_new/manager/domain/models.py and its varchar column. Change both together.
+VENV_NAME_PATTERN = re.compile(r"^[A-Za-z0-9 _-]+\Z")
+VENV_NAME_REFUSED_CHARACTERS = re.compile(r"[^A-Za-z0-9 _-]+")
+VENV_NAME_MAX_LENGTH = 255
 
 MAIN_ENTITY_KEY = "main_entity"
 NODE_MAPPING_KEY = "node"

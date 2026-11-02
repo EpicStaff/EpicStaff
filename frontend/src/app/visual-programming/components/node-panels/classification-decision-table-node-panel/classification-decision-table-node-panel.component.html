@@ -352,7 +352,8 @@
                                                     <button
                                                         type="button"
                                                         class="icon-btn"
-                                                        title="Delete prompt"
+                                                        aria-label="Delete prompt"
+                                                        matTooltip="Delete prompt"
                                                         (click)="deletePrompt(prompt.id); $event.stopPropagation()"
                                                     >
                                                         <app-svg-icon
@@ -422,7 +423,7 @@
                                                                     class="field-expand-icon"
                                                                     icon="editor-expand"
                                                                     size="0.875rem"
-                                                                    title="Expand"
+                                                                    matTooltip="Expand"
                                                                     (click)="openSideEditor(prompt.id, 'prompt')"
                                                                 />
                                                             </div>
@@ -515,7 +516,7 @@
                                     <div class="side-editor-pane-actions">
                                         <button
                                             type="button"
-                                            title="Copy"
+                                            matTooltip="Copy"
                                             aria-label="Copy content"
                                             (click)="copySideEditorContent()"
                                         >
@@ -526,7 +527,7 @@
                                         </button>
                                         <button
                                             type="button"
-                                            title="Collapse"
+                                            matTooltip="Collapse"
                                             aria-label="Collapse editor panel"
                                             (click)="closeSideEditor()"
                                         >

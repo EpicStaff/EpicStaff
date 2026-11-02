@@ -125,7 +125,6 @@ FOREIGN_REFERENCES = {
     "surface-owner-agent": ("/api/surfaces/", "owner_agent", lambda b, a: {"name": "s1", "owner_agent": AgentDefinition.objects.create(name="adb", org=b).id}),
     "surface-python-tool": ("/api/surfaces/", "python_tools", lambda b, a: {"name": "s1", "python_tools": [{"python_tool": _python_tool(b).id, "mode": "allow"}]}),
     "surface-mcp-tool": ("/api/surfaces/", "mcp_tools", lambda b, a: {"name": "s1", "mcp_tools": [{"mcp_tool": McpTool.objects.create(name="other-mcp", transport="http://example.com", tool_name="t", org=b).id, "mode": "allow"}]}),
-    "surface-storage-file": ("/api/surfaces/", "storage_items", lambda b, a: {"name": "s1", "storage_items": [{"storage_file": StorageFile.objects.create(org=b, path="a.txt", name="a.txt").id}]}),
     "surface-knowledge": ("/api/surfaces/", "knowledge", lambda b, a: {"name": "s1", "knowledge": [{"collection": SourceCollection.objects.create(org=b, collection_name="other").pk}]}),
     "realtime-openai-config": ("/api/realtime-agent-definitions/", "openai_config", lambda b, a: {"agent_definition": AgentDefinition.objects.create(name="ad", org=a).id, "openai_config": OpenAIRealtimeConfig.objects.create(custom_name="c", org=b).id}),
     "realtime-elevenlabs-config": ("/api/realtime-agent-definitions/", "elevenlabs_config", lambda b, a: {"agent_definition": AgentDefinition.objects.create(name="ad", org=a).id, "elevenlabs_config": ElevenLabsRealtimeConfig.objects.create(custom_name="c", org=b).id}),
@@ -170,20 +169,93 @@ def test_a_same_org_node_update_succeeds(client_a, org_a):
     assert client_a.patch(f"/api/tasknodes/{node.id}/", {"instructions": "updated"}, format="json").status_code == 200
 
 
-@pytest.mark.parametrize("write", ["create", "reparent"])
-def test_an_agent_task_under_another_orgs_agent_node_is_404(client_a, org_a, org_b, write):
-    foreign_node = AgentNode.objects.create(graph=Graph.objects.create(name="B", org=org_b), node_name="ab")
+def _agent_node(org, name):
+    return AgentNode.objects.create(graph=Graph.objects.create(name=name, org=org), node_name=name)
 
+
+def _task_write(client, write, own_node, task, payload):
+    """POST a new task on `own_node`, or PATCH `task`, with `payload` merged in."""
     if write == "create":
-        resp = client_a.post(
-            "/api/agentnodetasks/", {"agent_node": foreign_node.id, "name": "t", "order": 0, "instructions": "i"}, format="json"
-        )
-    else:
-        own_node = AgentNode.objects.create(graph=Graph.objects.create(name="A", org=org_a), node_name="aa")
-        task = AgentNodeTask.objects.create(agent_node=own_node, name="t", order=0)
-        resp = client_a.patch(f"/api/agentnodetasks/{task.id}/", {"agent_node": foreign_node.id}, format="json")
-        task.refresh_from_db()
-        assert task.agent_node_id == own_node.id
+        body = {"agent_node": own_node.id, "name": "new", "order": 7, "instructions": "i", **payload}
+        return client.post("/api/agentnodetasks/", body, format="json")
+    return client.patch(f"/api/agentnodetasks/{task.id}/", payload, format="json")
 
-    assert resp.status_code == 404
+
+def _without_pk(resp, pk):
+    return str(resp.data).replace(f'"{pk}"', '"<pk>"')
+
+
+@pytest.mark.parametrize("write", ["create", "reparent"])
+def test_an_agent_task_under_another_orgs_agent_node_looks_like_a_missing_one(client_a, org_a, org_b, write):
+    foreign_node = _agent_node(org_b, "ab")
+    own_node = _agent_node(org_a, "aa")
+    task = AgentNodeTask.objects.create(agent_node=own_node, name="t", order=0)
+    missing_pk = 2**31 - 1
+
+    foreign = _task_write(client_a, write, own_node, task, {"agent_node": foreign_node.id})
+    missing = _task_write(client_a, write, own_node, task, {"agent_node": missing_pk})
+
+    assert foreign.status_code == missing.status_code == 400
+    assert _without_pk(foreign, foreign_node.id) == _without_pk(missing, missing_pk)
+    assert "does not exist" in str(foreign.data)
+    task.refresh_from_db()
+    assert task.agent_node_id == own_node.id
     assert not AgentNodeTask.objects.filter(agent_node=foreign_node).exists()
+
+
+def test_filtering_tasks_by_another_orgs_agent_node_looks_like_a_missing_one(client_a, org_a, org_b):
+    foreign_node = _agent_node(org_b, "ab")
+    AgentNodeTask.objects.create(agent_node=foreign_node, name="f", order=0)
+    own_node = _agent_node(org_a, "aa")
+    own_task = AgentNodeTask.objects.create(agent_node=own_node, name="t", order=0)
+
+    foreign = client_a.get(f"/api/agentnodetasks/?agent_node={foreign_node.id}")
+    missing = client_a.get(f"/api/agentnodetasks/?agent_node={2**31 - 1}")
+    own = client_a.get(f"/api/agentnodetasks/?agent_node={own_node.id}")
+
+    assert foreign.status_code == missing.status_code == 200
+    assert _rows(foreign) == _rows(missing) == []
+    assert [row["id"] for row in _rows(own)] == [own_task.id]
+
+
+@pytest.mark.parametrize("write", ["create", "update"])
+def test_a_context_task_of_another_org_looks_like_a_missing_one(client_a, org_a, org_b, write):
+    own_node = _agent_node(org_a, "aa")
+    task = AgentNodeTask.objects.create(agent_node=own_node, name="t", order=5)
+    foreign_task = AgentNodeTask.objects.create(agent_node=_agent_node(org_b, "ab"), name="f", order=0)
+    missing_pk = 2**31 - 1
+
+    foreign = _task_write(client_a, write, own_node, task, {"context_tasks": [foreign_task.id]})
+    missing = _task_write(client_a, write, own_node, task, {"context_tasks": [missing_pk]})
+
+    assert foreign.status_code == missing.status_code == 400
+    assert _without_pk(foreign, foreign_task.id) == _without_pk(missing, missing_pk)
+    assert "does not exist" in str(foreign.data)
+    assert not task.context_tasks.exists()
+
+
+@pytest.mark.parametrize("write", ["create", "update"])
+def test_a_context_task_of_a_sibling_agent_node_in_the_same_org_is_still_rejected(client_a, org_a, write):
+    own_node = _agent_node(org_a, "aa")
+    task = AgentNodeTask.objects.create(agent_node=own_node, name="t", order=5)
+    other_node_task = AgentNodeTask.objects.create(agent_node=_agent_node(org_a, "ab"), name="o", order=0)
+
+    resp = _task_write(client_a, write, own_node, task, {"context_tasks": [other_node_task.id]})
+
+    assert resp.status_code == 400
+    assert "must belong to the same agent_node" in str(resp.data)
+
+
+@pytest.mark.parametrize("write", ["create", "update"])
+def test_an_earlier_task_of_the_same_agent_node_can_be_a_context_task(client_a, org_a, write):
+    own_node = _agent_node(org_a, "aa")
+    earlier = AgentNodeTask.objects.create(agent_node=own_node, name="e", order=0)
+    task = AgentNodeTask.objects.create(agent_node=own_node, name="t", order=5)
+
+    resp = _task_write(client_a, write, own_node, task, {"context_tasks": [earlier.id]})
+
+    assert resp.status_code in (200, 201)
+    assert resp.data["context_tasks"] == [earlier.id]
+    assert resp.data["agent_node"] == own_node.id
+    written = AgentNodeTask.objects.get(id=resp.data["id"])
+    assert list(written.context_tasks.values_list("id", flat=True)) == [earlier.id]

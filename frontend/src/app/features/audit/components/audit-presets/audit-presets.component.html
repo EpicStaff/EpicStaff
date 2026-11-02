@@ -151,7 +151,8 @@
                                     @for (chip of card.chips; track chip.key) {
                                         <span
                                             class="preset-chip"
-                                            [title]="chip.label + ' ' + chip.value"
+                                            appTooltipOnOverflow=".preset-chip__value"
+                                            [matTooltip]="chip.label + ' ' + chip.value"
                                         >
                                             <span class="preset-chip__label">{{ chip.label }}</span>
                                             <span class="preset-chip__value">{{ chip.value }}</span>
@@ -362,7 +363,8 @@
                     @for (chip of editorChips(); track chip.key) {
                         <span
                             class="preset-chip"
-                            [title]="chip.label + ' ' + chip.value"
+                            appTooltipOnOverflow=".preset-chip__value"
+                            [matTooltip]="chip.label + ' ' + chip.value"
                         >
                             <span class="preset-chip__label">{{ chip.label }}</span>
                             <span class="preset-chip__value">{{ chip.value }}</span>

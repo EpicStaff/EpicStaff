@@ -7,7 +7,7 @@ from tables.import_export.serializers.webhook_trigger_node import (
     WebhookTriggerNodeImportSerializer,
 )
 from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.utils import remap_python_code_venv
+from tables.import_export.utils import python_code_venv_ids, remap_python_code_venv
 from tables.models import WebhookTrigger, WebhookTriggerNode
 
 
@@ -22,7 +22,17 @@ class WebhookTriggerNodeStrategy(EntityImportExportStrategy):
         return {"id": instance.id, "graph": instance.graph_id}
 
     def extract_dependencies_from_instance(self, instance: WebhookTriggerNode) -> dict:
-        deps = {EntityType.GRAPH: [instance.graph_id]}
+        return self._dependencies(instance, org_id=None)
+
+    def extract_org_scoped_dependencies(self, instance: WebhookTriggerNode, org_id: int) -> dict:
+        return self._dependencies(instance, org_id=org_id)
+
+    @staticmethod
+    def _dependencies(instance: WebhookTriggerNode, *, org_id: int | None) -> dict:
+        deps = {
+            EntityType.GRAPH: [instance.graph_id],
+            EntityType.VENV: python_code_venv_ids(instance.python_code, org_id=org_id),
+        }
         if instance.webhook_trigger_id:
             deps[EntityType.WEBHOOK_TRIGGER] = [instance.webhook_trigger_id]
         return deps
