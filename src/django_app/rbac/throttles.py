@@ -63,7 +63,7 @@ class LoginIpThrottle(AnonRateThrottle):
     since the refresh cookie keeps the session alive, so 20/min leaves an
     office behind one NAT room for a morning burst of logins and the odd
     mistyped password, while a single IP is held to four accounts' worth of
-    the per-account budget per minute instead of an unbounded number. It also
+    the `ip|email` budget per minute instead of an unbounded number. It also
     bounds the password-hashing work one IP can make the server do.
     """
 

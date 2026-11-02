@@ -51,7 +51,7 @@ from rbac.identity.passwords.token_repository import (
     hash_token,
 )
 from rbac.identity.superadmin_bootstrap import SuperadminBootstrap
-from rbac.throttles import LoginIpThrottle, LoginThrottle
+from rbac.throttles import LoginAccountThrottle, LoginIpThrottle, LoginThrottle
 from utils.logger import logger
 
 LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"
@@ -416,9 +416,10 @@ def test_login_throttle_is_per_email(api_client, regular_user):
 
 @pytest.mark.django_db
 @pytest.mark.urls("tests.urls_with_api_docs")
-# Pinned so the 429 can only come from the per-account bucket, not the IP cap.
+# Pinned so the 429 can only come from the `ip|email` bucket, not the IP or account caps.
 @patch.object(LoginThrottle, "rate", "5/min", create=True)
 @patch.object(LoginIpThrottle, "rate", "1000/min", create=True)
+@patch.object(LoginAccountThrottle, "rate", "1000/hour", create=True)
 def test_swagger_token_throttle_counts_the_username_whatever_email_is_sent(
     api_client, regular_user
 ):
@@ -443,9 +444,10 @@ def test_swagger_token_throttle_counts_the_username_whatever_email_is_sent(
 
 
 @pytest.mark.django_db
-# Pinned so the 429 can only come from the per-account bucket, not the IP cap.
+# Pinned so the 429 can only come from the `ip|email` bucket, not the IP or account caps.
 @patch.object(LoginThrottle, "rate", "5/min", create=True)
 @patch.object(LoginIpThrottle, "rate", "1000/min", create=True)
+@patch.object(LoginAccountThrottle, "rate", "1000/hour", create=True)
 def test_login_throttle_counts_the_email_whatever_username_is_sent(api_client, regular_user):
     cache.clear()
     url = reverse("login")
