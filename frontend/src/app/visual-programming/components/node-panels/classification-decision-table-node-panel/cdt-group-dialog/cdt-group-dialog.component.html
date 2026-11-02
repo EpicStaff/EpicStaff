@@ -51,7 +51,7 @@
                         [style.background]="option.hex"
                         [attr.aria-checked]="isColorSelected(option)"
                         [attr.aria-label]="'Colour: ' + option.id"
-                        [title]="option.id"
+                        [matTooltip]="option.id"
                         (click)="selectColor(option.hex)"
                     >
                         @if (isColorSelected(option)) {

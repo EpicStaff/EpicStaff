@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { DateRangeFilter, GraphSessionStatus } from '@shared/models';
-import { map, Observable, Subject } from 'rxjs';
+import { Observable, Subject, tap } from 'rxjs';
 
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { GraphMessage } from '../../../pages/running-graph/models/graph-session-message.model';
@@ -58,6 +58,12 @@ export interface DurationFilter {
 }
 
 export type DurationOperator = 'lessThan' | 'greaterThan' | 'equal' | 'between';
+
+export interface BulkDeleteSessionsResponse {
+    /** Sessions actually deleted: requested ids that were already gone, or belong to another organization, are not counted. */
+    deleted: number;
+    ids: number[];
+}
 
 @Injectable({
     providedIn: 'root',
@@ -142,12 +148,10 @@ export class GraphSessionService {
         }
     }
 
-    bulkDeleteSessions(ids: number[]): Observable<void> {
-        return this.http.post<void>(`${this.apiUrl}bulk_delete/`, { ids }).pipe(
-            map(() => {
-                this._sessionsChanged$.next();
-            })
-        );
+    bulkDeleteSessions(ids: number[]): Observable<BulkDeleteSessionsResponse> {
+        return this.http
+            .post<BulkDeleteSessionsResponse>(`${this.apiUrl}bulk_delete/`, { ids })
+            .pipe(tap(() => this._sessionsChanged$.next()));
     }
 
     stopSessionById(sessionId: number): Observable<void> {

@@ -14,7 +14,9 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService, SearchComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { escapeHtml } from '@shared/utils';
 
 import { ToolFilterPreset } from '../../../../models/tool-filter-preset.model';
@@ -33,7 +35,7 @@ interface ToolPresetCard {
 
 @Component({
     selector: 'app-tools-filter-presets',
-    imports: [AppSvgIconComponent, SearchComponent],
+    imports: [AppSvgIconComponent, SearchComponent, MatTooltip, TooltipOnOverflowDirective],
     templateUrl: './tools-filter-presets.component.html',
     styleUrls: ['./tools-filter-presets.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

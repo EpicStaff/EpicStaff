@@ -193,7 +193,8 @@ first-setup, login, refresh, password-reset request/confirm, swagger-token).
 
 Two authentication classes (`rbac/identity/authentication.py`), both global defaults:
 - `JwtAuthentication` — `Authorization: Bearer <jwt>` → simplejwt (HS256, access 15 min,
-  refresh 7 d, rotation + blacklist on). Custom claims: `email`, `is_superadmin`,
+  refresh 7 d with remember-me or 30 min without, rotation + blacklist on; the refresh
+  token travels only in an HttpOnly cookie, `rbac/identity/refresh_cookie.py`). Custom claims: `email`, `is_superadmin`,
   `hash_password` (`CHECK_REVOKE_TOKEN=True`: binds the token to the password hash).
 - `ApiKeyAuthentication` — `X-Api-Key: <key>` or `Authorization: ApiKey <key>` → delegates to
   `ApiKeyAuthenticator`, which resolves the raw key to an `ApiKey` row, then hands it to

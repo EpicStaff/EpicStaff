@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import {
@@ -13,7 +14,7 @@ import {
 
 @Component({
     selector: 'app-classification-dt-message',
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
     template: `
         <!-- Condition Group -->
         @if (isConditionGroup()) {
@@ -170,7 +171,7 @@ import {
                                 <div class="detail-row">
                                     <span
                                         class="detail-label"
-                                        title="Subset of prompt tokens — not added to the total."
+                                        matTooltip="Subset of prompt tokens — not added to the total."
                                         >Cached tokens</span
                                     >
                                     <span class="detail-value">

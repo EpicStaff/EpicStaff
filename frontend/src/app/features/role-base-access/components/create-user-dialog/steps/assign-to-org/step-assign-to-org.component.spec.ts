@@ -150,6 +150,16 @@ function render(
     };
 }
 
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('StepAssignToOrgComponent "Role for selected" bulk dropdown', () => {
     it('offers only built-in roles, without Super Admin and without custom roles', () => {
         const { fixture, component, loadAssignableRoles } = render();

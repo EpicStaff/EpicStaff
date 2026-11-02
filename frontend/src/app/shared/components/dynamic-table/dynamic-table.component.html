@@ -193,7 +193,8 @@
                                                             type="button"
                                                             class="dt__navigate-btn dt__navigate-btn--cell"
                                                             (click)="navigateRow.emit({ row, rowIndex })"
-                                                            title="Open nested properties"
+                                                            aria-label="Open nested properties"
+                                                            matTooltip="Open nested properties"
                                                         >
                                                             <app-svg-icon
                                                                 icon="go-to-arrow"
@@ -260,7 +261,8 @@
                                             type="button"
                                             class="dt__navigate-btn"
                                             (click)="navigateRow.emit({ row, rowIndex })"
-                                            title="Open nested properties"
+                                            aria-label="Open nested properties"
+                                            matTooltip="Open nested properties"
                                         >
                                             <app-svg-icon
                                                 icon="go-to-arrow"
@@ -273,7 +275,8 @@
                                             type="button"
                                             class="dt__remove-btn"
                                             (click)="removeRow(row._id)"
-                                            title="Remove row"
+                                            aria-label="Remove row"
+                                            matTooltip="Remove row"
                                         >
                                             <i class="ti ti-x"></i>
                                         </button>

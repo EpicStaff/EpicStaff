@@ -925,6 +925,10 @@ export class SurfaceCardComponent {
         return rows.every((r) => r.perms[key] === first) ? first : 'unset';
     }
 
+    permCellLabel(row: SurfaceFileRow, column: { key: keyof SurfaceFilePerms; label: string }): string {
+        return `${row.name}, ${column.label}: ${row.perms[column.key]}`;
+    }
+
     toggleColumnPerm(key: keyof SurfaceFilePerms): void {
         if (this.readOnly()) return;
         const next = nextPermState(this.columnPermState(key));

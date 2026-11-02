@@ -82,7 +82,8 @@ export class ApiKeysTabComponent {
     protected readonly isLoading = signal(true);
     protected readonly isBulkLoading = signal(false);
     protected readonly isBulkMenuOpen = signal(false);
-    protected readonly selectedItems = signal<TableRow[]>([]);
+    /** Only ids are kept: the selected rows are read from the latest list, so a reload never leaves a stale status behind. */
+    private readonly selectedIds = signal<ReadonlySet<number>>(new Set());
     protected readonly keys = signal<GetApiKeyWithOwnerResponse[]>([]);
 
     protected readonly searchTerm = signal('');
@@ -167,6 +168,11 @@ export class ApiKeysTabComponent {
             .sort((a, b) => API_KEY_STATUS_ORDER.get(a.status)! - API_KEY_STATUS_ORDER.get(b.status)!)
     );
 
+    protected readonly selectedItems = computed<TableRow[]>(() => {
+        const selectedIds = this.selectedIds();
+        return this.tableData().filter((row) => selectedIds.has(row['id'] as number));
+    });
+
     protected readonly isRowSelectable = (row: TableRow): boolean => this.canRetireRow(row);
 
     private readonly filters$ = combineLatest([
@@ -237,7 +243,7 @@ export class ApiKeysTabComponent {
     }
 
     onSelectionChange(selected: TableRow[]): void {
-        this.selectedItems.set(selected);
+        this.selectedIds.set(new Set(selected.map((row) => row['id'] as number)));
     }
 
     toggleBulkMenu(): void {

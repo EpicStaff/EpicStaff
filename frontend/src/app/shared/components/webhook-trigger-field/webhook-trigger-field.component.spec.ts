@@ -117,6 +117,16 @@ function emittedTrigger(control: FormControl<WebhookTriggerWrite | null>): Webho
     return control.value as WebhookTriggerModel;
 }
 
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('WebhookTriggerFieldComponent', () => {
     it('names a binned tunnel token, with the note, though the trigger was loaded without events', () => {
         const { fixture } = render(TELEGRAM_TRIGGER);
@@ -356,10 +366,13 @@ describe('WebhookTriggerFieldComponent', () => {
             expect(readonlyText(fixture, 'localhost_name')).toBe('local');
         });
 
-        it('leaves no input to type into', () => {
+        it('leaves no input to type into, only the help buttons that explain the fields', () => {
             const { fixture } = render(TELEGRAM_TRIGGER, { readonly: true });
+            const controls = Array.from(
+                (fixture.nativeElement as HTMLElement).querySelectorAll('input, button')
+            ).filter((control) => !control.closest('app-help-tooltip'));
 
-            expect((fixture.nativeElement as HTMLElement).querySelectorAll('input, button')).toHaveLength(0);
+            expect(controls).toHaveLength(0);
         });
 
         it('states the current secret without inviting a change', () => {

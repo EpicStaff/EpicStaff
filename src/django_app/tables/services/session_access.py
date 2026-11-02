@@ -16,8 +16,9 @@ def get_accessible_session(user, session_id: int, action: Permission = Permissio
 
     For the non-ViewSet session surfaces (run-session SSE stream, get-updates, stop),
     which cannot rely on HasOrgPermission (no DRF `action`) or the X-Organization-Id
-    header (SSE). A missing session, a session without a graph and a session in an
-    org the caller is not a member of all raise the same SessionNotFoundError.
+    header (SSE). A missing session, a session without a graph or whose graph is in
+    the recycle bin, and a session in an org the caller is not a member of all raise
+    the same SessionNotFoundError.
     Superadmin passes unconditionally (PermissionResolver bypass).
 
     Raises:
@@ -26,12 +27,13 @@ def get_accessible_session(user, session_id: int, action: Permission = Permissio
             on FLOWS.
     """
     session = (
-        Session.objects.annotate(owner_org_id=F("graph__org_id"))
+        Session.objects.visible()
+        .annotate(owner_org_id=F("graph__org_id"))
         .filter(pk=session_id)
         .only("id", "status")
         .first()
     )
-    if session is None or session.owner_org_id is None:
+    if session is None:
         raise SessionNotFoundError()
     assert_row_org_permission(
         user,
@@ -97,10 +99,11 @@ def assert_parent_session_in_org(parent_session_id: int, org_id: int) -> None:
     A sub-session is deleted together with its parent (`Session.parent_session`
     cascades), so a parent in another organization would let that organization
     delete this one. A missing parent and another organization's parent raise
-    the same error, so the response never reveals that a session id exists.
+    the same error, so the response never reveals that a session id exists. A
+    parent whose flow is in the recycle bin is missing too.
 
     Raises:
         ParentSessionNotFoundError (400): no session with this id in the organization.
     """
-    if not Session.objects.filter(id=parent_session_id, graph__org_id=org_id).exists():
+    if not Session.objects.visible_in_org(org_id).filter(id=parent_session_id).exists():
         raise ParentSessionNotFoundError()
