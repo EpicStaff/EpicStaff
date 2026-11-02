@@ -169,7 +169,7 @@ cryptography>=50
 httpx>=0.28,<1
 packaging>=24
 pydantic>=2.13,<3
-pyjwt>=2.10,<3
+pyjwt>=2.15.1,<3
 ```
 
 Compile it for the Python the manifest names, for every platform, with hashes:

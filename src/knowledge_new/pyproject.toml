@@ -79,6 +79,7 @@ transitive-pins = [
     "packaging==26.3",
     "pdfminer-six==20260107",
     "preshed==3.0.13",
+    "pyjwt==2.15.1",
     "propcache==0.5.2",
     "pyarrow==25.0.0",
     "pygments==2.20.0",
