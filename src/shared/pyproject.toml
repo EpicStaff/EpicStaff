@@ -30,7 +30,7 @@ tests = [
     "minio==7.2.20",
     "openai==2.54.0",
     "pydantic==2.13.4",
-    "pyjwt==2.13.0",
+    "pyjwt==2.15.1",
     "pytest-asyncio==1.4.0",
     "pytest==9.0.3",
     "redis==5.3.1",

@@ -20,5 +20,6 @@ logger.add(
     format="{time} {level} {message}",
     level=settings.LOG_LEVEL,
     filter=without_bench(truncate_filter),
+    diagnose=False,
 )
 add_bench_sink(sys.stdout, settings.LOG_LEVEL)

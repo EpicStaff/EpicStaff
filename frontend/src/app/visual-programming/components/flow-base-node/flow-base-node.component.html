@@ -128,7 +128,8 @@
                 @if (isBlockedSubgraph) {
                     <div
                         class="blocked-badge"
-                        title="Referenced subgraph was deleted"
+                        matTooltip="Referenced subgraph was deleted"
+                        matTooltipPosition="above"
                     >
                         Missing flow
                     </div>
@@ -162,7 +163,8 @@
                 @if (hasMissingKeyValueTable) {
                     <div
                         class="llm-warning-badge"
-                        [title]="isReadOnly() ? 'No table selected' : 'Select a table in the node panel'"
+                        [matTooltip]="isReadOnly() ? 'No table selected' : 'Select a table in the node panel'"
+                        matTooltipPosition="above"
                     >
                         <app-svg-icon
                             icon="alert-triangle"
@@ -178,7 +180,7 @@
                     @if (keyValueSummaryValue) {
                         <div
                             class="key-value-summary-tab"
-                            [attr.title]="keyValueSummaryValue.full"
+                            [matTooltip]="keyValueSummaryValue.full"
                         >
                             <span
                                 class="summary"

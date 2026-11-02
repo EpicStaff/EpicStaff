@@ -1,6 +1,7 @@
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { ApplicationConfig, inject, provideAppInitializer, provideZoneChangeDetection } from '@angular/core';
 import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltipDefaultOptions } from '@angular/material/tooltip';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideMarkdown } from 'ngx-markdown';
 import { provideMonacoEditor } from 'ngx-monaco-editor-v2';
@@ -64,6 +65,12 @@ export const appConfig: ApplicationConfig = {
             useValue: {
                 appearance: 'outline',
             },
+        },
+        {
+            // Without a delay, every pointer pass over a dense canvas or table flashes tooltips.
+            // Material replaces its defaults with this object instead of merging, so the other two repeat its values.
+            provide: MAT_TOOLTIP_DEFAULT_OPTIONS,
+            useValue: { showDelay: 400, hideDelay: 0, touchendHideDelay: 1500 } satisfies MatTooltipDefaultOptions,
         },
 
         { provide: APP_STORAGE, useExisting: ActiveOrgService, multi: true },

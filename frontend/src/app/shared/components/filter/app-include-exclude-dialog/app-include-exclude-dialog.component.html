@@ -54,7 +54,8 @@
             @for (item of filteredItems(); track item.id) {
                 <label
                     class="list-row"
-                    [title]="item.name"
+                    appTooltipOnOverflow=".row-label"
+                    [matTooltip]="item.name"
                 >
                     <app-checkbox
                         color="secondary"
@@ -90,7 +91,8 @@
                 <div
                     class="list-row label-row"
                     [style.paddingLeft]="indentPadding(entry.depth)"
-                    [title]="entry.node.name"
+                    appTooltipOnOverflow=".row-label"
+                    [matTooltip]="entry.node.name"
                 >
                     @if (entry.node.children.length > 0) {
                         <button

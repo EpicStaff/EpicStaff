@@ -1,6 +1,8 @@
 import { formatDate } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
+import { getDebugNode } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { provideRouter, Router } from '@angular/router';
 import { ConfirmationDialogService } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
@@ -181,7 +183,7 @@ describe('KeyValueEntriesGridComponent rows', () => {
         expect(modifiedBy?.classList).not.toContain('entries-grid__cell--link');
         const manualEdit = modifiedBy?.querySelector('.entries-grid__manual-edit');
         expect(manualEdit?.textContent?.trim()).toBe('Manual edit');
-        expect(manualEdit?.getAttribute('title')).toBe(
+        expect(getDebugNode(manualEdit!)?.injector.get(MatTooltip).message).toBe(
             'Edited by hand, or written by a session that was later deleted'
         );
     });

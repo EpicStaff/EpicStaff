@@ -43,7 +43,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.knowledge.client import KnowledgeClient
 from src.shared.models import RealtimeAgentChatData
-from utils.auth import introspect_token
+from utils.auth import DjangoAuthClient
 from utils.instructions_concatenator import generate_instruction
 from utils.twilio_signature import validate_twilio_signature
 
@@ -64,6 +64,11 @@ python_code_executor_service = PythonCodeExecutorService(
     redis_service=redis_service, sandbox_client=sandbox_client
 )
 knowledge_client = KnowledgeClient(base_url=config.KNOWLEDGE_BASE_URL)
+django_auth_client = DjangoAuthClient(
+    base_url=config.DJANGO_AUTH_URL,
+    api_key=config.DJANGO_API_KEY,
+    timeout=config.DJANGO_AUTH_TIMEOUT,
+)
 tool_manager_service = ToolManagerService(
     python_code_executor_service=python_code_executor_service,
     knowledge_client=knowledge_client,
@@ -230,6 +235,7 @@ async def startup_event():
     """Start Redis listener and init DB on FastAPI startup."""
     await init_db()
     await knowledge_client.start()
+    await django_auth_client.start()
 
     # The event loop keeps only a weak reference to tasks, so the supervisor task
     # must be held here or it can be garbage-collected and nothing restarts the listener.
@@ -245,6 +251,7 @@ async def shutdown_event():
     redis_listener_task.cancel()
     await asyncio.gather(redis_listener_task, return_exceptions=True)
     await knowledge_client.stop()
+    await django_auth_client.stop()
     await sandbox_client.aclose()
 
 
@@ -270,7 +277,7 @@ async def root(
         await websocket.close(code=1008)
         return
 
-    user_info = introspect_token(token)
+    user_info = await django_auth_client.introspect_token(token)
     if not user_info:
         logger.warning("WebSocket auth failed: token invalid or introspection failed")
         await websocket.close(code=1008)

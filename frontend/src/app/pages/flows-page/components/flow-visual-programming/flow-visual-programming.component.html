@@ -132,7 +132,8 @@
         @if (isSaving()) {
             <div
                 class="saving-lock-overlay"
-                title="Saving… editing is locked until the save completes"
+                matTooltip="Saving… editing is locked until the save completes"
+                [matTooltipPositionAtOrigin]="true"
             ></div>
         }
     </div>
