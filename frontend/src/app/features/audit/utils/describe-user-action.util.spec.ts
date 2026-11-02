@@ -31,7 +31,7 @@ const baseAction: AuditUserAction = {
 describe('userActionLabel', () => {
     it.each([
         ['updated', 'Updated'],
-        ['permanently_deleted', 'Permanently deleted'],
+        ['moved_to_recycle_bin', 'Moved to Recycle Bin'],
         ['sign_in_failed', 'Sign-in failed'],
         ['import_entity', 'Import entity'],
         ['upload_stream', 'Upload stream'],
@@ -96,7 +96,6 @@ describe('userActionTone', () => {
         ['renamed', 'changed'],
         ['moved_to_recycle_bin', 'removed'],
         ['deleted', 'destroyed'],
-        ['permanently_deleted', 'destroyed'],
         ['sign_in_failed', 'destroyed'],
         ['password_reset', 'alert'],
         ['signed_in', 'plain'],

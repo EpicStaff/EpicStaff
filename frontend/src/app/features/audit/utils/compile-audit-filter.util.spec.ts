@@ -366,7 +366,7 @@ describe('user actions filter', () => {
             {
                 ...EMPTY_AUDIT_FILTER,
                 selections: {
-                    action: { op: 'in', values: ['permanently_deleted'] },
+                    action: { op: 'in', values: ['moved_to_recycle_bin'] },
                     actor_user_id: { op: 'in', values: ['3'] },
                     target_type: { op: 'in', values: ['python node', 'webhook trigger'] },
                     flow_id: { op: 'not_in', values: ['12', '99'] },
@@ -382,7 +382,7 @@ describe('user actions filter', () => {
         );
 
         expect(chips.map(({ key, label, value }) => ({ key, label, value }))).toEqual([
-            { key: 'action', label: 'Action', value: 'is any of Permanently deleted' },
+            { key: 'action', label: 'Action', value: 'is any of Moved to Recycle Bin' },
             { key: 'actor_user_id', label: 'User', value: 'is any of Ann Lee (ann@example.com)' },
             // a type not in the loaded list shows as recorded
             { key: 'target_type', label: 'Target Type', value: 'is any of Python node, webhook trigger' },

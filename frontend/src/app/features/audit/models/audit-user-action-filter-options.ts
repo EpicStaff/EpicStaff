@@ -10,7 +10,6 @@ export const USER_ACTION_OPTIONS: AuditEnumOption[] = [
     { value: 'moved_to_recycle_bin', label: 'Moved to Recycle Bin' },
     { value: 'deleted', label: 'Deleted' },
     { value: 'restored', label: 'Restored' },
-    { value: 'permanently_deleted', label: 'Permanently deleted' },
     { value: 'signed_in', label: 'Signed in' },
     { value: 'sign_in_failed', label: 'Sign-in failed' },
     { value: 'signed_out', label: 'Signed out' },
@@ -93,7 +92,7 @@ export const USER_ACTION_FIELD_CATALOG: AuditFieldCatalog = {
         'event_time',
     ],
     queryExamples: [
-        'action in ("moved_to_recycle_bin", "deleted", "permanently_deleted")',
+        'action in ("moved_to_recycle_bin", "deleted")',
         'actor_email : "@example.com" and target_type == "flow"',
         'action == "sign_in_failed" and event_time >= "2026-01-01T00:00:00Z"',
         'actor_api_key_name == "CI bot"',
