@@ -11,6 +11,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { MarkdownComponent } from 'ngx-markdown';
 
@@ -45,6 +46,7 @@ type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
         FlowAssistantTableComponent,
         FlowAssistantActionsComponent,
         FlowAssistantToolPillComponent,
+        MatTooltipModule,
     ],
     templateUrl: './flow-assistant-panel.component.html',
     styleUrls: ['./flow-assistant-panel.component.scss'],

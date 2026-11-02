@@ -16,8 +16,10 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFMarkerType, FCanvasChangeEvent, FCanvasComponent, FFlowModule, FZoomDirective } from '@foblex/flow';
 import { CheckboxComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { concatMap, from, map, Subject, takeUntil } from 'rxjs';
 
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -76,6 +78,8 @@ import { explainErrorMessage } from './cdt-explain-error.util';
         CdtDecisionTreeShapeComponent,
         CdtDecisionTreeSearchComponent,
         CdtDecisionTreeDetailComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './cdt-decision-tree-dialog.component.html',
     styleUrls: ['./cdt-decision-tree-dialog.component.scss'],

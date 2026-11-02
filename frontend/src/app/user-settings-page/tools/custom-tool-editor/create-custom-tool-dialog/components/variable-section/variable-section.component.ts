@@ -1,5 +1,6 @@
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal, viewChild } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, DynamicTableComponent } from '@shared/components';
 
 import { TableColumnDef, TableRow } from '../../../../../../shared/components/dynamic-table/dynamic-table.models';
@@ -14,7 +15,7 @@ export type VariableSectionMode = 'rows' | 'array-values';
 
 @Component({
     selector: 'app-variable-section',
-    imports: [AppSvgIconComponent, DynamicTableComponent, DragDropModule],
+    imports: [AppSvgIconComponent, DynamicTableComponent, DragDropModule, MatTooltipModule],
     templateUrl: './variable-section.component.html',
     styleUrls: ['./variable-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

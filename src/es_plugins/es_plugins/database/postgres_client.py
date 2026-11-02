@@ -164,12 +164,14 @@ class PostgresClient:
                 if stopped:
                     # It may be blocked writing output nobody reads any more.
                     _kill(process)
+                    await _discard(process.stdout)
                 status = await process.wait()
                 await collecting
             except BaseException:
                 _kill(process)
                 collecting.cancel()
                 with contextlib.suppress(ProcessLookupError):
+                    await _discard(process.stdout)
                     await process.wait()
                 raise
         if status != 0 and not stopped:
@@ -225,6 +227,17 @@ class _ErrorLines:
             return
         if not line.startswith(_ROW_BEARING_PREFIXES) and ": detail:" not in line:
             self.kept.append(line)
+
+
+async def _discard(stream: asyncio.StreamReader) -> None:
+    """Read a killed tool's output to its end.
+
+    asyncio's `wait()` returns only once every pipe has closed, and a pipe whose reader paused
+    on a full buffer never sees its end: without this, a tool killed with output still unread
+    is waited for forever.
+    """
+    while await stream.read(_CHUNK_BYTES):
+        pass
 
 
 async def _collect_errors(stream: asyncio.StreamReader, errors: _ErrorLines) -> None:

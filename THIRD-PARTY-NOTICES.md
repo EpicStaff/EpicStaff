@@ -3702,9 +3702,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-28T16:27:09Z UTC -->
-<!-- commit: 6578a2c874821fea96ad7c1b914178eb56309cf9 -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:b1ab4ff5012d5ac4, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:d1d991c84d05eedb, manager:9ff994d896174ddd, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:fd16c14a35daabc1, sandbox:6db6900f51e81e02, sandbox_new:4438d1e7c09f00dc, webhook:6e6a68286cd96f18 -->
+<!-- generated: 2026-11-02T10:12:15Z UTC -->
+<!-- commit: 5632dc50e13a09557cacd14e6337315de781e9ef -->
+<!-- lock-hashes: agent:83cefc2b59540d91, auditor:49bc6b4568ea6ce4, chat:0e40c6142ddd64d8, crew:52f4af39a42d68af, django_app:03b95e3ed1e26a6b, es_plugins:cf58ae9355d4d516, foundation:da2ef7a6b1550191, knowledge_new:5a60b9e61af86e56, manager:263decd2407ab889, plugin_sdk:1d91f171502da724, plugins_egress:9a5691273399ac26, realtime:f3bdc1234519e379, sandbox:117c57af453053a0, sandbox_new:8077ff5467db9eb4, shared:c8f577231b56a363, webhook:b0fc119a3af1fcd1 -->
 
 ## Backend (Python)
 
@@ -3989,7 +3989,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pydantic_core` | 2.46.4 | MIT | Copyright (c) 2022 Samuel Colvin |
 | `Pygments` | 2.20.0 | BSD-2-Clause | Copyright (c) 2006-2022 by the respective authors (see AUTHORS file). |
 | `Pygments` | 2.21.0 | BSD-2-Clause | Copyright (c) 2006-2022 by the respective authors (see AUTHORS file). |
-| `PyJWT` | 2.13.0 | MIT | Copyright (c) 2015-2022 José Padilla |
+| `PyJWT` | 2.15.1 | MIT | Copyright (c) 2015-2022 José Padilla |
 | `pyngrok` | 7.4.1 | MIT | Copyright (c) 2018-2025 Alex Laird |
 | `pypdfium2` | 5.12.1 | BSD-3-Clause, Apache-2.0, dependency licenses | Copyright (c) pypdfium2-team |
 | `pyperclip` | 1.11.0 | BSD License | Copyright (c) 2014, Al Sweigart |
@@ -29177,7 +29177,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 > No NOTICE file shipped by upstream.
 
-#### PyJWT@2.13.0
+#### PyJWT@2.15.1
 
 - **License:** MIT
 - **Author:** Jose Padilla <hello@jpadilla.com>

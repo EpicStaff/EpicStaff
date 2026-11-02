@@ -1,8 +1,12 @@
 from loguru import logger
 from packaging.requirements import InvalidRequirement, Requirement
 
+from tables.import_export.constants import VENV_NAME_MAX_LENGTH, VENV_NAME_REFUSED_CHARACTERS
 from tables.import_export.enums import EntityType, NodeType
+from tables.import_export.utils import ensure_unique_slug
 from tables.import_export.version_conversions.base import VersionConverter
+
+_NAME_SUFFIX = "-venv"
 
 
 @VersionConverter.register(from_version=4)
@@ -64,13 +68,16 @@ class _Environments:
         python_code["venv"] = venv_id
 
     def _name_for(self, owner: str | None) -> str:
-        """Name the environment after what first asked for it, so the list stays readable."""
-        base = f"{owner}-venv" if owner else f"imported-venv-{len(self.entries) + 1}"
-        name = base
-        suffix = 2
-        while name in self._used_names:
-            name = f"{base}-{suffix}"
-            suffix += 1
+        """Name the environment after what first asked for it, so the list stays readable.
+
+        Tool and node names may hold any character but a venv name may not (v1.3 even
+        names copies `Tool #2`), so the rest is dropped; an owner with nothing left
+        falls back to a numbered name.
+        """
+        readable = " ".join(VENV_NAME_REFUSED_CHARACTERS.sub(" ", owner or "").split())
+        readable = readable[: VENV_NAME_MAX_LENGTH - len(_NAME_SUFFIX)].rstrip()
+        base = f"{readable}{_NAME_SUFFIX}" if readable else f"imported-venv-{len(self.entries) + 1}"
+        name = ensure_unique_slug(base, list(self._used_names), max_length=VENV_NAME_MAX_LENGTH)
         self._used_names.add(name)
         return name
 

@@ -65,11 +65,7 @@
                                 size="13px"
                             />
 
-                            <span
-                                class="picker__item-name"
-                                [title]="node.name"
-                                >{{ node.name }}</span
-                            >
+                            <span class="picker__item-name">{{ node.name }}</span>
 
                             @if (node.isLoading) {
                                 <span class="picker__node-spinner">...</span>

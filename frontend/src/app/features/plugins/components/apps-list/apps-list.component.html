@@ -4,7 +4,8 @@
         @if (organizationName(); as name) {
             <span
                 class="apps-list__organization text-body-small"
-                [attr.title]="name"
+                appTooltipOnOverflow
+                [matTooltip]="name"
                 >{{ name }}</span
             >
         }
