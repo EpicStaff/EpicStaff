@@ -3704,7 +3704,7 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 <!-- AUTO-GENERATED — do not edit by hand -->
 <!-- generated: 2026-10-30T13:29:05Z UTC -->
 <!-- commit: 3fc3b944d8740fbfbe85afdd5391b664f6aefcd8 -->
-<!-- lock-hashes: agent:47ff16c8b4a53b51, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:cb31b612b0594f97, django_app:b1ab4ff5012d5ac4, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:d1d991c84d05eedb, manager:9ff994d896174ddd, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:7d56014840b78981, sandbox:6db6900f51e81e02, sandbox_new:4f72dd1328a09f2c, webhook:6e6a68286cd96f18 -->
+<!-- lock-hashes: agent:47ff16c8b4a53b51, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:cb31b612b0594f97, django_app:b1ab4ff5012d5ac4, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:d1d991c84d05eedb, manager:9ff994d896174ddd, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:7d56014840b78981, sandbox:6db6900f51e81e02, sandbox_new:4f72dd1328a09f2c, shared:b92bdd3b657d59db, webhook:6e6a68286cd96f18 -->
 
 ## Backend (Python)
 
