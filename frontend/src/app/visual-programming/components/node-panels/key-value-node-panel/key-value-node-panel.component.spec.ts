@@ -243,6 +243,17 @@ function flowOf(node: KeyValueNodeModel): FlowModel {
 }
 
 describe('KeyValueNodePanelComponent', () => {
+    // jsdom has no ResizeObserver; the table name's tooltip, shown only for a cut-short name, needs one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
     afterEach(() => vi.useRealTimers());
 
     it('does not turn an unchanged read node into an update', () => {
@@ -752,15 +763,6 @@ describe('KeyValueNodePanelComponent', () => {
 
         it('stays open on Ctrl+S outside a text input while entries are invalid', () => {
             vi.useFakeTimers();
-            // jsdom has no ResizeObserver; the shell's title tooltip, shown only for a cut-short name, needs one.
-            vi.stubGlobal(
-                'ResizeObserver',
-                class {
-                    observe(): void {}
-                    unobserve(): void {}
-                    disconnect(): void {}
-                }
-            );
             // The shell hands every panel a graphId input, which this panel does not declare.
             const { fixture: panelFixture } = createPanel(nodeWith('write', [{ key: 'profile', value: 'value' }]), {
                 errorOnUnknownProperties: false,
