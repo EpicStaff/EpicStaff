@@ -350,13 +350,23 @@ describe('user actions filter', () => {
         expect(result).toEqual({ filters: { field: 'actor_user_id', op, value: [3, 41] } });
     });
 
-    it('shows a chip per catalog field, naming the picked flows and members', () => {
+    it.each(['in', 'not_in'] as const)('compiles Target Type %s to the raw recorded types', (op) => {
+        const result = compileAuditFilter(
+            { ...EMPTY_AUDIT_FILTER, selections: { target_type: { op, values: ['flow', 'python node'] } } },
+            USER_ACTION_FIELD_CATALOG
+        );
+
+        expect(result).toEqual({ filters: { field: 'target_type', op, value: ['flow', 'python node'] } });
+    });
+
+    it('shows a chip per catalog field, naming the picked flows, members and target types', () => {
         const chips = describeAuditFilter(
             {
                 ...EMPTY_AUDIT_FILTER,
                 selections: {
                     action: { op: 'in', values: ['permanently_deleted'] },
                     actor_user_id: { op: 'in', values: ['3'] },
+                    target_type: { op: 'in', values: ['python node', 'webhook trigger'] },
                     flow_id: { op: 'not_in', values: ['12', '99'] },
                 },
                 textConditions: { target_name: conditions('contains', 'Inv') },
@@ -365,19 +375,22 @@ describe('user actions filter', () => {
             {
                 members: [{ value: '3', label: 'Ann Lee (ann@example.com)' }],
                 flows: [{ value: '12', label: 'Billing' }],
+                targetTypes: [{ value: 'python node', label: 'Python node' }],
             }
         );
 
         expect(chips.map(({ key, label, value }) => ({ key, label, value }))).toEqual([
             { key: 'action', label: 'Action', value: 'is any of Permanently deleted' },
             { key: 'actor_user_id', label: 'User', value: 'is any of Ann Lee (ann@example.com)' },
-            { key: 'target_name', label: 'Target name', value: 'contains Inv' },
+            // a type not in the loaded list shows as recorded
+            { key: 'target_type', label: 'Target Type', value: 'is any of Python node, webhook trigger' },
             // a flow no longer in the list shows its id
             { key: 'flow_id', label: 'Flow', value: 'is none of Billing, 99' },
+            { key: 'target_name', label: 'Target Name', value: 'contains Inv' },
         ]);
     });
 
-    it.each(['flow_id', 'actor_user_id'])('clears the %s picker and keeps the other fields', (field) => {
+    it.each(['flow_id', 'actor_user_id', 'target_type'])('clears the %s picker and keeps the other fields', (field) => {
         const state: AuditFilterState = {
             ...EMPTY_AUDIT_FILTER,
             selections: { action: { op: 'in', values: ['created'] }, [field]: { op: 'in', values: ['5'] } },

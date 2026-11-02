@@ -29,9 +29,6 @@ export const USER_ACTION_TEXT_OPERATORS: AuditFilterOp[] = [
     'is_not_empty',
 ];
 
-// target and parent types are open-ended labels ("python node", "flow"), matched only as a whole
-export const USER_ACTION_TYPE_OPERATORS: AuditFilterOp[] = ['equals', 'not_equal'];
-
 function compileMembers({ op, values }: AuditValuesFilter): AuditFilterNode {
     return { field: 'actor_user_id', op, value: values.map(Number) };
 }
@@ -56,12 +53,26 @@ function compileFlows({ op, values }: AuditValuesFilter): AuditFilterNode {
 export const USER_ACTION_FIELD_CATALOG: AuditFieldCatalog = {
     domain: 'user_actions',
     builderFields: [
-        { kind: 'select', field: 'action', label: 'Action', options: USER_ACTION_OPTIONS },
-        { kind: 'lookup', field: 'actor_user_id', label: 'User', source: 'members', compile: compileMembers },
-        { kind: 'text', field: 'target_type', label: 'Target type', operators: USER_ACTION_TYPE_OPERATORS },
-        { kind: 'text', field: 'target_name', label: 'Target name', operators: USER_ACTION_TEXT_OPERATORS },
+        { kind: 'select', field: 'action', label: 'Action', section: 'quick', options: USER_ACTION_OPTIONS },
+        {
+            kind: 'lookup',
+            field: 'actor_user_id',
+            label: 'User',
+            section: 'quick',
+            source: 'members',
+            compile: compileMembers,
+        },
+        // target types are open-ended ("python node", "flow"), so the tab loads the ones recorded
+        { kind: 'select', field: 'target_type', label: 'Target Type', section: 'quick', source: 'targetTypes' },
         // keyed apart from the sessions `flow` filter, whose chip clears a different part of the state
-        { kind: 'lookup', field: 'flow_id', label: 'Flow', source: 'flows', compile: compileFlows },
+        { kind: 'lookup', field: 'flow_id', label: 'Flow', section: 'quick', source: 'flows', compile: compileFlows },
+        {
+            kind: 'text',
+            field: 'target_name',
+            label: 'Target Name',
+            section: 'deep',
+            operators: USER_ACTION_TEXT_OPERATORS,
+        },
     ],
     queryFields: [
         'action',

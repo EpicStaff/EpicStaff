@@ -120,11 +120,12 @@ describe('user actions preset body', () => {
         });
     });
 
-    it('restores the picked flows and members a preset was saved with', () => {
+    it('restores the picked flows, members and target types a preset was saved with', () => {
         const state: AuditFilterState = {
             ...EMPTY_AUDIT_FILTER,
             selections: {
                 actor_user_id: { op: 'not_in', values: ['7'] },
+                target_type: { op: 'not_in', values: ['python node'] },
                 flow_id: { op: 'in', values: ['12', '15'] },
             },
         };
@@ -153,6 +154,8 @@ describe('user actions preset body', () => {
                         selections: { action: { op: 'in', values: ['deleted'] } },
                         textConditions: {
                             actor_email: typed('ann'),
+                            // typed conditions before Target type became a picked list
+                            target_type: typed('flow'),
                             parent_type: typed('flow'),
                             parent_name: typed('Billing'),
                             target_name: typed('Invoice'),

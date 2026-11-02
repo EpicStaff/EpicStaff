@@ -10,7 +10,7 @@ import {
     removeAuditCondition,
 } from './audit-filter.models';
 import { DEEP_TEXT_OPERATORS, ERROR_OPERATORS, JSON_OPERATORS } from './audit-filter-options';
-import { USER_ACTION_FIELD_CATALOG, USER_ACTION_TYPE_OPERATORS } from './audit-user-action-filter-options';
+import { USER_ACTION_FIELD_CATALOG } from './audit-user-action-filter-options';
 
 function group(id: string, ...conditionIds: string[]): AuditConditionGroup {
     return {
@@ -61,11 +61,11 @@ describe('createAuditConditionGroup', () => {
 });
 
 describe('a new condition', () => {
-    it('starts a Target type condition with equals, the field offering no contains', () => {
-        expect(createAuditCondition(USER_ACTION_TYPE_OPERATORS).op).toBe('equals');
-        expect(createAuditConditionGroup(USER_ACTION_TYPE_OPERATORS).conditions.map((item) => item.op)).toEqual([
-            'equals',
-        ]);
+    it('starts with equals on a field offering no contains', () => {
+        const wholeValueOperators: AuditFilterOp[] = ['equals', 'not_equal'];
+
+        expect(createAuditCondition(wholeValueOperators).op).toBe('equals');
+        expect(createAuditConditionGroup(wholeValueOperators).conditions.map((item) => item.op)).toEqual(['equals']);
     });
 });
 

@@ -1,4 +1,4 @@
-import { AuditFieldCatalog, AuditLookupOptions } from '../models/audit-domain.models';
+import { AuditFieldCatalog, AuditLookupOptions, catalogFieldOptions } from '../models/audit-domain.models';
 import {
     AuditCondition,
     AuditConditionGroup,
@@ -160,9 +160,7 @@ function describeCatalogFilters(
         if (builderField.kind !== 'text') {
             const selection = catalogSelection(state, field);
             if (selection.values.length > 0) {
-                const options =
-                    builderField.kind === 'select' ? builderField.options : (vocabularies[builderField.source] ?? []);
-                const values = labelsFor(selection.values, options);
+                const values = labelsFor(selection.values, catalogFieldOptions(builderField, vocabularies));
                 chips.push(operatorChip(field, label, OPERATOR_LABELS[selection.op], values));
             }
             continue;

@@ -109,7 +109,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     protected readonly isFiltersPanelOpen = signal(false);
     protected readonly draftFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
     protected readonly exportingFormat = signal<ExportFormat | null>(null);
-    // the org's flows and members the Flow and User filters pick from
+    // the org's flows and members and the recorded target types the Flow, User and Target type filters pick from
     protected readonly lookupOptions = signal<AuditLookupOptions>({});
     protected readonly areColumnsExpanded = signal(false);
     protected readonly resizableColumns = new AuditResizableColumns(
@@ -174,6 +174,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
         this.loadActions();
         this.loadFlows();
         this.loadMembers();
+        this.loadTargetTypes();
         this.searchInput
             .pipe(debounceTime(SEARCH_DEBOUNCE_MS), takeUntilDestroyed(this.destroyRef))
             .subscribe((text) => this.applySearch(text));
@@ -302,6 +303,21 @@ export class AuditUserActionsBrowserComponent implements OnInit {
                         page.results.map(({ user }) => ({ value: String(user.id), label: memberLabel(user) }))
                     ),
                 error: () => this.setLookupOptions('members', []),
+            });
+    }
+
+    // labelled as the table shows them, while each option keeps the raw value the auditor matches
+    private loadTargetTypes(): void {
+        this.auditApiService
+            .getFieldValues('user_actions', 'target_type')
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: ({ values }) =>
+                    this.setLookupOptions(
+                        'targetTypes',
+                        values.map((value) => ({ value, label: userActionTypeLabel(value) }))
+                    ),
+                error: () => this.setLookupOptions('targetTypes', []),
             });
     }
 

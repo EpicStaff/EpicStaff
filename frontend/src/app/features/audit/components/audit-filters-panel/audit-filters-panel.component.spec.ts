@@ -125,18 +125,43 @@ describe('AuditFiltersPanelComponent for user actions', () => {
     const texts = (root: HTMLElement, selector: string) =>
         Array.from(root.querySelectorAll(selector)).map((element) => element.textContent?.trim());
 
-    it('user actions panel offers only user action fields', () => {
+    it('user actions panel offers only user action fields, in Quick and Deep filters', () => {
         const builder = render('builder');
 
-        expect(texts(builder, '.filter-group__title')).toEqual([
+        const sectionsAndGroups = texts(builder, '.filters-panel__section, .filter-group__title');
+        expect(sectionsAndGroups).toEqual([
+            'Quick filters',
             'Action',
             'User',
-            'Target type',
-            'Target name',
+            'Target Type',
             'Flow',
             'Date',
+            'Deep filters',
+            'Target Name',
         ]);
         expect(builder.querySelector('app-audit-match-scope')).toBeNull();
+    });
+
+    it('picks target types from the loaded list by their raw value', () => {
+        const fixture = renderPanel('builder', {
+            targetTypes: [
+                { value: 'flow', label: 'Flow' },
+                { value: 'python node', label: 'Python node' },
+            ],
+        });
+        const targetType: HTMLElement = Array.from<HTMLElement>(
+            fixture.nativeElement.querySelectorAll('app-audit-filter-group')
+        ).find((item) => item.querySelector('.filter-group__title')?.textContent?.trim() === 'Target Type')!;
+
+        expect(texts(targetType, '.checkbox-enum__option span')).toEqual(['Flow', 'Python node']);
+
+        targetType.querySelectorAll<HTMLInputElement>('.checkbox-enum__option input')[1].click();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.filter().selections).toEqual({
+            target_type: { op: 'in', values: ['python node'] },
+        });
+        expect(targetType.querySelector('.filter-group__summary')?.textContent?.trim()).toBe('is any of Python node');
     });
 
     it('offers the org members and flows by name and picks them by id', () => {

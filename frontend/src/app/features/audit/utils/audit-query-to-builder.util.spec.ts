@@ -346,17 +346,34 @@ describe('queryToBuilderState for user actions', () => {
         });
     });
 
-    it('keeps an equality on target type as a condition', () => {
-        expect(textOf(toUserActionBuilder('target_type = "python node"'), 'target_type')).toEqual([
-            { join: 'or', conditions: [{ join: 'and', op: 'equals', value: 'python node' }] },
-        ]);
+    it.each([
+        ['target_type in ("flow")', { op: 'in', values: ['flow'] }],
+        ['target_type not in ("flow", "python node")', { op: 'not_in', values: ['flow', 'python node'] }],
+        ['target_type = "python node"', { op: 'in', values: ['python node'] }],
+        // the loaded list is not consulted: a type it lacks still shows on the card and its chip
+        ['target_type in ("webhook trigger")', { op: 'in', values: ['webhook trigger'] }],
+    ])('reads `%s` as picked target types', (query, selection) => {
+        expect(toUserActionBuilder(query)?.selections).toEqual({ target_type: selection });
     });
 
-    it.each(['in', 'not_in'] as const)('round-trips Flow and User %s through Query Code', (op) => {
+    it('tells a picked target type of flow from the Flow picker', () => {
+        const state = toUserActionBuilder(
+            'target_type in ("flow") and ' +
+                '((target_type = "flow" and target_id in ("12")) or (parent_type = "flow" and parent_id in ("12")))'
+        );
+
+        expect(state?.selections).toEqual({
+            target_type: { op: 'in', values: ['flow'] },
+            flow_id: { op: 'in', values: ['12'] },
+        });
+    });
+
+    it.each(['in', 'not_in'] as const)('round-trips Flow, User and Target type %s through Query Code', (op) => {
         const state: AuditFilterState = {
             ...EMPTY_AUDIT_FILTER,
             selections: {
                 actor_user_id: { op, values: ['3', '41'] },
+                target_type: { op, values: ['python node'] },
                 flow_id: { op, values: ['12'] },
             },
         };
@@ -383,9 +400,7 @@ describe('queryToBuilderState for user actions', () => {
         ['a session field', 'status in (failed)'],
         ['an action the Builder does not list', 'action in (frobnicate)'],
         ['a field kept for Query Code', 'route = "POST api/graphs/<pk>/copy/"'],
-        ['an operator the field does not offer', 'target_type : flow'],
-        ['a list on a field offering only whole-value matches', 'target_type in ("flow")'],
-        ['an excluded list on a field offering only whole-value matches', 'target_type not in ("flow")'],
+        ['an operator a picked list cannot show', 'target_type : flow'],
     ])('leaves %s to Query Code', (_case, query) => {
         expect(toUserActionBuilder(query)).toBeNull();
     });

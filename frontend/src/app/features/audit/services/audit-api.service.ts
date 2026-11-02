@@ -5,7 +5,7 @@ import { exhaustMap, first, Observable, switchMap, timeout, timer } from 'rxjs';
 import { SKIP_AUTH_HEADER_OVERRIDE } from '../../../core/interceptors/skip-auth-header-override.context';
 import { SKIP_FORBIDDEN_RELOAD } from '../../../core/interceptors/skip-forbidden-reload.context';
 import { ConfigService } from '../../../services/config';
-import { AuditDomainName } from '../models/audit-domain.models';
+import { AuditDomainName, AuditFieldValues } from '../models/audit-domain.models';
 import { AuditExportRequest } from '../models/audit-session.models';
 import { AuditTokenService } from './audit-token.service';
 
@@ -31,6 +31,19 @@ export class AuditApiService {
         return this.auditTokenService.getToken().pipe(
             switchMap((token) =>
                 this.http.post<TResponse>(`${this.getDomainUrl(domain)}/search`, request, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    context,
+                })
+            )
+        );
+    }
+
+    // The distinct values of `field` recorded for the org within retention, sorted; the auditor lists at most 200.
+    getFieldValues(domain: AuditDomainName, field: string): Observable<AuditFieldValues> {
+        const context = new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true).set(SKIP_AUTH_HEADER_OVERRIDE, true);
+        return this.auditTokenService.getToken().pipe(
+            switchMap((token) =>
+                this.http.get<AuditFieldValues>(`${this.getDomainUrl(domain)}/values/${encodeURIComponent(field)}`, {
                     headers: { Authorization: `Bearer ${token}` },
                     context,
                 })

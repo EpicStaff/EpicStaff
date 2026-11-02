@@ -19,9 +19,11 @@ import { DateRangeFilter } from 'src/app/shared/models';
 import { ToastService } from '../../../../services/notifications';
 import {
     AUDIT_FIELD_CATALOG,
+    AuditBuilderSection,
     AuditCatalogField,
     AuditLookupOptions,
     AuditTextField,
+    catalogFieldOptions,
 } from '../../models/audit-domain.models';
 import {
     AuditConditionGroup,
@@ -69,6 +71,12 @@ import { AuditPresetsComponent, DIALOG_CONFIG } from '../audit-presets/audit-pre
 import { AuditTokensFilterComponent } from '../audit-tokens-filter/audit-tokens-filter.component';
 
 export type AuditFilterTab = 'builder' | 'query' | AuditPresetScope;
+
+// in the order the Builder shows them, titled as on the Sessions tab
+const BUILDER_SECTION_TITLES: Record<AuditBuilderSection, string> = {
+    quick: 'Quick filters',
+    deep: 'Deep filters',
+};
 
 @Component({
     selector: 'app-audit-filters-panel',
@@ -119,6 +127,14 @@ export class AuditFiltersPanelComponent implements OnInit {
     // the audit tab's domain: which Builder fields, query fields and examples the panel offers
     protected readonly catalog = inject(AUDIT_FIELD_CATALOG);
     protected readonly isSessions = this.catalog.domain === 'sessions';
+    // the catalog's Builder fields by section; Quick filters always shows, as the date closes it
+    protected readonly builderSections = (Object.keys(BUILDER_SECTION_TITLES) as AuditBuilderSection[])
+        .map((section) => ({
+            section,
+            title: BUILDER_SECTION_TITLES[section],
+            fields: this.catalog.builderFields.filter((item) => item.section === section),
+        }))
+        .filter(({ section, fields }) => section === 'quick' || fields.length > 0);
     public readonly queryExamples = this.catalog.queryExamples;
     public readonly queryFields = this.catalog.queryFields;
 
@@ -330,10 +346,7 @@ export class AuditFiltersPanelComponent implements OnInit {
     }
 
     public optionsOf(builderField: AuditCatalogField): AuditEnumOption[] {
-        if (builderField.kind === 'select') {
-            return builderField.options;
-        }
-        return builderField.kind === 'lookup' ? (this.lookupOptions()[builderField.source] ?? []) : [];
+        return builderField.kind === 'text' ? [] : catalogFieldOptions(builderField, this.lookupOptions());
     }
 
     public selectionOf(field: string): AuditValuesFilter {

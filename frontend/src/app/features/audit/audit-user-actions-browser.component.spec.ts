@@ -15,6 +15,7 @@ const SEARCH_URL = '/auditor/api/audit/user_actions/search';
 const PRESETS_URL = '/api/audit-filter-presets/';
 const FLOWS_URL = '/api/graph-light/';
 const MEMBERS_URL = '/api/admin/memberships/';
+const TARGET_TYPES_URL = '/auditor/api/audit/user_actions/values/target_type';
 
 const renamedFlow: AuditUserAction = {
     id: 'action-1',
@@ -272,15 +273,42 @@ describe('AuditUserActionsBrowserComponent', () => {
         expect(optionLabels(filterGroup(root, 'Flow'))).toEqual(['Billing']);
     });
 
-    it('leaves the Flow and User lists empty when they fail to load', async () => {
+    it('leaves the Flow, User and Target Type lists empty when they fail to load', async () => {
         const { fixture, http, root } = setup();
         flushSearch(http, []);
         http.expectOne((request) => request.url === FLOWS_URL).flush(null, { status: 500, statusText: 'Error' });
         http.expectOne((request) => request.url === MEMBERS_URL).flush(null, { status: 403, statusText: 'Forbidden' });
+        http.expectOne(TARGET_TYPES_URL).flush(null, { status: 500, statusText: 'Error' });
         await openFilters(fixture, http);
 
         expect(optionLabels(filterGroup(root, 'User'))).toEqual([]);
         expect(optionLabels(filterGroup(root, 'Flow'))).toEqual([]);
+        expect(optionLabels(filterGroup(root, 'Target Type'))).toEqual([]);
+    });
+
+    it('offers the recorded target types capitalized, and searches the picked one by its raw value', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, []);
+        flushLookups(http);
+        const targetTypes = http.expectOne(TARGET_TYPES_URL);
+        expect(targetTypes.request.headers.get('Authorization')).toBe('Bearer audit-token');
+        targetTypes.flush({ field: 'target_type', values: ['agent', 'python node'] });
+        await openFilters(fixture, http);
+
+        const targetType = filterGroup(root, 'Target Type');
+        expect(optionLabels(targetType)).toEqual(['Agent', 'Python node']);
+        targetType.querySelectorAll<HTMLInputElement>('.checkbox-enum__option input')[1].click();
+        await render(fixture);
+        buttonWithText(root, 'Apply Filters').click();
+        await render(fixture);
+
+        expect(flushSearch(http, [])['filters']).toEqual({ field: 'target_type', op: 'in', value: ['python node'] });
+        await render(fixture);
+        const chips = Array.from(root.querySelectorAll('.filter-chip')).map((chip) => [
+            cellText(chip.querySelector('.filter-chip__label')!),
+            cellText(chip.querySelector('.filter-chip__value')!),
+        ]);
+        expect(chips).toEqual([['Target Type', 'is any of Python node']]);
     });
 
     it('searches the picked flow by id and shows its name in the applied chip', async () => {

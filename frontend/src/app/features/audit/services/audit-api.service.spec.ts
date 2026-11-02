@@ -40,6 +40,18 @@ describe('AuditApiService', () => {
         http.expectOne('/auditor/api/audit/sessions/search');
     });
 
+    it('lists the recorded values of a field with the audit token', () => {
+        let values: string[] = [];
+        service.getFieldValues('user_actions', 'target_type').subscribe((response) => (values = response.values));
+
+        const request = http.expectOne('/auditor/api/audit/user_actions/values/target_type');
+        expect(request.request.method).toBe('GET');
+        expect(request.request.headers.get('Authorization')).toBe('Bearer audit-token');
+        request.flush({ field: 'target_type', values: ['agent', 'python node'] });
+
+        expect(values).toEqual(['agent', 'python node']);
+    });
+
     it('polls the export file under the domain it was started in', () => {
         service.getExportFile('user_actions', 'job 1').subscribe();
 

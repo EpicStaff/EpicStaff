@@ -265,10 +265,13 @@ function applyDateFilter(leaf: AuditFilterLeaf, state: AuditFilterState): boolea
     return false;
 }
 
-// the first `in` / `not in` list in the tree: the ids a lookup field compiled into it
-function firstIdList(node: AuditFilterNode): unknown[] | null {
+// The first `in` / `not in` list of ids in the tree: the ids a lookup field compiled into it. Other lists are
+// passed over: canonical turns the flow match's `target_type = "flow"` into one, as target type is a select.
+function firstIdList(node: AuditFilterNode): string[] | null {
     if (isLeaf(node)) {
-        return (node.op === 'in' || node.op === 'not_in') && Array.isArray(node.value) ? node.value : null;
+        const ids =
+            (node.op === 'in' || node.op === 'not_in') && Array.isArray(node.value) ? node.value.map(String) : [];
+        return ids.length > 0 && ids.every((id) => /^\d+$/.test(id)) ? ids : null;
     }
     if (node.op === 'not') {
         return firstIdList(node.child);
@@ -283,9 +286,14 @@ function firstIdList(node: AuditFilterNode): unknown[] | null {
 }
 
 // A lookup field owns the conjunct exactly when its own compile of the conjunct's ids gives it back.
-function applyLookupFilter(node: AuditFilterNode, state: AuditFilterState, catalog: AuditFieldCatalog): boolean {
-    const values = firstIdList(node)?.map(String);
-    if (values === undefined || !values.every((id) => /^\d+$/.test(id))) {
+function applyLookupFilter(
+    node: AuditFilterNode,
+    state: AuditFilterState,
+    catalog: AuditFieldCatalog,
+    fields: BuilderFields
+): boolean {
+    const values = firstIdList(node);
+    if (values === null) {
         return false;
     }
     const lookupFields = catalog.builderFields.filter(
@@ -294,7 +302,8 @@ function applyLookupFilter(node: AuditFilterNode, state: AuditFilterState, catal
     );
     for (const lookupField of lookupFields) {
         for (const op of ['in', 'not_in'] as const) {
-            if (sameNode(node, lookupField.compile({ op, values }))) {
+            // canonical like the parsed query, so an equality on a select field inside it compares as a list
+            if (sameNode(node, canonical(lookupField.compile({ op, values }), fields))) {
                 state.selections = { ...state.selections, [lookupField.field]: { op, values } };
                 return true;
             }
@@ -304,8 +313,13 @@ function applyLookupFilter(node: AuditFilterNode, state: AuditFilterState, catal
 }
 
 // The field catalog counterpart of applyFieldFilter: its select and lookup fields and the date.
-function applyCatalogFieldFilter(node: AuditFilterNode, state: AuditFilterState, catalog: AuditFieldCatalog): boolean {
-    if (applyLookupFilter(node, state, catalog)) {
+function applyCatalogFieldFilter(
+    node: AuditFilterNode,
+    state: AuditFilterState,
+    catalog: AuditFieldCatalog,
+    fields: BuilderFields
+): boolean {
+    if (applyLookupFilter(node, state, catalog, fields)) {
         return true;
     }
     if (!isLeaf(node)) {
@@ -327,7 +341,8 @@ function applyCatalogFieldFilter(node: AuditFilterNode, state: AuditFilterState,
         return false;
     }
     const values = value.map(String);
-    if (!isOptionList(values, selectField.options)) {
+    // a loaded list may lack a recorded value, which the chip then shows as typed, as a lookup shows an id
+    if ('options' in selectField && !isOptionList(values, selectField.options)) {
         return false;
     }
     state.selections = { ...state.selections, [field]: { op, values } };
@@ -440,8 +455,9 @@ function buildState(
     root: AuditFilterNode,
     base: AuditFilterState,
     catalog: AuditFieldCatalog,
-    { conditionFields }: BuilderFields
+    fields: BuilderFields
 ): AuditFilterState | null {
+    const { conditionFields } = fields;
     const state = { ...base };
     const conditionConjuncts = new Map<string, AuditFilterNode[]>();
 
@@ -453,7 +469,7 @@ function buildState(
         const isApplied =
             catalog.domain === 'sessions'
                 ? applyFieldFilter(node, state)
-                : applyCatalogFieldFilter(node, state, catalog);
+                : applyCatalogFieldFilter(node, state, catalog, fields);
         if (isApplied) {
             continue;
         }

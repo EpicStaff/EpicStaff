@@ -69,30 +69,36 @@
     <div class="filters-panel__body">
         @if (activeTab() === 'builder' && !isSessions) {
             <div class="filters-panel__groups">
-                @for (builderField of catalog.builderFields; track builderField.field) {
-                    <app-audit-filter-group
-                        [label]="builderField.label"
-                        [summary]="summaryOf(builderField.field)"
-                        (cleared)="clearField(builderField.field)"
-                    >
-                        @if (builderField.kind !== 'text') {
-                            <app-audit-flow-filter
-                                [options]="optionsOf(builderField)"
-                                [filter]="selectionOf(builderField.field)"
-                                (filterChange)="setSelection(builderField.field, $event)"
-                            />
-                        } @else {
-                            <app-audit-condition-filter
-                                [groups]="textConditionsOf(builderField)"
-                                (groupsChange)="setTextConditions(builderField.field, $event)"
-                                [operators]="builderField.operators"
-                                [showKey]="false"
-                            />
-                        }
-                    </app-audit-filter-group>
-                }
+                @for (builderSection of builderSections; track builderSection.section) {
+                    <p class="filters-panel__section">{{ builderSection.title }}</p>
 
-                <ng-container [ngTemplateOutlet]="dateGroup" />
+                    @for (builderField of builderSection.fields; track builderField.field) {
+                        <app-audit-filter-group
+                            [label]="builderField.label"
+                            [summary]="summaryOf(builderField.field)"
+                            (cleared)="clearField(builderField.field)"
+                        >
+                            @if (builderField.kind !== 'text') {
+                                <app-audit-flow-filter
+                                    [options]="optionsOf(builderField)"
+                                    [filter]="selectionOf(builderField.field)"
+                                    (filterChange)="setSelection(builderField.field, $event)"
+                                />
+                            } @else {
+                                <app-audit-condition-filter
+                                    [groups]="textConditionsOf(builderField)"
+                                    (groupsChange)="setTextConditions(builderField.field, $event)"
+                                    [operators]="builderField.operators"
+                                    [showKey]="false"
+                                />
+                            }
+                        </app-audit-filter-group>
+                    }
+
+                    @if (builderSection.section === 'quick') {
+                        <ng-container [ngTemplateOutlet]="dateGroup" />
+                    }
+                }
             </div>
         } @else if (activeTab() === 'builder') {
             <div class="filters-panel__groups">
