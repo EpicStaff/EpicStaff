@@ -3702,9 +3702,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-30T13:29:05Z UTC -->
-<!-- commit: 3fc3b944d8740fbfbe85afdd5391b664f6aefcd8 -->
-<!-- lock-hashes: agent:47ff16c8b4a53b51, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:cb31b612b0594f97, django_app:b1ab4ff5012d5ac4, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:d1d991c84d05eedb, manager:9ff994d896174ddd, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:7d56014840b78981, sandbox:6db6900f51e81e02, sandbox_new:4f72dd1328a09f2c, webhook:6e6a68286cd96f18 -->
+<!-- generated: 2026-11-02T16:39:17Z UTC -->
+<!-- commit: 026f3744c04154c785d0d5ee626c3e1c88591c3a -->
+<!-- lock-hashes: agent:47ff16c8b4a53b51, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:cb31b612b0594f97, django_app:1e4230167bc80b5a, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:909e0d80875844d9, manager:9ff994d896174ddd, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:7d56014840b78981, sandbox:6db6900f51e81e02, sandbox_new:4f72dd1328a09f2c, webhook:6e6a68286cd96f18 -->
 
 ## Backend (Python)
 
@@ -3965,7 +3965,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pgvector` | 0.3.6 | MIT | Copyright (c) 2021-2024 Andrew Kane |
 | `pgvector` | 0.4.2 | MIT | Copyright (c) 2021-2025 Andrew Kane |
 | `piccolo` | 1.36.0 | MIT License | Copyright (c) 2018 Daniel Townsend |
-| `pillow` | 12.3.0 | MIT-CMU | Copyright © 1997-2011 by Secret Labs AB |
+| `pillow` | 13.0.0 | MIT-CMU | Copyright © 1997-2011 by Secret Labs AB |
 | `platformdirs` | 4.11.7 | MIT | Copyright (c) 2010-202x The platformdirs developers |
 | `platformdirs` | 4.13.5 | MIT | Copyright (c) 2010-202x The platformdirs developers |
 | `polyfactory` | 3.3.0 | MIT License | Copyright (c) 2021, 2022, 2023 Litestar Org. |
@@ -23481,7 +23481,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 > No NOTICE file shipped by upstream.
 
-#### pillow@12.3.0
+#### pillow@13.0.0
 
 - **License:** MIT-CMU
 - **Author:** Jeffrey 'Alex' Clark <aclark@aclark.net>
