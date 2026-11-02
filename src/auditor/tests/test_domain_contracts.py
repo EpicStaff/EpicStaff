@@ -333,6 +333,30 @@ def test_audit_domain_rejects_implementation_not_marked_computed_in_catalog():
         replace(FLAT_DOMAIN, computed=SESSIONS.computed)
 
 
+# --- AuditDomain value_fields -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("domain", "field"),
+    [
+        (USER_ACTIONS, "no_such_field"),
+        (USER_ACTIONS, "actor_email"),
+        (USER_ACTIONS, "actor_user_id"),
+        (SESSIONS, "duration"),
+        (SESSIONS, "agent"),
+        (SESSIONS, "details.message_type"),
+    ],
+    ids=["unknown", "analyzed-text", "numeric", "computed", "alias", "flattened-path"],
+)
+def test_audit_domain_rejects_a_value_field_that_is_not_a_keyword_select_field(domain, field):
+    with pytest.raises(ValueError, match=f"value field {field!r}"):
+        replace(domain, value_fields=frozenset({field}))
+
+
+def test_audit_domain_accepts_a_keyword_select_value_field():
+    assert replace(SESSIONS, value_fields=frozenset({"node_type"})).value_fields == {"node_type"}
+
+
 # --- DictFieldCatalog --------------------------------------------------
 
 

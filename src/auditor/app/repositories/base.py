@@ -53,5 +53,14 @@ class AuditRepository(ABC, Generic[T]):  # noqa: UP046 - T is imported by implem
         """
 
     @abstractmethod
+    async def distinct_values(self, query: dict[str, Any], field: str, limit: int) -> list[str]:
+        """
+        Return the distinct non-empty values of `field` among the events
+        matching `query` (compiled and scoped exactly as for `query()`), in
+        ascending order. At most `limit` are returned: the first `limit` in
+        that order, so the cut is the same on every call.
+        """
+
+    @abstractmethod
     async def close(self) -> None:
         """Release any underlying connection/client resources on shutdown."""

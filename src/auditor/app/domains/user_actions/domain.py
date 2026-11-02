@@ -28,4 +28,5 @@ USER_ACTIONS: AuditDomain[UserActionEvent] = AuditDomain(
         search_description=SEARCH_USER_ACTIONS_DESCRIPTION,
         search_examples=SEARCH_REQUEST_EXAMPLES,
     ),
+    value_fields=frozenset({"target_type"}),
 )

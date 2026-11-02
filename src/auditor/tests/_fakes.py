@@ -5,11 +5,22 @@ it's only ever imported by the real test modules.
 """
 
 import operator
-from datetime import datetime
+import re
+from datetime import datetime, timedelta, timezone
 
 from src.shared.models import SessionAuditEvent
 
 _RANGE_OPERATORS = {"lt": operator.lt, "lte": operator.le, "gt": operator.gt, "gte": operator.ge}
+_DAYS_AGO = re.compile(r"now-(\d+)d")
+
+
+def _datetime_bound(bound: str) -> datetime:
+    # The retention scope's "now-{days}d" is the only date math supported;
+    # any other form fails in fromisoformat rather than silently matching.
+    days_ago = _DAYS_AGO.fullmatch(bound)
+    if days_ago:
+        return datetime.now(timezone.utc) - timedelta(days=int(days_ago.group(1)))
+    return datetime.fromisoformat(bound)
 
 
 def _range_matches(event: SessionAuditEvent, clause: dict) -> bool:
@@ -18,11 +29,9 @@ def _range_matches(event: SessionAuditEvent, clause: dict) -> bool:
     if actual is None:
         return False
     for op, bound in bounds.items():
-        # Datetime fields arrive as isoformat strings in the clause. Date
-        # math such as the retention scope's "now-10d" is not supported and
-        # raises here rather than silently matching.
+        # Datetime fields arrive as isoformat strings or "now-{days}d" in the clause.
         if isinstance(actual, datetime):
-            bound = datetime.fromisoformat(bound)
+            bound = _datetime_bound(bound)
         if not _RANGE_OPERATORS[op](actual, bound):
             return False
     return True
@@ -81,11 +90,12 @@ class InMemoryFakeRepository:
     def __init__(self, events: list[SessionAuditEvent]):
         self._events = events
 
-    async def query(self, query: dict, cursor: str | None = None, size: int = 50):
+    def _matching(self, query: dict) -> list[SessionAuditEvent]:
         clauses = query["bool"]["filter"]
-        matches = [
-            e for e in self._events if all(_clause_matches(e, c) for c in clauses)
-        ]
+        return [e for e in self._events if all(_clause_matches(e, c) for c in clauses)]
+
+    async def query(self, query: dict, cursor: str | None = None, size: int = 50):
+        matches = self._matching(query)
         matches.sort(key=lambda e: (e.event_time, e.id), reverse=True)
 
         offset = int(cursor) if cursor is not None else 0
@@ -94,3 +104,7 @@ class InMemoryFakeRepository:
         next_cursor = str(next_offset) if next_offset < len(matches) else None
 
         return [e.model_copy(deep=True) for e in page], next_cursor
+
+    async def distinct_values(self, query: dict, field: str, limit: int) -> list[str]:
+        values = {getattr(event, field, None) for event in self._matching(query)}
+        return sorted(value for value in values if value)[:limit]

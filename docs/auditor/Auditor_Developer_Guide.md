@@ -35,6 +35,7 @@ This is the seam the whole `auditor` service is built around — swapping backen
 1. **Write a new repository**: `src/auditor/app/repositories/<newdb>_repository.py`, implementing `AuditRepository` (`repositories/base.py`):
    - `write_batch(events: list[T])` — must be idempotent by `event.id` (re-sending the same id overwrites, never duplicates — this is what makes the client's retry-on-failure path safe). On OpenSearch this holds within one receive month: a retry received after midnight UTC on the 1st lands in the next month's index, next to the first copy (see "Cross-month retry duplicates" below).
    - `query(query: dict, cursor, size)` — `query` is a fully-compiled, backend-native query clause (the output of `repositories/compiler.py::QueryCompiler.compile()` plus the always-injected org_id/retention_days scoping); translate it into the new DB's native query shape. Return `(events, next_cursor | None)`.
+   - `distinct_values(query: dict, field: str, limit: int)` — the distinct non-empty values of `field` among the events matching the same kind of scoped `query`, ascending, at most `limit` (the first `limit` in that order). Backs the value-list route; on OpenSearch it is one `terms` aggregation ordered by `_key` with `size: 0` hits.
    - `close()`.
 2. **Write a client wrapper**: `src/auditor/app/db/<newdb>_client.py`, mirroring `db/opensearch_client.py` — built during `lifespan` (`app/main.py`), never at import time.
 3. **Register it**: add one entry to `_BACKEND_BUILDERS` in `repositories/factory.py`, keyed by whatever value `AUDIT_STORAGE_BACKEND` should be set to.
@@ -94,6 +95,24 @@ The whole search/export request body is one `FilterNode` AST (`app/filtering/ast
 5. Update [`Filtering_And_Query_Language.md`](./Filtering_And_Query_Language.md)'s field/op table (and the query-language grammar too, if the new op needs a symbol) and the matching `SEARCH_REQUEST_EXAMPLES`/field description in `src/auditor/app/domains/sessions/docs.py` — hand-maintained references, generated from `KNOWN_FIELDS` only for the field-name list itself (`build_filters_field_description`), not for the op tables or examples.
 
 This is domain-generic machinery — a second domain would follow the same steps against its own `app/domains/<name>/fields.py`/`computed.py`, never touching `app/filtering/` or `app/repositories/compiler.py` unless it needs genuinely new DSL-compilation behavior no existing domain has needed yet.
+
+---
+
+## How to list a field's values (filter options)
+
+`GET /api/audit/{domain.name}/values/{field}` returns the distinct values a field holds, so a filter's option list comes from the data and nobody maintains it:
+
+```
+GET /auditor/api/audit/user_actions/values/target_type
+Authorization: Bearer <token with "USER_AUDIT": ["read"]>
+
+200 {"field": "target_type", "values": ["agent", "flow", "python node"]}
+```
+
+- **Which fields.** Only those a domain declares in `AuditDomain.value_fields` (`user_actions`: `target_type`; `sessions`: none, so it has no such route at all). Any other field answers `404`. `AuditDomain.__post_init__` rejects, at import time, a value field that is not a keyword select field of the domain's catalog (unknown, analyzed text, numeric, computed, aliased, or a flattened path): a `terms` aggregation on any of those fails or returns nothing useful.
+- **Auth and scope.** Exactly as search: `require_audit_action(domain, "read")`, then `domain.scoping` with the token's `org_id` and `retention_days`, so another org's values and values recorded only before the retention window never appear.
+- **Shape.** Distinct non-empty values, sorted ascending, no counts, at most `MAX_LISTED_VALUES` (200, `app/controllers/query_routes.py`). Past the cap the first 200 in sorted order are returned, without a truncation flag.
+- **Adding a field.** Add it to the domain's `value_fields` in `app/domains/<name>/domain.py`. The route is mounted by `build_values_router(domain)` only when that set is non-empty.
 
 ---
 
@@ -251,8 +270,8 @@ There is no `opensearch-dashboards` service in compose. To browse the indices ad
 ## How to add a new `auditor` route
 
 Routes are built by per-domain factory functions in `app/controllers/*.py`
-(`build_search_router(domain)`, `build_export_router(domain)`,
-`build_ingest_router(domain)`), assembled into one router per domain by
+(`build_search_router(domain)`, `build_values_router(domain)`,
+`build_export_router(domain)`, `build_ingest_router(domain)`), assembled into one router per domain by
 `app/controllers/domain_router.py::build_domain_router(domain)`, mounted in
 `app/main.py::create_app` by looping `app.domains.registry.DOMAINS`. A new
 route on an *existing* domain's concern goes inside that concern's factory
