@@ -505,11 +505,12 @@ export class AgentsPageStore {
     );
 
     /**
-     * Buckets items by group: groups sorted by name, then Ungrouped. An item whose group is unknown
-     * (deleted meanwhile) counts as ungrouped, so it shows exactly once. While searching, a group whose
-     * name matches shows all its members; otherwise only matching members are shown and a group with
-     * none is left out. Ungrouped is always last and is listed even when empty unless searching: the
-     * section hides an empty Ungrouped except while it is a drop target.
+     * Buckets items by group: groups sorted by name, then the ungrouped items, which sit beside the
+     * groups with no header of their own. An item whose group is unknown (deleted meanwhile) counts as
+     * ungrouped, so it shows exactly once. While searching, a group whose name matches shows all its
+     * members; otherwise only matching members are shown and a group with none is left out. The
+     * ungrouped block is always last and is listed even when empty unless searching: the section hides
+     * it while empty except as a drop target.
      */
     private groupBlocks<T extends { group: number | null }>(
         items: T[],
@@ -630,9 +631,9 @@ export class AgentsPageStore {
         this.setCollapsedGroups(next);
     }
 
-    /** Collapses or expands every block of the section, Ungrouped included. */
+    /** Collapses or expands every group of the section; the ungrouped items have no header to collapse. */
     setAllGroupsCollapsed(section: GroupedSectionId, collapsed: boolean): void {
-        const keys = [...this.groups().map((group) => group.id), null].map((id) => groupBlockKey(section, id));
+        const keys = this.groups().map((group) => groupBlockKey(section, group.id));
         const next = new Set(this.collapsedGroups());
         for (const key of keys) {
             if (collapsed) next.add(key);
@@ -710,9 +711,9 @@ export class AgentsPageStore {
                 if (selected.kind === 'draft-agent' && selected.groupId === groupId) {
                     this.selectedNode.set({ ...selected, groupId: null });
                 }
-                this.toast.success(`Group "${name}" deleted`);
+                this.toast.success(`Group "${name}" ungrouped`);
             },
-            error: (err) => this.toast.error(this.extractError(err, 'Failed to delete group')),
+            error: (err) => this.toast.error(this.extractError(err, 'Failed to ungroup')),
         });
     }
 

@@ -30,8 +30,9 @@ import {
 
 /**
  * One group of the Agents or Shared Surfaces section: a sticky header (color dot, name, count) over
- * its rows. The whole block is a drop target: dropping the section's kind of item on the header or on
- * any of its rows moves the item into the group (Ungrouped: out of any group).
+ * its rows. The ungrouped items (`groupId` null) have no header and sit at the groups' level. The whole
+ * block is a drop target: dropping the section's kind of item on it moves the item into the group, or
+ * out of any group for the ungrouped block.
  */
 @Component({
     selector: 'app-explorer-group-block',
@@ -84,7 +85,7 @@ export class ExplorerGroupBlockComponent {
         return false;
     });
 
-    /** An empty Ungrouped is hidden, except as a drop target while an item is dragged. */
+    /** An empty ungrouped block is hidden, except as a drop target while an item is dragged. */
     protected readonly hidden = computed<boolean>(() => {
         const block = this.block();
         return block.groupId === null && block.memberCount === 0 && this.droppable() === null;

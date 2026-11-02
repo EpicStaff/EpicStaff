@@ -54,7 +54,7 @@ export function nodeKey(node: BranchTreeNode): string {
 /** The explorer sections whose items can be put into groups. */
 export type GroupedSectionId = 'agents' | 'surfaces';
 
-/** One collapsible block of a grouped section: a group, or Ungrouped when `groupId` is null. */
+/** One block of a grouped section: a collapsible group, or the headerless ungrouped items when `groupId` is null. */
 export interface ExplorerGroupBlock {
     groupId: number | null;
     label: string;
