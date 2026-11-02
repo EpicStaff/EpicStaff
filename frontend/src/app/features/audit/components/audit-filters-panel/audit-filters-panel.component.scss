@@ -106,11 +106,14 @@
     text-transform: uppercase;
 }
 
+// as tall as the table footer beside it, so their top lines meet
 .filters-panel__footer {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     gap: 8px;
-    padding: 15px 16px 12px;
+    height: layout.$audit-footer-height;
+    padding: 0 16px;
     border-top: 1px solid var(--color-divider-regular);
 }
 

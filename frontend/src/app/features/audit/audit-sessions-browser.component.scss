@@ -354,10 +354,12 @@
 
 .audit-browser__footer {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 10px 20px;
+    height: layout.$audit-footer-height;
+    padding: 0 20px;
     border-top: 1px solid var(--color-divider-regular);
 }
 
