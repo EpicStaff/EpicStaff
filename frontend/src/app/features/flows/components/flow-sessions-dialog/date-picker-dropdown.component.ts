@@ -12,12 +12,13 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, DateRangePickerComponent } from '@shared/components';
 import { DateRangeFilter } from '@shared/models';
 
 @Component({
     selector: 'app-created-at-filter-dropdown',
-    imports: [OverlayModule, AppSvgIconComponent, DateRangePickerComponent],
+    imports: [OverlayModule, AppSvgIconComponent, DateRangePickerComponent, MatTooltipModule],
     templateUrl: './date-picker-dropdown.component.html',
     styleUrls: ['./date-picker-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.Eager,

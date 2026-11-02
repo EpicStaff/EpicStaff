@@ -3,7 +3,8 @@
         <span class="sidebar-title">Sessions</span>
         <button
             class="sidebar-btn"
-            title="New session"
+            aria-label="New session"
+            matTooltip="New session"
             (click)="newSession()"
         >
             <app-svg-icon
@@ -31,7 +32,8 @@
                 </div>
                 <button
                     class="session-row__delete delete-btn"
-                    title="Delete session"
+                    aria-label="Delete session"
+                    matTooltip="Delete session"
                     (click)="deleteSession($event, session.id)"
                 >
                     <app-svg-icon

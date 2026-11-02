@@ -53,7 +53,7 @@
                                 type="button"
                                 class="trigger-card__action"
                                 aria-label="More actions"
-                                title="More"
+                                matTooltip="More"
                                 [cdkMenuTriggerFor]="menu"
                                 [cdkMenuPosition]="menuPositions"
                                 [class.trigger-card__action--active]="menuTrigger.isOpen()"
@@ -84,7 +84,8 @@
                                 *appHasPermission="[ResourceCode.Webhooks, ActionCode.Update]"
                                 type="button"
                                 class="trigger-card__action"
-                                title="Edit"
+                                aria-label="Edit"
+                                matTooltip="Edit"
                                 [disabled]="isEditCheckPending()"
                                 (click)="onEdit(trigger)"
                             >
@@ -97,7 +98,8 @@
                                 *appHasPermission="[ResourceCode.Webhooks, ActionCode.Delete]"
                                 type="button"
                                 class="trigger-card__action trigger-card__action--delete"
-                                title="Delete"
+                                aria-label="Delete"
+                                matTooltip="Delete"
                                 (click)="onDelete(trigger)"
                             >
                                 <i

@@ -8,7 +8,8 @@
         aria-haspopup="listbox"
         [attr.aria-expanded]="isOpen()"
         (click)="toggle($event)"
-        title="Select color"
+        aria-label="Select color"
+        matTooltip="Select color"
     >
         <span
             class="color-dot"
@@ -59,7 +60,7 @@
                     [class.selected]="option.id === currentOption.id"
                     [attr.aria-selected]="option.id === currentOption.id"
                     [attr.aria-label]="option.id"
-                    [title]="option.id"
+                    [matTooltip]="option.id"
                     (click)="select(option, $event)"
                 >
                     <span

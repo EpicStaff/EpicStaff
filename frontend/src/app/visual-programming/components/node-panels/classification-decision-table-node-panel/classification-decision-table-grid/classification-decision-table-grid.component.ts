@@ -24,6 +24,7 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -32,6 +33,7 @@ import {
     MultiSelectComponent,
     SelectItem,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { AgGridAngular, AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -160,7 +162,15 @@ interface GroupOverlayItem {
 
 @Component({
     selector: 'app-classification-decision-table-grid',
-    imports: [AgGridModule, AppSvgIconComponent, ButtonComponent, HelpTooltipComponent, MultiSelectComponent],
+    imports: [
+        AgGridModule,
+        AppSvgIconComponent,
+        ButtonComponent,
+        HelpTooltipComponent,
+        MatTooltipModule,
+        MultiSelectComponent,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './classification-decision-table-grid.component.html',
     styleUrls: ['./classification-decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -941,6 +951,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         suppressRowTransform: true,
         suppressCellFocus: false,
         stopEditingWhenCellsLoseFocus: true,
+        tooltipShowMode: 'whenTruncated',
+        tooltipShowDelay: inject(MAT_TOOLTIP_DEFAULT_OPTIONS).showDelay,
         domLayout: 'normal',
         rowDragManaged: false,
         animateRows: true,
@@ -1130,6 +1142,14 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             state: ids.map((colId) => ({ colId, hide: false })),
         });
     }
+
+    /** What clicking a hidden-column badge does: expands its only column, or lists how many it hides. */
+    public hiddenBadgeLabel(badge: { entries: Array<{ colId: string; label: string }> }): string {
+        return badge.entries.length === 1
+            ? `Expand ${badge.entries[0].label}`
+            : `${badge.entries.length} hidden columns`;
+    }
+
     public onHiddenBadgeClick(event: MouseEvent, badge: { entries: Array<{ colId: string; label: string }> }): void {
         event.stopPropagation();
         if (badge.entries.length === 1) {
@@ -1717,6 +1737,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             editable: true,
             flex: 1,
             minWidth: 140,
+            tooltipValueGetter: (params) => params.value,
             suppressMovable: true,
             cellStyle: {
                 fontSize: '14px',

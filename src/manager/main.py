@@ -13,6 +13,7 @@ from services.audit_export_cleanup_service import (
     ExportCleanupService,
     build_export_redis_client,
 )
+from services.recycle_bin_purge_service import RecycleBinPurgeService
 from services.redis_service import RedisService
 from services.retention_service import RetentionService
 from services.schedule_service import ScheduleService
@@ -47,6 +48,10 @@ export_cleanup_service = ExportCleanupService(
 temp_storage_account_repository = TempStorageAccountRepository(AsyncSessionLocal)
 storage_account_cleanup_service = StorageAccountCleanupService(
     repository=temp_storage_account_repository,
+    timezone=ZoneInfo(settings.TIMEZONE),
+)
+recycle_bin_purge_service = RecycleBinPurgeService(
+    redis_service=redis_service,
     timezone=ZoneInfo(settings.TIMEZONE),
 )
 
@@ -118,6 +123,9 @@ async def main():
         await export_cleanup_service.start()
         logger.info("ExportCleanupService started successfully.")
 
+        await recycle_bin_purge_service.start()
+        logger.info("RecycleBinPurgeService started successfully.")
+
     except Exception as e:
         logger.error(f"Error during initialization: {e}")
 
@@ -132,6 +140,7 @@ async def shutdown():
     if schedule_service.scheduler.running:
         schedule_service.scheduler.shutdown(wait=False)
     storage_account_cleanup_service.stop()
+    recycle_bin_purge_service.stop()
     retention_service.stop()
     if redis_service.aioredis_client:
         await redis_service.aioredis_client.close()

@@ -81,7 +81,7 @@ Errors:
 
 1. Show "New password" field (and "Confirm new password" if you want FE-side parity check).
 2. On submit, `POST /api/profile/password-change/confirm/` with `{"ticket": "...", "new_password": "..."}`.
-3. Response 200 → `{ "access": "...", "refresh": "..." }`. **Replace the stored JWT pair with these new ones.** Every other session for this user is now invalid; this device remains logged in.
+3. Response 200 → `{ "access": "..." }`, and the new refresh token replaces the HttpOnly refresh cookie (send the request with `withCredentials: true`). **Replace the in-memory access token with the new one.** Every other session for this user is now invalid; this device remains logged in.
 
 Errors and recovery:
 - `400 invalid_password_change_ticket` → the ticket is unknown, expired (default 5 min), already used, or doesn't belong to this user. UI: "Session timed out, please re-enter your current password." Drop the user back to step 1.
@@ -190,10 +190,10 @@ Throttled by `LoginThrottle` (default 5/min, env `DJANGO_LOGIN_THROTTLE_RATE`). 
 **Response 200:**
 
 ```json
-{ "access": "...", "refresh": "..." }
+{ "access": "..." }
 ```
 
-This pair is fresh and bound to the new password. Every other access and refresh token for the user — including the caller's previous access token — stops working immediately, and every personal API key they own is revoked.
+The new refresh token is not in the body: it is set as the refresh cookie, keeping the remember-me choice of the cookie the request carried (see [auth_endpoints.md](auth_endpoints.md) § "Refresh cookie"). This pair is fresh and bound to the new password. Every other access and refresh token for the user — including the caller's previous access token — stops working immediately, and every personal API key they own is revoked.
 
 ---
 

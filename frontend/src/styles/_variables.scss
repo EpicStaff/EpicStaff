@@ -75,7 +75,6 @@
     --graphite-885: #1e1e2e; // dynamic-table drag-preview background
     --graphite-895: #22222b; // chunk-preview "odd" badge background
     --graphite-890: #1e1e1f; // ag-grid context menu background
-    --graphite-880: #1e1e22; // round-button tooltip background
     --graphite-870: #272836; // session/date-range filter dropdown background (used across flows too)
     --graphite-825: #232323;
     --graphite-822: #222222; // flow-export-import-button hover background
@@ -628,6 +627,17 @@
     --color-status-warning: var(--yellow-500);
     --color-status-processing: var(--orange-500);
     --color-status-failed: var(--red-600);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — tooltip (styles/_tooltip.scss). Dark in both themes: literals, not the palette primitives the
+    // light theme flips (--graphite-875, --fog-200), and never overridden in .my-app-light.
+    // ------------------------------------------------------------------
+    --tooltip-bg: #1e1e1e;
+    --tooltip-text: #d9d9de;
+    --tooltip-radius: 10px;
+    --tooltip-padding: 10px;
+    // A filter, not a box-shadow: it follows the arrow too.
+    --tooltip-shadow: drop-shadow(0 6px 5px var(--black-alpha-15)) drop-shadow(0 2px 1.5px var(--black-alpha-30));
 
     // ------------------------------------------------------------------
     // SEMANTIC — avatar fills (chat desk pictures, picked by id). Bright fills under dark letters; the light theme

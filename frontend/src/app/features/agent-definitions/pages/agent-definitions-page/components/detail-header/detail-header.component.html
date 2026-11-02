@@ -3,7 +3,8 @@
         type="button"
         class="detail-header__toggle"
         [class.detail-header__toggle--active]="showSidebar()"
-        title="Toggle Branches"
+        aria-label="Toggle Branches"
+        matTooltip="Toggle Branches"
         (click)="toggleSidebar.emit()"
     >
         <app-svg-icon

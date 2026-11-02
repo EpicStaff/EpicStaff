@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, LabelDropdownComponent } from '@shared/components';
 import { LABELS_STORE } from '@shared/services';
 
@@ -23,7 +24,7 @@ export interface DetailCrumb {
 
 @Component({
     selector: 'app-detail-header',
-    imports: [AppSvgIconComponent, LabelDropdownComponent],
+    imports: [AppSvgIconComponent, LabelDropdownComponent, MatTooltipModule],
     templateUrl: './detail-header.component.html',
     styleUrls: ['./detail-header.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

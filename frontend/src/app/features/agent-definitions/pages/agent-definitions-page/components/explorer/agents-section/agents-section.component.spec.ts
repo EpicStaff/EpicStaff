@@ -159,7 +159,7 @@ describe('AgentsSectionComponent new group input', () => {
         expect(overlay.contains(document.activeElement)).toBe(true);
         expect(api.createdNames).toEqual([]);
 
-        overlay.querySelector<HTMLButtonElement>(`.color-option-btn[title="${LabelColor.Green}"]`)!.click();
+        overlay.querySelector<HTMLButtonElement>(`.color-option-btn[aria-label="${LabelColor.Green}"]`)!.click();
         fixture.detectChanges();
         leave(fixture, input()!);
 
