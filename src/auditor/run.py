@@ -10,7 +10,7 @@ from loguru import logger
 
 async def main():
     logger.remove()
-    logger.add(sys.stderr, level=settings.AUDITOR_LOG_LEVEL, diagnose=False)
+    logger.add(sys.stderr, level=settings.AUDITOR_LOG_LEVEL.upper(), diagnose=False)
 
     app = create_app()
 
