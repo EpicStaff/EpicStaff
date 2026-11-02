@@ -128,12 +128,15 @@ MEMBERSHIPS_CREATE_POST = {
         201: OpenApiResponse(description="The created membership row."),
         400: OpenApiResponse(
             description="Validation error, already a member "
-            "(membership_already_exists), or non-assignable role."
+            "(membership_already_exists), or the Superadmin role "
+            "(invalid_role_assignment)."
         ),
         401: UNAUTHORIZED_401_RESPONSE,
         403: _WRITE_FORBIDDEN_403,
         404: OpenApiResponse(
-            description="Unknown account (user_not_found) or org the caller cannot access."
+            description="Unknown account (user_not_found), org the caller cannot "
+            "access, or a role that does not exist or belongs to another "
+            "organization (role_not_found — no existence leak)."
         ),
     },
 }
@@ -148,10 +151,16 @@ MEMBERSHIPS_UPDATE_PATCH = {
     "request": MembershipRoleUpdateRequestSerializer,
     "responses": {
         200: OpenApiResponse(description="The updated membership row."),
-        400: OpenApiResponse(description="Validation error or non-assignable role."),
+        400: OpenApiResponse(
+            description="Validation error or the Superadmin role (invalid_role_assignment)."
+        ),
         401: UNAUTHORIZED_401_RESPONSE,
         403: _WRITE_FORBIDDEN_403,
-        404: _NOT_FOUND_404,
+        404: OpenApiResponse(
+            description=_NOT_FOUND_404.description
+            + " Also a role that does not exist or belongs to another "
+            "organization (role_not_found — no existence leak)."
+        ),
     },
 }
 

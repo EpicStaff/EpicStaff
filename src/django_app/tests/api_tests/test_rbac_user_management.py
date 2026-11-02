@@ -298,6 +298,43 @@ def test_create_user_rejects_invalid_input(superadmin, django_user_model, body, 
 
 
 @pytest.mark.django_db
+def test_create_user_with_a_foreign_org_role_answers_like_a_missing_role(
+    superadmin, org_acme, org_globex, django_user_model
+):
+    foreign_role = Role.objects.create(name="GlobexOnly", org=org_globex, is_built_in=False)
+    missing_role_id = Role.objects.order_by("-pk").first().pk + 1000
+    client = client_for(superadmin)
+
+    foreign, missing = (
+        client.post(
+            USERS_LIST,
+            {"email": email, "password": "StrongPass123!", "organization_id": org_acme.pk, "role_id": role_id},
+            format="json",
+        )
+        for email, role_id in (("f@x.com", foreign_role.pk), ("n@x.com", missing_role_id))
+    )
+
+    assert foreign.status_code == missing.status_code == status.HTTP_404_NOT_FOUND
+    assert foreign.json() == missing.json()
+    assert foreign.json()["code"] == "role_not_found"
+    assert not django_user_model.objects.filter(email__in=["f@x.com", "n@x.com"]).exists()
+
+
+@pytest.mark.django_db
+def test_create_user_with_the_superadmin_role_is_rejected(superadmin, org_acme, role_superadmin, django_user_model):
+    response = client_for(superadmin).post(
+        USERS_LIST,
+        {"email": "s@x.com", "password": "StrongPass123!", "organization_id": org_acme.pk,
+         "role_id": role_superadmin.pk},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["code"] == "invalid_role_assignment"
+    assert not django_user_model.objects.filter(email="s@x.com").exists()
+
+
+@pytest.mark.django_db
 def test_create_user_with_a_taken_email_is_rejected(superadmin):
     client = client_for(superadmin)
     client.post(USERS_LIST, {"email": "dup@x.com", "password": "StrongPass123!"}, format="json")

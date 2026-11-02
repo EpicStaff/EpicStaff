@@ -1,6 +1,7 @@
 from rbac.exceptions import (
     InactiveUserError,
     InvalidRoleAssignmentError,
+    RoleNotFoundError,
     SuperadminNotAssignableError,
 )
 from rbac.models import Role
@@ -42,11 +43,19 @@ class UserManagementGuards:
     def assert_role_is_assignable(role: Role, org_id: int) -> None:
         """Assertion form of `role_is_assignable`.
 
+        A custom role of another organization is reported exactly like a
+        role id that does not exist, so the answer never reveals that the id
+        exists in an org the caller cannot see.
+
         Raises:
-            InvalidRoleAssignmentError (400): not a valid membership target.
+            InvalidRoleAssignmentError (400): the global Superadmin role.
+            RoleNotFoundError (404): a custom role of another organization.
         """
-        if not UserManagementGuards.role_is_assignable(role, org_id):
+        # Keep in step with the Superadmin check in `role_is_assignable`.
+        if role.is_built_in and role.name == BuiltInRole.SUPERADMIN:
             raise InvalidRoleAssignmentError()
+        if not UserManagementGuards.role_is_assignable(role, org_id):
+            raise RoleNotFoundError()
 
     @staticmethod
     def assert_user_is_assignable_member(target) -> None:

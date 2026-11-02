@@ -1,8 +1,11 @@
 import pytest
 
-from rbac.models import OrganizationUser
+from rbac.models import OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from rbac.exceptions import (
     InactiveUserError,
+    InvalidRoleAssignmentError,
+    RoleNotFoundError,
     SuperadminNotAssignableError,
 )
 from rbac.governance.guards import UserManagementGuards
@@ -71,3 +74,27 @@ def test_membership_of_superadmin_is_not_assignable(
     membership = OrganizationUser.objects.create(user=user, org=acme, role=role_member)
     with pytest.raises(SuperadminNotAssignableError):
         UserManagementGuards.assert_membership_holder_is_assignable(membership)
+
+
+@pytest.mark.django_db
+def test_builtin_and_own_custom_roles_are_assignable(acme, role_member):
+    own = Role.objects.create(name="AcmeOnly", org=acme, is_built_in=False)
+    for role in (role_member, own):
+        assert UserManagementGuards.role_is_assignable(role, acme.id)
+        UserManagementGuards.assert_role_is_assignable(role, acme.id)
+
+
+@pytest.mark.django_db
+def test_foreign_org_role_is_reported_as_not_found(acme, beta):
+    foreign = Role.objects.create(name="BetaOnly", org=beta, is_built_in=False)
+    assert not UserManagementGuards.role_is_assignable(foreign, acme.id)
+    with pytest.raises(RoleNotFoundError):
+        UserManagementGuards.assert_role_is_assignable(foreign, acme.id)
+
+
+@pytest.mark.django_db
+def test_superadmin_role_is_an_invalid_assignment(acme):
+    superadmin_role = Role.objects.get(name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True)
+    assert not UserManagementGuards.role_is_assignable(superadmin_role, acme.id)
+    with pytest.raises(InvalidRoleAssignmentError):
+        UserManagementGuards.assert_role_is_assignable(superadmin_role, acme.id)
