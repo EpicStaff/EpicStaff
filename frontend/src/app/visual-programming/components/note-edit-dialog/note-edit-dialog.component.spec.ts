@@ -61,7 +61,7 @@ const footerColumns = (footer: Element): string[][] =>
 describe('NoteEditDialogComponent', () => {
     it('shows who created and who last edited the note in a footer below the text', () => {
         const host = render({ node: NOTE, authorship: AUTHORSHIP });
-        const footer = host.querySelector('.dialog-content + app-authorship-footer');
+        const footer = host.querySelector('.body + app-authorship-footer');
 
         expect(footer).not.toBeNull();
         expect(footerColumns(footer!)).toEqual([
