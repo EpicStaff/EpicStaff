@@ -352,6 +352,27 @@
     color: var(--color-ks-status-processing);
 }
 
+// user-action tones, in the Sessions status colours
+.audit-action--added {
+    color: var(--color-ks-status-new);
+}
+
+.audit-action--changed {
+    color: var(--color-ks-status-blue);
+}
+
+.audit-action--removed {
+    color: var(--color-ks-status-processing);
+}
+
+.audit-action--destroyed {
+    color: var(--color-ks-status-failed);
+}
+
+.audit-action--alert {
+    color: var(--color-ks-status-warning);
+}
+
 .audit-browser__footer {
     display: flex;
     flex-shrink: 0;

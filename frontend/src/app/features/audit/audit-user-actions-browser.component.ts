@@ -35,6 +35,8 @@ import {
     userActionLabel,
     userActionParentName,
     userActionTargetName,
+    UserActionTone,
+    userActionTone,
     userActionTypeLabel,
 } from './utils/describe-user-action.util';
 
@@ -77,6 +79,7 @@ const USER_ACTION_COLUMNS: UserActionColumn[] = [
 interface UserActionRow {
     event: AuditUserAction;
     actionLabel: string;
+    actionTone: UserActionTone;
     targetType: string;
     targetName: string;
     parentName: string;
@@ -125,6 +128,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
         this.events().map((event) => ({
             event,
             actionLabel: userActionLabel(event.action),
+            actionTone: userActionTone(event.action),
             targetType: userActionTypeLabel(event.target_type),
             targetName: userActionTargetName(event),
             parentName: userActionParentName(event),

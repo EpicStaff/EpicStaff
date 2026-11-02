@@ -3,6 +3,7 @@ import {
     userActionLabel,
     userActionParentName,
     userActionTargetName,
+    userActionTone,
     userActionTypeLabel,
 } from './describe-user-action.util';
 
@@ -84,5 +85,22 @@ describe('userActionTypeLabel', () => {
         [null, ''],
     ])('labels %s as "%s"', (type, expected) => {
         expect(userActionTypeLabel(type)).toBe(expected);
+    });
+});
+
+describe('userActionTone', () => {
+    it.each<[string, string]>([
+        ['created', 'added'],
+        ['restored', 'added'],
+        ['updated', 'changed'],
+        ['renamed', 'changed'],
+        ['deleted', 'removed'],
+        ['permanently_deleted', 'destroyed'],
+        ['sign_in_failed', 'destroyed'],
+        ['password_reset', 'alert'],
+        ['signed_in', 'plain'],
+        ['import_entity', 'plain'],
+    ])('gives %s the %s tone', (action, tone) => {
+        expect(userActionTone(action)).toBe(tone);
     });
 });

@@ -8,6 +8,25 @@ function nameOrId(name: string | null, id: string | null): string {
     return name || (id ? `#${id}` : '');
 }
 
+// How an action reads at a glance, coloured like Sessions' statuses; routine and custom actions stay plain text.
+export type UserActionTone = 'added' | 'changed' | 'removed' | 'destroyed' | 'alert' | 'plain';
+
+const ACTION_TONES: Record<string, UserActionTone> = {
+    created: 'added',
+    restored: 'added',
+    updated: 'changed',
+    renamed: 'changed',
+    // still in the recycle bin, so recoverable
+    deleted: 'removed',
+    permanently_deleted: 'destroyed',
+    sign_in_failed: 'destroyed',
+    password_reset: 'alert',
+};
+
+export function userActionTone(action: string): UserActionTone {
+    return ACTION_TONES[action] ?? 'plain';
+}
+
 function capitalized(text: string): string {
     return text.charAt(0).toUpperCase() + text.slice(1);
 }

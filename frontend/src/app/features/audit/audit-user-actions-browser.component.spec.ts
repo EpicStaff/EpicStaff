@@ -209,6 +209,22 @@ describe('AuditUserActionsBrowserComponent', () => {
         ]);
     });
 
+    it('colours each action by its tone, the way Sessions colours statuses', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, [renamedFlow, editedNode, signIn, deletedTool]);
+        await render(fixture);
+
+        const tones = Array.from(root.querySelectorAll('.audit-action')).map((action) =>
+            Array.from(action.classList).find((name) => name.startsWith('audit-action--'))
+        );
+        expect(tones).toEqual([
+            'audit-action--changed',
+            'audit-action--plain',
+            'audit-action--destroyed',
+            'audit-action--removed',
+        ]);
+    });
+
     it('highlights the searched text in target and parent names, not in the parent type', async () => {
         const { fixture, http, root } = setup();
         flushSearch(http, []);

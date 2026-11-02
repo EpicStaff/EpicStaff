@@ -123,7 +123,11 @@
                                             <span class="audit-name-label"> via API key {{ apiKeyName }}</span>
                                         }
                                     </td>
-                                    <td>{{ row.actionLabel }}</td>
+                                    <td>
+                                        <span [class]="'audit-action audit-action--' + row.actionTone">{{
+                                            row.actionLabel
+                                        }}</span>
+                                    </td>
                                     <td>{{ row.targetType }}</td>
                                     <td>
                                         <app-audit-highlight
