@@ -379,30 +379,40 @@
 
                                             @if (editingPromptId() === prompt.id) {
                                                 <div class="prompt-card-body">
-                                                    <div class="prompt-field">
-                                                        <label class="field-label"
-                                                            >Name <span class="required-star">*</span></label
-                                                        >
-                                                        <input
-                                                            type="text"
-                                                            class="field-input"
-                                                            [ngModel]="pendingPromptName()"
-                                                            [ngModelOptions]="{ standalone: true }"
-                                                            [readonly]="isReadOnly()"
-                                                            (ngModelChange)="pendingPromptName.set($event)"
-                                                            (blur)="commitPromptRename(prompt.id)"
-                                                            (keydown.enter)="commitPromptRename(prompt.id)"
-                                                            placeholder="Enter prompt name..."
-                                                        />
-                                                    </div>
+                                                    <ng-template #promptName>
+                                                        <div class="prompt-field">
+                                                            <label class="field-label"
+                                                                >Name <span class="required-star">*</span></label
+                                                            >
+                                                            <input
+                                                                type="text"
+                                                                class="field-input"
+                                                                [ngModel]="pendingPromptName()"
+                                                                [ngModelOptions]="{ standalone: true }"
+                                                                [readonly]="isReadOnly()"
+                                                                (ngModelChange)="pendingPromptName.set($event)"
+                                                                (blur)="commitPromptRename(prompt.id)"
+                                                                (keydown.enter)="commitPromptRename(prompt.id)"
+                                                                placeholder="Enter prompt name..."
+                                                            />
+                                                        </div>
+                                                    </ng-template>
 
                                                     @if (prompt.kind === 'system_one') {
                                                         <app-cdt-system-one-entry
                                                             [prompt]="prompt"
                                                             [readOnly]="isReadOnly()"
                                                             (promptChange)="updatePromptFields(prompt.id, $event)"
-                                                        />
+                                                        >
+                                                            <div
+                                                                promptName
+                                                                class="prompt-name--paired"
+                                                            >
+                                                                <ng-container *ngTemplateOutlet="promptName" />
+                                                            </div>
+                                                        </app-cdt-system-one-entry>
                                                     } @else {
+                                                        <ng-container *ngTemplateOutlet="promptName" />
                                                         <div class="prompt-field">
                                                             <label class="field-label"
                                                                 >LLM Override

@@ -55,8 +55,11 @@ const QUESTION_TYPE_ITEMS: SelectItem<QuestionType>[] = [
     { name: 'Score', value: 'score' },
 ];
 
-const TYPE_HELP =
-    'Noul: the probability, 0–1, that the answer is true. Choice: picks one of your options and gives a confidence for each. Score: picks a level on your ordered scale (0 = the first level) and gives a confidence.';
+const TYPE_HELP: Record<SystemOneQuestion['type'], string> = {
+    noul: 'Noul: the probability, 0–1, that the answer is true. Route on it with e.g. noul > 0.8.',
+    choice: 'Choice: picks one of your options and gives a confidence and a probability for each option.',
+    score: 'Score: rates on your ordered levels (0 = the first level). score is the expected level, confidence how sure it is.',
+};
 
 @Component({
     selector: 'app-cdt-system-one-entry',

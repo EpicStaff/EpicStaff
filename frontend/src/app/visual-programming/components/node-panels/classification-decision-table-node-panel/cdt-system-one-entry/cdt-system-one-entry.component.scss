@@ -4,6 +4,13 @@
     gap: 1rem;
 }
 
+.config-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    align-items: start;
+}
+
 .section {
     display: flex;
     flex-direction: column;
@@ -45,6 +52,11 @@
 
     &__type {
         min-width: 0;
+    }
+
+    // The input's height follows its line-height, while app-select's trigger is a fixed 40px.
+    &__name ::ng-deep .text-input {
+        height: 40px;
     }
 
     app-delete-button {

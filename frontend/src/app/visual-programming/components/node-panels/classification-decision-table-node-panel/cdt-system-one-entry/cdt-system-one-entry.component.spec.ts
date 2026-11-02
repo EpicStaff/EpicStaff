@@ -1,7 +1,9 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { TooltipComponent } from '@shared/components';
 import { SystemOneConfig } from '@shared/models';
 import { FullLLMConfigService, SystemOneConfigStorageService } from '@shared/services';
 import { of } from 'rxjs';
@@ -28,6 +30,18 @@ function entry(overrides: Partial<PromptConfig> = {}): Entry {
         input_map: {},
         ...overrides,
     };
+}
+
+@Component({
+    imports: [CdtSystemOneEntryComponent],
+    template: `
+        <app-cdt-system-one-entry [prompt]="prompt">
+            <div promptName>Name field</div>
+        </app-cdt-system-one-entry>
+    `,
+})
+class HostWithNameComponent {
+    readonly prompt = entry();
 }
 
 describe('CdtSystemOneEntryComponent', () => {
@@ -115,6 +129,42 @@ describe('CdtSystemOneEntryComponent', () => {
         };
     });
 
+    it('labels the input map as the input to classify', () => {
+        mount();
+
+        const labels = [...host().querySelectorAll('.section__label')].map((label) => label.textContent?.trim());
+
+        expect(labels).toContain('Input to classify');
+        expect(labels).not.toContain('Input to the model');
+    });
+
+    it('shows the config select as a filled field, not a transparent one', () => {
+        mount();
+
+        expect(field('.config-select .selector__btn').classList).not.toContain('selector__btn--transparent');
+    });
+
+    it('lays a projected name field out in the same row as the config select', () => {
+        TestBed.configureTestingModule({
+            imports: [HostWithNameComponent],
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                {
+                    provide: SystemOneConfigStorageService,
+                    useValue: { configs: signal([TYPESAFE_CONFIG]), getAllConfigs: () => of([TYPESAFE_CONFIG]) },
+                },
+                { provide: FullLLMConfigService, useValue: { fullLLMConfigs: signal([]) } },
+            ],
+        });
+        const hostFixture = TestBed.createComponent(HostWithNameComponent);
+        hostFixture.detectChanges();
+        const row = (hostFixture.nativeElement as HTMLElement).querySelector('.config-row')!;
+
+        expect(row.querySelector('[promptName]')).not.toBeNull();
+        expect(row.querySelector('app-select.config-select')).not.toBeNull();
+    });
+
     it('emits the chosen config', () => {
         mount();
 
@@ -143,7 +193,24 @@ describe('CdtSystemOneEntryComponent', () => {
         expect(changes).toEqual([{ result_variable: 'verdict' }]);
     });
 
-    it('labels the name and type fields and explains all three types in one help text', () => {
+    it('explains the selected question type in the type help', () => {
+        mount();
+        addQuestion();
+        const typeHelp = (): string =>
+            fixture.debugElement
+                .queryAll(By.directive(TooltipComponent))
+                .map((tooltip) => tooltip.componentInstance as TooltipComponent)
+                .find((tooltip) => tooltip.label() === 'Question type')!
+                .tooltipText();
+
+        expect(typeHelp()).toMatch(/^Noul:/);
+        pickOption(field('.question__type .selector__btn'), 'Choice');
+        expect(typeHelp()).toMatch(/^Choice:/);
+        pickOption(field('.question__type .selector__btn'), 'Score');
+        expect(typeHelp()).toMatch(/^Score:/);
+    });
+
+    it('labels the name and type fields and has one help tooltip', () => {
         mount();
 
         addQuestion();

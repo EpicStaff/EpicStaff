@@ -820,21 +820,20 @@ describe('ClassificationDecisionTableNodePanelComponent — System One entries i
         expect(panel.prompts()['prompt_1'].kind).toBeUndefined();
     });
 
-    it('adds a System One entry with the empty System One shape, named after the first free number', () => {
-        open({
-            system_one_1: {
-                prompt_text: '',
-                llm_config: null,
-                output_schema: null,
-                result_variable: 'system_one_1',
-                variable_mappings: {},
-                kind: 'system_one',
-            },
-        });
+    const SYSTEM_ONE_ENTRY = {
+        prompt_text: '',
+        llm_config: null,
+        output_schema: null,
+        variable_mappings: {},
+        kind: 'system_one' as const,
+    };
+
+    it('adds a System One entry with the empty System One shape, named System One', () => {
+        open();
 
         click(headerButton('System One'));
 
-        expect(panel.prompts()['system_one_2']).toEqual({
+        expect(panel.prompts()['System One']).toEqual({
             kind: 'system_one',
             system_one_config: null,
             questions: {},
@@ -842,10 +841,44 @@ describe('ClassificationDecisionTableNodePanelComponent — System One entries i
             prompt_text: '',
             llm_config: null,
             output_schema: null,
-            result_variable: 'system_one_2',
+            result_variable: 'system_one_1',
             variable_mappings: {},
         });
-        expect(panel.editingPromptId()).toBe('system_one_2');
+        expect(panel.editingPromptId()).toBe('System One');
+    });
+
+    it('names a further entry after the first free number and keeps its result variable an identifier', () => {
+        open({
+            'System One': { ...SYSTEM_ONE_ENTRY, result_variable: 'system_one_1' },
+            'System One 3': { ...SYSTEM_ONE_ENTRY, result_variable: 'system_one_2' },
+        });
+
+        click(headerButton('System One'));
+
+        expect(Object.keys(panel.prompts())).toEqual(['System One', 'System One 3', 'System One 2']);
+        expect(panel.prompts()['System One 2'].result_variable).toBe('system_one_3');
+    });
+
+    it('does not reuse a result variable that another entry already holds', () => {
+        open({ checker: { ...SYSTEM_ONE_ENTRY, result_variable: 'system_one_1' } });
+
+        click(headerButton('System One'));
+
+        expect(panel.prompts()['System One'].result_variable).toBe('system_one_2');
+    });
+
+    it('puts the Name field beside the System One config and keeps it renamable', () => {
+        open();
+        click(headerButton('System One'));
+        const nameInput = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+            'app-cdt-system-one-entry .prompt-name--paired .field-input'
+        )!;
+
+        nameInput.value = 'Fit check';
+        nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        nameInput.dispatchEvent(new Event('blur'));
+
+        expect(Object.keys(panel.prompts())).toEqual(['Fit check']);
     });
 
     it('sends the new System One entry as a System One entry, with no config and no questions yet', () => {
@@ -855,7 +888,7 @@ describe('ClassificationDecisionTableNodePanelComponent — System One entries i
 
         expect(sentPromptConfigs()).toEqual([
             expect.objectContaining({
-                prompt_key: 'system_one_1',
+                prompt_key: 'System One',
                 kind: 'system_one',
                 system_one_config: null,
                 questions: {},
@@ -880,7 +913,7 @@ describe('ClassificationDecisionTableNodePanelComponent — System One entries i
         open();
         click(headerButton('System One'));
 
-        panel.updatePromptFields('system_one_1', { system_one_config: 7 });
+        panel.updatePromptFields('System One', { system_one_config: 7 });
 
         expect(sentPromptConfigs()[0]).toMatchObject({ system_one_config: 7 });
     });

@@ -568,6 +568,17 @@
         gap: 0.4rem;
     }
 
+    // Beside the config select: same label gap and control height as that select, so the two line up.
+    .prompt-name--paired {
+        .prompt-field {
+            gap: 0.5rem;
+        }
+
+        .field-input:not(:read-only) {
+            height: 40px;
+        }
+    }
+
     .field-input {
         background: var(--graphite-800);
         border: 1px solid var(--white-alpha-15);

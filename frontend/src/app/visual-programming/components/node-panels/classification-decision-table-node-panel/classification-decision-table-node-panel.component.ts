@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -101,6 +102,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
     imports: [
         ReactiveFormsModule,
         FormsModule,
+        NgTemplateOutlet,
         CustomInputComponent,
         ClassificationDecisionTableGridComponent,
         CdtSystemOneEntryComponent,
@@ -694,9 +696,17 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public addSystemOnePrompt(): void {
         const existing = this.prompts();
-        let n = 1;
-        while (existing[`system_one_${n}`]) n++;
-        const newId = `system_one_${n}`;
+        let newId = 'System One';
+        for (let nameNumber = 2; newId in existing; nameNumber++) newId = `System One ${nameNumber}`;
+
+        // Conditions read `<result_variable>.answers…`, so this stays an identifier, unlike the name.
+        const takenVariables = new Set([
+            ...Object.keys(existing),
+            ...Object.values(existing).map((prompt) => prompt.result_variable),
+        ]);
+        let variableNumber = 1;
+        while (takenVariables.has(`system_one_${variableNumber}`)) variableNumber++;
+
         const newConfig: PromptConfig = {
             kind: 'system_one',
             system_one_config: null,
@@ -705,7 +715,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             prompt_text: '',
             llm_config: null,
             output_schema: null,
-            result_variable: newId,
+            result_variable: `system_one_${variableNumber}`,
             variable_mappings: {},
         };
         this.prompts.update((p) => ({ ...p, [newId]: newConfig }));

@@ -1,13 +1,15 @@
-<app-select
-    class="config-select"
-    label="System One config"
-    placeholder="Select a config"
-    [items]="configItems()"
-    [selectedValue]="prompt().system_one_config ?? null"
-    [readonly]="readOnly()"
-    [transparent]="true"
-    (changed)="onConfigChange($event)"
-/>
+<div class="config-row">
+    <ng-content select="[promptName]" />
+    <app-select
+        class="config-select"
+        label="System One config"
+        placeholder="Select a config"
+        [items]="configItems()"
+        [selectedValue]="prompt().system_one_config ?? null"
+        [readonly]="readOnly()"
+        (changed)="onConfigChange($event)"
+    />
+</div>
 
 <app-custom-input
     label="Result Variable"
@@ -18,7 +20,7 @@
 />
 
 <div class="section">
-    <span class="section__label">Input to the model</span>
+    <span class="section__label">Input to classify</span>
     <div [formGroup]="inputMapForm">
         <app-input-map
             label=""
@@ -36,7 +38,7 @@
                 <app-tooltip label="Question name" />
                 <app-tooltip
                     label="Question type"
-                    [tooltipText]="typeHelp"
+                    [tooltipText]="typeHelp[item.row.question.type]"
                 />
                 <app-custom-input
                     class="question__name"
