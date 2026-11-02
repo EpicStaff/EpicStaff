@@ -1,5 +1,5 @@
 import { AuditUserAction } from '../models/audit-user-action.models';
-import { userActionLabel, userActionParent, userActionTarget } from './describe-user-action.util';
+import { userActionLabel, userActionParent, userActionTargetName } from './describe-user-action.util';
 
 const baseAction: AuditUserAction = {
     id: 'action-1',
@@ -34,35 +34,36 @@ describe('userActionLabel', () => {
     });
 });
 
-describe('userActionTarget', () => {
+describe('userActionTargetName', () => {
     it.each<[string, Partial<AuditUserAction>, string]>([
         [
             'a named target',
             { target_type: 'python node', target_id: '12', target_name: 'Parse invoice' },
-            'python node "Parse invoice"',
+            '"Parse invoice"',
         ],
         [
             'a rename',
             { action: 'renamed', target_type: 'flow', target_name: 'Billing', previous_name: 'Invoices v2' },
-            'flow "Invoices v2" → "Billing"',
+            '"Invoices v2" → "Billing"',
         ],
         [
             'a rename that kept no old name',
             { action: 'renamed', target_type: 'flow', target_name: 'Billing' },
-            'flow "Billing"',
+            '"Billing"',
         ],
-        ['a target known only by its id', { action: 'deleted', target_type: 'tool', target_id: '9' }, 'tool #9'],
-        ['a target known only by its type', { target_type: 'profile' }, 'profile'],
+        ['a target known only by its id', { action: 'deleted', target_type: 'tool', target_id: '9' }, '#9'],
+        ['a target known only by its type', { target_type: 'profile' }, ''],
         ['no target', { action: 'signed_in' }, ''],
     ])('describes %s', (_case, change, expected) => {
-        expect(userActionTarget({ ...baseAction, ...change })).toBe(expected);
+        expect(userActionTargetName({ ...baseAction, ...change })).toBe(expected);
     });
 });
 
 describe('userActionParent', () => {
     it.each<[string, Partial<AuditUserAction>, string]>([
-        ['a named parent', { parent_type: 'flow', parent_id: '4', parent_name: 'Billing' }, 'in flow "Billing"'],
-        ['a parent known only by its id', { parent_type: 'flow', parent_id: '4' }, 'in flow #4'],
+        ['a named flow', { parent_type: 'flow', parent_id: '4', parent_name: 'Billing' }, 'flow "Billing"'],
+        ['a named agent', { parent_type: 'agent', parent_id: '7', parent_name: 'Researcher' }, 'agent "Researcher"'],
+        ['a flow known only by its id', { parent_type: 'flow', parent_id: '12' }, 'flow #12'],
         ['no parent', { target_type: 'flow', target_name: 'Billing' }, ''],
     ])('describes %s', (_case, change, expected) => {
         expect(userActionParent({ ...baseAction, ...change })).toBe(expected);

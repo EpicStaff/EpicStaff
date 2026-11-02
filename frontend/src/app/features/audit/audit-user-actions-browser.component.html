@@ -74,14 +74,18 @@
                             <col class="user-actions__date" />
                             <col class="user-actions__user" />
                             <col class="user-actions__action" />
+                            <col class="user-actions__target-type" />
                             <col />
+                            <col class="user-actions__parent" />
                         </colgroup>
                         <thead>
                             <tr>
                                 <th>Date</th>
                                 <th>User</th>
                                 <th>Action</th>
-                                <th>Target</th>
+                                <th>Target type</th>
+                                <th>Target name</th>
+                                <th>Target parent</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -101,38 +105,43 @@
                                     </td>
                                     <td>{{ row.actionLabel }}</td>
                                     <td>
-                                        <!-- every row opens from here, so a record with no target still gets the button -->
-                                        <button
-                                            #rowButton
-                                            class="audit-value-cell"
-                                            type="button"
-                                            aria-controls="audit-value-viewer"
-                                            [attr.aria-expanded]="viewedRow()?.event.id === row.event.id"
-                                            [class.is-viewed]="viewedRow()?.event.id === row.event.id"
-                                            (click)="openRow(rowButton, row)"
-                                        >
-                                            @if (row.target) {
-                                                <app-audit-highlight
-                                                    class="user-actions__line"
-                                                    [text]="row.target"
-                                                    [term]="highlightTerm()"
-                                                />
-                                            } @else {
-                                                <span class="user-actions__line user-actions__muted">
-                                                    <span aria-hidden="true">—</span>
-                                                    <span class="visually-hidden">No target</span>
-                                                </span>
-                                            }
-                                            @if (row.parent) {
-                                                <!-- the lines are blocks; without it a screen reader runs them together -->
-                                                <span class="visually-hidden">, </span>
-                                                <app-audit-highlight
-                                                    class="user-actions__line user-actions__muted"
-                                                    [text]="row.parent"
-                                                    [term]="highlightTerm()"
-                                                />
-                                            }
-                                        </button>
+                                        @if (row.event.target_type) {
+                                            {{ row.event.target_type }}
+                                        } @else {
+                                            <span
+                                                class="user-actions__muted"
+                                                aria-hidden="true"
+                                                >—</span
+                                            >
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (row.targetName) {
+                                            <app-audit-highlight
+                                                [text]="row.targetName"
+                                                [term]="highlightTerm()"
+                                            />
+                                        } @else {
+                                            <span
+                                                class="user-actions__muted"
+                                                aria-hidden="true"
+                                                >—</span
+                                            >
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (row.parent) {
+                                            <app-audit-highlight
+                                                [text]="row.parent"
+                                                [term]="highlightTerm()"
+                                            />
+                                        } @else {
+                                            <span
+                                                class="user-actions__muted"
+                                                aria-hidden="true"
+                                                >—</span
+                                            >
+                                        }
                                     </td>
                                 </tr>
                             }
@@ -193,7 +202,7 @@
             </footer>
         </div>
 
-        @if (isFiltersPanelOpen() || viewedRow()) {
+        @if (isFiltersPanelOpen()) {
             <aside
                 #panel
                 class="audit-browser__panel"
@@ -208,28 +217,15 @@
                     [sidebarMinWidth]="panelWidthOptions.minWidth"
                     [sidebarMaxWidth]="panelWidthOptions.maxWidth"
                 ></div>
-                @if (isFiltersPanelOpen()) {
-                    <app-audit-filters-panel
-                        [lookupOptions]="lookupOptions()"
-                        [(filter)]="draftFilter"
-                        (closed)="closeFiltersPanel()"
-                        (applied)="applyFilters()"
-                        (cleared)="clearFilters()"
-                        (presetApplied)="applyFilters($event)"
-                        [queryError]="queryError()"
-                    />
-                }
-                @if (viewedRow(); as viewed) {
-                    <!-- covers the filters panel instead of replacing it, so the panel keeps its tabs, scroll and open groups -->
-                    <app-audit-value-viewer
-                        id="audit-value-viewer"
-                        class="audit-browser__viewer"
-                        field="User action"
-                        [rowName]="viewedRowName()"
-                        [value]="viewed.event | auditJson"
-                        (closed)="closeValueViewer()"
-                    />
-                }
+                <app-audit-filters-panel
+                    [lookupOptions]="lookupOptions()"
+                    [(filter)]="draftFilter"
+                    (closed)="closeFiltersPanel()"
+                    (applied)="applyFilters()"
+                    (cleared)="clearFilters()"
+                    (presetApplied)="applyFilters($event)"
+                    [queryError]="queryError()"
+                />
             </aside>
         }
     </div>

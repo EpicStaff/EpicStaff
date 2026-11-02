@@ -7,10 +7,9 @@ function quoted(name: string): string {
     return `"${name}"`;
 }
 
-// `flow "Billing"`, `flow #4` when the record kept no name, or just `flow`
-function describeObject(type: string | null, id: string | null, name: string | null): string {
-    const identity = name ? quoted(name) : id ? `#${id}` : '';
-    return [type, identity].filter(Boolean).join(' ');
+// `"Billing"`, `#4` when the record kept no name, or empty
+function nameOrId(name: string | null, id: string | null): string {
+    return name ? quoted(name) : id ? `#${id}` : '';
 }
 
 // The filter's label for a known action; any other action is a backend action name, e.g. `import_entity` → "Import entity".
@@ -19,18 +18,15 @@ export function userActionLabel(action: string): string {
     return ACTION_LABELS.get(action) ?? humanized.charAt(0).toUpperCase() + humanized.slice(1);
 }
 
-// `python node "Parse invoice"`, or `flow "Old" → "New"` for a rename; empty when the action has no target
-export function userActionTarget(event: AuditUserAction): string {
+// `"Parse invoice"`, `"Old" → "New"` for a rename, `#12`, or empty when the action has no target
+export function userActionTargetName(event: AuditUserAction): string {
     if (event.action === 'renamed' && event.previous_name && event.target_name) {
-        return [event.target_type, `${quoted(event.previous_name)} → ${quoted(event.target_name)}`]
-            .filter(Boolean)
-            .join(' ');
+        return `${quoted(event.previous_name)} → ${quoted(event.target_name)}`;
     }
-    return describeObject(event.target_type, event.target_id, event.target_name);
+    return nameOrId(event.target_name, event.target_id);
 }
 
-// `in flow "Billing"`, or empty when the record has no parent
+// `flow "Billing"`, `agent "Researcher"`, `flow #12` when the record kept no name, or empty when it has no parent
 export function userActionParent(event: AuditUserAction): string {
-    const parent = describeObject(event.parent_type, event.parent_id, event.parent_name);
-    return parent && `in ${parent}`;
+    return [event.parent_type, nameOrId(event.parent_name, event.parent_id)].filter(Boolean).join(' ');
 }

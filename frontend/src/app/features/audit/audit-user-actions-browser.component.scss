@@ -3,25 +3,27 @@
 }
 
 .user-actions__user {
-    width: 280px;
+    width: 240px;
 }
 
 .user-actions__action {
-    width: 160px;
+    width: 140px;
+}
+
+.user-actions__target-type {
+    width: 140px;
+}
+
+// Target name takes the remaining width; the parent is a type and a usually shorter name
+.user-actions__parent {
+    width: 220px;
 }
 
 .user-actions__api-key {
     color: var(--color-text-secondary);
 }
 
-// the cell button clips one line; with the parent under it, each line clips itself
-.user-actions__line {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-// the parent line and the no-target placeholder
+// the dash of an empty cell
 .user-actions__muted {
     color: var(--color-text-secondary);
 }

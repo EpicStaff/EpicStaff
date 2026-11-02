@@ -22,17 +22,15 @@ import { MembershipsService } from '../role-base-access/services/admin/membershi
 import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
 import { AuditHighlightComponent } from './components/audit-highlight/audit-highlight.component';
-import { AuditValueViewerComponent } from './components/audit-value-viewer/audit-value-viewer.component';
 import { AUDIT_FIELD_CATALOG, AuditLookupOptions, AuditLookupSource } from './models/audit-domain.models';
 import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
 import { AuditUserAction, UserActionSearchRequest, UserActionSearchResponse } from './models/audit-user-action.models';
 import { USER_ACTION_FIELD_CATALOG } from './models/audit-user-action-filter-options';
-import { AuditJsonPipe } from './pipes/audit-json.pipe';
 import { AuditApiService } from './services/audit-api.service';
 import { buildTimeZoneLabel } from './utils/audit-time-zone-label.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
 import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
-import { userActionLabel, userActionParent, userActionTarget } from './utils/describe-user-action.util';
+import { userActionLabel, userActionParent, userActionTargetName } from './utils/describe-user-action.util';
 
 const DEFAULT_PAGE_SIZE = 20;
 const MIN_PAGE_SIZE = 10;
@@ -57,7 +55,7 @@ function byLabel(options: AuditEnumOption[]): AuditEnumOption[] {
 interface UserActionRow {
     event: AuditUserAction;
     actionLabel: string;
-    target: string;
+    targetName: string;
     parent: string;
 }
 
@@ -69,8 +67,6 @@ interface UserActionRow {
         AuditFilterChipsComponent,
         AuditFiltersPanelComponent,
         AuditHighlightComponent,
-        AuditJsonPipe,
-        AuditValueViewerComponent,
         DatePipe,
         HasPermissionDirective,
         NumberStepperComponent,
@@ -88,7 +84,6 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     protected readonly isPartial = signal(false);
     protected readonly pageSize = signal(DEFAULT_PAGE_SIZE);
     protected readonly isFiltersPanelOpen = signal(false);
-    protected readonly viewedRow = signal<UserActionRow | null>(null);
     protected readonly draftFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
     protected readonly exportingFormat = signal<ExportFormat | null>(null);
     // the org's flows and members the Flow and User filters pick from
@@ -102,15 +97,10 @@ export class AuditUserActionsBrowserComponent implements OnInit {
         this.events().map((event) => ({
             event,
             actionLabel: userActionLabel(event.action),
-            target: userActionTarget(event),
+            targetName: userActionTargetName(event),
             parent: userActionParent(event),
         }))
     );
-    // the viewer's title: `Renamed flow "Old" → "New"`, or just the action when it has no target
-    protected readonly viewedRowName = computed(() => {
-        const row = this.viewedRow();
-        return row ? [row.actionLabel, row.target].filter(Boolean).join(' ') : '';
-    });
     protected readonly appliedChips = computed(() =>
         describeAuditFilter(this.appliedFilter(), this.catalog, this.lookupOptions())
     );
@@ -149,7 +139,6 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
     private readonly searchInput = new Subject<string>();
     private searchSubscription: Subscription | null = null;
-    private valueViewerTrigger: HTMLElement | null = null;
 
     public ngOnInit(): void {
         this.loadActions();
@@ -204,12 +193,6 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     }
 
     protected toggleFiltersPanel(): void {
-        if (this.viewedRow()) {
-            this.viewedRow.set(null);
-            this.valueViewerTrigger = null;
-            this.isFiltersPanelOpen.set(true);
-            return;
-        }
         this.isFiltersPanelOpen.update((isOpen) => !isOpen);
     }
 
@@ -257,18 +240,6 @@ export class AuditUserActionsBrowserComponent implements OnInit {
 
     protected onExportItemSelected(item: ActionDropdownItem): void {
         this.exportFiltered(item.value as ExportFormat);
-    }
-
-    protected openRow(trigger: HTMLElement, row: UserActionRow): void {
-        this.valueViewerTrigger = trigger;
-        this.viewedRow.set(row);
-    }
-
-    // the panel is not a dialog, so focus is handed back to the cell by hand instead of falling to <body>
-    protected closeValueViewer(): void {
-        this.viewedRow.set(null);
-        this.valueViewerTrigger?.focus();
-        this.valueViewerTrigger = null;
     }
 
     private loadFlows(): void {

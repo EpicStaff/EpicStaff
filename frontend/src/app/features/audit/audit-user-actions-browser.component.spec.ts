@@ -1,11 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { FormsModule } from '@angular/forms';
-import { JsonEditorComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 import { of } from 'rxjs';
 
 import { ActiveOrgService } from '../../services/auth/active-org.service';
@@ -74,6 +70,17 @@ const parentOnly: AuditUserAction = {
     parent_name: 'Billing',
 };
 
+const deletedTool: AuditUserAction = {
+    ...signIn,
+    id: 'action-5',
+    action: 'deleted',
+    target_type: 'tool',
+    target_id: '9',
+    parent_type: 'agent',
+    parent_id: '7',
+    parent_name: 'Researcher',
+};
+
 function setup(canExport = true) {
     TestBed.configureTestingModule({
         providers: [
@@ -90,11 +97,6 @@ function setup(canExport = true) {
                 },
             },
         ],
-    });
-    // Monaco does not run in jsdom: render the value viewer's editor as an unknown custom element instead.
-    TestBed.overrideComponent(JsonEditorComponent, {
-        remove: { imports: [MonacoEditorModule, FormsModule] },
-        add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
     });
     const fixture = TestBed.createComponent(AuditUserActionsBrowserComponent);
     const http = TestBed.inject(HttpTestingController);
@@ -118,13 +120,6 @@ function buttonWithText(root: HTMLElement, text: string): HTMLButtonElement {
 
 function cellText(element: Element): string | undefined {
     return element.textContent?.replace(/\s+/g, ' ').trim();
-}
-
-// the text a screen reader reads: the content minus anything hidden from it
-function spokenText(element: Element): string | undefined {
-    const copy = element.cloneNode(true) as Element;
-    copy.querySelectorAll('[aria-hidden="true"]').forEach((hidden) => hidden.remove());
-    return cellText(copy);
 }
 
 async function render(fixture: ComponentFixture<AuditUserActionsBrowserComponent>): Promise<void> {
@@ -175,45 +170,38 @@ function optionLabels(group: HTMLElement): (string | undefined)[] {
 }
 
 describe('AuditUserActionsBrowserComponent', () => {
-    it('shows date, user, action and target for each action', async () => {
+    it('shows date, user, action, target type, target name and target parent for each action', async () => {
         const { fixture, http, root } = setup();
-        flushSearch(http, [renamedFlow, editedNode, signIn, parentOnly]);
+        flushSearch(http, [renamedFlow, editedNode, signIn, parentOnly, deletedTool]);
         await render(fixture);
 
         const headers = Array.from(root.querySelectorAll('th')).map((cell) => cell.textContent?.trim());
-        const rows = Array.from(root.querySelectorAll('tbody tr')).map((row) => {
-            const [, user, action, target] = Array.from(row.querySelectorAll('td'));
-            return [cellText(user), cellText(action), spokenText(target)];
-        });
-        expect(headers).toEqual(['Date', 'User', 'Action', 'Target']);
-        // the target and parent lines are separate blocks, so the spoken text must keep them apart
-        expect(rows).toEqual([
-            ['ann@example.com via API key Deploy bot', 'Renamed', 'flow "Invoices v2" → "Billing"'],
-            ['ann@example.com', 'Import entity', 'python node "Parse invoice", in flow "Billing"'],
-            ['ann@example.com', 'Sign-in failed', 'No target'],
-            ['ann@example.com', 'Updated', 'No target, in flow "Billing"'],
-        ]);
-        expect(cellText(root.querySelectorAll('tbody tr')[2].querySelector('td:last-child button')!)).toBe(
-            '—No target'
+        const rows = Array.from(root.querySelectorAll('tbody tr')).map((row) =>
+            Array.from(row.querySelectorAll('td'))
+                .slice(1)
+                .map((cell) => cellText(cell))
         );
+        expect(headers).toEqual(['Date', 'User', 'Action', 'Target type', 'Target name', 'Target parent']);
+        expect(rows).toEqual([
+            ['ann@example.com via API key Deploy bot', 'Renamed', 'flow', '"Invoices v2" → "Billing"', '—'],
+            ['ann@example.com', 'Import entity', 'python node', '"Parse invoice"', 'flow "Billing"'],
+            ['ann@example.com', 'Sign-in failed', '—', '—', '—'],
+            ['ann@example.com', 'Updated', '—', '—', 'flow "Billing"'],
+            ['ann@example.com', 'Deleted', 'tool', '#9', 'agent "Researcher"'],
+        ]);
     });
 
-    it.each([
-        [0, 'User action - Import entity python node "Parse invoice"'],
-        [1, 'User action - Sign-in failed'],
-    ])('opens row %i from its target cell', async (rowIndex, title) => {
+    it('shows plain rows that open nothing', async () => {
         const { fixture, http, root } = setup();
-        flushSearch(http, [editedNode, signIn]);
+        flushSearch(http, [editedNode]);
         await render(fixture);
 
-        const targets = Array.from(root.querySelectorAll<HTMLButtonElement>('tbody tr td:last-child button'));
-        targets[rowIndex].click();
+        const row = root.querySelector('tbody tr')!;
+        expect(row.querySelector('button')).toBeNull();
+        (row.querySelector('td:last-child') as HTMLElement).click();
         await render(fixture);
-
-        expect(targets.map((button) => button.getAttribute('aria-expanded'))).toEqual(
-            targets.map((_button, index) => String(index === rowIndex))
-        );
-        expect(root.querySelector('app-audit-value-viewer')?.textContent).toContain(title);
+        expect(root.querySelector('app-audit-value-viewer')).toBeNull();
+        expect(root.querySelector('aside')).toBeNull();
     });
 
     it('offers the active org members and its flows, by name', async () => {
