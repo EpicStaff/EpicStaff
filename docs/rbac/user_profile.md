@@ -263,4 +263,4 @@ Or, for multi-field validation:
   - `DJANGO_AVATAR_ALLOWED_FORMATS` (default `JPEG,PNG`)
   - `DJANGO_LOGIN_THROTTLE_RATE` (shared with login; reused for password-change request)
 - Redis 6.2+ required (`GETDEL` for atomic ticket consume).
-- Pillow is already a Django `ImageField` dependency — no additional install.
+- Pillow is already a Django `ImageField` dependency — no additional install. Avatar decoding is restricted to JPEG and PNG formats at the `Image.open()` level (defense in depth: whitelist format check at line 117 remains as secondary validation).
