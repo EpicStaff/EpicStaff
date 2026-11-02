@@ -17,7 +17,9 @@ const ACTION_TONES: Record<string, UserActionTone> = {
     updated: 'changed',
     renamed: 'changed',
     // still in the recycle bin, so recoverable
-    deleted: 'removed',
+    moved_to_recycle_bin: 'removed',
+    // gone at once (a member, a role, an API key) or emptied from the recycle bin
+    deleted: 'destroyed',
     permanently_deleted: 'destroyed',
     sign_in_failed: 'destroyed',
     password_reset: 'alert',

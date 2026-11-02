@@ -7,6 +7,7 @@ export const USER_ACTION_OPTIONS: AuditEnumOption[] = [
     { value: 'created', label: 'Created' },
     { value: 'updated', label: 'Updated' },
     { value: 'renamed', label: 'Renamed' },
+    { value: 'moved_to_recycle_bin', label: 'Moved to Recycle Bin' },
     { value: 'deleted', label: 'Deleted' },
     { value: 'restored', label: 'Restored' },
     { value: 'permanently_deleted', label: 'Permanently deleted' },
@@ -92,7 +93,7 @@ export const USER_ACTION_FIELD_CATALOG: AuditFieldCatalog = {
         'event_time',
     ],
     queryExamples: [
-        'action in ("deleted", "permanently_deleted")',
+        'action in ("moved_to_recycle_bin", "deleted", "permanently_deleted")',
         'actor_email : "@example.com" and target_type == "flow"',
         'action == "sign_in_failed" and event_time >= "2026-01-01T00:00:00Z"',
         'actor_api_key_name == "CI bot"',

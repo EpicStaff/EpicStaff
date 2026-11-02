@@ -79,7 +79,7 @@ const deletedTool: AuditUserAction = {
     ...signIn,
     id: 'action-5',
     number: 45,
-    action: 'deleted',
+    action: 'moved_to_recycle_bin',
     target_type: 'tool',
     target_id: '9',
     parent_type: 'agent',
@@ -203,7 +203,7 @@ describe('AuditUserActionsBrowserComponent', () => {
             ['42', 'ann@example.com', 'Import entity', 'Python node', 'Parse invoice', 'Billing · Flow'],
             ['43', 'ann@example.com', 'Sign-in failed', '', '', ''],
             ['44', 'ann@example.com', 'Updated', '', '', 'Billing · Flow'],
-            ['45', 'ann@example.com', 'Deleted', 'Tool', '#9', 'Researcher · Agent'],
+            ['45', 'ann@example.com', 'Moved to Recycle Bin', 'Tool', '#9', 'Researcher · Agent'],
             // a record stored before records were numbered has a blank ID
             ['', 'ann@example.com', 'Updated', '', '', 'Flow'],
         ]);
