@@ -30,7 +30,7 @@ import { TOOLS_SOURCE } from './tools-source.token';
             <button
                 type="button"
                 class="tools-display"
-                matTooltip="Select tools"
+                [matTooltip]="totalSelectedTools === 0 ? '' : 'Select tools'"
                 (click)="openToolsDialog()"
             >
                 @if (totalSelectedTools === 0) {
@@ -87,13 +87,11 @@ import { TOOLS_SOURCE } from './tools-source.token';
                                 [(ngModel)]="toolsSearchTerm"
                                 placeholder="Search tools..."
                                 aria-label="Search tools"
-                                matTooltip="Search tools"
                             />
                         </div>
                         <div class="tools-tabs">
                             <button
                                 type="button"
-                                matTooltip="Custom Tools"
                                 [class.active]="currentToolType === 'python'"
                                 (click)="toggleToolType('python')"
                             >
@@ -101,7 +99,6 @@ import { TOOLS_SOURCE } from './tools-source.token';
                             </button>
                             <button
                                 type="button"
-                                matTooltip="MCP Tools"
                                 [class.active]="currentToolType === 'mcp'"
                                 (click)="toggleToolType('mcp')"
                             >
@@ -194,7 +191,6 @@ import { TOOLS_SOURCE } from './tools-source.token';
                         <button
                             type="button"
                             class="cancel-btn"
-                            matTooltip="Cancel"
                             (click)="closeToolsDialog()"
                         >
                             Cancel
@@ -202,7 +198,6 @@ import { TOOLS_SOURCE } from './tools-source.token';
                         <button
                             type="button"
                             class="save-btn"
-                            matTooltip="Save Selection"
                             (click)="saveToolSelection()"
                         >
                             Save Selection

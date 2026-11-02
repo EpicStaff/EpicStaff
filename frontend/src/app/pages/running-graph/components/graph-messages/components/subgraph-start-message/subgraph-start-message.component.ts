@@ -72,7 +72,6 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                                 type="button"
                                 class="section-heading"
                                 [attr.aria-expanded]="isInputsExpanded"
-                                matTooltip="Input Parameters"
                                 (click)="toggleInputs($event)"
                             >
                                 <app-svg-icon
@@ -106,7 +105,6 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                                 type="button"
                                 class="section-heading"
                                 [attr.aria-expanded]="isVariablesExpanded"
-                                matTooltip="Variables"
                                 (click)="toggleVariables($event)"
                             >
                                 <app-svg-icon

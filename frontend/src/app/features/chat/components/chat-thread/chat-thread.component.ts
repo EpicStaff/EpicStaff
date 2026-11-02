@@ -16,7 +16,6 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatTooltip } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
 import { AppSvgIconComponent, ButtonComponent, JsonEditorComponent, SpinnerComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -59,7 +58,6 @@ const CLOCK_TICK_MS = 60_000;
     imports: [
         DatePipe,
         RouterLink,
-        MatTooltip,
         AppSvgIconComponent,
         ButtonComponent,
         ChatMarkdownPipe,

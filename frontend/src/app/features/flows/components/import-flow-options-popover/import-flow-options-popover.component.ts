@@ -1,14 +1,13 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { CdkOverlayOrigin, OverlayModule } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import { HelpTooltipComponent } from '@shared/components';
 
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 
 @Component({
     selector: 'app-import-flow-options-popover',
-    imports: [OverlayModule, CdkTrapFocus, MatTooltipModule, HelpTooltipComponent],
+    imports: [OverlayModule, CdkTrapFocus, HelpTooltipComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './import-flow-options-popover.component.html',
     styleUrl: './import-flow-options-popover.component.scss',

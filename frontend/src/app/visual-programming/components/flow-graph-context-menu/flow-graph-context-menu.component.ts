@@ -23,7 +23,6 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatTooltip } from '@angular/material/tooltip';
 import { IPoint } from '@foblex/2d';
 
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
@@ -52,7 +51,7 @@ interface MenuBox {
     templateUrl: './flow-graph-context-menu.component.html',
     styleUrls: ['./flow-graph-context-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [A11yModule, MatTooltip, FlowGraphCoreMenuComponent, FlowsMenuComponent],
+    imports: [A11yModule, FlowGraphCoreMenuComponent, FlowsMenuComponent],
 })
 export class FlowGraphContextMenuComponent implements AfterViewInit {
     public readonly position = input.required<IPoint>();

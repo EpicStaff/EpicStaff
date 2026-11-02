@@ -10,6 +10,7 @@
             #nameButton
             class="name"
             [attr.aria-pressed]="selected()"
+            appTooltipOnOverflow
             [matTooltip]="collection().collection_name"
         >
             {{ collection().collection_name }}

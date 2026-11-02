@@ -16,7 +16,6 @@
     [class.llm-selector__trigger--disabled]="isDisabled()"
     [disabled]="isDisabled()"
     [attr.aria-expanded]="open()"
-    [matTooltip]="label() || placeholder()"
     (click)="toggle()"
 >
     @if (selectedModelInfo(); as info) {
@@ -78,7 +77,6 @@
                 class="model-selector__search-input"
                 placeholder="Search provider or model..."
                 aria-label="Search provider or model"
-                matTooltip="Search provider or model"
                 autocomplete="off"
                 [value]="searchQuery()"
                 (input)="onSearchChange($event)"
@@ -139,6 +137,7 @@
                                             type="button"
                                             class="model-selector__model-select"
                                             [disabled]="model.predefined && !model.is_visible"
+                                            appTooltipOnOverflow=".model-selector__model-name"
                                             [matTooltip]="model.name"
                                             (click)="selectModel(model, providerData.provider)"
                                         >

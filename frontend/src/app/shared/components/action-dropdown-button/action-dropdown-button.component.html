@@ -10,7 +10,6 @@
         type="button"
         class="adb__main"
         [disabled]="disabled() || loading()"
-        [matTooltip]="label()"
         (click)="onMainClick()"
     >
         @if (leftIcon()) {
@@ -64,7 +63,6 @@
             <button
                 type="button"
                 class="action-dropdown-panel__item"
-                [matTooltip]="item.label"
                 (click)="onItemClick(item)"
             >
                 {{ item.label }}

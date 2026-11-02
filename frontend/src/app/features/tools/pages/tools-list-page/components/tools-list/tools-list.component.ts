@@ -27,6 +27,7 @@ import {
     IncludeExcludeTab,
     LoadingSpinnerComponent,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
 import {
     buildPreviewImportResult,
@@ -84,6 +85,7 @@ const RECENT_TOOLS_MAX = 8;
         CommonModule,
         FetchErrorStateComponent,
         MatTooltip,
+        TooltipOnOverflowDirective,
     ],
 })
 export class ToolsListComponent implements OnInit {

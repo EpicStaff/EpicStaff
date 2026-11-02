@@ -3,7 +3,6 @@
         <a
             class="flows-prefix"
             routerLink="/flows"
-            matTooltip="Flows"
         >
             <app-svg-icon
                 icon="arrow-left"
@@ -17,6 +16,7 @@
             <a
                 class="flow-name project-link"
                 [routerLink]="['/flows', graphId]"
+                appTooltipOnOverflow
                 [matTooltip]="graphName || '...'"
                 >{{ graphName || '...' }}</a
             >
@@ -37,7 +37,6 @@
         <button
             mat-button
             class="sessions-button"
-            matTooltip="Sessions"
             (click)="openSessionsDialog()"
             [disabled]="!graphData"
         >
@@ -47,7 +46,6 @@
             #memoriesButton
             mat-button
             class="memories-button"
-            matTooltip="Memories"
             aria-controls="session-memories-sidebar"
             [attr.aria-expanded]="showMemoriesSidebar"
             (click)="toggleMemoriesSidebar()"

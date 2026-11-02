@@ -65,7 +65,6 @@
                             class="code-editor-tab"
                             [class.code-editor-tab--active]="tab.fieldKey === entry.fieldKey"
                             [attr.aria-pressed]="tab.fieldKey === entry.fieldKey"
-                            [matTooltip]="tab.label"
                             (click)="store.goToCodeTab(tab.fieldKey)"
                         >
                             {{ tab.label }}

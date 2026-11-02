@@ -32,8 +32,6 @@ export class AuditFilterGroupComponent {
     private readonly header = viewChild.required<ElementRef<HTMLButtonElement>>('header');
 
     public isOpen = computed(() => this.expanded() && !this.disabled());
-    // names the group and, on the collapsed card, the whole applied value its summary may cut short
-    public headerTooltip = computed(() => (this.summary() ? `${this.label()}: ${this.summary()}` : this.label()));
 
     public toggle(): void {
         if (this.disabled()) {

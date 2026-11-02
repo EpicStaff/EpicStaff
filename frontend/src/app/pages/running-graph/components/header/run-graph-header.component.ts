@@ -18,7 +18,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 import { AppSvgIconComponent, StatusBadgeComponent } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
 import { Subject, takeUntil } from 'rxjs';
 
@@ -53,6 +53,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
         SessionIdSwitcherComponent,
         HasPermissionDirective,
         MatTooltip,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './run-graph-header.component.html',
     styleUrls: ['./run-graph-header.component.scss'],

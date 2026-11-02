@@ -56,7 +56,6 @@
                     [class.selected]="lang.id === selectedLanguage"
                     [attr.aria-selected]="lang.id === selectedLanguage"
                     [attr.cdkFocusInitial]="lang.id === selectedLanguage ? '' : null"
-                    [matTooltip]="lang.name"
                     (click)="selectLanguage(lang.id)"
                 >
                     {{ lang.name }}

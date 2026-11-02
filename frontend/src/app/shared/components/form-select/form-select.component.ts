@@ -32,7 +32,6 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                 [class.error]="errorMessage"
                 [disabled]="disabled"
                 [style.--active-color]="activeColor"
-                [matTooltip]="label || placeholder"
             >
                 <option [ngValue]="null">{{ placeholder }}</option>
                 @for (opt of options; track opt) {

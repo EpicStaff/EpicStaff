@@ -1,12 +1,11 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 
 import { ExplorerMenuItem, ExplorerMenuPosition } from './explorer-menu.model';
 
 @Component({
     selector: 'app-explorer-context-menu',
-    imports: [CdkTrapFocus, MatTooltip],
+    imports: [CdkTrapFocus],
     templateUrl: './explorer-context-menu.component.html',
     styleUrls: ['./explorer-context-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

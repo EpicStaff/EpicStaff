@@ -36,7 +36,6 @@
                 cdkFocusInitial
                 [attr.aria-expanded]="dropdownOpen()"
                 [attr.aria-label]="'Folder: ' + (selectedPath() !== null ? selectedFolderLabel : 'Select folder')"
-                matTooltip="Folder"
                 (click)="toggleDropdown($event)"
             >
                 <span class="copy-to-dialog__selector-text">
@@ -70,7 +69,6 @@
                             type="text"
                             placeholder="Search folder..."
                             aria-label="Search folder"
-                            matTooltip="Search folder"
                             [ngModel]="searchQuery()"
                             (ngModelChange)="searchQuery.set($event)"
                             (keydown.enter)="$event.preventDefault()"
@@ -108,7 +106,6 @@
                                     type="button"
                                     class="copy-to-dialog__node-name"
                                     [attr.aria-pressed]="isSelected('')"
-                                    matTooltip="/"
                                 >
                                     /
                                 </button>
@@ -174,7 +171,6 @@
         <button
             type="button"
             class="copy-to-dialog__btn copy-to-dialog__btn--cancel"
-            matTooltip="Cancel"
             (click)="onCancel()"
         >
             Cancel
@@ -182,7 +178,6 @@
         <button
             type="button"
             class="copy-to-dialog__btn copy-to-dialog__btn--confirm"
-            matTooltip="Copy"
             [disabled]="!isValid"
             (click)="onConfirm()"
         >

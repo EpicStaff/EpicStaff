@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { AppSvgIconComponent, FetchErrorStateComponent, LoadingSpinnerComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { isPlainPrimaryClick } from '@shared/utils';
 
@@ -49,6 +50,7 @@ interface DeskRailEntry {
         FetchErrorStateComponent,
         LoadingSpinnerComponent,
         DeskAvatarComponent,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './desk-rail.component.html',
     styleUrl: './desk-rail.component.scss',

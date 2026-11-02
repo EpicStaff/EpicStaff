@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ColumnResizeDividerComponent,
@@ -45,7 +44,6 @@ interface RagChoice {
 @Component({
     selector: 'app-knowledge-retriever-node-panel',
     imports: [
-        MatTooltip,
         ReactiveFormsModule,
         CustomInputComponent,
         SelectComponent,

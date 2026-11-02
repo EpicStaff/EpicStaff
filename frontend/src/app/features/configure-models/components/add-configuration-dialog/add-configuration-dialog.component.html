@@ -18,7 +18,6 @@
             class="tab"
             [class.active]="activeTab() === 'llm'"
             [attr.aria-pressed]="activeTab() === 'llm'"
-            matTooltip="Configuration type: LLM"
             (click)="setActiveTab('llm')"
             type="button"
         >
@@ -29,7 +28,6 @@
             class="tab"
             [class.active]="activeTab() === 'realtime'"
             [attr.aria-pressed]="activeTab() === 'realtime'"
-            matTooltip="Configuration type: Realtime"
             (click)="setActiveTab('realtime')"
             type="button"
         >
@@ -40,7 +38,6 @@
             class="tab"
             [class.active]="activeTab() === 'embedding'"
             [attr.aria-pressed]="activeTab() === 'embedding'"
-            matTooltip="Configuration type: Embedding"
             (click)="setActiveTab('embedding')"
             type="button"
         >

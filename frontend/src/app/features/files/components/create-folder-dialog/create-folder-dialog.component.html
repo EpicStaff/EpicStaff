@@ -67,7 +67,6 @@
                     cdkFocusInitial
                     [attr.aria-expanded]="dropdownOpen()"
                     [attr.aria-label]="'Destination folder: ' + selectedFolderLabel"
-                    matTooltip="Destination folder"
                     (click)="toggleDropdown($event)"
                 >
                     <span class="create-folder-dialog__selector-text">{{ selectedFolderLabel }}</span>
@@ -98,7 +97,6 @@
                                 type="text"
                                 placeholder="Search folder..."
                                 aria-label="Search folder"
-                                matTooltip="Search folder"
                                 [ngModel]="searchQuery()"
                                 (ngModelChange)="searchQuery.set($event)"
                                 (keydown.enter)="$event.preventDefault()"
@@ -134,7 +132,6 @@
                                         type="button"
                                         class="create-folder-dialog__node-name"
                                         [attr.aria-pressed]="isSelected('')"
-                                        [matTooltip]="folderLabel('')"
                                     >
                                         /
                                     </button>
@@ -210,7 +207,6 @@
                     type="text"
                     placeholder="Leave blank to use current"
                     aria-label="Organize into folder"
-                    matTooltip="Organize into folder"
                     [ngModel]="folderName()"
                     (ngModelChange)="folderName.set($event)"
                 />
@@ -243,7 +239,6 @@
                         <button
                             type="button"
                             class="create-folder-dialog__add-more-btn"
-                            matTooltip="Add More Files"
                             [disabled]="isAddingFilesBlocked()"
                             [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
                             (click)="addMoreFilesInput.click()"

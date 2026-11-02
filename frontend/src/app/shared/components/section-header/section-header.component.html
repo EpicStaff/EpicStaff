@@ -3,6 +3,7 @@
         type="button"
         class="header__toggle"
         [attr.aria-expanded]="expanded()"
+        appTooltipOnOverflow=".header__label"
         [matTooltip]="label()"
         (click)="onToggle()"
     >

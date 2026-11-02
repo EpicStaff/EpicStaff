@@ -15,7 +15,6 @@
                                 <button
                                     type="button"
                                     class="sort-btn"
-                                    [matTooltip]="'Sort by ' + (col.title ?? col.key)"
                                 >
                                     <span>{{ col.title ?? col.key }}</span>
                                     @if (isSortActive(col.key)) {

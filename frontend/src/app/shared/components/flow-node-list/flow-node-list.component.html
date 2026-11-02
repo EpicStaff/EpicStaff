@@ -80,6 +80,7 @@
                             <button
                                 type="button"
                                 class="flow-node-list__node-name"
+                                appTooltipOnOverflow
                                 [matTooltip]="node.name"
                             >
                                 {{ node.name }}
@@ -103,7 +104,6 @@
                             type="button"
                             class="flow-node-list__more flow-node-list__more--action"
                             [disabled]="showAllPending()"
-                            matTooltip="Show all"
                             (click)="showAllRequested.emit()"
                         >
                             Show all {{ showAllCount() | number }}

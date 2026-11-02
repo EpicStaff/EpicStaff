@@ -36,6 +36,7 @@
                             <button
                                 type="button"
                                 class="flow-name"
+                                appTooltipOnOverflow
                                 [matTooltip]="flow().name"
                             >
                                 {{ flow().name }}
@@ -115,6 +116,7 @@
                                 <button
                                     type="button"
                                     class="subflow-name"
+                                    appTooltipOnOverflow
                                     [matTooltip]="subflow.name"
                                 >
                                     {{ subflow.name }}

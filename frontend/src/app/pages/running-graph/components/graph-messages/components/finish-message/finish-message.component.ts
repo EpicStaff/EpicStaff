@@ -79,7 +79,6 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                                 type="button"
                                 class="section-heading"
                                 [attr.aria-expanded]="isVariablesExpanded"
-                                matTooltip="Variables"
                                 (click)="toggleSection('variables')"
                             >
                                 <app-svg-icon
@@ -112,7 +111,6 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                             type="button"
                             class="section-heading"
                             [attr.aria-expanded]="isOutputExpanded"
-                            matTooltip="Final Output"
                             (click)="toggleSection('output')"
                         >
                             <app-svg-icon

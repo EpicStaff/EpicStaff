@@ -13,8 +13,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { RagTabComponent, SelectComponent, SelectItem, TabButtonComponent } from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { AgentSearchConfigs, GraphSearchMethod, NaiveRagSearchConfig } from '@shared/models';
 import { RAG_SUGGEST_API } from '@shared/services';
 import { Subscription } from 'rxjs';
@@ -30,7 +32,14 @@ type RagKind = 'naive' | 'graph' | null;
 
 @Component({
     selector: 'app-surface-knowledge-advanced',
-    imports: [ReactiveFormsModule, SelectComponent, TabButtonComponent, RagTabComponent],
+    imports: [
+        ReactiveFormsModule,
+        SelectComponent,
+        TabButtonComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+        RagTabComponent,
+    ],
     templateUrl: './surface-knowledge-advanced.component.html',
     styleUrls: ['./surface-knowledge-advanced.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

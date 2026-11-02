@@ -6,6 +6,15 @@ import { of } from 'rxjs';
 
 import { KeyValueListComponent } from './key-value-list.component';
 
+// jsdom has no ResizeObserver; the overflow tooltips only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+
 @Component({
     imports: [KeyValueListComponent, ReactiveFormsModule],
     template: `<app-key-value-list [formControl]="control" />`,

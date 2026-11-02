@@ -1,7 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
 import { Router, RouterLink } from '@angular/router';
 import {
     AppSvgIconComponent,
@@ -25,7 +24,6 @@ type PageState = 'form' | 'loading' | 'success';
     selector: 'app-sign-up',
     imports: [
         RouterLink,
-        MatTooltip,
         ReactiveFormsModule,
         ButtonComponent,
         CustomInputComponent,

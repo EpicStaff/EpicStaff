@@ -11,7 +11,6 @@
             type="button"
             class="tab-btn"
             [class.active]="activeTab() === 'primary'"
-            [matTooltip]="primaryTab.label"
             (click)="setActiveTab('primary')"
         >
             <app-svg-icon
@@ -24,7 +23,6 @@
             type="button"
             class="tab-btn"
             [class.active]="activeTab() === 'labels'"
-            [matTooltip]="labelsTab.label"
             (click)="setActiveTab('labels')"
         >
             <app-svg-icon
@@ -49,7 +47,6 @@
             class="search-input"
             [placeholder]="primaryTab.searchPlaceholder ?? 'Search...'"
             [attr.aria-label]="primaryTab.searchPlaceholder ?? 'Search'"
-            [matTooltip]="primaryTab.searchPlaceholder ?? 'Search'"
             [ngModel]="primarySearch()"
             (ngModelChange)="primarySearch.set($event)"
         />
@@ -87,7 +84,6 @@
             class="search-input"
             [placeholder]="labelsTab.searchPlaceholder ?? 'Search label...'"
             [attr.aria-label]="labelsTab.searchPlaceholder ?? 'Search label'"
-            [matTooltip]="labelsTab.searchPlaceholder ?? 'Search label'"
             [ngModel]="labelSearch()"
             (ngModelChange)="labelSearch.set($event)"
         />

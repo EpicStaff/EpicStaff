@@ -4,6 +4,15 @@ import { ResourceCode } from '@shared/models';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { SectionHeaderComponent } from './section-header.component';
 
+// jsdom has no ResizeObserver; the overflow tooltips only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+
 function render(expanded: boolean, showAdd = true): ComponentFixture<SectionHeaderComponent> {
     TestBed.configureTestingModule({
         providers: [{ provide: PermissionsService, useValue: { can: () => true, canAny: () => true } }],

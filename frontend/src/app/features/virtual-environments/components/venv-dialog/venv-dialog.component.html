@@ -126,7 +126,8 @@
                                         formControlName="name"
                                         placeholder="e.g. requests"
                                         aria-label="Library name"
-                                        [matTooltip]="cellTooltip('Library name', row.controls.name.value)"
+                                        appTooltipOnOverflow
+                                        [matTooltip]="row.controls.name.value"
                                         [class.venv-dialog__cell-input--invalid]="
                                             row.controls.name.invalid && row.controls.name.touched
                                         "
@@ -140,7 +141,8 @@
                                         formControlName="description"
                                         placeholder="e.g. HTTP client"
                                         aria-label="Description"
-                                        [matTooltip]="cellTooltip('Description', row.controls.description.value)"
+                                        appTooltipOnOverflow
+                                        [matTooltip]="row.controls.description.value"
                                     />
                                 </td>
                                 <td>
@@ -151,7 +153,8 @@
                                         formControlName="version"
                                         placeholder="e.g. 2.31.0"
                                         aria-label="Version"
-                                        [matTooltip]="versionError ?? 'Version'"
+                                        [matTooltip]="versionError ?? ''"
+                                        [matTooltipDisabled]="!versionError"
                                         [class.venv-dialog__cell-input--invalid]="!!versionError"
                                     />
                                 </td>
@@ -163,7 +166,8 @@
                                         formControlName="specification"
                                         placeholder="e.g. >=1.0,<2.0"
                                         aria-label="Specification"
-                                        [matTooltip]="specificationError ?? 'Specification'"
+                                        [matTooltip]="specificationError ?? ''"
+                                        [matTooltipDisabled]="!specificationError"
                                         [class.venv-dialog__cell-input--invalid]="!!specificationError"
                                     />
                                 </td>
@@ -192,7 +196,6 @@
                 #addLibraryButton
                 type="button"
                 class="venv-dialog__add-lib text-body-small"
-                matTooltip="Add library"
                 (click)="addLibrary()"
             >
                 + Add library

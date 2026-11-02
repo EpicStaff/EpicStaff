@@ -27,6 +27,7 @@ import { LLMLibraryService, ProviderWithModels } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 import { filter } from 'rxjs';
 
+import { TooltipOnOverflowDirective } from '../../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
 import { TooltipComponent } from '../../tooltip/tooltip.component';
@@ -60,6 +61,7 @@ const TOP_PROVIDERS = [
         UpperCasePipe,
         ButtonComponent,
         IconButtonComponent,
+        TooltipOnOverflowDirective,
     ],
     providers: [
         {

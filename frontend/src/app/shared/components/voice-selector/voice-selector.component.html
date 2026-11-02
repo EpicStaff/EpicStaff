@@ -54,7 +54,6 @@
                     class="dropdown-item"
                     [class.selected]="voice.id === selectedVoice()"
                     [attr.aria-pressed]="voice.id === selectedVoice()"
-                    [matTooltip]="voice.name"
                     (click)="selectVoice(voice.id)"
                 >
                     <span class="dropdown-item__name">{{ voice.name }}</span>

@@ -36,7 +36,6 @@
                 cdkFocusInitial
                 [attr.aria-expanded]="dropdownOpen()"
                 [attr.aria-label]="'Flow: ' + (selectedFlows().length > 0 ? selectorLabel : 'Select flows')"
-                matTooltip="Flow"
                 (click)="toggleDropdown($event)"
             >
                 <span class="add-to-flow-dialog__selector-text">
@@ -70,7 +69,6 @@
                             type="text"
                             placeholder="Search flows..."
                             aria-label="Search flows"
-                            matTooltip="Search flows"
                             [ngModel]="searchQuery()"
                             (ngModelChange)="searchQuery.set($event)"
                             (keydown.enter)="$event.preventDefault()"
@@ -90,6 +88,7 @@
                                     [class.add-to-flow-dialog__item--checked]="flow.checked"
                                     role="checkbox"
                                     [attr.aria-checked]="flow.checked"
+                                    appTooltipOnOverflow=".add-to-flow-dialog__item-name"
                                     [matTooltip]="flow.name"
                                     (click)="toggleFlow(flow)"
                                 >
@@ -118,7 +117,6 @@
         <button
             type="button"
             class="add-to-flow-dialog__btn add-to-flow-dialog__btn--cancel"
-            matTooltip="Cancel"
             (click)="onCancel()"
         >
             Cancel
@@ -126,7 +124,6 @@
         <button
             type="button"
             class="add-to-flow-dialog__btn add-to-flow-dialog__btn--confirm"
-            matTooltip="Add"
             [disabled]="!hasChanges"
             (click)="onConfirm()"
         >

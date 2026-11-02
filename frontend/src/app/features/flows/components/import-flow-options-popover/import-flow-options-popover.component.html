@@ -36,7 +36,6 @@
                         class="toggle-btn"
                         [class.text-active]="!settings().preserveUuids"
                         [attr.aria-pressed]="!settings().preserveUuids"
-                        matTooltip="Preserve Flow UUIDs: No"
                         (click)="setPreserveUuids(false)"
                     >
                         No
@@ -46,7 +45,6 @@
                         class="toggle-btn"
                         [class.text-active]="settings().preserveUuids"
                         [attr.aria-pressed]="settings().preserveUuids"
-                        matTooltip="Preserve Flow UUIDs: Yes"
                         (click)="setPreserveUuids(true)"
                     >
                         Yes
@@ -76,7 +74,6 @@
                             class="toggle-btn"
                             [class.text-active]="!settings().replaceExisting"
                             [attr.aria-pressed]="!settings().replaceExisting"
-                            matTooltip="Replace existing: No"
                             (click)="setReplaceExisting(false)"
                         >
                             No
@@ -86,7 +83,6 @@
                             class="toggle-btn"
                             [class.text-active]="settings().replaceExisting"
                             [attr.aria-pressed]="settings().replaceExisting"
-                            matTooltip="Replace existing: Yes"
                             (click)="setReplaceExisting(true)"
                         >
                             Yes
@@ -117,7 +113,6 @@
                     class="toggle-btn"
                     [class.text-active]="!settings().importLabels"
                     [attr.aria-pressed]="!settings().importLabels"
-                    matTooltip="Import labels: No"
                     (click)="setImportLabels(false)"
                 >
                     No
@@ -127,7 +122,6 @@
                     class="toggle-btn"
                     [class.text-active]="settings().importLabels"
                     [attr.aria-pressed]="settings().importLabels"
-                    matTooltip="Import labels: Yes"
                     (click)="setImportLabels(true)"
                 >
                     Yes
@@ -139,7 +133,6 @@
             <button
                 type="button"
                 class="popover__reset"
-                matTooltip="Reset to defaults"
                 (click)="resetDefaults()"
             >
                 Reset to defaults

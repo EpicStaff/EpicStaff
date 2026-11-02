@@ -22,7 +22,7 @@ import {
     ListComponent,
     ListRowComponent,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { isFocusLost } from '@shared/utils';
 import { filter, switchMap } from 'rxjs';
@@ -43,6 +43,7 @@ import { DocumentsStorageService } from '../../../../../services/documents-stora
         ListComponent,
         ListRowComponent,
         MatTooltipModule,
+        TooltipOnOverflowDirective,
         HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,

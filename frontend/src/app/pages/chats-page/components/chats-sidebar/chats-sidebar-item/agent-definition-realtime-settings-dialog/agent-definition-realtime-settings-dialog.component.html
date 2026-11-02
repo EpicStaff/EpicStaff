@@ -212,7 +212,6 @@
             <button
                 class="btn close"
                 type="button"
-                matTooltip="Cancel"
                 (click)="onCancel()"
             >
                 Cancel
@@ -221,7 +220,6 @@
             <button
                 class="btn create"
                 type="button"
-                matTooltip="Save"
                 [disabled]="!submitting() && settingsForm()?.invalid"
                 [attr.aria-disabled]="submitting()"
                 [class.disabled]="submitting() || settingsForm()?.invalid"

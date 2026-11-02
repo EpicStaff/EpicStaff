@@ -1,11 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 
 import { EfTable, EfTableColumn } from '../../models/flow-assistant.model';
 
 @Component({
     selector: 'app-flow-assistant-table',
-    imports: [MatTooltip],
+    imports: [],
     templateUrl: './flow-assistant-table.component.html',
     styleUrls: ['./flow-assistant-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

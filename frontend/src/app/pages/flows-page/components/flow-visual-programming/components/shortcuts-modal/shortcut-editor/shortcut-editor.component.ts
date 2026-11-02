@@ -12,7 +12,6 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { ButtonComponent } from '@shared/components';
 import { ShortcutParams } from '@shared/models';
 
@@ -54,7 +53,7 @@ let nextEditorId = 0;
 
 @Component({
     selector: 'app-shortcut-editor',
-    imports: [MatTooltip, ButtonComponent, ShortcutPickerComponent],
+    imports: [ButtonComponent, ShortcutPickerComponent],
     templateUrl: './shortcut-editor.component.html',
     styleUrl: './shortcut-editor.component.scss',
     host: { '(keydown)': 'onKeydown($event)', '(focusin)': 'onFocusIn($event)' },

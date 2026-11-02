@@ -132,14 +132,12 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                                 (ngModelChange)="searchTerm.set($event)"
                                 placeholder="Search models..."
                                 aria-label="Search models"
-                                matTooltip="Search models"
                                 (click)="$event.stopPropagation()"
                             />
                             <button
                                 *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
                                 type="button"
                                 class="create-btn"
-                                [matTooltip]="createButtonLabel()"
                                 (click)="onCreateLlm()"
                             >
                                 {{ createButtonLabel() }}
@@ -152,7 +150,6 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                                 <button
                                     type="button"
                                     class="deselect-option"
-                                    matTooltip="Clear"
                                     (click)="deselectConfig()"
                                 >
                                     <i class="ti ti-x"></i>

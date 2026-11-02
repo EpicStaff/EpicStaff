@@ -31,7 +31,7 @@ import {
     HelpTooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { EnterSubmitDirective } from '@shared/directives';
+import { EnterSubmitDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { filter, Observable } from 'rxjs';
 
@@ -78,6 +78,7 @@ interface LibraryRowGroup {
         AppSvgIconComponent,
         MatTooltipModule,
         EnterSubmitDirective,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './venv-dialog.component.html',
     styleUrls: ['./venv-dialog.component.scss'],
@@ -196,11 +197,6 @@ export class VenvDialogComponent {
 
     cancel(): void {
         this.dialogRef.close(null);
-    }
-
-    /** The field's name, and its whole value, which the narrow cell may cut. */
-    protected cellTooltip(fieldName: string, value: string): string {
-        return value ? `${fieldName}: ${value}` : fieldName;
     }
 
     protected versionErrorMessage(row: FormGroup<LibraryRowGroup>): string | null {

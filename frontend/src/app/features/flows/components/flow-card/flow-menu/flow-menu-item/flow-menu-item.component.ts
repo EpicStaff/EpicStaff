@@ -1,10 +1,9 @@
 import { NgClass } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 
 @Component({
     selector: 'app-flow-menu-item',
-    imports: [NgClass, MatTooltip],
+    imports: [NgClass],
     templateUrl: './flow-menu-item.component.html',
     styleUrls: ['./flow-menu-item.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

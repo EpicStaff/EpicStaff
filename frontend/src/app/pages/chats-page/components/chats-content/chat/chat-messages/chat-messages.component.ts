@@ -1,6 +1,5 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, signal } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, JsonViewerComponent } from '@shared/components';
 import { MarkdownComponent } from 'ngx-markdown';
 
@@ -19,7 +18,7 @@ export interface GroupedMessage {
 
 @Component({
     selector: 'app-chat-messages',
-    imports: [CommonModule, MarkdownComponent, JsonViewerComponent, HasToolOutputPipe, AppSvgIconComponent, MatTooltip],
+    imports: [CommonModule, MarkdownComponent, JsonViewerComponent, HasToolOutputPipe, AppSvgIconComponent],
     templateUrl: './chat-messages.component.html',
     styleUrls: ['./chat-messages.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

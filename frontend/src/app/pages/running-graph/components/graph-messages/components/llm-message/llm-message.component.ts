@@ -1,6 +1,5 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CopyButtonComponent } from '@shared/components';
 import { MarkdownComponent } from 'ngx-markdown';
 
@@ -8,7 +7,7 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
 
 @Component({
     selector: 'app-llm-message',
-    imports: [MatTooltip, CommonModule, MarkdownComponent, AppSvgIconComponent, CopyButtonComponent],
+    imports: [CommonModule, MarkdownComponent, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="session-message llm-flow-container">
             <!-- LLM Message Header with Toggle -->
@@ -32,7 +31,6 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                     <button
                         type="button"
                         class="message-toggle"
-                        matTooltip="LLM Response"
                         [attr.aria-expanded]="isMessageExpanded"
                     >
                         LLM Response
@@ -53,7 +51,6 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                             type="button"
                             class="section-heading"
                             [attr.aria-expanded]="isResponseExpanded"
-                            matTooltip="Response"
                             (click)="toggleResponseSection()"
                         >
                             <app-svg-icon
@@ -79,7 +76,6 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                                     <button
                                         type="button"
                                         class="toggle-button"
-                                        [matTooltip]="isCollapsed ? 'Show more' : 'Show less'"
                                         (click)="toggleCollapse()"
                                     >
                                         {{ isCollapsed ? 'Show more' : 'Show less' }}

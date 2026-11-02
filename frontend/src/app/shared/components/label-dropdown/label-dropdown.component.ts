@@ -28,6 +28,7 @@ import { LabelColor, LabelTreeNode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
 import { filter } from 'rxjs';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../buttons';
 import { CheckboxComponent } from '../checkbox/checkbox.component';
@@ -59,6 +60,7 @@ interface FlatLabelNode {
         LabelColorPickerComponent,
         CheckboxComponent,
         MatTooltipModule,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './label-dropdown.component.html',
     styleUrls: ['./label-dropdown.component.scss'],

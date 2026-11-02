@@ -21,7 +21,6 @@
                         class="provider-btn"
                         [class.active]="selectedProvider() === provider.key"
                         [attr.aria-pressed]="selectedProvider() === provider.key"
-                        [matTooltip]="'Provider: ' + provider.label"
                         [disabled]="isEditMode() && selectedProvider() !== provider.key"
                         (click)="selectProvider(provider.key)"
                     >

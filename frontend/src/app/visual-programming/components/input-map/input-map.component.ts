@@ -135,7 +135,6 @@ export interface InputMapKeyChanges {
                                         formControlName="key"
                                         placeholder="Function Argument Name"
                                         aria-label="Function argument name"
-                                        matTooltip="Function argument name"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                         (keydown.enter)="onEnterKey($event, i)"
@@ -148,7 +147,6 @@ export interface InputMapKeyChanges {
                                         formControlName="value"
                                         placeholder="Domain Variable Name"
                                         aria-label="Domain variable name"
-                                        matTooltip="Domain variable name"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                         role="combobox"
@@ -187,7 +185,6 @@ export interface InputMapKeyChanges {
                         #addButton
                         type="button"
                         class="add-pair-btn"
-                        matTooltip="Add Input"
                         (click)="addPair()"
                     >
                         <app-svg-icon
@@ -215,7 +212,6 @@ export interface InputMapKeyChanges {
                                         formControlName="key"
                                         placeholder="Function Argument Name"
                                         aria-label="Function argument name"
-                                        matTooltip="Function argument name"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                     />
@@ -227,7 +223,6 @@ export interface InputMapKeyChanges {
                                         formControlName="value"
                                         placeholder="Test value"
                                         aria-label="Test value"
-                                        matTooltip="Test value"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                     />
@@ -254,7 +249,6 @@ export interface InputMapKeyChanges {
                     #addButton
                     type="button"
                     class="add-pair-btn"
-                    matTooltip="Add Input"
                     (click)="addTestVariable()"
                 >
                     <i class="ti ti-plus"></i> Add Input
@@ -269,7 +263,6 @@ export interface InputMapKeyChanges {
                     <button
                         type="button"
                         class="btn-secondary"
-                        matTooltip="Clear Variables"
                         (click)="onClearAll()"
                     >
                         Clear Variables

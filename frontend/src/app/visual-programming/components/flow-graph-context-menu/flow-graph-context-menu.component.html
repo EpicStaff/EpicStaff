@@ -19,7 +19,6 @@
                 type="text"
                 placeholder="Search..."
                 aria-label="Search nodes"
-                matTooltip="Search nodes"
                 (input)="onSearchInput($event)"
                 [value]="searchTerm()"
             />
@@ -32,7 +31,6 @@
                         type="button"
                         [class.active]="item.type === selectedMenu()"
                         [attr.aria-pressed]="item.type === selectedMenu()"
-                        [matTooltip]="'Node list: ' + item.label"
                         (click)="onSelectMenu(item.type)"
                     >
                         {{ item.label }}

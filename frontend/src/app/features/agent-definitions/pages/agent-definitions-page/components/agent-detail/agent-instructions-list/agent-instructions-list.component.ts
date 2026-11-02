@@ -18,7 +18,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml } from '@shared/utils';
 
@@ -53,6 +53,7 @@ import {
         CdkDropList,
         HasPermissionDirective,
         MatTooltipModule,
+        TooltipOnOverflowDirective,
         ReactiveFormsModule,
     ],
     templateUrl: './agent-instructions-list.component.html',

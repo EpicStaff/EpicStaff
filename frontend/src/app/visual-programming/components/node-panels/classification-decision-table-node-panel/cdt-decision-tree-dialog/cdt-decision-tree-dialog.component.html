@@ -58,7 +58,6 @@
                     class="cdt-tree__fit"
                     type="button"
                     (click)="fit()"
-                    matTooltip="Fit"
                 >
                     Fit
                 </button>
@@ -89,7 +88,6 @@
                             class="cdt-tree__search-input"
                             type="text"
                             placeholder="Search item..."
-                            matTooltip="Search blocks"
                             aria-label="Search blocks"
                             aria-controls="cdt-tree-search-panel"
                             [attr.aria-expanded]="isSearchOpen()"
@@ -161,7 +159,6 @@
                                 class="cdt-tree__explain-all-run"
                                 type="button"
                                 [attr.aria-label]="copy.explainAll"
-                                [matTooltip]="copy.explainAll"
                                 [attr.aria-disabled]="explainAllRunning() || null"
                                 [attr.aria-busy]="explainAllRunning()"
                                 (click)="explainAll()"
@@ -202,7 +199,6 @@
                             <button
                                 class="cdt-tree__explain-all-stop"
                                 type="button"
-                                [matTooltip]="copy.explainAllStop"
                                 (click)="onStopExplainAllClick()"
                             >
                                 {{ copy.explainAllStop }}
@@ -358,6 +354,7 @@
                 class="cdt-tree-explain-menu__item"
                 type="button"
                 role="menuitemradio"
+                appTooltipOnOverflow=".cdt-tree-explain-menu__name"
                 [matTooltip]="option.modelName ?? option.label"
                 [disabled]="!option.hasApiKey"
                 [attr.aria-checked]="option.id === explainLlmConfig()"

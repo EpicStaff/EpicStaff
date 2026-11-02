@@ -8,6 +8,7 @@
         type="button"
         class="agent-role"
         [attr.aria-current]="isSelected() ? 'true' : null"
+        appTooltipOnOverflow
         [matTooltip]="title"
     >
         {{ title }}

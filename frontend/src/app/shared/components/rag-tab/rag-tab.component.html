@@ -46,7 +46,6 @@
                     <button
                         type="button"
                         class="metadata-status__retry"
-                        matTooltip="Retry"
                         (click)="retryMetadataFetch()"
                     >
                         Retry
@@ -357,7 +356,6 @@
                                         type="button"
                                         class="advanced-settings__summary"
                                         [attr.aria-expanded]="globalAdvancedOpen()"
-                                        matTooltip="Advanced settings"
                                         (click)="globalAdvancedOpen.set(!globalAdvancedOpen())"
                                     >
                                         <app-svg-icon
@@ -602,7 +600,6 @@
                                         type="button"
                                         class="advanced-settings__summary"
                                         [attr.aria-expanded]="driftAdvancedOpen()"
-                                        matTooltip="Advanced settings"
                                         (click)="driftAdvancedOpen.set(!driftAdvancedOpen())"
                                     >
                                         <app-svg-icon

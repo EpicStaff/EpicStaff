@@ -1,5 +1,4 @@
 import { Component, computed, input, model, output } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, JsonEditorComponent } from '@shared/components';
 
 import { TestPayloadTextCheck } from '../../../../utils/test-run';
@@ -15,7 +14,7 @@ export const TEST_PAYLOAD_SECTION_TITLE = 'Test Input Payload';
  */
 @Component({
     selector: 'app-test-payload-section',
-    imports: [MatTooltip, AppSvgIconComponent, JsonEditorComponent],
+    imports: [AppSvgIconComponent, JsonEditorComponent],
     templateUrl: './test-payload-section.component.html',
     styleUrls: ['./test-payload-section.component.scss'],
     host: {

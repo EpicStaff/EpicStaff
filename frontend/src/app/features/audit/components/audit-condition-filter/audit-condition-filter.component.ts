@@ -11,7 +11,6 @@ import {
     viewChild,
     viewChildren,
 } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import {
@@ -36,7 +35,6 @@ import { AuditSelectComponent } from '../audit-select/audit-select.component';
         CdkDrag,
         CdkDragHandle,
         AppSvgIconComponent,
-        MatTooltip,
     ],
     templateUrl: './audit-condition-filter.component.html',
     styleUrl: './audit-condition-filter.component.scss',

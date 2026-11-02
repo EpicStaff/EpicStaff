@@ -14,7 +14,7 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
-import { LabelDropDirective } from '@shared/directives';
+import { LabelDropDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { getLabelColorOption, LabelDto, ResourceCode } from '@shared/models';
 
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
@@ -31,6 +31,7 @@ import { ToolCardMenuComponent } from './tool-card-menu.component';
         OverlayModule,
         ToolCardMenuComponent,
         LabelDropDirective,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './tool-card.component.html',
     styleUrls: ['./tool-card.component.scss'],

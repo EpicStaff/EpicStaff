@@ -10,6 +10,7 @@ import {
     LoadingSpinnerComponent,
     TableRow,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { filter, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -50,6 +51,7 @@ const COLUMNS: AppTableColumnDef[] = [
         PluginBadgeComponent,
         PluginIconComponent,
         MatTooltip,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './plugins-admin-page.component.html',
     styleUrl: './plugins-admin-page.component.scss',

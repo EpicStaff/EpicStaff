@@ -1,13 +1,12 @@
 import { Location } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
 
 @Component({
     selector: 'app-not-found-page',
-    imports: [MatTooltip],
+    imports: [],
     templateUrl: './not-found-page.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrl: './not-found-page.component.scss',

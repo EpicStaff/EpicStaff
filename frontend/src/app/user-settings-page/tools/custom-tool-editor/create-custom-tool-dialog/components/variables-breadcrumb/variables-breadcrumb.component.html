@@ -26,7 +26,7 @@
                 class="breadcrumb-item"
                 [class.breadcrumb-item--clickable]="!last"
                 [attr.aria-current]="last ? 'location' : null"
-                [matTooltip]="crumb.label || rootLabel"
+                [matTooltip]="crumb.label ? '' : rootLabel"
                 [attr.aria-label]="crumb.label ? null : rootLabel"
                 (click)="!last && crumbClick.emit(i)"
             >

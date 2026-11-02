@@ -48,7 +48,6 @@
                         class="filter-trigger__toggle"
                         aria-haspopup="dialog"
                         [attr.aria-expanded]="filterMenuOpen()"
-                        matTooltip="Filter"
                         (click)="toggleFilterMenu()"
                     >
                         <app-svg-icon
@@ -106,7 +105,6 @@
                     [class.active]="sortMenuOpen() || sortOrder() !== 'default'"
                     aria-haspopup="menu"
                     [attr.aria-expanded]="sortMenuOpen()"
-                    [matTooltip]="sortTriggerLabel()"
                     (click)="toggleSortMenu()"
                 >
                     <app-svg-icon

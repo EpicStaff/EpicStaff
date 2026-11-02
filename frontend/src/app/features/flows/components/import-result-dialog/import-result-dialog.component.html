@@ -107,7 +107,6 @@
                             <button
                                 type="button"
                                 class="summary-item"
-                                [matTooltip]="getEntityTypeLabel(entityType)"
                                 (click)="scrollToEntityGroup(entityType)"
                             >
                                 @if (isInlineSvgIcon(entityType)) {
@@ -172,7 +171,6 @@
                                 type="button"
                                 class="entity-type-toggle"
                                 [attr.aria-expanded]="!isGroupCollapsed(entityType)"
-                                [matTooltip]="getEntityTypeLabel(entityType)"
                                 (click)="toggleGroup(entityType)"
                             >
                                 <app-icon

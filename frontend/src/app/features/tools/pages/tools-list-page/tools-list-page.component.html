@@ -163,7 +163,6 @@
                         data-selection-safe
                         aria-haspopup="menu"
                         [attr.aria-expanded]="bulkMenuOpen()"
-                        matTooltip="Bulk Actions"
                         [class.active]="bulkMenuOpen()"
                         (click)="toggleBulkMenu()"
                         (mouseenter)="onBulkButtonEnter()"
@@ -220,7 +219,6 @@
                             #filterToggle
                             type="button"
                             class="filter-trigger__toggle"
-                            matTooltip="Filter"
                             [attr.aria-expanded]="showFilterSidebar()"
                             (click)="toggleFilterSidebar()"
                         >
@@ -260,7 +258,6 @@
                         [class.active]="sortMenuOpen() || activeSort() !== 'default'"
                         aria-haspopup="menu"
                         [attr.aria-expanded]="sortMenuOpen()"
-                        [matTooltip]="sortTriggerLabel()"
                         (click)="toggleSortMenu()"
                     >
                         <app-svg-icon

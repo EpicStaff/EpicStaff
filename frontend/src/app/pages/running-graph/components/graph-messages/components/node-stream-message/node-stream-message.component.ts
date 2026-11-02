@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import {
@@ -43,7 +42,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
 
 @Component({
     selector: 'app-node-stream-message',
-    imports: [MatTooltip, AppSvgIconComponent, RuntimeNodeLabelPipe],
+    imports: [AppSvgIconComponent, RuntimeNodeLabelPipe],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -75,7 +74,6 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                     <button
                         type="button"
                         class="message-toggle node-name"
-                        [matTooltip]="message().name | runtimeNodeLabel"
                         [attr.aria-expanded]="isExpanded()"
                     >
                         {{ message().name | runtimeNodeLabel }}
@@ -122,7 +120,6 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                                                     type="button"
                                                     class="step-header"
                                                     [attr.aria-expanded]="isStepExpanded(step)"
-                                                    [matTooltip]="getStepSummary(step)"
                                                     (click)="toggleStep(step)"
                                                 >
                                                     <app-svg-icon

@@ -13,7 +13,6 @@
             [class.is-active]="activeSort() === item.value"
             role="menuitemradio"
             [attr.aria-checked]="activeSort() === item.value"
-            [matTooltip]="item.label"
             (click)="onSelect(item.value)"
         >
             <span class="label">{{ item.label }}</span>

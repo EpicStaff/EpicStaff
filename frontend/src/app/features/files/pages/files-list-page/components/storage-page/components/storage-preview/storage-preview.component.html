@@ -30,7 +30,6 @@
                             <button
                                 type="button"
                                 class="storage-preview__breadcrumb storage-preview__breadcrumb--link"
-                                [matTooltip]="crumb"
                                 (click)="breadcrumbClick.emit(breadcrumbs.slice(0, i + 1).join('/'))"
                             >
                                 {{ crumb }}
@@ -98,7 +97,6 @@
                     type="button"
                     role="menuitem"
                     class="storage-preview__context-menu-item"
-                    matTooltip="Download"
                     (click)="onKebabMenuAction('download')"
                 >
                     Download
@@ -108,7 +106,6 @@
                     type="button"
                     role="menuitem"
                     class="storage-preview__context-menu-item"
-                    matTooltip="Copy to..."
                     (click)="onKebabMenuAction('copy')"
                 >
                     Copy to...
@@ -118,7 +115,6 @@
                     type="button"
                     role="menuitem"
                     class="storage-preview__context-menu-item"
-                    matTooltip="Rename"
                     (click)="onKebabMenuAction('rename')"
                 >
                     Rename
@@ -127,7 +123,6 @@
                     type="button"
                     role="menuitem"
                     class="storage-preview__context-menu-item"
-                    matTooltip="View details"
                     (click)="onKebabMenuAction('view-details')"
                 >
                     View details
@@ -138,7 +133,6 @@
                     type="button"
                     role="menuitem"
                     class="storage-preview__context-menu-item"
-                    matTooltip="Delete"
                     (click)="onKebabMenuAction('delete')"
                 >
                     Delete

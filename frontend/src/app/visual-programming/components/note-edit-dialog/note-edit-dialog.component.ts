@@ -69,7 +69,6 @@ export interface NoteEditDialogData {
                             [(ngModel)]="noteContent"
                             placeholder="Add note text..."
                             aria-label="Note text"
-                            matTooltip="Note text"
                             autofocus
                         ></textarea>
                     </div>

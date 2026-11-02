@@ -80,7 +80,6 @@
                     class="time-picker__option"
                     [class.time-picker__option--selected]="slot === timeInput()"
                     [attr.aria-pressed]="slot === timeInput()"
-                    [matTooltip]="slot"
                     (click)="selectSlot(slot)"
                 >
                     {{ slot }}

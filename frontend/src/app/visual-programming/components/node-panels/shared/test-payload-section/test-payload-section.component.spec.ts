@@ -180,11 +180,7 @@ describe('TestPayloadSectionComponent', () => {
             showAction();
             fixture.detectChanges();
 
-            // The tooltip adds a class of its own to the toggle, so each child is told by the class that names it.
-            const children = Array.from<HTMLElement>(fixture.nativeElement.children).map(
-                (child) =>
-                    ['section-toggle', 'editor-card'].find((name) => child.classList.contains(name)) ?? child.className
-            );
+            const children = Array.from<HTMLElement>(fixture.nativeElement.children).map((child) => child.classList[0]);
             expect(children.slice(0, 2)).toEqual(['section-toggle', 'editor-card']);
             expect(fixture.nativeElement.querySelector('.editor-card > button')).toBeNull();
         });

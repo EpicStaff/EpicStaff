@@ -18,7 +18,6 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
 import {
     BlobPreviewComponent,
     FileUploaderComponent,
@@ -71,7 +70,6 @@ interface PreviewState {
         UpperCasePipe,
         ValidationErrorsComponent,
         HasPermissionDirective,
-        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

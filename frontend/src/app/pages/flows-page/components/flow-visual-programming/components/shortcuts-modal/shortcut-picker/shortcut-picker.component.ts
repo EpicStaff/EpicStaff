@@ -13,7 +13,6 @@ import {
     viewChild,
     viewChildren,
 } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 
 export interface PickerOption {
     readonly id: string;
@@ -48,7 +47,6 @@ let nextPickerId = 0;
 
 @Component({
     selector: 'app-shortcut-picker',
-    imports: [MatTooltip],
     templateUrl: './shortcut-picker.component.html',
     styleUrl: './shortcut-picker.component.scss',
 })

@@ -64,7 +64,6 @@
             cdkMenuItem
             type="button"
             class="bulk-select-menu__item"
-            [matTooltip]="menuItemLabel()"
             (cdkMenuItemTriggered)="selectAllToggled.emit()"
             (keydown.escape)="onMenuItemEscape($event)"
         >

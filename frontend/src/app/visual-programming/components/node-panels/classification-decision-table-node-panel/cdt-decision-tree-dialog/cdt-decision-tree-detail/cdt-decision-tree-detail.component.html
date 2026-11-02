@@ -41,7 +41,6 @@
                 <button
                     class="cdt-tree-detail__explain"
                     type="button"
-                    [matTooltip]="copy.explainStep"
                     [attr.aria-disabled]="explainDisabled() || null"
                     [attr.aria-busy]="explanationLoading()"
                     (click)="onExplainClick()"
@@ -106,7 +105,6 @@
                         class="cdt-tree-detail__section-header"
                         type="button"
                         [attr.aria-expanded]="explanationOpen()"
-                        [matTooltip]="copy.explanationHeading"
                         (click)="toggleExplanation()"
                     >
                         <app-svg-icon
@@ -188,7 +186,6 @@
                             class="cdt-tree-detail__section-header"
                             type="button"
                             [attr.aria-expanded]="dataOpen()"
-                            [matTooltip]="detail.heading"
                             (click)="toggleData()"
                         >
                             <app-svg-icon

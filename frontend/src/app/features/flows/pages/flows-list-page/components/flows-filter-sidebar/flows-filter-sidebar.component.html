@@ -29,7 +29,6 @@
             type="button"
             [class.is-active]="activeTab() === 'builder'"
             [attr.aria-pressed]="activeTab() === 'builder'"
-            matTooltip="Builder"
             (click)="setActiveTab('builder')"
         >
             Builder
@@ -44,7 +43,6 @@
             type="button"
             [class.is-active]="activeTab() === 'presets'"
             [attr.aria-pressed]="activeTab() === 'presets'"
-            matTooltip="Presets"
             (click)="setActiveTab('presets')"
         >
             Presets <span class="filter-sidebar__tab-count">({{ presetsCount() }})</span>
@@ -101,7 +99,6 @@
             <button
                 class="filter-sidebar__btn"
                 type="button"
-                matTooltip="Clear Filters"
                 (click)="clearAllFilters()"
             >
                 Clear Filters
@@ -110,7 +107,6 @@
             <button
                 class="filter-sidebar__btn"
                 type="button"
-                matTooltip="Cancel"
                 (click)="cancel()"
             >
                 Cancel
@@ -118,7 +114,6 @@
             <button
                 class="filter-sidebar__btn filter-sidebar__btn--accent"
                 type="button"
-                matTooltip="Create & Apply Preset"
                 (click)="createPreset()"
             >
                 Create & Apply Preset
@@ -126,7 +121,6 @@
             <button
                 class="filter-sidebar__btn filter-sidebar__btn--primary"
                 type="button"
-                matTooltip="Apply Filters"
                 (click)="applyFilters()"
             >
                 Apply Filters

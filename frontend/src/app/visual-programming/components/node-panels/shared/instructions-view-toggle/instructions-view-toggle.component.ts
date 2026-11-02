@@ -6,7 +6,7 @@ export type InstructionsView = 'preview' | 'edit';
 
 @Component({
     selector: 'app-instructions-view-toggle',
-    imports: [MatTooltip, AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
     templateUrl: './instructions-view-toggle.component.html',
     styleUrls: ['./instructions-view-toggle.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

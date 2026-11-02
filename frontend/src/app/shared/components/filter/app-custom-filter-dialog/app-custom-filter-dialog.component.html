@@ -24,7 +24,6 @@
                 type="button"
                 class="scope-tab"
                 [class.active]="scopeKey() === scope.key"
-                [matTooltip]="scope.label"
                 (click)="setScope(scope.key)"
             >
                 <app-svg-icon
@@ -65,7 +64,6 @@
                             <button
                                 type="button"
                                 class="operator-option"
-                                [matTooltip]="operatorLabels[op]"
                                 [class.selected]="op === primaryOperator()"
                                 (click)="selectOperator('primary', op)"
                             >
@@ -93,7 +91,6 @@
                     type="button"
                     class="combinator-btn"
                     [class.active]="combinator() === 'AND'"
-                    matTooltip="AND"
                     (click)="setCombinator('AND')"
                 >
                     AND
@@ -102,7 +99,6 @@
                     type="button"
                     class="combinator-btn"
                     [class.active]="combinator() === 'OR'"
-                    matTooltip="OR"
                     (click)="setCombinator('OR')"
                 >
                     OR
@@ -133,7 +129,6 @@
                             <button
                                 type="button"
                                 class="operator-option"
-                                [matTooltip]="operatorLabels[op]"
                                 [class.selected]="op === secondaryOperator()"
                                 (click)="selectOperator('secondary', op)"
                             >

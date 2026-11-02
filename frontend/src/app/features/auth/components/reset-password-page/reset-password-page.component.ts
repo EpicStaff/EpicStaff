@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
-import { MatTooltip } from '@angular/material/tooltip';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
     AppSvgIconComponent,
@@ -27,7 +26,6 @@ type PageState = 'invalid-token' | 'set-password' | 'success';
     styleUrls: ['./reset-password-page.component.scss'],
     imports: [
         RouterLink,
-        MatTooltip,
         ReactiveFormsModule,
         AppSvgIconComponent,
         ButtonComponent,

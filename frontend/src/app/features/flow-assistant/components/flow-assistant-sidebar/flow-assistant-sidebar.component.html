@@ -29,6 +29,7 @@
                         type="button"
                         class="session-row__title"
                         [attr.aria-current]="currentConversationId() === session.id ? 'true' : null"
+                        appTooltipOnOverflow
                         [matTooltip]="sessionTitle(session, i)"
                     >
                         {{ sessionTitle(session, i) }}

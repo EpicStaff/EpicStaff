@@ -1,11 +1,10 @@
 import { NgClass } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 @Component({
     selector: 'app-review-status-badge',
-    imports: [NgClass, AppSvgIconComponent, MatTooltip],
+    imports: [NgClass, AppSvgIconComponent],
     templateUrl: './review-status-badge.component.html',
     styleUrls: ['./review-status-badge.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

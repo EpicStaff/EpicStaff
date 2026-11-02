@@ -23,7 +23,6 @@
         class="tree-item all-items-item"
         [class.active]="activeLabelFilter() === 'all'"
         [attr.aria-pressed]="activeLabelFilter() === 'all'"
-        [matTooltip]="allItemsLabel()"
         (click)="selectAll()"
     >
         <app-svg-icon
@@ -323,7 +322,6 @@
         class="tree-item unlabeled-item"
         [class.active]="activeLabelFilter() === 'unlabeled'"
         [attr.aria-pressed]="activeLabelFilter() === 'unlabeled'"
-        matTooltip="Unlabeled"
         (click)="selectUnlabeled()"
     >
         <app-svg-icon

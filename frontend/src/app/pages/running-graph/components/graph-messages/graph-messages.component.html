@@ -101,7 +101,6 @@
                                         class="breadcrumbs-search-input"
                                         placeholder="Search subflow"
                                         aria-label="Search subflow"
-                                        matTooltip="Search subflow"
                                         [attr.tabindex]="rootView.breadcrumbSearchExpanded ? null : -1"
                                         [value]="rootView.breadcrumbSearchTerm"
                                         (input)="onBreadcrumbSearch(rootView.rootKey, $any($event.target).value)"
@@ -123,7 +122,6 @@
                                         <button
                                             type="button"
                                             class="breadcrumb-button"
-                                            [matTooltip]="crumb.label"
                                             (click)="onBreadcrumbClick(rootView.rootKey, crumb.index)"
                                         >
                                             {{ crumb.label }}

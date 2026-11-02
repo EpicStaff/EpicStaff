@@ -12,7 +12,6 @@
                     type="text"
                     placeholder="Search every field, every level..."
                     aria-label="Search every field"
-                    matTooltip="Search every field"
                     [value]="appliedSearchText()"
                     (input)="onSearchInput(searchInput.value)"
                     (keydown.enter)="applySearch(searchInput.value)"
@@ -21,7 +20,6 @@
                     #filtersToggle
                     class="audit-browser__tool-btn"
                     type="button"
-                    matTooltip="Filters"
                     aria-controls="audit-filters-panel"
                     [attr.aria-expanded]="isFiltersPanelOpen() && !viewedValue()"
                     [class.is-active]="isFiltersPanelOpen()"
@@ -40,7 +38,6 @@
                     class="audit-browser__tool-btn"
                     type="button"
                     [class.is-active]="areColumnsExpanded()"
-                    [matTooltip]="areColumnsExpanded() ? 'Collapse All Rows' : 'Expand All Rows'"
                     (click)="setColumnsExpanded(!areColumnsExpanded())"
                 >
                     {{ areColumnsExpanded() ? 'Collapse All Rows' : 'Expand All Rows' }}
@@ -49,7 +46,6 @@
                     class="audit-browser__tool-btn"
                     type="button"
                     [disabled]="!hasCollapsibleRows()"
-                    [matTooltip]="areAllRowsExpanded() ? 'Collapse Tree' : 'Expand Tree'"
                     (click)="toggleAllRows()"
                 >
                     {{ areAllRowsExpanded() ? 'Collapse Tree' : 'Expand Tree' }}
@@ -313,7 +309,6 @@
                         class="audit-pager__nav"
                         type="button"
                         [attr.aria-disabled]="!canGoNewer()"
-                        matTooltip="Newer page"
                         (click)="goToNewerPage()"
                     >
                         ‹ Newer
@@ -322,7 +317,6 @@
                         class="audit-pager__nav audit-pager__nav--primary"
                         type="button"
                         [attr.aria-disabled]="!canGoOlder()"
-                        matTooltip="Older page"
                         (click)="goToOlderPage()"
                     >
                         Older ›

@@ -126,7 +126,6 @@
                                     type="button"
                                     class="drp_picker-option"
                                     [class.drp_picker-option--active]="$index === leftMonthIndex()"
-                                    [matTooltip]="m"
                                     (click)="pickMonth('left', $index)"
                                 >
                                     {{ m }}
@@ -216,7 +215,6 @@
                                     type="button"
                                     class="drp_picker-option"
                                     [class.drp_picker-option--active]="$index === rightMonthIndex()"
-                                    [matTooltip]="m"
                                     (click)="pickMonth('right', $index)"
                                 >
                                     {{ m }}
@@ -300,7 +298,6 @@
             <button
                 type="button"
                 class="drp_preset"
-                matTooltip="Today"
                 (click)="applyPreset('today')"
             >
                 Today
@@ -308,7 +305,6 @@
             <button
                 type="button"
                 class="drp_preset"
-                matTooltip="Last 7 days"
                 (click)="applyPreset('last7')"
             >
                 Last 7 days
@@ -316,7 +312,6 @@
             <button
                 type="button"
                 class="drp_preset"
-                matTooltip="This month"
                 (click)="applyPreset('thisMonth')"
             >
                 This month
@@ -327,7 +322,6 @@
             <button
                 type="button"
                 class="drp_clear"
-                matTooltip="Clear"
                 (click)="onClear()"
             >
                 Clear
@@ -335,7 +329,6 @@
             <button
                 type="button"
                 class="drp_select"
-                matTooltip="Select"
                 [disabled]="!rangeStart()"
                 (click)="onSelect()"
             >

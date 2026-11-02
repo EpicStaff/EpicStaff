@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-section-header',
-    imports: [MatTooltip, AppSvgIconComponent, HasPermissionDirective],
+    imports: [MatTooltip, AppSvgIconComponent, HasPermissionDirective, TooltipOnOverflowDirective],
     templateUrl: './section-header.component.html',
     styleUrls: ['./section-header.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

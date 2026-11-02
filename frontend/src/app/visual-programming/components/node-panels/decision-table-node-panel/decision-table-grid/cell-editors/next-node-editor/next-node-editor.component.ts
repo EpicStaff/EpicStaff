@@ -47,7 +47,6 @@ interface NextNodeEditorParams extends ICellEditorParams {
                     type="button"
                     class="nne-clear"
                     (click)="select('')"
-                    matTooltip="Clear"
                 >
                     Clear
                 </button>

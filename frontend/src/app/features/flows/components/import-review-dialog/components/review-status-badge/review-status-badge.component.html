@@ -4,7 +4,6 @@
         class="status-badge"
         [ngClass]="reviewed() ? 'status-reviewed' : 'status-needs-review'"
         [attr.aria-pressed]="reviewed()"
-        [matTooltip]="label()"
         (click)="onToggle($event)"
     >
         <app-svg-icon

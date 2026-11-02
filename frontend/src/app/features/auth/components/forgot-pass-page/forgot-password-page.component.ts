@@ -2,7 +2,6 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
 import {
     AppSvgIconComponent,
@@ -31,7 +30,6 @@ const SECONDS_PER_MINUTE = 60;
     styleUrls: ['./forgot-password-page.component.scss'],
     imports: [
         RouterLink,
-        MatTooltip,
         ReactiveFormsModule,
         AppSvgIconComponent,
         ButtonComponent,

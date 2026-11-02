@@ -1,7 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
 import { finalize } from 'rxjs';
 
@@ -17,14 +16,7 @@ import { RolesService } from '../../../services/admin/roles.service';
 
 @Component({
     selector: 'app-workspace-main',
-    imports: [
-        StatCardComponent,
-        ButtonComponent,
-        OrgCardComponent,
-        AppSvgIconComponent,
-        LoadingSpinnerComponent,
-        MatTooltip,
-    ],
+    imports: [StatCardComponent, ButtonComponent, OrgCardComponent, AppSvgIconComponent, LoadingSpinnerComponent],
     templateUrl: './main-tab.component.html',
     styleUrls: ['./main-tab.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

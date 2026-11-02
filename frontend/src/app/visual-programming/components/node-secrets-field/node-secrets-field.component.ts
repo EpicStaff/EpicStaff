@@ -12,7 +12,6 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     BinnedSecretNoteComponent,
@@ -29,7 +28,7 @@ import { ToastService } from '../../../services/notifications';
  *  Telegram node panels instead of duplicating the trigger+dropdown wiring in each one. */
 @Component({
     selector: 'app-node-secrets-field',
-    imports: [MatTooltip, AppSvgIconComponent, BinnedSecretNoteComponent, HelpTooltipComponent, MultiSelectComponent],
+    imports: [AppSvgIconComponent, BinnedSecretNoteComponent, HelpTooltipComponent, MultiSelectComponent],
     templateUrl: './node-secrets-field.component.html',
     styleUrls: ['./node-secrets-field.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

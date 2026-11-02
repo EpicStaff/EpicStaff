@@ -157,7 +157,6 @@
                                     type="button"
                                     class="action-dropdown-panel__item"
                                     role="menuitem"
-                                    matTooltip="Restore"
                                     (click)="restoreVersion(version, $event)"
                                 >
                                     Restore
@@ -166,7 +165,6 @@
                                     type="button"
                                     class="action-dropdown-panel__item"
                                     role="menuitem"
-                                    matTooltip="Create flow from this"
                                     (click)="createFlowFromVersion(version, $event)"
                                 >
                                     Create flow from this
@@ -175,7 +173,6 @@
                                     type="button"
                                     class="action-dropdown-panel__item"
                                     role="menuitem"
-                                    matTooltip="Rename"
                                     (click)="startEdit(version, 'name')"
                                 >
                                     Rename
@@ -184,7 +181,6 @@
                                     type="button"
                                     class="action-dropdown-panel__item"
                                     role="menuitem"
-                                    matTooltip="Change Description"
                                     (click)="startEdit(version, 'description')"
                                 >
                                     Change Description
@@ -194,7 +190,6 @@
                                     type="button"
                                     class="action-dropdown-panel__item action-dropdown-panel__item--danger"
                                     role="menuitem"
-                                    matTooltip="Delete"
                                     (click)="deleteVersion(version, $event)"
                                 >
                                     Delete
@@ -225,7 +220,6 @@
             <button
                 type="button"
                 class="restore-version-btn"
-                matTooltip="Restore This Version"
                 [disabled]="!selectedVersionId()"
                 (click)="restoreSelectedVersion()"
             >

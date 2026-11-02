@@ -19,7 +19,7 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { isFocusLost } from '@shared/utils';
 
@@ -31,7 +31,14 @@ import { getFileExtension } from '../../../../../../utils/storage-file.utils';
 
 @Component({
     selector: 'app-storage-tree',
-    imports: [NgTemplateOutlet, CdkTrapFocus, AppSvgIconComponent, MatTooltipModule, HasPermissionDirective],
+    imports: [
+        NgTemplateOutlet,
+        CdkTrapFocus,
+        AppSvgIconComponent,
+        MatTooltipModule,
+        HasPermissionDirective,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './storage-tree.component.html',
     styleUrls: ['./storage-tree.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -24,6 +24,7 @@
                     <button
                         type="button"
                         class="files__name files__name--button"
+                        appTooltipOnOverflow
                         [matTooltip]="item.file_name"
                     >
                         {{ item.file_name }}
@@ -31,6 +32,7 @@
                 } @else {
                     <span
                         class="files__name"
+                        appTooltipOnOverflow
                         [matTooltip]="item.file_name"
                     >
                         {{ item.file_name }}

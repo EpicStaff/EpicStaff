@@ -1,10 +1,9 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 @Component({
     selector: 'app-warning-messages',
-    imports: [AppSvgIconComponent, MatTooltip],
+    imports: [AppSvgIconComponent],
     template: `
         @if (messages && messages.length > 0) {
             <div class="session-message warning-container">
@@ -28,7 +27,6 @@ import { AppSvgIconComponent } from '@shared/components';
                         <button
                             type="button"
                             class="message-toggle"
-                            matTooltip="Warnings"
                             [attr.aria-expanded]="isExpanded"
                         >
                             Warnings

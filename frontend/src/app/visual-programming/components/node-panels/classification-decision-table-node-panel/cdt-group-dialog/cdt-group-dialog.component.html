@@ -30,7 +30,6 @@
                 type="text"
                 autocomplete="off"
                 placeholder="Enter group name"
-                matTooltip="Group Name"
                 [ngModel]="name()"
                 (ngModelChange)="name.set($event)"
                 (keydown)="onNameKeydown($event)"
@@ -74,7 +73,6 @@
             type="button"
             class="btn btn--secondary"
             (click)="cancel()"
-            matTooltip="Cancel"
         >
             Cancel
         </button>
@@ -83,7 +81,6 @@
             class="btn btn--primary"
             [disabled]="isSaveDisabled()"
             (click)="save()"
-            matTooltip="Save Changes"
         >
             Save Changes
         </button>

@@ -3,17 +3,19 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { FullLLMConfig, FullRealtimeConfig } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 
+import { TooltipOnOverflowDirective } from '../../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-llm-model-item',
-    imports: [AppSvgIconComponent, MatTooltip],
+    imports: [AppSvgIconComponent, MatTooltip, TooltipOnOverflowDirective],
     template: `
         <button
             type="button"
             class="model-item"
             [class.selected]="isSelected"
             [attr.aria-pressed]="isSelected"
+            appTooltipOnOverflow=".model-text"
             [matTooltip]="config.modelDetails?.name || 'Unknown Model'"
             (click)="onSelect()"
         >

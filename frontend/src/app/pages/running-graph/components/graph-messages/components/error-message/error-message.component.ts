@@ -1,13 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CopyButtonComponent } from '@shared/components';
 
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-error-message',
-    imports: [MatTooltip, CommonModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="session-message error-container">
             <div
@@ -30,7 +29,6 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                     <button
                         type="button"
                         class="message-toggle"
-                        matTooltip="Error"
                         [attr.aria-expanded]="isMessageExpanded"
                     >
                         Error
@@ -51,7 +49,6 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                             type="button"
                             class="section-heading"
                             [attr.aria-expanded]="isErrorExpanded"
-                            matTooltip="Error Details"
                             (click)="toggleErrorSection($event)"
                         >
                             <app-svg-icon
@@ -77,7 +74,6 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                                     <button
                                         type="button"
                                         class="toggle-button"
-                                        [matTooltip]="isCollapsed ? 'Show more' : 'Show less'"
                                         (click)="toggleCollapse($event)"
                                     >
                                         {{ isCollapsed ? 'Show more' : 'Show less' }}
@@ -94,7 +90,6 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                                 type="button"
                                 class="section-heading"
                                 [attr.aria-expanded]="isDataExpanded"
-                                matTooltip="Data"
                                 (click)="toggleDataSection($event)"
                             >
                                 <app-svg-icon

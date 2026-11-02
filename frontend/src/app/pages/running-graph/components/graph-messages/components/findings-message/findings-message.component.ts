@@ -1,6 +1,5 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import {
@@ -12,7 +11,7 @@ import {
 
 @Component({
     selector: 'app-findings-message',
-    imports: [MatTooltip, CommonModule, AppSvgIconComponent],
+    imports: [CommonModule, AppSvgIconComponent],
     templateUrl: './findings-message.component.html',
     styleUrls: ['./findings-message.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

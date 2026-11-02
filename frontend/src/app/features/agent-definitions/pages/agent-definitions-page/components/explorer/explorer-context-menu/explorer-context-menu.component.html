@@ -20,7 +20,6 @@
                 role="menuitem"
                 [class.explorer-menu__item--disabled]="item.disabled"
                 [disabled]="item.disabled"
-                [matTooltip]="item.label"
                 (click)="onAction(item.id, item.disabled)"
             >
                 {{ item.label }}

@@ -1,15 +1,12 @@
 import { NgClass } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, input, Output } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
-
-import { ContentTextDirective } from '../../directives/content-text.directive';
 
 @Component({
     selector: 'app-tab-button',
     templateUrl: './tab-button.component.html',
     styleUrls: ['./tab-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NgClass, ContentTextDirective, MatTooltip],
+    imports: [NgClass],
 })
 export class TabButtonComponent {
     @Input() mod: 'sm' | 'md' = 'md';

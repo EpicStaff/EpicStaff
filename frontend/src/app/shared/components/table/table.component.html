@@ -28,7 +28,6 @@
                             type="button"
                             class="col-label-group col-label-group--clickable"
                             [class.col-label-group--active]="col.headerIconActive"
-                            [matTooltip]="col.label ?? ''"
                             (click)="onHeaderIconClick(col.key, $event)"
                         >
                             <span class="col-label">{{ col.label }}</span>

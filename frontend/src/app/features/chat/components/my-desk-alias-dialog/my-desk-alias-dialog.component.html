@@ -40,7 +40,6 @@
             formControlName="alias"
             [id]="inputId"
             [placeholder]="binding.operator_display_name"
-            matTooltip="Name visitors see"
             [class.alias-dialog__input--invalid]="!!error()"
             [attr.aria-invalid]="!!error()"
             [attr.aria-describedby]="error() ? hintId + ' ' + errorId : hintId"

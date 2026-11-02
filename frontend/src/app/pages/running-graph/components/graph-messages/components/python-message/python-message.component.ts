@@ -1,6 +1,5 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
 import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-execution-data.pipe';
@@ -8,14 +7,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
 @Component({
     selector: 'app-python-message',
-    imports: [
-        MatTooltip,
-        CommonModule,
-        JsonViewerComponent,
-        FormatExecutionDataPipe,
-        AppSvgIconComponent,
-        CopyButtonComponent,
-    ],
+    imports: [CommonModule, JsonViewerComponent, FormatExecutionDataPipe, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="session-message python-flow-container">
             <!-- Python Message Header with Toggle -->
@@ -39,7 +31,6 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                     <button
                         type="button"
                         class="message-toggle"
-                        matTooltip="Python Code Execution"
                         [attr.aria-expanded]="isMessageExpanded"
                     >
                         Python Code Execution
@@ -61,7 +52,6 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 type="button"
                                 class="section-heading"
                                 [attr.aria-expanded]="isCodeExpanded"
-                                matTooltip="Python Code"
                                 (click)="toggleSection('code')"
                             >
                                 <app-svg-icon
@@ -93,7 +83,6 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 type="button"
                                 class="section-heading"
                                 [attr.aria-expanded]="isInputExpanded"
-                                matTooltip="Input"
                                 (click)="toggleSection('input')"
                             >
                                 <app-svg-icon
@@ -133,7 +122,6 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 type="button"
                                 class="section-heading"
                                 [attr.aria-expanded]="isOutputExpanded"
-                                matTooltip="Output"
                                 (click)="toggleSection('output')"
                             >
                                 <app-svg-icon
@@ -161,7 +149,6 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                             <button
                                                 type="button"
                                                 class="toggle-button"
-                                                [matTooltip]="isCollapsed ? 'Show more' : 'Show less'"
                                                 (click)="toggleCollapse()"
                                             >
                                                 {{ isCollapsed ? 'Show more' : 'Show less' }}
@@ -180,7 +167,6 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 type="button"
                                 class="section-heading"
                                 [attr.aria-expanded]="isErrorExpanded"
-                                matTooltip="Error"
                                 (click)="toggleSection('error')"
                             >
                                 <app-svg-icon
@@ -211,7 +197,6 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                             type="button"
                             class="section-heading"
                             [attr.aria-expanded]="isRawDataExpanded"
-                            matTooltip="Raw Execution Data"
                             (click)="toggleSection('rawData')"
                         >
                             <app-svg-icon

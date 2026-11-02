@@ -12,6 +12,7 @@ import {
 import { MatTooltip } from '@angular/material/tooltip';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { SearchComponent } from '../search/search.component';
 import { SelectComponent, SelectItem } from '../select/select.component';
@@ -57,6 +58,7 @@ function isNodeType(value: string): value is NodeType {
         NgTemplateOutlet,
         SearchComponent,
         SelectComponent,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './flow-node-list.component.html',
     styleUrls: ['./flow-node-list.component.scss'],

@@ -1,5 +1,4 @@
 import { Component, computed, input, model, signal } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { AuditEnumOption, AuditValuesFilter } from '../../models/audit-filter.models';
@@ -9,7 +8,7 @@ import { AuditOperatorSelectComponent } from '../audit-operator-select/audit-ope
 
 @Component({
     selector: 'app-audit-flow-filter',
-    imports: [AuditOperatorSelectComponent, AuditCheckboxEnumComponent, AppSvgIconComponent, MatTooltip],
+    imports: [AuditOperatorSelectComponent, AuditCheckboxEnumComponent, AppSvgIconComponent],
     templateUrl: './audit-flow-filter.component.html',
     styleUrl: './audit-flow-filter.component.scss',
 })

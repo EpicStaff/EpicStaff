@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, input, viewChild } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 
 import { RAG_STATUS_CONFIG, RAG_TYPE_CONFIG } from '../../../../../constants/constants';
 import { CollectionDropTargetDirective } from '../../../../../directives/collection-drop-target.directive';
@@ -10,7 +11,7 @@ import { GetCollectionRequest } from '../../../../../models/collection.model';
     selector: 'app-collection',
     templateUrl: './collection.component.html',
     styleUrls: ['./collection.component.scss'],
-    imports: [MatTooltip, AppSvgIconComponent, CollectionDropTargetDirective],
+    imports: [MatTooltip, TooltipOnOverflowDirective, AppSvgIconComponent, CollectionDropTargetDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionComponent {

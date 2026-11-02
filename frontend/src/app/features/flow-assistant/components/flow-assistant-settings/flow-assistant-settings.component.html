@@ -34,7 +34,6 @@
                 <select
                     id="llm-config-select"
                     class="form-select"
-                    matTooltip="LLM Configuration"
                     formControlName="llm_config"
                 >
                     <option [ngValue]="null">— Use default —</option>
@@ -49,7 +48,6 @@
             <button
                 type="submit"
                 class="btn btn--primary"
-                [matTooltip]="saveLabel()"
                 [disabled]="!isDirty || isSaving()"
             >
                 {{ saveLabel() }}

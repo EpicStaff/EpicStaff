@@ -16,7 +16,6 @@
         [class.selector__btn--placeholder]="!selectedRag()"
         [disabled]="disabled()"
         [attr.aria-expanded]="open()"
-        [matTooltip]="label() || placeholder()"
         (click)="toggle()"
     >
         @if (loading()) {
@@ -59,7 +58,6 @@
             type="button"
             class="dropdown__option"
             [class.dropdown__option--selected]="value() === null"
-            matTooltip="No RAG"
             (click)="select(null)"
         >
             <span class="dropdown__name dropdown__name--accent">No RAG</span>
@@ -72,6 +70,7 @@
                 [class.dropdown__option--selected]="
                     rag.rag_id === value()?.rag_id && rag.rag_type === value()?.rag_type
                 "
+                appTooltipOnOverflow=".dropdown__name"
                 [matTooltip]="getRagTypeName(rag.rag_type)"
                 (click)="select(rag)"
             >

@@ -1,5 +1,3 @@
-@use '../../../../../../../styles/header-action-buttons';
-
 $radius: 4px;
 
 // ── Container ──────────────────────────────────────────────────────────────────
@@ -356,10 +354,6 @@ $radius: 4px;
 }
 
 // ── Template buttons ──────────────────────────────────────────────────────────
-.eb-template-host {
-    @include header-action-buttons.tooltip-host;
-}
-
 .eb-template-btn {
     padding: 4px 12px;
     font-size: 0.8125rem;

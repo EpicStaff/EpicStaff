@@ -11,7 +11,6 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import {
     AppSvgIconComponent,
@@ -35,7 +34,6 @@ import { OrganizationsStorageService } from '../../../role-base-access/services/
         CustomInputComponent,
         AppSvgIconComponent,
         ValidationErrorsComponent,
-        MatTooltip,
     ],
     templateUrl: './onboarding-page.component.html',
     styleUrls: ['./onboarding-page.component.scss'],

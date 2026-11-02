@@ -20,6 +20,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { RAG_TYPE_LABELS } from '@shared/constants';
 import { filter } from 'rxjs';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
@@ -36,7 +37,7 @@ export interface KnowledgeSelectorCollection {
 
 @Component({
     selector: 'app-knowledge-selector',
-    imports: [CdkTrapFocus, MatTooltip, TooltipComponent, AppSvgIconComponent],
+    imports: [CdkTrapFocus, MatTooltip, TooltipComponent, AppSvgIconComponent, TooltipOnOverflowDirective],
     templateUrl: './knowledge-selector.component.html',
     styleUrls: ['./knowledge-selector.component.scss'],
     providers: [

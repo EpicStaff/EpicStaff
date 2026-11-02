@@ -17,7 +17,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
-import { EnterSubmitDirective } from '@shared/directives';
+import { EnterSubmitDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { forkJoin } from 'rxjs';
 
 import { FlowsApiService } from '../../../flows/services/flows-api.service';
@@ -41,7 +41,14 @@ interface FlowOption {
 
 @Component({
     selector: 'app-add-to-flow-dialog',
-    imports: [FormsModule, CdkTrapFocus, AppSvgIconComponent, MatTooltipModule, EnterSubmitDirective],
+    imports: [
+        FormsModule,
+        CdkTrapFocus,
+        AppSvgIconComponent,
+        MatTooltipModule,
+        EnterSubmitDirective,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './add-to-flow-dialog.component.html',
     styleUrls: ['./add-to-flow-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -9,7 +9,7 @@
                     role="checkbox"
                     [attr.aria-checked]="isChecked(section.id)"
                     [attr.aria-disabled]="section.locked || null"
-                    [matTooltip]="section.locked ? section.filterLabel + ': always shown' : section.filterLabel"
+                    [matTooltip]="section.locked ? 'Always shown' : ''"
                     (click)="toggle(section)"
                 >
                     <span

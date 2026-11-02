@@ -14,7 +14,6 @@ import {
     viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatTooltip } from '@angular/material/tooltip';
 import { Router, RouterLink } from '@angular/router';
 import {
     AuthorshipDetailsDialogService,
@@ -57,7 +56,6 @@ import { flowsBulkDeleteGroup } from '../../../../utils/flows-bulk-delete.util';
         RouterLink,
         DragScrollDirective,
         FetchErrorStateComponent,
-        MatTooltip,
     ],
 })
 export class MyFlowsComponent implements AfterViewChecked {
