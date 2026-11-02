@@ -1,7 +1,8 @@
 import { AuditFieldCatalog } from './audit-domain.models';
 import { AuditEnumOption, AuditFilterOp } from './audit-filter.models';
 
-// The actions the recorder writes, then the DRF action names the fallback records most often carry.
+// The actions the recorder writes, then the custom backend actions the fallback records most often carry;
+// generic API creates, updates and deletes are recorded as created, updated and deleted.
 export const USER_ACTION_OPTIONS: AuditEnumOption[] = [
     { value: 'created', label: 'Created' },
     { value: 'updated', label: 'Updated' },
@@ -13,12 +14,8 @@ export const USER_ACTION_OPTIONS: AuditEnumOption[] = [
     { value: 'sign_in_failed', label: 'Sign-in failed' },
     { value: 'signed_out', label: 'Signed out' },
     { value: 'password_reset', label: 'Password reset' },
-    { value: 'create', label: 'create' },
-    { value: 'update', label: 'update' },
-    { value: 'partial_update', label: 'partial_update' },
-    { value: 'destroy', label: 'destroy' },
-    { value: 'copy', label: 'copy' },
-    { value: 'import_entity', label: 'import_entity' },
+    { value: 'copy', label: 'Copy' },
+    { value: 'import_entity', label: 'Import entity' },
 ];
 
 export const USER_ACTION_TEXT_OPERATORS: AuditFilterOp[] = [
@@ -39,7 +36,7 @@ export const USER_ACTION_FIELD_CATALOG: AuditFieldCatalog = {
     domain: 'user_actions',
     builderFields: [
         { kind: 'select', field: 'action', label: 'Action', options: USER_ACTION_OPTIONS },
-        { kind: 'text', field: 'actor_email', label: 'Who', operators: USER_ACTION_TEXT_OPERATORS },
+        { kind: 'text', field: 'actor_email', label: 'User', operators: USER_ACTION_TEXT_OPERATORS },
         { kind: 'text', field: 'target_type', label: 'Target type', operators: USER_ACTION_TYPE_OPERATORS },
         { kind: 'text', field: 'target_name', label: 'Target name', operators: USER_ACTION_TEXT_OPERATORS },
         { kind: 'text', field: 'parent_type', label: 'Parent type', operators: USER_ACTION_TYPE_OPERATORS },

@@ -127,7 +127,7 @@ describe('AuditFiltersPanelComponent for user actions', () => {
 
         expect(texts(builder, '.filter-group__title')).toEqual([
             'Action',
-            'Who',
+            'User',
             'Target type',
             'Target name',
             'Parent type',

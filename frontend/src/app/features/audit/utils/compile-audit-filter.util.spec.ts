@@ -292,7 +292,7 @@ describe('user actions filter', () => {
 
         expect(chips.map(({ key, label, value }) => ({ key, label, value }))).toEqual([
             { key: 'action', label: 'Action', value: 'is any of Permanently deleted' },
-            { key: 'actor_email', label: 'Who', value: 'contains ann' },
+            { key: 'actor_email', label: 'User', value: 'contains ann' },
         ]);
     });
 

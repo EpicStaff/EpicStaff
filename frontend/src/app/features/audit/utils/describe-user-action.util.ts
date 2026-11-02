@@ -1,13 +1,7 @@
 import { AuditUserAction } from '../models/audit-user-action.models';
+import { USER_ACTION_OPTIONS } from '../models/audit-user-action-filter-options';
 
-// How the recorder's own actions read in a sentence; any other action is a DRF action name from the fallback.
-const ACTION_PHRASES: Record<string, string> = {
-    permanently_deleted: 'permanently deleted',
-    signed_in: 'signed in',
-    sign_in_failed: 'sign-in failed',
-    signed_out: 'signed out',
-    password_reset: 'reset password',
-};
+const ACTION_LABELS = new Map(USER_ACTION_OPTIONS.map((option) => [option.value, option.label]));
 
 function quoted(name: string): string {
     return `"${name}"`;
@@ -19,15 +13,24 @@ function describeObject(type: string | null, id: string | null, name: string | n
     return [type, identity].filter(Boolean).join(' ');
 }
 
-// One sentence for the What column, e.g. `updated python node "Parse invoice" in flow "Billing"`.
-export function describeUserAction(event: AuditUserAction): string {
-    const verb = ACTION_PHRASES[event.action] ?? event.action.replaceAll('_', ' ');
-    const target =
-        event.action === 'renamed' && event.previous_name && event.target_name
-            ? [event.target_type, `${quoted(event.previous_name)} → ${quoted(event.target_name)}`]
-                  .filter(Boolean)
-                  .join(' ')
-            : describeObject(event.target_type, event.target_id, event.target_name);
+// The filter's label for a known action; any other action is a backend action name, e.g. `import_entity` → "Import entity".
+export function userActionLabel(action: string): string {
+    const humanized = action.replaceAll('_', ' ');
+    return ACTION_LABELS.get(action) ?? humanized.charAt(0).toUpperCase() + humanized.slice(1);
+}
+
+// `python node "Parse invoice"`, or `flow "Old" → "New"` for a rename; empty when the action has no target
+export function userActionTarget(event: AuditUserAction): string {
+    if (event.action === 'renamed' && event.previous_name && event.target_name) {
+        return [event.target_type, `${quoted(event.previous_name)} → ${quoted(event.target_name)}`]
+            .filter(Boolean)
+            .join(' ');
+    }
+    return describeObject(event.target_type, event.target_id, event.target_name);
+}
+
+// `in flow "Billing"`, or empty when the record has no parent
+export function userActionParent(event: AuditUserAction): string {
     const parent = describeObject(event.parent_type, event.parent_id, event.parent_name);
-    return [verb, target, parent && `in ${parent}`].filter(Boolean).join(' ');
+    return parent && `in ${parent}`;
 }

@@ -1,7 +1,11 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { FormsModule } from '@angular/forms';
+import { JsonEditorComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 import { of } from 'rxjs';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
@@ -33,6 +37,40 @@ const renamedFlow: AuditUserAction = {
     route: null,
 };
 
+const editedNode: AuditUserAction = {
+    ...renamedFlow,
+    id: 'action-2',
+    actor_api_key_name: null,
+    action: 'import_entity',
+    target_type: 'python node',
+    target_id: '12',
+    target_name: 'Parse invoice',
+    previous_name: null,
+    parent_type: 'flow',
+    parent_id: '4',
+    parent_name: 'Billing',
+};
+
+const signIn: AuditUserAction = {
+    ...renamedFlow,
+    id: 'action-3',
+    actor_api_key_name: null,
+    action: 'sign_in_failed',
+    target_type: null,
+    target_id: null,
+    target_name: null,
+    previous_name: null,
+};
+
+const parentOnly: AuditUserAction = {
+    ...signIn,
+    id: 'action-4',
+    action: 'updated',
+    parent_type: 'flow',
+    parent_id: '4',
+    parent_name: 'Billing',
+};
+
 function setup(canExport = true) {
     TestBed.configureTestingModule({
         providers: [
@@ -48,6 +86,11 @@ function setup(canExport = true) {
                 },
             },
         ],
+    });
+    // Monaco does not run in jsdom: render the value viewer's editor as an unknown custom element instead.
+    TestBed.overrideComponent(JsonEditorComponent, {
+        remove: { imports: [MonacoEditorModule, FormsModule] },
+        add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
     });
     const fixture = TestBed.createComponent(AuditUserActionsBrowserComponent);
     const http = TestBed.inject(HttpTestingController);
@@ -69,26 +112,62 @@ function buttonWithText(root: HTMLElement, text: string): HTMLButtonElement {
     return button;
 }
 
+function cellText(element: Element): string | undefined {
+    return element.textContent?.replace(/\s+/g, ' ').trim();
+}
+
+// the text a screen reader reads: the content minus anything hidden from it
+function spokenText(element: Element): string | undefined {
+    const copy = element.cloneNode(true) as Element;
+    copy.querySelectorAll('[aria-hidden="true"]').forEach((hidden) => hidden.remove());
+    return cellText(copy);
+}
+
 async function render(fixture: ComponentFixture<AuditUserActionsBrowserComponent>): Promise<void> {
     fixture.detectChanges();
     await fixture.whenStable();
 }
 
 describe('AuditUserActionsBrowserComponent', () => {
-    it('shows when, who and what for each action', async () => {
+    it('shows date, user, action and target for each action', async () => {
         const { fixture, http, root } = setup();
-        flushSearch(http, [renamedFlow]);
+        flushSearch(http, [renamedFlow, editedNode, signIn, parentOnly]);
         await render(fixture);
 
         const headers = Array.from(root.querySelectorAll('th')).map((cell) => cell.textContent?.trim());
-        const cells = Array.from(root.querySelectorAll('tbody tr td')).map((cell) =>
-            cell.textContent?.replace(/\s+/g, ' ').trim()
-        );
-        expect(headers).toEqual(['When', 'Who', 'What']);
-        expect(cells.slice(1)).toEqual([
-            'ann@example.com via API key Deploy bot',
-            'renamed flow "Invoices v2" → "Billing"',
+        const rows = Array.from(root.querySelectorAll('tbody tr')).map((row) => {
+            const [, user, action, target] = Array.from(row.querySelectorAll('td'));
+            return [cellText(user), cellText(action), spokenText(target)];
+        });
+        expect(headers).toEqual(['Date', 'User', 'Action', 'Target']);
+        // the target and parent lines are separate blocks, so the spoken text must keep them apart
+        expect(rows).toEqual([
+            ['ann@example.com via API key Deploy bot', 'Renamed', 'flow "Invoices v2" → "Billing"'],
+            ['ann@example.com', 'Import entity', 'python node "Parse invoice", in flow "Billing"'],
+            ['ann@example.com', 'Sign-in failed', 'No target'],
+            ['ann@example.com', 'Updated', 'No target, in flow "Billing"'],
         ]);
+        expect(cellText(root.querySelectorAll('tbody tr')[2].querySelector('td:last-child button')!)).toBe(
+            '—No target'
+        );
+    });
+
+    it.each([
+        [0, 'User action - Import entity python node "Parse invoice"'],
+        [1, 'User action - Sign-in failed'],
+    ])('opens row %i from its target cell', async (rowIndex, title) => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, [editedNode, signIn]);
+        await render(fixture);
+
+        const targets = Array.from(root.querySelectorAll<HTMLButtonElement>('tbody tr td:last-child button'));
+        targets[rowIndex].click();
+        await render(fixture);
+
+        expect(targets.map((button) => button.getAttribute('aria-expanded'))).toEqual(
+            targets.map((_button, index) => String(index === rowIndex))
+        );
+        expect(root.querySelector('app-audit-value-viewer')?.textContent).toContain(title);
     });
 
     it('searches user actions with the typed text and no match scope', async () => {

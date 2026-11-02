@@ -1,5 +1,5 @@
 import { AuditUserAction } from '../models/audit-user-action.models';
-import { describeUserAction } from './describe-user-action.util';
+import { userActionLabel, userActionParent, userActionTarget } from './describe-user-action.util';
 
 const baseAction: AuditUserAction = {
     id: 'action-1',
@@ -21,49 +21,50 @@ const baseAction: AuditUserAction = {
     route: null,
 };
 
-describe('describeUserAction', () => {
+describe('userActionLabel', () => {
+    it.each([
+        ['updated', 'Updated'],
+        ['permanently_deleted', 'Permanently deleted'],
+        ['sign_in_failed', 'Sign-in failed'],
+        ['import_entity', 'Import entity'],
+        ['upload_stream', 'Upload stream'],
+        ['register_webhook', 'Register webhook'],
+    ])('labels %s as %s', (action, expected) => {
+        expect(userActionLabel(action)).toBe(expected);
+    });
+});
+
+describe('userActionTarget', () => {
     it.each<[string, Partial<AuditUserAction>, string]>([
         [
-            'a change inside a parent',
-            {
-                action: 'updated',
-                target_type: 'python node',
-                target_id: '12',
-                target_name: 'Parse invoice',
-                parent_type: 'flow',
-                parent_id: '4',
-                parent_name: 'Billing',
-            },
-            'updated python node "Parse invoice" in flow "Billing"',
+            'a named target',
+            { target_type: 'python node', target_id: '12', target_name: 'Parse invoice' },
+            'python node "Parse invoice"',
         ],
         [
             'a rename',
             { action: 'renamed', target_type: 'flow', target_name: 'Billing', previous_name: 'Invoices v2' },
-            'renamed flow "Invoices v2" → "Billing"',
-        ],
-        ['a sign-in', { action: 'signed_in' }, 'signed in'],
-        ['a failed sign-in', { action: 'sign_in_failed' }, 'sign-in failed'],
-        [
-            'a permanent delete',
-            { action: 'permanently_deleted', target_type: 'agent', target_name: 'Old summariser' },
-            'permanently deleted agent "Old summariser"',
+            'flow "Invoices v2" → "Billing"',
         ],
         [
-            'a fallback record',
-            { action: 'copy', target_type: 'flow', target_name: 'Billing', route: 'POST api/graphs/<pk>/copy/' },
-            'copy flow "Billing"',
+            'a rename that kept no old name',
+            { action: 'renamed', target_type: 'flow', target_name: 'Billing' },
+            'flow "Billing"',
         ],
-        [
-            'a fallback action named with underscores',
-            { action: 'import_entity', target_type: 'flow', target_name: 'Billing' },
-            'import entity flow "Billing"',
-        ],
-        [
-            'a target known only by its id',
-            { action: 'deleted', target_type: 'tool', target_id: '9' },
-            'deleted tool #9',
-        ],
+        ['a target known only by its id', { action: 'deleted', target_type: 'tool', target_id: '9' }, 'tool #9'],
+        ['a target known only by its type', { target_type: 'profile' }, 'profile'],
+        ['no target', { action: 'signed_in' }, ''],
     ])('describes %s', (_case, change, expected) => {
-        expect(describeUserAction({ ...baseAction, ...change })).toBe(expected);
+        expect(userActionTarget({ ...baseAction, ...change })).toBe(expected);
+    });
+});
+
+describe('userActionParent', () => {
+    it.each<[string, Partial<AuditUserAction>, string]>([
+        ['a named parent', { parent_type: 'flow', parent_id: '4', parent_name: 'Billing' }, 'in flow "Billing"'],
+        ['a parent known only by its id', { parent_type: 'flow', parent_id: '4' }, 'in flow #4'],
+        ['no parent', { target_type: 'flow', target_name: 'Billing' }, ''],
+    ])('describes %s', (_case, change, expected) => {
+        expect(userActionParent({ ...baseAction, ...change })).toBe(expected);
     });
 });

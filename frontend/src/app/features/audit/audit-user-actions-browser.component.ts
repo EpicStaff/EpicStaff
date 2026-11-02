@@ -29,7 +29,7 @@ import { AuditApiService } from './services/audit-api.service';
 import { buildTimeZoneLabel } from './utils/audit-time-zone-label.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
 import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
-import { describeUserAction } from './utils/describe-user-action.util';
+import { userActionLabel, userActionParent, userActionTarget } from './utils/describe-user-action.util';
 
 const DEFAULT_PAGE_SIZE = 20;
 const MIN_PAGE_SIZE = 10;
@@ -42,7 +42,9 @@ const PANEL_WIDTH_OPTIONS = { defaultWidth: 480, minWidth: 360, maxWidth: 960 } 
 
 interface UserActionRow {
     event: AuditUserAction;
-    description: string;
+    actionLabel: string;
+    target: string;
+    parent: string;
 }
 
 @Component({
@@ -81,8 +83,18 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     private readonly appliedFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
 
     protected readonly rows = computed<UserActionRow[]>(() =>
-        this.events().map((event) => ({ event, description: describeUserAction(event) }))
+        this.events().map((event) => ({
+            event,
+            actionLabel: userActionLabel(event.action),
+            target: userActionTarget(event),
+            parent: userActionParent(event),
+        }))
     );
+    // the viewer's title: `Renamed flow "Old" → "New"`, or just the action when it has no target
+    protected readonly viewedRowName = computed(() => {
+        const row = this.viewedRow();
+        return row ? [row.actionLabel, row.target].filter(Boolean).join(' ') : '';
+    });
     protected readonly appliedChips = computed(() => describeAuditFilter(this.appliedFilter(), this.catalog));
     protected readonly appliedSearchText = computed(() => this.appliedFilter().searchText);
     protected readonly highlightTerm = computed(() => this.appliedSearchText().trim());

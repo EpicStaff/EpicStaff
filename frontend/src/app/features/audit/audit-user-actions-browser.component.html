@@ -71,15 +71,17 @@
                 } @else {
                     <table class="audit-table">
                         <colgroup>
-                            <col class="user-actions__when" />
-                            <col class="user-actions__who" />
+                            <col class="user-actions__date" />
+                            <col class="user-actions__user" />
+                            <col class="user-actions__action" />
                             <col />
                         </colgroup>
                         <thead>
                             <tr>
-                                <th>When</th>
-                                <th>Who</th>
-                                <th>What</th>
+                                <th>Date</th>
+                                <th>User</th>
+                                <th>Action</th>
+                                <th>Target</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -97,7 +99,9 @@
                                             <span class="user-actions__api-key"> via API key {{ apiKeyName }}</span>
                                         }
                                     </td>
+                                    <td>{{ row.actionLabel }}</td>
                                     <td>
+                                        <!-- every row opens from here, so a record with no target still gets the button -->
                                         <button
                                             #rowButton
                                             class="audit-value-cell"
@@ -107,10 +111,27 @@
                                             [class.is-viewed]="viewedRow()?.event.id === row.event.id"
                                             (click)="openRow(rowButton, row)"
                                         >
-                                            <app-audit-highlight
-                                                [text]="row.description"
-                                                [term]="highlightTerm()"
-                                            />
+                                            @if (row.target) {
+                                                <app-audit-highlight
+                                                    class="user-actions__line"
+                                                    [text]="row.target"
+                                                    [term]="highlightTerm()"
+                                                />
+                                            } @else {
+                                                <span class="user-actions__line user-actions__muted">
+                                                    <span aria-hidden="true">—</span>
+                                                    <span class="visually-hidden">No target</span>
+                                                </span>
+                                            }
+                                            @if (row.parent) {
+                                                <!-- the lines are blocks; without it a screen reader runs them together -->
+                                                <span class="visually-hidden">, </span>
+                                                <app-audit-highlight
+                                                    class="user-actions__line user-actions__muted"
+                                                    [text]="row.parent"
+                                                    [term]="highlightTerm()"
+                                                />
+                                            }
                                         </button>
                                     </td>
                                 </tr>
@@ -203,7 +224,7 @@
                         id="audit-value-viewer"
                         class="audit-browser__viewer"
                         field="User action"
-                        [rowName]="viewed.description"
+                        [rowName]="viewedRowName()"
                         [value]="viewed.event | auditJson"
                         (closed)="closeValueViewer()"
                     />
