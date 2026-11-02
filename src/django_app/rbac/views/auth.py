@@ -272,8 +272,12 @@ class TokenIntrospectView(APIView):
         except (InvalidToken, AuthenticationFailed, TokenError):
             return Response({"active": False}, status=status.HTTP_200_OK)
 
+        # A deactivated organization grants its members nothing, so realtime,
+        # which admits a connection only to a listed org, must not see it.
         org_ids = list(
-            OrganizationUser.objects.filter(user_id=user.pk).values_list("org_id", flat=True)
+            OrganizationUser.objects.filter(user_id=user.pk, org__is_active=True).values_list(
+                "org_id", flat=True
+            )
         )
 
         return Response(
