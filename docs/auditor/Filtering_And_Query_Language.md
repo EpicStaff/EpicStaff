@@ -47,6 +47,11 @@ top-level `and` (never `or`/`not` — see `src/auditor/app/services/duration_fil
 The `user_actions` domain (`/api/audit/user_actions/...`, catalog in
 `src/auditor/app/domains/user_actions/fields.py`) has its own field set. It has no
 `match_scope` and no computed `duration`; the operators and query language are the same.
+`action` has no fixed vocabulary: it holds a `UserAction` value
+(`src/shared/models/audit/user_action_audit.py`), or a custom DRF action name such as
+`copy` for a fallback record. A delete is one of three: `moved_to_recycle_bin` (the user
+can restore it), `deleted` (no recycle bin, gone at once) and `permanently_deleted`
+(removed from the recycle bin).
 `number` is the short record number from one deployment-wide sequence: increasing, with
 gaps. Records stored before it existed have none: `equals`, `in` and the range ops never
 match them, `not_equal` and `not_in` always do.

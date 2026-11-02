@@ -26,8 +26,8 @@ two front-ends for the identical filter tree, never both in one request.
 
 SEARCH_REQUEST_EXAMPLES = {
     "deletions (query)": {
-        "summary": "Everything that was deleted",
-        "value": {"query": 'action = "deleted"'},
+        "summary": "Everything deleted at once, moved to the recycle bin or deleted from it",
+        "value": {"query": 'action in ("deleted", "moved_to_recycle_bin", "permanently_deleted")'},
     },
     "renames of a flow (filters)": {
         "summary": "Renames of flows, as an AST",

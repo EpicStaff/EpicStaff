@@ -4,10 +4,17 @@ from .base import BaseAuditEvent
 
 
 class UserAction(StrEnum):
+    """What a user did to a resource.
+
+    `MOVED_TO_RECYCLE_BIN` is a delete the user can undo (`RESTORED`) until the item is
+    `PERMANENTLY_DELETED`; `DELETED` is a delete with no recycle bin, gone at once.
+    """
+
     CREATED = "created"
     UPDATED = "updated"
     RENAMED = "renamed"
     DELETED = "deleted"
+    MOVED_TO_RECYCLE_BIN = "moved_to_recycle_bin"
     RESTORED = "restored"
     PERMANENTLY_DELETED = "permanently_deleted"
     SIGNED_IN = "signed_in"

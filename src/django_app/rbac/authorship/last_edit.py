@@ -184,6 +184,9 @@ class LastEditTracker:
         """Remember that `instance` is being deleted; a deletion edits its owner.
 
         Call it before the delete: `instance` is described now, while it has its primary key.
+        Only for a delete that removes the row at once, recorded as `deleted`: a row the
+        delete moves to the recycle bin is recorded by DeleteService, so watching it too
+        would record it twice.
         """
         self._add_owner_reference(_owner_reference(instance))
         self._deletions.append(

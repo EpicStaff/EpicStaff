@@ -279,8 +279,9 @@ class StorageFileSync:
         session outputs, surface grants) is hard-deleted: a binned file is
         linked to nothing, and a restore brings it back without its links.
         `user` is recorded as who deleted each recycle-bin entry the batch makes,
-        and each entry's deletion as a user action (not the rows binned under a
-        folder). Pass None when no person asked for it: nothing is recorded then.
+        and each entry's move to the recycle bin as a user action (not the rows
+        binned under a folder). Pass None when no person asked for it: nothing is
+        recorded then.
         Returns None when nothing live sits at `path`.
         """
         clean_path = path.rstrip("/")
@@ -307,7 +308,9 @@ class StorageFileSync:
         record_deleter(bin_entries, user, deleted_at=deleted_at)
         if user is not None:
             for entry in bin_entries:
-                record_user_action(action=UserAction.DELETED, org_id=org_id, target=entry)
+                record_user_action(
+                    action=UserAction.MOVED_TO_RECYCLE_BIN, org_id=org_id, target=entry
+                )
         return SoftDeletedSubtree(batch=batch, root_path=root_path)
 
     @staticmethod

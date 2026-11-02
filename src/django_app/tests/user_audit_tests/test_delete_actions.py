@@ -2,14 +2,22 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
-from django.urls import reverse
+from django.urls import get_resolver, reverse
 from django.utils import timezone
 from rest_framework import status
 
+from rbac.authorship import LastEditDestroyViewSetMixin
+from rbac.models import Role
 from tables.models import Edge, Graph, PythonCode, PythonNode, Secret, StorageFile
+from tables.models.base_models import SoftDeleteMixin
+from tables.services.graph_bulk_save_service.registry import (
+    EDGE_DELETE_CONFIGS,
+    NODE_TYPE_REGISTRY,
+)
 from tables.services.recycle_bin import empty_service
 from tables.services.recycle_bin.purge_service import RETENTION_JOB_ACTOR, PurgeService
 from tables.services.secrets import secret_service
+from tables.services.soft_delete import DeleteService
 from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.recycle_bin import StorageRecycleBinService
 from user_audit.context import user_action_context
@@ -72,7 +80,7 @@ def _save_flow(client, flow, capture, **payload):
     assert response.status_code == status.HTTP_200_OK, response.content
 
 
-def test_binning_a_flow_records_one_deleted_not_one_per_node(
+def test_binning_a_flow_records_one_moved_to_recycle_bin_not_one_per_node(
     admin_client, flow, acme, admin_acme, sent_events, django_capture_on_commit_callbacks
 ):
     _python_node(flow, "Fetch invoices")
@@ -82,9 +90,70 @@ def test_binning_a_flow_records_one_deleted_not_one_per_node(
         response = admin_client.delete(f"{FLOWS_URL}{flow.id}/")
 
     assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
+    # One event, and no route: DeleteService recorded it, so the fallback stayed out.
     [event] = sent_events
-    assert _target(event) == ("deleted", "flow", str(flow.id), "Billing flow")
-    assert (event.org_id, event.actor_user_id) == (acme.id, admin_acme.id)
+    assert _target(event) == ("moved_to_recycle_bin", "flow", str(flow.id), "Billing flow")
+    assert (event.org_id, event.actor_user_id, event.route) == (acme.id, admin_acme.id, None)
+
+
+def test_delete_service_records_deleted_for_a_row_it_cannot_bin(
+    rf, acme, admin_acme, sent_events, django_capture_on_commit_callbacks
+):
+    role = Role.objects.create(org=acme, name="Auditor")
+    role_id = role.id
+    request = rf.delete("/api/admin/roles/")
+    request.user = admin_acme
+
+    with user_action_context(request), django_capture_on_commit_callbacks(execute=True):
+        DeleteService.delete(role)
+
+    assert not Role.objects.filter(pk=role_id).exists()
+    [event] = sent_events
+    assert _target(event) == ("deleted", "role", str(role_id), "Auditor")
+
+
+def test_deleting_an_already_binned_flow_records_nothing_and_keeps_the_fallback_out(
+    rf, acme, admin_acme, sent_events, django_capture_on_commit_callbacks
+):
+    # A second delete that lost the race: the first one binned the flow and recorded it.
+    flow = _binned_flow(acme, "Orders")
+    request = rf.delete(f"{FLOWS_URL}{flow.id}/")
+    request.user = admin_acme
+
+    with user_action_context(request) as context, django_capture_on_commit_callbacks(
+        execute=True
+    ):
+        assert flow.delete() is None
+
+    assert sent_events == []
+    assert context.recorded is True
+
+
+def _subclasses(base: type) -> set[type]:
+    direct = set(base.__subclasses__())
+    return direct.union(*(_subclasses(subclass) for subclass in direct))
+
+
+def _last_edit_destroy_models() -> set[type]:
+    # Loading the URLconf imports every view module, so every viewset is a subclass by now.
+    get_resolver().url_patterns
+    return {viewset.queryset.model for viewset in _subclasses(LastEditDestroyViewSetMixin)}
+
+
+@pytest.mark.parametrize(
+    "deleted_model",
+    sorted(
+        _last_edit_destroy_models()
+        | {config.model_class for config in [*EDGE_DELETE_CONFIGS, *NODE_TYPE_REGISTRY]},
+        key=lambda model: model.__name__,
+    ),
+    ids=lambda model: model.__name__,
+)
+def test_rows_the_last_edit_tracker_records_as_deleted_are_never_binned(deleted_model):
+    # The tracker records these deletes as "deleted". A recycle-bin root would be binned
+    # by its REST delete and recorded again by DeleteService, and hard-deleted past the
+    # bin by graph save's queryset delete.
+    assert not issubclass(deleted_model, SoftDeleteMixin)
 
 
 def test_bulk_delete_records_each_picked_flow(
@@ -99,8 +168,8 @@ def test_bulk_delete_records_each_picked_flow(
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert sorted(_target(event) for event in sent_events) == [
-        ("deleted", "flow", str(flows[0].id), "Orders"),
-        ("deleted", "flow", str(flows[1].id), "Refunds"),
+        ("moved_to_recycle_bin", "flow", str(flows[0].id), "Orders"),
+        ("moved_to_recycle_bin", "flow", str(flows[1].id), "Refunds"),
     ]
 
 
@@ -208,7 +277,8 @@ def test_graph_save_deleting_node_records_deleted_node_in_flow(
         deleted={"python_node_ids": [node.id]},
     )
 
-    assert not PythonNode.objects.filter(pk=node.pk).exists()
+    # Gone for good, not binned: so "deleted" is what happened.
+    assert not PythonNode.all_objects.filter(pk=node.pk).exists()
     [event] = sent_events
     assert _target(event) == ("deleted", "python node", str(node.id), "Fetch invoices")
     assert _parent(event) == ("flow", str(flow.id), "Billing flow")
@@ -246,6 +316,7 @@ def test_rest_node_delete_records_deleted_node_in_flow(
         response = admin_client.delete(reverse("pythonnode-detail", args=[node.id]))
 
     assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
+    assert not PythonNode.all_objects.filter(pk=node.pk).exists()
     [event] = sent_events
     assert _target(event) == ("deleted", "python node", str(node.id), "Fetch invoices")
     assert _parent(event) == ("flow", str(flow.id), "Billing flow")
@@ -272,7 +343,7 @@ def _delete_storage_paths(client, paths, capture):
     assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
 
 
-def test_storage_file_delete_records_deleted(
+def test_storage_file_delete_records_moved_to_recycle_bin(
     admin_client, acme, admin_acme, storage_manager, sent_events, django_capture_on_commit_callbacks
 ):
     seed_file(storage_manager._backend, acme.id, "reports/march.pdf", b"pdf")
@@ -281,7 +352,7 @@ def test_storage_file_delete_records_deleted(
 
     binned = StorageFile.deleted_objects.get(org=acme, path="reports/march.pdf")
     [event] = sent_events
-    assert _target(event) == ("deleted", "storage file", str(binned.id), "march.pdf")
+    assert _target(event) == ("moved_to_recycle_bin", "storage file", str(binned.id), "march.pdf")
     assert (event.org_id, event.actor_user_id) == (acme.id, admin_acme.id)
 
 
@@ -296,7 +367,7 @@ def test_storage_folder_delete_records_one_not_per_file(
 
     folder = StorageFile.deleted_objects.get(org=acme, path="reports/")
     [event] = sent_events
-    assert _target(event) == ("deleted", "storage file", str(folder.id), "reports")
+    assert _target(event) == ("moved_to_recycle_bin", "storage file", str(folder.id), "reports")
 
 
 def test_storage_restore_records_restored(

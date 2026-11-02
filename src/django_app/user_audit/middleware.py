@@ -58,7 +58,9 @@ ORGLESS_FAN_OUT_PATH_PREFIXES = ("/api/profile/",)
 # The action recorded for a view with no DRF action name for the method.
 METHOD_ACTIONS = {"POST": "create", "PUT": "update", "PATCH": "update", "DELETE": "destroy"}
 # DRF's generic action names, recorded as the verbs the recorder's own records use, so one
-# change reads the same whichever layer recorded it.
+# change reads the same whichever layer recorded it. A destroy that bins its row never gets
+# here, DeleteService records it as moved_to_recycle_bin: a destroy recorded here deleted
+# its row at once.
 GENERIC_ACTIONS = {
     "create": UserAction.CREATED,
     "update": UserAction.UPDATED,
