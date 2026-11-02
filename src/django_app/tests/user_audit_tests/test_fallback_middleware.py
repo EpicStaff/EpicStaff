@@ -66,7 +66,7 @@ def _checked_request(user, org_id, *, method="post", path="/api/things/"):
     return request
 
 
-def test_fallback_records_custom_action_name(
+def test_fallback_records_a_flow_copy_as_copied(
     admin_client, admin_acme, acme, flow, sent_events, django_capture_on_commit_callbacks
 ):
     with django_capture_on_commit_callbacks(execute=True):
@@ -74,7 +74,7 @@ def test_fallback_records_custom_action_name(
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     [event] = sent_events
-    assert (event.action, event.org_id, event.actor_user_id) == ("copy", acme.id, admin_acme.id)
+    assert (event.action, event.org_id, event.actor_user_id) == ("copied", acme.id, admin_acme.id)
     assert (event.target_type, event.target_id, event.target_name) == (
         "flow",
         str(flow.pk),
@@ -205,6 +205,21 @@ def test_fallback_labels_a_collection_by_its_collection_name(
     )
 
 
+def test_fallback_keeps_a_custom_action_name(
+    admin_acme, acme, sent_events, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        _serve(
+            _checked_request(admin_acme, acme.id),
+            view_class=_CollectionViewSet,
+            actions={"post": "reindex"},
+            route="api/^source-collections/reindex/$",
+        )
+
+    [event] = sent_events
+    assert event.action == "reindex"
+
+
 def test_fallback_records_a_quickstart_apply_in_the_checked_org(
     admin_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
 ):
@@ -248,7 +263,7 @@ def test_fallback_never_labels_a_target_from_another_org(
 
     [event] = sent_events
     assert (event.action, event.target_type, event.target_id, event.target_name) == (
-        "copy",
+        "copied",
         "flow",
         str(other_org_flow.pk),
         None,

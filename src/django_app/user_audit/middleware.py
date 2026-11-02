@@ -70,6 +70,9 @@ GENERIC_ACTIONS = {
     "partial_update": UserAction.UPDATED,
     "destroy": UserAction.DELETED,
 }
+# Custom DRF actions recorded under a recorder verb: a flow, tool or collection copy reads
+# like a storage copy.
+CUSTOM_ACTION_VERBS = {"copy": UserAction.COPIED}
 
 
 class UserActionMiddleware:
@@ -181,7 +184,7 @@ def _record_unhandled_change(
         if actor is None:
             return
         action = action or METHOD_ACTIONS.get(request.method, request.method.lower())
-        action = GENERIC_ACTIONS.get(action, action)
+        action = GENERIC_ACTIONS.get(action) or CUSTOM_ACTION_VERBS.get(action, action)
         route_text = f"{request.method} {url_path_pattern(route)}" if route is not None else None
         org_id = getattr(request, "_rbac_active_org_id", None)
         if org_id is not None:
