@@ -1,3 +1,5 @@
+@use 'audit-layout' as layout;
+
 // a tab of the Audit page fills its body, so the footer stays at the bottom however few rows there are
 :host {
     display: flex;
@@ -57,7 +59,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 20px;
+    height: layout.$audit-toolbar-height;
+    padding: 0 20px;
 }
 
 .audit-browser__search {
