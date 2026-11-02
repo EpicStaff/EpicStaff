@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from utils.logger import logger
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.exceptions import (
@@ -82,6 +83,20 @@ def _require_json_body(request) -> None:
         raise UnsupportedMediaType(request.content_type)
 
 
+def _log_failed_login(request, email) -> None:
+    """Record a refused login with the account it named and the caller's address.
+
+    The address is resolved the way the login throttles resolve it, so the log
+    line matches the bucket that counts the attempt. `!r` keeps a submitted
+    value with line breaks on one log line.
+    """
+    logger.warning(
+        "login_failed account={account!r} address={address}",
+        account=email if isinstance(email, str) else None,
+        address=LoginIpThrottle().get_ident(request),
+    )
+
+
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
     throttle_classes = [LoginThrottle, LoginIpThrottle]
@@ -96,7 +111,11 @@ class LoginView(TokenObtainPairView):
         # before delegating to simplejwt. Wrong-credential errors stay a
         # flat 401 to avoid user-enumeration leaks.
         self._validator.validate_login(request.data)
-        response = super().post(request, *args, **kwargs)
+        try:
+            response = super().post(request, *args, **kwargs)
+        except AuthenticationFailed:
+            _log_failed_login(request, request.data.get("email"))
+            raise
         if response.status_code == 200:
             refresh_token = response.data.pop("refresh", None)
             if refresh_token:
@@ -307,7 +326,13 @@ class SwaggerTokenView(APIView):
                 "password": request.data.get("password"),
             }
         )
-        if not serializer.is_valid():
+        try:
+            is_valid = serializer.is_valid()
+        except AuthenticationFailed:
+            _log_failed_login(request, request.data.get("username"))
+            raise
+        if not is_valid:
+            _log_failed_login(request, request.data.get("username"))
             return Response(
                 {"error": "Invalid credentials"},
                 status=status.HTTP_401_UNAUTHORIZED,
@@ -488,6 +513,7 @@ class ResetUserView(APIView):
             email=cleaned["email"],
             password=cleaned["password"],
             display_name=cleaned["display_name"],
+            actor=request.user,
         )
         tokens = TokenPair.for_user(user)
 
