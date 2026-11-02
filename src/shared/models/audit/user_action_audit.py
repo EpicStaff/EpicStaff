@@ -21,7 +21,7 @@ class UserActionEvent(BaseAuditEvent):
 
     Attributes:
         actor_email: Email at the time of the action; empty for the system API key.
-        action: A UserAction value, or a DRF action name for fallback records.
+        action: A UserAction value, or a custom DRF action name ("copy") for fallback records.
         target_type: Display label such as "python node", "flow" or "member".
         previous_name: Set only when action is "renamed".
         route: Fallback records only, e.g. "POST api/graphs/<pk>/copy/".

@@ -2,7 +2,8 @@
 
 A successful change request (copy, import, version restore, ...) that neither a
 `LastEditTracker` nor an explicit `record_user_action` call described is recorded once,
-with its DRF action name, its route and the object its URL names. The record never reads
+with its action (a custom DRF action keeps its name; DRF's generic ones read like the
+recorder's own verbs), its route and the object its URL names. The record never reads
 the request or response body.
 """
 
@@ -22,6 +23,7 @@ from rbac.views.auth import (
     WsTicketView,
 )
 from rest_framework.permissions import SAFE_METHODS
+from src.shared.models import UserAction
 from tables.views.audit_token_views import AuditTokenView
 from utils.logger import logger
 from utils.request_target import model_of, target_from_url, url_path_pattern
@@ -55,6 +57,14 @@ FALLBACK_EXCLUDED_VIEWS = frozenset(
 ORGLESS_FAN_OUT_PATH_PREFIXES = ("/api/profile/",)
 # The action recorded for a view with no DRF action name for the method.
 METHOD_ACTIONS = {"POST": "create", "PUT": "update", "PATCH": "update", "DELETE": "destroy"}
+# DRF's generic action names, recorded as the verbs the recorder's own records use, so one
+# change reads the same whichever layer recorded it.
+GENERIC_ACTIONS = {
+    "create": UserAction.CREATED,
+    "update": UserAction.UPDATED,
+    "partial_update": UserAction.UPDATED,
+    "destroy": UserAction.DELETED,
+}
 
 
 class UserActionMiddleware:
@@ -162,6 +172,7 @@ def _record_unhandled_change(
         if actor is None:
             return
         action = action or METHOD_ACTIONS.get(request.method, request.method.lower())
+        action = GENERIC_ACTIONS.get(action, action)
         route_text = f"{request.method} {url_path_pattern(route)}" if route is not None else None
         org_id = getattr(request, "_rbac_active_org_id", None)
         if org_id is not None:

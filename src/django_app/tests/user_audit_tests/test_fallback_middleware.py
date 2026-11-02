@@ -151,8 +151,31 @@ def test_fallback_records_a_view_it_does_not_exclude(
         _serve(_checked_request(admin_acme, acme.id, method="delete"), view_class=_PlainChangeView)
 
     [event] = sent_events
-    assert (event.action, event.org_id, event.route) == ("destroy", acme.id, "DELETE api/things/")
+    assert (event.action, event.org_id, event.route) == ("deleted", acme.id, "DELETE api/things/")
     assert event.target_type is None
+
+
+@pytest.mark.parametrize(
+    "method, drf_action, expected_action",
+    [
+        ("post", "create", "created"),
+        ("put", "update", "updated"),
+        ("patch", "partial_update", "updated"),
+        ("delete", "destroy", "deleted"),
+    ],
+)
+def test_fallback_records_a_generic_viewset_action_as_the_recorder_verb(
+    method, drf_action, expected_action, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        _serve(
+            _checked_request(admin_acme, acme.id, method=method),
+            view_class=_CollectionViewSet,
+            actions={method: drf_action},
+        )
+
+    [event] = sent_events
+    assert event.action == expected_action
 
 
 @pytest.mark.parametrize(
@@ -193,7 +216,7 @@ def test_fallback_records_a_quickstart_apply_in_the_checked_org(
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert [(event.action, event.org_id, event.actor_user_id, event.route) for event in sent_events] == [
-        ("create", acme.id, admin_acme.id, "POST api/quickstart/apply/")
+        ("created", acme.id, admin_acme.id, "POST api/quickstart/apply/")
     ]
 
 
@@ -241,7 +264,7 @@ def test_fallback_profile_change_fans_out_to_user_orgs(
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert sorted((event.action, event.org_id, event.route) for event in sent_events) == sorted(
-        [("update", acme.id, "PATCH api/profile/"), ("update", beta.id, "PATCH api/profile/")]
+        [("updated", acme.id, "PATCH api/profile/"), ("updated", beta.id, "PATCH api/profile/")]
     )
 
 
@@ -254,7 +277,7 @@ def test_profile_change_with_a_foreign_org_header_reaches_only_own_orgs(
         response = client.post("/api/profile/tours/quick-start/complete/")
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert [(event.action, event.org_id) for event in sent_events] == [("create", acme.id)]
+    assert [(event.action, event.org_id) for event in sent_events] == [("created", acme.id)]
 
 
 def test_fallback_never_reads_request_body(
