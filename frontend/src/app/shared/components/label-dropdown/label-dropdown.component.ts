@@ -39,8 +39,8 @@ interface FlatLabelNode {
 }
 
 const SINGLE_MODE_SEARCH_FROM = 8;
-/** Single mode: the rows arrow keys walk, in on-screen order — the options, then the "+ New" row. */
-const SINGLE_MODE_ROWS = '.labels-listbox > [role="option"], .labels-list > .add-in-place-btn';
+/** Single mode: the rows arrow keys walk, in on-screen order. */
+const SINGLE_MODE_ROWS = '.labels-listbox > [role="option"]';
 
 /**
  * Feature-agnostic labels picker. Consumers must have LABELS_STORE provided in
@@ -278,7 +278,7 @@ export class LabelDropdownComponent implements OnInit {
     }
 
     /**
-     * Single mode, innermost first: Escape cancels an in-place add (focus back on "+ New"), then clears a
+     * Single mode, innermost first: Escape cancels an add (focus back on "+ New"), then clears a
      * non-empty search it was pressed in, and only then closes the panel.
      */
     private onSingleModeEscape(event: KeyboardEvent): void {
@@ -286,7 +286,7 @@ export class LabelDropdownComponent implements OnInit {
         if (this.addingRoot()) {
             this.cancelAdd();
             afterNextRender(
-                () => this.overlayRef?.overlayElement.querySelector<HTMLElement>('.add-in-place-btn')?.focus(),
+                () => this.overlayRef?.overlayElement.querySelector<HTMLElement>('.add-root-btn')?.focus(),
                 { injector: this.injector }
             );
             return;
@@ -300,7 +300,7 @@ export class LabelDropdownComponent implements OnInit {
     }
 
     /**
-     * Single mode: Up/Down/Home/End walk the rows ("+ New" included); Down from the search box enters
+     * Single mode: Up/Down/Home/End walk the options; Down from the search box enters
      * the list. True when the key was handled. Keys typed into the "new label" input are left alone.
      */
     private moveOptionFocus(event: KeyboardEvent): boolean {
@@ -463,14 +463,12 @@ export class LabelDropdownComponent implements OnInit {
         this.addingChildOf.set(null);
         this.newLabelName.set('');
         this.addLabelError.set('');
-        // Single mode swaps the "+ New" row for the input in place; `autofocus` does not fire there.
-        // It also suggests the next color in turn, so new groups differ unless the user picks one.
+        // `autofocus` does not fire inside the overlay. Single mode also suggests the next color in
+        // turn, so new groups differ unless the user picks one.
         if (this.isSingle()) {
             this.newLabelColor.set(labelColorInTurn(this.labelsStorage.labels().length));
             setTimeout(() =>
-                this.overlayRef?.overlayElement
-                    .querySelector<HTMLInputElement>('.add-label-row--in-place input')
-                    ?.focus()
+                this.overlayRef?.overlayElement.querySelector<HTMLInputElement>('.add-label-row input')?.focus()
             );
         }
     }

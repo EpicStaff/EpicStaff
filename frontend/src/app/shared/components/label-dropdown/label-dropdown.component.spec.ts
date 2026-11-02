@@ -118,25 +118,24 @@ describe('LabelDropdownComponent', () => {
             ]);
         });
 
-        it('shows "+ New" after the listbox, outside it', () => {
+        it('shows only "+ New" in the header, above the listbox, with no title', () => {
             const { panel } = open('single');
 
-            const addButton = panel.querySelector('.add-in-place-btn')!;
+            const header = panel.querySelector('.labels-section-header')!;
 
-            expect(addButton.textContent?.trim()).toBe('+ New label');
-            expect(addButton.closest('[role="listbox"]')).toBeNull();
+            expect(header.textContent?.trim()).toBe('New label');
             expect(
-                panel.querySelector('[role="listbox"]')!.compareDocumentPosition(addButton) &
+                header.compareDocumentPosition(panel.querySelector('[role="listbox"]')!) &
                     Node.DOCUMENT_POSITION_FOLLOWING
             ).toBeTruthy();
         });
 
-        it('creates a label in place of the "+ New" row and picks it', () => {
+        it('creates a label from the "+ New" button and picks it', () => {
             const { fixture, panel, emitted } = open('single');
 
-            click(panel, '.add-in-place-btn', '+ New label');
+            click(panel, '.add-root-btn', 'New label');
             fixture.detectChanges();
-            const input = panel.querySelector<HTMLInputElement>('.labels-list .add-label-row input')!;
+            const input = panel.querySelector<HTMLInputElement>('.add-label-row input')!;
             input.value = 'Ops';
             input.dispatchEvent(new Event('input'));
             input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter' }));
@@ -154,11 +153,11 @@ describe('LabelDropdownComponent', () => {
         });
 
         it.each([
-            { keys: ['ArrowDown'], focused: '+ New label' },
+            { keys: ['ArrowDown'], focused: 'Support' },
             { keys: ['ArrowUp'], focused: 'Sales' },
-            { keys: ['ArrowDown', 'ArrowDown', 'ArrowUp'], focused: 'Support' },
+            { keys: ['ArrowUp', 'ArrowUp', 'ArrowDown'], focused: 'Sales' },
             { keys: ['Home'], focused: 'Ungrouped' },
-            { keys: ['End'], focused: '+ New label' },
+            { keys: ['Home', 'End'], focused: 'Support' },
         ])('from the current choice, $keys moves focus to "$focused"', ({ keys, focused }) => {
             open('single', [SUPPORT.id]);
 
@@ -190,7 +189,7 @@ describe('LabelDropdownComponent', () => {
             expect(document.activeElement).toBe(trigger);
         });
 
-        it('Escape in a non-empty search clears it first, and closes only once it is empty', () => {
+        it('Escape in a non-empty search clears it first, and closes only once it is empty', async () => {
             const { fixture, panel } = open('single', [], manyLabels(8));
             const search = panel.querySelector<HTMLInputElement>('.labels-search__input')!;
             typeInto(search, 'Group 1');
@@ -198,6 +197,8 @@ describe('LabelDropdownComponent', () => {
 
             pressEscape();
             fixture.detectChanges();
+            // ngModel writes the cleared value to the input asynchronously.
+            await fixture.whenStable();
             const afterFirst = { open: fixture.componentInstance.isOpen(), search: search.value };
             pressEscape();
             fixture.detectChanges();
@@ -208,9 +209,9 @@ describe('LabelDropdownComponent', () => {
 
         it('Escape in the new label input cancels the add and puts focus back on "+ New"', () => {
             const { fixture, panel } = open('single');
-            click(panel, '.add-in-place-btn', '+ New label');
+            click(panel, '.add-root-btn', 'New label');
             fixture.detectChanges();
-            const input = panel.querySelector<HTMLInputElement>('.add-label-row--in-place input')!;
+            const input = panel.querySelector<HTMLInputElement>('.add-label-row input')!;
             input.focus();
 
             pressEscape();
@@ -218,8 +219,8 @@ describe('LabelDropdownComponent', () => {
             TestBed.tick();
 
             expect(fixture.componentInstance.isOpen()).toBe(true);
-            expect(panel.querySelector('.add-label-row--in-place')).toBeNull();
-            expect(document.activeElement?.textContent?.trim()).toBe('+ New label');
+            expect(panel.querySelector('.add-label-row')).toBeNull();
+            expect(document.activeElement?.textContent?.trim()).toBe('New label');
         });
 
         it('has no checkboxes and no Save footer', () => {

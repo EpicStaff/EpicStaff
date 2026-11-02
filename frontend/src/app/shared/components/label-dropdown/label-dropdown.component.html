@@ -33,16 +33,21 @@
         class="dropdown-panel"
         (click)="$event.stopPropagation()"
     >
-        <div class="labels-section-header">
-            <div class="header-labels-left">
-                <app-svg-icon
-                    icon="label"
-                    size="1.125rem"
-                    class="section-label-icon"
-                />
-                <span>{{ pluralTitle() }}</span>
-            </div>
-            @if (!addingRoot() && !isSingle()) {
+        <div
+            class="labels-section-header"
+            [class.labels-section-header--single]="isSingle()"
+        >
+            @if (!isSingle()) {
+                <div class="header-labels-left">
+                    <app-svg-icon
+                        icon="label"
+                        size="1.125rem"
+                        class="section-label-icon"
+                    />
+                    <span>{{ pluralTitle() }}</span>
+                </div>
+            }
+            @if (!addingRoot()) {
                 <button
                     type="button"
                     class="add-root-btn"
@@ -84,7 +89,7 @@
             </div>
         }
 
-        @if (addingRoot() && !isSingle()) {
+        @if (addingRoot()) {
             <div class="add-label-row">
                 <input
                     class="label-input"
@@ -92,6 +97,7 @@
                     [ngModel]="newLabelName()"
                     (ngModelChange)="newLabelName.set($event); onNewLabelInput()"
                     [placeholder]="'Enter ' + noun() + ' name...'"
+                    [attr.aria-label]="'New ' + noun() + ' name'"
                     (keyup.enter)="confirmAdd()"
                     (keyup.escape)="cancelAdd()"
                     autofocus
@@ -104,6 +110,7 @@
                     type="button"
                     class="cancel-btn-icon"
                     (click)="cancelAdd()"
+                    aria-label="Cancel"
                     matTooltip="Cancel"
                     matTooltipPosition="above"
                 >
@@ -116,6 +123,7 @@
                     type="button"
                     class="confirm-btn"
                     (click)="confirmAdd()"
+                    aria-label="Confirm"
                     matTooltip="Confirm"
                     matTooltipPosition="above"
                 >
@@ -135,7 +143,6 @@
             [class.labels-list--single]="isSingle()"
         >
             @if (isSingle()) {
-                <!-- Only the choices are options; the "+ New" row and its input follow the listbox. -->
                 <div
                     class="labels-listbox"
                     role="listbox"
@@ -169,60 +176,6 @@
                         </button>
                     }
                 </div>
-                @if (addingRoot()) {
-                    <div class="add-label-row add-label-row--in-place">
-                        <input
-                            class="label-input"
-                            [class.has-error]="addLabelError()"
-                            [ngModel]="newLabelName()"
-                            (ngModelChange)="newLabelName.set($event); onNewLabelInput()"
-                            [placeholder]="'Enter ' + noun() + ' name...'"
-                            [attr.aria-label]="'New ' + noun() + ' name'"
-                            (keyup.enter)="confirmAdd()"
-                        />
-                        <app-label-color-picker
-                            [selectedColor]="newLabelColor()"
-                            (colorChange)="newLabelColor.set($event)"
-                        ></app-label-color-picker>
-                        <button
-                            type="button"
-                            class="cancel-btn-icon"
-                            (click)="cancelAdd()"
-                            aria-label="Cancel"
-                            matTooltip="Cancel"
-                            matTooltipPosition="above"
-                        >
-                            <app-svg-icon
-                                icon="x"
-                                size="0.85rem"
-                            />
-                        </button>
-                        <button
-                            type="button"
-                            class="confirm-btn"
-                            (click)="confirmAdd()"
-                            aria-label="Confirm"
-                            matTooltip="Confirm"
-                            matTooltipPosition="above"
-                        >
-                            <app-svg-icon
-                                icon="check"
-                                size="0.85rem"
-                            />
-                        </button>
-                    </div>
-                    @if (addLabelError()) {
-                        <div class="label-error label-error--in-place">{{ addLabelError() }}</div>
-                    }
-                } @else {
-                    <button
-                        type="button"
-                        class="add-in-place-btn text-body-small"
-                        (click)="startAddRoot()"
-                    >
-                        + {{ addButtonText() }}
-                    </button>
-                }
             } @else {
                 @if (labelTree().length === 0 && !addingRoot()) {
                     <div class="empty-text">No labels yet. Add label to mark the flow</div>
