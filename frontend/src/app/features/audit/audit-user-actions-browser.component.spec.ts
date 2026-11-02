@@ -81,6 +81,13 @@ const deletedTool: AuditUserAction = {
     parent_name: 'Researcher',
 };
 
+const typeOnlyParent: AuditUserAction = {
+    ...signIn,
+    id: 'action-6',
+    action: 'updated',
+    parent_type: 'flow',
+};
+
 function setup(canExport = true) {
     TestBed.configureTestingModule({
         providers: [
@@ -172,7 +179,7 @@ function optionLabels(group: HTMLElement): (string | undefined)[] {
 describe('AuditUserActionsBrowserComponent', () => {
     it('shows date, user, action, target type, target name and target parent for each action', async () => {
         const { fixture, http, root } = setup();
-        flushSearch(http, [renamedFlow, editedNode, signIn, parentOnly, deletedTool]);
+        flushSearch(http, [renamedFlow, editedNode, signIn, parentOnly, deletedTool, typeOnlyParent]);
         await render(fixture);
 
         const headers = Array.from(root.querySelectorAll('th')).map((cell) => cell.textContent?.trim());
@@ -181,14 +188,56 @@ describe('AuditUserActionsBrowserComponent', () => {
                 .slice(1)
                 .map((cell) => cellText(cell))
         );
-        expect(headers).toEqual(['Date', 'User', 'Action', 'Target type', 'Target name', 'Target parent']);
+        expect(headers).toEqual(['Date', 'User', 'Action', 'Target Type', 'Target Name', 'Target Parent']);
         expect(rows).toEqual([
-            ['ann@example.com via API key Deploy bot', 'Renamed', 'flow', '"Invoices v2" → "Billing"', '—'],
-            ['ann@example.com', 'Import entity', 'python node', '"Parse invoice"', 'flow "Billing"'],
-            ['ann@example.com', 'Sign-in failed', '—', '—', '—'],
-            ['ann@example.com', 'Updated', '—', '—', 'flow "Billing"'],
-            ['ann@example.com', 'Deleted', 'tool', '#9', 'agent "Researcher"'],
+            ['ann@example.com via API key Deploy bot', 'Renamed', 'flow', 'Invoices v2 → Billing', ''],
+            ['ann@example.com', 'Import entity', 'python node', 'Parse invoice', 'Billing · flow'],
+            ['ann@example.com', 'Sign-in failed', '', '', ''],
+            ['ann@example.com', 'Updated', '', '', 'Billing · flow'],
+            ['ann@example.com', 'Deleted', 'tool', '#9', 'Researcher · agent'],
+            ['ann@example.com', 'Updated', '', '', 'flow'],
         ]);
+    });
+
+    it('highlights the searched text in target and parent names, not in the parent type', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, []);
+        await render(fixture);
+
+        const search = root.querySelector<HTMLInputElement>('input[aria-label="Search every field"]')!;
+        search.value = 'bill';
+        search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        flushSearch(http, [renamedFlow, editedNode]);
+        await render(fixture);
+
+        const marks = Array.from(root.querySelectorAll('tbody tr')).map((row) =>
+            Array.from(row.querySelectorAll('td')).map((cell) =>
+                Array.from(cell.querySelectorAll('mark')).map((mark) => mark.textContent)
+            )
+        );
+        expect(marks).toEqual([
+            [[], [], [], [], ['Bill'], []],
+            [[], [], [], [], [], ['Bill']],
+        ]);
+    });
+
+    it('widens a column by the distance its header edge is dragged', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, [editedNode]);
+        await render(fixture);
+
+        const dateHeader = root.querySelector('th')!;
+        // the test DOM has no layout or pointer capture, so the header reports its on-screen width here
+        vi.spyOn(dateHeader, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 150, 30));
+        const handle = dateHeader.querySelector<HTMLElement>('.audit-table__resize-handle')!;
+        handle.setPointerCapture = () => undefined;
+        handle.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 100 }));
+        handle.dispatchEvent(new MouseEvent('pointermove', { clientX: 130 }));
+        handle.dispatchEvent(new Event('lostpointercapture'));
+        handle.dispatchEvent(new MouseEvent('pointermove', { clientX: 200 }));
+        await render(fixture);
+
+        expect(root.querySelector<HTMLElement>('col')!.style.width).toBe('180px');
     });
 
     it('shows plain rows that open nothing', async () => {

@@ -63,6 +63,7 @@ import {
     readStoredAuditFilter,
     writeStoredAuditFilter,
 } from './utils/audit-filter-storage.util';
+import { AuditResizableColumns } from './utils/audit-resizable-columns.util';
 import { buildTimeZoneLabel } from './utils/audit-time-zone-label.util';
 import { AuditRow, buildAuditRows } from './utils/build-audit-rows.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
@@ -74,8 +75,6 @@ const MAX_PAGE_SIZE = 100;
 const PAGE_SIZE_STEP = 10;
 const POLL_INTERVAL_MS = 10_000;
 const SEARCH_DEBOUNCE_MS = 400;
-// narrow enough to tuck a column away, wide enough to keep its handle and an ellipsis grabbable
-const COLUMN_MIN_WIDTH = 48;
 const PANEL_WIDTH_KEY = 'audit-side-panel';
 const PANEL_WIDTH_OPTIONS = { defaultWidth: 480, minWidth: 360, maxWidth: 960 } satisfies SidebarWidthOptions;
 
@@ -99,12 +98,6 @@ const AUDIT_TABLE_COLUMNS: AuditTableColumn[] = [
     { label: 'Error', className: '', defaultWidth: 110 },
     { label: 'Details', className: '', defaultWidth: 96 },
 ];
-
-interface ColumnResize {
-    index: number;
-    startX: number;
-    startWidth: number;
-}
 
 interface ViewedValue {
     rowId: string;
@@ -159,9 +152,9 @@ export class AuditSessionsBrowserComponent implements OnInit {
     public pageSize = signal<number>(20);
     public areColumnsExpanded = signal<boolean>(false);
     protected readonly columns = AUDIT_TABLE_COLUMNS;
-    protected readonly columnWidths = signal<number[]>(AUDIT_TABLE_COLUMNS.map((column) => column.defaultWidth));
-    // the table is at least as wide as its columns, so widening one scrolls the table instead of squeezing the rest
-    protected readonly tableWidth = computed(() => this.columnWidths().reduce((total, width) => total + width, 0));
+    protected readonly resizableColumns = new AuditResizableColumns(
+        AUDIT_TABLE_COLUMNS.map((column) => column.defaultWidth)
+    );
     public isFiltersPanelOpen = signal<boolean>(false);
     protected readonly panelWidthKey = PANEL_WIDTH_KEY;
     protected readonly panelWidthOptions = PANEL_WIDTH_OPTIONS;
@@ -202,7 +195,6 @@ export class AuditSessionsBrowserComponent implements OnInit {
     protected readonly minPageSize = MIN_PAGE_SIZE;
     protected readonly maxPageSize = MAX_PAGE_SIZE;
     protected readonly pageSizeStep = PAGE_SIZE_STEP;
-    private columnResize: ColumnResize | null = null;
 
     public hasCollapsibleRows = computed(() => this.allRows().some((row) => row.hasChildren));
     public areAllRowsExpanded = computed(() => this.collapsedIds().size === 0);
@@ -324,34 +316,6 @@ export class AuditSessionsBrowserComponent implements OnInit {
 
     public setColumnsExpanded(expanded: boolean): void {
         this.areColumnsExpanded.set(expanded);
-    }
-
-    protected startColumnResize(event: PointerEvent, index: number): void {
-        if (event.button !== 0) {
-            return;
-        }
-        event.preventDefault();
-        const handle = event.currentTarget as HTMLElement;
-        // capture keeps the drag alive when the pointer leaves the narrow handle
-        handle.setPointerCapture(event.pointerId);
-        // start from where the column actually is on screen, so the drag never jumps
-        const startWidth = handle.parentElement?.getBoundingClientRect().width ?? this.columnWidths()[index];
-        this.columnResize = { index, startX: event.clientX, startWidth };
-    }
-
-    protected resizeColumn(event: PointerEvent): void {
-        const resize = this.columnResize;
-        if (resize === null) {
-            return;
-        }
-        const width = Math.max(COLUMN_MIN_WIDTH, Math.round(resize.startWidth + event.clientX - resize.startX));
-        this.columnWidths.update((widths) =>
-            widths.map((current, index) => (index === resize.index ? width : current))
-        );
-    }
-
-    protected stopColumnResize(): void {
-        this.columnResize = null;
     }
 
     public toggleFiltersPanel(): void {

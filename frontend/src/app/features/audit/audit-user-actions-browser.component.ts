@@ -27,10 +27,11 @@ import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/
 import { AuditUserAction, UserActionSearchRequest, UserActionSearchResponse } from './models/audit-user-action.models';
 import { USER_ACTION_FIELD_CATALOG } from './models/audit-user-action-filter-options';
 import { AuditApiService } from './services/audit-api.service';
+import { AuditResizableColumns } from './utils/audit-resizable-columns.util';
 import { buildTimeZoneLabel } from './utils/audit-time-zone-label.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
 import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
-import { userActionLabel, userActionParent, userActionTargetName } from './utils/describe-user-action.util';
+import { userActionLabel, userActionParentName, userActionTargetName } from './utils/describe-user-action.util';
 
 const DEFAULT_PAGE_SIZE = 20;
 const MIN_PAGE_SIZE = 10;
@@ -52,11 +53,26 @@ function byLabel(options: AuditEnumOption[]): AuditEnumOption[] {
     return [...options].sort((left, right) => left.label.localeCompare(right.label));
 }
 
+interface UserActionColumn {
+    label: string;
+    defaultWidth: number;
+}
+
+// the same resizable column approach as the Sessions tab: the last column absorbs any spare width
+const USER_ACTION_COLUMNS: UserActionColumn[] = [
+    { label: 'Date', defaultWidth: 150 },
+    { label: 'User', defaultWidth: 240 },
+    { label: 'Action', defaultWidth: 140 },
+    { label: 'Target Type', defaultWidth: 140 },
+    { label: 'Target Name', defaultWidth: 240 },
+    { label: 'Target Parent', defaultWidth: 220 },
+];
+
 interface UserActionRow {
     event: AuditUserAction;
     actionLabel: string;
     targetName: string;
-    parent: string;
+    parentName: string;
 }
 
 @Component({
@@ -75,7 +91,7 @@ interface UserActionRow {
     providers: [{ provide: AUDIT_FIELD_CATALOG, useValue: USER_ACTION_FIELD_CATALOG }],
     templateUrl: './audit-user-actions-browser.component.html',
     // the toolbar, table, pager and side panel look the same as on the Sessions tab
-    styleUrls: ['./audit-sessions-browser.component.scss', './audit-user-actions-browser.component.scss'],
+    styleUrls: ['./audit-sessions-browser.component.scss'],
 })
 export class AuditUserActionsBrowserComponent implements OnInit {
     protected readonly isLoading = signal(false);
@@ -88,6 +104,10 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     protected readonly exportingFormat = signal<ExportFormat | null>(null);
     // the org's flows and members the Flow and User filters pick from
     protected readonly lookupOptions = signal<AuditLookupOptions>({});
+    protected readonly areColumnsExpanded = signal(false);
+    protected readonly resizableColumns = new AuditResizableColumns(
+        USER_ACTION_COLUMNS.map((column) => column.defaultWidth)
+    );
     private readonly events = signal<AuditUserAction[]>([]);
     private readonly cursorStack = signal<(string | null)[]>([null]);
     private readonly nextCursor = signal<string | null>(null);
@@ -98,7 +118,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
             event,
             actionLabel: userActionLabel(event.action),
             targetName: userActionTargetName(event),
-            parent: userActionParent(event),
+            parentName: userActionParentName(event),
         }))
     );
     protected readonly appliedChips = computed(() =>
@@ -116,6 +136,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
         return format ? `Generating ${format.toUpperCase()}...` : 'Export';
     });
 
+    protected readonly columns = USER_ACTION_COLUMNS;
     protected readonly timeZoneLabel = buildTimeZoneLabel();
     protected readonly exportItems: ActionDropdownItem[] = [
         { label: 'Export as JSON', value: 'json' },

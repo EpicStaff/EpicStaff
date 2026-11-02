@@ -27,6 +27,14 @@
                         <span class="audit-browser__filter-count">({{ appliedChips().length }})</span>
                     }
                 </button>
+                <button
+                    class="audit-browser__tool-btn"
+                    type="button"
+                    [class.is-active]="areColumnsExpanded()"
+                    (click)="areColumnsExpanded.set(!areColumnsExpanded())"
+                >
+                    {{ areColumnsExpanded() ? 'Collapse All Rows' : 'Expand All Rows' }}
+                </button>
                 <span class="audit-browser__toolbar-spacer"></span>
                 <app-action-dropdown-button
                     *appHasPermission="[ResourceCode.UserAudit, ActionCode.Export]"
@@ -69,23 +77,34 @@
                 } @else if (rows().length === 0) {
                     <p class="audit-browser__state">No matching records found</p>
                 } @else {
-                    <table class="audit-table">
+                    <table
+                        class="audit-table"
+                        [class.audit-table--expanded]="areColumnsExpanded()"
+                        [style.width.px]="resizableColumns.tableWidth()"
+                    >
                         <colgroup>
-                            <col class="user-actions__date" />
-                            <col class="user-actions__user" />
-                            <col class="user-actions__action" />
-                            <col class="user-actions__target-type" />
-                            <col />
-                            <col class="user-actions__parent" />
+                            @for (width of resizableColumns.widths(); track $index) {
+                                <!-- the last column is left auto so it absorbs any width the viewport has to spare -->
+                                <col [style.width.px]="$last ? null : width" />
+                            }
                         </colgroup>
                         <thead>
                             <tr>
-                                <th>Date</th>
-                                <th>User</th>
-                                <th>Action</th>
-                                <th>Target type</th>
-                                <th>Target name</th>
-                                <th>Target parent</th>
+                                @for (column of columns; track $index; let index = $index, isLast = $last) {
+                                    <th>
+                                        {{ column.label }}
+                                        <!-- the last column stays flexible, so it does not resize -->
+                                        @if (!isLast) {
+                                            <span
+                                                class="audit-table__resize-handle"
+                                                aria-hidden="true"
+                                                (pointerdown)="resizableColumns.start($event, index)"
+                                                (pointermove)="resizableColumns.move($event)"
+                                                (lostpointercapture)="resizableColumns.stop()"
+                                            ></span>
+                                        }
+                                    </th>
+                                }
                             </tr>
                         </thead>
                         <tbody>
@@ -100,47 +119,29 @@
                                             [term]="highlightTerm()"
                                         />
                                         @if (row.event.actor_api_key_name; as apiKeyName) {
-                                            <span class="user-actions__api-key"> via API key {{ apiKeyName }}</span>
+                                            <span class="audit-name-label"> via API key {{ apiKeyName }}</span>
                                         }
                                     </td>
                                     <td>{{ row.actionLabel }}</td>
+                                    <td>{{ row.event.target_type }}</td>
                                     <td>
-                                        @if (row.event.target_type) {
-                                            {{ row.event.target_type }}
-                                        } @else {
-                                            <span
-                                                class="user-actions__muted"
-                                                aria-hidden="true"
-                                                >—</span
-                                            >
-                                        }
+                                        <app-audit-highlight
+                                            [text]="row.targetName"
+                                            [term]="highlightTerm()"
+                                        />
                                     </td>
                                     <td>
-                                        @if (row.targetName) {
-                                            <app-audit-highlight
-                                                [text]="row.targetName"
-                                                [term]="highlightTerm()"
-                                            />
-                                        } @else {
-                                            <span
-                                                class="user-actions__muted"
-                                                aria-hidden="true"
-                                                >—</span
-                                            >
-                                        }
-                                    </td>
-                                    <td>
-                                        @if (row.parent) {
-                                            <app-audit-highlight
-                                                [text]="row.parent"
-                                                [term]="highlightTerm()"
-                                            />
-                                        } @else {
-                                            <span
-                                                class="user-actions__muted"
-                                                aria-hidden="true"
-                                                >—</span
-                                            >
+                                        <app-audit-highlight
+                                            [text]="row.parentName"
+                                            [term]="highlightTerm()"
+                                        />
+                                        @if (row.event.parent_type; as parentType) {
+                                            <span class="audit-name-label">
+                                                @if (row.parentName) {
+                                                    ·
+                                                }
+                                                {{ parentType }}
+                                            </span>
                                         }
                                     </td>
                                 </tr>
