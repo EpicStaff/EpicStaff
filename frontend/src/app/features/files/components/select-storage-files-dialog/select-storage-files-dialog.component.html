@@ -52,7 +52,6 @@
                     type="text"
                     placeholder="Search folders, files..."
                     aria-label="Search folders, files"
-                    matTooltip="Search folders, files"
                     cdkFocusInitial
                     [ngModel]="searchQuery()"
                     (ngModelChange)="searchQuery.set($event)"
@@ -62,7 +61,6 @@
                 <button
                     type="button"
                     class="files-dialog__add-btn"
-                    matTooltip="Add Files to Storage"
                     [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
                     (click)="onAddFilesToStorage()"
                 >
@@ -150,7 +148,6 @@
                                     role="checkbox"
                                     [attr.aria-checked]="isIndeterminate(node) ? 'mixed' : isChecked(node)"
                                     [attr.aria-disabled]="!canUpdateFlows() || null"
-                                    [matTooltip]="node.name"
                                 >
                                     {{ node.name }}
                                 </button>

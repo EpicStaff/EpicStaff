@@ -18,7 +18,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink } from '@angular/router';
 import {
     AppSvgIconComponent,
@@ -29,6 +29,7 @@ import {
     SearchComponent,
 } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { copyWithFeedback, deepEqual, extractHttpErrorMessage } from '@shared/utils';
 import { AgGridAngular } from 'ag-grid-angular';
 import {
@@ -203,10 +204,11 @@ function parseValue(text: string): { value: unknown } | null {
         AppSvgIconComponent,
         ButtonComponent,
         CopyButtonComponent,
-        MatTooltip,
+        MatTooltipModule,
         PaginationControlsComponent,
         RouterLink,
         SearchComponent,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './key-value-entries-grid.component.html',
     styleUrls: ['./key-value-entries-grid.component.scss'],

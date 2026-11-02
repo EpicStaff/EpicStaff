@@ -27,7 +27,6 @@
                 type="text"
                 placeholder="Search folders, files..."
                 aria-label="Search folders, files"
-                matTooltip="Search folders, files"
                 cdkFocusInitial
                 [ngModel]="searchQuery()"
                 (ngModelChange)="searchQuery.set($event)"
@@ -80,7 +79,6 @@
                                 type="button"
                                 class="picker__item-name"
                                 [attr.aria-expanded]="node.type === 'folder' ? node.isExpanded : null"
-                                [matTooltip]="node.name"
                             >
                                 {{ node.name }}
                             </button>

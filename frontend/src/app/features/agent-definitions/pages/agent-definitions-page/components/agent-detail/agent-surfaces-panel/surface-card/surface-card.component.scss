@@ -1,3 +1,5 @@
+@use '../../../../../../../../../styles/header-action-buttons';
+
 :host {
     display: block;
     min-width: 150px;
@@ -651,6 +653,21 @@ $remove-col: 28px;
 
 .file-table__col-perm {
     color: var(--color-text-primary);
+}
+
+// Fills the grid cell the button used to fill on its own.
+.file-table__col-perm-host {
+    @include header-action-buttons.tooltip-host;
+    align-self: stretch;
+
+    // Read-only, not forbidden: keep the plain cursor the disabled button had.
+    &:has(> button:disabled) {
+        cursor: default;
+    }
+
+    > .file-table__col-perm {
+        flex: 1;
+    }
 }
 
 .file-table__col-perm--btn {

@@ -1,6 +1,6 @@
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ICellEditorParams } from 'ag-grid-community';
 
@@ -24,7 +24,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
 
 @Component({
     selector: 'app-prompt-id-cell-editor',
-    imports: [TooltipOnOverflowDirective, MatTooltip, FormsModule],
+    imports: [FormsModule, MatTooltipModule, TooltipOnOverflowDirective],
     template: `
         <div
             class="prompt-editor-popup"
@@ -40,7 +40,6 @@ interface PromptIdEditorParams extends ICellEditorParams {
                     (ngModelChange)="onSearchChange($event)"
                     placeholder="Search prompt..."
                     aria-label="Search prompt"
-                    matTooltip="Search prompt"
                     autofocus
                     (keydown.enter)="onEnter()"
                     (keydown.escape)="cancel()"
@@ -113,7 +112,6 @@ interface PromptIdEditorParams extends ICellEditorParams {
                     type="button"
                     class="pe-clear"
                     (click)="clearSelection()"
-                    matTooltip="Clear"
                 >
                     Clear
                 </button>

@@ -3,40 +3,42 @@ import { MatTooltipModule, TooltipPosition } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
+/**
+ * A help icon whose tooltip explains the field next to it. The icon sits in a real button
+ * so keyboard and screen-reader users can reach the text: the button takes focus, Material
+ * opens the tooltip on focus and links the text with `aria-describedby`. `type="button"` keeps it
+ * from submitting a form, and it has no click handler of its own — but clicks and keys still bubble
+ * to its ancestors, so don't place it inside a clickable element. Inside a `<label>`, link the label
+ * to its control with `for`; otherwise the button becomes the label's control.
+ */
 @Component({
     selector: 'app-help-tooltip',
     imports: [AppSvgIconComponent, MatTooltipModule],
     template: `
         <div class="help-tooltip-container">
-            @if (iconClass) {
-                <!-- Focusable, so the keyboard reaches the help text too (the tooltip also describes the icon). Enter does
-                     nothing here, and marking it handled keeps a dialog around the icon from submitting. -->
-                <i
-                    [class]="iconClass + ' help-icon-wrapper class-icon'"
-                    tabindex="0"
-                    role="img"
-                    aria-label="Help"
-                    (keydown.enter)="$event.preventDefault()"
-                    [matTooltip]="text"
-                    [matTooltipPosition]="tooltipPosition"
-                    [matTooltipClass]="tooltipClass"
-                ></i>
-            } @else {
-                <app-svg-icon
-                    [icon]="icon"
-                    [size]="size"
-                    [width]="width()"
-                    [height]="height()"
-                    class="help-icon-wrapper"
-                    tabindex="0"
-                    role="img"
-                    aria-label="Help"
-                    (keydown.enter)="$event.preventDefault()"
-                    [matTooltip]="text"
-                    [matTooltipPosition]="tooltipPosition"
-                    [matTooltipClass]="tooltipClass"
-                />
-            }
+            <button
+                type="button"
+                class="help-icon-wrapper"
+                [attr.aria-label]="ariaLabel()"
+                (keydown.enter)="$event.preventDefault()"
+                [matTooltip]="text"
+                [matTooltipPosition]="tooltipPosition"
+                [matTooltipClass]="tooltipClass"
+            >
+                @if (iconClass) {
+                    <i
+                        [class]="iconClass + ' class-icon'"
+                        aria-hidden="true"
+                    ></i>
+                } @else {
+                    <app-svg-icon
+                        [icon]="icon"
+                        [size]="size"
+                        [width]="width()"
+                        [height]="height()"
+                    />
+                }
+            </button>
         </div>
     `,
     styles: [
@@ -52,26 +54,32 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                color: var(--accent-color, #685fff);
-                transition: opacity 0.2s ease;
                 width: 16px;
                 height: 16px;
                 flex-shrink: 0;
+                margin: 0;
+                padding: 0;
+                border: none;
+                border-radius: 2px;
+                background: none;
+                font: inherit;
+                outline: none;
+                color: var(--accent-color);
+                transition: opacity 0.2s ease;
 
-                &:is(:hover, :focus-visible) {
+                &:hover {
                     opacity: 0.7;
                 }
 
-                // A round ring inside the icon box: labels, titles and selects it sits in often clip their content.
                 &:focus-visible {
-                    border-radius: 50%;
-                    outline-offset: -2px;
+                    outline: 2px solid var(--accent-color);
+                    outline-offset: 2px;
                 }
+            }
 
-                &.class-icon {
-                    font-size: 1rem;
-                    line-height: 1;
-                }
+            .class-icon {
+                font-size: 1rem;
+                line-height: 1;
             }
         `,
     ],
@@ -79,6 +87,8 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 })
 export class HelpTooltipComponent {
     @Input() text = '';
+    /** The button's accessible name; name the field it explains (`"Email help"`) to tell help buttons apart. */
+    readonly ariaLabel = input('Help');
     @Input() position: 'top' | 'bottom' | 'left' | 'right' = 'right';
     @Input() icon = 'help';
     @Input() iconClass = '';
@@ -86,7 +96,7 @@ export class HelpTooltipComponent {
     /** Override `size` on one axis for a non-square icon; passed through to `app-svg-icon`. */
     readonly width = input<string>();
     readonly height = input<string>();
-    @Input() tooltipClass = 'custom-tooltip';
+    @Input() tooltipClass = '';
 
     get tooltipPosition(): TooltipPosition {
         if (this.position === 'top') {

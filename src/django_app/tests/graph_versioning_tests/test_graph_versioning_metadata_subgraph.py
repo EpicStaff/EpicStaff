@@ -57,7 +57,7 @@ def _make_parent_with_subgraph_reference(*, default_org):
 def _restore_new_graph_from_snapshot(manager, parent, *, default_org):
     snapshot = manager.create_snapshot(parent)
     deps = manager.collect_dependencies(parent)
-    deps_validation = manager.validate_dependencies(deps)
+    deps_validation = manager.validate_dependencies(deps, default_org.id)
 
     new_graph, _ = manager.create_graph_from_snapshot(
         snapshot,
@@ -104,7 +104,7 @@ class TestCreateGraphFromSnapshotMetadataSubgraphReference:
         note_node_data["id"] = subgraph.id
 
         deps = manager.collect_dependencies(parent)
-        deps_validation = manager.validate_dependencies(deps)
+        deps_validation = manager.validate_dependencies(deps, default_org.id)
 
         new_graph, node_mapper = manager.create_graph_from_snapshot(
             snapshot,

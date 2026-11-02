@@ -11,5 +11,6 @@ import { MatTooltip } from '@angular/material/tooltip';
 export class RoundButtonComponent {
     label = input.required<string>();
     selected = input(false);
+    /** Shown on hover and focus, and the button's accessible name in place of its short label. */
     tooltip = input('');
 }

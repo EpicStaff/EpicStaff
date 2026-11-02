@@ -11,7 +11,7 @@ import {
     viewChild,
     ViewContainerRef,
 } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { IHeaderGroupAngularComp } from 'ag-grid-angular';
 import { Column, GridApi, IHeaderGroupParams } from 'ag-grid-community';
 
@@ -30,7 +30,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
 
 @Component({
     selector: 'app-params-group-header',
-    imports: [A11yModule, MatTooltip, AppSvgIconComponent],
+    imports: [A11yModule, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -69,7 +69,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 @if (!(isPinned && isPinned())) {
                     <span
                         class="drag-grip-btn"
-                        title="Drag to reposition"
+                        matTooltip="Drag to reposition"
                     >
                         <app-svg-icon
                             icon="drag-grip"
@@ -92,7 +92,6 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                     type="button"
                     role="menuitem"
                     class="params-dropdown-item"
-                    matTooltip="Add variable"
                     (click)="handleAddFromMenu()"
                 >
                     Add variable
@@ -113,7 +112,6 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                     type="button"
                     role="menuitem"
                     class="params-dropdown-item"
-                    matTooltip="Hide"
                     (click)="handleHide()"
                 >
                     Hide

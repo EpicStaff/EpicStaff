@@ -52,7 +52,12 @@ class PurgeService:
         if isinstance(root, SourceCollection):
             CollectionManagementService.purge_collection(root)
         else:
-            root.purge()
+            # One transaction: a purge the root refuses (restored meanwhile, cross-org)
+            # rolls back what the hook deleted too.
+            with transaction.atomic():
+                if resource.before_purge is not None:
+                    resource.before_purge(root)
+                root.purge()
 
         logger.info(
             "Purged {model} {pk} of org {org_id} (batch {batch}) by {actor}",

@@ -1,7 +1,5 @@
 import pytest
 
-pytestmark = pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
-
 from tables.models import Crew, Graph
 from tables.import_export.enums import EntityType
 from tables.import_export.services.import_service import ImportSettings
@@ -38,7 +36,7 @@ class TestGraphRoundTrip:
         new_graph_id = id_mapper.get_new_ids(EntityType.GRAPH)[0]
         new_graph = Graph.objects.get(id=new_graph_id)
 
-        assert new_graph.name == "graph1 (2)"
+        assert new_graph.name == "graph1 #2"
         assert new_graph.crew_node_list.count() == 0
         assert new_graph.edge_list.count() == 0
 
@@ -52,7 +50,7 @@ class TestGraphRoundTrip:
 
         new_graph_id = id_mapper.get_new_ids(EntityType.GRAPH)[0]
         new_graph = Graph.objects.get(id=new_graph_id)
-        assert new_graph.name == "graph1 (2)"
+        assert new_graph.name == "graph1 #2"
 
     def test_graph_preserve_uuids(self, rich_seeded_db, export_service, import_service):
         graph = rich_seeded_db["graph"]

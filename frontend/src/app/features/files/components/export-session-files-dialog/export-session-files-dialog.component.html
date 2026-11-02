@@ -52,7 +52,6 @@
                     type="text"
                     placeholder="Search folders, files..."
                     aria-label="Search folders, files"
-                    matTooltip="Search folders, files"
                     cdkFocusInitial
                     [ngModel]="searchQuery()"
                     (ngModelChange)="searchQuery.set($event)"
@@ -124,7 +123,6 @@
                             class="files-dialog__item-name"
                             role="checkbox"
                             [attr.aria-checked]="isIndeterminate(node) ? 'mixed' : isChecked(node)"
-                            [matTooltip]="node.name"
                         >
                             {{ node.name }}
                         </button>

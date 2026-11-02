@@ -7,7 +7,8 @@
             type="button"
             class="message-toggle key-value-header"
             [attr.aria-expanded]="isExpanded()"
-            [matTooltip]="titlePrefix() + ' ' + data.table_name"
+            appTooltipOnOverflow=".title"
+            [matTooltip]="data.table_name"
             (click)="toggle()"
         >
             <span class="play-arrow">

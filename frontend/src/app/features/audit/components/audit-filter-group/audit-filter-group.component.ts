@@ -10,11 +10,12 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 
 @Component({
     selector: 'app-audit-filter-group',
     standalone: true,
-    imports: [AppSvgIconComponent, MatTooltipModule],
+    imports: [AppSvgIconComponent, MatTooltipModule, TooltipOnOverflowDirective],
     templateUrl: './audit-filter-group.component.html',
     styleUrls: ['./audit-filter-group.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

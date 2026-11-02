@@ -21,6 +21,7 @@ def test_log_summary_names_what_a_task_carries_but_never_a_secret(credentials, c
         storage_credentials=credentials,
         secrets={"DBPASS": "very-secret-password"},
         execution_timeout=42,
+        venv_id=7,
     )
 
     summary = task.log_summary()
@@ -29,9 +30,8 @@ def test_log_summary_names_what_a_task_carries_but_never_a_secret(credentials, c
     assert "very-secret-password" not in summary
     for shown in (
         "exec-123",
-        "test-venv",
+        "venv_id=7",
         "main",
-        "libraries=2",
         "execution_timeout=42",
         "secrets=1",
         f"storage_credentials={credentials_shown}",

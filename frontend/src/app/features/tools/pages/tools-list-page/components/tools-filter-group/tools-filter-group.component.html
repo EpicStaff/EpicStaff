@@ -12,8 +12,6 @@
             type="button"
             [attr.aria-expanded]="isOpen()"
             [attr.aria-description]="disabled() && hint() ? hint() : null"
-            [matTooltip]="label()"
-            [matTooltipDisabled]="disabled()"
             [disabled]="disabled()"
             (click)="toggle()"
         >
@@ -30,6 +28,7 @@
             @if (summary()) {
                 <span
                     class="filter-group__summary"
+                    appTooltipOnOverflow
                     [matTooltip]="summary()"
                     >{{ summary() }}</span
                 >

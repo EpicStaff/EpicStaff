@@ -19,10 +19,11 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { deepEqual } from '@shared/utils';
 import { filter } from 'rxjs';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
@@ -70,7 +71,15 @@ let nextSelectId = 0;
 
 @Component({
     selector: 'app-select',
-    imports: [NgClass, OverlayModule, CdkTrapFocus, TooltipComponent, AppSvgIconComponent, MatTooltip],
+    imports: [
+        NgClass,
+        OverlayModule,
+        CdkTrapFocus,
+        TooltipComponent,
+        AppSvgIconComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './select.component.html',
     styleUrls: ['./select.component.scss'],
     providers: [

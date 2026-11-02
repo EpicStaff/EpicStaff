@@ -438,7 +438,7 @@ def get_session_stats(
         if status not in allowed_statuses:
             return {"error": (f"Invalid status '{status}'. Allowed values: {allowed_statuses}")}
 
-    qs = Session.objects.filter(graph_id=graph_id)
+    qs = Session.objects.visible().filter(graph_id=graph_id)
     if since_dt is not None:
         qs = qs.filter(created_at__gte=since_dt)
     if until_dt is not None:
@@ -501,7 +501,7 @@ def get_recent_sessions(
             return {"error": f"Invalid until: expected ISO 8601 timestamp, got '{until}'"}
 
     limit = max(1, min(25, int(limit)))
-    qs = Session.objects.filter(graph_id=graph_id)
+    qs = Session.objects.visible().filter(graph_id=graph_id)
 
     if since_dt is not None:
         qs = qs.filter(created_at__gte=since_dt)
@@ -685,7 +685,7 @@ def get_session_messages(
     flow. Messages from nested subflow executions are excluded — only this
     flow's own trace is returned.
     """
-    session = Session.objects.filter(graph_id=graph_id, pk=session_id).first()
+    session = Session.objects.visible().filter(graph_id=graph_id, pk=session_id).first()
     if session is None:
         return {"error": "Session not found or belongs to a different flow."}
 
@@ -733,7 +733,7 @@ def get_session_detail(graph_id: int, session_id: int) -> dict:
     executions are excluded — only this flow's own trace is returned. If no
     session-message rows exist, node_trace is an empty list.
     """
-    session = Session.objects.filter(pk=session_id).first()
+    session = Session.objects.visible().filter(pk=session_id).first()
     if session is None:
         return {"error": "Session not found."}
 

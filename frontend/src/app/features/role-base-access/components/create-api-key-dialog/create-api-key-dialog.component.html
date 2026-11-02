@@ -84,7 +84,7 @@
             </app-button>
             <app-button
                 type="primary"
-                [disabled]="form.invalid"
+                [disabled]="form.invalid || orgId() === null"
                 [ariaDisabled]="loading()"
                 (click)="onCreate()"
                 >Create Key

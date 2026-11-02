@@ -46,6 +46,7 @@
                     <button
                         type="button"
                         class="instruction__name"
+                        appTooltipOnOverflow
                         [matTooltip]="instruction.name"
                         (click)="openInstruction.emit({ index, edit: false })"
                     >
@@ -112,6 +113,7 @@
             type="button"
             class="doc-actions__btn"
             matTooltip="Add a new .md instruction"
+            matTooltipPosition="above"
             (click)="onCreateMarkdown()"
         >
             <app-svg-icon
@@ -126,6 +128,7 @@
                 type="button"
                 class="doc-actions__btn"
                 matTooltip="Add a text file from storage as an instruction"
+                matTooltipPosition="above"
                 [disabled]="isCreating()"
                 (click)="onExtractFromStorage()"
             >
@@ -141,6 +144,7 @@
             type="button"
             class="doc-actions__btn"
             matTooltip="Add a text file from your computer as an instruction"
+            matTooltipPosition="above"
             [disabled]="isCreating()"
             (click)="onExtractFromPc(pcInput)"
         >

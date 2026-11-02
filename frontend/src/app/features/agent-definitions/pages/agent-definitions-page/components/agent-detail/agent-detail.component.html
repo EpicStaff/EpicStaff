@@ -1,4 +1,4 @@
-﻿<form
+<form
     class="detail"
     [formGroup]="form"
     (submit)="$event.preventDefault()"
@@ -11,7 +11,6 @@
             <button
                 type="button"
                 class="section__header"
-                matTooltip="Required Setup"
                 [attr.aria-expanded]="isOpen('basics')"
                 (click)="toggleSection('basics')"
             >
@@ -30,6 +29,7 @@
                     class="section__settings"
                     aria-label="Additional Settings"
                     matTooltip="Additional Settings"
+                    matTooltipPosition="above"
                     (click)="openAdditionalSettings()"
                 >
                     <app-svg-icon
@@ -51,7 +51,6 @@
                             formControlName="name"
                             placeholder="e.g. CV Processor"
                             aria-label="Agent Name"
-                            matTooltip="Agent Name"
                             appEnterBlur
                             (blur)="autosaveName()"
                         />
@@ -78,7 +77,6 @@
                         appEnterBlur
                         placeholder="Describe this agent for your team..."
                         aria-label="About this Agent"
-                        matTooltip="About this Agent"
                         rows="1"
                         (input)="adjustTextareaHeight(aboutTa, 400)"
                         (focus)="adjustTextareaHeight(aboutTa, 400)"
@@ -110,7 +108,7 @@
         <button
             type="button"
             class="section__header"
-            matTooltip="Surfaces"
+            matTooltip="Surfaces (Additional Instructions and Access in Defined Places)"
             [attr.aria-expanded]="isOpen('surfaces')"
             appHideInlineSubtitleOnOverflow
             overflowTitleSelector=".section__title"

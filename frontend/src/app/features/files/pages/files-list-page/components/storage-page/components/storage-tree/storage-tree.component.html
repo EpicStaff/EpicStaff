@@ -129,8 +129,9 @@
                         class="storage-tree__name storage-tree__name--folder-meta"
                         [attr.data-path]="node.path"
                         [attr.aria-pressed]="isItemSelected(node)"
+                        appTooltipOnOverflow
                         [matTooltip]="node.name"
-                        matTooltipShowDelay="500"
+                        matTooltipPosition="above"
                         matTooltipClass="tree-name-tooltip"
                     >
                         {{ node.name }}
@@ -145,8 +146,9 @@
                     class="storage-tree__name"
                     [attr.data-path]="node.path"
                     [attr.aria-pressed]="isItemSelected(node)"
+                    appTooltipOnOverflow
                     [matTooltip]="node.name"
-                    matTooltipShowDelay="500"
+                    matTooltipPosition="above"
                     matTooltipClass="tree-name-tooltip"
                 >
                     {{ node.name }}
@@ -270,7 +272,6 @@
             class="storage-tree__context-menu-item"
             [class.storage-tree__context-menu-item--disabled]="selectedPaths().size === 0"
             [disabled]="selectedPaths().size === 0"
-            matTooltip="Download Selected"
             (click)="onMoreMenuAction('download-selected')"
         >
             Download Selected
@@ -280,7 +281,6 @@
             type="button"
             role="menuitem"
             class="storage-tree__context-menu-item"
-            matTooltip="Download All"
             (click)="onMoreMenuAction('download-all')"
         >
             Download All
@@ -293,7 +293,6 @@
             class="storage-tree__context-menu-item"
             [class.storage-tree__context-menu-item--disabled]="selectedPaths().size === 0"
             [disabled]="selectedPaths().size === 0"
-            matTooltip="Delete Selected"
             (click)="onMoreMenuAction('delete-selected')"
         >
             Delete Selected
@@ -323,7 +322,6 @@
                 type="button"
                 role="menuitem"
                 class="storage-tree__context-menu-item"
-                matTooltip="Group"
                 (click)="onContextMenuAction('group-selected')"
             >
                 Group
@@ -336,7 +334,6 @@
                 type="button"
                 role="menuitem"
                 class="storage-tree__context-menu-item"
-                matTooltip="Add to flow"
                 (click)="onContextMenuAction('add-to-flow')"
             >
                 Add to flow
@@ -347,7 +344,6 @@
                 type="button"
                 role="menuitem"
                 class="storage-tree__context-menu-item"
-                matTooltip="Add to collection…"
                 (click)="onContextMenuAction('add-to-collection')"
             >
                 Add to collection…
@@ -358,7 +354,6 @@
             type="button"
             role="menuitem"
             class="storage-tree__context-menu-item"
-            matTooltip="Download"
             (click)="onContextMenuAction('download')"
         >
             Download
@@ -368,7 +363,6 @@
             type="button"
             role="menuitem"
             class="storage-tree__context-menu-item"
-            matTooltip="Copy to..."
             (click)="onContextMenuAction('copy')"
         >
             Copy to...
@@ -378,7 +372,6 @@
             type="button"
             role="menuitem"
             class="storage-tree__context-menu-item"
-            matTooltip="Duplicate here"
             (click)="onContextMenuAction('duplicate-here')"
         >
             Duplicate here
@@ -388,7 +381,6 @@
             type="button"
             role="menuitem"
             class="storage-tree__context-menu-item"
-            matTooltip="Rename"
             (click)="onContextMenuAction('rename')"
         >
             Rename
@@ -397,7 +389,6 @@
             type="button"
             role="menuitem"
             class="storage-tree__context-menu-item"
-            matTooltip="View details"
             (click)="onContextMenuAction('view-details')"
         >
             View details
@@ -408,7 +399,6 @@
             type="button"
             role="menuitem"
             class="storage-tree__context-menu-item"
-            matTooltip="Delete"
             (click)="onContextMenuAction('delete')"
         >
             Delete

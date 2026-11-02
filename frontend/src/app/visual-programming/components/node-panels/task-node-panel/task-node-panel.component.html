@@ -53,7 +53,6 @@
                                     type="button"
                                     appSelectDropdownTrigger
                                     class="dropdown-trigger"
-                                    matTooltip="Agent"
                                     [class.dropdown-trigger--readonly]="isReadOnly()"
                                     [class.dropdown-trigger--invalid]="agentInvalid()"
                                 >
@@ -161,7 +160,6 @@
                                 <button
                                     type="button"
                                     class="output-schema-toggle"
-                                    matTooltip="Output Schema"
                                     [attr.aria-expanded]="outputSchemaExpanded()"
                                     (click)="toggleOutputSchema()"
                                 >
@@ -380,7 +378,6 @@
                                 type="button"
                                 appSelectDropdownTrigger
                                 class="dropdown-trigger"
-                                matTooltip="Agent"
                                 [class.dropdown-trigger--invalid]="agentInvalid()"
                                 [class.dropdown-trigger--readonly]="isReadOnly()"
                             >
@@ -503,7 +500,6 @@
                         <button
                             type="button"
                             class="output-schema-toggle"
-                            matTooltip="Output Schema"
                             [attr.aria-expanded]="outputSchemaExpanded()"
                             (click)="toggleOutputSchema()"
                         >

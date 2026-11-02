@@ -2,7 +2,7 @@ import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
@@ -22,7 +22,7 @@ export type CdtGroupDialogResult = { name: string; color: string } | undefined;
 
 @Component({
     selector: 'app-cdt-group-dialog',
-    imports: [MatTooltip, CommonModule, DialogModule, FormsModule, AppSvgIconComponent],
+    imports: [CommonModule, DialogModule, FormsModule, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './cdt-group-dialog.component.html',
     styleUrls: ['./cdt-group-dialog.component.scss'],
 })

@@ -21,7 +21,6 @@
                     <button
                         type="button"
                         class="message-toggle"
-                        matTooltip="Knowledge Retrieval"
                         [attr.aria-expanded]="isExpanded()"
                     >
                         Knowledge Retrieval
@@ -122,6 +121,7 @@
                                 @if (chunk.source || ragKind === 'naive') {
                                     <div
                                         class="chunk-source"
+                                        appTooltipOnOverflow
                                         [matTooltip]="chunk.source || 'Unknown source'"
                                     >
                                         {{ chunk.source || 'Unknown source' }}

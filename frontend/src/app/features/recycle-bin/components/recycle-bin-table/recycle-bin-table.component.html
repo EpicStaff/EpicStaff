@@ -148,8 +148,8 @@
                                             type="button"
                                             class="bin-name bin-name--toggle"
                                             [attr.aria-expanded]="isExpanded(item)"
+                                            appTooltipOnOverflow=".bin-name-text"
                                             [matTooltip]="item.name"
-                                            matTooltipShowDelay="500"
                                             matTooltipClass="bin-name-tooltip"
                                             (click)="$event.stopPropagation(); toggle(item)"
                                         >
@@ -167,7 +167,7 @@
                                                 class="bin-name-text"
                                                 appTooltipOnOverflow
                                                 [matTooltip]="item.name"
-                                                matTooltipShowDelay="500"
+                                                matTooltipPosition="above"
                                                 matTooltipClass="bin-name-tooltip"
                                                 >{{ item.displayName }}</span
                                             >
@@ -271,7 +271,7 @@
                                                                                     class="bin-details__user-name"
                                                                                     appTooltipOnOverflow
                                                                                     [matTooltip]="userName(user)"
-                                                                                    matTooltipShowDelay="500"
+                                                                                    matTooltipPosition="above"
                                                                                     matTooltipClass="bin-name-tooltip"
                                                                                     >{{ userName(user) }}</span
                                                                                 >
@@ -289,7 +289,7 @@
                                                                             class="bin-details__text"
                                                                             appTooltipOnOverflow
                                                                             [matTooltip]="detailText(detail)"
-                                                                            matTooltipShowDelay="500"
+                                                                            matTooltipPosition="above"
                                                                             matTooltipClass="bin-name-tooltip"
                                                                         >
                                                                             @for (
@@ -372,7 +372,6 @@
         type="button"
         class="sort-header"
         [class.sort-header--active]="sort().field === field"
-        [matTooltip]="label"
         (click)="sortRequested.emit(field)"
     >
         <span class="col-label">{{ label }}</span>
@@ -409,7 +408,7 @@
             class="col-label col-label--filter"
             [class.col-label--filter--active]="active"
             [attr.aria-label]="ariaLabel ?? null"
-            [matTooltip]="ariaLabel ?? label"
+            [matTooltip]="ariaLabel ?? ''"
             [appSelectTrigger]="filterSelect"
         >
             {{ label }}

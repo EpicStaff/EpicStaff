@@ -11,7 +11,7 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
@@ -28,7 +28,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
 
 @Component({
     selector: 'app-enable-filter-header',
-    imports: [A11yModule, MatTooltip, AppSvgIconComponent],
+    imports: [A11yModule, AppSvgIconComponent, MatTooltipModule],
     template: `
         <div class="enable-header">
             <span class="enable-label">{{ label }}</span>
@@ -59,7 +59,6 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                     type="button"
                     role="menuitemradio"
                     class="ef-item"
-                    matTooltip="Enable/Disable"
                     [class.selected]="mode === 'all'"
                     [attr.aria-checked]="mode === 'all'"
                     (click)="select('all')"
@@ -70,7 +69,6 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                     type="button"
                     role="menuitemradio"
                     class="ef-item"
-                    matTooltip="Only Enable"
                     [class.selected]="mode === 'enabled'"
                     [attr.aria-checked]="mode === 'enabled'"
                     (click)="select('enabled')"
@@ -81,7 +79,6 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                     type="button"
                     role="menuitemradio"
                     class="ef-item"
-                    matTooltip="Only Disable"
                     [class.selected]="mode === 'disabled'"
                     [attr.aria-checked]="mode === 'disabled'"
                     (click)="select('disabled')"

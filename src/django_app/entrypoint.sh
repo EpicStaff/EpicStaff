@@ -37,6 +37,11 @@ echo "Postgres is ready."
 echo "Applying database migrations..."
 python manage.py migrate
 
+# Right after migrate, while nothing else alters the schema: a grant racing a migration
+# on the same table fails. crewdb has already created the roles.
+echo "Granting service database roles their table privileges..."
+python manage.py apply_service_grants
+
 # Reconcile built-in roles with rbac/access/builtin_roles.json; an invalid file stops startup.
 echo "Seeding built-in roles..."
 python manage.py seed_builtin_roles
@@ -76,6 +81,10 @@ DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py listen_redi
 # Start Redis cache in the background
 echo "Starting Redis caching..."
 DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py cache_redis &
+
+# Start the recycle-bin purge consumer in the background; manager requests the purge daily
+echo "Starting recycle bin purge consumer..."
+DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py run_recycle_bin_purge &
 
 # Start session callback sender in the background
 echo "Starting session callback sender..."

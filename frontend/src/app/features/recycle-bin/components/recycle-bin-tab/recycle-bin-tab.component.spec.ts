@@ -49,6 +49,7 @@ function entry(
         days_left: 5,
         details: [] as GetRecycleBinDetailResponse[],
         contents: [] as { name: string; kind: string }[],
+        hidden_contents: [] as { kind: string; count: number }[],
         contents_total: 0,
         ...overrides,
     };
@@ -70,7 +71,7 @@ class ResizeObserverStub {
 }
 
 /** A restore toast shows its whole text and stays longer than the default. */
-const RESTORE_TOAST_ARGS = [expect.any(Number), undefined, { fullText: true }];
+const RESTORE_TOAST_ARGS = [10_000, undefined, { fullText: true }];
 
 describe('RecycleBinTabComponent', () => {
     let fixture: ComponentFixture<RecycleBinTabComponent>;
@@ -681,6 +682,7 @@ describe('RecycleBinTabComponent', () => {
                     { name: 'Write', kind: 'task' },
                     { name: 'Send', kind: 'task' },
                 ],
+                hidden_contents: [],
                 contents_total: 3,
             });
             fixture.detectChanges();
@@ -892,5 +894,56 @@ describe('RecycleBinTabComponent', () => {
         const nodeList = element.querySelector('.flow-node-list');
         expect(nodeList?.classList).toContain('expanded');
         expect(nodeList?.textContent).toContain('Support chat');
+    });
+
+    describe('contents the user may not read', () => {
+        const SURFACES_LIST = listUrl(`${API_URL}surfaces/recycle-bin/`);
+
+        function openSurfaceWith(total: number, hiddenContents: { kind: string; count: number }[]): HTMLElement {
+            grant(ResourceCode.Surfaces);
+            const element = open('surfaces');
+            httpTesting.expectOne(SURFACES_LIST).flush(
+                page([
+                    {
+                        ...entry(7, 'Support chat'),
+                        contents: [{ name: 'Parser', kind: 'python_tool' }],
+                        hidden_contents: hiddenContents,
+                        contents_total: total,
+                    },
+                ])
+            );
+            fixture.detectChanges();
+            click(element, 'button.bin-name');
+            return element;
+        }
+
+        it.each([
+            ['"Show all 3" for the named ones not listed yet', 5, 'Show all 3'],
+            ['no "more" line when everything left is hidden', 3, null],
+        ])('1 listed and 2 hidden of two kinds: %s', (_description, total, showAllText) => {
+            const element = openSurfaceWith(total, [
+                { kind: 'mcp_tool', count: 1 },
+                { kind: 'python_tool', count: 1 },
+            ]);
+
+            const more = element.querySelector('.flow-node-list__more');
+            expect(more?.textContent?.trim() ?? null).toBe(showAllText);
+        });
+
+        it('takes the hidden count "Show all" sends, so a content hidden meanwhile is not offered again', () => {
+            const element = openSurfaceWith(3, [{ kind: 'mcp_tool', count: 1 }]);
+            expect(element.querySelector('.flow-node-list__more--action')?.textContent?.trim()).toBe('Show all 2');
+
+            click(element, '.flow-node-list__more--action');
+            httpTesting.expectOne(`${API_URL}surfaces/7/recycle-bin-contents/`).flush({
+                contents: [{ name: 'Parser', kind: 'python_tool' }],
+                hidden_contents: [{ kind: 'mcp_tool', count: 2 }],
+                contents_total: 3,
+            });
+            fixture.detectChanges();
+
+            expect(element.querySelectorAll('.flow-node-list__row').length).toBe(1);
+            expect(element.querySelector('.flow-node-list__more')).toBeNull();
+        });
     });
 });

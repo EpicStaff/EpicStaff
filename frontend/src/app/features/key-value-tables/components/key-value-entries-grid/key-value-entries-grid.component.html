@@ -106,6 +106,7 @@
         @if (row.sessionLabel; as label) {
             <a
                 class="entries-grid__session-link"
+                appTooltipOnOverflow=".entries-grid__text"
                 [matTooltip]="label"
                 [routerLink]="row.sessionLink"
             >

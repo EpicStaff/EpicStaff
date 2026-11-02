@@ -98,7 +98,6 @@
                 type="button"
                 class="header-menu__item"
                 role="menuitem"
-                matTooltip="Sessions"
                 (click)="onMenuItemClick('sessions')"
             >
                 Sessions
@@ -107,7 +106,6 @@
                 type="button"
                 class="header-menu__item"
                 role="menuitem"
-                matTooltip="Settings"
                 (click)="onMenuItemClick('settings')"
             >
                 Settings
@@ -117,7 +115,6 @@
                 type="button"
                 class="header-menu__item"
                 role="menuitem"
-                matTooltip="Clear chat history"
                 (click)="onMenuItemClick('clear-history')"
             >
                 Clear chat history
@@ -127,7 +124,6 @@
                     type="button"
                     class="header-menu__item"
                     role="menuitem"
-                    matTooltip="Reset position"
                     (click)="onMenuItemClick('reset-position')"
                 >
                     Reset position
@@ -221,7 +217,6 @@
                                 <details class="tool-call">
                                     <summary
                                         class="tool-call__summary"
-                                        [matTooltip]="message.name"
                                     >
                                         <app-svg-icon
                                             icon="tool"
@@ -261,7 +256,6 @@
                             <button
                                 type="button"
                                 class="prompt-chip"
-                                [matTooltip]="chip.text"
                                 (click)="assistantService.executeAction(chip)"
                             >
                                 {{ chip.text }}
@@ -275,7 +269,6 @@
                         class="input-area__textarea"
                         placeholder="Ask about this flow..."
                         aria-label="Ask about this flow"
-                        matTooltip="Ask about this flow"
                         rows="1"
                         [value]="inputText()"
                         (input)="onInputChange($event)"

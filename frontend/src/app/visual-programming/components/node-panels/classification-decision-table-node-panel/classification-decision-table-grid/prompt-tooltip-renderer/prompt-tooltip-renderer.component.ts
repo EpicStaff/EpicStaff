@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, signal, ViewEncapsulation } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ICellRendererParams } from 'ag-grid-community';
 
 import { PromptConfig } from '../../../../../core/models/classification-decision-table.model';
@@ -20,7 +20,7 @@ interface PromptTooltipParams extends ICellRendererParams {
 
 @Component({
     selector: 'app-prompt-tooltip-renderer',
-    imports: [MatTooltip],
+    imports: [MatTooltipModule],
     template: `
         <div class="prompt-id-cell">
             @if (!value()) {

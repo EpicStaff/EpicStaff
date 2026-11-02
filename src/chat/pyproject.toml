@@ -11,7 +11,7 @@ dependencies = [
     "loguru==0.7.3",
     "psycopg[binary]==3.3.4",
     "pydantic==2.13.4",
-    "pyjwt==2.13.0",
+    "pyjwt==2.15.1",
     "redis==5.3.1",
     "sqlalchemy==2.0.51",
     "uuid-utils==0.17.0",

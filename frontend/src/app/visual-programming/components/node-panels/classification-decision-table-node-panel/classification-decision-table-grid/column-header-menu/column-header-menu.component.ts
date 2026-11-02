@@ -12,7 +12,7 @@ import {
     viewChild,
     ViewContainerRef,
 } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { Column, GridApi, IHeaderParams } from 'ag-grid-community';
 
@@ -43,31 +43,29 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
 
 @Component({
     selector: 'app-column-header-menu',
-    imports: [A11yModule, MatTooltip, AppSvgIconComponent],
+    imports: [A11yModule, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div
-            class="chm-wrapper"
-            [title]="tooltip"
-        >
+        <div class="chm-wrapper">
             @if (label) {
                 <span class="chm-label">{{ label }}</span>
             }
             @if (iconClass && onIconClick) {
+                <!-- On the icon it names, not the header: there it would stack on the grip's and chevron's. -->
                 <button
                     type="button"
                     [class]="iconClass"
                     [class.chm-icon-clickable]="variant === 'default'"
                     [class.chm-icon-delete]="variant === 'delete'"
                     [attr.aria-label]="tooltip || label"
-                    [matTooltip]="tooltip || label || ''"
+                    [matTooltip]="tooltip"
                     (click)="onIconClick($event)"
                 ></button>
             }
             @if (showDragGrip) {
                 <span
                     class="drag-grip-btn"
-                    title="Drag to reposition"
+                    matTooltip="Drag to reposition"
                 >
                     <app-svg-icon
                         icon="drag-grip"
@@ -114,7 +112,6 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                     type="button"
                     role="menuitem"
                     class="chm-menu-item"
-                    matTooltip="Hide"
                     (click)="handleHide()"
                 >
                     <span>Hide</span>

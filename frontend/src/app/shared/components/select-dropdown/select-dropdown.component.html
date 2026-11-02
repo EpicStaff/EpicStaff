@@ -37,7 +37,6 @@
                             type="search"
                             [placeholder]="searchPlaceholder()"
                             [attr.aria-label]="searchPlaceholder()"
-                            [matTooltip]="searchPlaceholder()"
                             [value]="search()"
                             (input)="onSearchInput($any($event.target).value)"
                         />
@@ -50,7 +49,7 @@
                         [class.select-dropdown__action--icon-only]="action.iconOnly"
                         [disabled]="action.disabled"
                         [attr.aria-label]="action.iconOnly ? action.label : null"
-                        [matTooltip]="action.label"
+                        [matTooltip]="action.iconOnly ? action.label : ''"
                         (click)="onHeaderAction()"
                     >
                         @if (action.icon) {
@@ -75,7 +74,6 @@
                             type="button"
                             class="select-dropdown__tab"
                             [class.select-dropdown__tab--active]="tab.id === resolvedActiveTabId()"
-                            [matTooltip]="tab.label"
                             (click)="selectTab(tab.id)"
                         >
                             {{ tab.label }}
@@ -97,6 +95,7 @@
                         [class.select-dropdown__row--selected]="isItemSelected(item)"
                         [class.select-dropdown__row--disabled]="item.disabled"
                         [attr.aria-pressed]="selectionMode() === 'single' ? isItemSelected(item) : null"
+                        appTooltipOnOverflow=".select-dropdown__row-name"
                         [matTooltip]="item.name"
                         (click)="selectItem(item)"
                     >
@@ -170,6 +169,7 @@
                                 type="button"
                                 class="select-dropdown__row-name"
                                 [attr.aria-disabled]="row.node.disabled || null"
+                                appTooltipOnOverflow
                                 [matTooltip]="row.node.name"
                             >
                                 {{ row.node.name }}

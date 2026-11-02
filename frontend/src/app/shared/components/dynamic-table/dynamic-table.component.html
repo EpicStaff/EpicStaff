@@ -179,6 +179,7 @@
                                                             type="button"
                                                             class="dt__navigate-cell"
                                                             [class.dt__navigate-cell--empty]="label.isEmpty"
+                                                            appTooltipOnOverflow=".dt__navigate-cell-text"
                                                             [matTooltip]="label.text"
                                                             (click)="navigateRow.emit({ row, rowIndex })"
                                                         >

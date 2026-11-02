@@ -25,7 +25,7 @@
                 [class.segmented__option--active]="value() === option.value"
                 [attr.aria-pressed]="value() === option.value"
                 [disabled]="isDisabled()"
-                [matTooltip]="option.tooltip ?? option.label ?? option.name"
+                [matTooltip]="option.tooltip ?? ''"
                 (click)="select(option)"
             >
                 @if (option.icon) {
@@ -54,7 +54,7 @@
                 [class.active]="option.value === value()"
                 [attr.aria-pressed]="option.value === value()"
                 [disabled]="isDisabled()"
-                [matTooltip]="option.tooltip ?? option.label ?? option.name"
+                [matTooltip]="option.tooltip ?? ''"
                 (click)="select(option)"
             >
                 @if (option.icon) {

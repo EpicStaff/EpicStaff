@@ -56,11 +56,12 @@
                                 class="dropdown-trigger"
                                 [class.dropdown-trigger--readonly]="isReadOnly()"
                                 [disabled]="configurationLocked()"
-                                [matTooltip]="selectedTableName() ? 'Table: ' + selectedTableName() : 'Table'"
                             >
                                 <span
                                     class="dropdown-trigger__label"
                                     [class.dropdown-trigger__label--placeholder]="!selectedTableName()"
+                                    appTooltipOnOverflow
+                                    [matTooltip]="selectedTableName() ?? ''"
                                 >
                                     {{ tableTriggerLabel() }}
                                 </span>
@@ -216,7 +217,6 @@
                         class="add-entry"
                         [disabled]="atKeyLimit || configurationLocked()"
                         (click)="addEntry()"
-                        matTooltip="Add key"
                     >
                         <app-svg-icon
                             icon="plus"

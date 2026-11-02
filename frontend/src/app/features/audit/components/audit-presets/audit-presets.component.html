@@ -15,7 +15,6 @@
                 #cancelSelectingButton
                 class="presets__link"
                 type="button"
-                matTooltip="Cancel export"
                 (click)="stopSelecting()"
             >
                 Cancel
@@ -23,7 +22,6 @@
             <button
                 class="presets__btn presets__btn--small presets__btn--accent"
                 type="button"
-                matTooltip="Export selected presets"
                 [disabled]="!canExportSelected() && !isExporting()"
                 [attr.aria-disabled]="isExporting()"
                 (click)="exportSelected()"
@@ -57,7 +55,6 @@
             <button
                 class="presets__btn presets__btn--small"
                 type="button"
-                matTooltip="Import presets"
                 [attr.aria-disabled]="isImporting()"
                 (click)="openImport(importInput)"
             >
@@ -71,7 +68,6 @@
                 #startSelectingButton
                 class="presets__btn presets__btn--small"
                 type="button"
-                matTooltip="Export presets"
                 [disabled]="editor() !== null || scopedPresets().length === 0"
                 (click)="startSelecting()"
             >
@@ -96,7 +92,6 @@
                 #newPresetButton
                 class="presets__btn presets__btn--accent"
                 type="button"
-                matTooltip="New Preset"
                 [disabled]="isSaving()"
                 (click)="openCreate()"
             >
@@ -144,8 +139,8 @@
                             type="button"
                             [disabled]="card.state === null && !isSelecting()"
                             [attr.tabindex]="isSelecting() ? -1 : null"
-                            [matTooltip]="cardTooltip(card)"
-                            matTooltipClass="multiline-tooltip"
+                            appTooltipOnOverflow=".preset-card__name"
+                            [matTooltip]="card.preset.name"
                             (click)="activateCard(card)"
                         >
                             <span class="preset-card__head">
@@ -161,7 +156,11 @@
                             @if (card.chips.length > 0) {
                                 <span class="preset-card__chips">
                                     @for (chip of card.chips; track chip.key) {
-                                        <span class="preset-chip">
+                                        <span
+                                            class="preset-chip"
+                                            appTooltipOnOverflow=".preset-chip__value"
+                                            [matTooltip]="chip.label + ' ' + chip.value"
+                                        >
                                             <span class="preset-chip__label">{{ chip.label }}</span>
                                             <span class="preset-chip__value">{{ chip.value }}</span>
                                         </span>
@@ -213,7 +212,6 @@
                                             type="button"
                                             role="menuitem"
                                             [disabled]="isSaving()"
-                                            matTooltip="Edit"
                                             (click)="openEdit(card)"
                                         >
                                             Edit
@@ -224,7 +222,6 @@
                                         class="preset-menu__item"
                                         type="button"
                                         role="menuitem"
-                                        matTooltip="Duplicate"
                                         (click)="duplicate(card)"
                                     >
                                         Duplicate
@@ -235,7 +232,6 @@
                                                 class="preset-menu__item"
                                                 type="button"
                                                 role="menuitem"
-                                                matTooltip="Overwrite with current filters"
                                                 (click)="overwrite(card)"
                                             >
                                                 Overwrite with current filters
@@ -246,7 +242,6 @@
                                                 class="preset-menu__item"
                                                 type="button"
                                                 role="menuitem"
-                                                matTooltip="Copy as query code"
                                                 (click)="copyQuery(card)"
                                             >
                                                 Copy as query code
@@ -258,7 +253,6 @@
                                             class="preset-menu__item"
                                             type="button"
                                             role="menuitem"
-                                            matTooltip="Move to Shared Presets"
                                             (click)="confirmMoveToShared(card.preset)"
                                         >
                                             Move to Shared Presets
@@ -267,7 +261,6 @@
                                             class="preset-menu__item"
                                             type="button"
                                             role="menuitem"
-                                            matTooltip="Copy to Shared Presets"
                                             (click)="confirmCopyToShared(card.preset)"
                                         >
                                             Copy to Shared Presets
@@ -277,7 +270,6 @@
                                         class="preset-menu__item"
                                         type="button"
                                         role="menuitem"
-                                        matTooltip="Export as JSON"
                                         (click)="exportPreset(card.preset)"
                                     >
                                         Export as JSON
@@ -287,7 +279,6 @@
                                             class="preset-menu__item"
                                             type="button"
                                             role="menuitem"
-                                            matTooltip="Delete preset"
                                             (click)="confirmDelete(card.preset)"
                                         >
                                             Delete preset
@@ -320,7 +311,6 @@
                 class="preset-form__input"
                 type="text"
                 maxlength="150"
-                matTooltip="Preset Name"
                 [value]="editorState.name"
                 (input)="setEditorName($event)"
             />
@@ -344,7 +334,6 @@
                     type="button"
                     [class.is-active]="editorState.state.mode === 'builder'"
                     [attr.aria-pressed]="editorState.state.mode === 'builder'"
-                    matTooltip="Built With: Builder"
                     (click)="setEditorMode('builder')"
                 >
                     Builder
@@ -354,7 +343,6 @@
                     type="button"
                     [class.is-active]="editorState.state.mode === 'query'"
                     [attr.aria-pressed]="editorState.state.mode === 'query'"
-                    matTooltip="Built With: Query code"
                     (click)="setEditorMode('query')"
                 >
                     Query code
@@ -377,7 +365,6 @@
                     id="audit-preset-query"
                     class="preset-form__query"
                     rows="4"
-                    matTooltip="Query"
                     [value]="editorState.state.query"
                     (input)="setEditorQuery($event)"
                 ></textarea>
@@ -386,6 +373,7 @@
                     @for (chip of editorChips(); track chip.key; let chipIndex = $index) {
                         <span
                             class="preset-chip"
+                            appTooltipOnOverflow=".preset-chip__value"
                             [matTooltip]="chip.label + ' ' + chip.value"
                         >
                             <span class="preset-chip__label">{{ chip.label }}</span>
@@ -412,7 +400,6 @@
                     <button
                         class="presets__btn"
                         type="button"
-                        matTooltip="Delete preset"
                         [disabled]="editorState.isSaving"
                         (click)="confirmDelete(preset)"
                     >
@@ -423,7 +410,6 @@
                 <button
                     class="presets__btn"
                     type="button"
-                    matTooltip="Cancel"
                     [disabled]="editorState.isSaving"
                     (click)="cancelEdit()"
                 >
@@ -432,7 +418,6 @@
                 <button
                     class="presets__btn presets__btn--primary"
                     type="button"
-                    matTooltip="Save Changes"
                     [disabled]="!canSave() && !editorState.isSaving"
                     [attr.aria-disabled]="editorState.isSaving"
                     (click)="save()"

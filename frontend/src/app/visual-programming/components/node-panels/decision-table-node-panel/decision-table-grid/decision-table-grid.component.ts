@@ -9,6 +9,7 @@ import {
     output,
     signal,
 } from '@angular/core';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS } from '@angular/material/tooltip';
 import { ButtonComponent, HelpTooltipComponent } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { formatNodeLabel } from '@shared/utils';
@@ -185,6 +186,7 @@ export class DecisionTableGridComponent implements OnInit {
             editable: true,
             flex: 1,
             minWidth: 180,
+            tooltipValueGetter: (params) => params.value,
             cellEditor: 'agLargeTextCellEditor',
             cellEditorParams: {
                 maxLength: 255,
@@ -225,6 +227,7 @@ export class DecisionTableGridComponent implements OnInit {
             field: 'next_node',
             editable: true,
             width: 200,
+            tooltipValueGetter: (params) => params.valueFormatted,
             singleClickEdit: true,
             cellEditor: NextNodeEditorComponent,
             cellEditorPopup: true,
@@ -283,6 +286,8 @@ export class DecisionTableGridComponent implements OnInit {
         animateRows: true,
         suppressColumnVirtualisation: false,
         stopEditingWhenCellsLoseFocus: true,
+        tooltipShowMode: 'whenTruncated',
+        tooltipShowDelay: inject(MAT_TOOLTIP_DEFAULT_OPTIONS).showDelay,
         onCellValueChanged: (event: CellValueChangedEvent) => this.onCellValueChanged(event),
         onCellClicked: (event: CellClickedEvent) => this.onCellClicked(event),
         onCellKeyDown: (event: CellKeyDownEvent) => this.onCellKeyDown(event),

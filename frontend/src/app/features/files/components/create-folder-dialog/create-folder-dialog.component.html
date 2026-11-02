@@ -55,7 +55,6 @@
                         size="18px"
                         text="Choose where uploaded files will be placed. If not selected, files will be saved in Root (Default)."
                         position="top"
-                        [tooltipClass]="'dialog__label-tooltip'"
                     />
                 </div>
                 <!-- The dialog opens with the focus here: the first choice the form asks for. -->
@@ -204,7 +203,6 @@
                         size="18px"
                         text="Enter a folder name to group files. If empty, files won’t be grouped and will be saved in Root (Default)."
                         position="top"
-                        [tooltipClass]="'dialog__label-tooltip'"
                     />
                 </div>
                 <input
@@ -273,7 +271,8 @@
                                 <div class="create-folder-dialog__file-info">
                                     <span
                                         class="create-folder-dialog__file-name"
-                                        [title]="file.name"
+                                        appTooltipOnOverflow
+                                        [matTooltip]="file.name"
                                         >{{ file.name }}</span
                                     >
                                     @if (getFileError(file); as serverError) {

@@ -120,7 +120,8 @@
                         <span class="multi-select__item-text">
                             <span
                                 class="multi-select__item-name"
-                                [title]="item.name"
+                                appTooltipOnOverflow
+                                [matTooltip]="item.name"
                                 >{{ item.name }}</span
                             >
                             @if (item.tip) {

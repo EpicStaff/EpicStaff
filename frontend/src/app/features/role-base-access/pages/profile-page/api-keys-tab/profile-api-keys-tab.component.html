@@ -8,22 +8,33 @@
         Personal API Keys
         <span class="count">
             <span class="active">{{ activeCount() }}</span
-            ><span class="limit">/{{ MAX_PERSONAL_KEYS }} active</span>
+            ><span class="limit">/{{ MAX_PERSONAL_KEYS }} active in {{ activeOrgLabel() }}</span>
         </span>
     </h3>
 
     <div class="toolbar-actions">
-        <!-- ariaDisabled, not disabled: it keeps the focus the key dialog hands back when that key reached the limit. -->
+        <!-- aria-disabled keeps the button focusable so its disabled reason is reachable, and keeps the focus the key dialog
+             hands back when that key reached the limit. The tooltip opens on focus by hand (matTooltip only watches its
+             host, and focus lands on the inner button); the hidden span is read aloud. -->
         <app-button
             #createButton
+            #createTooltipRef="matTooltip"
             type="primary"
             leftIcon="plus"
-            [matTooltip]="maxCountReached() ? 'Maximum active keys reached' : 'Create API key'"
-            [ariaDisabled]="maxCountReached()"
+            [matTooltip]="createTooltip()"
+            [ariaDisabled]="!canCreate()"
+            [ariaDescribedby]="canCreate() ? null : 'create-api-key-disabled-reason'"
+            (focusin)="createTooltipRef.show()"
+            (focusout)="createTooltipRef.hide()"
             (click)="onCreateKey()"
         >
             Create API Key
         </app-button>
+        <span
+            id="create-api-key-disabled-reason"
+            class="visually-hidden"
+            >{{ createTooltip() }}</span
+        >
     </div>
 </div>
 
@@ -45,6 +56,14 @@
             matTooltipPosition="above"
             >{{ row['name'] }}</span
         >
+    </ng-template>
+
+    <!-- ORGANIZATION -->
+    <ng-template
+        appTableCell="orgName"
+        let-row
+    >
+        <span class="cell-text">{{ row['orgName'] }}</span>
     </ng-template>
 
     <!-- KEY -->
@@ -130,9 +149,7 @@
     </ng-template>
 
     <div tableEmpty>
-        <h4 class="empty-title">Any keys yet</h4>
-        <p class="empty-subtitle">
-            A key acts as you in any organization you belong to. API clients choose the organization per request.
-        </p>
+        <h4 class="empty-title">No keys yet</h4>
+        <p class="empty-subtitle">A key acts as you in the organization it was created in.</p>
     </div>
 </app-table>

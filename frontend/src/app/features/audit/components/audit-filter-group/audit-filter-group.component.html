@@ -12,7 +12,6 @@
             class="filter-group__header"
             type="button"
             [attr.aria-expanded]="isOpen()"
-            [matTooltip]="headerTooltip()"
             [attr.aria-description]="disabled() && hint() ? hint() : null"
             [disabled]="disabled()"
             (click)="toggle()"
@@ -28,7 +27,12 @@
                 <span class="filter-group__hint">{{ hint() }}</span>
             }
             @if (summary()) {
-                <span class="filter-group__summary">{{ summary() }}</span>
+                <span
+                    class="filter-group__summary"
+                    appTooltipOnOverflow
+                    [matTooltip]="summary()"
+                    >{{ summary() }}</span
+                >
             }
         </button>
         <!-- a sibling of the header, since a button cannot sit inside another button -->

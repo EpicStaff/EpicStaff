@@ -18,7 +18,6 @@
                 type="text"
                 placeholder="New preset name..."
                 aria-label="New preset name"
-                matTooltip="New preset name"
                 maxlength="150"
                 [value]="presetName()"
                 (input)="setNewPresetName($event)"
@@ -28,7 +27,6 @@
                 class="presets__btn presets__btn--accent"
                 type="button"
                 [disabled]="!canSave()"
-                matTooltip="Save"
                 (click)="saveNewPreset()"
             >
                 <app-svg-icon
@@ -81,6 +79,7 @@
                             class="preset-card__main"
                             type="button"
                             [attr.data-preset-id]="card.preset.id"
+                            appTooltipOnOverflow=".preset-card__name"
                             [matTooltip]="card.preset.name"
                             (click)="applyPreset(card.preset)"
                         >
@@ -92,6 +91,7 @@
                                     @for (chip of card.chips; track chip.label) {
                                         <span
                                             class="preset-chip"
+                                            appTooltipOnOverflow=".preset-chip__value"
                                             [matTooltip]="chip.label + ' ' + chip.value"
                                         >
                                             <span class="preset-chip__label">{{ chip.label }}</span>

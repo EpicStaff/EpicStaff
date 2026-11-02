@@ -17,6 +17,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService, SearchComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { escapeHtml } from '@shared/utils';
 
 import { FlowFilterPreset } from '../../../../models/flow-filter-preset.model';
@@ -35,7 +36,7 @@ interface FlowPresetCard {
 
 @Component({
     selector: 'app-flows-filter-presets',
-    imports: [AppSvgIconComponent, SearchComponent, MatTooltip],
+    imports: [AppSvgIconComponent, SearchComponent, MatTooltip, TooltipOnOverflowDirective],
     templateUrl: './flows-filter-presets.component.html',
     styleUrls: ['./flows-filter-presets.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

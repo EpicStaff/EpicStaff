@@ -68,7 +68,8 @@ def _agent_node_task(graph, org_request, output_schema):
 def _standalone_agent_task(graph, org_request, output_schema):
     agent_node = AgentNode.objects.create(graph=graph, node_name="output-schema-agent-node")
     return AgentNodeTaskSerializer(
-        data=_with_schema({"agent_node": agent_node.id, "name": "task-a", "order": 0}, output_schema)
+        data=_with_schema({"agent_node": agent_node.id, "name": "task-a", "order": 0}, output_schema),
+        context={"organization": graph.org, "request": org_request},
     ), "output_schema"
 
 

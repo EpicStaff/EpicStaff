@@ -18,7 +18,7 @@ import {
     viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     CheckboxComponent,
@@ -26,6 +26,7 @@ import {
     ConfirmationDialogService,
     SearchComponent,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { downloadBlob, escapeHtml } from '@shared/utils';
 import { catchError, EMPTY, filter, finalize, Observable, switchMap, tap } from 'rxjs';
 
@@ -115,11 +116,12 @@ function modeLabel(state: AuditFilterState | null): string {
         AppSvgIconComponent,
         AuditMatchScopeComponent,
         CheckboxComponent,
+        MatTooltipModule,
         NgTemplateOutlet,
         OverlayModule,
         SearchComponent,
         CdkTrapFocus,
-        MatTooltip,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './audit-presets.component.html',
     styleUrl: './audit-presets.component.scss',
@@ -417,15 +419,6 @@ export class AuditPresetsComponent implements OnInit {
         if (!this.isImporting()) {
             fileInput.click();
         }
-    }
-
-    // The card names the preset and lists every filter in it, as its chips may be cut short or left out.
-    protected cardTooltip(card: AuditPresetCard): string {
-        const lines = [card.preset.name, ...card.chips.map((chip) => `${chip.label} ${chip.value}`)];
-        if (card.hiddenChipCount > 0) {
-            lines.push(`+${card.hiddenChipCount} more`);
-        }
-        return lines.join('\n');
     }
 
     protected importFile(event: Event): void {

@@ -42,7 +42,6 @@
                 [collapseOnOverflowCheckExternalClip]="true"
                 [attr.aria-label]="isConnecting() ? 'Connecting...' : 'Start Speaking'"
                 [matTooltip]="isConnecting() ? 'Connecting...' : 'Start Speaking'"
-                matTooltipShowDelay="400"
                 (click)="onStartSpeaking()"
                 [attr.aria-disabled]="!canStartSpeaking()"
             >

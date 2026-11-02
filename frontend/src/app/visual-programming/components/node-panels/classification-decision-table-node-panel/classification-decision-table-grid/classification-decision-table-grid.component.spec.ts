@@ -363,17 +363,24 @@ describe(
             });
 
             it('shows the reason in a tooltip once the status icon is hovered', async () => {
-                const icon = cell(ROW.ignored, 'route_code').querySelector<HTMLElement>(
-                    '.cdt-route-code-cell__status .help-icon-wrapper'
+                const status = cell(ROW.ignored, 'route_code').querySelector<HTMLElement>(
+                    '.cdt-route-code-cell__status'
                 );
-                if (!icon) throw new Error('no status icon');
+                if (!status) throw new Error('no status icon');
 
-                icon.dispatchEvent(new MouseEvent('mouseenter'));
+                status.dispatchEvent(new MouseEvent('mouseenter'));
                 await settle();
 
                 expect(document.querySelector('.mat-mdc-tooltip')?.textContent?.trim()).toBe(
                     CDT_ROUTE_CONTINUE_COPY.routeCodeIgnored
                 );
+            });
+
+            it('keeps the status icon out of the tab order, so keyboard focus stays on the grid cell', () => {
+                const routeCell = cell(ROW.conflict, 'route_code');
+
+                expect(routeCell.querySelector('.cdt-route-code-cell__status')).not.toBeNull();
+                expect(routeCell.querySelector('button, a[href], [tabindex]:not([tabindex="-1"])')).toBeNull();
             });
 
             it('follows the canvas: wiring the dimmed route code turns it into a conflict', async () => {

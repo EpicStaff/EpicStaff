@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
@@ -14,11 +14,11 @@ export interface IconHeaderParams extends IHeaderParams {
 
 @Component({
     selector: 'app-icon-header',
-    imports: [MatTooltip, AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     template: `
         <div
             class="icon-header"
-            [title]="tooltip"
+            [matTooltip]="tooltip"
         >
             @if (label) {
                 <span class="icon-header-label">{{ label }}</span>
@@ -29,7 +29,6 @@ export interface IconHeaderParams extends IHeaderParams {
                     type="button"
                     [class]="variant === 'delete' ? 'icon-header-delete-svg' : iconClass + ' icon-header-clickable'"
                     [attr.aria-label]="tooltip || label"
-                    [matTooltip]="tooltip || label"
                     (click)="onIconClick($event)"
                 >
                     @if (variant === 'delete') {

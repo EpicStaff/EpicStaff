@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ColumnResizeDividerComponent,
@@ -77,7 +77,6 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
 @Component({
     selector: 'app-task-node-panel',
     imports: [
-        MatTooltip,
         ReactiveFormsModule,
         CustomInputComponent,
         VariableHighlightTextareaComponent,
@@ -96,6 +95,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ColumnResizeDividerComponent,
         InputsYouCanUseComponent,
         IfFlowEditableDirective,
+        MatTooltipModule,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],

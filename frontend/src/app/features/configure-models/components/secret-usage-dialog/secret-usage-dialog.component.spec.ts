@@ -25,6 +25,16 @@ const TWO_SAME_NAMED_NODES = usageOf([
     { id: 12, node_number: 2, name: 'Fetch', node_type: NodeType.PYTHON, code_field: null },
 ]);
 
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('SecretUsageDialogComponent', () => {
     let fixture: ComponentFixture<SecretUsageDialogComponent>;
     let element: HTMLElement;

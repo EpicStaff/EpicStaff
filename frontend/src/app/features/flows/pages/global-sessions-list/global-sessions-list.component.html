@@ -4,7 +4,6 @@
             <a
                 class="flows-back"
                 routerLink="/flows"
-                matTooltip="Flows"
             >
                 <app-svg-icon
                     icon="arrow-left"
@@ -28,8 +27,8 @@
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
                         type="button"
                         class="delete-btn"
-                        matTooltip="Delete Selected"
                         [class.invisible]="selectedIds().size === 0"
+                        [disabled]="isDeleting()"
                         (click)="onBulkDelete()"
                     >
                         Delete Selected ({{ selectedIds().size }})

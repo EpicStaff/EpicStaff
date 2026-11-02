@@ -65,7 +65,6 @@
                                 type="text"
                                 placeholder="Enter name..."
                                 aria-label="Task name"
-                                matTooltip="Task name"
                                 [value]="task.name"
                                 [readonly]="readonly()"
                                 (input)="onNameInput(i, $event)"
@@ -75,6 +74,7 @@
                         <div
                             class="att-cell att-cell--instructions"
                             [class.att-cell--selected]="isCellSelected(i, 'instructions')"
+                            (focusin)="onInstructionsFocus(i)"
                         >
                             <app-variable-highlight-textarea
                                 class="att-textarea-highlight"
@@ -109,7 +109,6 @@
                                 [class.att-textarea--invalid]="invalidSchemaIds().has(task.tempId) && !readonly()"
                                 placeholder="Add schema..."
                                 aria-label="Output schema"
-                                matTooltip="Output schema"
                                 [value]="getSchemaText(task)"
                                 [readonly]="readonly()"
                                 (input)="onSchemaInput(task.tempId, $event)"
@@ -138,7 +137,7 @@
                                 type="button"
                                 class="att-context-trigger"
                                 aria-haspopup="dialog"
-                                matTooltip="Task Context"
+                                [attr.aria-label]="getResolvedContext(task).length ? null : 'Task context'"
                                 [disabled]="readonly()"
                                 (click)="openContextPopup(i, $event)"
                             >

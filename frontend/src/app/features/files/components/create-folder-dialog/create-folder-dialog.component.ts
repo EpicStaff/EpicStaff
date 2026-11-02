@@ -28,7 +28,7 @@ import {
     HelpTooltipComponent,
     Spinner2Component,
 } from '@shared/components';
-import { EnterSubmitDirective } from '@shared/directives';
+import { EnterSubmitDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { catchError, EMPTY, merge, Observable, of, switchMap } from 'rxjs';
 import { filter, map, tap, toArray } from 'rxjs/operators';
@@ -76,6 +76,7 @@ export interface CreateFolderDialogResult {
         DragDropAreaComponent,
         EnterSubmitDirective,
         FileSizePipe,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './create-folder-dialog.component.html',
     styleUrls: ['./create-folder-dialog.component.scss'],

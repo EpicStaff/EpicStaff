@@ -11,7 +11,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 
 import { CDT_COLUMN_KIND } from '../../cdt.constants';
@@ -93,7 +93,7 @@ const SYMBOLIC_TOKENS = new Set([
 @Component({
     selector: 'app-expression-builder',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [TooltipOnOverflowDirective, MatTooltip, FormsModule],
+    imports: [FormsModule, MatTooltipModule, TooltipOnOverflowDirective],
     templateUrl: './expression-builder.component.html',
     styleUrls: ['./expression-builder.component.scss'],
 })

@@ -71,12 +71,14 @@ export const appConfig: ApplicationConfig = {
             },
         },
         {
-            // Material's own defaults, with the tooltip above its element (the design's arrow points down).
+            // Without a delay, every pointer pass over a dense canvas or table flashes tooltips.
+            // Material replaces its defaults with this object instead of merging, so the rest repeat its values.
             provide: MAT_TOOLTIP_DEFAULT_OPTIONS,
             useValue: {
-                showDelay: 0,
+                showDelay: 400,
                 hideDelay: 0,
                 touchendHideDelay: 1500,
+                // Above its element, so the design's arrow points down at it.
                 position: 'above',
             } satisfies MatTooltipDefaultOptions,
         },

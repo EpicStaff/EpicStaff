@@ -20,7 +20,6 @@
                 <button
                     type="button"
                     class="crumbs__item crumbs__item--link"
-                    [matTooltip]="crumb.label"
                     (click)="navAgent.emit(crumb.navAgentId)"
                 >
                     {{ crumb.label }}
@@ -29,7 +28,6 @@
                 <button
                     type="button"
                     class="crumbs__item crumbs__item--link"
-                    [matTooltip]="crumb.label"
                     (click)="navAgentSurfaces.emit(crumb.navAgentSurfacesId)"
                 >
                     {{ crumb.label }}

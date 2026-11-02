@@ -78,7 +78,6 @@
                                 [class.tab-btn--active]="activeTab() === 'table'"
                                 (click)="setActiveTab('table')"
                                 type="button"
-                                matTooltip="View: Decision Table"
                                 [attr.aria-pressed]="activeTab() === 'table'"
                             >
                                 Decision Table
@@ -90,7 +89,6 @@
                                 [class.tab-link--active]="activeTab() === 'precomputation'"
                                 (click)="setActiveTab('precomputation')"
                                 type="button"
-                                matTooltip="View: Pre-computation"
                                 [attr.aria-pressed]="activeTab() === 'precomputation'"
                             >
                                 Pre-computation
@@ -101,7 +99,6 @@
                                 [class.tab-link--active]="activeTab() === 'postcomputation'"
                                 (click)="setActiveTab('postcomputation')"
                                 type="button"
-                                matTooltip="View: Post-computation"
                                 [attr.aria-pressed]="activeTab() === 'postcomputation'"
                             >
                                 Post-computation
@@ -112,7 +109,6 @@
                                 [class.tab-link--active]="activeTab() === 'prompts'"
                                 (click)="setActiveTab('prompts')"
                                 type="button"
-                                matTooltip="View: Prompt library"
                                 [attr.aria-pressed]="activeTab() === 'prompts'"
                             >
                                 Prompt library
@@ -319,7 +315,6 @@
                                     type="button"
                                     class="add-prompt-header-btn"
                                     (click)="addPrompt()"
-                                    matTooltip="Add Prompt"
                                 >
                                     <i class="ti ti-plus"></i> Add Prompt
                                 </button>
@@ -397,7 +392,6 @@
                                                             [ngModelOptions]="{ standalone: true }"
                                                             [readonly]="isReadOnly()"
                                                             aria-label="Name"
-                                                            matTooltip="Name"
                                                             (ngModelChange)="pendingPromptName.set($event)"
                                                             (blur)="commitPromptRename(prompt.id)"
                                                             (keydown.enter)="commitPromptRename(prompt.id)"
@@ -427,7 +421,6 @@
                                                             [ngModelOptions]="{ standalone: true }"
                                                             [readonly]="isReadOnly()"
                                                             aria-label="Result Variable"
-                                                            matTooltip="Result Variable"
                                                             (ngModelChange)="
                                                                 updatePrompt(prompt.id, 'result_variable', $event)
                                                             "
@@ -467,7 +460,6 @@
                                                                     class="prompt-textarea prompt-textarea--transparent"
                                                                     rows="8"
                                                                     aria-label="Prompt"
-                                                                    matTooltip="Prompt"
                                                                     [ngModel]="prompt.prompt_text"
                                                                     [readonly]="isReadOnly()"
                                                                     [ngModelOptions]="{ standalone: true }"
@@ -594,7 +586,6 @@
                                                 <textarea
                                                     class="prompt-textarea prompt-textarea--transparent"
                                                     aria-label="Prompt"
-                                                    matTooltip="Prompt"
                                                     [ngModel]="prompt.prompt_text"
                                                     [readonly]="isReadOnly()"
                                                     [ngModelOptions]="{ standalone: true }"

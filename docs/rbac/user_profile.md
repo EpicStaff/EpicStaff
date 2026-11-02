@@ -35,6 +35,8 @@ Memberships are filtered to active organizations only and sorted by `joined_at` 
 
 For a **superadmin**, `memberships[]` lists **every active organization**, each with the built-in `Superadmin` role, so the org switcher can reach any org. Entries carry `id: null` and `joined_at: null` (there is no stored membership row), and are ordered by organization name.
 
+With a user API key, `memberships[]` holds the key's organization alone (a superadmin's key too): the key acts only there (see [api_keys.md](api_keys.md#mcp-style-usage-api-key-in-its-organization)).
+
 ### 2. Changing display name
 
 `PATCH /api/profile/` with `{"display_name": "Alice Doe"}`. Response is the full updated profile — re-render directly.
@@ -81,7 +83,7 @@ Errors:
 
 1. Show "New password" field (and "Confirm new password" if you want FE-side parity check).
 2. On submit, `POST /api/profile/password-change/confirm/` with `{"ticket": "...", "new_password": "..."}`.
-3. Response 200 → `{ "access": "...", "refresh": "..." }`. **Replace the stored JWT pair with these new ones.** Every other session for this user is now invalid; this device remains logged in.
+3. Response 200 → `{ "access": "..." }`, and the new refresh token replaces the HttpOnly refresh cookie (send the request with `withCredentials: true`). **Replace the in-memory access token with the new one.** Every other session for this user is now invalid; this device remains logged in.
 
 Errors and recovery:
 - `400 invalid_password_change_ticket` → the ticket is unknown, expired (default 5 min), already used, or doesn't belong to this user. UI: "Session timed out, please re-enter your current password." Drop the user back to step 1.
@@ -190,10 +192,10 @@ Throttled by `LoginThrottle` (default 5/min, env `DJANGO_LOGIN_THROTTLE_RATE`). 
 **Response 200:**
 
 ```json
-{ "access": "...", "refresh": "..." }
+{ "access": "..." }
 ```
 
-This pair is fresh and bound to the new password. Every other access and refresh token for the user — including the caller's previous access token — stops working immediately, and every personal API key they own is revoked.
+The new refresh token is not in the body: it is set as the refresh cookie, keeping the remember-me choice of the cookie the request carried (see [auth_endpoints.md](auth_endpoints.md) § "Refresh cookie"). This pair is fresh and bound to the new password. Every other access and refresh token for the user — including the caller's previous access token — stops working immediately, and every personal API key they own is revoked.
 
 ---
 
@@ -204,7 +206,9 @@ This pair is fresh and bound to the new password. Every other access and refresh
 - `active_organization_id`: int — echoes the header.
 - `active_permissions`: object — same shape as `GET /api/permissions/me/` (is_superadmin, role, permissions).
 
-When the header is absent OR points to an org the caller cannot access OR contains a non-integer value, both fields are `null` and the rest of the response is unchanged. The endpoint NEVER returns 403 for this case — it's the FE's boot endpoint and must remain reachable.
+When the header is absent OR points to an org the caller cannot access OR contains a non-integer value, both fields are `null` and the rest of the response is unchanged.
+
+With a personal API key the header is ignored: the active organization is always the key's organization. The endpoint NEVER returns 403 for this case — it's the FE's boot endpoint and must remain reachable.
 
 ## Switching organizations (FE flow)
 

@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, viewC
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 
 import { GetToolUsage, InlineUsageItem } from '../../models/tool-config.model';
 
@@ -15,7 +16,7 @@ type UsageSectionKey = 'agent' | 'shared' | 'inline';
 
 @Component({
     selector: 'app-tool-usage-dialog',
-    imports: [AppSvgIconComponent, MatTooltipModule],
+    imports: [AppSvgIconComponent, MatTooltipModule, TooltipOnOverflowDirective],
     templateUrl: './tool-usage-dialog.component.html',
     styleUrls: ['./tool-usage-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

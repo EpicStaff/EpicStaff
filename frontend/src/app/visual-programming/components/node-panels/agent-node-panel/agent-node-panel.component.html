@@ -53,7 +53,6 @@
                                     type="button"
                                     appSelectDropdownTrigger
                                     class="dropdown-trigger"
-                                    matTooltip="Agent"
                                     [class.dropdown-trigger--readonly]="isReadOnly()"
                                     [class.dropdown-trigger--invalid]="agentInvalid()"
                                 >
@@ -160,13 +159,13 @@
                                 [readonly]="isReadOnly()"
                                 (tasksChange)="onTasksChange($event)"
                                 (cellSelect)="onCellSelect($event)"
+                                (instructionsFocus)="onInstructionsFocus($event)"
                             ></app-agent-tasks-table>
 
                             <button
                                 *appIfFlowEditable
                                 type="button"
                                 class="add-task-btn"
-                                matTooltip="Add Task"
                                 (click)="addTask()"
                             >
                                 <app-svg-icon
@@ -319,7 +318,6 @@
                                 type="button"
                                 appSelectDropdownTrigger
                                 class="dropdown-trigger"
-                                matTooltip="Agent"
                                 [class.dropdown-trigger--invalid]="agentInvalid()"
                                 [class.dropdown-trigger--readonly]="isReadOnly()"
                             >
@@ -426,13 +424,13 @@
                             [readonly]="isReadOnly()"
                             (tasksChange)="onTasksChange($event)"
                             (cellSelect)="onCellSelect($event)"
+                            (instructionsFocus)="onInstructionsFocus($event)"
                         ></app-agent-tasks-table>
 
                         <button
                             *appIfFlowEditable
                             type="button"
                             class="add-task-btn"
-                            matTooltip="Add Task"
                             (click)="addTask()"
                         >
                             <app-svg-icon

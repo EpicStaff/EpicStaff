@@ -79,6 +79,19 @@ function mappings(element: HTMLElement): string[] {
 }
 
 describe('KeyValueMessageComponent', () => {
+    // jsdom has no ResizeObserver; the title's overflow tooltip needs one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => vi.unstubAllGlobals());
+
     it('summarises a read with found and not-found counts', () => {
         const element = render({
             mode: 'read',
@@ -550,7 +563,7 @@ describe('KeyValueMessageComponent', () => {
         const title = element.querySelector('.title') as HTMLElement;
         const style = getComputedStyle(title);
 
-        expect(tooltipOf(element.querySelector('.key-value-header'))).toBe(`Read 0 keys from table ${longName}`);
+        expect(tooltipOf(element.querySelector('.key-value-header'))).toBe(longName);
         expect(text(element, '.title .table-name')).toBe(longName);
         expect(chips(element)).toEqual([{ label: '0 found', neutral: false }]);
         expect([style.whiteSpace, style.overflow, style.textOverflow]).toEqual(['nowrap', 'hidden', 'ellipsis']);

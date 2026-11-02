@@ -82,6 +82,11 @@ function nodeWith(mode: KeyValueMode, entries: KeyValueEntry[]): KeyValueNodeMod
     return mapKeyValueNodeToModel({ ...DTO, mode, entries });
 }
 
+/** The text of an element's tooltip. */
+function tooltipOf(element: Element): string {
+    return getDebugNode(element)!.injector.get(MatTooltip).message;
+}
+
 function entriesOf(panel: KeyValueNodePanelComponent): FormArray {
     return panel.form.get('entries') as FormArray;
 }
@@ -209,9 +214,9 @@ function createPanel(
                       ReactiveFormsModule,
                       NgTemplateOutlet,
                       FormControlStubComponent,
+                      MatTooltip,
                       SelectDropdownComponent,
                       SelectDropdownTriggerDirective,
-                      MatTooltip,
                   ],
                   schemas: [CUSTOM_ELEMENTS_SCHEMA],
               }
@@ -332,7 +337,7 @@ describe('KeyValueNodePanelComponent', () => {
                 (fixture.nativeElement.querySelector('.entry-row') as HTMLElement).querySelectorAll(
                     'input, .equals-sign, .remove-entry'
                 ),
-                (element) => element.getAttribute('aria-label') ?? element.getAttribute('title') ?? element.textContent!
+                (element) => element.getAttribute('aria-label') ?? element.textContent!
             );
 
         expect(layout()).toEqual(['Variable path', '=', 'Key', 'Remove']);
@@ -1776,7 +1781,7 @@ describe('KeyValueNodePanelComponent', () => {
             return input;
         };
         const listed = (): string[] =>
-            Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), (item) => item.title);
+            Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), tooltipOf);
 
         for (const mode of ['read', 'write'] as const) {
             it(`is the Input List's picker under a ${mode} value: opens on focus, filters, fills the clicked path`, () => {
@@ -1938,7 +1943,7 @@ describe('KeyValueNodePanelComponent', () => {
         describe('in read, around a variable another row fills', () => {
             const nested = { variables: { user: { id: 1, name: 'n' }, username: 'u', plan: 'free' } };
             const disabled = (): string[] =>
-                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), (item) => item.title);
+                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), tooltipOf);
 
             it('leaves out the object and its fields when another row fills the object', () => {
                 const { fixture } = createPanel(
@@ -2036,7 +2041,7 @@ describe('KeyValueNodePanelComponent', () => {
             } as unknown as GraphDto;
             const ALL = ['variables.my_object', 'variables.my_object.user_id', 'variables.my_object.user_email'];
             const disabled = (): string[] =>
-                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), (item) => item.title);
+                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), tooltipOf);
 
             function openLoaded(): {
                 panel: KeyValueNodePanelComponent;
@@ -2182,7 +2187,7 @@ describe('KeyValueNodePanelComponent', () => {
             return event;
         };
         const listed = (): string[] =>
-            Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), (item) => item.title);
+            Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), tooltipOf);
         const keyOf = (panel: KeyValueNodePanelComponent): string => entriesOf(panel).at(0).get('key')!.value;
         const openWithStoredKey = (): ReturnType<typeof createPanel> =>
             createPanel(nodeWith('write', [{ key: '', value: 'variables.plan' }]), {
@@ -2295,7 +2300,7 @@ describe('KeyValueNodePanelComponent', () => {
         it('highlights nothing on an empty placeholder, the first snippet once one is typed', () => {
             const { fixture } = openWithStoredKey();
             const highlighted = (): string[] =>
-                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item--highlighted'), (item) => item.title);
+                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item--highlighted'), tooltipOf);
 
             typeKey(fixture, 'p_{variables.');
             expect(highlighted()).toEqual([]);
@@ -3171,7 +3176,7 @@ describe('KeyValueNodePanelComponent', () => {
             // Only the "+" shows; its name and tooltip still say what it does.
             expect(createButton()?.textContent!.trim()).toBe('');
             expect(createButton()?.getAttribute('aria-label')).toBe('Create table');
-            expect(getDebugNode(createButton())!.injector.get(MatTooltip).message).toBe('Create table');
+            expect(tooltipOf(createButton()!)).toBe('Create table');
             expect(createButton()?.querySelector('app-svg-icon')).not.toBeNull();
         });
 

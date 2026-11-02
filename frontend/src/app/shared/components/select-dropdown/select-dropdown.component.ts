@@ -23,9 +23,10 @@ import {
     contentChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { filter, Observable } from 'rxjs';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../buttons';
 import { CheckboxComponent } from '../checkbox/checkbox.component';
@@ -53,7 +54,14 @@ interface VisibleRow {
 
 @Component({
     selector: 'app-select-dropdown',
-    imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent, CdkTrapFocus, MatTooltip],
+    imports: [
+        AppSvgIconComponent,
+        CheckboxComponent,
+        ButtonComponent,
+        CdkTrapFocus,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './select-dropdown.component.html',
     styleUrls: ['./select-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

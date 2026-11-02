@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, input, model, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 
 @Component({
     selector: 'app-tools-filter-group',
-    imports: [AppSvgIconComponent, MatTooltipModule],
+    imports: [AppSvgIconComponent, MatTooltipModule, TooltipOnOverflowDirective],
     templateUrl: './tools-filter-group.component.html',
     styleUrls: ['./tools-filter-group.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

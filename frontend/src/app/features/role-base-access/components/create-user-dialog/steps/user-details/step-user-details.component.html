@@ -19,10 +19,14 @@
         <!--        </div>-->
         <!--        <app-validation-errors [control]="form.get('full_name')!" />-->
         <div class="control">
-            <label class="label">
+            <label
+                class="label"
+                for="user-details-email"
+            >
                 <span>Email<span class="required">*</span></span>
                 <app-help-tooltip
                     [text]="'The user\'s login email address. Must be unique across the system.'"
+                    ariaLabel="Email help"
                     position="right"
                 ></app-help-tooltip>
             </label>
@@ -30,6 +34,7 @@
             <!-- The dialog opens with the focus here, its first field. -->
             <app-custom-input
                 cdkFocusInitial
+                [id]="'user-details-email'"
                 (blur)="trimEmail()"
                 placeholder="Enter user email..."
                 ariaLabel="Email"
@@ -39,15 +44,20 @@
         <app-validation-errors [control]="form.get('email')!" />
         @if (!editMode()) {
             <div class="control">
-                <label class="label">
+                <label
+                    class="label"
+                    for="user-details-password"
+                >
                     <span>Password<span class="required">*</span></span>
                     <app-help-tooltip
                         [text]="'Minimum 8 characters. The user can change it after their first login.'"
+                        ariaLabel="Password help"
                         position="right"
                     ></app-help-tooltip>
                 </label>
 
                 <app-custom-input
+                    [id]="'user-details-password'"
                     type="password"
                     [placeholder]="editMode() ? 'Leave blank to keep current...' : 'Enter user password...'"
                     ariaLabel="Password"
@@ -69,13 +79,14 @@
         <!--        </div>-->
     </div>
     <div class="secondary">
-        <label class="label">
+        <div class="label">
             Make Superadmin
             <app-help-tooltip
                 [text]="'Superadmins have full access to all organizations and system settings.'"
+                ariaLabel="Make Superadmin help"
                 position="right"
             ></app-help-tooltip>
-        </label>
+        </div>
 
         <app-toggle-switch
             ariaLabel="Make Superadmin"

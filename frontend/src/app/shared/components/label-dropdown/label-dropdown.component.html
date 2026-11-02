@@ -6,6 +6,7 @@
             class="trigger-btn"
             [class.open]="isOpen()"
             [attr.aria-expanded]="isOpen()"
+            appTooltipOnOverflow=".trigger-text"
             [matTooltip]="triggerLabel"
             (click)="$event.stopPropagation(); toggle()"
         >
@@ -50,7 +51,6 @@
                 <button
                     type="button"
                     class="add-root-btn"
-                    matTooltip="Add label"
                     (click)="startAddRoot()"
                 >
                     <app-svg-icon
@@ -68,7 +68,6 @@
                 type="text"
                 placeholder="Search labels..."
                 aria-label="Search labels"
-                matTooltip="Search labels"
                 [ngModel]="searchTerm()"
                 (ngModelChange)="searchTerm.set($event)"
                 (keyup.escape)="searchTerm.set('')"

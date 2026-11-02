@@ -24,7 +24,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink } from '@angular/router';
 import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
-import { ClickOutsideDirective } from '@shared/directives';
+import { ClickOutsideDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { isPlainPrimaryClick } from '@shared/utils';
 import { filter, map } from 'rxjs/operators';
@@ -95,6 +95,7 @@ function isEditableTarget(element: Element): boolean {
     selector: 'app-left-sidebar',
     imports: [
         RouterLink,
+        MatTooltip,
         OverlayModule,
         PortalModule,
         UserMenuComponent,
@@ -109,7 +110,7 @@ function isEditableTarget(element: Element): boolean {
         CdkTrapFocus,
         CdkScrollable,
         NgTemplateOutlet,
-        MatTooltip,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],

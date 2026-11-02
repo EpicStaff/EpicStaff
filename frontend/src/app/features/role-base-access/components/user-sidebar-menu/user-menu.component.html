@@ -5,8 +5,20 @@
             [avatarUrl]="user().avatar_url"
         />
         <div class="user-info">
-            <div class="user-name">{{ user().display_name || user().email }}</div>
-            <div class="user-email">{{ user().email }}</div>
+            <div
+                class="user-name"
+                appTooltipOnOverflow
+                [matTooltip]="user().display_name || user().email"
+            >
+                {{ user().display_name || user().email }}
+            </div>
+            <div
+                class="user-email"
+                appTooltipOnOverflow
+                [matTooltip]="user().email"
+            >
+                {{ user().email }}
+            </div>
         </div>
     </section>
 
@@ -22,14 +34,24 @@
                         [class.disabled]="switching()"
                         [disabled]="switching()"
                         [attr.aria-current]="activeOrgService.activeOrgId() === org.organization.id || null"
-                        [matTooltip]="org.organization.name"
-                        matTooltipPosition="right"
                         (click)="onOrgClick(org.organization.id)"
                     >
                         <app-org-avatar [name]="org.organization.name" />
                         <span class="org-info">
-                            <span class="org-name text-body-small">{{ org.organization.name }}</span>
-                            <span class="org-role">{{ org.role.name }}</span>
+                            <span
+                                class="org-name text-body-small"
+                                appTooltipOnOverflow
+                                [matTooltip]="org.organization.name"
+                            >
+                                {{ org.organization.name }}
+                            </span>
+                            <span
+                                class="org-role"
+                                appTooltipOnOverflow
+                                [matTooltip]="org.role.name"
+                            >
+                                {{ org.role.name }}
+                            </span>
                         </span>
                     </button>
                 </li>
@@ -44,8 +66,8 @@
                 type="button"
                 class="nav-item"
                 [class.active]="isWorkspaceRoute()"
+                appTooltipOnOverflow=".nav-label"
                 matTooltip="Workspace"
-                matTooltipPosition="right"
                 (click)="onWorkspaceClick()"
             >
                 <app-svg-icon
@@ -65,8 +87,8 @@
             type="button"
             class="nav-item"
             [class.active]="isProfileRoute()"
+            appTooltipOnOverflow=".nav-label"
             matTooltip="My Profile"
-            matTooltipPosition="right"
             (click)="onProfileClick()"
         >
             <app-svg-icon
@@ -88,8 +110,8 @@
             <button
                 type="button"
                 class="nav-item"
+                appTooltipOnOverflow=".nav-label"
                 [matTooltip]="tour.label"
-                matTooltipPosition="right"
                 (click)="onTourClick(tour.key)"
             >
                 <app-svg-icon
@@ -103,8 +125,8 @@
         <button
             type="button"
             class="nav-item"
+            appTooltipOnOverflow=".nav-label"
             matTooltip="Sign out"
-            matTooltipPosition="right"
             (click)="onSignOutClick()"
         >
             <app-svg-icon

@@ -98,8 +98,8 @@ export class ApiKeysTabComponent {
     protected readonly isLoading = signal(true);
     protected readonly isBulkLoading = signal(false);
     protected readonly isBulkMenuOpen = signal(false);
-    protected readonly selectedItems = signal<TableRow[]>([]);
-    protected readonly isBulkDisabled = computed(() => this.selectedItems().length === 0 || this.isBulkLoading());
+    /** Only ids are kept: the selected rows are read from the latest list, so a reload never leaves a stale status behind. */
+    private readonly selectedIds = signal<ReadonlySet<number>>(new Set());
     protected readonly keys = signal<GetApiKeyWithOwnerResponse[]>([]);
 
     protected readonly searchTerm = signal('');
@@ -143,6 +143,7 @@ export class ApiKeysTabComponent {
             filterServerSide: true,
         },
         { key: 'name', label: 'NAME', width: 'minmax(140px, 1.5fr)' },
+        { key: 'orgName', label: 'ORGANIZATION', width: 'minmax(140px, 1.5fr)' },
         { key: 'key', label: 'KEY', width: 'minmax(140px, 1.2fr)' },
         { key: 'created', label: 'CREATED', width: 'minmax(110px, 1fr)' },
         { key: 'expires', label: 'EXPIRES', width: 'minmax(100px, 1fr)' },
@@ -179,10 +180,17 @@ export class ApiKeysTabComponent {
                 ownerAvatar: k.owner.avatar_url,
                 ownerName: k.owner.display_name || k.owner.email,
                 ownerEmail: k.owner.email,
-                orgIds: k.org_ids,
+                orgId: k.org_id,
+                orgName: k.org_name,
             }))
             .sort((a, b) => API_KEY_STATUS_ORDER.get(a.status)! - API_KEY_STATUS_ORDER.get(b.status)!)
     );
+
+    protected readonly selectedItems = computed<TableRow[]>(() => {
+        const selectedIds = this.selectedIds();
+        return this.tableData().filter((row) => selectedIds.has(row['id'] as number));
+    });
+    protected readonly isBulkDisabled = computed(() => this.selectedItems().length === 0 || this.isBulkLoading());
 
     protected readonly isRowSelectable = (row: TableRow): boolean => this.canRetireRow(row);
 
@@ -232,12 +240,7 @@ export class ApiKeysTabComponent {
     }
 
     canRetireRow(row: TableRow): boolean {
-        if (this.permissionsService.isSuperadmin) {
-            return true;
-        }
-
-        const orgIds = (row['orgIds'] as number[] | undefined) ?? [];
-        return orgIds.some((id) => this.permissionsService.canInOrg(id, ResourceCode.ApiKeys, ActionCode.Delete));
+        return this.permissionsService.canInOrg(row['orgId'] as number, ResourceCode.ApiKeys, ActionCode.Delete);
     }
 
     onOrgFilterChange(values: unknown[]): void {
@@ -254,7 +257,7 @@ export class ApiKeysTabComponent {
     }
 
     onSelectionChange(selected: TableRow[]): void {
-        this.selectedItems.set(selected);
+        this.selectedIds.set(new Set(selected.map((row) => row['id'] as number)));
     }
 
     toggleBulkMenu(): void {

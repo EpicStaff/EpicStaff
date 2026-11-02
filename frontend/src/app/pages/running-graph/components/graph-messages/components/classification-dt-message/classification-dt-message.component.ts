@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { MatTooltip } from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import {
@@ -14,7 +14,7 @@ import {
 
 @Component({
     selector: 'app-classification-dt-message',
-    imports: [MatTooltip, CommonModule, AppSvgIconComponent],
+    imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
     template: `
         <!-- Condition Group -->
         @if (isConditionGroup()) {
@@ -46,7 +46,6 @@ import {
                             <button
                                 type="button"
                                 class="message-toggle"
-                                [matTooltip]="getConditionData()?.group_name ?? ''"
                                 [attr.aria-expanded]="isMessageExpanded"
                             >
                                 {{ getConditionData()?.group_name }}
@@ -107,7 +106,6 @@ import {
                             <button
                                 type="button"
                                 class="message-toggle"
-                                matTooltip="LLM Classification"
                                 [attr.aria-expanded]="isMessageExpanded"
                             >
                                 LLM Classification
@@ -129,7 +127,6 @@ import {
                                 type="button"
                                 class="section-heading"
                                 [attr.aria-expanded]="isPromptExpanded"
-                                matTooltip="Prompt"
                                 (click)="toggleSection('prompt'); $event.stopPropagation()"
                             >
                                 <app-svg-icon
@@ -155,7 +152,6 @@ import {
                                 type="button"
                                 class="section-heading"
                                 [attr.aria-expanded]="isResponseExpanded"
-                                matTooltip="Raw Response"
                                 (click)="toggleSection('response'); $event.stopPropagation()"
                             >
                                 <app-svg-icon
@@ -244,7 +240,6 @@ import {
                             <button
                                 type="button"
                                 class="message-toggle"
-                                matTooltip="Manipulation"
                                 [attr.aria-expanded]="isMessageExpanded"
                             >
                                 Manipulation

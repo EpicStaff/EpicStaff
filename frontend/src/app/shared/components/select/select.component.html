@@ -9,10 +9,7 @@
     }
 
     @if (readonly()) {
-        <span
-            class="selector__readonly-value"
-            [attr.title]="selectedItem()?.name || null"
-        >
+        <span class="selector__readonly-value">
             @if (selectedItem()?.icon) {
                 <app-svg-icon
                     [icon]="selectedItem()!.icon!"
@@ -42,7 +39,7 @@
                 [class.selector__btn--placeholder]="!selectedItem() && !(allowCustomValue() && selectedValue())"
                 [class.selector__btn--transparent]="transparent()"
                 [attr.aria-expanded]="open()"
-                [matTooltip]="label() || tooltip() || placeholder()"
+                [matTooltip]="tooltip()"
                 (click)="toggle()"
             >
                 @if (loading()) {
@@ -63,7 +60,11 @@
                             [style.background-color]="dotColor"
                         ></span>
                     }
-                    <span class="selector__text">
+                    <span
+                        class="selector__text"
+                        appTooltipOnOverflow
+                        [matTooltip]="displayText()"
+                    >
                         {{ displayText() }}
                     </span>
                     @if (showTipInTrigger() && selectedItem()?.tip; as tip) {
@@ -117,7 +118,6 @@
                     (keydown.enter)="commitCustomValue()"
                     [placeholder]="searchPlaceholder()"
                     [attr.aria-label]="searchPlaceholder()"
-                    [matTooltip]="searchPlaceholder()"
                 />
             </div>
         }
@@ -139,6 +139,7 @@
                         [class.selector__option--disabled]="item.disabled"
                         [attr.aria-pressed]="item.value === selectedValue()"
                         [disabled]="!!item.disabled"
+                        appTooltipOnOverflow=".selector__text"
                         [matTooltip]="item.name"
                         (click)="select(item)"
                     >
@@ -179,6 +180,7 @@
                     type="button"
                     class="selector__option selector__option--exists"
                     [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
+                    appTooltipOnOverflow=".selector__text"
                     [matTooltip]="'Use ' + search().trim()"
                     (click)="commitCustomValue()"
                 >
