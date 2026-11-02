@@ -92,10 +92,14 @@ import {
                         />
                     </div>
                     <div class="header-text">
-                        <h3>LLM Classification</h3>
+                        <h3>{{ isSystemOne() ? 'System One' : 'LLM Classification' }}</h3>
                         <span class="badge prompt-badge">{{ getPromptData()?.prompt_id }}</span>
                     </div>
                 </div>
+
+                @if (providerLine(); as line) {
+                    <div class="provider-line">{{ line }}</div>
+                }
 
                 <div
                     class="collapsible-content grid-collapsible"
@@ -112,7 +116,7 @@ import {
                                     [icon]="isPromptExpanded ? 'caret-down-filled' : 'caret-right-filled'"
                                     size="1.1rem"
                                 />
-                                Prompt
+                                {{ isSystemOne() ? 'State sent' : 'Prompt' }}
                             </div>
                             <div
                                 class="collapsible-content grid-collapsible"
@@ -353,6 +357,12 @@ import {
                 color: var(--amber-620);
             }
 
+            .provider-line {
+                padding-left: 4.5rem;
+                color: var(--gray-400);
+                font-size: 0.875rem;
+            }
+
             .manipulation-badge {
                 background-color: var(--emerald-300-alpha-15);
                 color: var(--emerald-300);
@@ -481,6 +491,16 @@ export class ClassificationDtMessageComponent {
             return this.message.message_data as ClassificationPromptMessageData;
         }
         return null;
+    }
+
+    isSystemOne(): boolean {
+        return !!this.getPromptData()?.provider;
+    }
+
+    providerLine(): string | null {
+        const data = this.getPromptData();
+        if (!data?.provider) return null;
+        return data.model_version ? `${data.provider} · ${data.model_version}` : data.provider;
     }
 
     get usage(): ClassificationTokenUsage | null {

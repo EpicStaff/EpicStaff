@@ -195,6 +195,8 @@ export interface ClassificationPromptMessageData {
     parsed_result: unknown;
     result_variable: string;
     usage: ClassificationTokenUsage;
+    provider?: string | null;
+    model_version?: string | null;
     message_type: MessageType.CLASSIFICATION_PROMPT;
 }
 
