@@ -51,6 +51,10 @@ class ExecutionJobMessage(Schema):
     # Routing hint only, echoed back on the result so the manager can publish it to the
     # channel crew alone reads. The worker never acts on it.
     reply_to_crew_channel: bool = False
+    # Wall-clock (`time.time()`) seconds when the job entered the run queue. The worker
+    # fails the job instead of running it once it has waited longer than its queue
+    # timeout. Wall clock, not monotonic, so it keeps its meaning across processes.
+    queued_at: float | None = None
 
 
 class StorageMutationsMessage(Schema):
@@ -72,8 +76,17 @@ class ExecutionResultMessage(Schema):
     mutations: StorageMutationsMessage | None = None
     # Echoed from the job so the publisher knows which result channel this one belongs on.
     reply_to_crew_channel: bool = False
+    # True only when the worker really executed the job. A job failed without running
+    # (venv failed, dispatch failed, expired in the queue) keeps False, so it does not
+    # count towards the drain rate admission control predicts queue waits from.
+    ran: bool = False
     # The next two only feed the publisher's BENCH checkpoint; neither is published.
     session_id: int | None = None
-    # Set only on a result for a job that never ran. Spelled out rather than imported from
-    # manager.domain.types: this module must not depend on either side of the seam.
-    not_run_reason: Literal["venv_failed", "dispatch_failed"] | None = None
+    # Set only on a result for a job that never ran: "venv_failed" and "dispatch_failed"
+    # from the manager, "hold_timeout" from the manager for a job held past its hold
+    # deadline, "overloaded" from the worker for a job that expired in its queue.
+    # Spelled out rather than imported: this module must not depend on either side of the
+    # seam.
+    not_run_reason: (
+        Literal["venv_failed", "dispatch_failed", "hold_timeout", "overloaded"] | None
+    ) = None

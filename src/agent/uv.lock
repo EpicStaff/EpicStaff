@@ -8,6 +8,7 @@ version = "1.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastmcp" },
+    { name = "foundation" },
     { name = "jsonschema" },
     { name = "litellm" },
     { name = "loguru" },
@@ -41,6 +42,7 @@ transitive-pins = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = "==3.4.7" },
+    { name = "foundation", editable = "../foundation" },
     { name = "jsonschema", specifier = "==4.26.0" },
     { name = "litellm", specifier = "==1.100.5" },
     { name = "loguru", specifier = "==0.7.3" },
@@ -514,6 +516,24 @@ sdist = { url = "https://files.pythonhosted.org/packages/0a/a0/50c2c0ce5e74d7721
 wheels = [
     { url = "https://files.pythonhosted.org/packages/36/d2/b70a31e13d04456d28493f31d2aa087e99eeb2767ef0293b2625727ccb8c/filelock-3.32.5-py3-none-any.whl", hash = "sha256:142cd9fa77a872c5e78c62329a0d15278fadc686eb89e760017968961a4fd6b2", size = 100003, upload-time = "2026-08-31T18:56:33.078Z" },
 ]
+
+[[package]]
+name = "foundation"
+version = "0.1.0"
+source = { editable = "../foundation" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "idna", marker = "extra == 'transitive-pins'", specifier = "==3.18" },
+    { name = "litestar", marker = "extra == 'litestar'", specifier = "==2.24.0" },
+    { name = "pydantic", specifier = "==2.13.4" },
+]
+provides-extras = ["litestar", "transitive-pins"]
 
 [[package]]
 name = "frozenlist"

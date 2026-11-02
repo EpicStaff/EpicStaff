@@ -1,8 +1,7 @@
 from collections.abc import Callable
 
-from django.core.exceptions import ValidationError
-
 from tables.import_export.constants import IMPORT_VERSION
+from tables.import_export.version_conversions.exceptions import UnsupportedImportVersionError
 
 
 class VersionConverter:
@@ -41,20 +40,20 @@ class VersionConverter:
             - Returned dict has data["version"] == IMPORT_VERSION
             - All other keys are preserved/transformed by the convertion chain
         Raises
-            - ValidationError:
+            - UnsupportedImportVersionError:
                 - if data["version"] > IMPORT_VERSION
                 - if no convertion path exists for an intermediate version
         """
         version = data.get("version", 1)  # old files default to v1
 
         if version > IMPORT_VERSION:
-            raise ValidationError(
+            raise UnsupportedImportVersionError(
                 f"File version {version} is newer than supported {IMPORT_VERSION}"
             )
 
         while version < IMPORT_VERSION:
             if version not in cls._conversions:
-                raise ValidationError(f"No migration path from version {version}")
+                raise UnsupportedImportVersionError(f"No migration path from version {version}")
 
             data = cls._conversions[version](data)
             version += 1
