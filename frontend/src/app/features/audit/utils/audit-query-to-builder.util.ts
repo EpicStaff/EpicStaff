@@ -8,7 +8,9 @@ import {
     AuditFilterNode,
     AuditFilterOp,
     AuditFilterState,
+    AuditIdFilter,
     AuditValuesFilter,
+    catalogIdFilter,
     catalogSelection,
     createAuditCondition,
     createAuditConditionGroup,
@@ -66,7 +68,9 @@ function builderFieldsOf(catalog: AuditFieldCatalog): BuilderFields {
     }
     return {
         // a lookup field is listed too, so `actor_user_id = 5` reads as a one-member selection
-        selectFields: catalog.builderFields.filter((item) => item.kind !== 'text').map((item) => item.field),
+        selectFields: catalog.builderFields
+            .filter((item) => item.kind === 'select' || item.kind === 'lookup')
+            .map((item) => item.field),
         conditionFields: new Map(
             catalog.builderFields.flatMap((item) =>
                 item.kind === 'text'
@@ -237,7 +241,12 @@ function applyFieldFilter(node: AuditFilterNode, state: AuditFilterState): boole
         return true;
     }
     if (field === 'session_id') {
-        return applySessionId(op, text, values, state);
+        const id = applyIdFilter(op, text, values, state.id);
+        if (id === null) {
+            return false;
+        }
+        state.id = id;
+        return true;
     }
     // a tokens op the Tokens filter does not offer falls through to a Details condition on the same path
     const isTokensUnset = state.tokens.op !== 'is_empty' && state.tokens.value === '';
@@ -329,6 +338,16 @@ function applyCatalogFieldFilter(
         return true;
     }
     const { field, op, value } = node;
+    if (catalog.builderFields.some((item) => item.kind === 'id' && item.field === field)) {
+        const text = typeof value === 'string' ? value : '';
+        const values = Array.isArray(value) ? value.map(String) : [];
+        const id = applyIdFilter(op, text, values, catalogIdFilter(state, field));
+        if (id === null) {
+            return false;
+        }
+        state.idFilters = { ...state.idFilters, [field]: id };
+        return true;
+    }
     const selectField = catalog.builderFields.find(
         (item): item is AuditSelectField => item.kind === 'select' && item.field === field
     );
@@ -349,29 +368,26 @@ function applyCatalogFieldFilter(
     return true;
 }
 
-function applySessionId(op: AuditFilterOp, text: string, values: string[], state: AuditFilterState): boolean {
-    const id = state.id;
+// The ID filter with this conjunct added, or null when the filter cannot hold it next to what it already has.
+function applyIdFilter(op: AuditFilterOp, text: string, values: string[], id: AuditIdFilter): AuditIdFilter | null {
     const isUnset = id.from === '' && id.to === '' && id.value === '' && id.values.length === 0;
     if (op === 'gte' || op === 'lte') {
         const bound = op === 'gte' ? 'from' : 'to';
         if (!isUnset && (id.mode !== 'range' || id[bound] !== '')) {
-            return false;
+            return null;
         }
-        state.id = { ...id, mode: 'range', [bound]: text };
-        return true;
+        return { ...id, mode: 'range', [bound]: text };
     }
     if (!isUnset) {
-        return false;
+        return null;
     }
     if (op === 'in') {
-        state.id = { ...id, mode: 'in', values };
-        return true;
+        return { ...id, mode: 'in', values };
     }
     if (op === 'equals' || op === 'gt' || op === 'lt') {
-        state.id = { ...id, mode: op, value: text };
-        return true;
+        return { ...id, mode: op, value: text };
     }
-    return false;
+    return null;
 }
 
 function conditionRoot(field: string, conditionFields: Map<string, ConditionField>): string | null {

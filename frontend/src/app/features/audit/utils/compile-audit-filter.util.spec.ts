@@ -1,8 +1,10 @@
 import {
     AuditConditionGroup,
     AuditConditionJoin,
+    AuditFilterNode,
     AuditFilterOp,
     AuditFilterState,
+    AuditIdFilter,
     createAuditCondition,
     EMPTY_AUDIT_FILTER,
 } from '../models/audit-filter.models';
@@ -398,6 +400,91 @@ describe('user actions filter', () => {
 
         const cleared = clearAuditFilterField(state, field);
 
+        expect(compileAuditFilter(cleared, USER_ACTION_FIELD_CATALOG).filters).toEqual({
+            field: 'action',
+            op: 'in',
+            value: ['created'],
+        });
+    });
+});
+
+describe('ID filter', () => {
+    const idFilter = (change: Partial<AuditIdFilter>): AuditIdFilter => ({ ...EMPTY_AUDIT_FILTER.id, ...change });
+    // each mode compiled onto `field`, as the Sessions tab always compiled it onto session_id
+    const modes = (field: string): [string, AuditIdFilter, AuditFilterNode | undefined][] => [
+        [
+            'range',
+            idFilter({ mode: 'range', from: '5', to: '9' }),
+            {
+                op: 'and',
+                children: [
+                    { field, op: 'gte', value: 5 },
+                    { field, op: 'lte', value: 9 },
+                ],
+            },
+        ],
+        ['range from only', idFilter({ mode: 'range', from: '5' }), { field, op: 'gte', value: 5 }],
+        ['range to only', idFilter({ mode: 'range', to: '9' }), { field, op: 'lte', value: 9 }],
+        ['more than', idFilter({ mode: 'gt', value: '5' }), { field, op: 'gt', value: 5 }],
+        ['less than', idFilter({ mode: 'lt', value: '5' }), { field, op: 'lt', value: 5 }],
+        ['exact', idFilter({ mode: 'equals', value: '5' }), { field, op: 'equals', value: 5 }],
+        ['specific', idFilter({ mode: 'in', values: ['4', '7'] }), { field, op: 'in', value: [4, 7] }],
+        ['empty', idFilter({ mode: 'gt' }), undefined],
+    ];
+
+    it.each(modes('session_id'))('compiles Sessions %s onto session_id', (_mode, id, expected) => {
+        expect(compileAuditFilter({ ...EMPTY_AUDIT_FILTER, id }, SESSION_FIELD_CATALOG).filters).toEqual(expected);
+    });
+
+    it.each(modes('number'))('compiles User actions %s onto number', (_mode, id, expected) => {
+        const state: AuditFilterState = { ...EMPTY_AUDIT_FILTER, idFilters: { number: id } };
+
+        expect(compileAuditFilter(state, USER_ACTION_FIELD_CATALOG).filters).toEqual(expected);
+    });
+
+    it('never sends the Sessions ID filter left in a user actions state', () => {
+        const result = compileAuditFilter(
+            { ...EMPTY_AUDIT_FILTER, id: idFilter({ mode: 'equals', value: '5' }) },
+            USER_ACTION_FIELD_CATALOG
+        );
+
+        expect(result).toEqual({});
+    });
+
+    it.each<[AuditIdFilter, string]>([
+        [idFilter({ mode: 'range', from: '5', to: '9' }), '5 — 9'],
+        [idFilter({ mode: 'range', from: '5' }), 'from 5'],
+        [idFilter({ mode: 'range', to: '9' }), 'until 9'],
+        [idFilter({ mode: 'gt', value: '5' }), 'more than 5'],
+        [idFilter({ mode: 'lt', value: '5' }), 'less than 5'],
+        [idFilter({ mode: 'equals', value: '5' }), '5'],
+        [idFilter({ mode: 'in', values: ['4', '7'] }), '4, 7'],
+    ])('shows the user actions ID chip first, worded like the Sessions one (%o)', (id, value) => {
+        const chips = describeAuditFilter(
+            {
+                ...EMPTY_AUDIT_FILTER,
+                idFilters: { number: id },
+                selections: { action: { op: 'in', values: ['created'] } },
+            },
+            USER_ACTION_FIELD_CATALOG
+        );
+
+        expect(chips.map(({ key, label, value }) => ({ key, label, value }))).toEqual([
+            { key: 'number', label: 'ID', value },
+            { key: 'action', label: 'Action', value: 'is any of Created' },
+        ]);
+    });
+
+    it('clears the user actions ID chip and keeps the other fields', () => {
+        const state: AuditFilterState = {
+            ...EMPTY_AUDIT_FILTER,
+            idFilters: { number: idFilter({ mode: 'gt', value: '5' }) },
+            selections: { action: { op: 'in', values: ['created'] } },
+        };
+
+        const cleared = clearAuditFilterField(state, 'number');
+
+        expect(describeAuditFilter(cleared, USER_ACTION_FIELD_CATALOG).map((chip) => chip.key)).toEqual(['action']);
         expect(compileAuditFilter(cleared, USER_ACTION_FIELD_CATALOG).filters).toEqual({
             field: 'action',
             op: 'in',

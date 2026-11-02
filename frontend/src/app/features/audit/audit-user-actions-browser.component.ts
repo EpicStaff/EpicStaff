@@ -65,6 +65,7 @@ interface UserActionColumn {
 
 // the same resizable column approach as the Sessions tab: the last column absorbs any spare width
 const USER_ACTION_COLUMNS: UserActionColumn[] = [
+    { label: 'ID', defaultWidth: 100 },
     { label: 'Date', defaultWidth: 150 },
     { label: 'User', defaultWidth: 240 },
     { label: 'Action', defaultWidth: 140 },

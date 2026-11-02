@@ -47,7 +47,15 @@ export interface AuditLookupField {
     compile: (selection: AuditValuesFilter) => AuditFilterNode;
 }
 
-export type AuditCatalogField = AuditSelectField | AuditTextField | AuditLookupField;
+// A Builder filter on a numeric record id, by range, bound, exact id or a list of ids, as the Sessions ID filter.
+export interface AuditIdField {
+    kind: 'id';
+    field: string;
+    label: string;
+    section: AuditBuilderSection;
+}
+
+export type AuditCatalogField = AuditSelectField | AuditTextField | AuditLookupField | AuditIdField;
 
 // The values a select or lookup field offers, from its fixed options or the loaded `lists`.
 export function catalogFieldOptions(

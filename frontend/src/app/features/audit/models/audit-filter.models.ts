@@ -121,6 +121,7 @@ export interface AuditFilterState {
     // so a sessions state saves and compiles exactly as before they existed.
     selections?: Record<string, AuditValuesFilter>;
     textConditions?: Record<string, AuditConditionGroup[]>;
+    idFilters?: Record<string, AuditIdFilter>;
 }
 
 export interface AuditConditionGroup {
@@ -160,6 +161,10 @@ const EMPTY_TEXT_CONDITIONS = new Map<AuditFilterOp, AuditConditionGroup[]>();
 
 export function catalogSelection(state: AuditFilterState, field: string): AuditValuesFilter {
     return state.selections?.[field] ?? EMPTY_SELECTION;
+}
+
+export function catalogIdFilter(state: AuditFilterState, field: string): AuditIdFilter {
+    return state.idFilters?.[field] ?? EMPTY_AUDIT_FILTER.id;
 }
 
 export function catalogTextConditions(state: AuditFilterState, textField: AuditTextField): AuditConditionGroup[] {

@@ -4,7 +4,9 @@ import {
     AuditConditionGroup,
     AuditFilterNode,
     AuditFilterState,
+    AuditIdFilter,
     AuditMatchScopeState,
+    catalogIdFilter,
     catalogSelection,
     catalogTextConditions,
     isUsableCondition,
@@ -89,6 +91,25 @@ function compileDateRange(state: AuditFilterState): AuditFilterNode[] {
     return leaves;
 }
 
+function compileIdFilter(field: string, id: AuditIdFilter): AuditFilterNode[] {
+    const leaves: AuditFilterNode[] = [];
+    if (id.mode === 'range') {
+        if (id.from !== '') {
+            leaves.push({ field, op: 'gte', value: Number(id.from) });
+        }
+        if (id.to !== '') {
+            leaves.push({ field, op: 'lte', value: Number(id.to) });
+        }
+    } else if (id.mode === 'in') {
+        if (id.values.length > 0) {
+            leaves.push({ field, op: 'in', value: id.values.map(Number) });
+        }
+    } else if (id.value !== '') {
+        leaves.push({ field, op: id.mode, value: Number(id.value) });
+    }
+    return leaves;
+}
+
 function compileSessionFilters(state: AuditFilterState): AuditFilterNode[] {
     const leaves: AuditFilterNode[] = [];
 
@@ -114,21 +135,7 @@ function compileSessionFilters(state: AuditFilterState): AuditFilterNode[] {
         leaves.push(state.tool.op === 'not_in' ? { op: 'not', child: toolNode } : toolNode);
     }
 
-    const id = state.id;
-    if (id.mode === 'range') {
-        if (id.from !== '') {
-            leaves.push({ field: 'session_id', op: 'gte', value: Number(id.from) });
-        }
-        if (id.to !== '') {
-            leaves.push({ field: 'session_id', op: 'lte', value: Number(id.to) });
-        }
-    } else if (id.mode === 'in') {
-        if (id.values.length > 0) {
-            leaves.push({ field: 'session_id', op: 'in', value: id.values.map(Number) });
-        }
-    } else if (id.value !== '') {
-        leaves.push({ field: 'session_id', op: id.mode, value: Number(id.value) });
-    }
+    leaves.push(...compileIdFilter('session_id', state.id));
 
     if (state.statuses.length > 0) {
         leaves.push({ field: 'status', op: 'in', value: state.statuses });
@@ -200,6 +207,10 @@ function compileCatalogFilters(state: AuditFilterState, catalog: AuditFieldCatal
             if (selection.values.length > 0) {
                 leaves.push(builderField.compile(selection));
             }
+            continue;
+        }
+        if (builderField.kind === 'id') {
+            leaves.push(...compileIdFilter(builderField.field, catalogIdFilter(state, builderField.field)));
             continue;
         }
         const node = compileConditionGroups(builderField.field, catalogTextConditions(state, builderField));

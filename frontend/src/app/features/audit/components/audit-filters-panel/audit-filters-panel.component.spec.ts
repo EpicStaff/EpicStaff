@@ -7,6 +7,7 @@ import { AuditFilterState, DEFAULT_MATCH_SCOPE, EMPTY_AUDIT_FILTER } from '../..
 import { SESSION_FIELD_CATALOG } from '../../models/audit-filter-options';
 import { USER_ACTION_FIELD_CATALOG } from '../../models/audit-user-action-filter-options';
 import { AuditPresetsStorageService } from '../../services/audit-presets-storage.service';
+import { compileAuditFilter } from '../../utils/compile-audit-filter.util';
 import { AuditFiltersPanelComponent, AuditFilterTab } from './audit-filters-panel.component';
 
 const matchScope = { ...DEFAULT_MATCH_SCOPE, children: true };
@@ -131,6 +132,7 @@ describe('AuditFiltersPanelComponent for user actions', () => {
         const sectionsAndGroups = texts(builder, '.filters-panel__section, .filter-group__title');
         expect(sectionsAndGroups).toEqual([
             'Quick filters',
+            'ID',
             'Action',
             'User',
             'Target Type',
@@ -186,10 +188,38 @@ describe('AuditFiltersPanelComponent for user actions', () => {
         expect(group('Flow').querySelector('.filter-group__summary')?.textContent?.trim()).toBe('is any of Billing');
     });
 
+    it('filters by the typed record numbers and clears them from the ID card', () => {
+        const fixture = renderPanel('builder');
+        const root: HTMLElement = fixture.nativeElement;
+        const idGroup = Array.from(root.querySelectorAll<HTMLElement>('app-audit-filter-group')).find(
+            (item) => item.querySelector('.filter-group__title')?.textContent?.trim() === 'ID'
+        )!;
+
+        // the ID filter opens on "specific", a list of numbers
+        const input = idGroup.querySelector<HTMLInputElement>('app-audit-id-filter input')!;
+        input.value = '4, 7';
+        input.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+
+        expect(idGroup.querySelector('.filter-group__summary')?.textContent?.trim()).toBe('4, 7');
+        expect(compileAuditFilter(fixture.componentInstance.filter(), USER_ACTION_FIELD_CATALOG).filters).toEqual({
+            field: 'number',
+            op: 'in',
+            value: [4, 7],
+        });
+
+        idGroup.querySelector<HTMLButtonElement>('.filter-group__clear')!.click();
+        fixture.detectChanges();
+
+        expect(compileAuditFilter(fixture.componentInstance.filter(), USER_ACTION_FIELD_CATALOG)).toEqual({});
+        expect(idGroup.querySelector('.filter-group__summary')).toBeNull();
+    });
+
     it('lists only user action fields for Query Code', () => {
         const query = render('query');
 
         expect(texts(query, '.filters-panel__field')).toEqual([
+            'number',
             'action',
             'actor_email',
             'actor_api_key_name',

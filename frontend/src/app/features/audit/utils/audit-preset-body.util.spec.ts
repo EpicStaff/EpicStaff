@@ -138,6 +138,42 @@ describe('user actions preset body', () => {
         expect(restored?.selections).toEqual(state.selections);
     });
 
+    it('restores the ID filter a preset was saved with, and sends it on number', () => {
+        const state: AuditFilterState = {
+            ...EMPTY_AUDIT_FILTER,
+            idFilters: { number: { ...EMPTY_AUDIT_FILTER.id, mode: 'range', from: '5', to: '9' } },
+        };
+
+        const body = buildPresetBody(state, USER_ACTION_FIELD_CATALOG);
+        const restored = restorePresetState(body, USER_ACTION_FIELD_CATALOG);
+
+        expect(body.filters).toEqual({
+            op: 'and',
+            children: [
+                { field: 'number', op: 'gte', value: 5 },
+                { field: 'number', op: 'lte', value: 9 },
+            ],
+        });
+        expect(restored?.idFilters).toEqual(state.idFilters);
+    });
+
+    it('drops the ID filter of a field the Builder does not offer', () => {
+        const restored = restorePresetState(
+            {
+                ui_state: {
+                    version: 1,
+                    state: {
+                        ...EMPTY_AUDIT_FILTER,
+                        idFilters: { target_id: { ...EMPTY_AUDIT_FILTER.id, value: '3' } },
+                    },
+                },
+            },
+            USER_ACTION_FIELD_CATALOG
+        );
+
+        expect(restored?.idFilters).toEqual({});
+    });
+
     it('drops the fields of a preset saved before the Builder stopped offering them', () => {
         const typed = (value: string) => [
             {

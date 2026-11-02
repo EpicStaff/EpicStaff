@@ -1,4 +1,4 @@
-import { AuditFieldCatalog } from '../models/audit-domain.models';
+import { AuditCatalogField, AuditFieldCatalog } from '../models/audit-domain.models';
 import {
     AuditFilterState,
     AuditMatchScopeState,
@@ -34,16 +34,24 @@ export function mergeSavedFilterState(saved: Partial<AuditFilterState>): AuditFi
 // Keeps only the entries the catalog's Builder still offers in that shape, so a field removed or turned from
 // typed conditions into a picked list is dropped instead of lingering unseen in the state.
 function keepCatalogFields(state: AuditFilterState, catalog: AuditFieldCatalog): AuditFilterState {
-    const keep = <T>(values: Record<string, T> | undefined, isText: boolean): Record<string, T> | undefined => {
+    const keep = <T>(
+        values: Record<string, T> | undefined,
+        kinds: AuditCatalogField['kind'][]
+    ): Record<string, T> | undefined => {
         if (!values) {
             return undefined;
         }
-        const offered = catalog.builderFields.filter((item) => (item.kind === 'text') === isText);
+        const offered = catalog.builderFields.filter((item) => kinds.includes(item.kind));
         return Object.fromEntries(
             Object.entries(values).filter(([field]) => offered.some((item) => item.field === field))
         );
     };
-    return { ...state, selections: keep(state.selections, false), textConditions: keep(state.textConditions, true) };
+    return {
+        ...state,
+        selections: keep(state.selections, ['select', 'lookup']),
+        textConditions: keep(state.textConditions, ['text']),
+        idFilters: keep(state.idFilters, ['id']),
+    };
 }
 
 export function restorePresetState(body: AuditPresetBody, catalog: AuditFieldCatalog): AuditFilterState | null {

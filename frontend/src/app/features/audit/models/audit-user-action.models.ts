@@ -6,6 +6,8 @@ export interface AuditUserAction {
     event_time: string;
     record_time: string | null;
     filter_matched: boolean;
+    // null only on records stored before records were numbered
+    number: number | null;
     actor_user_id: number | null;
     actor_email: string;
     actor_api_key_name: string | null;

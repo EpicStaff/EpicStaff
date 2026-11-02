@@ -110,6 +110,7 @@
                         <tbody>
                             @for (row of rows(); track row.event.id) {
                                 <tr>
+                                    <td>{{ row.event.number }}</td>
                                     <td class="audit-table__date">
                                         {{ row.event.event_time | date: 'MMM dd yyyy HH:mm:ss' }}
                                     </td>

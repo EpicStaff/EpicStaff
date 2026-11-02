@@ -12,6 +12,7 @@ const baseAction: AuditUserAction = {
     event_time: '2026-10-30T10:00:00Z',
     record_time: null,
     filter_matched: true,
+    number: 1,
     actor_user_id: 3,
     actor_email: 'ann@example.com',
     actor_api_key_name: null,

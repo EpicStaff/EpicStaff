@@ -23,6 +23,7 @@ const renamedFlow: AuditUserAction = {
     event_time: '2026-10-30T10:00:00Z',
     record_time: null,
     filter_matched: true,
+    number: 41,
     actor_user_id: 3,
     actor_email: 'ann@example.com',
     actor_api_key_name: 'Deploy bot',
@@ -40,6 +41,7 @@ const renamedFlow: AuditUserAction = {
 const editedNode: AuditUserAction = {
     ...renamedFlow,
     id: 'action-2',
+    number: 42,
     actor_api_key_name: null,
     action: 'import_entity',
     target_type: 'python node',
@@ -54,6 +56,7 @@ const editedNode: AuditUserAction = {
 const signIn: AuditUserAction = {
     ...renamedFlow,
     id: 'action-3',
+    number: 43,
     actor_api_key_name: null,
     action: 'sign_in_failed',
     target_type: null,
@@ -65,6 +68,7 @@ const signIn: AuditUserAction = {
 const parentOnly: AuditUserAction = {
     ...signIn,
     id: 'action-4',
+    number: 44,
     action: 'updated',
     parent_type: 'flow',
     parent_id: '4',
@@ -74,6 +78,7 @@ const parentOnly: AuditUserAction = {
 const deletedTool: AuditUserAction = {
     ...signIn,
     id: 'action-5',
+    number: 45,
     action: 'deleted',
     target_type: 'tool',
     target_id: '9',
@@ -85,6 +90,8 @@ const deletedTool: AuditUserAction = {
 const typeOnlyParent: AuditUserAction = {
     ...signIn,
     id: 'action-6',
+    // stored before records were numbered
+    number: null,
     action: 'updated',
     parent_type: 'flow',
 };
@@ -178,25 +185,27 @@ function optionLabels(group: HTMLElement): (string | undefined)[] {
 }
 
 describe('AuditUserActionsBrowserComponent', () => {
-    it('shows date, user, action, target type, target name and target parent for each action', async () => {
+    it('shows id, date, user, action, target type, target name and target parent for each action', async () => {
         const { fixture, http, root } = setup();
         flushSearch(http, [renamedFlow, editedNode, signIn, parentOnly, deletedTool, typeOnlyParent]);
         await render(fixture);
 
         const headers = Array.from(root.querySelectorAll('th')).map((cell) => cell.textContent?.trim());
+        // the date cell is left out: its text depends on the time zone the test runs in
         const rows = Array.from(root.querySelectorAll('tbody tr')).map((row) =>
             Array.from(row.querySelectorAll('td'))
-                .slice(1)
+                .filter((_cell, index) => index !== 1)
                 .map((cell) => cellText(cell))
         );
-        expect(headers).toEqual(['Date', 'User', 'Action', 'Target Type', 'Target Name', 'Target Parent']);
+        expect(headers).toEqual(['ID', 'Date', 'User', 'Action', 'Target Type', 'Target Name', 'Target Parent']);
         expect(rows).toEqual([
-            ['ann@example.com via API key Deploy bot', 'Renamed', 'Flow', 'Invoices v2 → Billing', ''],
-            ['ann@example.com', 'Import entity', 'Python node', 'Parse invoice', 'Billing · Flow'],
-            ['ann@example.com', 'Sign-in failed', '', '', ''],
-            ['ann@example.com', 'Updated', '', '', 'Billing · Flow'],
-            ['ann@example.com', 'Deleted', 'Tool', '#9', 'Researcher · Agent'],
-            ['ann@example.com', 'Updated', '', '', 'Flow'],
+            ['41', 'ann@example.com via API key Deploy bot', 'Renamed', 'Flow', 'Invoices v2 → Billing', ''],
+            ['42', 'ann@example.com', 'Import entity', 'Python node', 'Parse invoice', 'Billing · Flow'],
+            ['43', 'ann@example.com', 'Sign-in failed', '', '', ''],
+            ['44', 'ann@example.com', 'Updated', '', '', 'Billing · Flow'],
+            ['45', 'ann@example.com', 'Deleted', 'Tool', '#9', 'Researcher · Agent'],
+            // a record stored before records were numbered has a blank ID
+            ['', 'ann@example.com', 'Updated', '', '', 'Flow'],
         ]);
     });
 
@@ -217,8 +226,8 @@ describe('AuditUserActionsBrowserComponent', () => {
             )
         );
         expect(marks).toEqual([
-            [[], [], [], [], ['Bill'], []],
-            [[], [], [], [], [], ['Bill']],
+            [[], [], [], [], [], ['Bill'], []],
+            [[], [], [], [], [], [], ['Bill']],
         ]);
     });
 
@@ -227,10 +236,10 @@ describe('AuditUserActionsBrowserComponent', () => {
         flushSearch(http, [editedNode]);
         await render(fixture);
 
-        const dateHeader = root.querySelector('th')!;
+        const idHeader = root.querySelector('th')!;
         // the test DOM has no layout or pointer capture, so the header reports its on-screen width here
-        vi.spyOn(dateHeader, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 150, 30));
-        const handle = dateHeader.querySelector<HTMLElement>('.audit-table__resize-handle')!;
+        vi.spyOn(idHeader, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 100, 30));
+        const handle = idHeader.querySelector<HTMLElement>('.audit-table__resize-handle')!;
         handle.setPointerCapture = () => undefined;
         handle.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 100 }));
         handle.dispatchEvent(new MouseEvent('pointermove', { clientX: 130 }));
@@ -238,7 +247,7 @@ describe('AuditUserActionsBrowserComponent', () => {
         handle.dispatchEvent(new MouseEvent('pointermove', { clientX: 200 }));
         await render(fixture);
 
-        expect(root.querySelector<HTMLElement>('col')!.style.width).toBe('180px');
+        expect(root.querySelector<HTMLElement>('col')!.style.width).toBe('130px');
     });
 
     it('shows plain rows that open nothing', async () => {

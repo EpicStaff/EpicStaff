@@ -4,6 +4,7 @@ import {
     AuditConditionJoin,
     AuditFilterOp,
     AuditFilterState,
+    AuditIdFilter,
     createAuditCondition,
     DEFAULT_MATCH_SCOPE,
     EMPTY_AUDIT_FILTER,
@@ -384,6 +385,36 @@ describe('queryToBuilderState for user actions', () => {
         expect(restored?.selections).toEqual(state.selections);
     });
 
+    it.each<[string, Partial<AuditIdFilter>]>([
+        ['number >= 5 and number <= 9', { mode: 'range', from: '5', to: '9' }],
+        ['number <= 9 and number >= 5', { mode: 'range', from: '5', to: '9' }],
+        ['number >= 5', { mode: 'range', from: '5' }],
+        ['number > 5', { mode: 'gt', value: '5' }],
+        ['number < 5', { mode: 'lt', value: '5' }],
+        ['number = 5', { mode: 'equals', value: '5' }],
+        ['number in (4, 7)', { mode: 'in', values: ['4', '7'] }],
+    ])('reads `%s` into the ID filter', (query, id) => {
+        const state = toUserActionBuilder(query);
+
+        expect(state?.idFilters).toEqual({ number: { ...EMPTY_AUDIT_FILTER.id, ...id } });
+        expect(state?.selections).toBeUndefined();
+    });
+
+    it.each<Partial<AuditIdFilter>>([
+        { mode: 'range', from: '5', to: '9' },
+        { mode: 'gt', value: '5' },
+        { mode: 'lt', value: '5' },
+        { mode: 'equals', value: '5' },
+        { mode: 'in', values: ['4', '7'] },
+    ])('round-trips the ID filter %o through Query Code', (id) => {
+        const idFilters = { number: { ...EMPTY_AUDIT_FILTER.id, ...id } };
+        const filters = compileAuditFilter({ ...EMPTY_AUDIT_FILTER, idFilters }, USER_ACTION_FIELD_CATALOG).filters;
+
+        const restored = toUserActionBuilder(filters === undefined ? '' : auditFilterToQueryText(filters));
+
+        expect(restored?.idFilters).toEqual(idFilters);
+    });
+
     it('reads `actor_user_id = 5` as a one-member selection', () => {
         expect(toUserActionBuilder('actor_user_id = 5')?.selections).toEqual({
             actor_user_id: { op: 'in', values: ['5'] },
@@ -401,6 +432,10 @@ describe('queryToBuilderState for user actions', () => {
         ['an action the Builder does not list', 'action in (frobnicate)'],
         ['a field kept for Query Code', 'route = "POST api/graphs/<pk>/copy/"'],
         ['an operator a picked list cannot show', 'target_type : flow'],
+        ['an exact number plus a range bound', 'number = 3 and number >= 1'],
+        ['a number that is not a number', 'number = abc'],
+        ['a number operator the ID filter does not offer', 'number != 3'],
+        ['the sessions ID', 'session_id = 3'],
     ])('leaves %s to Query Code', (_case, query) => {
         expect(toUserActionBuilder(query)).toBeNull();
     });

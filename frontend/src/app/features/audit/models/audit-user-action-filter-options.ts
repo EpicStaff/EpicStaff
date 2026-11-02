@@ -53,6 +53,7 @@ function compileFlows({ op, values }: AuditValuesFilter): AuditFilterNode {
 export const USER_ACTION_FIELD_CATALOG: AuditFieldCatalog = {
     domain: 'user_actions',
     builderFields: [
+        { kind: 'id', field: 'number', label: 'ID', section: 'quick' },
         { kind: 'select', field: 'action', label: 'Action', section: 'quick', options: USER_ACTION_OPTIONS },
         {
             kind: 'lookup',
@@ -75,6 +76,7 @@ export const USER_ACTION_FIELD_CATALOG: AuditFieldCatalog = {
         },
     ],
     queryFields: [
+        'number',
         'action',
         'actor_email',
         'actor_api_key_name',

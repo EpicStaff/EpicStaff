@@ -9,6 +9,7 @@ import {
     AuditIdMode,
     AuditMatchScopeState,
     AuditNumberFilter,
+    catalogIdFilter,
     catalogSelection,
     catalogTextConditions,
     DEFAULT_MATCH_SCOPE,
@@ -157,6 +158,13 @@ function describeCatalogFilters(
     const chips: AuditFilterChip[] = [];
     for (const builderField of catalog.builderFields) {
         const { field, label } = builderField;
+        if (builderField.kind === 'id') {
+            const idValue = describeId(catalogIdFilter(state, field));
+            if (idValue !== null) {
+                chips.push({ key: field, label, value: idValue });
+            }
+            continue;
+        }
         if (builderField.kind !== 'text') {
             const selection = catalogSelection(state, field);
             if (selection.values.length > 0) {
@@ -184,10 +192,11 @@ function withoutField<T>(values: Record<string, T> | undefined, field: string): 
 function clearCatalogField(state: AuditFilterState, field: string): AuditFilterState {
     const selections = withoutField(state.selections, field);
     const textConditions = withoutField(state.textConditions, field);
-    if (selections === state.selections && textConditions === state.textConditions) {
+    const idFilters = withoutField(state.idFilters, field);
+    if (selections === state.selections && textConditions === state.textConditions && idFilters === state.idFilters) {
         return state;
     }
-    return { ...state, selections, textConditions };
+    return { ...state, selections, textConditions, idFilters };
 }
 
 function describeDate(from: string | null, to: string | null): string | null {

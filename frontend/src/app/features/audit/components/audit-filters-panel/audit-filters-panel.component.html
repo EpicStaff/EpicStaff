@@ -78,19 +78,28 @@
                             [summary]="summaryOf(builderField.field)"
                             (cleared)="clearField(builderField.field)"
                         >
-                            @if (builderField.kind !== 'text') {
-                                <app-audit-flow-filter
-                                    [options]="optionsOf(builderField)"
-                                    [filter]="selectionOf(builderField.field)"
-                                    (filterChange)="setSelection(builderField.field, $event)"
-                                />
-                            } @else {
-                                <app-audit-condition-filter
-                                    [groups]="textConditionsOf(builderField)"
-                                    (groupsChange)="setTextConditions(builderField.field, $event)"
-                                    [operators]="builderField.operators"
-                                    [showKey]="false"
-                                />
+                            @switch (builderField.kind) {
+                                @case ('id') {
+                                    <app-audit-id-filter
+                                        [filter]="idFilterOf(builderField.field)"
+                                        (filterChange)="setIdFilter(builderField.field, $event)"
+                                    />
+                                }
+                                @case ('text') {
+                                    <app-audit-condition-filter
+                                        [groups]="textConditionsOf(builderField)"
+                                        (groupsChange)="setTextConditions(builderField.field, $event)"
+                                        [operators]="builderField.operators"
+                                        [showKey]="false"
+                                    />
+                                }
+                                @default {
+                                    <app-audit-flow-filter
+                                        [options]="optionsOf(builderField)"
+                                        [filter]="selectionOf(builderField.field)"
+                                        (filterChange)="setSelection(builderField.field, $event)"
+                                    />
+                                }
                             }
                         </app-audit-filter-group>
                     }

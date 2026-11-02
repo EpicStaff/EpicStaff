@@ -20,8 +20,9 @@ import { ToastService } from '../../../../services/notifications';
 import {
     AUDIT_FIELD_CATALOG,
     AuditBuilderSection,
-    AuditCatalogField,
+    AuditLookupField,
     AuditLookupOptions,
+    AuditSelectField,
     AuditTextField,
     catalogFieldOptions,
 } from '../../models/audit-domain.models';
@@ -33,6 +34,7 @@ import {
     AuditMatchScopeState,
     AuditNumberFilter,
     AuditValuesFilter,
+    catalogIdFilter,
     catalogSelection,
     catalogTextConditions,
     EMPTY_AUDIT_FILTER,
@@ -345,12 +347,16 @@ export class AuditFiltersPanelComponent implements OnInit {
         this.updateBuilder({ tokens });
     }
 
-    public optionsOf(builderField: AuditCatalogField): AuditEnumOption[] {
-        return builderField.kind === 'text' ? [] : catalogFieldOptions(builderField, this.lookupOptions());
+    public optionsOf(builderField: AuditSelectField | AuditLookupField): AuditEnumOption[] {
+        return catalogFieldOptions(builderField, this.lookupOptions());
     }
 
     public selectionOf(field: string): AuditValuesFilter {
         return catalogSelection(this.filter(), field);
+    }
+
+    public idFilterOf(field: string): AuditIdFilter {
+        return catalogIdFilter(this.filter(), field);
     }
 
     public textConditionsOf(textField: AuditTextField): AuditConditionGroup[] {
@@ -359,6 +365,10 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public setSelection(field: string, selection: AuditValuesFilter): void {
         this.updateBuilder({ selections: { ...this.filter().selections, [field]: selection } });
+    }
+
+    public setIdFilter(field: string, id: AuditIdFilter): void {
+        this.updateBuilder({ idFilters: { ...this.filter().idFilters, [field]: id } });
     }
 
     public setTextConditions(field: string, groups: AuditConditionGroup[]): void {
