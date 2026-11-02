@@ -9,6 +9,7 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
 
@@ -38,28 +39,27 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
 
 @Component({
     selector: 'app-column-header-menu',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div
-            class="chm-wrapper"
-            [title]="tooltip"
-        >
+        <div class="chm-wrapper">
             @if (label) {
                 <span class="chm-label">{{ label }}</span>
             }
             @if (iconClass && onIconClick) {
+                <!-- On the icon it names, not the header: there it would stack on the grip's and chevron's. -->
                 <i
                     [class]="iconClass"
                     [class.chm-icon-clickable]="variant === 'default'"
                     [class.chm-icon-delete]="variant === 'delete'"
+                    [matTooltip]="tooltip"
                     (click)="onIconClick($event)"
                 ></i>
             }
             @if (showDragGrip) {
                 <span
                     class="drag-grip-btn"
-                    title="Drag to reposition"
+                    matTooltip="Drag to reposition"
                 >
                     <app-svg-icon
                         icon="drag-grip"
@@ -71,7 +71,8 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 <button
                     class="chm-chevron"
                     (click)="toggleMenu($event)"
-                    title="Column options"
+                    aria-label="Column options"
+                    matTooltip="Column options"
                 >
                     <i class="ti ti-chevron-down"></i>
                 </button>

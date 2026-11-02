@@ -1,7 +1,8 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { Component, signal } from '@angular/core';
+import { Component, getDebugNode, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shared/components';
 import { ResourceCode } from '@shared/models';
@@ -307,5 +308,72 @@ describe('SurfaceCardComponent more menu "View Details"', () => {
 
         expect(dialog.openDialogs).toHaveLength(0);
         expect(document.activeElement).toBe(trigger);
+    });
+});
+
+describe('SurfaceCardComponent file permissions table', () => {
+    function renderFiles(readOnly: boolean): HTMLElement {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
+                {
+                    provide: SurfaceCatalogsStore,
+                    useValue: {
+                        pythonTools: signal([]),
+                        mcpTools: signal([]),
+                        collections: signal([]),
+                        storageTree: signal([]),
+                        storageFileMeta: signal(
+                            new Map([[7, { name: 'report.pdf', path: 'docs/report.pdf', type: 'file' }]])
+                        ),
+                    },
+                },
+                { provide: StorageDragService, useValue: { isDragging: signal(false) } },
+                { provide: StorageApiService, useValue: {} },
+                { provide: CollectionsStorageService, useValue: {} },
+                { provide: ToastService, useValue: {} },
+                { provide: ConfirmationDialogService, useValue: {} },
+            ],
+        });
+        const fixture = TestBed.createComponent(SurfaceCardComponent);
+        fixture.componentRef.setInput('surface', {
+            ...DETAILS_SURFACE,
+            storage_items: [
+                { storage_file: 7, can_list: 'allow', can_view: 'deny', can_edit: 'unset', can_delete: 'unset' },
+            ],
+        });
+        fixture.componentRef.setInput('hideHeader', true);
+        fixture.componentRef.setInput('readOnly', readOnly);
+        fixture.componentRef.setInput('activeTab', ResourceCode.Files);
+        fixture.detectChanges();
+        return fixture.nativeElement as HTMLElement;
+    }
+
+    it('names the file, the column and the state on every permission cell', () => {
+        const host = renderFiles(false);
+
+        const labels = Array.from(host.querySelectorAll('.perm-cell')).map((cell) => cell.getAttribute('aria-label'));
+
+        expect(labels).toEqual([
+            'report.pdf, List: allow',
+            'report.pdf, View: deny',
+            'report.pdf, Edit: unset',
+            'report.pdf, Delete: unset',
+        ]);
+    });
+
+    it('keeps the icon-only column labels hoverable when the card is read-only', () => {
+        const host = renderFiles(true);
+        const button = host.querySelector<HTMLButtonElement>('[aria-label="View"]')!;
+        expect(button.disabled).toBe(true);
+        const tooltipHost = button.parentElement!;
+        const tooltip = getDebugNode(tooltipHost)!.injector.get(MatTooltip);
+        const show = vi.spyOn(tooltip, 'show');
+
+        tooltipHost.dispatchEvent(new MouseEvent('mouseenter'));
+
+        expect(tooltip.message).toBe('View');
+        expect(show).toHaveBeenCalled();
+        expect(getComputedStyle(button).pointerEvents).toBe('none');
     });
 });

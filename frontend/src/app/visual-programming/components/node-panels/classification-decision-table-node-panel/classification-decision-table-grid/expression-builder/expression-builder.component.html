@@ -109,16 +109,21 @@
     <div class="eb-templates-row">
         <span class="eb-templates-label">Quick templates:</span>
         @for (tpl of templates(); track tpl) {
-            <button
-                type="button"
-                class="eb-template-btn"
-                [disabled]="!hasTemplateExample(tpl)"
-                [title]="hasTemplateExample(tpl) ? tpl : 'Coming soon'"
-                [attr.aria-disabled]="!hasTemplateExample(tpl) || null"
-                (click)="onTemplateClick(tpl)"
+            <!-- A disabled button gets no mouse events, so the tooltip lives on this wrapper. -->
+            <span
+                class="eb-template-host"
+                [matTooltip]="hasTemplateExample(tpl) ? '' : 'Coming soon'"
             >
-                {{ tpl }}
-            </button>
+                <button
+                    type="button"
+                    class="eb-template-btn"
+                    [disabled]="!hasTemplateExample(tpl)"
+                    [attr.aria-disabled]="!hasTemplateExample(tpl) || null"
+                    (click)="onTemplateClick(tpl)"
+                >
+                    {{ tpl }}
+                </button>
+            </span>
         }
     </div>
 </div>

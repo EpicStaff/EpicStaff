@@ -10,6 +10,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
@@ -21,7 +22,7 @@ function escapeHtml(text: string): string {
 
 @Component({
     selector: 'app-template-textarea',
-    imports: [TooltipComponent],
+    imports: [TooltipComponent, MatTooltipModule],
     templateUrl: './template-textarea.component.html',
     styleUrls: ['./template-textarea.component.scss'],
     providers: [
