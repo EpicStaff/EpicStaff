@@ -73,6 +73,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from src.shared.models import UserAction
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.constants.decision_table_constants import (
     CONDITION_GROUP_INPUT_FIELDS,
@@ -408,6 +409,8 @@ from tables.views.secret_use import (
     ModelEndpointsGuardedViewSetMixin,
     SecretUseCheckedViewSetMixin,
 )
+from user_audit.read_only import reads_only
+from user_audit.recorder import record_user_action
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -752,6 +755,7 @@ class PythonCodeToolViewSet(
 
     @extend_schema(**PYTHON_CODE_TOOL_USAGE_POST)
     @action(detail=False, methods=["post"], url_path="usage")
+    @reads_only
     def usage(self, request):
         return self._usage_response(request, PythonCodeTool)
 
@@ -769,6 +773,7 @@ class PythonCodeToolViewSet(
 
     @extend_schema(**PYTHON_CODE_TOOL_BULK_EXPORT_POST)
     @action(detail=False, methods=["post"], url_path="bulk-export")
+    @reads_only
     def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -986,6 +991,7 @@ class GraphViewSet(
         )
 
     @action(detail=False, methods=["post"], url_path="bulk-export")
+    @reads_only
     def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1006,6 +1012,7 @@ class GraphViewSet(
 
     @extend_schema(request=GraphNodesPartialExportSerializer, responses={200: None})
     @action(detail=True, methods=["post"], url_path="partial-export")
+    @reads_only
     def partial_export(self, request, pk=None):
         serializer = GraphNodesPartialExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1367,6 +1374,9 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
             name=write_serializer.validated_data["name"],
             description=write_serializer.validated_data.get("description", ""),
         )
+        # Recorded here, not in the service: a restore's backup version and an imported
+        # flow's version are part of the restore or import that request records.
+        record_user_action(action=UserAction.CREATED, org_id=graph.org_id, target=version)
 
         return Response(
             GraphVersionReadSerializer(version).data,
@@ -2381,6 +2391,7 @@ class ClassificationDecisionTableNodeModelViewSet(
         ),
     )
     @action(detail=True, methods=["post"], url_path="explain")
+    @reads_only
     def explain(self, request, pk=None):
         serializer = CdtExplainRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -2554,6 +2565,7 @@ class McpToolViewSet(
 
     @extend_schema(**MCP_TOOL_USAGE_POST)
     @action(detail=False, methods=["post"], url_path="usage")
+    @reads_only
     def usage(self, request):
         return self._usage_response(request, McpTool)
 
@@ -2571,6 +2583,7 @@ class McpToolViewSet(
 
     @extend_schema(**MCP_TOOL_BULK_EXPORT_POST)
     @action(detail=False, methods=["post"], url_path="bulk-export")
+    @reads_only
     def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -3057,6 +3070,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ALL)
     @action(detail=False, methods=["post"], url_path="export")
+    @reads_only
     def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -3170,6 +3184,7 @@ class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewse
         return Response(KeyValueTableService().usage(self.get_object()))
 
     @action(detail=True, methods=["post"], url_path="entries/lookup")
+    @reads_only
     def lookup_entries(self, request, pk=None):
         table = self.get_object()
         serializer = KeyValueKeysSerializer(data=request.data)

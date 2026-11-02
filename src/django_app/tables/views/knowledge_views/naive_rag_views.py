@@ -76,6 +76,7 @@ from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST,
     NAIVE_RAG_GET,
 )
+from user_audit.read_only import reads_only
 
 # ORM path from a NaiveRag (or its children) up to the owning collection's org.
 _NAIVE_RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
@@ -791,6 +792,7 @@ class NaiveRagPreviewChunkBulkByIdsView(OrgScopedServiceViewSetMixin, APIView):
             404: OpenApiResponse(description="NaiveRag or DocumentConfig not found"),
         },
     )
+    @reads_only
     def post(self, request, naive_rag_id: int, document_config_id: int):
         self.get_in_active_org_or_404(
             NaiveRagDocumentConfig,

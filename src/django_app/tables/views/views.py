@@ -153,6 +153,7 @@ from tables.swagger_schemas.telegram_schemas import (
 )
 from tables.throttles import NotifyEmailThrottle
 from tables.utils.telegram_fields import load_telegram_trigger_fields
+from user_audit.read_only import reads_only
 from utils.graph_utils import runtime_node_name
 from utils.logger import logger
 
@@ -293,6 +294,7 @@ class SessionViewSet(
         },
     )
     @action(detail=False, methods=["post"], url_path="bulk-export")
+    @reads_only
     def bulk_export(self, request):
         serializer = BulkExportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -326,6 +328,7 @@ class SessionViewSet(
         },
     )
     @action(detail=False, methods=["post"], url_path="export_all")
+    @reads_only
     def export_all(self, request):
         serializer = SessionExportAllSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1104,6 +1107,7 @@ class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetM
     @extend_schema(
         request=ProcessRagIndexingEstimateSerializer, responses={200: OpenApiTypes.OBJECT}
     )
+    @reads_only
     def post(self, request):
         serializer = ProcessRagIndexingEstimateSerializer(data=request.data)
         if not serializer.is_valid():

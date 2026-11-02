@@ -19,6 +19,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
+from src.shared.models import UserAction
 from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
 from tables.serializers.recycle_bin_serializers import (
@@ -82,6 +83,9 @@ from tables.views.recycle_bin_mixins import (
     request_actor,
 )
 from tables.views.storage_bin_purge_access import StorageBinPurgeAccess
+from user_audit.context import mark_request_handled
+from user_audit.read_only import reads_only
+from user_audit.recorder import record_user_action
 
 _USER_ID_KEYS = ("created_by", "last_edited_by")
 
@@ -115,6 +119,19 @@ def _transfer_response(from_path: str, to_path: str, recycle_bin_purged: list[di
         "success": True,
         "recycle_bin_purged": recycle_bin_purged,
     }
+
+
+def _record_flows_updated(graphs: list[Graph]) -> None:
+    """Record each flow whose attached files changed as updated, or mark a request that
+    changed none handled.
+
+    A link has no name a reader would know it by, so its change is recorded on the flow
+    it belongs to, as `LastEditTracker` records an unnamed row's change on its owner.
+    """
+    for graph in graphs:
+        record_user_action(action=UserAction.UPDATED, org_id=graph.org_id, target=graph)
+    if not graphs:
+        mark_request_handled()
 
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
@@ -252,6 +269,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
     @extend_schema(**STORAGE_DOWNLOAD_ZIP_SWAGGER)
     @action(detail=False, methods=["post"], url_path="download-zip")
+    @reads_only
     def download_zip(self, request):
         org_id = self.get_active_org_id()
         serializer = StorageDownloadZipSerializer(data=request.data)
@@ -309,6 +327,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
     @extend_schema(**STORAGE_USAGE_SWAGGER)
     @action(detail=False, methods=["post"], url_path="usage")
+    @reads_only
     def usage(self, request):
         """Report what deleting the paths would unlink; `used` is always true, `items` only with READ on that type."""
         org_id = self.get_active_org_id()
@@ -430,16 +449,14 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         requested_graph_ids = serializer.validated_data["graph_ids"]
         # Graphs must live in the active org. A cross-org or non-existent id is
         # rejected identically (no existence leak)
-        graph_ids = list(
-            Graph.objects.filter(id__in=requested_graph_ids, org_id=org_id).values_list(
-                "id", flat=True
-            )
-        )
+        graphs = list(Graph.objects.filter(id__in=requested_graph_ids, org_id=org_id))
+        graph_ids = [graph.id for graph in graphs]
         missing = set(requested_graph_ids) - set(graph_ids)
         if missing:
             raise ValidationError({"graph_ids": f"Graphs not found: {sorted(missing)}"})
 
         results = []
+        attached_graph_ids = set()
 
         for path in paths:
             try:
@@ -459,9 +476,14 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
                 record_last_edit(sf, request.user)
 
             for graph_id in graph_ids:
-                obj, _ = GraphStorageFile.objects.get_or_create(graph_id=graph_id, storage_file=sf)
+                obj, attached = GraphStorageFile.objects.get_or_create(
+                    graph_id=graph_id, storage_file=sf
+                )
                 results.append(obj)
+                if attached:
+                    attached_graph_ids.add(graph_id)
 
+        _record_flows_updated([graph for graph in graphs if graph.id in attached_graph_ids])
         return Response(
             GraphStorageFileSerializer(results, many=True).data,
             status=status.HTTP_201_CREATED,
@@ -479,11 +501,14 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         normalized_paths = {path for p in paths for path in (p, p.rstrip("/"), p.rstrip("/") + "/")}
 
-        GraphStorageFile.objects.filter(
+        links = GraphStorageFile.objects.filter(
             graph_id__in=graph_ids,
             storage_file__path__in=normalized_paths,
             storage_file__org_id=org_id,
-        ).delete()
+        )
+        detached_graphs = list(Graph.objects.filter(pk__in=links.values("graph_id")))
+        links.delete()
+        _record_flows_updated(detached_graphs)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(**STORAGE_TREE_SWAGGER)

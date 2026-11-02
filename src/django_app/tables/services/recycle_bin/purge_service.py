@@ -66,9 +66,7 @@ class PurgeService:
                 root.purge()
 
         if actor != RETENTION_JOB_ACTOR:
-            record_user_action(
-                action=UserAction.PERMANENTLY_DELETED, org_id=org_id, target_description=target
-            )
+            record_user_action(action=UserAction.DELETED, org_id=org_id, target_description=target)
         logger.info(
             "Purged {model} {pk} of org {org_id} (batch {batch}) by {actor}",
             model=resource.model.__name__,

@@ -204,7 +204,7 @@ def test_bulk_restore_records_each_item(
     ]
 
 
-def test_purge_records_permanently_deleted(
+def test_purge_from_the_recycle_bin_records_deleted(
     superadmin_in_acme, acme, superadmin, sent_events, django_capture_on_commit_callbacks
 ):
     flow = _binned_flow(acme, "Orders")
@@ -214,7 +214,7 @@ def test_purge_records_permanently_deleted(
 
     assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
     [event] = sent_events
-    assert _target(event) == ("permanently_deleted", "flow", str(flow.id), "Orders")
+    assert _target(event) == ("deleted", "flow", str(flow.id), "Orders")
     assert (event.org_id, event.actor_user_id) == (acme.id, superadmin.id)
 
 
@@ -256,9 +256,9 @@ def test_empty_bin_records_one_per_item(
     assert not Secret.all_objects.filter(pk=secret.pk).exists()
     assert sorted(_target(event) for event in sent_events) == sorted(
         [
-            ("permanently_deleted", "flow", str(flow.id), "Orders"),
-            ("permanently_deleted", "secret", str(secret.id), "api-key"),
-            ("permanently_deleted", "storage file", str(binned_file.id), "march.pdf"),
+            ("deleted", "flow", str(flow.id), "Orders"),
+            ("deleted", "secret", str(secret.id), "api-key"),
+            ("deleted", "storage file", str(binned_file.id), "march.pdf"),
         ]
     )
     assert {event.org_id for event in sent_events} == {acme.id}

@@ -30,6 +30,7 @@ from utils.request_target import model_of, target_from_url, url_path_pattern
 
 from user_audit.actor import actor_from_request
 from user_audit.context import UserActionContext, user_action_context
+from user_audit.read_only import handler_reads_only
 from user_audit.recorder import record_for_user_orgs, record_user_action
 from user_audit.targets import TARGET_NAME_FIELDS, TargetDescription, target_type
 
@@ -152,6 +153,8 @@ def _record_unhandled_change(
 ) -> None:
     """Record the request once when it changed something and nothing recorded it yet.
 
+    Skips a handler marked `reads_only`, besides the excluded views and actions.
+
     Best-effort: never raises. The record goes to the org `OrgContextService` checked for
     the request; a request with no checked org is recorded only under
     `ORGLESS_FAN_OUT_PATH_PREFIXES`, in each of the user's orgs, and otherwise not at all.
@@ -170,6 +173,7 @@ def _record_unhandled_change(
             or context.recorded
             or view_class in FALLBACK_EXCLUDED_VIEWS
             or action in FALLBACK_EXCLUDED_ACTIONS
+            or handler_reads_only(view_class, action or request.method.lower())
         ):
             return
         # None for an anonymous caller and a plugin's service account.

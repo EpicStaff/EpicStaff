@@ -12,6 +12,7 @@ from django.utils.dateparse import parse_datetime
 from rbac.authorship import org_member_ids, represent_authorship_time
 from rbac.models import Organization
 from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
+from src.shared.models import UserAction
 from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend, SourceCleanupError
 from tables.services.storage_service.dataclasses import (
@@ -88,6 +89,20 @@ def _authors_at_destination(
         for path_within, author_id in authors_by_path_within.items():
             authors.setdefault(f"{folder_base}{path_within}", author_id)
     return authors
+
+
+def _copied_entry_path(destination_folder: str, copied_paths: list[str]) -> str | None:
+    """The path the copied entry itself got, `<destination_folder>/<entry name>`, ending in
+    "/" for a folder; None when the copy created nothing.
+
+    The same layout `_authors_at_destination` reads: the backend may have deduplicated the
+    entry's name, so it is read from a copied path, not from the source.
+    """
+    prefix = f"{destination_folder.rstrip('/')}/" if destination_folder.strip("/") else ""
+    for path in copied_paths:
+        entry_name, separator, _ = path[len(prefix) :].partition("/")
+        return f"{prefix}{entry_name}{separator}"
+    return None
 
 
 def _with_last_edit(rows: QuerySet[StorageFile]) -> QuerySet[StorageFile]:
@@ -392,10 +407,13 @@ class StorageManager:
         bin_purge: BinPurgeGrant | None = None,
     ) -> list[PurgedBinEntry]:
         """Copy within the org's quota; returns the bin entries purged to make room.
-        Only a `bin_purge` grant lets the copy purge the org's storage bin to fit."""
-        return self._copy_within_quota(
+        Only a `bin_purge` grant lets the copy purge the org's storage bin to fit.
+        The copy is recorded as a user action (see `StorageFileSync.record_transfer`)."""
+        purged, entry_path = self._copy_within_quota(
             org_id, source_path, org_id, destination_path, user=user, bin_purge=bin_purge
         )
+        StorageFileSync.record_transfer(UserAction.COPIED, org_id, entry_path, user=user)
+        return purged
 
     def _copy_within_quota(
         self,
@@ -407,11 +425,12 @@ class StorageManager:
         user: object | None = None,
         authors_by_path_within: Mapping[str, int | None] | None = None,
         bin_purge: BinPurgeGrant | None = None,
-    ) -> list[PurgedBinEntry]:
+    ) -> tuple[list[PurgedBinEntry], str | None]:
         """Copy source into the destination folder and record the copies within its org's quota.
         Over quota the copies are deleted again; the org lock is never held across the S3 copy.
         Returns the destination org's bin entries purged to make room, which only a
-        `bin_purge` grant allows (see record_files_within_quota).
+        `bin_purge` grant allows (see record_files_within_quota), and the path the copied
+        entry got (see `_copied_entry_path`).
 
         The copies are authored by `user` unless `authors_by_path_within` is given: it maps
         each source row's path within the copied entry ("" for the entry itself, see
@@ -436,18 +455,18 @@ class StorageManager:
             else:
                 files.append((path, size))
 
+        destination_folder = self._strip_org_prefix(
+            dst_org_id, self._build_storage_key(dst_org_id, destination_path)
+        )
+        copied_paths = [*(path for path, _ in files), *folders]
         authors_by_path = None
         if authors_by_path_within is not None:
             authors_by_path = _authors_at_destination(
-                self._strip_org_prefix(
-                    dst_org_id, self._build_storage_key(dst_org_id, destination_path)
-                ),
-                [*(path for path, _ in files), *folders],
-                authors_by_path_within,
+                destination_folder, copied_paths, authors_by_path_within
             )
 
         try:
-            return record_files_within_quota(
+            purged = record_files_within_quota(
                 dst_org_id,
                 files,
                 folders,
@@ -459,6 +478,7 @@ class StorageManager:
         except BaseException:
             self._backend.discard_keys([key for key, _ in copied])
             raise
+        return purged, _copied_entry_path(destination_folder, copied_paths)
 
     @staticmethod
     def _kept_authors_by_path_within(
@@ -804,11 +824,13 @@ class StorageManager:
         org's quota. Caller authorization (superadmin) is enforced at the API
         layer. Uses a server-side S3 copy — no data streams through the app.
         Returns the destination org's bin entries purged to make room, which only
-        a `bin_purge` grant allows.
+        a `bin_purge` grant allows. The copy is recorded in the destination org.
         """
-        return self._copy_within_quota(
+        purged, entry_path = self._copy_within_quota(
             src_org_id, src_path, dst_org_id, dst_path, user=user, bin_purge=bin_purge
         )
+        StorageFileSync.record_transfer(UserAction.COPIED, dst_org_id, entry_path, user=user)
+        return purged
 
     def move_cross_org(
         self,
@@ -832,9 +854,9 @@ class StorageManager:
         member of the destination org, and otherwise has none; `user` only authors the
         ancestor folders the move creates there. An existing destination file keeps its
         own author. Every moved row gets `user` as its last editor: the move is an edit in
-        the destination org.
+        the destination org, where the move is recorded as a user action.
         """
-        purged = self._copy_within_quota(
+        purged, entry_path = self._copy_within_quota(
             src_org_id,
             src_path,
             dst_org_id,
@@ -847,4 +869,10 @@ class StorageManager:
         )
         self._backend.delete(self._build_storage_key(src_org_id, src_path))
         StorageFileSync.on_delete(src_org_id, src_path.rstrip("/"))
+        # The source in the form its rows were stored: a folder's path ends in "/".
+        is_folder = entry_path is not None and entry_path.endswith("/")
+        source_path = src_path.rstrip("/") + ("/" if is_folder else "")
+        StorageFileSync.record_transfer(
+            UserAction.MOVED, dst_org_id, entry_path, source_path=source_path, user=user
+        )
         return purged

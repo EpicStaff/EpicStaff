@@ -17,6 +17,7 @@ from tables.serializers.serializers import (
 from tables.services.delete_services import BaseDeleteService
 from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usage
 from tables.services.trigger_nodes import trigger_node_access
+from user_audit.read_only import reads_only
 from utils.logger import logger
 
 
@@ -233,6 +234,7 @@ class InspectActionMixin:
     """Adds a ``inspect_import`` action to an import-capable ViewSet."""
 
     @action(detail=False, methods=["post"], url_path="import/inspect")
+    @reads_only
     def inspect_import(self, request):
         serializer = InspectImportRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

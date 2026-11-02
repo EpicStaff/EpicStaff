@@ -5,6 +5,7 @@ from django.db.models import Avg, Count, Prefetch
 from loguru import logger
 from rbac.authorship import record_last_edit, resolve_author
 from src.shared.enums.knowledge_new import RAGStrategy
+from src.shared.models import UserAction
 from src.shared.models.search_config_suggestion import SuggestedCollectionMetrics
 from tables.clients import KnowledgeClient
 from tables.clients.errors import (
@@ -30,6 +31,7 @@ from tables.models.knowledge_models.naive_rag_models import (
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
+from user_audit.recorder import record_user_action
 
 _GRAPH_RAG_CLEANUP_TIMEOUT_SECONDS = 5.0
 
@@ -124,7 +126,7 @@ class CollectionManagementService:
         org_id: int | None = None,
     ) -> SourceCollection:
         """
-        Create a new empty collection.
+        Create a new empty collection, recorded as a user action of the request's caller.
 
         Args:
             collection_name: Name for collection (auto-generated if None)
@@ -146,6 +148,7 @@ class CollectionManagementService:
             org_id=org_id,
         )
         record_last_edit(collection, created_by)
+        record_user_action(action=UserAction.CREATED, org_id=collection.org_id, target=collection)
 
         logger.info(
             f"Created collection '{collection.collection_name}' (ID: {collection.collection_id})"

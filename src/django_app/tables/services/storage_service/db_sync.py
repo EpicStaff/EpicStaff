@@ -15,6 +15,7 @@ from tables.services.recycle_bin.deleting import record_deleter
 from tables.services.storage_service.path_utils import is_trash_path
 from tables.signals import rows_bulk_created
 from user_audit.recorder import record_user_action
+from user_audit.targets import TargetDescription, target_type
 
 
 def _name_of(path: str) -> str:
@@ -261,6 +262,11 @@ class StorageFileSync:
 
     @staticmethod
     def on_mkdir(org_id: int, path: str, *, user: object | None = None) -> None:
+        """Create the folder row at `path` and any missing ancestors.
+
+        The folder at `path` is recorded as created, not the ancestors it needed. Pass
+        `user` None when no person asked for it: nothing is recorded then.
+        """
         org = Organization.objects.get(id=org_id)
         author = resolve_author(user)
         folder_path = path.rstrip("/") + "/"
@@ -269,6 +275,10 @@ class StorageFileSync:
             org, [folder_path, *_ancestor_paths(folder_path)], author
         )
         record_last_edits(created_folders, user)
+        if user is not None:
+            for folder in created_folders:
+                if folder.path == folder_path:
+                    record_user_action(action=UserAction.CREATED, org_id=org_id, target=folder)
 
     @staticmethod
     def on_soft_delete(org_id: int, path: str, *, user: object | None) -> SoftDeletedSubtree | None:
@@ -333,6 +343,10 @@ class StorageFileSync:
         parent_path. The moved entry's own row is last edited by `user` and keeps its
         author, or the lack of one; rows beneath a moved folder keep their authors and last
         edits.
+
+        The moved entry is recorded as renamed when only its name changed, else as moved
+        (see `record_transfer`); nothing is recorded for a `user` None, or for a folder with
+        no row of its own.
         """
         with transaction.atomic():
             updated = 0
@@ -344,7 +358,9 @@ class StorageFileSync:
                     parent_path=_parent_of(dst),
                 )
                 if updated:
-                    record_last_edits(StorageFile.objects.filter(org_id=org_id, path=dst), user)
+                    moved_file = StorageFile.objects.filter(org_id=org_id, path=dst)
+                    record_last_edits(moved_file, user)
+                    _record_move(org_id, src, dst, user=user)
 
             if updated == 0:
                 src_prefix = src.rstrip("/") + "/"
@@ -363,6 +379,55 @@ class StorageFileSync:
 
                 StorageFile.objects.bulk_update(moved_rows, ["parent_path", "name"])
                 record_last_edits([row for row in moved_rows if row.path == dst_prefix], user)
+                _record_move(org_id, src_prefix, dst_prefix, user=user)
+
+    @staticmethod
+    def record_transfer(
+        action: UserAction,
+        org_id: int,
+        entry_path: str | None,
+        *,
+        source_path: str | None = None,
+        user: object | None,
+    ) -> None:
+        """Record the move or copy that put a storage entry at `entry_path` as a user action.
+
+        Names the entry by the path it is stored at, the part a move or copy changes, and
+        keeps a move's `source_path` as its previous name. Records nothing for a `user`
+        None, or when no live row sits at `entry_path` (a folder with no row of its own).
+        """
+        if user is None or entry_path is None:
+            return
+        entry = StorageFile.objects.filter(org_id=org_id, path=entry_path).only("pk").first()
+        if entry is None:
+            return
+        record_user_action(
+            action=action,
+            org_id=org_id,
+            target_description=TargetDescription(
+                type=target_type(StorageFile), id=str(entry.pk), name=entry_path
+            ),
+            previous_name=source_path,
+        )
+
+
+def _record_move(org_id: int, source_path: str, entry_path: str, *, user: object | None) -> None:
+    """Record a move within one org: renamed when the entry kept its folder, else moved."""
+    if _parent_of(source_path) != _parent_of(entry_path):
+        StorageFileSync.record_transfer(
+            UserAction.MOVED, org_id, entry_path, source_path=source_path, user=user
+        )
+        return
+    if user is None:
+        return
+    entry = StorageFile.objects.filter(org_id=org_id, path=entry_path).only("pk", "name").first()
+    if entry is not None:
+        record_user_action(
+            action=UserAction.RENAMED,
+            org_id=org_id,
+            target=entry,
+            previous_name=_name_of(source_path),
+        )
 
 
 def _insert_skipping_live_paths(rows: list[StorageFile]) -> list[int]:

@@ -433,9 +433,7 @@ class StorageRecycleBinService:
         from tables.services.recycle_bin.purge_service import RETENTION_JOB_ACTOR
 
         if actor != RETENTION_JOB_ACTOR:
-            record_user_action(
-                action=UserAction.PERMANENTLY_DELETED, org_id=org_id, target_description=target
-            )
+            record_user_action(action=UserAction.DELETED, org_id=org_id, target_description=target)
         logger.info(
             "Purged storage {item_type} {pk} of org {org_id} (batch {batch}, {count} rows) by {actor}",
             item_type=root.item_type,

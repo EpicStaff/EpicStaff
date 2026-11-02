@@ -4,7 +4,10 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q, QuerySet
 from loguru import logger
+from src.shared.models import UserAction
 from tables.models.user import User
+from user_audit.recorder import record_user_action
+from user_audit.targets import TargetDescription
 
 from rbac.exceptions import (
     EmailAlreadyExistsError,
@@ -136,6 +139,10 @@ class UserManagementService(CrossOrgResourceService):
           - unknown organization_id → OrganizationNotFoundError (404).
           - unknown role_id → RoleNotFoundError (404).
           - non-assignable role → InvalidRoleAssignmentError (400).
+
+        Recorded as a user action in the org the user joins: the only org the new account
+        belongs to, so the same records a fan-out over its orgs would write. A user created
+        with no org is in no org's trail until a membership adds them.
         """
         UserModel = get_user_model()  # noqa: N806
 
@@ -159,6 +166,11 @@ class UserManagementService(CrossOrgResourceService):
 
         if org is not None and role is not None:
             OrganizationUser.objects.create(user=user, org=org, role=role)
+            record_user_action(
+                action=UserAction.CREATED,
+                org_id=org.pk,
+                target_description=TargetDescription(type="user", id=str(user.pk), name=user.email),
+            )
 
         logger.info(
             "UserManagementService.create_user actor={actor} new_user={new} org={org} role={role}",

@@ -7,13 +7,15 @@ TARGET_NAME_FIELDS = ("name", "node_name", "custom_name", "collection_name", "pa
 # Labels a reader knows a model by, where its verbose_name is an internal word.
 TARGET_TYPE_LABELS = {
     "graph": "flow",
+    "graphversion": "flow version",
     "agentdefinition": "agent",
     # A venv lives in the sandbox; this side keeps only the binding that stands for it.
     "sandboxvenvbinding": "venv",
 }
 # The foreign key a record names as the parent of a model the edit tracker gives no owner,
-# keyed by the model's `app_label.model_name`. An agent-specific surface belongs to its agent.
-TARGET_PARENT_FIELDS = {"agents.surface": "owner_agent"}
+# keyed by the model's `app_label.model_name`. An agent-specific surface belongs to its agent,
+# a flow version to its flow.
+TARGET_PARENT_FIELDS = {"agents.surface": "owner_agent", "tables.graphversion": "graph"}
 
 
 @dataclass(frozen=True)

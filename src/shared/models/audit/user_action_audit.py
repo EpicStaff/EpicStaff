@@ -6,8 +6,10 @@ from .base import BaseAuditEvent
 class UserAction(StrEnum):
     """What a user did to a resource.
 
-    `MOVED_TO_RECYCLE_BIN` is a delete the user can undo (`RESTORED`) until the item is
-    `PERMANENTLY_DELETED`; `DELETED` is a delete with no recycle bin, gone at once.
+    `MOVED_TO_RECYCLE_BIN` is a delete the user can undo (`RESTORED`); `DELETED` is gone
+    for good, whether at once or purged from the recycle bin. A purge is told apart by the
+    earlier `MOVED_TO_RECYCLE_BIN` record of the same target. `MOVED` and `COPIED` are
+    storage entries put at a new path.
     """
 
     CREATED = "created"
@@ -16,7 +18,8 @@ class UserAction(StrEnum):
     DELETED = "deleted"
     MOVED_TO_RECYCLE_BIN = "moved_to_recycle_bin"
     RESTORED = "restored"
-    PERMANENTLY_DELETED = "permanently_deleted"
+    MOVED = "moved"
+    COPIED = "copied"
     SIGNED_IN = "signed_in"
     SIGN_IN_FAILED = "sign_in_failed"
     SIGNED_OUT = "signed_out"
@@ -33,7 +36,8 @@ class UserActionEvent(BaseAuditEvent):
         actor_email: Email at the time of the action; empty for the system API key.
         action: A UserAction value, or a custom DRF action name ("copy") for fallback records.
         target_type: Display label such as "python node", "flow" or "member".
-        previous_name: Set only when action is "renamed".
+        previous_name: The name a "renamed" target had, or the path a "moved" storage
+            entry had.
         route: Fallback records only, e.g. "POST api/graphs/<pk>/copy/".
     """
 
