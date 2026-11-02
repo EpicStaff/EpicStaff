@@ -17,7 +17,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
         CopyButtonComponent,
     ],
     template: `
-        <div class="python-flow-container">
+        <div class="session-message python-flow-container">
             <!-- Python Message Header with Toggle -->
             <div
                 class="python-header"
@@ -51,6 +51,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             <div
                 class="collapsible-content grid-collapsible"
                 [class.expanded]="isMessageExpanded"
+                [inert]="!isMessageExpanded"
             >
                 <div class="python-content">
                     <!-- Code Section -->
@@ -72,6 +73,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isCodeExpanded"
+                                [inert]="!isCodeExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="code-wrapper">
@@ -103,6 +105,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isInputExpanded"
+                                [inert]="!isInputExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="input-wrapper">
@@ -142,6 +145,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isOutputExpanded"
+                                [inert]="!isOutputExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="output-wrapper">
@@ -188,6 +192,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isErrorExpanded"
+                                [inert]="!isErrorExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="error-wrapper">
@@ -218,6 +223,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                         <div
                             class="collapsible-content grid-collapsible"
                             [class.expanded]="isRawDataExpanded"
+                            [inert]="!isRawDataExpanded"
                         >
                             <div class="collapsible-inner">
                                 <div class="raw-data-wrapper">

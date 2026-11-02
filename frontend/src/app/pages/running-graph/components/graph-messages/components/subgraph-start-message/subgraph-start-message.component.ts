@@ -18,7 +18,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
     ],
     encapsulation: ViewEncapsulation.Emulated,
     template: `
-        <div class="subgraph-start-container">
+        <div class="session-message subgraph-start-container">
             <div
                 class="subgraph-start-header"
                 (click)="toggleMessage()"
@@ -62,6 +62,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             <div
                 class="collapsible-content grid-collapsible"
                 [class.expanded]="isMessageExpanded"
+                [inert]="!isMessageExpanded"
             >
                 <div class="subgraph-start-content">
                     <!-- Input Parameters Section -->
@@ -83,6 +84,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isInputsExpanded"
+                                [inert]="!isInputsExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="input-content">
@@ -116,6 +118,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isVariablesExpanded"
+                                [inert]="!isVariablesExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="variables-content">

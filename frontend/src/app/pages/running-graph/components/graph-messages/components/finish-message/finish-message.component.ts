@@ -22,7 +22,7 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
         RuntimeNodeLabelPipe,
     ],
     template: `
-        <div class="finish-container">
+        <div class="session-message finish-container">
             <!-- Finish Message Header with Toggle -->
             <div
                 class="finish-header"
@@ -69,6 +69,7 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
             <div
                 class="collapsible-content grid-collapsible"
                 [class.expanded]="isMessageExpanded"
+                [inert]="!isMessageExpanded"
             >
                 <div class="finish-content">
                     <!-- Variables Section -->
@@ -90,6 +91,7 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isVariablesExpanded"
+                                [inert]="!isVariablesExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="variables-content">
@@ -124,6 +126,7 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                         <div
                             class="collapsible-content grid-collapsible"
                             [class.expanded]="isOutputExpanded"
+                            [inert]="!isOutputExpanded"
                         >
                             <div class="collapsible-inner">
                                 <div class="output-content">

@@ -1,19 +1,35 @@
-<div class="save-dropdown">
+<!-- The focus moves in on open and back to the chevron on close. -->
+<div
+    class="save-dropdown"
+    role="menu"
+    aria-label="Save options"
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
+>
     <button
+        type="button"
+        role="menuitem"
         class="save-dropdown__item"
         (click)="save.emit()"
+        matTooltip="Save"
     >
         Save
     </button>
     <button
+        type="button"
+        role="menuitem"
         class="save-dropdown__item"
         (click)="saveVersion.emit()"
+        matTooltip="Save Version"
     >
         Save Version
     </button>
     <button
+        type="button"
+        role="menuitem"
         class="save-dropdown__item"
         (click)="viewVersionHistory.emit()"
+        matTooltip="Version History"
     >
         Version History
         <app-svg-icon

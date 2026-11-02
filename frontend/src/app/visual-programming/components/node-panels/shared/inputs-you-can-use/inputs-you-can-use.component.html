@@ -2,11 +2,14 @@
     <button
         type="button"
         class="inputs-list-toggle"
+        matTooltip="Inputs You Can Use"
+        [attr.aria-expanded]="open()"
         (click)="toggle()"
     >
         <span
             class="chevron"
             [class.open]="open()"
+            aria-hidden="true"
             >▶</span
         >
         Inputs You Can Use
@@ -14,12 +17,16 @@
     @if (open()) {
         <div class="inputs-chip-list">
             @for (name of names(); track name) {
-                <div
+                <!-- Inserts the name into the field it belongs to; the name has a tooltip only while it is cut short. -->
+                <button
+                    type="button"
                     class="inputs-chip"
+                    appTooltipOnOverflow
+                    [matTooltip]="name"
                     (click)="insert.emit(name)"
                 >
                     {{ name }}
-                </div>
+                </button>
             } @empty {
                 <span class="inputs-chip-empty"> Add entries to Input List to use them here. </span>
             }

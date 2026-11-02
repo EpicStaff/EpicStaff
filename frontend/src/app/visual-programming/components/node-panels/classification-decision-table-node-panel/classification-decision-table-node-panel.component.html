@@ -78,6 +78,8 @@
                                 [class.tab-btn--active]="activeTab() === 'table'"
                                 (click)="setActiveTab('table')"
                                 type="button"
+                                matTooltip="View: Decision Table"
+                                [attr.aria-pressed]="activeTab() === 'table'"
                             >
                                 Decision Table
                             </button>
@@ -88,6 +90,8 @@
                                 [class.tab-link--active]="activeTab() === 'precomputation'"
                                 (click)="setActiveTab('precomputation')"
                                 type="button"
+                                matTooltip="View: Pre-computation"
+                                [attr.aria-pressed]="activeTab() === 'precomputation'"
                             >
                                 Pre-computation
                             </button>
@@ -97,6 +101,8 @@
                                 [class.tab-link--active]="activeTab() === 'postcomputation'"
                                 (click)="setActiveTab('postcomputation')"
                                 type="button"
+                                matTooltip="View: Post-computation"
+                                [attr.aria-pressed]="activeTab() === 'postcomputation'"
                             >
                                 Post-computation
                             </button>
@@ -106,6 +112,8 @@
                                 [class.tab-link--active]="activeTab() === 'prompts'"
                                 (click)="setActiveTab('prompts')"
                                 type="button"
+                                matTooltip="View: Prompt library"
+                                [attr.aria-pressed]="activeTab() === 'prompts'"
                             >
                                 Prompt library
                             </button>
@@ -306,10 +314,12 @@
                                     />
                                 </span>
                                 <button
+                                    #addPromptButton
                                     *appIfFlowEditable
                                     type="button"
                                     class="add-prompt-header-btn"
                                     (click)="addPrompt()"
+                                    matTooltip="Add Prompt"
                                 >
                                     <i class="ti ti-plus"></i> Add Prompt
                                 </button>
@@ -340,7 +350,16 @@
                                                         icon="play"
                                                         size="8px"
                                                     ></app-svg-icon>
-                                                    <span class="prompt-id">{{ prompt.id }}</span>
+                                                    <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+                                                    <button
+                                                        type="button"
+                                                        class="prompt-id"
+                                                        [attr.aria-expanded]="editingPromptId() === prompt.id"
+                                                        appTooltipOnOverflow
+                                                        [matTooltip]="prompt.id"
+                                                    >
+                                                        {{ prompt.id }}
+                                                    </button>
                                                     @if (prompt.result_variable) {
                                                         <span class="result-badge">{{ prompt.result_variable }}</span>
                                                     }
@@ -352,7 +371,8 @@
                                                     <button
                                                         type="button"
                                                         class="icon-btn"
-                                                        title="Delete prompt"
+                                                        aria-label="Delete prompt"
+                                                        matTooltip="Delete prompt"
                                                         (click)="deletePrompt(prompt.id); $event.stopPropagation()"
                                                     >
                                                         <app-svg-icon
@@ -376,6 +396,8 @@
                                                             [ngModel]="pendingPromptName()"
                                                             [ngModelOptions]="{ standalone: true }"
                                                             [readonly]="isReadOnly()"
+                                                            aria-label="Name"
+                                                            matTooltip="Name"
                                                             (ngModelChange)="pendingPromptName.set($event)"
                                                             (blur)="commitPromptRename(prompt.id)"
                                                             (keydown.enter)="commitPromptRename(prompt.id)"
@@ -404,6 +426,8 @@
                                                             [ngModel]="prompt.result_variable"
                                                             [ngModelOptions]="{ standalone: true }"
                                                             [readonly]="isReadOnly()"
+                                                            aria-label="Result Variable"
+                                                            matTooltip="Result Variable"
                                                             (ngModelChange)="
                                                                 updatePrompt(prompt.id, 'result_variable', $event)
                                                             "
@@ -418,13 +442,18 @@
                                                         <div class="prompt-field">
                                                             <div class="field-label-row">
                                                                 <label class="field-label">Prompt</label>
-                                                                <app-svg-icon
+                                                                <button
+                                                                    type="button"
                                                                     class="field-expand-icon"
-                                                                    icon="editor-expand"
-                                                                    size="0.875rem"
-                                                                    title="Expand"
+                                                                    aria-label="Expand prompt"
+                                                                    matTooltip="Expand"
                                                                     (click)="openSideEditor(prompt.id, 'prompt')"
-                                                                />
+                                                                >
+                                                                    <app-svg-icon
+                                                                        icon="editor-expand"
+                                                                        size="0.875rem"
+                                                                    />
+                                                                </button>
                                                             </div>
                                                             <div class="prompt-textarea-wrapper">
                                                                 <div
@@ -437,6 +466,8 @@
                                                                 <textarea
                                                                     class="prompt-textarea prompt-textarea--transparent"
                                                                     rows="8"
+                                                                    aria-label="Prompt"
+                                                                    matTooltip="Prompt"
                                                                     [ngModel]="prompt.prompt_text"
                                                                     [readonly]="isReadOnly()"
                                                                     [ngModelOptions]="{ standalone: true }"
@@ -515,7 +546,7 @@
                                     <div class="side-editor-pane-actions">
                                         <button
                                             type="button"
-                                            title="Copy"
+                                            matTooltip="Copy"
                                             aria-label="Copy content"
                                             (click)="copySideEditorContent()"
                                         >
@@ -526,7 +557,7 @@
                                         </button>
                                         <button
                                             type="button"
-                                            title="Collapse"
+                                            matTooltip="Collapse"
                                             aria-label="Collapse editor panel"
                                             (click)="closeSideEditor()"
                                         >
@@ -562,6 +593,8 @@
                                                 ></div>
                                                 <textarea
                                                     class="prompt-textarea prompt-textarea--transparent"
+                                                    aria-label="Prompt"
+                                                    matTooltip="Prompt"
                                                     [ngModel]="prompt.prompt_text"
                                                     [readonly]="isReadOnly()"
                                                     [ngModelOptions]="{ standalone: true }"

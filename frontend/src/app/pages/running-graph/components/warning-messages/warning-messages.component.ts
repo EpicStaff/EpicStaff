@@ -7,7 +7,7 @@ import { AppSvgIconComponent } from '@shared/components';
     imports: [AppSvgIconComponent, MatTooltip],
     template: `
         @if (messages && messages.length > 0) {
-            <div class="warning-container">
+            <div class="session-message warning-container">
                 <div
                     class="warning-header"
                     (click)="toggleExpand()"
@@ -39,6 +39,7 @@ import { AppSvgIconComponent } from '@shared/components';
                 <div
                     class="collapsible-content grid-collapsible"
                     [class.expanded]="isExpanded"
+                    [inert]="!isExpanded"
                 >
                     <div class="warning-content">
                         @for (message of messages; track message; let i = $index) {

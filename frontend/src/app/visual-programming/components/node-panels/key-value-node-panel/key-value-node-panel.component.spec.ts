@@ -211,6 +211,7 @@ function createPanel(
                       FormControlStubComponent,
                       SelectDropdownComponent,
                       SelectDropdownTriggerDirective,
+                      MatTooltip,
                   ],
                   schemas: [CUSTOM_ELEMENTS_SCHEMA],
               }
@@ -746,6 +747,15 @@ describe('KeyValueNodePanelComponent', () => {
 
         it('stays open on Ctrl+S outside a text input while entries are invalid', () => {
             vi.useFakeTimers();
+            // jsdom has no ResizeObserver; the shell's title tooltip, shown only for a cut-short name, needs one.
+            vi.stubGlobal(
+                'ResizeObserver',
+                class {
+                    observe(): void {}
+                    unobserve(): void {}
+                    disconnect(): void {}
+                }
+            );
             // The shell hands every panel a graphId input, which this panel does not declare.
             const { fixture: panelFixture } = createPanel(nodeWith('write', [{ key: 'profile', value: 'value' }]), {
                 errorOnUnknownProperties: false,
@@ -774,6 +784,7 @@ describe('KeyValueNodePanelComponent', () => {
             pressCtrlS();
             expect(saved).toHaveBeenCalledTimes(1);
             expect((saved.mock.calls[0][0] as NodeModel).id).toBe(panel.node().id);
+            vi.unstubAllGlobals();
         });
 
         it('still holds back an invalid node name', () => {

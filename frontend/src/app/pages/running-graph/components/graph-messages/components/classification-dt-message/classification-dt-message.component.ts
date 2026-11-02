@@ -19,7 +19,7 @@ import {
         <!-- Condition Group -->
         @if (isConditionGroup()) {
             <div
-                class="dt-flow-container"
+                class="session-message dt-flow-container"
                 [ngClass]="conditionResultClass()"
             >
                 <div
@@ -64,6 +64,7 @@ import {
                 <div
                     class="collapsible-content grid-collapsible"
                     [class.expanded]="isMessageExpanded"
+                    [inert]="!isMessageExpanded"
                 >
                     <div class="dt-content">
                         @if (getConditionData()?.expression) {
@@ -84,7 +85,7 @@ import {
 
         <!-- Classification Prompt -->
         @if (isClassificationPrompt()) {
-            <div class="dt-flow-container prompt-container">
+            <div class="session-message dt-flow-container prompt-container">
                 <div
                     class="dt-header"
                     (click)="toggleMessage()"
@@ -119,6 +120,7 @@ import {
                 <div
                     class="collapsible-content grid-collapsible"
                     [class.expanded]="isMessageExpanded"
+                    [inert]="!isMessageExpanded"
                 >
                     <div class="dt-content">
                         <!-- Prompt Text -->
@@ -139,6 +141,7 @@ import {
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isPromptExpanded"
+                                [inert]="!isPromptExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <pre class="code-block">{{ getPromptData()?.prompt_text }}</pre>
@@ -164,6 +167,7 @@ import {
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isResponseExpanded"
+                                [inert]="!isResponseExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <pre class="code-block">{{ getPromptData()?.raw_response }}</pre>
@@ -218,7 +222,7 @@ import {
 
         <!-- Condition Group Manipulation -->
         @if (isManipulation()) {
-            <div class="dt-flow-container manipulation-container">
+            <div class="session-message dt-flow-container manipulation-container">
                 <div
                     class="dt-header"
                     (click)="toggleMessage()"
@@ -253,6 +257,7 @@ import {
                 <div
                     class="collapsible-content grid-collapsible"
                     [class.expanded]="isMessageExpanded"
+                    [inert]="!isMessageExpanded"
                 >
                     <div class="dt-content">
                         <pre class="code-block">{{ getManipulationDisplay() | json }}</pre>

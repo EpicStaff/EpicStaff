@@ -1,5 +1,7 @@
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ICellEditorParams } from 'ag-grid-community';
 
 import { PromptConfig } from '../../../../../core/models/classification-decision-table.model';
@@ -22,7 +24,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
 
 @Component({
     selector: 'app-prompt-id-cell-editor',
-    imports: [FormsModule],
+    imports: [TooltipOnOverflowDirective, MatTooltip, FormsModule],
     template: `
         <div
             class="prompt-editor-popup"
@@ -37,6 +39,8 @@ interface PromptIdEditorParams extends ICellEditorParams {
                     [ngModel]="searchText"
                     (ngModelChange)="onSearchChange($event)"
                     placeholder="Search prompt..."
+                    aria-label="Search prompt"
+                    matTooltip="Search prompt"
                     autofocus
                     (keydown.enter)="onEnter()"
                     (keydown.escape)="cancel()"
@@ -44,7 +48,8 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 <button
                     class="pe-add-btn"
                     type="button"
-                    title="Navigate to Prompt Library"
+                    aria-label="Navigate to Prompt Library"
+                    matTooltip="Navigate to Prompt Library"
                     (click)="navigateToPrompts()"
                 >
                     <i class="ti ti-plus"></i>
@@ -61,7 +66,16 @@ interface PromptIdEditorParams extends ICellEditorParams {
                             (click)="selectPrompt(p.id)"
                         >
                             <div class="pe-item-left">
-                                <span class="pe-item-name">{{ p.id }}</span>
+                                <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+                                <button
+                                    type="button"
+                                    class="pe-item-name"
+                                    [attr.aria-pressed]="p.id === value"
+                                    appTooltipOnOverflow
+                                    [matTooltip]="p.id"
+                                >
+                                    {{ p.id }}
+                                </button>
                                 @if (p.config.result_variable) {
                                     <span class="pe-item-var">{{ p.config.result_variable }}</span>
                                 }
@@ -71,7 +85,8 @@ interface PromptIdEditorParams extends ICellEditorParams {
                                 <button
                                     class="pe-item-open-btn"
                                     type="button"
-                                    title="Open in Prompt Library"
+                                    aria-label="Open in Prompt Library"
+                                    matTooltip="Open in Prompt Library"
                                     (click)="openPromptForEdit(p.id, $event)"
                                 >
                                     <i class="ti ti-arrow-up-right"></i>
@@ -98,6 +113,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                     type="button"
                     class="pe-clear"
                     (click)="clearSelection()"
+                    matTooltip="Clear"
                 >
                     Clear
                 </button>
@@ -198,6 +214,13 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 overflow: hidden;
             }
             .pe-item-name {
+                min-width: 0;
+                padding: 0;
+                border: none;
+                background: none;
+                font-family: inherit;
+                text-align: left;
+                cursor: inherit;
                 font-size: 0.875rem;
                 line-height: 1.3;
                 color: var(--color-text-primary);
@@ -245,10 +268,10 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 color: var(--accent-color);
                 font-size: 1rem;
             }
-            .pe-item:hover .pe-item-open-btn {
+            .pe-item:is(:hover, :focus-within) .pe-item-open-btn {
                 display: flex;
             }
-            .pe-item-open-btn:hover {
+            .pe-item-open-btn:is(:hover, :focus-visible) {
                 background: rgba(104, 95, 255, 0.08);
             }
             /* Empty state */

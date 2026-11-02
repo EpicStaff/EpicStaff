@@ -20,6 +20,7 @@ import {
     ButtonComponent,
     SearchComponent,
 } from '@shared/components';
+import { TabThroughMenuDirective } from '@shared/directives';
 
 import { KeyValueTable } from '../../models/key-value-table.model';
 
@@ -42,6 +43,7 @@ interface TruncatedName {
         MatTooltip,
         OverlayModule,
         SearchComponent,
+        TabThroughMenuDirective,
     ],
     templateUrl: './key-value-table-list.component.html',
     styleUrls: ['./key-value-table-list.component.scss'],

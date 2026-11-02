@@ -23,7 +23,9 @@
     <div class="body">
         @if (activeRestoreWarnings().length > 0 && !isPreviewing()) {
             <button
+                type="button"
                 class="restore-warning-btn"
+                matTooltip="Show missing dependencies"
                 (click)="onShowRestoreWarnings()"
             >
                 <app-svg-icon
@@ -84,9 +86,12 @@
         >
             @if (!isVersionHistoryOpen()) {
                 <button
+                    type="button"
                     class="collapse-toggle"
                     (mousedown)="$event.stopPropagation()"
                     (click)="togglePanelCollapsed()"
+                    [attr.aria-label]="isPanelCollapsed() ? 'Open sessions panel' : 'Close sessions panel'"
+                    [attr.aria-expanded]="!isPanelCollapsed()"
                     [matTooltip]="isPanelCollapsed() ? 'Open sessions panel' : 'Close sessions panel'"
                     matTooltipPosition="left"
                 >

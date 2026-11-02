@@ -1,11 +1,25 @@
 <ng-template #menuTemplate>
-    <div class="context-menu dark-theme">
+    <!-- The focus stays in the menu while it is open and goes back to what had it on close. Escape is handled here,
+         ahead of the tooltip of the focused control, which would take the first one, and of the editor. -->
+    <div
+        class="context-menu dark-theme"
+        role="dialog"
+        aria-label="Add node"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+        (keydown.escape)="onEscape($event)"
+    >
         <div class="search-container">
-            <i class="ti ti-search"></i>
+            <i
+                class="ti ti-search"
+                aria-hidden="true"
+            ></i>
             <input
                 #searchInput
                 type="text"
                 placeholder="Search..."
+                aria-label="Search nodes"
+                matTooltip="Search nodes"
                 (input)="onSearchInput($event)"
                 [value]="searchTerm()"
             />
@@ -15,7 +29,10 @@
             <div class="menu-header">
                 @for (item of visibleTabs(); track item.type) {
                     <button
+                        type="button"
                         [class.active]="item.type === selectedMenu()"
+                        [attr.aria-pressed]="item.type === selectedMenu()"
+                        [matTooltip]="'Node list: ' + item.label"
                         (click)="onSelectMenu(item.type)"
                     >
                         {{ item.label }}

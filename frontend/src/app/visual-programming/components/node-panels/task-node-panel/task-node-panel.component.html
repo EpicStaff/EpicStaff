@@ -53,6 +53,7 @@
                                     type="button"
                                     appSelectDropdownTrigger
                                     class="dropdown-trigger"
+                                    matTooltip="Agent"
                                     [class.dropdown-trigger--readonly]="isReadOnly()"
                                     [class.dropdown-trigger--invalid]="agentInvalid()"
                                 >
@@ -106,7 +107,7 @@
                                 <button
                                     type="button"
                                     class="view-summary-btn"
-                                    title="View combined surface summary"
+                                    matTooltip="View combined surface summary"
                                     (click)="onViewSummary()"
                                 >
                                     <app-svg-icon
@@ -149,7 +150,10 @@
                                     size="18px"
                                 />
                             </div>
-                            <app-toggle-switch formControlName="remember_output" />
+                            <app-toggle-switch
+                                formControlName="remember_output"
+                                ariaLabel="Remember output"
+                            />
                         </div>
 
                         @if (mainView() === 'instructions') {
@@ -157,6 +161,8 @@
                                 <button
                                     type="button"
                                     class="output-schema-toggle"
+                                    matTooltip="Output Schema"
+                                    [attr.aria-expanded]="outputSchemaExpanded()"
                                     (click)="toggleOutputSchema()"
                                 >
                                     <app-svg-icon
@@ -194,24 +200,35 @@
                                         tooltipText="Instructions given to the agent describing what this task should accomplish."
                                     ></app-tooltip>
                                     <div class="editor-block__actions">
-                                        <app-svg-icon
+                                        <button
+                                            type="button"
                                             class="editor-block__action"
-                                            icon="copy"
-                                            size="1rem"
-                                            title="Copy"
+                                            aria-label="Copy instructions"
+                                            matTooltip="Copy"
                                             (click)="copyInstructions()"
-                                        />
-                                        <app-svg-icon
+                                        >
+                                            <app-svg-icon
+                                                icon="copy"
+                                                size="1rem"
+                                            />
+                                        </button>
+                                        <button
+                                            type="button"
                                             class="editor-block__action"
-                                            icon="editor-expand"
-                                            size="0.875rem"
-                                            title="Expand"
+                                            aria-label="Expand instructions"
+                                            matTooltip="Expand"
                                             (click)="toggleMainView()"
-                                        />
+                                        >
+                                            <app-svg-icon
+                                                icon="editor-expand"
+                                                size="0.875rem"
+                                            />
+                                        </button>
                                     </div>
                                 </div>
                                 <app-variable-highlight-textarea
                                     #instructionsTextareaSchemaView
+                                    ariaLabel="Instructions"
                                     class="editor-block__textarea"
                                     formControlName="instructions"
                                     placeholder="Enter task instructions..."
@@ -258,7 +275,8 @@
                                     <button
                                         type="button"
                                         class="icon-button"
-                                        title="Copy"
+                                        aria-label="Copy"
+                                        matTooltip="Copy"
                                         (click)="copyInstructions()"
                                     >
                                         <app-svg-icon
@@ -269,7 +287,8 @@
                                     <button
                                         type="button"
                                         class="icon-button"
-                                        title="Collapse"
+                                        aria-label="Collapse"
+                                        matTooltip="Collapse"
                                         (click)="toggleMainView()"
                                     >
                                         <app-svg-icon
@@ -288,6 +307,7 @@
                                 } @else {
                                     <app-variable-highlight-textarea
                                         #instructionsTextareaMainPane
+                                        ariaLabel="Instructions"
                                         class="main-editor-pane__textarea"
                                         formControlName="instructions"
                                         placeholder="Enter task instructions..."
@@ -360,6 +380,7 @@
                                 type="button"
                                 appSelectDropdownTrigger
                                 class="dropdown-trigger"
+                                matTooltip="Agent"
                                 [class.dropdown-trigger--invalid]="agentInvalid()"
                                 [class.dropdown-trigger--readonly]="isReadOnly()"
                             >
@@ -413,7 +434,7 @@
                             <button
                                 type="button"
                                 class="view-summary-btn"
-                                title="View combined surface summary"
+                                matTooltip="View combined surface summary"
                                 (click)="onViewSummary()"
                             >
                                 <app-svg-icon
@@ -456,7 +477,10 @@
                                 size="18px"
                             />
                         </div>
-                        <app-toggle-switch formControlName="remember_output" />
+                        <app-toggle-switch
+                            formControlName="remember_output"
+                            ariaLabel="Remember output"
+                        />
                     </div>
 
                     <app-variable-highlight-textarea
@@ -479,6 +503,8 @@
                         <button
                             type="button"
                             class="output-schema-toggle"
+                            matTooltip="Output Schema"
+                            [attr.aria-expanded]="outputSchemaExpanded()"
                             (click)="toggleOutputSchema()"
                         >
                             <app-svg-icon

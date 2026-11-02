@@ -9,7 +9,9 @@ const PLAIN_TEXT_EDITOR_OPTIONS = { ...JSON_EDITOR_OPTIONS, language: 'plaintext
     imports: [AppSvgIconComponent, CopyButtonComponent, JsonEditorComponent, MatTooltipModule],
     templateUrl: './audit-value-viewer.component.html',
     styleUrls: ['./audit-value-viewer.component.scss'],
-    host: { '(document:keydown.escape)': 'onEscape($event)' },
+    // The host listener runs ahead of the tooltip of the focused control, which would take the first Escape;
+    // the document one covers the focus being outside the viewer.
+    host: { '(keydown.escape)': 'onEscape($event)', '(document:keydown.escape)': 'onEscape($event)' },
 })
 export class AuditValueViewerComponent {
     readonly field = input.required<string>();
@@ -35,8 +37,8 @@ export class AuditValueViewerComponent {
 
     // an open dropdown or other overlay that handled this Escape marks it defaultPrevented; leave the viewer open then
     protected onEscape(event: Event): void {
-        if (!event.defaultPrevented) {
-            this.closed.emit();
-        }
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.closed.emit();
     }
 }

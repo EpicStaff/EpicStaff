@@ -1,5 +1,5 @@
 @if (data) {
-    <div class="findings-container">
+    <div class="session-message findings-container">
         <div
             class="header"
             (click)="toggle()"
@@ -44,6 +44,7 @@
             class="content grid-collapsible"
             [class.collapsed]="!isExpanded"
             [class.expanded]="isExpanded"
+            [inert]="!isExpanded"
         >
             <div class="grid-collapsible__inner">
                 @if (data.findings.length === 0) {

@@ -13,6 +13,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
@@ -59,6 +60,7 @@ export const RUN_PYTHON_CODE_LABEL = 'Run python code';
 @Component({
     selector: 'app-webhook-trigger-node-panel',
     imports: [
+        MatTooltip,
         ReactiveFormsModule,
         CustomInputComponent,
         CodeEditorComponent,

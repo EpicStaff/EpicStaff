@@ -16,3 +16,14 @@ $text-entry-fields: 'input:not([type=checkbox], [type=radio], [type=range], [typ
     outline: 2px solid var(--accent-color);
     outline-offset: 2px;
 }
+
+// A session message folds from its title button. A ring round the title text alone reads as a focused link, so the
+// ring goes round the whole message card instead.
+.session-message .message-toggle:focus-visible {
+    outline: none;
+}
+
+.session-message:has(.message-toggle:focus-visible) {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}

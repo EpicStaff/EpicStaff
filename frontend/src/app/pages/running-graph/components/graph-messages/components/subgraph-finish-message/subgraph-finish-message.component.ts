@@ -15,7 +15,7 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
     imports: [MatTooltip, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent, RuntimeNodeLabelPipe],
     encapsulation: ViewEncapsulation.Emulated,
     template: `
-        <div class="subgraph-finish-container">
+        <div class="session-message subgraph-finish-container">
             <div
                 class="subgraph-finish-header"
                 (click)="toggleMessage()"
@@ -50,6 +50,7 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
             <div
                 class="collapsible-content grid-collapsible"
                 [class.expanded]="isMessageExpanded"
+                [inert]="!isMessageExpanded"
             >
                 <div class="subgraph-finish-content">
                     <!-- Final Output Section -->
@@ -71,6 +72,7 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isOutputExpanded"
+                                [inert]="!isOutputExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="output-content">
@@ -104,6 +106,7 @@ import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe'
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isVariablesExpanded"
+                                [inert]="!isVariablesExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="variables-content">

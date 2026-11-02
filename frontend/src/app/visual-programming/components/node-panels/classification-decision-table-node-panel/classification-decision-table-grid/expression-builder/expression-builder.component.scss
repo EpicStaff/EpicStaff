@@ -328,8 +328,10 @@ $radius: 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-family: inherit;
+    text-align: left;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--fog-alpha-6);
     }
 }
@@ -372,12 +374,12 @@ $radius: 4px;
         outline-offset: 1px;
     }
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not([aria-disabled='true']) {
         background: var(--graphite-638);
         border-color: var(--white-alpha-20);
     }
 
-    &:disabled {
+    &[aria-disabled='true'] {
         opacity: 0.45;
         cursor: not-allowed;
     }

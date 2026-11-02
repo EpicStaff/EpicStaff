@@ -5,23 +5,30 @@
         (mousedown)="$event.stopPropagation()"
     >
         <!-- Edit Button for Note -->
-        <div
+        <button
+            type="button"
             class="action-button edit-button"
+            aria-label="Edit note"
             matTooltip="Edit note"
             matTooltipPosition="above"
             (click)="onEditClick($event)"
         >
             <app-svg-icon icon="edit"></app-svg-icon>
-        </div>
+        </button>
         <!-- Delete Button (NOTE only here - never START) -->
-        <div
+        <button
+            type="button"
             class="action-button delete-button"
+            aria-label="Delete node"
             matTooltip="Delete node"
             matTooltipPosition="above"
             (click)="onDeleteClick($event)"
         >
-            <i class="ti ti-trash"></i>
-        </div>
+            <i
+                class="ti ti-trash"
+                aria-hidden="true"
+            ></i>
+        </button>
     </div>
 }
 
@@ -200,17 +207,23 @@
                             (mouseup)="$event.stopPropagation()"
                             (click)="$event.stopPropagation()"
                         >
-                            <div
+                            <button
+                                type="button"
                                 class="action-button unpack-button"
                                 [class.disabled]="isBlockedSubgraph"
+                                aria-label="Unpack subflow"
+                                [attr.aria-disabled]="isBlockedSubgraph || null"
                                 [matTooltip]="
                                     isBlockedSubgraph ? 'Cannot unpack: referenced flow is missing' : 'Unpack subflow'
                                 "
                                 matTooltipPosition="above"
                                 (click)="onUnpackClick($event)"
                             >
-                                <i class="ti ti-package-off"></i>
-                            </div>
+                                <i
+                                    class="ti ti-package-off"
+                                    aria-hidden="true"
+                                ></i>
+                            </button>
                         </div>
                     }
                     <!-- Stops mousedown/mouseup/click so it never bubbles into appClickOrDrag's actualClick (mouseup) and opens the panel. -->
@@ -221,14 +234,19 @@
                             (mouseup)="$event.stopPropagation()"
                             (click)="$event.stopPropagation()"
                         >
-                            <div
+                            <button
+                                type="button"
                                 class="action-button delete-button"
+                                aria-label="Delete node"
                                 matTooltip="Delete node"
                                 matTooltipPosition="above"
                                 (click)="onDeleteClick($event)"
                             >
-                                <i class="ti ti-trash"></i>
-                            </div>
+                                <i
+                                    class="ti ti-trash"
+                                    aria-hidden="true"
+                                ></i>
+                            </button>
                         </div>
                     }
                 </div>
@@ -265,14 +283,19 @@
             (mouseup)="$event.stopPropagation()"
             (click)="$event.stopPropagation()"
         >
-            <div
+            <button
+                type="button"
                 class="action-button delete-button"
+                aria-label="Delete node"
                 matTooltip="Delete node"
                 matTooltipPosition="above"
                 (click)="onDeleteClick($event)"
             >
-                <i class="ti ti-trash"></i>
-            </div>
+                <i
+                    class="ti ti-trash"
+                    aria-hidden="true"
+                ></i>
+            </button>
         </div>
     </div>
 }

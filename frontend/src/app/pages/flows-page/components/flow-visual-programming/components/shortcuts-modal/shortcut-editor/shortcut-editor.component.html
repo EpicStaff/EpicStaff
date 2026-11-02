@@ -38,6 +38,7 @@
             #recorder
             type="button"
             class="shortcut-editor__recorder"
+            matTooltip="Keys"
             [class.shortcut-editor__recorder--recording]="isRecording()"
             [class.shortcut-editor__recorder--empty]="!isRecording() && chordText() === null"
             [id]="idPrefix + '-keys'"
@@ -60,6 +61,7 @@
                 type="button"
                 class="shortcut-editor__clear"
                 aria-label="Clear keys"
+                matTooltip="Clear keys"
                 (click)="clearKeys()"
             >
                 Clear

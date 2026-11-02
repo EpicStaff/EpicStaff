@@ -1,11 +1,11 @@
 @if (data(); as data) {
     <div
-        class="key-value-container"
+        class="session-message key-value-container"
         [style.border-left-color]="accent()"
     >
         <button
             type="button"
-            class="key-value-header"
+            class="message-toggle key-value-header"
             [attr.aria-expanded]="isExpanded()"
             [matTooltip]="titlePrefix() + ' ' + data.table_name"
             (click)="toggle()"
@@ -39,6 +39,7 @@
         <div
             class="collapsible-content grid-collapsible"
             [class.expanded]="isExpanded()"
+            [inert]="!isExpanded()"
         >
             <div class="key-value-content">
                 @if (rows().length) {

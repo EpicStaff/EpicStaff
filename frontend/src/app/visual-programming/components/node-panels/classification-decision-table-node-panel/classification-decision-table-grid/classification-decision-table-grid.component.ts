@@ -1,3 +1,4 @@
+import { A11yModule } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
@@ -21,9 +22,11 @@ import {
     untracked,
     ViewChild,
     viewChild,
+    viewChildren,
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -40,12 +43,15 @@ import {
     CellValueChangedEvent,
     ColDef,
     ColGroupDef,
+    Column,
+    ColumnGroup,
     ColumnMovedEvent,
     ColumnResizedEvent,
     EditableCallbackParams,
     GridApi,
     GridOptions,
     GridReadyEvent,
+    HeaderFocusedEvent,
     IRowNode,
     ModuleRegistry,
     RowSpanParams,
@@ -109,10 +115,25 @@ import { PromptTooltipRendererComponent } from './prompt-tooltip-renderer/prompt
 import { RouteCodeCellRendererComponent } from './route-code-cell-renderer/route-code-cell-renderer.component';
 import { SelectionCellRendererComponent } from './selection-cell-renderer/selection-cell-renderer.component';
 import { SelectionCountHeaderComponent } from './selection-count-header/selection-count-header.component';
+import {
+    badgeClosingHeader,
+    HeaderBadgeBoundary,
+    headerPositionOf,
+    HeaderTabStop,
+    HeaderTabTarget,
+    headerTabTarget,
+    navigatePastActionlessHeaders,
+    stopPastActionlessHeader,
+    tabPastActionlessHeaders,
+} from './shared/header-keyboard.util';
 import { NoDragGhostComponent } from './shared/no-drag-ghost.component';
 import { OverlayMenuController } from './shared/overlay-menu.util';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+/** Elements the browser's Tab can stop on; `tabIndex` filters out the explicitly skipped ones. */
+const TABBABLE_SELECTOR =
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex], [contenteditable="true"]';
 
 /** Emitted when the user confirms Continue on a wired route code; see `enableContinueRequest`. */
 export interface CdtEnableContinueRequest {
@@ -130,6 +151,13 @@ export interface CdtRuleIdentityEdit {
     readonly rowsAfter: ConditionGroup[];
     /** The edited row, at the same index in both. */
     readonly rowIndex: number;
+}
+
+/** A restore badge for one or more hidden columns, placed on the header boundary where they were. */
+interface HiddenColumnBadge extends HeaderBadgeBoundary {
+    entries: Array<{ colId: string; label: string }>;
+    x: number;
+    y: number;
 }
 
 interface GroupOverlayMember {
@@ -160,7 +188,15 @@ interface GroupOverlayItem {
 
 @Component({
     selector: 'app-classification-decision-table-grid',
-    imports: [AgGridModule, AppSvgIconComponent, ButtonComponent, HelpTooltipComponent, MultiSelectComponent],
+    imports: [
+        A11yModule,
+        MatTooltip,
+        AgGridModule,
+        AppSvgIconComponent,
+        ButtonComponent,
+        HelpTooltipComponent,
+        MultiSelectComponent,
+    ],
     templateUrl: './classification-decision-table-grid.component.html',
     styleUrls: ['./classification-decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -258,9 +294,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     // Hidden-column restore badges: position computed from DOM.
     // Each badge can hold multiple entries when adjacent hidden columns are merged.
-    public hiddenColumnBadges = signal<
-        Array<{ entries: Array<{ colId: string; label: string }>; x: number; y: number }>
-    >([]);
+    public hiddenColumnBadges = signal<HiddenColumnBadge[]>([]);
+    /** The badge buttons, in the order of `hiddenColumnBadges`. */
+    private readonly hiddenColumnBadgeButtons = viewChildren<ElementRef<HTMLButtonElement>>('hiddenColumnBadge');
+    /** The header cell that last took the focus; the Tab routing reads it while that cell is focused. */
+    private focusedHeader: Column | ColumnGroup | null = null;
 
     // Selection state for toolbar buttons
     public selectedRowCount = signal<number>(0);
@@ -947,6 +985,15 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         suppressColumnMoveAnimation: true,
         dragAndDropImageComponent: NoDragGhostComponent,
         suppressDragLeaveHidesColumns: true,
+        // The row-selection header holds nothing to act on, so the keyboard goes past it.
+        tabToNextHeader: tabPastActionlessHeaders,
+        navigateToNextHeader: navigatePastActionlessHeaders,
+        onHeaderFocused: (event: HeaderFocusedEvent) => {
+            this.focusedHeader = event.column;
+            // An actionless header reached by Tab into the grid, ArrowUp or a click hands the focus on.
+            const target = stopPastActionlessHeader(event.api, this.hiddenColumnBadges(), event.column);
+            if (target) this.focusHeaderTabTarget(target);
+        },
         rowSelection: {
             mode: 'multiRow',
             checkboxes: false,
@@ -1137,7 +1184,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             return;
         }
         this.activeBadgeEntries = badge.entries;
-        this.hiddenBadgeMenuCtrl.toggle(event.currentTarget as HTMLElement, this.hiddenBadgeMenuTemplate);
+        this.hiddenBadgeMenuCtrl.toggle(event.currentTarget as HTMLElement, this.hiddenBadgeMenuTemplate, {
+            closeOnEscape: true,
+        });
     }
 
     public activeBadgeEntries: Array<{ colId: string; label: string }> = [];
@@ -1400,7 +1449,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
         }
 
-        const computeBoundaryX = (anchorColId: string): number | null => {
+        type Boundary = { x: number; prevColId: string | null; nextColId: string | null };
+        const computeBoundary = (anchorColId: string): Boundary | null => {
             const anchorIdx = fullOrder.indexOf(anchorColId);
             if (anchorIdx === -1) return null;
 
@@ -1436,24 +1486,27 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             const prevRect = prevHeader?.getBoundingClientRect() ?? null;
             const nextRect = nextHeader?.getBoundingClientRect() ?? null;
 
+            let x: number;
             if (prevRect && nextRect) {
-                return (prevRect.right + nextRect.left) / 2 - containerRect.left - 10;
+                x = (prevRect.right + nextRect.left) / 2 - containerRect.left - 10;
             } else if (nextRect) {
-                return nextRect.left - containerRect.left - 10;
+                x = nextRect.left - containerRect.left - 10;
             } else {
-                return prevRect!.right - containerRect.left - 10;
+                x = prevRect!.right - containerRect.left - 10;
             }
+            // The neighbours place the badge in the header's Tab order (`headerTabTarget`).
+            return { x, prevColId: prevVisibleColId, nextColId: nextVisibleColId };
         };
 
         // Collect raw entries with their boundary positions
-        type RawEntry = { colId: string; label: string; boundaryX: number };
+        type RawEntry = { colId: string; label: string; boundary: Boundary };
         const rawEntries: RawEntry[] = [];
 
         for (const hiddenId of hidden) {
             if (groupedColIdToGroupId.has(hiddenId)) continue;
-            const boundaryX = computeBoundaryX(hiddenId);
-            if (boundaryX === null) continue;
-            rawEntries.push({ colId: hiddenId, label: this.getColLabel(hiddenId), boundaryX });
+            const boundary = computeBoundary(hiddenId);
+            if (boundary === null) continue;
+            rawEntries.push({ colId: hiddenId, label: this.getColLabel(hiddenId), boundary });
         }
 
         const emittedGroups = new Set<string>();
@@ -1468,23 +1521,30 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 .sort((a, b) => fullOrder.indexOf(a) - fullOrder.indexOf(b));
             if (sortedColIds.length === 0) continue;
 
-            const boundaryX = computeBoundaryX(sortedColIds[0]);
-            if (boundaryX === null) continue;
-            rawEntries.push({ colId: groupId, label: info.label, boundaryX });
+            const boundary = computeBoundary(sortedColIds[0]);
+            if (boundary === null) continue;
+            rawEntries.push({ colId: groupId, label: info.label, boundary });
         }
 
         // Sort by position, then merge entries whose positions are within 5px (adjacent)
-        rawEntries.sort((a, b) => a.boundaryX - b.boundaryX);
+        rawEntries.sort((a, b) => a.boundary.x - b.boundary.x);
 
         const mergeThreshold = 5;
-        const badges: Array<{ entries: Array<{ colId: string; label: string }>; x: number; y: number }> = [];
+        const badges: HiddenColumnBadge[] = [];
 
         for (const entry of rawEntries) {
             const last = badges.length > 0 ? badges[badges.length - 1] : null;
-            if (last && Math.abs(last.x - entry.boundaryX) < mergeThreshold) {
+            // Merged entries share one boundary, so the first entry's neighbours stand for all of them.
+            if (last && Math.abs(last.x - entry.boundary.x) < mergeThreshold) {
                 last.entries.push({ colId: entry.colId, label: entry.label });
             } else {
-                badges.push({ entries: [{ colId: entry.colId, label: entry.label }], x: entry.boundaryX, y });
+                badges.push({
+                    entries: [{ colId: entry.colId, label: entry.label }],
+                    x: entry.boundary.x,
+                    y,
+                    prevColId: entry.boundary.prevColId,
+                    nextColId: entry.boundary.nextColId,
+                });
             }
         }
 
@@ -1610,7 +1670,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }),
             // Allow plain Enter to insert newlines inside the popup editor.
             // Ctrl/Cmd+Enter (handled by ExpressionBuilderComponent) commits.
-            suppressKeyboardEvent: (params) => params.editing && params.event.key === 'Enter',
+            // Tab moves between the popup's own controls instead of to the next cell.
+            suppressKeyboardEvent: (params) =>
+                params.editing && (params.event.key === 'Enter' || params.event.key === 'Tab'),
             cellStyle: { fontSize: '13px', fontFamily: 'monospace', color: '#d4d4d4' },
             valueGetter: (params: ValueGetterParams<ConditionGroup>) =>
                 toDisplayExpression(params.data?.manipulation ?? ''),
@@ -1640,7 +1702,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             cellEditorParams: () => ({ variables: this.collectExpressionVariables() }),
             // Allow plain Enter to insert newlines inside the popup editor.
             // Ctrl/Cmd+Enter (handled by ExpressionBuilderComponent) commits.
-            suppressKeyboardEvent: (params) => params.editing && params.event.key === 'Enter',
+            // Tab moves between the popup's own controls instead of to the next cell.
+            suppressKeyboardEvent: (params) =>
+                params.editing && (params.event.key === 'Enter' || params.event.key === 'Tab'),
             cellStyle: () => ({ fontSize: '13px', fontFamily: 'monospace', color: '#d4d4d4' }),
             valueGetter: (params: ValueGetterParams<ConditionGroup>) =>
                 toDisplayExpression(params.data?.expression ?? ''),
@@ -2325,6 +2389,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.setupBodyClickListener();
         this.setupOutsideClickListener();
         this.setupRowDragListener();
+        // Capture phase: the decision is made before ag-grid's header handles the Tab.
+        this.elRef.nativeElement.addEventListener('keydown', this.routeHeaderTab, true);
         this.gridApi.addEventListener('selectionChanged', () => {
             const nodes = this.gridApi.getSelectedNodes();
             this.selectedRowCount.set(nodes.length);
@@ -2418,6 +2484,91 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.hiddenBadgeMenuCtrl.dispose();
         const hostEl = this.elRef.nativeElement;
         hostEl.removeEventListener('mousedown', this.rowDragMouseDown, true);
+        hostEl.removeEventListener('keydown', this.routeHeaderTab, true);
+    }
+
+    /**
+     * Tab and Shift+Tab through the header cells and the hidden-column badges, so a
+     * badge is reached between the headers it sits between rather than after the
+     * whole grid. The util decides; this only applies its answer.
+     */
+    private readonly routeHeaderTab = (event: KeyboardEvent): void => {
+        if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey || !this.gridApi) return;
+        const target = this.headerTabTargetFor(event);
+        if (!target) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.focusHeaderTabTarget(target);
+    };
+
+    private headerTabTargetFor(event: KeyboardEvent): HeaderTabTarget | null {
+        const badges = this.hiddenColumnBadges();
+        if (event.shiftKey && this.isFirstBodyCell(event.target)) return badgeClosingHeader(this.gridApi, badges);
+        const from = this.headerTabStopOf(event.target);
+        return from ? headerTabTarget(this.gridApi, badges, from, event.shiftKey) : null;
+    }
+
+    /** Whether `element` is the focused first body cell, from which ag-grid's Shift+Tab goes up to the header. */
+    private isFirstBodyCell(element: EventTarget | null): boolean {
+        if (!(element instanceof HTMLElement) || !element.matches('.ag-cell')) return false;
+        const focusedCell = this.gridApi.getFocusedCell();
+        return (
+            !!focusedCell &&
+            focusedCell.rowIndex === 0 &&
+            !focusedCell.rowPinned &&
+            focusedCell.column === this.gridApi.getAllDisplayedColumns()[0] &&
+            this.gridApi.getEditingCells().length === 0
+        );
+    }
+
+    /** The Tab stop `element` is: a badge button or a focused header cell; null for anything else. */
+    private headerTabStopOf(element: EventTarget | null): HeaderTabStop | null {
+        if (!(element instanceof HTMLElement)) return null;
+        const badgeIndex = this.hiddenColumnBadgeButtons().findIndex((button) => button.nativeElement === element);
+        if (badgeIndex !== -1) return { kind: 'badge', badgeIndex };
+        // Only the cell itself: a key pressed on a control inside it is that control's own business.
+        if (this.focusedHeader && element.matches('.ag-header-cell, .ag-header-group-cell')) {
+            return { kind: 'header', position: headerPositionOf(this.focusedHeader) };
+        }
+        return null;
+    }
+
+    private focusHeaderTabTarget(target: HeaderTabTarget): void {
+        switch (target.kind) {
+            case 'badge':
+                this.hiddenColumnBadgeButtons()[target.badgeIndex]?.nativeElement.focus();
+                break;
+            case 'header':
+                this.gridApi.setFocusedHeader(target.position.column);
+                break;
+            case 'body':
+                this.gridApi.ensureIndexVisible(0);
+                this.gridApi.ensureColumnVisible(target.column);
+                this.gridApi.setFocusedCell(0, target.column);
+                break;
+            case 'beforeGrid':
+                this.focusBeforeGrid();
+                break;
+        }
+    }
+
+    /**
+     * Focuses the last keyboard-reachable element before the grid, where Shift+Tab out
+     * of the header lands. A badge is rendered after the grid, so the browser's own
+     * Shift+Tab from it would land in the grid instead.
+     */
+    private focusBeforeGrid(): void {
+        const grid: HTMLElement | undefined = this.gridElementRef()?.nativeElement;
+        if (!grid) return;
+        const candidates = Array.from(grid.ownerDocument.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)).filter(
+            (element) =>
+                element.tabIndex >= 0 &&
+                !element.contains(grid) &&
+                (element.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 &&
+                !element.closest('[inert]') &&
+                (element.checkVisibility?.() ?? true)
+        );
+        candidates[candidates.length - 1]?.focus();
     }
 
     private rowDragMouseDown = (e: MouseEvent): void => {
@@ -2993,6 +3144,27 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                     queueMicrotask(() => this.recomputeGroupOverlays());
                 }
             });
+    }
+
+    /** Escape closes only the group menu; its focus trap gives the focus back to the group's chevron. */
+    protected onGroupMenuEscape(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.closeGroupMenu();
+    }
+
+    /** Escape closes only the row menu, and goes no further. */
+    protected onContextMenuEscape(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.contextMenu.set(null);
+    }
+
+    /** A group's edit and ungroup chip shows while the pointer is over the group or the focus is in it. */
+    protected onGroupOverlayFocusOut(key: string, event: FocusEvent): void {
+        const overlay = event.currentTarget as HTMLElement;
+        if (event.relatedTarget instanceof Node && overlay.contains(event.relatedTarget)) return;
+        if (this.hoveredSectionId() === key) this.hoveredSectionId.set(null);
     }
 
     public handleGroupMenuUngroup(): void {

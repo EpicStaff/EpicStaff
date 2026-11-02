@@ -47,7 +47,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
-            class="node-stream-container"
+            class="session-message node-stream-container"
             [class.in-progress]="!isDone()"
             [style.--stream-color]="color()"
         >
@@ -99,6 +99,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
             <div
                 class="collapsible-content"
                 [class.expanded]="isExpanded()"
+                [inert]="!isExpanded()"
             >
                 <div class="collapsible-inner">
                     @if (hasContent()) {
@@ -144,6 +145,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                                                 <div
                                                     class="collapsible-content"
                                                     [class.expanded]="isStepExpanded(step)"
+                                                    [inert]="!isStepExpanded(step)"
                                                 >
                                                     <div class="collapsible-inner">
                                                         <div class="step-content">

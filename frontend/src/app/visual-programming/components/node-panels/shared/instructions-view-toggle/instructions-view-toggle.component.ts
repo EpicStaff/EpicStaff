@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 export type InstructionsView = 'preview' | 'edit';
 
 @Component({
     selector: 'app-instructions-view-toggle',
-    imports: [AppSvgIconComponent],
+    imports: [MatTooltip, AppSvgIconComponent],
     templateUrl: './instructions-view-toggle.component.html',
     styleUrls: ['./instructions-view-toggle.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

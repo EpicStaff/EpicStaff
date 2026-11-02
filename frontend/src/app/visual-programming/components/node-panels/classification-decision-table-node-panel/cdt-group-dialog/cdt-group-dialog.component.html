@@ -5,6 +5,7 @@
             type="button"
             class="close-btn"
             aria-label="Close"
+            matTooltip="Close"
             (click)="cancel()"
         >
             <app-svg-icon
@@ -29,6 +30,7 @@
                 type="text"
                 autocomplete="off"
                 placeholder="Enter group name"
+                matTooltip="Group Name"
                 [ngModel]="name()"
                 (ngModelChange)="name.set($event)"
                 (keydown)="onNameKeydown($event)"
@@ -51,7 +53,7 @@
                         [style.background]="option.hex"
                         [attr.aria-checked]="isColorSelected(option)"
                         [attr.aria-label]="'Colour: ' + option.id"
-                        [title]="option.id"
+                        [matTooltip]="option.id"
                         (click)="selectColor(option.hex)"
                     >
                         @if (isColorSelected(option)) {
@@ -72,6 +74,7 @@
             type="button"
             class="btn btn--secondary"
             (click)="cancel()"
+            matTooltip="Cancel"
         >
             Cancel
         </button>
@@ -80,6 +83,7 @@
             class="btn btn--primary"
             [disabled]="isSaveDisabled()"
             (click)="save()"
+            matTooltip="Save Changes"
         >
             Save Changes
         </button>

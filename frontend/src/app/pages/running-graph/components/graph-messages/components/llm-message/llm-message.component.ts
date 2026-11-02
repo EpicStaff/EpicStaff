@@ -10,7 +10,7 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
     selector: 'app-llm-message',
     imports: [MatTooltip, CommonModule, MarkdownComponent, AppSvgIconComponent, CopyButtonComponent],
     template: `
-        <div class="llm-flow-container">
+        <div class="session-message llm-flow-container">
             <!-- LLM Message Header with Toggle -->
             <div
                 class="llm-header"
@@ -44,6 +44,7 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
             <div
                 class="collapsible-content grid-collapsible"
                 [class.expanded]="isMessageExpanded"
+                [inert]="!isMessageExpanded"
             >
                 <div class="llm-content">
                     <!-- Response Subsection -->
@@ -64,6 +65,7 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                         <div
                             class="collapsible-content grid-collapsible"
                             [class.expanded]="isResponseExpanded"
+                            [inert]="!isResponseExpanded"
                         >
                             <div class="grid-collapsible__inner">
                                 <div

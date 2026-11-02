@@ -18,6 +18,7 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { TooltipComponent } from '@shared/components';
 
 import { highlightVariablesHtml } from './highlight-variables';
@@ -53,7 +54,7 @@ const DROPDOWN_NAV_KEYS = new Set(['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Esca
  */
 @Component({
     selector: 'app-variable-highlight-textarea',
-    imports: [TooltipComponent],
+    imports: [MatTooltip, TooltipComponent],
     templateUrl: './variable-highlight-textarea.component.html',
     styleUrls: ['./variable-highlight-textarea.component.scss'],
     providers: [
@@ -79,6 +80,9 @@ export class VariableHighlightTextareaComponent implements ControlValueAccessor,
     public readonly tooltipText = input<string>('');
     public readonly icon = input<string>('help_outline');
     public readonly required = input<boolean>(false);
+    /** The field's name for screen readers and its tooltip, where no label names it. */
+    public readonly ariaLabel = input<string>('');
+    protected readonly fieldName = computed(() => this.ariaLabel() || this.label());
 
     @ViewChild('backdrop', { static: true })
     private backdropRef!: ElementRef<HTMLDivElement>;

@@ -1,3 +1,4 @@
+import { A11yModule } from '@angular/cdk/a11y';
 import { FlexibleConnectedPositionStrategy, Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import { ViewportRuler } from '@angular/cdk/scrolling';
@@ -22,8 +23,8 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { IPoint } from '@foblex/2d';
-import { filter } from 'rxjs';
 
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 import {
@@ -51,7 +52,7 @@ interface MenuBox {
     templateUrl: './flow-graph-context-menu.component.html',
     styleUrls: ['./flow-graph-context-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FlowGraphCoreMenuComponent, FlowsMenuComponent],
+    imports: [A11yModule, MatTooltip, FlowGraphCoreMenuComponent, FlowsMenuComponent],
 })
 export class FlowGraphContextMenuComponent implements AfterViewInit {
     public readonly position = input.required<IPoint>();
@@ -120,24 +121,22 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
             .backdropClick()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.closed.emit());
-        this.overlayRef
-            .keydownEvents()
-            .pipe(
-                filter((event) => event.key === 'Escape'),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe((event) => {
-                // Esc belongs to the topmost layer: keep it from also reaching the editor's window-level
-                // keymap (canvas multi-select reset, node side panel save-and-close).
-                event.stopPropagation();
-                this.closed.emit();
-            });
         this.overlayRef.attach(new TemplatePortal(this.menuTemplate, this.viewContainerRef));
         this.viewportRuler
             .change()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.anchorMenu());
         afterNextRender(() => this.searchInput()?.nativeElement.focus(), { injector: this.injector });
+    }
+
+    /**
+     * Esc belongs to the topmost layer: it closes the menu and does not reach the editor's window-level keymap
+     * (canvas multi-select reset, node side panel save-and-close).
+     */
+    protected onEscape(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.closed.emit();
     }
 
     private placeMenu(position: IPoint): void {

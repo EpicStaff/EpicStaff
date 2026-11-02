@@ -1,16 +1,19 @@
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     DestroyRef,
     ElementRef,
     EventEmitter,
     inject,
+    Injector,
     Input,
     OnChanges,
     Output,
     signal,
     SimpleChanges,
     ViewChild,
+    viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -33,14 +36,21 @@ let nextSearchId = 0;
         '(document:mousedown)': 'onDocumentMousedown($event)',
     },
     template: `
+        <!-- Escape in the search closes only the search: handled here, ahead of the tooltip of the focused
+             control, which would take the first one, and of the canvas and the node panel. -->
         <div
             class="nodes-search-container"
             [class.nodes-search-container--expanded]="isSearchVisible()"
+            (keydown.escape)="onEscape($event)"
         >
             <div class="search-header">
                 <!-- Search button with icon -->
                 <button
+                    #searchButton
+                    type="button"
                     class="search-button"
+                    [attr.aria-label]="isSearchVisible() ? 'Close search' : 'Search nodes'"
+                    [attr.aria-expanded]="isSearchVisible()"
                     (click)="toggleSearchInput()"
                     [matTooltip]="
                         keymap.withShortcut(
@@ -64,6 +74,9 @@ let nextSearchId = 0;
                             type="text"
                             class="search-input"
                             placeholder="Search nodes..."
+                            aria-label="Search nodes"
+                            matTooltip="Search nodes"
+                            matTooltipPosition="right"
                             role="combobox"
                             aria-autocomplete="list"
                             [attr.aria-expanded]="filteredNodes.length > 0"
@@ -76,8 +89,10 @@ let nextSearchId = 0;
                         />
                         @if (searchQuery) {
                             <button
+                                type="button"
                                 class="clear-button"
-                                (click)="clearSearch()"
+                                aria-label="Clear search"
+                                (click)="onClearClick()"
                                 matTooltip="Clear search"
                                 matTooltipPosition="right"
                             >
@@ -159,11 +174,10 @@ let nextSearchId = 0;
                 justify-content: center;
                 cursor: pointer;
                 transition: all 0.2s ease;
-                outline: none;
                 position: relative;
                 color: var(--gray-300);
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     background-color: var(--gray-750);
                 }
 
@@ -319,7 +333,9 @@ export class NodesSearchComponent implements OnChanges {
     protected readonly activeIndex = signal(-1);
     protected readonly resultsId = `nodes-search-results-${nextSearchId++}`;
 
+    private readonly searchButton = viewChild<ElementRef<HTMLButtonElement>>('searchButton');
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
+    private readonly injector = inject(Injector);
     protected readonly keymap = inject(KeymapService);
     private readonly destroyRef = inject(DestroyRef);
 
@@ -405,10 +421,24 @@ export class NodesSearchComponent implements OnChanges {
         }
     }
 
+    /** The Clear button goes away with the text: the focus goes back to the search box. */
+    protected onClearClick(): void {
+        this.clearSearch();
+        this.searchInputRef?.nativeElement.focus();
+    }
+
     public clearSearch(): void {
         this.searchQuery = '';
         this.activeIndex.set(-1);
         this.filteredNodes = [];
+    }
+
+    protected onEscape(event: Event): void {
+        if (event.defaultPrevented || !this.isSearchVisible()) return;
+        event.stopPropagation();
+        this.closeSearch();
+        // The search box is gone: the focus goes back to the button that opens it.
+        afterNextRender(() => this.searchButton()?.nativeElement.focus(), { injector: this.injector });
     }
 
     public closeSearch(): void {

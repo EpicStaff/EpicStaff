@@ -1,5 +1,6 @@
 <div class="editor-toolbar">
     <button
+        type="button"
         class="toolbar-btn"
         (click)="insertToken('@')"
         matTooltip="Insert Variable"
@@ -15,6 +16,7 @@
 
     @if (mode() === 'condition') {
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('and')"
             matTooltip="Insert AND operator"
@@ -23,6 +25,7 @@
             <span class="keyword">AND</span>
         </button>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('or')"
             matTooltip="Insert OR operator"
@@ -32,6 +35,7 @@
         </button>
         <div class="separator"></div>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('>')"
             matTooltip="Greater than"
@@ -40,6 +44,7 @@
             <span>&gt;</span>
         </button>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('<')"
             matTooltip="Less than"
@@ -48,6 +53,7 @@
             <span>&lt;</span>
         </button>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('==')"
             matTooltip="Equals"
@@ -56,6 +62,7 @@
             <span>==</span>
         </button>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('!=')"
             matTooltip="Not equals"
@@ -64,6 +71,7 @@
             <span>!=</span>
         </button>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('>=')"
             matTooltip="Greater or equal"
@@ -72,6 +80,7 @@
             <span>&gt;=</span>
         </button>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('<=')"
             matTooltip="Less or equal"
@@ -83,6 +92,7 @@
 
     @if (mode() === 'manipulation') {
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('(')"
             matTooltip="Open parenthesis"
@@ -91,6 +101,7 @@
             <span style="color: #ffd43b">(</span>
         </button>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken(')')"
             matTooltip="Close parenthesis"
@@ -100,6 +111,7 @@
         </button>
         <div class="separator"></div>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('=')"
             matTooltip="Assign"
@@ -108,6 +120,7 @@
             <span>=</span>
         </button>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('+')"
             matTooltip="Add"
@@ -116,6 +129,7 @@
             <span>+</span>
         </button>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('-')"
             matTooltip="Subtract"
@@ -124,6 +138,7 @@
             <span>-</span>
         </button>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('*')"
             matTooltip="Multiply"
@@ -132,6 +147,7 @@
             <span>*</span>
         </button>
         <button
+            type="button"
             class="toolbar-btn"
             (click)="insertToken('/')"
             matTooltip="Divide"

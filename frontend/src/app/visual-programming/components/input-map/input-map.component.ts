@@ -1,11 +1,14 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
+    ElementRef,
     EventEmitter,
     inject,
+    Injector,
     Input,
     input,
     OnChanges,
@@ -13,6 +16,8 @@ import {
     Output,
     signal,
     SimpleChanges,
+    viewChild,
+    viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
@@ -74,6 +79,7 @@ export interface InputMapKeyChanges {
                     <div class="test-mode-header">
                         <span>Test mode</span>
                         <app-toggle-switch
+                            ariaLabel="Test mode"
                             [checked]="testMode"
                             (checkedChange)="onTestModeToggle($event)"
                         />
@@ -128,6 +134,8 @@ export interface InputMapKeyChanges {
                                         type="text"
                                         formControlName="key"
                                         placeholder="Function Argument Name"
+                                        aria-label="Function argument name"
+                                        matTooltip="Function argument name"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                         (keydown.enter)="onEnterKey($event, i)"
@@ -139,6 +147,8 @@ export interface InputMapKeyChanges {
                                         type="text"
                                         formControlName="value"
                                         placeholder="Domain Variable Name"
+                                        aria-label="Domain variable name"
+                                        matTooltip="Domain variable name"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                         role="combobox"
@@ -153,14 +163,20 @@ export interface InputMapKeyChanges {
                                     />
                                 </div>
                                 @if (!parentForm.disabled) {
-                                    <app-svg-icon
-                                        icon="trash"
-                                        size="1rem"
+                                    <button
+                                        #removeButton
+                                        type="button"
                                         class="delete-icon"
+                                        aria-label="Remove input"
                                         matTooltip="Remove"
                                         matTooltipPosition="above"
-                                        (click)="removePair(i)"
-                                    ></app-svg-icon>
+                                        (click)="onRemoveButtonClick(i, false)"
+                                    >
+                                        <app-svg-icon
+                                            icon="trash"
+                                            size="1rem"
+                                        ></app-svg-icon>
+                                    </button>
                                 }
                             </div>
                         </div>
@@ -168,8 +184,10 @@ export interface InputMapKeyChanges {
                 </div>
                 @if (!parentForm.disabled) {
                     <button
+                        #addButton
                         type="button"
                         class="add-pair-btn"
+                        matTooltip="Add Input"
                         (click)="addPair()"
                     >
                         <app-svg-icon
@@ -196,6 +214,8 @@ export interface InputMapKeyChanges {
                                         type="text"
                                         formControlName="key"
                                         placeholder="Function Argument Name"
+                                        aria-label="Function argument name"
+                                        matTooltip="Function argument name"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                     />
@@ -206,25 +226,35 @@ export interface InputMapKeyChanges {
                                         type="text"
                                         formControlName="value"
                                         placeholder="Test value"
+                                        aria-label="Test value"
+                                        matTooltip="Test value"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                     />
                                 </div>
-                                <app-svg-icon
-                                    icon="trash"
-                                    size="1rem"
+                                <button
+                                    #removeButton
+                                    type="button"
                                     class="delete-icon"
+                                    aria-label="Remove input"
                                     matTooltip="Remove"
                                     matTooltipPosition="above"
-                                    (click)="removeTestVariable(i)"
-                                ></app-svg-icon>
+                                    (click)="onRemoveButtonClick(i, true)"
+                                >
+                                    <app-svg-icon
+                                        icon="trash"
+                                        size="1rem"
+                                    ></app-svg-icon>
+                                </button>
                             </div>
                         </div>
                     }
                 </div>
                 <button
+                    #addButton
                     type="button"
                     class="add-pair-btn"
+                    matTooltip="Add Input"
                     (click)="addTestVariable()"
                 >
                     <i class="ti ti-plus"></i> Add Input
@@ -239,6 +269,7 @@ export interface InputMapKeyChanges {
                     <button
                         type="button"
                         class="btn-secondary"
+                        matTooltip="Clear Variables"
                         (click)="onClearAll()"
                     >
                         Clear Variables
@@ -366,6 +397,8 @@ export interface InputMapKeyChanges {
 
             .delete-icon {
                 font-size: 1rem;
+                border: none;
+                background: none;
                 cursor: pointer;
                 color: #ccc;
                 padding: 0.2rem;
@@ -378,7 +411,7 @@ export interface InputMapKeyChanges {
                 align-items: center;
                 justify-content: center;
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     color: red;
                     background-color: rgba(255, 0, 0, 0.1);
                 }
@@ -415,7 +448,7 @@ export interface InputMapKeyChanges {
                 background: var(--color-action-btn-background);
                 color: var(--color-text-primary);
 
-                &:hover:not(:disabled) {
+                &:is(:hover, :focus-visible):not(:disabled) {
                     background: var(--color-action-btn-background-hover);
                 }
 
@@ -430,7 +463,7 @@ export interface InputMapKeyChanges {
                 color: white;
                 border-color: #685fff;
 
-                &:hover:not(:disabled) {
+                &:is(:hover, :focus-visible):not(:disabled) {
                     background: #5a4ade;
                     border-color: #5a4ade;
                 }
@@ -553,6 +586,9 @@ export class InputMapComponent implements OnInit, OnChanges {
     private normalModeSnapshot: { key: string; value: string }[] = [];
 
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
+    private readonly removeButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeButton');
+    private readonly addButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
     private readonly keySubs = new WeakMap<AbstractControl, Subscription>();
     private readonly testKeySubs = new WeakMap<AbstractControl, Subscription>();
     private readonly lastKnownKeys = new WeakMap<AbstractControl, string>();
@@ -807,6 +843,23 @@ export class InputMapComponent implements OnInit, OnChanges {
             })
         );
         this.mirrorTestPairKey(this.testPairs.at(this.testPairs.length - 1));
+    }
+
+    /** The pressed Remove button is gone: the focus goes to the row now in its place, else to Add Input. */
+    protected onRemoveButtonClick(index: number, testRow: boolean): void {
+        if (testRow) {
+            this.removeTestVariable(index);
+        } else {
+            this.removePair(index);
+        }
+        afterNextRender(
+            () => {
+                const buttons = this.removeButtons();
+                const target = buttons[Math.min(index, buttons.length - 1)] ?? this.addButton();
+                target?.nativeElement.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     removeTestVariable(index: number): void {

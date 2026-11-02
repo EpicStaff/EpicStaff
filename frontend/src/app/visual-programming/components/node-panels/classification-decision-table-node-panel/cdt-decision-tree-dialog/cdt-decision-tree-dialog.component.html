@@ -5,6 +5,7 @@
             class="cdt-tree__close"
             type="button"
             aria-label="Close"
+            matTooltip="Close"
             (click)="close()"
         >
             <app-svg-icon
@@ -22,6 +23,7 @@
                         class="cdt-tree__zoom-btn"
                         type="button"
                         aria-label="Zoom out"
+                        matTooltip="Zoom out"
                         (click)="zoomOut()"
                     >
                         <app-svg-icon
@@ -33,6 +35,7 @@
                         class="cdt-tree__zoom-value"
                         type="button"
                         aria-label="Reset zoom"
+                        matTooltip="Reset zoom"
                         (click)="resetZoom()"
                     >
                         {{ zoomPercent() }}%
@@ -41,6 +44,7 @@
                         class="cdt-tree__zoom-btn"
                         type="button"
                         aria-label="Zoom in"
+                        matTooltip="Zoom in"
                         (click)="zoomIn()"
                     >
                         <app-svg-icon
@@ -54,6 +58,7 @@
                     class="cdt-tree__fit"
                     type="button"
                     (click)="fit()"
+                    matTooltip="Fit"
                 >
                     Fit
                 </button>
@@ -63,6 +68,7 @@
                     class="cdt-tree__search-toggle"
                     type="button"
                     aria-label="Search blocks"
+                    matTooltip="Search blocks"
                     [class.cdt-tree__search-toggle--active]="searchExpanded()"
                     [attr.aria-expanded]="searchExpanded()"
                     (click)="toggleSearch()"
@@ -83,6 +89,7 @@
                             class="cdt-tree__search-input"
                             type="text"
                             placeholder="Search item..."
+                            matTooltip="Search blocks"
                             aria-label="Search blocks"
                             aria-controls="cdt-tree-search-panel"
                             [attr.aria-expanded]="isSearchOpen()"
@@ -90,6 +97,7 @@
                             (input)="onQueryInput($event)"
                             (click)="openSearch()"
                             (keydown.enter)="applySearch()"
+                            (keydown.tab)="onSearchInputTab($event)"
                         />
                         @if (hasQuery()) {
                             <span
@@ -102,6 +110,7 @@
                                 class="cdt-tree__search-step"
                                 type="button"
                                 aria-label="Previous match"
+                                matTooltip="Previous match"
                                 [disabled]="!matchIds().length"
                                 (click)="stepMatch(-1)"
                             >
@@ -111,6 +120,7 @@
                                 class="cdt-tree__search-step"
                                 type="button"
                                 aria-label="Next match"
+                                matTooltip="Next match"
                                 [disabled]="!matchIds().length"
                                 (click)="stepMatch(1)"
                             >
@@ -144,11 +154,14 @@
                     -->
                     @if (canExplain) {
                         <div class="cdt-tree__explain-all">
+                            <!-- aria-disabled, not disabled: the press that starts the run would drop the focus. -->
                             <button
+                                #explainAllRun
                                 class="cdt-tree__explain-all-run"
                                 type="button"
                                 [attr.aria-label]="copy.explainAll"
-                                [disabled]="explainAllRunning()"
+                                [matTooltip]="copy.explainAll"
+                                [attr.aria-disabled]="explainAllRunning() || null"
                                 [attr.aria-busy]="explainAllRunning()"
                                 (click)="explainAll()"
                             >
@@ -173,6 +186,7 @@
                                 type="button"
                                 aria-haspopup="menu"
                                 [attr.aria-label]="copy.explainMenuLabel"
+                                [matTooltip]="copy.explainMenuLabel"
                                 [attr.aria-expanded]="isExplainMenuOpen() && explainMenuScope() === 'all'"
                                 (click)="openExplainMenu(explainAllChevron, 'all')"
                             >
@@ -187,7 +201,8 @@
                             <button
                                 class="cdt-tree__explain-all-stop"
                                 type="button"
-                                (click)="stopExplainAll()"
+                                [matTooltip]="copy.explainAllStop"
+                                (click)="onStopExplainAllClick()"
                             >
                                 {{ copy.explainAllStop }}
                             </button>
@@ -329,9 +344,12 @@
     `.cdk-overlay-container`, so its rules use global tokens, never a `:host` alias.
 -->
 <ng-template #explainMenuTpl>
+    <!-- The focus moves in on open and back to the chevron on close; the controller closes it on Escape. -->
     <div
         class="cdt-tree-explain-menu"
         role="menu"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
         [attr.aria-label]="copy.explainMenuLabel"
     >
         @for (option of explainLlmOptions; track option.id) {
@@ -339,6 +357,7 @@
                 class="cdt-tree-explain-menu__item"
                 type="button"
                 role="menuitemradio"
+                [matTooltip]="option.modelName ?? option.label"
                 [disabled]="!option.hasApiKey"
                 [attr.aria-checked]="option.id === explainLlmConfig()"
                 (click)="selectExplainLlm(option)"
@@ -393,5 +412,6 @@
         (applied)="applySearch()"
         (cancelled)="cancelSearch()"
         (cleared)="clearSearch()"
+        (tabbedOut)="onSearchPanelTabbedOut($event)"
     />
 </ng-template>

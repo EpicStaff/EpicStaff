@@ -4,8 +4,13 @@
         class="shortcuts__overlay"
         (click)="closed.emit()"
     ></div>
+    <!-- Takes the focus when it opens, keeps Tab inside and hands the focus back to the opener when it closes. -->
     <div
         class="shortcuts__modal"
+        role="dialog"
+        aria-labelledby="shortcuts-modal-title"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
         [style.top.px]="pos()!.top"
         [style.left]="leftStyle()"
         [style.--shortcuts-modal-height]="modalHeightPx + 'px'"
@@ -27,7 +32,12 @@
                             aria-hidden="true"
                         />
                     }
-                    <div class="shortcuts__header-title">{{ heading() }}</div>
+                    <div
+                        id="shortcuts-modal-title"
+                        class="shortcuts__header-title"
+                    >
+                        {{ heading() }}
+                    </div>
                 </div>
 
                 <div class="shortcuts__header-right">

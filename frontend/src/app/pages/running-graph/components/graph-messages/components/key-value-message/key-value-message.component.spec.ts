@@ -505,6 +505,28 @@ describe('KeyValueMessageComponent', () => {
         expect(element.querySelector('.key-value-content > .muted-note')).not.toBeNull();
         expect(card?.querySelectorAll('.collapsible-content, .grid-collapsible, [aria-expanded]').length).toBe(0);
     });
+
+    it('keeps the collapsed content, copy buttons included, out of the Tab order until the header is expanded', () => {
+        const fixture = createFixture({
+            mode: 'read',
+            deleted_count: null,
+            entries: [entry({ key: 'a', path: 'variables.a', found: true, value: { b: 1 } })],
+        });
+        const element = fixture.nativeElement as HTMLElement;
+        const content = element.querySelector<HTMLElement>('.key-value-container > .collapsible-content')!;
+        expect(content.querySelector('app-copy-button')).not.toBeNull();
+
+        expect(content.inert).toBe(true);
+
+        element.querySelector<HTMLButtonElement>('.key-value-header')!.click();
+        fixture.detectChanges();
+        expect(content.inert).toBe(false);
+
+        element.querySelector<HTMLButtonElement>('.key-value-header')!.click();
+        fixture.detectChanges();
+        expect(content.inert).toBe(true);
+    });
+
     it('shows only the key for a read row without a target path', () => {
         const element = render({
             mode: 'read',

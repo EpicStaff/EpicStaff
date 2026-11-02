@@ -9,7 +9,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
     selector: 'app-error-message',
     imports: [MatTooltip, CommonModule, AppSvgIconComponent, CopyButtonComponent],
     template: `
-        <div class="error-container">
+        <div class="session-message error-container">
             <div
                 class="error-header"
                 (click)="toggleMessage()"
@@ -42,6 +42,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             <div
                 class="collapsible-content grid-collapsible"
                 [class.expanded]="isMessageExpanded"
+                [inert]="!isMessageExpanded"
             >
                 <div class="error-content">
                     <!-- Error Details Section -->
@@ -62,6 +63,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                         <div
                             class="collapsible-content grid-collapsible"
                             [class.expanded]="isErrorExpanded"
+                            [inert]="!isErrorExpanded"
                         >
                             <div class="grid-collapsible__inner">
                                 <div
@@ -104,6 +106,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isDataExpanded"
+                                [inert]="!isDataExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="result-content">

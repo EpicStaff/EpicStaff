@@ -25,6 +25,7 @@ import {
     ValidatorFn,
     Validators,
 } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     CustomInputComponent,
@@ -160,6 +161,7 @@ interface EntryFormValue {
 @Component({
     selector: 'app-key-value-node-panel',
     imports: [
+        MatTooltip,
         ReactiveFormsModule,
         CustomInputComponent,
         ValidationErrorsComponent,
