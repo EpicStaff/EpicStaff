@@ -1,0 +1,44 @@
+[project]
+name = "shared"
+version = "1.0.0"
+description = "Cross-service models and built-in tools. Test environment only: nothing here is installed into a service image."
+requires-python = "==3.12.10"
+dependencies = [
+]
+
+# Everything the suites under src/shared import. The libraries are the versions the
+# services and the tools' own venvs run (see the requirements.txt of each tool).
+# A tool is imported by its tests the way the sandbox would, so the modules a tool
+# lists in its requirements.txt have to be importable here too. The exception is
+# sqlalchemy: the mysql, postgresql and natural-language SQL tool tests skip
+# themselves without it, and with it natural_language_to_sql_tool would also need
+# langchain_community, so it stays out.
+#
+# certifi, idna, pyjwt, soupsieve and urllib3 are transitive. They are pinned to the
+# shared dependency floor (.github/dependency-floor.toml): left to resolve, they
+# would land above it and force every service that ships them to follow.
+[dependency-groups]
+tests = [
+    "beautifulsoup4==4.15.0",
+    "boto3==1.43.1",
+    "certifi==2026.7.22",
+    "fakeredis==2.32.0",
+    "httpx==0.28.1",
+    "idna==3.18",
+    "jsonschema==4.26.0",
+    "loguru==0.7.3",
+    "minio==7.2.20",
+    "openai==2.54.0",
+    "pydantic==2.13.4",
+    "pyjwt==2.15.1",
+    "pytest-asyncio==1.4.0",
+    "pytest==9.0.3",
+    "redis==5.3.1",
+    "requests==2.34.2",
+    "soupsieve==2.9.2",
+    "testcontainers==4.14.2",
+    "urllib3==2.7.0",
+]
+
+[tool.uv]
+package = false
