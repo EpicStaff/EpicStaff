@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections import defaultdict
 from collections.abc import AsyncIterator
@@ -7,9 +8,11 @@ from collections.abc import AsyncIterator
 import litellm
 from src.shared.litellm_model_names import litellm_call_model, litellm_routed_provider
 from src.shared.models import LLMConfigData
+from tables.models.llm_models import LLM_CONFIG_TIMEOUT_MAX_SECONDS
 from utils.logger import logger
 
 from .base import (
+    TIMEOUT_CODE,
     BaseLLMClient,
     DoneEvent,
     LLMProviderError,
@@ -205,12 +208,36 @@ class LiteLLMClient(BaseLLMClient):
 
         Only the call and the fetching of the next chunk sit inside the `try`, so the
         caller's own chunk handling is never mistaken for a provider failure.
+
+        The whole reply must arrive within the config's timeout (capped at the maximum,
+        also when unset): litellm applies it to each read only, so a server at the
+        org-set base_url that keeps sending chunks would otherwise hold the call forever.
         """
+        timeout = min(
+            self._config.timeout or LLM_CONFIG_TIMEOUT_MAX_SECONDS, LLM_CONFIG_TIMEOUT_MAX_SECONDS
+        )
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        response = None
         try:
-            response = await litellm.acompletion(**kwargs)
-            async for chunk in response:
+            async with asyncio.timeout_at(deadline):
+                response = await litellm.acompletion(**kwargs)
+            while True:
+                # Bounds each fetch, not the yield, so the deadline never cancels the
+                # caller's own work between chunks.
+                async with asyncio.timeout_at(deadline):
+                    chunk = await anext(response, None)
+                if chunk is None:
+                    return
                 yield chunk
         except Exception as exc:
+            # Only the deadline is reported as one; a transport's own timeout is a provider error.
+            if isinstance(exc, TimeoutError) and loop.time() >= deadline:
+                raise LLMProviderError(
+                    provider=self._routed_provider or self._provider_name,
+                    code=TIMEOUT_CODE,
+                    message=f"The model did not finish its reply within {timeout:g} seconds.",
+                ) from exc
             provider_error = _provider_error_from(exc)
             if provider_error is None:
                 raise
@@ -219,6 +246,12 @@ class LiteLLMClient(BaseLLMClient):
                 code=provider_error[0],
                 message=provider_error[1],
             ) from exc
+        finally:
+            # Releases the connection as soon as the deadline or an error ends the stream: a
+            # server that keeps sending would otherwise hold it after the deadline. When the
+            # caller stops early after a normal reply, asyncio's generator finalizer runs this.
+            if response is not None:
+                await response.aclose()
 
     async def stream_completion(
         self,
