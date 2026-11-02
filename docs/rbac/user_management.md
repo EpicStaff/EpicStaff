@@ -126,6 +126,12 @@ that list.
 
 **201** → the membership row.
 
+**By design:** anyone with `MEMBERSHIPS.CREATE` in an organization can add
+**any** active, non-superadmin user on the deployment to it, by email — not only
+people they can already see. After the add, that user is a member, so the caller
+sees their email and display name like any other member. Grant
+`MEMBERSHIPS.CREATE` only to people you trust with this.
+
 ### PATCH `/api/admin/memberships/{id}/`
 
 `{"role_id": 2}`. Subject to the **escalation ceiling**: you may only assign a
@@ -143,7 +149,9 @@ re-roled → **400 `superadmin_not_assignable`**. **200** → the row.
 
 ### DELETE `/api/admin/memberships/{id}/`
 
-Removes the membership; the account stays. A non-superadmin **cannot remove their
+Removes the membership; the account stays. The member's personal API keys in
+this organization are deleted in the same transaction (keys in their other
+organizations stay — see [api_keys.md](api_keys.md#lifecycle)). A non-superadmin **cannot remove their
 own membership** → **403 `cannot_modify_self_membership`**. There is no
 last-org-admin guard — a superadmin is the recovery path if an org loses its last
 delegated admin. **204**.
@@ -253,7 +261,9 @@ Idempotent, empty body, return `UserResponse`. `revoke-superadmin` and
 → **404** from the URL resolver.
 
 `grant-superadmin` also clears the target's memberships — see "Superadmins are not
-organization members" above.
+organization members" above. Their personal API keys stay. `revoke-superadmin` deletes
+the target's personal API keys in every organization they are not a member of, in the
+same transaction (see [api_keys.md](api_keys.md#lifecycle)).
 
 ### DELETE `/api/admin/users/{id}/`
 
@@ -323,7 +333,8 @@ after the `404` and the blockers above.
 
 | Behavior | Note |
 |---|---|
-| Adding a member | Pick from the assignable-users list, or supply an exact email. If the email has no account, you get a 404 — a superadmin creates the account first on `/api/admin/users/`. |
+| Adding a member | Pick from the assignable-users list, or supply an exact email. Any user on the deployment can be added by email; after that you see their email and name (by design). If the email has no account, you get a 404 — a superadmin creates the account first on `/api/admin/users/`. |
+| Removing a member | Also deletes the member's personal API keys in that organization. Their keys in other organizations stay. See [api_keys.md](api_keys.md#lifecycle). |
 | Who the picker shows | People already visible to you through an org where you can read members. Superadmins and deactivated accounts never appear. |
 | Assigning roles | Populating the role picker needs `ROLES.read` in the org (to list options) plus `MEMBERSHIPS.update` to assign. You can only assign roles whose permissions are within your own — call `GET /api/admin/roles/?assignable_org_ids=<org>` to list exactly those. |
 | Admin-only roles cannot onboard | A role holding only `MEMBERSHIPS`/`ROLES` can assign **nothing**: every built-in grants workspace permissions it does not hold, so the ceiling refuses them and the assignable list comes back empty. Give such a role the permissions it needs to hand out (typically the `read` actions of the workspace resources), or use Org Admin. |

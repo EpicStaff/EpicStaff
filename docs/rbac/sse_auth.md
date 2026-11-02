@@ -13,7 +13,7 @@ Tickets are:
 
 - **Short-lived** — 30 seconds (hardcoded in `settings.SSE_TICKET_TTL`).
 - **Single-use** — consumed the first time the SSE connection is opened with them. Reconnects require a fresh ticket.
-- **Resolves to a user** — each ticket maps to the JWT-authenticated user who requested it. Possession of the ticket is the whole check: the server does not compare whoever presents the ticket with the user who requested it, so treat a ticket like a bearer token until it is consumed.
+- **Resolves to a user** — each ticket maps to the user who requested it. A ticket requested with a user API key also carries the key's organization, and the stream then refuses any row of another organization like a missing one (`404`). Possession of the ticket is the whole check: the server does not compare whoever presents the ticket with the user who requested it, so treat a ticket like a bearer token until it is consumed.
 - **Stored in Redis** — the ticket itself is an opaque random string; no user info is encoded in it.
 
 ---
@@ -23,8 +23,9 @@ Tickets are:
 ### `POST /api/auth/sse-ticket/`
 
 - **Auth:** standard JWT via `Authorization: Bearer <access>`. Also accepts a
-  user API key (`X-Api-Key`) — the ticket then resolves to the key's owner;
-  see [api_keys.md](api_keys.md).
+  user API key (`X-Api-Key`) — the ticket then resolves to the key's owner
+  and streams only rows of the key's organization;
+  see [api_keys.md](api_keys.md#sse-tickets-with-an-api-key).
 - **Body:** none.
 - **Response 200:**
   ```json
@@ -130,5 +131,5 @@ The `text/event-stream` handshake never starts when the ticket is rejected; you 
 |---|---|---|
 | `SSE_TICKET_TTL` | `30` (hardcoded in `django_app/settings/base.py`) | How long a freshly issued ticket is valid before consume. |
 
-Tickets are stored in Redis via the raw `django_redis` client under the `rbac:sse_ticket:<sha256-of-token>` key. Redis holds only the SHA-256 digest of the ticket, never the ticket itself, so read access to Redis yields no replayable credential. Consume hashes the incoming ticket and uses `GETDEL` (Redis 6.2+) so get-and-delete is atomic — two simultaneous consumers cannot both succeed. They are not persisted to the database.
+Tickets are stored in Redis via the raw `django_redis` client under the `rbac:sse_ticket:<sha256-of-token>` key. Redis holds only the SHA-256 digest of the ticket, never the ticket itself, so read access to Redis yields no replayable credential. The stored value is the user id, or `<user id>:<organization id>` for a ticket requested with a user API key. Consume hashes the incoming ticket and uses `GETDEL` (Redis 6.2+) so get-and-delete is atomic — two simultaneous consumers cannot both succeed. They are not persisted to the database.
 
