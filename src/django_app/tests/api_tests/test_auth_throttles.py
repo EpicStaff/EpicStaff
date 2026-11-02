@@ -382,6 +382,7 @@ def test_login_ip_throttle_answers_alike_for_registered_and_unknown_emails(
 
 
 @pytest.mark.django_db
+@pytest.mark.urls("tests.urls_with_api_docs")
 @patch.object(LoginIpThrottle, "rate", LOGIN_IP_RATE, create=True)
 def test_swagger_token_spraying_from_one_ip_is_throttled(api_client):
     cache.clear()
@@ -480,6 +481,7 @@ def test_login_account_cap_ignores_case_and_spaces(api_client, regular_user):
 
 
 @pytest.mark.django_db
+@pytest.mark.urls("tests.urls_with_api_docs")
 @pytest.mark.usefixtures("per_account_only")
 def test_swagger_token_guesses_against_one_username_from_many_addresses_are_capped(
     api_client, regular_user

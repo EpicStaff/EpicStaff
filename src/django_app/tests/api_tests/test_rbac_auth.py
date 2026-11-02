@@ -415,6 +415,7 @@ def test_login_throttle_is_per_email(api_client, regular_user):
 
 
 @pytest.mark.django_db
+@pytest.mark.urls("tests.urls_with_api_docs")
 # Pinned so the 429 can only come from the per-account bucket, not the IP cap.
 @patch.object(LoginThrottle, "rate", "5/min", create=True)
 @patch.object(LoginIpThrottle, "rate", "1000/min", create=True)

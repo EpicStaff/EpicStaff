@@ -189,7 +189,8 @@ REST_FRAMEWORK = {
 
 **Every endpoint is authenticated by default.** You only ever *add* permission classes;
 opening an endpoint requires an explicit `permission_classes = [AllowAny]` (currently only
-first-setup, login, refresh, password-reset request/confirm, swagger-token).
+first-setup, login, refresh, password-reset request/confirm, and swagger-token, which is
+mounted only with `DEBUG` on).
 
 Two authentication classes (`rbac/identity/authentication.py`), both global defaults:
 - `JwtAuthentication` — `Authorization: Bearer <jwt>` → simplejwt (HS256, access 15 min,

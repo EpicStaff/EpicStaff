@@ -127,6 +127,7 @@ def test_failed_login_logs_account_and_address(api_client, regular_user, capture
 
 
 @pytest.mark.django_db
+@pytest.mark.urls("tests.urls_with_api_docs")
 def test_failed_swagger_token_logs_account_and_address(
     api_client, regular_user, captured_log_messages
 ):

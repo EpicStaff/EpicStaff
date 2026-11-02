@@ -54,6 +54,7 @@ from tables.views.model_view_sets import (
     EmbeddingModelReadWriteViewSet,
     EndNodeModelViewSet,
     FileExtractorNodeViewSet,
+    FlowFilterPresetViewSet,
     GeminiRealtimeConfigViewSet,
     GraphLightViewSet,
     GraphNoteViewSet,
@@ -90,7 +91,6 @@ from tables.views.model_view_sets import (
     SubGraphNodeModelViewSet,
     TaskNodeViewSet,
     TelegramTriggerNodeViewSet,
-    FlowFilterPresetViewSet,
     ToolFilterPresetViewSet,
     ToolLabelViewSet,
     TwilioChannelViewSet,
@@ -99,10 +99,7 @@ from tables.views.model_view_sets import (
     WebhookTriggerViewSet,
 )
 from tables.views.recycle_bin_views import RecycleBinEmptyView, RecycleBinSettingsView
-from tables.views.sse_views import (
-    RunSessionSSEView,
-    RunSessionSSEViewSwagger,
-)
+from tables.views.sse_views import RunSessionSSEView
 from tables.views.storage_views import StorageAPIView
 from tables.views.views import (
     CancelRagIndexingView,
@@ -255,11 +252,6 @@ urlpatterns = [
         "run-session/subscribe/<int:session_id>/",
         RunSessionSSEView.as_view(),
         name="run-session-subscribe",
-    ),
-    path(
-        "run-session/subscribe/<int:session_id>/swagger/",
-        RunSessionSSEViewSwagger.as_view(),
-        name="run-session-subscribe-swagger",
     ),
     # Chunking preview endpoints
     path(
