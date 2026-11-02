@@ -34,6 +34,7 @@ import {
     HasPermissionDirective,
     HideInlineSubtitleOnOverflowDirective,
     ResizableSidebarDirective,
+    TooltipWhenCollapsedDirective,
 } from '@shared/directives';
 import { ActionCode, LabelTreeNode, ResourceCode } from '@shared/models';
 import {
@@ -119,6 +120,7 @@ const FILTER_PANEL_WIDTH_OPTIONS = { defaultWidth: 360, minWidth: 280, maxWidth:
         LabelSidebarComponent,
         HideInlineSubtitleOnOverflowDirective,
         CollapseOnOverflowDirective,
+        TooltipWhenCollapsedDirective,
         ImportFlowOptionsPopoverComponent,
         OverlayModule,
         HasPermissionDirective,

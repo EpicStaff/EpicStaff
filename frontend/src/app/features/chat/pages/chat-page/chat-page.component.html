@@ -24,7 +24,8 @@
                             type="button"
                             class="header-action header-action--ghost"
                             [attr.aria-label]="myNameLabel()"
-                            [matTooltip]="myNameTooltip() || myNameLabel()"
+                            [matTooltip]="myNameTooltip()"
+                            [matTooltipDisabled]="!myNameTooltip()"
                             [appCollapseOnOverflow]="true"
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
@@ -45,6 +46,7 @@
                             aria-label="Settings"
                             matTooltip="Settings"
                             [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
                             collapseOnOverflowRequireSelector="app-svg-icon"
@@ -64,6 +66,7 @@
                             aria-label="Delete"
                             matTooltip="Delete"
                             [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
                             collapseOnOverflowRequireSelector="app-svg-icon"
@@ -82,7 +85,6 @@
                             type="button"
                             class="header-action header-action--outline"
                             aria-label="Get snippet"
-                            matTooltip="Get snippet"
                             (click)="copySnippet()"
                         >
                             <span class="btn-label">Get snippet</span>
@@ -95,6 +97,7 @@
                             [attr.aria-label]="pauseLabel()"
                             [matTooltip]="pauseLabel()"
                             [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
                             collapseOnOverflowRequireSelector="app-svg-icon"
@@ -114,6 +117,7 @@
                             aria-label="Test"
                             matTooltip="Test"
                             [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
                             collapseOnOverflowRequireSelector="app-svg-icon"

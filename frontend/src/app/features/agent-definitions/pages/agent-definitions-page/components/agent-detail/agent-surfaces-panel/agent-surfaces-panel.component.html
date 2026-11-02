@@ -10,7 +10,6 @@
             class="surfaces-panel__search-input"
             placeholder="Search surface..."
             aria-label="Search surface"
-            matTooltip="Search surface"
             [ngModel]="searchQuery()"
             (ngModelChange)="searchQuery.set($event)"
         />
@@ -54,6 +53,7 @@
                                 type="button"
                                 class="surface-category__btn"
                                 [appCollapseOnOverflow]="true"
+                                appTooltipWhenCollapsed
                                 collapseOnOverflowTarget=".surface-category__btn-label"
                                 collapseOnOverflowClass="surface-category__btn--icon-only"
                                 aria-label="View Summary"
@@ -90,6 +90,7 @@
                                 matTooltip="Add From Shared"
                                 [attr.aria-expanded]="sharedDropdown.isOpen()"
                                 [appCollapseOnOverflow]="true"
+                                appTooltipWhenCollapsed
                                 collapseOnOverflowTarget=".surface-category__btn-label"
                                 collapseOnOverflowClass="surface-category__btn--icon-only"
                             >
@@ -106,6 +107,7 @@
                             type="button"
                             class="surface-category__btn"
                             [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
                             collapseOnOverflowTarget=".surface-category__btn-label"
                             collapseOnOverflowClass="surface-category__btn--icon-only"
                             aria-label="Create Surface"

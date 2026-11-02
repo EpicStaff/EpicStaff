@@ -16,3 +16,4 @@ export * from './search-shortcut.directive';
 export * from './server-errors.directive';
 export * from './tab-through-menu.directive';
 export * from './tooltip-on-overflow.directive';
+export * from './tooltip-when-collapsed.directive';

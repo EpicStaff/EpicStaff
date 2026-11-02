@@ -117,17 +117,20 @@ describe('ButtonComponent', () => {
         expect(getComputedStyle(label).position).toBe('absolute');
     });
 
-    // A label that changes while the button is shown (Save → Saving…) names the tooltip at once, with no other change.
-    it('keeps its tooltip on the label it shows as the label changes', async () => {
+    // A visible label needs no tooltip repeating it; once the button collapses to its icon the label is the tooltip,
+    // and it follows a label that changes meanwhile (Save → Saving…).
+    it('shows its label as the tooltip only while collapsed to its icon', async () => {
         const fixture = TestBed.createComponent(LabelHostComponent);
         fixture.autoDetectChanges();
         await fixture.whenStable();
-        const tooltip = (): string => fixture.debugElement.query(By.css('button')).injector.get(MatTooltip).message;
-        expect(tooltip()).toBe('Save');
+        const tooltip = (): MatTooltip => fixture.debugElement.query(By.css('button')).injector.get(MatTooltip);
+        expect(tooltip().disabled).toBe(true);
 
+        fixture.debugElement.query(By.directive(ButtonComponent)).componentInstance.onCollapseChange(true);
         fixture.componentInstance.label.set('Saving…');
         await fixture.whenStable();
 
-        expect(tooltip()).toBe('Saving…');
+        expect(tooltip().disabled).toBe(false);
+        expect(tooltip().message).toBe('Saving…');
     });
 });

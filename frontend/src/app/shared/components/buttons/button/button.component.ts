@@ -7,6 +7,7 @@ import {
     inject,
     Input,
     input,
+    signal,
     viewChild,
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -44,7 +45,8 @@ export class ButtonComponent {
     readonly ariaLabel = input<string>();
     /**
      * The tooltip the button shows on hover and keyboard focus, also while disabled. Left unset it is the button's
-     * name: `ariaLabel`, else the projected label text; an empty string shows none.
+     * name (`ariaLabel`, else the projected label text), shown only while that name is not visible: an icon button, or
+     * a button collapsed to its icon. An empty string shows none.
      */
     readonly tooltip = input<string>();
     /** The id of what describes the button (read when it gets the focus); null for none. */
@@ -62,14 +64,18 @@ export class ButtonComponent {
     private readonly label = viewChild(ContentTextDirective);
 
     private readonly labelText = computed(() => this.label()?.text() ?? '');
-    protected readonly tooltipText = computed(() => this.tooltip() ?? (this.ariaLabel() || this.labelText()));
+    protected readonly collapsedToIcon = signal(false);
+    protected readonly tooltipText = computed(() => {
+        const tooltip = this.tooltip();
+        if (tooltip !== undefined) return tooltip;
+        if (this.labelText() && !this.collapsedToIcon()) return '';
+        return this.ariaLabel() || this.labelText();
+    });
     protected readonly showsOwnTooltip = computed(() => !this.hostTooltip && !!this.tooltipText());
     /** A button without label text (an icon button) is named by its tooltip when no `ariaLabel` is given. */
     protected readonly ariaLabelAttribute = computed(
         () => this.ariaLabel() || (this.labelText() ? null : this.tooltip() || null)
     );
-
-    public shouldCollapseToIcon = false;
 
     /**
      * A caller's own `matTooltip` on `<app-button>` replaces this button's tooltip; the keyboard focus of the inner
@@ -87,7 +93,7 @@ export class ButtonComponent {
 
     public get showRightIcon(): boolean {
         if (!this.rightIcon) return false;
-        if (!this.shouldCollapseToIcon) return true;
+        if (!this.collapsedToIcon()) return true;
         return !this.leftIcon;
     }
 
@@ -96,7 +102,7 @@ export class ButtonComponent {
     }
 
     public onCollapseChange(collapsed: boolean): void {
-        this.shouldCollapseToIcon = collapsed;
+        this.collapsedToIcon.set(collapsed);
     }
 
     public focus(): void {

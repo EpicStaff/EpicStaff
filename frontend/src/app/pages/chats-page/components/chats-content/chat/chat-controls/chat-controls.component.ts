@@ -11,7 +11,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
-import { CollapseOnOverflowDirective } from '@shared/directives';
+import { CollapseOnOverflowDirective, TooltipWhenCollapsedDirective } from '@shared/directives';
 import { from } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
@@ -32,6 +32,7 @@ type ChatControlsFocusTarget = 'recording-controls' | 'start-speaking' | 'messag
         AppSvgIconComponent,
         MatTooltip,
         CollapseOnOverflowDirective,
+        TooltipWhenCollapsedDirective,
     ],
     templateUrl: './chat-controls.component.html',
     styleUrls: ['./chat-controls.component.scss'],

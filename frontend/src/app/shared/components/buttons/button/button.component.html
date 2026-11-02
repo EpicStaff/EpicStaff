@@ -10,7 +10,7 @@
         'btn-' + type,
         leftIcon ? 'btn--icon-left-' + mod : '',
         rightIcon ? 'btn--icon-right-' + mod : '',
-        shouldCollapseToIcon ? 'btn--only-icon' : '',
+        collapsedToIcon() ? 'btn--only-icon' : '',
         'btn--mod-' + mod,
     ]"
     [disabled]="disabled()"

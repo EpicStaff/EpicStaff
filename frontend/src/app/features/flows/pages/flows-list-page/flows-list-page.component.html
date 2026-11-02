@@ -47,6 +47,7 @@
                                 type="button"
                                 class="import-group__main"
                                 [appCollapseOnOverflow]="true"
+                                appTooltipWhenCollapsed
                                 collapseOnOverflowTarget=".btn-label"
                                 collapseOnOverflowClass="btn--icon-only"
                                 matTooltip="Import"
@@ -99,6 +100,7 @@
                             type="button"
                             class="export-group__main"
                             [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
                             matTooltip="Export"
@@ -226,7 +228,6 @@
                             #filterToggle
                             type="button"
                             class="filter-trigger__toggle"
-                            matTooltip="Filter"
                             [attr.aria-expanded]="showFilterSidebar()"
                             (click)="toggleFilterSidebar()"
                         >
@@ -265,7 +266,6 @@
                         [class.active]="sortMenuOpen() || activeSort() !== 'default'"
                         aria-haspopup="menu"
                         [attr.aria-expanded]="sortMenuOpen()"
-                        [matTooltip]="sortTriggerLabel()"
                         (click)="toggleSortMenu()"
                     >
                         <app-svg-icon

@@ -20,7 +20,12 @@ import {
     SelectDropdownListItem,
     SelectDropdownTriggerDirective,
 } from '@shared/components';
-import { CollapseOnOverflowDirective, EnterBlurDirective, HasPermissionDirective } from '@shared/directives';
+import {
+    CollapseOnOverflowDirective,
+    EnterBlurDirective,
+    HasPermissionDirective,
+    TooltipWhenCollapsedDirective,
+} from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { computeUniqueName } from '@shared/utils';
 
@@ -55,6 +60,7 @@ import { SurfaceCardComponent } from './surface-card/surface-card.component';
         SelectDropdownComponent,
         SelectDropdownTriggerDirective,
         CollapseOnOverflowDirective,
+        TooltipWhenCollapsedDirective,
         HelpTooltipComponent,
         HasPermissionDirective,
     ],
