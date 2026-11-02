@@ -10,6 +10,7 @@ from rbac.scoping.fields import (
 )
 from rest_framework import serializers
 from tables.models.llm_models import (
+    LLM_CONFIG_TIMEOUT_MAX_SECONDS,
     LLMConfig,
     LLMModel,
     RealtimeConfig,
@@ -131,7 +132,10 @@ class LLMConfigSerializer(
         model = LLMConfig
         exclude = ["api_key_secret"]
         read_only_fields = ["org", "created_by", "created_at"]
-        extra_kwargs = {"extra_headers": {"validators": [validate_extra_headers]}}
+        extra_kwargs = {
+            "extra_headers": {"validators": [validate_extra_headers]},
+            "timeout": {"max_value": LLM_CONFIG_TIMEOUT_MAX_SECONDS},
+        }
 
     def validate(self, attrs):
         attrs = super().validate(attrs)

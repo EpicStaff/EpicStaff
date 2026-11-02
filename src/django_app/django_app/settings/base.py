@@ -1,3 +1,5 @@
+import math
+
 from django.core.exceptions import ImproperlyConfigured
 from rbac.identity.first_setup_mode import FirstSetupMode
 from src.shared import humanize
@@ -126,6 +128,15 @@ UPLOAD_SLOT_TIMEOUT = env.time("DJANGO_UPLOAD_SLOT_TIMEOUT")
 UPLOAD_IDLE_TIMEOUT = env.time("DJANGO_UPLOAD_IDLE_TIMEOUT")
 UPLOAD_MAX_DURATION = env.time("DJANGO_UPLOAD_MAX_DURATION")
 ARCHIVE_UPLOAD_CONCURRENCY = env.int("DJANGO_ARCHIVE_UPLOAD_CONCURRENCY")
+
+_llm_config_max_timeout = env.time("DJANGO_LLM_CONFIG_MAX_TIMEOUT")
+# Written as a range test so NaN, for which every comparison is false, fails it too.
+if _llm_config_max_timeout is None or not 1 <= _llm_config_max_timeout < math.inf:
+    raise ImproperlyConfigured(
+        "DJANGO_LLM_CONFIG_MAX_TIMEOUT must be a finite time of at least 1s."
+    )
+# Whole seconds, rounded down, so the limits endpoint reports exactly what is enforced.
+LLM_CONFIG_TIMEOUT_MAX_SECONDS = int(_llm_config_max_timeout)
 
 TUNNEL_URLS_HASH_KEY = "tunnel_urls"
 
