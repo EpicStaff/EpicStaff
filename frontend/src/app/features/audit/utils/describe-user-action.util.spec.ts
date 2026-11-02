@@ -54,6 +54,16 @@ describe('userActionTargetName', () => {
             'Invoices v2 → Billing',
         ],
         [
+            'a move',
+            {
+                action: 'moved',
+                target_type: 'storage file',
+                target_name: 'reports/q3.pdf',
+                previous_name: 'inbox/q3.pdf',
+            },
+            'inbox/q3.pdf → reports/q3.pdf',
+        ],
+        [
             'a rename that kept no old name',
             { action: 'renamed', target_type: 'flow', target_name: 'Billing' },
             'Billing',
@@ -94,6 +104,8 @@ describe('userActionTone', () => {
         ['restored', 'added'],
         ['updated', 'changed'],
         ['renamed', 'changed'],
+        ['moved', 'changed'],
+        ['copied', 'added'],
         ['moved_to_recycle_bin', 'removed'],
         ['deleted', 'destroyed'],
         ['sign_in_failed', 'destroyed'],

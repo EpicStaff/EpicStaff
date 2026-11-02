@@ -14,7 +14,8 @@ export const USER_ACTION_OPTIONS: AuditEnumOption[] = [
     { value: 'sign_in_failed', label: 'Sign-in failed' },
     { value: 'signed_out', label: 'Signed out' },
     { value: 'password_reset', label: 'Password reset' },
-    { value: 'copy', label: 'Copy' },
+    { value: 'moved', label: 'Moved' },
+    { value: 'copied', label: 'Copied' },
     { value: 'import_entity', label: 'Import entity' },
 ];
 

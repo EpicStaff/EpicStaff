@@ -14,8 +14,10 @@ export type UserActionTone = 'added' | 'changed' | 'removed' | 'destroyed' | 'al
 const ACTION_TONES: Record<string, UserActionTone> = {
     created: 'added',
     restored: 'added',
+    copied: 'added',
     updated: 'changed',
     renamed: 'changed',
+    moved: 'changed',
     // still in the recycle bin, so recoverable
     moved_to_recycle_bin: 'removed',
     // gone for good: at once (a member, a role, an API key) or emptied from the recycle bin
@@ -44,7 +46,8 @@ export function userActionTypeLabel(type: string | null): string {
 
 // `Parse invoice`, `Old → New` for a rename, `#12`, or empty when the action has no target
 export function userActionTargetName(event: AuditUserAction): string {
-    if (event.action === 'renamed' && event.previous_name && event.target_name) {
+    // a move keeps its source path as the previous name, so it reads like a rename
+    if ((event.action === 'renamed' || event.action === 'moved') && event.previous_name && event.target_name) {
         return `${event.previous_name} → ${event.target_name}`;
     }
     return nameOrId(event.target_name, event.target_id);
