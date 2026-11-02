@@ -75,9 +75,9 @@
                         [summary]="summaryOf(builderField.field)"
                         (cleared)="clearField(builderField.field)"
                     >
-                        @if (builderField.kind === 'select') {
+                        @if (builderField.kind !== 'text') {
                             <app-audit-flow-filter
-                                [options]="builderField.options"
+                                [options]="optionsOf(builderField)"
                                 [filter]="selectionOf(builderField.field)"
                                 (filterChange)="setSelection(builderField.field, $event)"
                             />
@@ -448,6 +448,7 @@
                 [currentFilter]="filter()"
                 [agentOptions]="agentOptions()"
                 [toolOptions]="toolOptions()"
+                [lookupOptions]="lookupOptions()"
                 [openCreateOnInit]="isCreatingPreset()"
                 (presetApplied)="presetApplied.emit($event)"
                 (queryCopied)="openQuery($event)"
@@ -458,6 +459,7 @@
                 [currentFilter]="filter()"
                 [agentOptions]="agentOptions()"
                 [toolOptions]="toolOptions()"
+                [lookupOptions]="lookupOptions()"
                 (presetApplied)="presetApplied.emit($event)"
                 (queryCopied)="openQuery($event)"
             />

@@ -28,7 +28,7 @@ import { downloadBlob, escapeHtml } from '@shared/utils';
 import { catchError, EMPTY, filter, finalize, Observable, switchMap, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
-import { AUDIT_FIELD_CATALOG } from '../../models/audit-domain.models';
+import { AUDIT_FIELD_CATALOG, AuditLookupOptions } from '../../models/audit-domain.models';
 import {
     AuditEnumOption,
     AuditFilterMode,
@@ -126,6 +126,7 @@ export class AuditPresetsComponent implements OnInit {
     public readonly currentFilter = input.required<AuditFilterState>();
     public readonly agentOptions = input<AuditEnumOption[]>([]);
     public readonly toolOptions = input<AuditEnumOption[]>([]);
+    public readonly lookupOptions = input<AuditLookupOptions>({});
     public readonly openCreateOnInit = input<boolean>(false);
     public readonly presetApplied = output<AuditFilterState>();
     public readonly queryCopied = output<string>();
@@ -145,6 +146,7 @@ export class AuditPresetsComponent implements OnInit {
     protected readonly loadError = computed(() => this.presetsStorage.loadError());
 
     private readonly vocabularies = computed<AuditFilterVocabularies>(() => ({
+        ...this.lookupOptions(),
         agents: this.agentOptions(),
         tools: this.toolOptions(),
     }));
@@ -477,7 +479,7 @@ export class AuditPresetsComponent implements OnInit {
     }
 
     private toCard(preset: AuditPreset): AuditPresetCard {
-        const state = restorePresetState(preset.filter_body);
+        const state = restorePresetState(preset.filter_body, this.catalog);
         const chips = state === null ? [] : describeAuditFilter(state, this.catalog, this.vocabularies());
         return {
             preset,

@@ -1,4 +1,4 @@
-import { AuditFieldCatalog, AuditSelectField } from '../models/audit-domain.models';
+import { AuditFieldCatalog, AuditLookupField, AuditSelectField } from '../models/audit-domain.models';
 import {
     AuditCondition,
     AuditConditionGroup,
@@ -65,7 +65,8 @@ function builderFieldsOf(catalog: AuditFieldCatalog): BuilderFields {
         return SESSION_BUILDER_FIELDS;
     }
     return {
-        selectFields: catalog.builderFields.filter((item) => item.kind === 'select').map((item) => item.field),
+        // a lookup field is listed too, so `actor_user_id = 5` reads as a one-member selection
+        selectFields: catalog.builderFields.filter((item) => item.kind !== 'text').map((item) => item.field),
         conditionFields: new Map(
             catalog.builderFields.flatMap((item) =>
                 item.kind === 'text'
@@ -264,8 +265,49 @@ function applyDateFilter(leaf: AuditFilterLeaf, state: AuditFilterState): boolea
     return false;
 }
 
-// The field catalog counterpart of applyFieldFilter: its select fields and the date.
+// the first `in` / `not in` list in the tree: the ids a lookup field compiled into it
+function firstIdList(node: AuditFilterNode): unknown[] | null {
+    if (isLeaf(node)) {
+        return (node.op === 'in' || node.op === 'not_in') && Array.isArray(node.value) ? node.value : null;
+    }
+    if (node.op === 'not') {
+        return firstIdList(node.child);
+    }
+    for (const child of node.children) {
+        const ids = firstIdList(child);
+        if (ids !== null) {
+            return ids;
+        }
+    }
+    return null;
+}
+
+// A lookup field owns the conjunct exactly when its own compile of the conjunct's ids gives it back.
+function applyLookupFilter(node: AuditFilterNode, state: AuditFilterState, catalog: AuditFieldCatalog): boolean {
+    const values = firstIdList(node)?.map(String);
+    if (values === undefined || !values.every((id) => /^\d+$/.test(id))) {
+        return false;
+    }
+    const lookupFields = catalog.builderFields.filter(
+        (item): item is AuditLookupField =>
+            item.kind === 'lookup' && catalogSelection(state, item.field).values.length === 0
+    );
+    for (const lookupField of lookupFields) {
+        for (const op of ['in', 'not_in'] as const) {
+            if (sameNode(node, lookupField.compile({ op, values }))) {
+                state.selections = { ...state.selections, [lookupField.field]: { op, values } };
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// The field catalog counterpart of applyFieldFilter: its select and lookup fields and the date.
 function applyCatalogFieldFilter(node: AuditFilterNode, state: AuditFilterState, catalog: AuditFieldCatalog): boolean {
+    if (applyLookupFilter(node, state, catalog)) {
+        return true;
+    }
     if (!isLeaf(node)) {
         return false;
     }

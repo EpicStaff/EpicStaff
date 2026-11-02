@@ -195,6 +195,13 @@ function compileCatalogFilters(state: AuditFilterState, catalog: AuditFieldCatal
             }
             continue;
         }
+        if (builderField.kind === 'lookup') {
+            const selection = catalogSelection(state, builderField.field);
+            if (selection.values.length > 0) {
+                leaves.push(builderField.compile(selection));
+            }
+            continue;
+        }
         const node = compileConditionGroups(builderField.field, catalogTextConditions(state, builderField.field));
         if (node !== null) {
             leaves.push(node);

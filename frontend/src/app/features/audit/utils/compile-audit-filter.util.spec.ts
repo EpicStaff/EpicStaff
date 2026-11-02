@@ -280,30 +280,106 @@ describe('user actions filter', () => {
         expect(result).toEqual({ query: 'action = created' });
     });
 
-    it('shows a chip per catalog field, labelled with the option labels', () => {
+    it.each([
+        [
+            'in',
+            {
+                op: 'or',
+                children: [
+                    {
+                        op: 'and',
+                        children: [
+                            { field: 'target_type', op: 'equals', value: 'flow' },
+                            { field: 'target_id', op: 'in', value: ['12', '15'] },
+                        ],
+                    },
+                    {
+                        op: 'and',
+                        children: [
+                            { field: 'parent_type', op: 'equals', value: 'flow' },
+                            { field: 'parent_id', op: 'in', value: ['12', '15'] },
+                        ],
+                    },
+                ],
+            },
+        ],
+        [
+            'not_in',
+            {
+                op: 'not',
+                child: {
+                    op: 'or',
+                    children: [
+                        {
+                            op: 'and',
+                            children: [
+                                { field: 'target_type', op: 'equals', value: 'flow' },
+                                { field: 'target_id', op: 'in', value: ['12', '15'] },
+                            ],
+                        },
+                        {
+                            op: 'and',
+                            children: [
+                                { field: 'parent_type', op: 'equals', value: 'flow' },
+                                { field: 'parent_id', op: 'in', value: ['12', '15'] },
+                            ],
+                        },
+                    ],
+                },
+            },
+        ],
+    ] as const)('compiles Flow %s to the flows themselves and everything inside them, by id', (op, expected) => {
+        const result = compileAuditFilter(
+            { ...EMPTY_AUDIT_FILTER, selections: { flow_id: { op, values: ['12', '15'] } } },
+            USER_ACTION_FIELD_CATALOG
+        );
+
+        expect(result).toEqual({ filters: expected });
+    });
+
+    it.each(['in', 'not_in'] as const)('compiles User %s to the numeric actor user ids', (op) => {
+        const result = compileAuditFilter(
+            { ...EMPTY_AUDIT_FILTER, selections: { actor_user_id: { op, values: ['3', '41'] } } },
+            USER_ACTION_FIELD_CATALOG
+        );
+
+        expect(result).toEqual({ filters: { field: 'actor_user_id', op, value: [3, 41] } });
+    });
+
+    it('shows a chip per catalog field, naming the picked flows and members', () => {
         const chips = describeAuditFilter(
             {
                 ...EMPTY_AUDIT_FILTER,
-                selections: { action: { op: 'in', values: ['permanently_deleted'] } },
-                textConditions: { actor_email: conditions('contains', 'ann') },
+                selections: {
+                    action: { op: 'in', values: ['permanently_deleted'] },
+                    actor_user_id: { op: 'in', values: ['3'] },
+                    flow_id: { op: 'not_in', values: ['12', '99'] },
+                },
+                textConditions: { target_name: conditions('contains', 'Inv') },
             },
-            USER_ACTION_FIELD_CATALOG
+            USER_ACTION_FIELD_CATALOG,
+            {
+                members: [{ value: '3', label: 'Ann Lee (ann@example.com)' }],
+                flows: [{ value: '12', label: 'Billing' }],
+            }
         );
 
         expect(chips.map(({ key, label, value }) => ({ key, label, value }))).toEqual([
             { key: 'action', label: 'Action', value: 'is any of Permanently deleted' },
-            { key: 'actor_email', label: 'User', value: 'contains ann' },
+            { key: 'actor_user_id', label: 'User', value: 'is any of Ann Lee (ann@example.com)' },
+            { key: 'target_name', label: 'Target name', value: 'contains Inv' },
+            // a flow no longer in the list shows its id
+            { key: 'flow_id', label: 'Flow', value: 'is none of Billing, 99' },
         ]);
     });
 
-    it('clears one catalog field and keeps the others', () => {
-        const state = {
+    it.each(['flow_id', 'actor_user_id'])('clears the %s picker and keeps the other fields', (field) => {
+        const state: AuditFilterState = {
             ...EMPTY_AUDIT_FILTER,
-            selections: { action: { op: 'in' as const, values: ['created'] } },
-            textConditions: { actor_email: conditions('contains', 'ann') },
+            selections: { action: { op: 'in', values: ['created'] }, [field]: { op: 'in', values: ['5'] } },
         };
 
-        const cleared = clearAuditFilterField(state, 'actor_email');
+        const cleared = clearAuditFilterField(state, field);
 
         expect(compileAuditFilter(cleared, USER_ACTION_FIELD_CATALOG).filters).toEqual({
             field: 'action',

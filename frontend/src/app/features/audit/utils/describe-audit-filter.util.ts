@@ -1,4 +1,4 @@
-import { AuditFieldCatalog } from '../models/audit-domain.models';
+import { AuditFieldCatalog, AuditLookupOptions } from '../models/audit-domain.models';
 import {
     AuditCondition,
     AuditConditionGroup,
@@ -149,14 +149,20 @@ function conditionChip(key: string, label: string, groups: AuditConditionGroup[]
     return parts === null ? null : createPartsChip(key, label, parts);
 }
 
-function describeCatalogFilters(state: AuditFilterState, catalog: AuditFieldCatalog): AuditFilterChip[] {
+function describeCatalogFilters(
+    state: AuditFilterState,
+    catalog: AuditFieldCatalog,
+    vocabularies: AuditFilterVocabularies
+): AuditFilterChip[] {
     const chips: AuditFilterChip[] = [];
     for (const builderField of catalog.builderFields) {
         const { field, label } = builderField;
-        if (builderField.kind === 'select') {
+        if (builderField.kind !== 'text') {
             const selection = catalogSelection(state, field);
             if (selection.values.length > 0) {
-                const values = labelsFor(selection.values, builderField.options);
+                const options =
+                    builderField.kind === 'select' ? builderField.options : (vocabularies[builderField.source] ?? []);
+                const values = labelsFor(selection.values, options);
                 chips.push(operatorChip(field, label, OPERATOR_LABELS[selection.op], values));
             }
             continue;
@@ -221,7 +227,7 @@ function describeMatchScope(scope: AuditMatchScopeState): string | null {
     return parts.length > 0 ? parts.join(', ') : null;
 }
 
-export interface AuditFilterVocabularies {
+export interface AuditFilterVocabularies extends AuditLookupOptions {
     agents?: AuditEnumOption[];
     tools?: AuditEnumOption[];
 }
@@ -256,7 +262,7 @@ export function describeAuditFilter(
     const dateChip: AuditFilterChip[] = dateValue === null ? [] : [{ key: 'date', label: 'Date', value: dateValue }];
 
     if (!isSessions) {
-        return [...chips, ...describeCatalogFilters(state, catalog), ...dateChip];
+        return [...chips, ...describeCatalogFilters(state, catalog, vocabularies), ...dateChip];
     }
 
     if (state.kinds.length > 0) {

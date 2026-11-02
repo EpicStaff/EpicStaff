@@ -9,19 +9,22 @@ import {
     NumberStepperComponent,
 } from '@shared/components';
 import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, AdminMembershipUser, ResourceCode } from '@shared/models';
 import { SidebarWidthOptions, SidebarWidthService } from '@shared/services';
 import { downloadBlob } from '@shared/utils';
 import { debounceTime, finalize, Subject, Subscription } from 'rxjs';
 
 import { ExportFormat } from '../../core/services/import-export.service';
+import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { ToastService } from '../../services/notifications';
+import { FlowsApiService } from '../flows/services/flows-api.service';
+import { MembershipsService } from '../role-base-access/services/admin/memberships.service';
 import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
 import { AuditHighlightComponent } from './components/audit-highlight/audit-highlight.component';
 import { AuditValueViewerComponent } from './components/audit-value-viewer/audit-value-viewer.component';
-import { AUDIT_FIELD_CATALOG } from './models/audit-domain.models';
-import { AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
+import { AUDIT_FIELD_CATALOG, AuditLookupOptions, AuditLookupSource } from './models/audit-domain.models';
+import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
 import { AuditUserAction, UserActionSearchRequest, UserActionSearchResponse } from './models/audit-user-action.models';
 import { USER_ACTION_FIELD_CATALOG } from './models/audit-user-action-filter-options';
 import { AuditJsonPipe } from './pipes/audit-json.pipe';
@@ -39,6 +42,17 @@ const SEARCH_DEBOUNCE_MS = 400;
 // the same side panel width as the Sessions tab, so switching tabs keeps it
 const PANEL_WIDTH_KEY = 'audit-side-panel';
 const PANEL_WIDTH_OPTIONS = { defaultWidth: 480, minWidth: 360, maxWidth: 960 } satisfies SidebarWidthOptions;
+// shortcut: one page of the backend's largest size, so members past 200 are not offered; page through or
+// search instead once an org outgrows it
+const MEMBERS_PAGE_SIZE = 200;
+
+function memberLabel({ display_name, email }: AdminMembershipUser): string {
+    return display_name ? `${display_name} (${email})` : email;
+}
+
+function byLabel(options: AuditEnumOption[]): AuditEnumOption[] {
+    return [...options].sort((left, right) => left.label.localeCompare(right.label));
+}
 
 interface UserActionRow {
     event: AuditUserAction;
@@ -77,6 +91,8 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     protected readonly viewedRow = signal<UserActionRow | null>(null);
     protected readonly draftFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
     protected readonly exportingFormat = signal<ExportFormat | null>(null);
+    // the org's flows and members the Flow and User filters pick from
+    protected readonly lookupOptions = signal<AuditLookupOptions>({});
     private readonly events = signal<AuditUserAction[]>([]);
     private readonly cursorStack = signal<(string | null)[]>([null]);
     private readonly nextCursor = signal<string | null>(null);
@@ -95,7 +111,9 @@ export class AuditUserActionsBrowserComponent implements OnInit {
         const row = this.viewedRow();
         return row ? [row.actionLabel, row.target].filter(Boolean).join(' ') : '';
     });
-    protected readonly appliedChips = computed(() => describeAuditFilter(this.appliedFilter(), this.catalog));
+    protected readonly appliedChips = computed(() =>
+        describeAuditFilter(this.appliedFilter(), this.catalog, this.lookupOptions())
+    );
     protected readonly appliedSearchText = computed(() => this.appliedFilter().searchText);
     protected readonly highlightTerm = computed(() => this.appliedSearchText().trim());
     protected readonly queryError = computed(() =>
@@ -124,6 +142,9 @@ export class AuditUserActionsBrowserComponent implements OnInit {
 
     private readonly catalog = inject(AUDIT_FIELD_CATALOG);
     private readonly auditApiService = inject(AuditApiService);
+    private readonly flowsApiService = inject(FlowsApiService);
+    private readonly membershipsService = inject(MembershipsService);
+    private readonly activeOrgId = inject(ActiveOrgService).activeOrgId();
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly searchInput = new Subject<string>();
@@ -132,6 +153,8 @@ export class AuditUserActionsBrowserComponent implements OnInit {
 
     public ngOnInit(): void {
         this.loadActions();
+        this.loadFlows();
+        this.loadMembers();
         this.searchInput
             .pipe(debounceTime(SEARCH_DEBOUNCE_MS), takeUntilDestroyed(this.destroyRef))
             .subscribe((text) => this.applySearch(text));
@@ -246,6 +269,43 @@ export class AuditUserActionsBrowserComponent implements OnInit {
         this.viewedRow.set(null);
         this.valueViewerTrigger?.focus();
         this.valueViewerTrigger = null;
+    }
+
+    private loadFlows(): void {
+        this.flowsApiService
+            .getGraphsLight()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (flows) =>
+                    this.setLookupOptions(
+                        'flows',
+                        flows.map((flow) => ({ value: String(flow.id), label: flow.name }))
+                    ),
+                error: () => this.setLookupOptions('flows', []),
+            });
+    }
+
+    // The members list is an admin endpoint gated by Members read; without it the list is empty and the
+    // query language still finds a user by email.
+    private loadMembers(): void {
+        if (this.activeOrgId === null) {
+            return;
+        }
+        this.membershipsService
+            .list({ org_ids: [this.activeOrgId], page_size: MEMBERS_PAGE_SIZE })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (page) =>
+                    this.setLookupOptions(
+                        'members',
+                        page.results.map(({ user }) => ({ value: String(user.id), label: memberLabel(user) }))
+                    ),
+                error: () => this.setLookupOptions('members', []),
+            });
+    }
+
+    private setLookupOptions(source: AuditLookupSource, options: AuditEnumOption[]): void {
+        this.lookupOptions.update((current) => ({ ...current, [source]: byLabel(options) }));
     }
 
     private runFilter(state: AuditFilterState): void {

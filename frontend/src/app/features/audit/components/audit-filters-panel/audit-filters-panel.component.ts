@@ -17,7 +17,7 @@ import { copyWithFeedback } from '@shared/utils';
 import { DateRangeFilter } from 'src/app/shared/models';
 
 import { ToastService } from '../../../../services/notifications';
-import { AUDIT_FIELD_CATALOG } from '../../models/audit-domain.models';
+import { AUDIT_FIELD_CATALOG, AuditCatalogField, AuditLookupOptions } from '../../models/audit-domain.models';
 import {
     AuditConditionGroup,
     AuditEnumOption,
@@ -95,6 +95,8 @@ export class AuditFiltersPanelComponent implements OnInit {
     public readonly flowNames = input<string[]>([]);
     public readonly agentOptions = input<AuditEnumOption[]>([]);
     public readonly toolOptions = input<AuditEnumOption[]>([]);
+    // the lists the catalog's lookup fields pick from, by source
+    public readonly lookupOptions = input<AuditLookupOptions>({});
     public readonly queryError = input<string | null>(null);
 
     public readonly flowOptions = computed<AuditEnumOption[]>(() =>
@@ -234,6 +236,7 @@ export class AuditFiltersPanelComponent implements OnInit {
     // Each Builder card shows its applied value, worded like the preset chips.
     private readonly fieldSummaries = computed<Map<string, string>>(() => {
         const chips = describeAuditFilter({ ...this.filter(), mode: 'builder' }, this.catalog, {
+            ...this.lookupOptions(),
             agents: this.agentOptions(),
             tools: this.toolOptions(),
         });
@@ -319,6 +322,13 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public setTokens(tokens: AuditNumberFilter): void {
         this.updateBuilder({ tokens });
+    }
+
+    public optionsOf(builderField: AuditCatalogField): AuditEnumOption[] {
+        if (builderField.kind === 'select') {
+            return builderField.options;
+        }
+        return builderField.kind === 'lookup' ? (this.lookupOptions()[builderField.source] ?? []) : [];
     }
 
     public selectionOf(field: string): AuditValuesFilter {

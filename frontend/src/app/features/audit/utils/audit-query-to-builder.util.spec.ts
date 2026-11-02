@@ -329,12 +329,12 @@ describe('queryToBuilderState for user actions', () => {
 
     it('fills the action, text and date fields from a query', () => {
         const state = toUserActionBuilder(
-            'action in (created, renamed) and actor_email : "ann@" and event_time >= "2026-01-01T00:00:00Z"'
+            'action in (created, renamed) and target_name : "Inv" and event_time >= "2026-01-01T00:00:00Z"'
         );
 
         expect(state?.selections).toEqual({ action: { op: 'in', values: ['created', 'renamed'] } });
-        expect(textOf(state, 'actor_email')).toEqual([
-            { join: 'or', conditions: [{ join: 'and', op: 'contains', value: 'ann@' }] },
+        expect(textOf(state, 'target_name')).toEqual([
+            { join: 'or', conditions: [{ join: 'and', op: 'contains', value: 'Inv' }] },
         ]);
         expect(state?.dateFrom).toBe('2026-01-01T00:00:00Z');
         expect(state?.searchText).toBe('needle');
@@ -352,7 +352,34 @@ describe('queryToBuilderState for user actions', () => {
         ]);
     });
 
+    it.each(['in', 'not_in'] as const)('round-trips Flow and User %s through Query Code', (op) => {
+        const state: AuditFilterState = {
+            ...EMPTY_AUDIT_FILTER,
+            selections: {
+                actor_user_id: { op, values: ['3', '41'] },
+                flow_id: { op, values: ['12'] },
+            },
+        };
+        const filters = compileAuditFilter(state, USER_ACTION_FIELD_CATALOG).filters;
+
+        const restored = toUserActionBuilder(filters === undefined ? '' : auditFilterToQueryText(filters));
+
+        expect(restored?.selections).toEqual(state.selections);
+    });
+
+    it('reads `actor_user_id = 5` as a one-member selection', () => {
+        expect(toUserActionBuilder('actor_user_id = 5')?.selections).toEqual({
+            actor_user_id: { op: 'in', values: ['5'] },
+        });
+    });
+
     it.each([
+        [
+            'a flow match with different ids on each side',
+            '(target_type = "flow" and target_id in ("1")) or (parent_type = "flow" and parent_id in ("2"))',
+        ],
+        ['a member id that is not a number', 'actor_user_id in ("ann")'],
+        ['a field kept for Query Code', 'actor_email : "ann@"'],
         ['a session field', 'status in (failed)'],
         ['an action the Builder does not list', 'action in (frobnicate)'],
         ['a field kept for Query Code', 'route = "POST api/graphs/<pk>/copy/"'],

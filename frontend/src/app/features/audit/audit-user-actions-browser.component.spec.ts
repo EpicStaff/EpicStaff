@@ -8,6 +8,7 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 import { of } from 'rxjs';
 
+import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ConfigService } from '../../services/config';
 import { AuditUserActionsBrowserComponent } from './audit-user-actions-browser.component';
@@ -16,6 +17,8 @@ import { AuditTokenService } from './services/audit-token.service';
 
 const SEARCH_URL = '/auditor/api/audit/user_actions/search';
 const PRESETS_URL = '/api/audit-filter-presets/';
+const FLOWS_URL = '/api/graph-light/';
+const MEMBERS_URL = '/api/admin/memberships/';
 
 const renamedFlow: AuditUserAction = {
     id: 'action-1',
@@ -78,6 +81,7 @@ function setup(canExport = true) {
             provideHttpClientTesting(),
             { provide: ConfigService, useValue: { apiUrl: '/api/', auditorUrl: '/auditor/' } },
             { provide: AuditTokenService, useValue: { getToken: () => of('audit-token') } },
+            { provide: ActiveOrgService, useValue: { activeOrgId: () => 1 } },
             {
                 provide: PermissionsService,
                 useValue: {
@@ -128,6 +132,48 @@ async function render(fixture: ComponentFixture<AuditUserActionsBrowserComponent
     await fixture.whenStable();
 }
 
+function page<T>(results: T[]) {
+    return { count: results.length, next: null, previous: null, results };
+}
+
+function flushLookups(http: HttpTestingController): void {
+    http.expectOne((request) => request.url === FLOWS_URL).flush(
+        page([
+            { id: 15, name: 'Onboarding' },
+            { id: 12, name: 'Billing' },
+        ])
+    );
+    http.expectOne((request) => request.url === MEMBERS_URL).flush(
+        page([
+            { user: { id: 4, email: 'bob@example.com', display_name: null } },
+            { user: { id: 3, email: 'ann@example.com', display_name: 'Ann Lee' } },
+        ])
+    );
+}
+
+async function openFilters(fixture: ComponentFixture<AuditUserActionsBrowserComponent>, http: HttpTestingController) {
+    const root: HTMLElement = fixture.nativeElement;
+    buttonWithText(root, 'Filters').click();
+    await render(fixture);
+    http.expectOne((request) => request.url === PRESETS_URL).flush(page([]));
+    buttonWithText(root, 'Builder').click();
+    await render(fixture);
+}
+
+function filterGroup(root: HTMLElement, label: string): HTMLElement {
+    const group = Array.from(root.querySelectorAll<HTMLElement>('app-audit-filter-group')).find(
+        (item) => item.querySelector('.filter-group__title')?.textContent?.trim() === label
+    );
+    if (group === undefined) {
+        throw new Error(`No "${label}" filter`);
+    }
+    return group;
+}
+
+function optionLabels(group: HTMLElement): (string | undefined)[] {
+    return Array.from(group.querySelectorAll('.checkbox-enum__option span')).map((item) => cellText(item));
+}
+
 describe('AuditUserActionsBrowserComponent', () => {
     it('shows date, user, action and target for each action', async () => {
         const { fixture, http, root } = setup();
@@ -168,6 +214,74 @@ describe('AuditUserActionsBrowserComponent', () => {
             targets.map((_button, index) => String(index === rowIndex))
         );
         expect(root.querySelector('app-audit-value-viewer')?.textContent).toContain(title);
+    });
+
+    it('offers the active org members and its flows, by name', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, []);
+        const members = http.expectOne((request) => request.url === MEMBERS_URL);
+        expect(members.request.params.get('org_ids')).toBe('1');
+        expect(members.request.params.get('page_size')).toBe('200');
+        members.flush(
+            page([
+                { user: { id: 4, email: 'bob@example.com', display_name: null } },
+                { user: { id: 3, email: 'ann@example.com', display_name: 'Ann Lee' } },
+            ])
+        );
+        http.expectOne((request) => request.url === FLOWS_URL).flush(page([{ id: 12, name: 'Billing' }]));
+        await openFilters(fixture, http);
+
+        expect(optionLabels(filterGroup(root, 'User'))).toEqual(['Ann Lee (ann@example.com)', 'bob@example.com']);
+        expect(optionLabels(filterGroup(root, 'Flow'))).toEqual(['Billing']);
+    });
+
+    it('leaves the Flow and User lists empty when they fail to load', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, []);
+        http.expectOne((request) => request.url === FLOWS_URL).flush(null, { status: 500, statusText: 'Error' });
+        http.expectOne((request) => request.url === MEMBERS_URL).flush(null, { status: 403, statusText: 'Forbidden' });
+        await openFilters(fixture, http);
+
+        expect(optionLabels(filterGroup(root, 'User'))).toEqual([]);
+        expect(optionLabels(filterGroup(root, 'Flow'))).toEqual([]);
+    });
+
+    it('searches the picked flow by id and shows its name in the applied chip', async () => {
+        const { fixture, http, root } = setup();
+        flushSearch(http, []);
+        flushLookups(http);
+        await openFilters(fixture, http);
+
+        filterGroup(root, 'Flow').querySelector<HTMLInputElement>('.checkbox-enum__option input')!.click();
+        await render(fixture);
+        buttonWithText(root, 'Apply Filters').click();
+        await render(fixture);
+
+        expect(flushSearch(http, [])['filters']).toEqual({
+            op: 'or',
+            children: [
+                {
+                    op: 'and',
+                    children: [
+                        { field: 'target_type', op: 'equals', value: 'flow' },
+                        { field: 'target_id', op: 'in', value: ['12'] },
+                    ],
+                },
+                {
+                    op: 'and',
+                    children: [
+                        { field: 'parent_type', op: 'equals', value: 'flow' },
+                        { field: 'parent_id', op: 'in', value: ['12'] },
+                    ],
+                },
+            ],
+        });
+        await render(fixture);
+        const chips = Array.from(root.querySelectorAll('.filter-chip')).map((chip) => [
+            cellText(chip.querySelector('.filter-chip__label')!),
+            cellText(chip.querySelector('.filter-chip__value')!),
+        ]);
+        expect(chips).toEqual([['Flow', 'is any of Billing']]);
     });
 
     it('searches user actions with the typed text and no match scope', async () => {

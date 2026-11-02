@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService, ConfirmationResult } from '@shared/components';
 import { of } from 'rxjs';
 
-import { AUDIT_FIELD_CATALOG, AuditFieldCatalog } from '../../models/audit-domain.models';
+import { AUDIT_FIELD_CATALOG, AuditFieldCatalog, AuditLookupOptions } from '../../models/audit-domain.models';
 import { AuditFilterState, DEFAULT_MATCH_SCOPE, EMPTY_AUDIT_FILTER } from '../../models/audit-filter.models';
 import { SESSION_FIELD_CATALOG } from '../../models/audit-filter-options';
 import { USER_ACTION_FIELD_CATALOG } from '../../models/audit-user-action-filter-options';
@@ -99,7 +99,7 @@ describe('AuditFiltersPanelComponent tab sync', () => {
 });
 
 describe('AuditFiltersPanelComponent for user actions', () => {
-    function render(tab: AuditFilterTab): HTMLElement {
+    function renderPanel(tab: AuditFilterTab, lookupOptions: AuditLookupOptions = {}) {
         TestBed.configureTestingModule({
             providers: [{ provide: AUDIT_FIELD_CATALOG, useValue: USER_ACTION_FIELD_CATALOG }],
         });
@@ -114,10 +114,13 @@ describe('AuditFiltersPanelComponent for user actions', () => {
             },
         });
         const fixture = TestBed.createComponent(AuditFiltersPanelComponent);
+        fixture.componentRef.setInput('lookupOptions', lookupOptions);
         fixture.componentInstance.activeTab.set(tab);
         fixture.detectChanges();
-        return fixture.nativeElement;
+        return fixture;
     }
+
+    const render = (tab: AuditFilterTab): HTMLElement => renderPanel(tab).nativeElement;
 
     const texts = (root: HTMLElement, selector: string) =>
         Array.from(root.querySelectorAll(selector)).map((element) => element.textContent?.trim());
@@ -130,11 +133,32 @@ describe('AuditFiltersPanelComponent for user actions', () => {
             'User',
             'Target type',
             'Target name',
-            'Parent type',
-            'Parent name',
+            'Flow',
             'Date',
         ]);
         expect(builder.querySelector('app-audit-match-scope')).toBeNull();
+    });
+
+    it('offers the org members and flows by name and picks them by id', () => {
+        const fixture = renderPanel('builder', {
+            members: [{ value: '3', label: 'Ann Lee (ann@example.com)' }],
+            flows: [
+                { value: '12', label: 'Billing' },
+                { value: '15', label: 'Onboarding' },
+            ],
+        });
+        const groups: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('app-audit-filter-group'));
+        const group = (label: string) =>
+            groups.find((item) => item.querySelector('.filter-group__title')?.textContent?.trim() === label)!;
+
+        expect(texts(group('User'), '.checkbox-enum__option span')).toEqual(['Ann Lee (ann@example.com)']);
+        expect(texts(group('Flow'), '.checkbox-enum__option span')).toEqual(['Billing', 'Onboarding']);
+
+        group('Flow').querySelector<HTMLInputElement>('.checkbox-enum__option input')!.click();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.filter().selections).toEqual({ flow_id: { op: 'in', values: ['12'] } });
+        expect(group('Flow').querySelector('.filter-group__summary')?.textContent?.trim()).toBe('is any of Billing');
     });
 
     it('lists only user action fields for Query Code', () => {
