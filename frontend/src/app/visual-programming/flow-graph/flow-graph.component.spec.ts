@@ -30,7 +30,7 @@ import { SECRET_CODE_COPY_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { EMPTY, of } from 'rxjs';
 
 import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
-import { USE_PERMISSION_REQUIRED_TITLE } from '../../features/flows/services/flow-use-permission-refusal.service';
+import { USE_PERMISSION_REQUIRED_TITLE } from '../../features/flows/services/use-permission-refusal.service';
 import { PermissionRequirement, PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';

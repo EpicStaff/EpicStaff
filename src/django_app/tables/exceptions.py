@@ -82,12 +82,11 @@ class FlowWithTriggerNodesRequiresUsePermissionError(CustomAPIExeption):
 class CodeWithSecretsRequiresSecretsUsePermissionError(CustomAPIExeption):
     """Raised when a caller without USE on secrets would copy or restore code that reads secrets.
 
-    For copying a flow or a Python code tool, restoring a flow version or creating a
-    flow from one, and restoring a recycle-bin item that brings such code back or live:
-    the result is the caller's own code, which they can edit and run, so it reads the
-    secrets for them. The message names no action, as the bulk recycle-bin restore
-    shows it verbatim. Editing such code is refused as a field
-    error of the save instead (400), so a client can tell the two apart.
+    Covers copying a flow or tool, restoring a flow version or creating a flow from
+    one, and restoring a recycle-bin item that brings such code back: the result is the
+    caller's own code, which reads the secrets for them. The message names no action,
+    as the bulk recycle-bin restore shows it verbatim. Editing such code is a 400 field
+    error of the save instead, so a client can tell the two apart.
     """
 
     status_code = 403

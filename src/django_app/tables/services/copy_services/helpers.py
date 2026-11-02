@@ -150,19 +150,16 @@ def apply_python_code_fields(*, python_code: PythonCode, python_code_data: dict)
 def copy_python_code(python_code: PythonCode, *, actor: SecretActor | None) -> PythonCode:
     """Create and return a new PythonCode with every field and declared secret duplicated.
 
-    The duplicate keeps the declaration: copy stays inside one org, so the ids remain
-    valid, and dropping it would leave a copy that fails validation. A secret in the
-    recycle bin is copied too, as its links stay until it's purged. Whoever copies
-    owns the duplicate and can rewrite the code that reads those secrets, so copying
-    code that declares any needs secrets:USE. The copy endpoints refuse before writing
-    anything (`SecretCodeInspector`); this check is the backstop every copy passes.
+    The duplicate keeps the declaration (copy stays inside one org, and binned secrets
+    stay linked until purged). Whoever copies owns the duplicate and can rewrite code
+    that reads those secrets, so copying it needs secrets:USE. The copy endpoints
+    refuse earlier, before writing anything; this check is the backstop every copy passes.
 
     Raises:
         CodeWithSecretsRequiresSecretsUsePermissionError: The code declares a secret and
-            `actor` lacks secrets:USE, or is a pinned-org principal that may not
-            reference it (`SecretCodeAccess.assert_may_recreate`). Raised before this
-            code is written; a caller copying several rows must run in one transaction
-            so the rows already copied roll back.
+            `actor` may not copy it (`SecretCodeAccess.assert_may_recreate`). Raised before
+            anything is written; a caller copying several rows must run in one
+            transaction so the rows already copied roll back.
     """
     declared_secrets = python_code.linked_secrets()
     if declared_secrets:

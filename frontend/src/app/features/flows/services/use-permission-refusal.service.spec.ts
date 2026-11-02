@@ -4,10 +4,10 @@ import { ConfirmationDialogService } from '@shared/components';
 import { Observable, of, throwError } from 'rxjs';
 
 import {
-    FlowUsePermissionRefusalService,
     UsePermissionAction,
     UsePermissionRefusalOperation,
-} from './flow-use-permission-refusal.service';
+    UsePermissionRefusalService,
+} from './use-permission-refusal.service';
 
 const REFUSAL = new HttpErrorResponse({
     status: 403,
@@ -25,16 +25,16 @@ interface Outcome {
     completed: boolean;
 }
 
-describe('FlowUsePermissionRefusalService', () => {
+describe('UsePermissionRefusalService', () => {
     let confirm: ReturnType<typeof vi.fn>;
-    let service: FlowUsePermissionRefusalService;
+    let service: UsePermissionRefusalService;
 
     beforeEach(() => {
         confirm = vi.fn();
         TestBed.configureTestingModule({
             providers: [{ provide: ConfirmationDialogService, useValue: { confirm } }],
         });
-        service = TestBed.inject(FlowUsePermissionRefusalService);
+        service = TestBed.inject(UsePermissionRefusalService);
     });
 
     function run(source: Observable<unknown>): Outcome {

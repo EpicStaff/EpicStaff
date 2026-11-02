@@ -64,7 +64,7 @@ function refusalCode(error: unknown): string | null {
 @Injectable({
     providedIn: 'root',
 })
-export class FlowUsePermissionRefusalService {
+export class UsePermissionRefusalService {
     private readonly confirmationDialog = inject(ConfirmationDialogService);
 
     catchRefusal<T>(operation: UsePermissionRefusalOperation): MonoTypeOperatorFunction<T> {

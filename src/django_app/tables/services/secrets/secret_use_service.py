@@ -190,13 +190,10 @@ class SecretUseService:
     ) -> None:
         """Require USE when code that reads secrets changes what it runs, or what it runs with.
 
-        The declared secrets are handed to the code at run time, so whoever changes
-        that code, its inputs (a tool's variables and configs) or its environment (a
-        venv's libraries) decides what is done with their plaintext, which is a use of
-        them. Code that declares no secret, after the write, may change freely.
-
-        A pinned-org principal changing it must also be allowed to reference every
-        secret in `secret_ids`, when given.
+        The declared secrets are handed to the code at run time, so changing the code,
+        its inputs or its environment is a use of them. Code that declares no secret
+        after the write changes freely. A pinned-org principal must also be allowed to
+        reference every secret in `secret_ids`, when given.
 
         Args:
             declares_secret: Whether the code declares a secret after the write.

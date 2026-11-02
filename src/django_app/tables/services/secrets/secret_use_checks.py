@@ -193,33 +193,38 @@ def check_python_code_write(
 ) -> None:
     """Gate a write of the PythonCode a parent nests at `attribute`: its declared secrets and its code.
 
-    Changing the declared secrets needs secrets:USE, reported under `attribute` +
-    `secret_ids`. So does changing the `code`, `entrypoint`, `venv_id` or
-    `global_kwargs` of a PythonCode that declares a secret after the write, reported
-    under `attribute` + that field: the declared secrets are handed to the code at run
-    time, so rewriting it is a use of them. Values are compared, not keys: the graph
-    bulk save resends every node's code on every save, and a resend that changes
-    nothing needs no permission. A secret in the recycle bin counts as declared. A
-    pinned-org principal is also checked, whenever it writes the PythonCode, against
-    the secrets it may reference, so it cannot rewrite code that reads another's.
+    Changing the declared secrets needs secrets:USE (reported under `attribute` +
+    `secret_ids`). So does changing the code, entrypoint, venv or global kwargs of code
+    that declares a secret after the write (reported under that field): the secrets are
+    handed to the code at run time. Values are compared, so the bulk save's resend of
+    unchanged code is free. Binned secrets count as declared. A pinned-org principal
+    is also checked against the secrets it may reference.
 
     Args:
-        parent: The persisted row nesting the PythonCode (a node or a tool), or None
-            when the write creates it.
-        parent_data: The parent's validated data, keyed by model attribute names.
-            An absent or None `attribute` leaves the PythonCode alone or detaches it;
-            PythonCode data without a `secrets` key leaves the declaration as it is.
+        parent: The persisted row nesting the PythonCode, or None when the write creates it.
+        parent_data: The parent's validated data. An absent or None `attribute` leaves
+            the PythonCode alone or detaches it; data without `secrets` keeps the declaration.
         attribute: The parent's attribute holding the PythonCode, e.g. `"python_code"`.
+    """
+    _check_python_code_write(actor, parent, parent_data, attribute=attribute)
+
+
+def _check_python_code_write(
+    actor: SecretActor | None, parent, parent_data: dict, *, attribute: str
+) -> frozenset | None:
+    """Run `check_python_code_write`; return the secrets declared after the write if it had to read them, else None.
+
+    The return value lets a caller that gates more fields of the same parent
+    (`check_python_code_tool_write`) reuse the read instead of repeating it.
     """
     python_code_data = parent_data.get(attribute)
     if python_code_data is None:
-        return
+        return None
     persisted_python_code = _persisted_value(parent, attribute)
-    declaration_sent = "secrets" in python_code_data
     # Read at most once: a related manager is read through a query unless the caller
     # prefetched it (the graph bulk save does).
     current_secret_ids = None
-    if declaration_sent or principal_of(actor) is not None:
+    if "secrets" in python_code_data or principal_of(actor) is not None:
         current_secret_ids = _declared_secret_ids(persisted_python_code)
         secret_use_service.check_references(
             actor,
@@ -229,17 +234,14 @@ def check_python_code_write(
         )
     # New code is gated by the reference check above: declaring any secret changes the set.
     if persisted_python_code is None:
-        return
+        return None
     changed_field = _changed_code_field(persisted_python_code, python_code_data)
     if changed_field is None:
-        return
+        return None
     field_name, current_value, incoming_value = changed_field
-    if declaration_sent:
-        secret_ids_after_write = linked_ids(python_code_data["secrets"])
-    elif current_secret_ids is not None:
-        secret_ids_after_write = current_secret_ids
-    else:
-        secret_ids_after_write = _declared_secret_ids(persisted_python_code)
+    secret_ids_after_write = _secret_ids_after_write(
+        persisted_python_code, python_code_data, current_secret_ids
+    )
     secret_use_service.check_code(
         actor,
         field_path=(attribute, field_name),
@@ -247,17 +249,18 @@ def check_python_code_write(
         current=current_value,
         incoming=incoming_value,
     )
+    return secret_ids_after_write
 
 
 def check_python_node_write(actor: SecretActor | None, instance, data: dict) -> None:
-    """Gate a PythonNode's code: its declared secrets, and its code while it declares any (`check_python_code_write`)."""
+    """Gate a PythonNode's code and declared secrets (`check_python_code_write`)."""
     check_python_code_write(actor, instance, data, attribute="python_code")
 
 
 def check_webhook_trigger_node_write(actor: SecretActor | None, instance, data: dict) -> None:
-    """Gate a WebhookTriggerNode's code: its declared secrets, and its code while it declares any.
+    """Gate a WebhookTriggerNode's code and declared secrets (`check_python_code_write`).
 
-    See `check_python_code_write`. The node's `webhook_trigger` is not gated: attaching a trigger moves none of its
+    The node's `webhook_trigger` is not gated: attaching a trigger moves none of its
     secrets, whose own changes are checked where the trigger is written.
     """
     check_python_code_write(actor, instance, data, attribute="python_code")
@@ -267,13 +270,14 @@ def check_python_code_tool_write(actor: SecretActor | None, instance, data: dict
     """Gate a PythonCodeTool's code and `variables` while the code declares a secret.
 
     The code is gated by `check_python_code_write`. The variables' defaults are merged
-    into the code's globals at run time, so changing them is gated like the code
-    itself, reported under `variables`; a resend of the same value is free.
+    into the code's globals at run time, so changing them is gated the same way
+    (reported under `variables`).
     """
-    check_python_code_write(actor, instance, data, attribute="python_code")
+    secret_ids = _check_python_code_write(actor, instance, data, attribute="python_code")
     if instance is None or "variables" not in data or data["variables"] == instance.variables:
         return
-    secret_ids = _secret_ids_after_write(instance, data, attribute="python_code")
+    if secret_ids is None:
+        secret_ids = _secret_ids_after_write(instance.python_code, data.get("python_code") or {})
     secret_use_service.check_code(
         actor,
         field_path=("variables",),
@@ -287,12 +291,10 @@ def check_python_code_tool_write(actor: SecretActor | None, instance, data: dict
 def check_python_code_tool_config_write(actor: SecretActor | None, instance, data: dict) -> None:
     """Gate a PythonCodeToolConfig's `configuration` while its tool's code declares a secret.
 
-    The configuration is merged over the tool code's globals at run time, so setting
-    it is gated like the code, reported under `configuration`. Every new config counts:
-    the validator stores each user-input variable, unset ones as null, and a null
-    overrides the variable's default. Moving a config to another tool changes what that
-    tool's code runs with. A resend of the same values is free, and deleting a config
-    needs nothing.
+    The configuration is merged over the tool code's globals at run time, so it is gated
+    like the code (reported under `configuration`). Every new config counts, since unset
+    variables are stored as null and a null overrides the default; moving a config to
+    another tool counts too. Deleting a config needs nothing.
     """
     tool = data.get("tool", _persisted_value(instance, "tool"))
     configuration = data.get("configuration", _persisted_value(instance, "configuration"))
@@ -316,14 +318,11 @@ def check_venv_write(
 ) -> None:
     """Gate a change of a venv's `libs` while any code that runs in it declares a secret.
 
-    A library runs inside the code's process, which holds the secrets the code
-    declares, so installing one is gated like changing the code, reported under
-    `libs`. Renaming the venv is free. Code in the recycle bin counts: it runs here
-    again once restored. The current libraries live in the sandbox: they are read
-    (`read_current_libs`) only for a venv that such code runs in, so a resend of the
-    same libraries is free, and the change itself is never sent before this passes.
-    Libraries are compared by what is installed (name, specification, version), not
-    by description or order.
+    A library runs inside the code's process, which holds its secrets, so installing one
+    is gated like changing the code (reported under `libs`). Binned code counts. The
+    current libraries live in the sandbox, so `read_current_libs` is called only for a
+    venv such code runs in. Libraries are compared by name, specification and version,
+    not by description or order.
     """
     if "libs" not in data:
         return
@@ -552,12 +551,19 @@ def _changed_code_field(python_code, python_code_data: dict):
     return None
 
 
-def _secret_ids_after_write(parent, parent_data: dict, *, attribute: str) -> frozenset:
-    """The secrets the PythonCode at `attribute` declares once `parent_data` is written."""
-    python_code_data = parent_data.get(attribute)
-    if python_code_data is not None and "secrets" in python_code_data:
+def _secret_ids_after_write(
+    persisted_python_code, python_code_data: dict, current_secret_ids: frozenset | None = None
+) -> frozenset:
+    """The secrets a PythonCode declares once `python_code_data` is written.
+
+    Args:
+        current_secret_ids: The persisted declaration, when the caller has read it already.
+    """
+    if "secrets" in python_code_data:
         return linked_ids(python_code_data["secrets"])
-    return _declared_secret_ids(_persisted_value(parent, attribute))
+    if current_secret_ids is not None:
+        return current_secret_ids
+    return _declared_secret_ids(persisted_python_code)
 
 
 def _secret_ids_declared_in_venv(binding) -> frozenset:

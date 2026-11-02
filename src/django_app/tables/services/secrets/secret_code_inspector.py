@@ -107,10 +107,8 @@ _NOT_REFERENCEABLE = (
 class SecretCodeAccess:
     """Who may copy or restore code that declares secrets: the secrets:USE gates around it.
 
-    Copying a flow or a tool, restoring a flow version or creating a flow from one, and
-    restoring a recycle-bin item all give the caller code they can edit and run, which
-    reads the secrets it declares. Every one of them asks here, so they refuse alike.
-    The resolver decides; superadmin passes through it, never through a check here.
+    Every copy and restore path asks here, so they refuse alike. The resolver decides;
+    superadmin passes through it, never through a check here.
     """
 
     def assert_may_recreate(self, actor: SecretActor | None, secrets=None) -> None:
