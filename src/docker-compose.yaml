@@ -616,7 +616,8 @@ services:
       PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
       PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
       PLUGINS_MAX_REQUEST_BODY_MB: ${PLUGINS_MAX_REQUEST_BODY_MB:?}
-      # The plugins network's subnet: nginx denies it on 80/443 and allows only it on 8081.
+      # The plugins network's subnet: nginx denies it on 80/443 and on the webhook tunnel listener
+      # (8083), and allows only it on 8081.
       PLUGINS_NETWORK_SUBNET: ${PLUGINS_NETWORK_SUBNET:?}
       # Sent with every plugin gateway check (django_app answers a check without it with 404), and
       # with every request of the internal API listener (plugin and node keys work only with it).
