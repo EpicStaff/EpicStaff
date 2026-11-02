@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import sys
 
 import uvicorn
 from app.core import settings
@@ -8,6 +9,9 @@ from loguru import logger
 
 
 async def main():
+    logger.remove()
+    logger.add(sys.stderr, level=settings.AUDITOR_LOG_LEVEL, diagnose=False)
+
     app = create_app()
 
     config = uvicorn.Config(
