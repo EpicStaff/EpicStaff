@@ -11,6 +11,15 @@ import { ToolsLabelsStorageService } from '../../../../services/tools-labels-sto
 import { ToolCardComponent } from './tool-card.component';
 import { ToolCardMenuActionEvent, ToolCardVM } from './tool-card.model';
 
+// jsdom has no ResizeObserver; the overflow tooltips only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+
 const CUSTOM_TOOL: ToolCardVM = {
     id: 3,
     kind: 'custom',

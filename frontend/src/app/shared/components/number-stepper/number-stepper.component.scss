@@ -60,13 +60,20 @@
         cursor: pointer;
         transition: background-color 0.2s ease;
 
-        &:hover:not(:disabled) {
+        &:hover:not(:disabled, [aria-disabled='true']) {
             background: var(--accent-color, #685fff);
         }
 
-        &:disabled {
+        // At the bound the button stays focusable (aria-disabled), so stepping up to the max keeps the focus.
+        &:disabled,
+        &[aria-disabled='true'] {
             opacity: 0.4;
             cursor: not-allowed;
+        }
+
+        // The control clips (overflow: hidden): the ring is drawn inside.
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         // Size variants for buttons

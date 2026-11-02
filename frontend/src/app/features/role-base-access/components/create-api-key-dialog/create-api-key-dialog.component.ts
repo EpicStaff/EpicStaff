@@ -1,8 +1,19 @@
 import { DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    ElementRef,
+    inject,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -36,9 +47,12 @@ import { ToastService } from '../../../../services/notifications';
         ReactiveFormsModule,
         SelectComponent,
         ValidationErrorsComponent,
+        MatTooltip,
     ],
 })
 export class CreateApiKeyDialogComponent {
+    private readonly createdStep = viewChild<ElementRef<HTMLElement>>('createdStep');
+
     private readonly dialogRef = inject(DialogRef<boolean>);
     private readonly destroyRef = inject(DestroyRef);
     private readonly profileService = inject(ProfileService);
@@ -51,6 +65,9 @@ export class CreateApiKeyDialogComponent {
     readonly showStepper = signal(false);
     /** A key is issued for exactly one organization: the one the user is working in. */
     protected readonly orgId = this.activeOrgService.activeOrgId;
+
+    // The created step replaces the focused Create Key button: the focus moves on to the new key.
+    private readonly focusCreatedStep = effect(() => this.createdStep()?.nativeElement.focus());
 
     protected apiKey = '';
     protected defaultExpirationValue: number = 90;

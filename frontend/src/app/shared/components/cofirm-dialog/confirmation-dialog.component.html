@@ -124,6 +124,7 @@
                 spellcheck="false"
                 cdkFocusInitial
                 [id]="verificationInputId"
+                [matTooltip]="'Type ' + verification.phrase + ' to confirm'"
                 [value]="typedPhrase()"
                 (input)="onPhraseInput($event)"
             />

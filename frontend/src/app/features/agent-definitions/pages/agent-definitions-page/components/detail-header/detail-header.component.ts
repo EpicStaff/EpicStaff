@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 export interface DetailCrumb {
@@ -10,7 +10,7 @@ export interface DetailCrumb {
 
 @Component({
     selector: 'app-detail-header',
-    imports: [AppSvgIconComponent, MatTooltipModule],
+    imports: [AppSvgIconComponent, MatTooltip],
     templateUrl: './detail-header.component.html',
     styleUrls: ['./detail-header.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

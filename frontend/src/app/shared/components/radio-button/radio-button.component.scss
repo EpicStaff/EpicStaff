@@ -37,8 +37,10 @@
     justify-content: center;
     gap: 0.35rem;
     flex: 1;
+    border: none;
     color: var(--color-text-primary);
     background: transparent;
+    font-family: inherit;
     cursor: pointer;
     transition: all 0.2s ease;
 
@@ -46,8 +48,13 @@
         border-right: 1px solid var(--color-divider-subtle);
     }
 
-    &:hover:not(.active) {
+    &:is(:hover, :focus-visible):not(.active) {
         background: var(--white-alpha-5);
+    }
+
+    // The group clips anything drawn outside it.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &.active {
@@ -109,12 +116,17 @@
             color: var(--white);
         }
 
-        &:not(&--active):hover {
+        &:not(&--active):is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
 
         &:disabled {
             cursor: not-allowed;
+        }
+
+        // The control clips anything drawn outside it.
+        &:focus-visible {
+            outline-offset: -2px;
         }
     }
 }

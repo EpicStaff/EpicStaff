@@ -345,7 +345,12 @@ describe('VersionHistoryPanelComponent', () => {
 
         expect(previewed).toEqual([]);
         expect(component.isVersionSelected(1)).toBe(true);
-        expect(cards()[0].getAttribute('aria-pressed')).toBe('true');
+        // While selecting, the named checkbox is the card's only control: the card itself is no button.
+        const checkbox = cards()[0].querySelector<HTMLInputElement>('.version-checkbox app-checkbox input')!;
+        expect(checkbox.checked).toBe(true);
+        expect(checkbox.getAttribute('aria-label')).toBe('Select First');
+        expect(cards()[0].getAttribute('role')).toBeNull();
+        expect(cards()[0].hasAttribute('tabindex')).toBe(false);
     });
 
     it('gives each row a secondary (light box, dark tick) selection checkbox', () => {

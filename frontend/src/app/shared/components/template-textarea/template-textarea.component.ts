@@ -54,6 +54,8 @@ export class TemplateTextareaComponent implements ControlValueAccessor {
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
 
     value = signal<string>('');
+    /** The field's accessible name and tooltip: the label shown above it isn't tied to it. */
+    protected readonly fieldName = computed(() => this.label() || this.placeholder());
 
     private readonly availableInputsSet = computed(() => {
         const list = this.availableInputs();

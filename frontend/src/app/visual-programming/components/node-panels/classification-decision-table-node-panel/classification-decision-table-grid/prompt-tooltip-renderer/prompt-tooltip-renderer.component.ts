@@ -35,6 +35,7 @@ interface PromptTooltipParams extends ICellRendererParams {
                         <span class="chip-id">{{ value() }}</span>
                     </div>
                     <button
+                        type="button"
                         class="open-in-library-btn"
                         aria-label="Open in Prompt Library"
                         matTooltip="Open in Prompt Library"

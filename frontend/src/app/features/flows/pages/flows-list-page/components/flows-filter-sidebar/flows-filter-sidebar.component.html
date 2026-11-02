@@ -8,9 +8,11 @@
         />
         <span class="filter-sidebar__title">Filters</span>
         <button
+            #closeButton
             class="filter-sidebar__close"
             type="button"
             aria-label="Close filters"
+            matTooltip="Close filters"
             (click)="cancel()"
         >
             <app-svg-icon
@@ -26,6 +28,7 @@
             class="filter-sidebar__tab"
             type="button"
             [class.is-active]="activeTab() === 'builder'"
+            [attr.aria-pressed]="activeTab() === 'builder'"
             (click)="setActiveTab('builder')"
         >
             Builder
@@ -39,6 +42,7 @@
             class="filter-sidebar__tab"
             type="button"
             [class.is-active]="activeTab() === 'presets'"
+            [attr.aria-pressed]="activeTab() === 'presets'"
             (click)="setActiveTab('presets')"
         >
             Presets <span class="filter-sidebar__tab-count">({{ presetsCount() }})</span>

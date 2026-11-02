@@ -34,7 +34,6 @@
     &--open,
     &:focus-visible {
         border-color: var(--accent-color, #685fff);
-        outline: none;
     }
 
     &:disabled {

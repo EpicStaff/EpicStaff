@@ -2,9 +2,10 @@
     <button
         type="button"
         class="color-trigger-btn"
-        (click)="toggle($event)"
         aria-label="Select color"
         matTooltip="Select color"
+        [attr.aria-expanded]="isOpen()"
+        (click)="toggle($event)"
     >
         <span
             class="color-dot"
@@ -40,6 +41,7 @@
                     class="color-option-btn"
                     [class.selected]="option.id === currentOption.id"
                     [attr.aria-label]="option.id"
+                    [attr.aria-pressed]="option.id === currentOption.id"
                     [matTooltip]="option.id"
                     (click)="select(option, $event)"
                 >

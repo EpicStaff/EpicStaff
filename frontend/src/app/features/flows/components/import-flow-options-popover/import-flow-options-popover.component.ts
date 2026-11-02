@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { CdkOverlayOrigin, OverlayModule } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
 import { HelpTooltipComponent } from '@shared/components';
@@ -6,7 +7,7 @@ import { ImportFlowSettingsService } from '../../services/import-flow-settings.s
 
 @Component({
     selector: 'app-import-flow-options-popover',
-    imports: [OverlayModule, HelpTooltipComponent],
+    imports: [OverlayModule, CdkTrapFocus, HelpTooltipComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './import-flow-options-popover.component.html',
     styleUrl: './import-flow-options-popover.component.scss',
@@ -37,20 +38,19 @@ export class ImportFlowOptionsPopoverComponent {
         },
     ];
 
-    public togglePreserveUuids(): void {
-        const newValue = !this.settings().preserveUuids;
+    public setPreserveUuids(preserveUuids: boolean): void {
         this.settingsService.update({
-            preserveUuids: newValue,
-            ...(newValue === false && { replaceExisting: false }),
+            preserveUuids,
+            ...(preserveUuids === false && { replaceExisting: false }),
         });
     }
 
-    public toggleReplaceExisting(): void {
-        this.settingsService.update({ replaceExisting: !this.settings().replaceExisting });
+    public setReplaceExisting(replaceExisting: boolean): void {
+        this.settingsService.update({ replaceExisting });
     }
 
-    public toggleImportLabels(): void {
-        this.settingsService.update({ importLabels: !this.settings().importLabels });
+    public setImportLabels(importLabels: boolean): void {
+        this.settingsService.update({ importLabels });
     }
 
     public resetDefaults(): void {

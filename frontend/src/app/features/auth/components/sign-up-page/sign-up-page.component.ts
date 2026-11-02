@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -23,6 +23,7 @@ type PageState = 'form' | 'loading' | 'success';
 @Component({
     selector: 'app-sign-up',
     imports: [
+        RouterLink,
         ReactiveFormsModule,
         ButtonComponent,
         CustomInputComponent,
@@ -97,9 +98,5 @@ export class SignUpPageComponent {
                 this.toast.error('Something went wrong. Please try again.');
             },
         });
-    }
-
-    navToLogin(): void {
-        void this.router.navigate(['/login']);
     }
 }

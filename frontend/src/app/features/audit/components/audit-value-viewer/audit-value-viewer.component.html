@@ -13,11 +13,11 @@
         [text]="value()"
     />
     <button
+        #closeButton
         class="audit-value-viewer__close"
         type="button"
         aria-label="Close viewer"
         matTooltip="Close"
-        matTooltipPosition="above"
         (click)="closed.emit()"
     >
         <app-svg-icon

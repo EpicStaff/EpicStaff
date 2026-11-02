@@ -241,6 +241,7 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
         expect(element(fixture, 'app-radio-button')).not.toBeNull();
         clickMonday(fixture);
         expect(mondayButton(fixture).classList).toContain('round-btn--active');
+        expect(mondayButton(fixture).getAttribute('aria-pressed')).toBe('true');
         fixture.destroy();
     });
 
@@ -252,6 +253,7 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
         expect(element(fixture, 'app-radio-button')).toBeNull();
         clickMonday(fixture);
         expect(mondayButton(fixture).classList).not.toContain('round-btn--active');
+        expect(mondayButton(fixture).getAttribute('aria-pressed')).toBe('false');
         // What the panel shell and the canvas take on close, Ctrl+S and a full save.
         expect(fixture.componentInstance.onSave()).toBeNull();
         expect(fixture.componentInstance.captureForValidation()).toBeNull();
