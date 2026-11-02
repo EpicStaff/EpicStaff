@@ -1089,7 +1089,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 injector: this.injector,
             });
 
-            dialogRef.closed.subscribe((result: unknown) => {
+            dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result: unknown) => {
                 if (this.flowReadOnly.isReadOnly()) return;
                 if (result !== null && typeof result === 'object' && result !== undefined) {
                     this.updateStartNodeInitialState(result as Record<string, unknown>);
@@ -1113,7 +1113,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             height: 'calc(100vh - 2rem)',
         });
 
-        dialogRef.closed.subscribe((result: unknown) => {
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result: unknown) => {
             if (
                 result !== null &&
                 typeof result === 'object' &&
@@ -1413,7 +1413,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             injector: this.injector,
         });
 
-        dialogRef.closed.subscribe((result: unknown) => {
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result: unknown) => {
             if (this.flowReadOnly.isReadOnly()) return;
             if (result !== null && typeof result === 'object' && result !== undefined) {
                 this.updateStartNodeInitialState(result as Record<string, unknown>);
