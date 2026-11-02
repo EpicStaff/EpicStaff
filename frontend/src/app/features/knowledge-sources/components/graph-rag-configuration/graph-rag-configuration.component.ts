@@ -26,9 +26,8 @@ import { EMPTY, Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
 import { CollectionGraphRag, CreateGraphRagIndexConfigRequest, GraphRagFileType } from '../../models/graph-rag.model';
-import { RagConfiguration } from '../../models/rag-configuration';
+import { IndexingDocumentInfo, RagConfiguration } from '../../models/rag-configuration';
 import { GraphRagDocumentsStorageService } from '../../services/graph-rag-documents-storage.service';
 import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { GraphRagFilesListComponent, GraphRagIndexMode } from './files-list/files-list.component';

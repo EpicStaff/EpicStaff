@@ -29,13 +29,12 @@ import { EMPTY, Observable, of } from 'rxjs';
 import { catchError, defaultIfEmpty, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
 import {
     BulkUpdateNaiveRagDocumentsResponse,
     EstimateDocumentConfig,
     UpdateNaiveRagDocumentDtoRequest,
 } from '../../models/naive-rag-document.model';
-import { RagConfiguration } from '../../models/rag-configuration';
+import { IndexingDocumentInfo, RagConfiguration } from '../../models/rag-configuration';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
 import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { NaiveRagService } from '../../services/naive-rag.service';

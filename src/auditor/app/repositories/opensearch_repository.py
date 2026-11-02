@@ -1,12 +1,14 @@
 import base64
 import binascii
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from app.domains.base import IndexSpec
 from app.filtering.ast import FilterError
 from app.repositories.base import AuditRepository, T
+from app.repositories.index_routing import index_name_for
 from loguru import logger
 from opensearchpy import AsyncOpenSearch
 from opensearchpy.helpers import async_bulk
@@ -24,30 +26,49 @@ def _decode_cursor(cursor: str) -> list:
         raise FilterError("invalid or malformed cursor") from exc
 
 
-class OpenSearchAuditRepository(AuditRepository[T]):
-    """AuditRepository implementation backed by OpenSearch."""
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
-    def __init__(self, client: AsyncOpenSearch, index: IndexSpec, model: type[T]):
+
+class OpenSearchAuditRepository(AuditRepository[T]):
+    """AuditRepository implementation backed by OpenSearch.
+
+    Writes route each event to its tiered monthly index (see index_name_for); reads go
+    to the index family's pattern. Indices are created on the first write to them, by
+    OpenSearch auto-create from the index template the setup runner installs.
+    """
+
+    def __init__(
+        self,
+        client: AsyncOpenSearch,
+        index: IndexSpec,
+        model: type[T],
+        *,
+        clock: Callable[[], datetime] = _utc_now,
+    ):
         self._client = client
         self._index = index
         self._model = model
+        self._clock = clock
 
     async def write_batch(self, events: list[T]) -> list[dict] | None:
         if not events:
             return
 
-        record_time = datetime.now(UTC)
-        actions = (
+        # One receive time per batch: it is both the stored record_time and the month
+        # the batch is routed to, so the two can never disagree.
+        received_at = self._clock()
+        actions = [
             {
                 "_op_type": "index",
-                "_index": self._index.name,
+                "_index": index_name_for(self._index, event, received_at),
                 "_id": event.id,
-                "_source": event.model_copy(update={"record_time": record_time}).model_dump(
+                "_source": event.model_copy(update={"record_time": received_at}).model_dump(
                     mode="json"
                 ),
             }
             for event in events
-        )
+        ]
 
         success_count, errors = await async_bulk(self._client, actions, raise_on_error=False)
 
@@ -56,8 +77,10 @@ class OpenSearchAuditRepository(AuditRepository[T]):
             return errors
 
         logger.info(
-            f"OpenSearch bulk write: {success_count}/{len(events)} event(s) indexed "
-            f"into {self._index.name}"
+            "OpenSearch bulk write: {}/{} event(s) indexed into {}",
+            success_count,
+            len(events),
+            sorted({action["_index"] for action in actions}),
         )
         return
 
@@ -87,7 +110,7 @@ class OpenSearchAuditRepository(AuditRepository[T]):
         if cursor:
             body["search_after"] = _decode_cursor(cursor)
 
-        response = await self._client.search(index=self._index.name, body=body)
+        response = await self._client.search(index=self._index.read_pattern, body=body)
         hits = response["hits"]["hits"]
         logger.info(f"Audit query -> {len(hits)} hit(s)")
 
@@ -98,7 +121,7 @@ class OpenSearchAuditRepository(AuditRepository[T]):
             except ValidationError as exc:
                 logger.warning(
                     "Skipping malformed {index} document id={doc_id!r}: {exc}",
-                    index=self._index.name,
+                    index=hit.get("_index"),
                     doc_id=hit.get("_id"),
                     exc=exc,
                 )

@@ -316,7 +316,7 @@ class GraphMessageStore:
         root_session = (
             Session.objects.select_for_update(no_key=True)
             .filter(pk=root_session_id)
-            .only("id", "time_to_live", "graph_schema")
+            .only("id", "time_to_live")
             .first()
         )
         if root_session is None:
@@ -336,7 +336,6 @@ class GraphMessageStore:
                 parent_session_id=parent_session.pk if parent_session else root_session_id,
                 variables=run.output or run.input,
                 time_to_live=root_session.time_to_live,
-                graph_schema=root_session.graph_schema,
                 status_data={"variables": run.output},
             )
         sessions = list(sessions_by_execution_id.values())

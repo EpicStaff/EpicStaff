@@ -14,7 +14,8 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
-import { getLabelColorOption, LabelDto } from '@shared/models';
+import { LabelDropDirective } from '@shared/directives';
+import { getLabelColorOption, LabelDto, ResourceCode } from '@shared/models';
 
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
 import { ToolCardIcon, ToolCardMenuAction, ToolCardMenuActionEvent, ToolCardVM } from './tool-card.model';
@@ -29,6 +30,7 @@ import { ToolCardMenuComponent } from './tool-card-menu.component';
         MatTooltipModule,
         OverlayModule,
         ToolCardMenuComponent,
+        LabelDropDirective,
     ],
     templateUrl: './tool-card.component.html',
     styleUrls: ['./tool-card.component.scss'],
@@ -56,6 +58,8 @@ export class ToolCardComponent implements OnDestroy {
     private readonly isMouseOnMenu = signal<boolean>(false);
     private readonly isLabelsOpen = signal<boolean>(false);
     private closeTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    protected readonly ResourceCode = ResourceCode;
 
     public readonly labels = computed<LabelDto[]>(() => {
         const ids = new Set(this.tool().labelIds);
@@ -167,6 +171,12 @@ export class ToolCardComponent implements OnDestroy {
     public onMenuLabelsChanged(labelIds: number[]): void {
         this.closeMenu();
         this.labelsChange.emit({ tool: this.tool(), labelIds });
+    }
+
+    public onLabelDropped(labelId: number): void {
+        const currentIds = this.tool().labelIds;
+        if (currentIds.includes(labelId)) return;
+        this.labelsChange.emit({ tool: this.tool(), labelIds: [...currentIds, labelId] });
     }
 
     public onLabelsWheel(event: WheelEvent): void {

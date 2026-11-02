@@ -2,7 +2,15 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+    AbstractControl,
+    FormArray,
+    FormControl,
+    FormGroup,
+    ReactiveFormsModule,
+    ValidationErrors,
+    Validators,
+} from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
@@ -21,12 +29,21 @@ import {
     Venv,
     VENV_LIBRARY_SPECIFICATION_PATTERN,
     VENV_LIBRARY_VERSION_PATTERN,
+    VENV_NAME_PATTERN,
     VenvLib,
 } from '../../models/venv.model';
 import { VenvsApiService } from '../../services/venvs-api.service';
 
 export interface VenvDialogData {
     venv?: Venv;
+}
+
+// An error of its own rather than `Validators.pattern`, whose message does not say which
+// characters a name may use.
+function venvNameValidator(control: AbstractControl): ValidationErrors | null {
+    const value: unknown = control.value;
+    if (typeof value !== 'string' || value === '') return null;
+    return VENV_NAME_PATTERN.test(value) ? null : { venvName: true };
 }
 
 interface LibraryRowGroup {
@@ -67,7 +84,7 @@ export class VenvDialogComponent {
     readonly form = new FormGroup({
         name: new FormControl('', {
             nonNullable: true,
-            validators: [Validators.required, Validators.maxLength(255)],
+            validators: [Validators.required, Validators.maxLength(255), venvNameValidator],
         }),
         libs: new FormArray<FormGroup<LibraryRowGroup>>([]),
     });

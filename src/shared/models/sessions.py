@@ -18,6 +18,8 @@ class SessionData(BaseModel):
     # Per-run token hard stop from the run-session API; None falls back to crew's CREW_TOKEN_BUDGET.
     token_budget: int | None = Field(default=None, gt=0)
 
+    audit_retention_days: int
+
 
 class TokenUsage(BaseModel):
     prompt_tokens: int = 0

@@ -7,7 +7,7 @@ import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SidebarWidthService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage, recycleBinNotice } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, movedToRecycleBinMessage, recycleBinNotice } from '@shared/utils';
 import { catchError, filter, finalize, Observable, of, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -120,7 +120,7 @@ export class KeyValueTablesPageComponent {
             )
             .subscribe({
                 next: () => {
-                    this.toastService.success(`Table "${table.name}" deleted`);
+                    this.toastService.success(movedToRecycleBinMessage(1, 'key-value table', 'key-value tables'));
                     this.selectedTableId.set(null);
                     this.keyValueTablesStorage.triggerRefresh();
                 },

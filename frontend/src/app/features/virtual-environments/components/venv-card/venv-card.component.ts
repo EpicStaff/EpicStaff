@@ -40,9 +40,15 @@ export class VenvCardComponent {
 
     readonly editRequested = output<void>();
     readonly deleteRequested = output<void>();
+    /** The state the star was clicked into, not the one it had. */
+    readonly favoriteChange = output<boolean>();
 
     protected readonly hiddenLibsOpen = signal(false);
     protected readonly updatesOpen = signal(false);
+
+    protected readonly favoriteLabel = computed(() =>
+        this.venv().is_favorite ? 'Remove from favorites' : 'Add to favorites'
+    );
 
     protected readonly updates = computed<VenvLibUpdate[]>(() => []);
     protected readonly updatableLibNames = computed(() => new Set(this.updates().map((update) => update.name)));
@@ -74,8 +80,14 @@ export class VenvCardComponent {
         return count > 0 ? this.venv().libs.slice(-count) : [];
     }
 
-    onEdit(): void {
+    /** The whole card opens the venv, so the row carries the action the pencil used to. */
+    onCardClick(): void {
+        if (!this.canEdit()) return;
         this.editRequested.emit();
+    }
+
+    onToggleFavorite(): void {
+        this.favoriteChange.emit(!this.venv().is_favorite);
     }
 
     onDelete(): void {

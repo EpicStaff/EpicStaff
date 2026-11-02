@@ -39,6 +39,8 @@
         <button
             type="button"
             class="settings-btn"
+            aria-label="Bulk actions"
+            [attr.aria-expanded]="isBulkMenuOpen()"
             [class.active]="selectedItems().length > 0"
             [class.open]="isBulkMenuOpen()"
             [disabled]="selectedItems().length === 0 || isBulkLoading()"
@@ -64,18 +66,20 @@
             (detach)="closeBulkMenu()"
         >
             <div class="settings-dropdown">
-                <div
+                <button
+                    type="button"
                     class="settings-dropdown-item"
                     (click)="onBulkRevoke()"
                 >
                     Revoke
-                </div>
-                <div
+                </button>
+                <button
+                    type="button"
                     class="settings-dropdown-item"
                     (click)="onBulkDelete()"
                 >
                     Delete
-                </div>
+                </button>
             </div>
         </ng-template>
     </div>

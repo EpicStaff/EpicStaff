@@ -6,11 +6,31 @@
 } @else {
     <ul class="rags">
         @for (config of collection().rag_configurations; track config.rag_type) {
+            @let usage = usageDetails()[config.rag_type] ?? [];
+            @let isUsageExpanded = expandedUsageTypes().has(config.rag_type);
             <li
                 class="item"
                 (click)="onConfigureRag(config.rag_type)"
             >
                 <div class="header">
+                    @if (usage.length) {
+                        <!-- Toggles only the usage details; the row itself opens the RAG configuration. -->
+                        <button
+                            type="button"
+                            class="usage-toggle"
+                            [attr.aria-label]="ragTypeConfig[config.rag_type].name + ' indexing usage'"
+                            [attr.aria-expanded]="isUsageExpanded"
+                            [attr.aria-controls]="usageDetailsId(config.rag_type)"
+                            (click)="$event.stopPropagation(); toggleUsage(config.rag_type)"
+                        >
+                            <app-svg-icon
+                                icon="chevron-down"
+                                size="1rem"
+                                class="usage-toggle__icon"
+                                [class.collapsed]="!isUsageExpanded"
+                            />
+                        </button>
+                    }
                     <app-svg-icon
                         [icon]="ragTypeConfig[config.rag_type].icon"
                         size="0.75rem"
@@ -43,8 +63,32 @@
                         matTooltipPosition="above"
                     />
                 </div>
-                @for (line of usageLines()[config.rag_type]; track $index) {
-                    <div class="usage text-body-small">{{ line }}</div>
+                @if (usage.length) {
+                    <div
+                        class="usage grid-collapsible"
+                        [class.expanded]="isUsageExpanded"
+                    >
+                        <div class="usage__clip">
+                            <dl
+                                class="usage-details"
+                                [id]="usageDetailsId(config.rag_type)"
+                            >
+                                @for (detail of usage; track detail.label) {
+                                    <div class="usage-details__row">
+                                        <dt class="usage-details__label">{{ detail.label }}</dt>
+                                        <dd class="usage-details__value">
+                                            @for (part of detail.parts; track $index) {
+                                                @if (!$first) {
+                                                    <span class="usage-details__separator"> · </span>
+                                                }
+                                                <span>{{ part }}</span>
+                                            }
+                                        </dd>
+                                    </div>
+                                }
+                            </dl>
+                        </div>
+                    </div>
                 }
             </li>
         }

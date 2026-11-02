@@ -53,7 +53,7 @@ class LLMConfigData(BaseModel):
     api_key: str | None = None
     api_key_secret_id: int | None = Field(default=None, exclude=True)
     """In-memory carrier for SecretResolver; excluded from every dump so no
-    Secret id reaches Session.graph_schema or the Redis payload."""
+    Secret id reaches the Redis payload or anything persisted from this model."""
     deployment_id: str | None = None
     extra_headers: dict[str, str] | None = None
     input_cost_per_token: float | None = None

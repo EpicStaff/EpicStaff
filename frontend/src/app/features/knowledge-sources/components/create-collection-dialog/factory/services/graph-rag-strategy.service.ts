@@ -52,6 +52,10 @@ export class GraphRagStrategy implements RagCreationStrategy {
         );
     }
 
+    getRagId(): number | null {
+        return this.graphRagSignal()?.graph_rag_id ?? null;
+    }
+
     startIndexing(
         dto: CreateGraphRagIndexConfigRequest & {
             configIds?: number[];

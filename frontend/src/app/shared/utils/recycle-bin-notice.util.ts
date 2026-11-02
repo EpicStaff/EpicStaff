@@ -1,3 +1,5 @@
+import { pluralize } from './pluralize.util';
+
 /**
  * Plain sentence (no HTML) for a delete confirmation of something that moves to the recycle bin.
  *
@@ -10,6 +12,16 @@ export function recycleBinNotice(retentionDays: number | null, itemCount: number
     const several = itemCount > 1;
     const subject = several ? 'They move' : 'It moves';
     const object = several ? 'them' : 'it';
-    const period = retentionDays === null ? '' : ` for ${retentionDays} ${retentionDays === 1 ? 'day' : 'days'}`;
+    const period = retentionDays === null ? '' : ` for ${pluralize(retentionDays, 'day', 'days')}`;
     return `${subject} to the recycle bin, where you can restore ${object}${period}.`;
+}
+
+/**
+ * Success toast (plain text) of a delete that moved items to the recycle bin. One wording for every kind of item.
+ *
+ *  movedToRecycleBinMessage(1, 'agent', 'agents')   → 'Moved 1 agent to the recycle bin.'
+ *  movedToRecycleBinMessage(3, 'secret', 'secrets') → 'Moved 3 secrets to the recycle bin.'
+ */
+export function movedToRecycleBinMessage(count: number, singular: string, plural: string): string {
+    return `Moved ${pluralize(count, singular, plural)} to the recycle bin.`;
 }

@@ -1,13 +1,47 @@
 :host {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 16px;
 }
 
 app-audit-condition-row {
-    padding: 8px;
-    border: 1px solid var(--color-divider-subtle);
+    flex: 1;
+    min-width: 0;
+    padding-bottom: 8px;
+}
+
+.conditions-filter__draggable {
+    display: flex;
+    align-items: flex-start;
+}
+
+.conditions-filter__drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 24px;
+    height: 32px;
+    cursor: grab;
+    color: var(--color-text-secondary);
+
+    &:hover {
+        color: var(--color-text-primary);
+    }
+
+    &:active {
+        cursor: grabbing;
+    }
+}
+
+.cdk-drag-preview {
+    background-color: var(--color-surface-primary);
     border-radius: 6px;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 25%);
+}
+
+.cdk-drag-placeholder {
+    opacity: 0.4;
 }
 
 .conditions-filter__group {

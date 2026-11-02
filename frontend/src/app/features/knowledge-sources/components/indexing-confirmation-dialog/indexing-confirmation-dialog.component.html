@@ -1,0 +1,175 @@
+<div
+    class="dialog"
+    (appEnterSubmit)="onConfirm()"
+>
+    <div class="dialog__header">
+        <div class="dialog__title-row">
+            <app-svg-icon
+                class="dialog__icon"
+                icon="alert-circle"
+                size="1.25rem"
+            />
+            <h2
+                class="dialog__title"
+                [id]="titleId"
+            >
+                {{ title }}
+            </h2>
+        </div>
+        <app-icon-button
+            class="dialog__close"
+            icon="x"
+            size="2rem"
+            ariaLabel="Close"
+            tooltip="Close"
+            (click)="onClose()"
+        />
+    </div>
+
+    <div class="dialog__body">
+        @if (data.documents.length) {
+            <!-- Spaces live inside the parts: whitespace between these elements is dropped. -->
+            <p class="intro text-body">
+                @for (part of intro; track $index) {
+                    @if (part.isName) {
+                        <strong>{{ part.text }}</strong>
+                    } @else {
+                        <span>{{ part.text }}</span>
+                    }
+                }
+            </p>
+        }
+
+        <!-- One live region from the first render, so screen readers hear whatever the estimate turns into. -->
+        <div
+            class="estimate-region"
+            aria-live="polite"
+            [attr.aria-busy]="isEstimateLoading()"
+        >
+            @if (tiles(); as tiles) {
+                <div class="estimate">
+                    <div class="estimate__tiles">
+                        <div class="estimate__tile">
+                            <span class="estimate__label text-body-small">Tokens</span>
+                            <span class="estimate__value text-h4">
+                                @if (isEstimateLoading()) {
+                                    <ng-container [ngTemplateOutlet]="loadingDots" />
+                                } @else {
+                                    {{ tiles.tokens }}
+                                }
+                            </span>
+                        </div>
+                        @if (tiles.cost; as cost) {
+                            <div class="estimate__tile">
+                                <span class="estimate__label text-body-small">Est. cost</span>
+                                <span class="estimate__value text-h4">
+                                    @if (isEstimateLoading()) {
+                                        <ng-container [ngTemplateOutlet]="loadingDots" />
+                                    } @else {
+                                        {{ cost }}
+                                    }
+                                </span>
+                            </div>
+                        }
+                    </div>
+                    <p class="estimate__note text-caption">
+                        <app-svg-icon
+                            icon="alert-circle"
+                            size="0.625rem"
+                        />
+                        Rough estimate. Actual usage may differ.
+                    </p>
+                </div>
+            } @else if (isAlreadyIndexed()) {
+                <p class="estimate-message text-body">{{ alreadyIndexedMessage }}</p>
+            }
+        </div>
+
+        <div class="attention">
+            <span class="attention__title text-body-medium">Attention</span>
+            <p class="attention__text text-body">
+                This operation consumes tokens based on <strong>your provider's plan</strong>. Processing time varies
+                from <strong>seconds</strong> to <strong>hours</strong> depending on data volume.
+            </p>
+        </div>
+
+        @for (list of fileGroups; track list.kind) {
+            <div class="files">
+                <button
+                    type="button"
+                    class="files__toggle text-body-medium"
+                    [attr.aria-expanded]="isExpanded(list.kind)"
+                    [attr.aria-controls]="list.listId"
+                    (click)="toggleList(list.kind)"
+                >
+                    <app-icon
+                        icon="ui/chevron-down"
+                        size="0.85rem"
+                        class="files__chevron"
+                        [class.collapsed]="!isExpanded(list.kind)"
+                    />
+                    <span class="files__title">{{ list.title }}</span>
+                    <span class="files__count">{{ list.files.length }}</span>
+                </button>
+                <div
+                    class="files__collapsible grid-collapsible"
+                    [class.expanded]="isExpanded(list.kind)"
+                >
+                    <div>
+                        <ul
+                            class="files__list"
+                            [id]="list.listId"
+                        >
+                            @for (file of list.files; track file.configId) {
+                                <li class="files__item text-body">
+                                    <span
+                                        class="files__name"
+                                        appTooltipOnOverflow
+                                        [matTooltip]="file.fileName"
+                                        matTooltipPosition="above"
+                                        matTooltipShowDelay="500"
+                                        >{{ file.fileName }}</span
+                                    >
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="dialog__actions">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            (click)="onConfirm()"
+        >
+            {{ confirmText }}
+        </app-button>
+    </div>
+</div>
+
+<!-- The chat's "working" dots; screen readers get the words instead. -->
+<ng-template #loadingDots>
+    <span class="loading-dots">
+        <span class="visually-hidden">Estimating</span>
+        <span
+            class="loading-dots__dot"
+            aria-hidden="true"
+        ></span>
+        <span
+            class="loading-dots__dot"
+            aria-hidden="true"
+        ></span>
+        <span
+            class="loading-dots__dot"
+            aria-hidden="true"
+        ></span>
+    </span>
+</ng-template>

@@ -1,4 +1,6 @@
 from .audit_filter_preset_models import AuditFilterPreset
+from .flow_filter_preset_models import FlowFilterPreset
+from .tool_filter_preset_models import ToolFilterPreset
 from .base_models import (
     AbstractDefaultFillableModel,
     ActiveManager,
@@ -288,6 +290,8 @@ __all__ = [
     "TelegramTriggerNodeField",
     "TemplateAgent",
     "TimestampMixin",
+    "FlowFilterPreset",
+    "ToolFilterPreset",
     "TunnelConfig",
     "TwilioChannel",
     "User",

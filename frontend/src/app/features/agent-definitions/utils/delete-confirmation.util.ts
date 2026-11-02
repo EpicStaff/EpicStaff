@@ -1,7 +1,6 @@
 import { ConfirmationDialogData } from '@shared/components';
 import { recycleBinNotice } from '@shared/utils';
 
-import { AgentDefinition } from '../models/agent-definition.model';
 import { Surface } from '../models/surface.model';
 
 export interface DeleteUsageCounts {
@@ -81,26 +80,36 @@ function buildSurfaceDeleteCaution(
     return `${caution} ${recycleBinNotice(retentionDays)}`;
 }
 
-function buildAgentDeleteCaution(usage: DeleteUsageCounts, retentionDays: number | null): string {
+/** The agent's own surfaces are deleted with it, so they go to the recycle bin too. Empty when it owns none. */
+function ownedSurfacesNote(ownedSurfaceCount: number): string {
+    if (ownedSurfaceCount === 0) return '';
+    if (ownedSurfaceCount === 1) return ' This agent owns 1 surface; it moves to the recycle bin with the agent.';
+    return ` This agent owns ${ownedSurfaceCount} surfaces; they move to the recycle bin with it.`;
+}
+
+function buildAgentDeleteCaution(
+    usage: DeleteUsageCounts,
+    ownedSurfaceCount: number,
+    retentionDays: number | null
+): string {
     const usageParts = buildUsageParts(usage);
-    const notice = recycleBinNotice(retentionDays);
+    const notice = `${recycleBinNotice(retentionDays)}${ownedSurfacesNote(ownedSurfaceCount)}`;
     if (!usageParts.length) {
         return `If you delete now, this agent and its settings are removed. ${notice}`;
     }
     return `If you delete now, this agent is removed from all locations where it's used—including ${joinWithAnd(usageParts)}. ${notice} Restoring it won't add it back to those locations.`;
 }
 
-export function isAgentDeployed(agent: AgentDefinition, ownedSurfaceCount: number): boolean {
-    return agent.default_surfaces.length > 0 || ownedSurfaceCount > 0;
-}
-
+/**
+ * Only real usages (other agents, flows, chats) make the agent "deployed". The surfaces it owns are part of
+ * the agent, not places that use it.
+ */
 export function buildDeleteAgentDialog(
-    agent: AgentDefinition,
     usage: DeleteUsageCounts,
     ownedSurfaceCount: number,
     retentionDays: number | null
 ): ConfirmationDialogData {
-    const deployed = isAgentDeployed(agent, ownedSurfaceCount) || usage.flows > 0 || usage.chats > 0;
+    const deployed = buildUsageParts(usage).length > 0;
     return {
         title: 'Delete Agent?',
         message: deployed
@@ -110,7 +119,7 @@ export function buildDeleteAgentDialog(
         cancelText: 'Cancel',
         type: 'danger',
         cautionTitle: 'Caution',
-        caution: buildAgentDeleteCaution(usage, retentionDays),
+        caution: buildAgentDeleteCaution(usage, ownedSurfaceCount, retentionDays),
         isShownBorder: true,
     };
 }

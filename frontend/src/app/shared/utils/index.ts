@@ -23,6 +23,7 @@ export * from './json-parser.util';
 export * from './list-navigation.util';
 export * from './navigation.util';
 export * from './picked-secrets.util';
+export * from './pluralize.util';
 export * from './recycle-bin-notice.util';
 export * from './retry-after.util';
 export * from './role-permissions-to-set.util';

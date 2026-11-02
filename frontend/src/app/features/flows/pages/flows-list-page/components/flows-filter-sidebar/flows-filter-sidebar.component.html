@@ -1,0 +1,126 @@
+<div class="filter-sidebar">
+    <!-- Header -->
+    <div class="filter-sidebar__header">
+        <app-svg-icon
+            class="filter-sidebar__title-icon"
+            icon="filter-outline"
+            size="14px"
+        />
+        <span class="filter-sidebar__title">Filters</span>
+        <button
+            class="filter-sidebar__close"
+            type="button"
+            aria-label="Close filters"
+            (click)="cancel()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="14px"
+            />
+        </button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="filter-sidebar__tabs">
+        <button
+            class="filter-sidebar__tab"
+            type="button"
+            [class.is-active]="activeTab() === 'builder'"
+            (click)="setActiveTab('builder')"
+        >
+            Builder
+        </button>
+        <span
+            class="filter-sidebar__tab-sep"
+            aria-hidden="true"
+            >/</span
+        >
+        <button
+            class="filter-sidebar__tab"
+            type="button"
+            [class.is-active]="activeTab() === 'presets'"
+            (click)="setActiveTab('presets')"
+        >
+            Presets <span class="filter-sidebar__tab-count">({{ presetsCount() }})</span>
+        </button>
+    </div>
+
+    <!-- Body (scrollable) -->
+    <div class="filter-sidebar__body">
+        @if (activeTab() === 'builder') {
+            <!-- FILTERS heading -->
+            <div class="filter-sidebar__heading">FILTERS</div>
+
+            <!-- Labels -->
+            <app-flows-filter-group
+                label="Labels"
+                [(expanded)]="labelsExpanded"
+                [summary]="labelsSummary()"
+                (cleared)="clearLabels()"
+            >
+                <app-flows-checkbox-enum
+                    [options]="labelOptions()"
+                    [searchable]="true"
+                    [value]="labelsValue()"
+                    (valueChange)="onLabelsChange($event)"
+                />
+            </app-flows-filter-group>
+
+            <!-- Custom Conditions -->
+            <app-flows-filter-group
+                label="Custom"
+                [(expanded)]="customExpanded"
+                [summary]="customSummary()"
+                (cleared)="clearCustom()"
+            >
+                <app-audit-condition-filter
+                    [groups]="customConditionsModel()"
+                    (groupsChange)="onConditionsChange($event)"
+                    [operators]="customOperators"
+                    [showKey]="true"
+                    [keyOptions]="customKeyOptions"
+                />
+            </app-flows-filter-group>
+        } @else {
+            <app-flows-filter-presets
+                [openCreateOnInit]="isCreatingPreset()"
+                (presetApplied)="closeSidebar.emit()"
+            />
+        }
+    </div>
+
+    <!-- Footer (builder tab only) -->
+    @if (!isPresetsTab()) {
+        <div class="filter-sidebar__footer">
+            <button
+                class="filter-sidebar__btn"
+                type="button"
+                (click)="clearAllFilters()"
+            >
+                Clear Filters
+            </button>
+            <span class="filter-sidebar__footer-spacer"></span>
+            <button
+                class="filter-sidebar__btn"
+                type="button"
+                (click)="cancel()"
+            >
+                Cancel
+            </button>
+            <button
+                class="filter-sidebar__btn filter-sidebar__btn--accent"
+                type="button"
+                (click)="createPreset()"
+            >
+                Create & Apply Preset
+            </button>
+            <button
+                class="filter-sidebar__btn filter-sidebar__btn--primary"
+                type="button"
+                (click)="applyFilters()"
+            >
+                Apply Filters
+            </button>
+        </div>
+    }
+</div>

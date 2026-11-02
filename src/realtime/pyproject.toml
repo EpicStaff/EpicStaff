@@ -11,6 +11,7 @@ requires-python = "==3.12.10"
 dependencies = [
     "asyncpg==0.30.0",
     "fastapi==0.141.1",
+    "foundation",
     "google-genai==1.19.0",
     "httpx==0.28.1",
     "loguru==0.7.3",
@@ -18,6 +19,7 @@ dependencies = [
     "openai==1.58.1",
     "pydantic[email]==2.13.4",
     "python-dotenv==1.2.2",
+    "python-multipart==0.0.32",
     "redis==5.3.1",
     "sqlalchemy==2.0.51",
     "tiktoken==0.9.0",
@@ -45,6 +47,9 @@ transitive-pins = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+foundation = { path = "../foundation", editable = true }
 
 [tool.pytest.ini_options]
 # "." = src/realtime (resolves api, services, ai, ...)

@@ -160,6 +160,7 @@
                                 [readonly]="isReadOnly()"
                                 (tasksChange)="onTasksChange($event)"
                                 (cellSelect)="onCellSelect($event)"
+                                (instructionsFocus)="onInstructionsFocus($event)"
                             ></app-agent-tasks-table>
 
                             <button
@@ -424,6 +425,7 @@
                             [readonly]="isReadOnly()"
                             (tasksChange)="onTasksChange($event)"
                             (cellSelect)="onCellSelect($event)"
+                            (instructionsFocus)="onInstructionsFocus($event)"
                         ></app-agent-tasks-table>
 
                         <button

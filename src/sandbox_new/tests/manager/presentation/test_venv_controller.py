@@ -7,6 +7,7 @@ it is the only validation that happens after the body has already been parsed.
 
 from datetime import UTC, datetime
 
+import pytest
 from litestar import status_codes
 
 from manager.domain.enums import VenvStatus
@@ -41,6 +42,57 @@ def test_list_applies_ids_limit_and_offset(client, venv_repository):
     assert body["limit"] == 1
     assert body["offset"] == 1
     assert [venv["name"] for venv in body["result"]] == ["b"]
+
+
+def test_list_keeps_the_venvs_whose_name_contains_the_search(client, venv_repository):
+    venv_repository.seed(make_venv(name="Data Science"), make_venv(name="web"))
+
+    response = client.get("/venvs", params={"search": "data"})
+
+    assert response.status_code == status_codes.HTTP_200_OK
+    body = response.json()
+    assert body["count"] == 1
+    assert [venv["name"] for venv in body["result"]] == ["Data Science"]
+
+
+def test_list_counts_what_the_search_matched_rather_than_every_venv(client, venv_repository):
+    venv_repository.seed(make_venv(name="a one"), make_venv(name="a two"), make_venv(name="b"))
+
+    response = client.get("/venvs", params={"search": "a ", "limit": 1})
+
+    body = response.json()
+    assert body["count"] == 2
+    assert len(body["result"]) == 1
+
+
+def test_list_treats_a_blank_search_as_no_search(client, venv_repository):
+    venv_repository.seed(make_venv(name="a"), make_venv(name="b"))
+
+    response = client.get("/venvs", params={"search": "   "})
+
+    assert response.json()["count"] == 2
+
+
+@pytest.mark.parametrize(
+    ("order", "expected"),
+    [
+        ("default", ["b", "a"]),
+        ("name_asc", ["a", "b"]),
+        ("name_desc", ["b", "a"]),
+    ],
+)
+def test_list_sorts_the_page(client, venv_repository, order, expected):
+    venv_repository.seed(make_venv(id=1, name="b"), make_venv(id=2, name="a"))
+
+    response = client.get("/venvs", params={"order": order})
+
+    assert [venv["name"] for venv in response.json()["result"]] == expected
+
+
+def test_list_rejects_an_order_it_does_not_know(client, venv_repository):
+    response = client.get("/venvs", params={"order": "size"})
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
 
 
 def test_retrieve_returns_the_venv(client, venv_repository):

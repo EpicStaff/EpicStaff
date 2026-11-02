@@ -1181,7 +1181,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             // emitted either, so what was chained on the save (a run, an extraction) does not go on.
             switchMap(({ graph, flows }) => {
                 if (!this.isCurrentGraph(graphId)) return EMPTY;
-                this.onFlowSaved(graph, flows, flowState, previous, nodeDiff, showSuccessToast);
+                this.onFlowSaved(graph, flows, flowToSave, previous, nodeDiff, showSuccessToast);
                 return of(void 0);
             }),
             catchError((err: HttpErrorResponse) => {
@@ -1219,7 +1219,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             graph
         );
         const liveFlow = patchCdtPromptBackendIds(
-            patchLiveFlowWithBackendIds(this.currentFlowState(), patchedFlow, previous, nodeDiff, graph),
+            patchLiveFlowWithBackendIds(
+                clearStaleIds(previous, this.currentFlowState()),
+                patchedFlow,
+                previous,
+                nodeDiff,
+                graph
+            ),
             graph
         );
 
@@ -1297,10 +1303,11 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             return EMPTY;
         }
 
-        const node = this.flowService.nodes().find((candidate) => candidate.id === nodeId);
+        const previous = this.loadedFlowState();
+        const wholeFlow = clearStaleIds(previous, this.currentFlowState());
+        const node = wholeFlow.nodes.find((candidate) => candidate.id === nodeId);
         if (!node) return EMPTY;
 
-        const previous = this.loadedFlowState();
         const previousForDiff: FlowModel = {
             nodes: node.backendId != null ? previous.nodes.filter((n) => n.backendId === node.backendId) : [],
             connections: [],
@@ -1316,7 +1323,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         // the whole canvas to resolve the node's references to its neighbours. Given
         // just this node, `resolveNodeRef` finds none of them and emits `*_temp_id`
         // for nodes that already exist on the server, which the backend rejects.
-        const wholeFlow = this.currentFlowState();
         const idMap = buildUuidToBackendIdMap(wholeFlow.nodes);
         const payload = buildBulkSavePayload(
             graphId,
@@ -1346,7 +1352,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     responseGraph
                 );
                 const liveFlow = patchLiveFlowWithBackendIds(
-                    this.currentFlowState(),
+                    clearStaleIds(previous, this.currentFlowState()),
                     sentFlow,
                     previous,
                     nodeDiff,

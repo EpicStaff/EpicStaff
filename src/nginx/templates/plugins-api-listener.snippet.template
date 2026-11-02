@@ -49,6 +49,9 @@ location ^~ /api/ {
     proxy_set_header If-None-Match $http_if_none_match;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $remote_addr;
+    # nginx's own scheme, never a proxy's: only the plugins network (8081) or this machine (8082)
+    # reaches these listeners, so no load balancer is ever in front of them, and a caller here is a
+    # plugin backend, which must not tell Django it was reached over https.
     proxy_set_header X-Forwarded-Proto $scheme;
     # Package downloads to the node are up to PLUGINS_MAX_PACKAGE_MB.
     proxy_read_timeout 300s;

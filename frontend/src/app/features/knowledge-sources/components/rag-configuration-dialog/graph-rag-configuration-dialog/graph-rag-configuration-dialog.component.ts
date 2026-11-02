@@ -8,7 +8,6 @@ import { EMPTY, Observable, of } from 'rxjs';
 import { filter, finalize, switchMap, tap } from 'rxjs/operators';
 
 import { CollectionGraphRag } from '../../../models/graph-rag.model';
-import { CollectionsStorageService } from '../../../services/collections-storage.service';
 import { GraphRagService } from '../../../services/graph-rag.service';
 import { GraphRagDocumentsStorageService } from '../../../services/graph-rag-documents-storage.service';
 import { GraphRagConfigurationComponent } from '../../graph-rag-configuration/graph-rag-configuration.component';
@@ -23,7 +22,6 @@ import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.com
 })
 export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent implements OnInit {
     private graphRagService = inject(GraphRagService);
-    private collectionsStorage = inject(CollectionsStorageService);
     private graphRagDocumentsStorage = inject(GraphRagDocumentsStorageService);
     private ragConfiguration = viewChild(GraphRagConfigurationComponent);
 

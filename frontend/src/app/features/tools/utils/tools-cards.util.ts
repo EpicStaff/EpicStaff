@@ -1,8 +1,17 @@
-import { evaluateCustomCondition } from '@shared/models';
-
+import {
+    AuditCondition,
+    AuditConditionGroup,
+    AuditFilterOp,
+    isUsableCondition,
+} from '../../audit/models/audit-filter.models';
 import { GetBulkToolUsageItem } from '../models/tool-config.model';
 import { ToolsFilterState, ToolSortOrder, UsageBucket } from '../models/tool-filter.model';
 import { ToolCardVM } from '../pages/tools-list-page/components/tool-card/tool-card.model';
+
+/** Maps field keys to their searchable text values. Used by key-based condition filtering. */
+export interface ToolFieldMap {
+    [key: string]: string[];
+}
 
 /**
  * Feature-shape adapter for the filter/sort helpers. Each tool kind (custom
@@ -20,6 +29,8 @@ export interface ToolFilterAdapter<T> {
     /** Optional "built-in" flag accessor. Only Custom-tab tools expose this;
      *  omit on adapters where the "Source" filter has no meaning (e.g. MCP). */
     builtInOf?: (t: T) => boolean;
+    /** Returns searchable texts organized by field key. Used by key-based condition filtering. */
+    fieldTextsOf?: (t: T, labelById: Map<number, { name: string; full_path: string }>) => ToolFieldMap;
 }
 
 export interface ToolFilterContext {
@@ -56,8 +67,9 @@ export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: T
     if (sidebarLabelFilter === 'unlabeled' && labels.length > 0) return false;
     if (typeof sidebarLabelFilter === 'number' && !labels.includes(sidebarLabelFilter)) return false;
 
-    // Favorite-only.
+    // Favorite-only / Not-favorite-only.
     if (filter.showFavoriteOnly && !adapter.favoriteOf(tool)) return false;
+    if (filter.showNotFavoriteOnly && adapter.favoriteOf(tool)) return false;
 
     if (applySourceFilter && adapter.builtInOf && filter.sourceBuiltIn !== filter.sourceCustom) {
         const isBuiltIn = adapter.builtInOf(tool);
@@ -84,13 +96,16 @@ export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: T
         if (!labels.some((lId) => includeLabels.includes(lId))) return false;
     }
 
-    // Custom filter.
-    if (filter.customFilter) {
-        if (filter.customFilter.scope === 'tool_name') {
-            if (!evaluateCustomCondition(adapter.nameOf(tool), filter.customFilter)) return false;
-        } else {
-            const names = labels.map((lId) => labelById.get(lId)?.name ?? '');
-            if (!evaluateCustomCondition(names, filter.customFilter)) return false;
+    // Custom condition groups.
+    if (filter.customConditions.length > 0) {
+        const hasActiveCondition = filter.customConditions.some((group) =>
+            group.conditions.some((c) => isUsableCondition(c))
+        );
+        if (hasActiveCondition) {
+            const fieldMap = adapter.fieldTextsOf
+                ? adapter.fieldTextsOf(tool, labelById)
+                : { '': adapter.searchableTextOf(tool) };
+            if (!evaluateConditionGroups(filter.customConditions, fieldMap)) return false;
         }
     }
 
@@ -164,4 +179,66 @@ export function toUsageVmFields(
         inlineSurfaceUsage: u?.inline_surface_count || undefined,
         unused: u?.agent_surface_count === 0 && u?.shared_surface_count === 0 && u?.inline_surface_count === 0,
     };
+}
+
+/**
+ * Evaluates condition groups against searchable fields.
+ * Groups are OR'd: at least one group must match.
+ * Within a group, conditions follow their `join` (AND/OR).
+ *
+ * Accepts either a flat `string[]` (backward compat) or a `ToolFieldMap`
+ * keyed by field name. When a condition has a `key`, only that field is
+ * checked; otherwise all fields are searched.
+ */
+export function evaluateConditionGroups(groups: AuditConditionGroup[], fields: string[] | ToolFieldMap): boolean {
+    const fieldMap: ToolFieldMap = Array.isArray(fields) ? { '': fields } : fields;
+    const activeGroups = groups.filter((group) => group.conditions.some((c) => isUsableCondition(c)));
+    if (activeGroups.length === 0) return true;
+    return activeGroups.some((group) => evaluateConditionGroup(group, fieldMap));
+}
+
+function evaluateConditionGroup(group: AuditConditionGroup, fieldMap: ToolFieldMap): boolean {
+    const usable = group.conditions.filter((c) => isUsableCondition(c));
+    if (usable.length === 0) return true;
+
+    let result = evaluateSingleCondition(usable[0], fieldMap);
+    for (let i = 1; i < usable.length; i++) {
+        const conditionResult = evaluateSingleCondition(usable[i], fieldMap);
+        if (usable[i].join === 'and') {
+            result = result && conditionResult;
+        } else {
+            result = result || conditionResult;
+        }
+    }
+    return result;
+}
+
+function evaluateSingleCondition(condition: AuditCondition, fieldMap: ToolFieldMap): boolean {
+    const texts = condition.key && fieldMap[condition.key] ? fieldMap[condition.key] : Object.values(fieldMap).flat();
+    return texts.some((text) => matchesOperator(text, condition.op, condition.value));
+}
+
+function matchesOperator(text: string, op: AuditFilterOp, value: string): boolean {
+    const haystack = text.toLowerCase();
+    const needle = value.trim().toLowerCase();
+    switch (op) {
+        case 'equals':
+            return haystack === needle;
+        case 'not_equal':
+            return haystack !== needle;
+        case 'contains':
+            return haystack.includes(needle);
+        case 'not_contains':
+            return !haystack.includes(needle);
+        case 'starts_with':
+            return haystack.startsWith(needle);
+        case 'ends_with':
+            return haystack.endsWith(needle);
+        case 'is_empty':
+            return haystack.trim() === '';
+        case 'is_not_empty':
+            return haystack.trim() !== '';
+        default:
+            return true;
+    }
 }

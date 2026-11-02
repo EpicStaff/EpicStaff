@@ -66,6 +66,12 @@ import { RecycleBinTableComponent } from '../recycle-bin-table/recycle-bin-table
 const SERVER_SEARCH_DEBOUNCE_MS = 300;
 
 /**
+ * How long the restore toast stays. It shows its whole text, which can list renames the user has to act on,
+ * so it stays longer than the default success toast.
+ */
+const RESTORE_TOAST_DURATION_MS = 10_000;
+
+/**
  * One bin tab. Every route tab gets its own instance (and its own storage service), so switching
  * tabs starts from an empty list. Every action reloads the list and clears the selection: a
  * restore can bring back parent folders or owned surfaces, and a folder purge can take other
@@ -334,7 +340,9 @@ export class RecycleBinTabComponent implements OnInit {
 
     private onRestored(result: RecycleBinRestoreResult): void {
         const success = restoreResultMessage(result);
-        if (success !== null) this.toastService.success(success);
+        if (success !== null) {
+            this.toastService.success(success, RESTORE_TOAST_DURATION_MS, undefined, { fullText: true });
+        }
         const failure = failedItemsMessage('restore', result.failed);
         if (failure !== null) this.toastService.error(failure);
         this.reload();

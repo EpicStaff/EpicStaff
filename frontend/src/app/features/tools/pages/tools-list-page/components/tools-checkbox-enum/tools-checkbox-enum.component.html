@@ -1,0 +1,40 @@
+@if (searchable()) {
+    <div class="checkbox-enum__search">
+        <app-svg-icon
+            class="checkbox-enum__search-icon"
+            icon="search"
+            size="14px"
+        />
+        <input
+            class="checkbox-enum__search-input"
+            type="text"
+            placeholder="Search..."
+            [value]="searchTerm()"
+            (input)="onSearchInput($event)"
+        />
+    </div>
+}
+
+<div
+    class="checkbox-enum__list"
+    [class.checkbox-enum__list--scrollable]="searchable()"
+>
+    @for (option of filteredOptions(); track option.value) {
+        <label class="checkbox-enum__option">
+            <app-checkbox
+                [checked]="isSelected(option.value)"
+                (changed)="toggle(option.value)"
+            />
+            @if (option.icon) {
+                <app-svg-icon
+                    class="checkbox-enum__icon"
+                    [icon]="option.icon"
+                    size="14px"
+                />
+            }
+            <span class="checkbox-enum__label">{{ option.label }}</span>
+        </label>
+    } @empty {
+        <p class="checkbox-enum__empty">No matches found.</p>
+    }
+</div>

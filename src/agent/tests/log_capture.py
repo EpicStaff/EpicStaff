@@ -33,3 +33,9 @@ def log_line_starting_with(messages: list[str], prefix: str) -> str:
     matches = [message for message in messages if message.startswith(prefix)]
     assert len(matches) == 1, f"expected exactly one {prefix!r} line, got {matches}"
     return matches[0].rstrip("\n")
+
+
+def assert_masked_exception(line: str, exception_class: str) -> None:
+    """Assert `line` names `exception_class` but carries only a length and a digest of its message."""
+    assert f"{exception_class}: <redacted len=" in line, line
+    assert "digest=" in line, line

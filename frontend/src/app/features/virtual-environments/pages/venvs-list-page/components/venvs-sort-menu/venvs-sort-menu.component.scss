@@ -1,0 +1,9 @@
+@use '../../../../../../../styles/menu-panel' as *;
+
+.sort-menu {
+    @include menu-panel();
+}
+
+.menu-item {
+    @include menu-item();
+}

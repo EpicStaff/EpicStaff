@@ -1,5 +1,9 @@
 @use '../../../../../styles/tooltip';
 
+.venv-card--clickable {
+    cursor: pointer;
+}
+
 .venv-card {
     display: flex;
     flex-direction: column;

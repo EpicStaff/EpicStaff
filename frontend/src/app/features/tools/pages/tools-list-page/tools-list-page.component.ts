@@ -1,4 +1,3 @@
-import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
 import {
     ChangeDetectionStrategy,
@@ -16,9 +15,6 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import {
-    AppCustomFilterDialogComponent,
-    AppCustomFilterDialogData,
-    AppCustomFilterDialogResult,
     AppSvgIconComponent,
     ButtonComponent,
     LabelSidebarComponent,
@@ -26,12 +22,17 @@ import {
     TabButtonComponent,
     ToggleSwitchComponent,
 } from '@shared/components';
-import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import {
+    HasPermissionDirective,
+    HideInlineSubtitleOnOverflowDirective,
+    ResizableSidebarDirective,
+} from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { LABELS_STORE } from '@shared/services';
+import { LABELS_STORE, SidebarWidthOptions, SidebarWidthService } from '@shared/services';
 import { filter } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { isUsableCondition } from '../../../audit/models/audit-filter.models';
 import { EMPTY_TOOLS_FILTER, ToolSortOrder } from '../../models/tool-filter.model';
 import { ToolsLabelsStorageService } from '../../services/tools-labels-storage.service';
 import { ToolsSearchService } from '../../services/tools-search.service';
@@ -40,8 +41,11 @@ import {
     ToolsBulkAction,
     ToolsBulkActionsMenuComponent,
 } from './components/tools-bulk-actions-menu/tools-bulk-actions-menu.component';
-import { ToolsFilterDraft, ToolsFilterMenuComponent } from './components/tools-filter-menu/tools-filter-menu.component';
+import { ToolsFilterSidebarComponent } from './components/tools-filter-sidebar/tools-filter-sidebar.component';
 import { TOOLS_SORT_MENU_ITEMS, ToolsSortMenuComponent } from './components/tools-sort-menu/tools-sort-menu.component';
+
+const FILTER_PANEL_WIDTH_KEY = 'tools-filter-panel';
+const FILTER_PANEL_WIDTH_OPTIONS = { defaultWidth: 360, minWidth: 280, maxWidth: 640 } satisfies SidebarWidthOptions;
 
 @Component({
     selector: 'app-tools-list-page',
@@ -58,8 +62,9 @@ import { TOOLS_SORT_MENU_ITEMS, ToolsSortMenuComponent } from './components/tool
         HasPermissionDirective,
         OverlayModule,
         LabelSidebarComponent,
-        ToolsFilterMenuComponent,
+        ToolsFilterSidebarComponent,
         ToolsSortMenuComponent,
+        ResizableSidebarDirective,
         ToolsBulkActionsMenuComponent,
         ToggleSwitchComponent,
         SearchComponent,
@@ -78,9 +83,16 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     public searchTerm: string = '';
 
     public showSidebar = signal<boolean>(true);
-    public filterMenuOpen = signal<boolean>(false);
+    public showFilterSidebar = signal<boolean>(false);
     public sortMenuOpen = signal<boolean>(false);
     public bulkMenuOpen = signal<boolean>(false);
+
+    protected readonly filterPanelWidthKey = FILTER_PANEL_WIDTH_KEY;
+    protected readonly filterPanelWidthOptions = FILTER_PANEL_WIDTH_OPTIONS;
+    protected readonly filterPanelWidth = inject(SidebarWidthService).getWidth(
+        FILTER_PANEL_WIDTH_KEY,
+        FILTER_PANEL_WIDTH_OPTIONS
+    );
 
     /** Tracks the active tab (Custom / MCP). Drives Source-filter visibility. */
     private readonly _currentTab = signal<'custom' | 'mcp' | null>(null);
@@ -94,7 +106,6 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     private readonly isBulkLabelsOpen = signal<boolean>(false);
     private bulkCloseTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    private readonly dialog = inject(Dialog);
     private readonly permissionService = inject(PermissionsService);
     private readonly router = inject(Router);
     private readonly destroyRef = inject(DestroyRef);
@@ -195,12 +206,14 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         const f = this.viewState.filter();
         return f.includedToolIds !== null || f.includedLabelIds !== null;
     });
-    public readonly customFilterIsSet = computed<boolean>(() => this.viewState.filter().customFilter !== null);
+    public readonly customFilterIsSet = computed<boolean>(() =>
+        this.viewState.filter().customConditions.some((group) => group.conditions.some((c) => isUsableCondition(c)))
+    );
 
     public readonly activeFilterCount = computed<number>(() => {
         const f = this.viewState.filter();
         let n = 0;
-        if (f.showFavoriteOnly) n++;
+        if (f.showFavoriteOnly || f.showNotFavoriteOnly) n++;
         if (this.showSourceFilter() && f.sourceBuiltIn !== f.sourceCustom) n++;
         if (f.usageBuckets.length > 0 || f.unusedOnly) n++;
         if (this.includeExcludeIsSet()) n++;
@@ -267,12 +280,8 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         this.labelsStorage.setActiveLabelFilter('all');
     }
 
-    public toggleFilterMenu(): void {
-        this.filterMenuOpen.update((v) => !v);
-    }
-
-    public closeFilterMenu(): void {
-        this.filterMenuOpen.set(false);
+    public toggleFilterSidebar(): void {
+        this.showFilterSidebar.update((v) => !v);
     }
 
     public toggleSortMenu(): void {
@@ -290,38 +299,6 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         this.viewState.patchFilter({ sortOrder: next });
     }
 
-    /** Applies checkbox-side draft from the filter menu and closes it. */
-    public onFilterSave(draft: ToolsFilterDraft): void {
-        this.closeFilterMenu();
-        this.viewState.patchFilter({
-            showFavoriteOnly: draft.showFavoriteOnly,
-            sourceBuiltIn: draft.sourceBuiltIn,
-            sourceCustom: draft.sourceCustom,
-            usageBuckets: draft.usageBuckets,
-            unusedOnly: draft.unusedOnly,
-        });
-    }
-
-    public onFilterCancel(): void {
-        this.closeFilterMenu();
-    }
-
-    /** Filter menu emitted Clear: reset every filter-side field (including
-     *  Include/Exclude and Custom filter which live outside the local draft). */
-    public onFilterClear(): void {
-        this.clearAllFilters();
-    }
-
-    public onOpenIncludeExclude(): void {
-        this.closeFilterMenu();
-        this.viewState.dispatch({ kind: 'open-include-exclude', initialTab: 'primary' });
-    }
-
-    public onOpenCustomFilter(): void {
-        this.closeFilterMenu();
-        this.openCustomFilterDialog();
-    }
-
     /** Clears filter-side state only; sort-dropdown selections
      *  (name/most used/unused first/last modified) are preserved. */
     public clearAllFilters(event?: MouseEvent): void {
@@ -330,39 +307,14 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         event?.stopPropagation();
         this.viewState.patchFilter({
             showFavoriteOnly: EMPTY_TOOLS_FILTER.showFavoriteOnly,
+            showNotFavoriteOnly: EMPTY_TOOLS_FILTER.showNotFavoriteOnly,
             sourceBuiltIn: EMPTY_TOOLS_FILTER.sourceBuiltIn,
             sourceCustom: EMPTY_TOOLS_FILTER.sourceCustom,
             usageBuckets: EMPTY_TOOLS_FILTER.usageBuckets,
             unusedOnly: EMPTY_TOOLS_FILTER.unusedOnly,
             includedToolIds: EMPTY_TOOLS_FILTER.includedToolIds,
             includedLabelIds: EMPTY_TOOLS_FILTER.includedLabelIds,
-            customFilter: EMPTY_TOOLS_FILTER.customFilter,
-        });
-    }
-
-    private openCustomFilterDialog(): void {
-        const data: AppCustomFilterDialogData = {
-            scopes: [
-                { key: 'tool_name', label: 'Tools', icon: 'tools', heading: 'Show tools matching the name conditions' },
-                {
-                    key: 'label_name',
-                    label: 'Labels',
-                    icon: 'label',
-                    heading: 'Show tools matching the label conditions',
-                },
-            ],
-            initialCondition: this.viewState.filter().customFilter,
-        };
-        const ref = this.dialog.open<AppCustomFilterDialogResult | undefined>(AppCustomFilterDialogComponent, {
-            data,
-            panelClass: 'tools-filter-dialog-panel',
-            hasBackdrop: true,
-        });
-        ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
-            if (!result) return;
-            this.viewState.patchFilter({
-                customFilter: result.condition as ReturnType<typeof this.viewState.filter>['customFilter'],
-            });
+            customConditions: EMPTY_TOOLS_FILTER.customConditions,
         });
     }
 

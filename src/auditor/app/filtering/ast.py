@@ -18,6 +18,7 @@ FilterNode shape:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -37,6 +38,9 @@ class FieldSpec(NamedTuple):
     # split_computed_leaves() removes the leaf before compilation.
     computed: bool = False
     allowed_values: frozenset[str] | None = None
+    # A numeric OpenSearch column: a value that isn't a number would be
+    # rejected by OpenSearch itself and surface as a 500 instead of a 400.
+    numeric: bool = False
 
 
 class FilterError(Exception):
@@ -113,6 +117,24 @@ def validate_filter_node(
                 f"{_path}: value(s) {invalid!r} not allowed for field {field!r} "
                 f"(allowed: {sorted(spec.allowed_values)})"
             )
+    if spec.numeric:
+        raw_value = node.get("value")
+        candidates = raw_value if isinstance(raw_value, list) else [raw_value]
+        invalid = [v for v in candidates if not _is_number(v)]
+        if invalid:
+            raise FilterValidationError(
+                f"{_path}: value(s) {invalid!r} for field {field!r} must be numbers"
+            )
+
+
+def _is_number(value: Any) -> bool:
+    # bool is an int subclass, and float("1e400") is inf - neither is a usable id.
+    if isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
 
 
 def iter_leaves(node: FilterNode) -> Iterator[FilterNode]:

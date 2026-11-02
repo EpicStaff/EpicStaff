@@ -18,7 +18,7 @@ from app.data_loader import DataLoader
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.exceptions import RunCancelled
 from app.factory import RunnerFactory
-from app.logging_utils import redact_payload
+from app.logging_utils import format_exception_for_log, redact_payload
 from shared.bench_log import BENCH_LEVEL
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
@@ -103,9 +103,10 @@ class RequestHandler:
             )
 
         except Exception as error:
-            logger.exception(
-                "request failed before emitter correlation_id={}",
+            logger.error(
+                "request failed before emitter correlation_id={} error={}",
                 correlation_id,
+                format_exception_for_log(error),
             )
             fallback_emitter = RedisStreamBatchEmitter(
                 self._redis_client,

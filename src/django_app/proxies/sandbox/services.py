@@ -44,6 +44,8 @@ class VenvService:
         self,
         bindings: QuerySet[SandboxVenvBinding],
         *,
+        search: str | None = None,
+        order: str | None = None,
         limit: str | None = None,
         offset: str | None = None,
     ) -> tuple[dict, list[tuple[dict, SandboxVenvBinding]]]:
@@ -52,6 +54,9 @@ class VenvService:
         An environment the sandbox lists without a binding among these is left out: it
         belongs to another organization, or to no one.
 
+        `search` and `order` go upstream untouched: the sandbox owns what they mean, and
+        it narrows and sorts before it pages, which this side cannot do afterwards.
+
         Returns:
             The page without its `result`, and the pairs that would have filled it. What
             an environment looks like in an answer differs per caller, so the page comes
@@ -59,7 +64,13 @@ class VenvService:
         """
         bindings_by_resource_id = {binding.resource_id: binding for binding in bindings}
         with self.client_class() as client:
-            page = client.list(ids=list(bindings_by_resource_id), limit=limit, offset=offset)
+            page = client.list(
+                ids=list(bindings_by_resource_id),
+                search=search,
+                order=order,
+                limit=limit,
+                offset=offset,
+            )
 
         pairs = []
         for venv in page.pop("result", None) or []:

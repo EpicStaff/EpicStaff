@@ -202,7 +202,12 @@ class OrgScopedUniqueValidator(UniqueValidator):
         if queryset.exists():
             raise serializers.ValidationError(self.message, code="unique")
 
-        if self.global_queryset is not None:
+        # A row may keep a value it already holds even when a global row took it
+        # later: the built-in tool seeder can ship a built-in named like an org tool.
+        keeps_current_value = (
+            instance is not None and getattr(instance, serializer_field.source_attrs[-1]) == value
+        )
+        if self.global_queryset is not None and not keeps_current_value:
             global_queryset = self.global_queryset.filter(**{field_lookup: value})
             if instance is not None:
                 global_queryset = global_queryset.exclude(pk=instance.pk)

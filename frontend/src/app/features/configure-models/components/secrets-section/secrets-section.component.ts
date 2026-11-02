@@ -30,8 +30,15 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage, getRelativeTime, recycleBinNotice } from '@shared/utils';
-import { forkJoin } from 'rxjs';
+import {
+    escapeHtml,
+    extractHttpErrorMessage,
+    getRelativeTime,
+    movedToRecycleBinMessage,
+    pluralize,
+    recycleBinNotice,
+} from '@shared/utils';
+import { catchError, finalize, forkJoin, map, Observable, of } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -42,6 +49,11 @@ import { SecretUsageDialogComponent } from '../secret-usage-dialog/secret-usage-
 
 type UsedByFilter = 'unused' | 'deactivated' | null;
 
+/** How one delete of a bulk delete ended: a 404 means another tab or user deleted the secret first. */
+type BulkDeleteOutcome =
+    | { name: string; result: 'deleted' | 'alreadyGone' }
+    | { name: string; result: 'failed'; error: HttpErrorResponse };
+
 // Must match .secrets-section-used-by-panel .selector__dropdown's width in the stylesheet.
 const USED_BY_PANEL_WIDTH = 216;
 
@@ -50,6 +62,8 @@ const USED_BY_FILTER_ITEMS: SelectItem[] = [
     { name: 'Deactivate', value: 'deactivated' },
     { name: 'Unused', value: 'unused' },
 ];
+
+const GENERIC_FAILURE_REASON = 'Something went wrong.';
 
 /** What happens to the resources that use a deleted secret: their link is kept while it's in the bin. */
 const KEPT_LINKS_NOTE =
@@ -96,6 +110,9 @@ export class SecretsSectionComponent implements OnInit {
     public readonly usedByFilterItems = USED_BY_FILTER_ITEMS;
     public readonly usedByFilter = signal<UsedByFilter>(null);
     public readonly selectedRows = signal<TableRow[]>([]);
+    /** True while a bulk delete's requests are in flight: a second click must not send them again. */
+    protected readonly isBulkDeleting = signal(false);
+    protected readonly bulkDeleteLabel = computed(() => `Delete selected (${this.selectedRows().length})`);
 
     public readonly status = signal<LoadingState>(LoadingState.IDLE);
 
@@ -130,6 +147,7 @@ export class SecretsSectionComponent implements OnInit {
                 name: secret.name,
                 preview: this.secretsStorageService.maskTail(secret.tail),
                 usedByReadable: secret.usage_count.readable,
+                usedByReadableLabel: pluralize(secret.usage_count.readable, 'resource', 'resources'),
                 usedByHidden: secret.usage_count.hidden,
                 updatedLabel: getRelativeTime(new Date(secret.updated_at)),
             })
@@ -210,7 +228,7 @@ export class SecretsSectionComponent implements OnInit {
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: () => {
-                            this.toastService.success('Secret deleted');
+                            this.toastService.success(movedToRecycleBinMessage(1, 'secret', 'secrets'));
                         },
                         error: (err: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(err)),
                     });
@@ -219,14 +237,14 @@ export class SecretsSectionComponent implements OnInit {
 
     public onBulkDelete(): void {
         const rows = this.selectedRows();
-        if (!rows.length) return;
+        if (!rows.length || this.isBulkDeleting()) return;
 
         const referencedCount = rows.filter((row) => this.usedByDisplay(row) !== 'unused').length;
 
         this.confirmationDialogService
             .confirm({
                 title: 'Delete Secrets',
-                message: `You're about to delete <strong>${rows.length} secret${rows.length === 1 ? '' : 's'}</strong>. ${recycleBinNotice(this.recycleBinSettings.retentionDays(), rows.length)}`,
+                message: `You're about to delete <strong>${pluralize(rows.length, 'secret', 'secrets')}</strong>. ${recycleBinNotice(this.recycleBinSettings.retentionDays(), rows.length)}`,
                 caution: referencedCount
                     ? `<strong>${referencedCount}</strong> of the selected secrets are still referenced by other resources. ${KEPT_LINKS_NOTE}`
                     : undefined,
@@ -239,15 +257,17 @@ export class SecretsSectionComponent implements OnInit {
             .subscribe((confirmed) => {
                 if (confirmed !== true) return;
 
-                const ids = rows.map((row) => row['id'] as number);
-                forkJoin(ids.map((id) => this.secretsStorageService.deleteSecret(id)))
-                    .pipe(takeUntilDestroyed(this.destroyRef))
-                    .subscribe({
-                        next: () => {
-                            this.toastService.success(`${ids.length} secret${ids.length === 1 ? '' : 's'} deleted`);
-                            this.selectedRows.set([]);
-                        },
-                        error: (err: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(err)),
+                this.isBulkDeleting.set(true);
+                forkJoin(rows.map((row) => this.deleteOneOfBulk(row)))
+                    .pipe(
+                        takeUntilDestroyed(this.destroyRef),
+                        finalize(() => this.isBulkDeleting.set(false))
+                    )
+                    .subscribe((outcomes) => {
+                        this.showBulkDeleteResult(outcomes);
+                        // app-table keeps its own selection; it resets only because the reload swaps the table for the spinner.
+                        this.selectedRows.set([]);
+                        this.loadSecrets(true);
                     });
             });
     }
@@ -288,9 +308,57 @@ export class SecretsSectionComponent implements OnInit {
         if (readable === 0 && hidden === 0) return undefined;
 
         const parts: string[] = [];
-        if (readable > 0) parts.push(`<strong>${readable} resources</strong> you can see`);
+        if (readable > 0) parts.push(`<strong>${pluralize(readable, 'resource', 'resources')}</strong> you can see`);
         if (hidden > 0) parts.push(`<strong>some resources</strong> you don't have permission to view`);
 
         return `This secret is still referenced by ${parts.join(' and ')}. ${KEPT_LINKS_NOTE}`;
+    }
+
+    /** Settles on its own, so one failed delete never cancels the others. */
+    private deleteOneOfBulk(row: TableRow): Observable<BulkDeleteOutcome> {
+        const name = row['name'] as string;
+        return this.secretsStorageService.deleteSecret(row['id'] as number).pipe(
+            map((): BulkDeleteOutcome => ({ name, result: 'deleted' })),
+            catchError((error: HttpErrorResponse) =>
+                of<BulkDeleteOutcome>(
+                    error.status === 404 ? { name, result: 'alreadyGone' } : { name, result: 'failed', error }
+                )
+            )
+        );
+    }
+
+    private showBulkDeleteResult(outcomes: BulkDeleteOutcome[]): void {
+        const deletedCount = outcomes.filter((outcome) => outcome.result === 'deleted').length;
+        const alreadyGone = outcomes.filter((outcome) => outcome.result === 'alreadyGone');
+        const failed = outcomes.filter(
+            (outcome): outcome is Extract<BulkDeleteOutcome, { result: 'failed' }> => outcome.result === 'failed'
+        );
+
+        const alreadyGoneNote = alreadyGone.length
+            ? `${alreadyGone.length} ${alreadyGone.length === 1 ? 'was' : 'were'} already deleted: ${this.joinNames(alreadyGone)}.`
+            : '';
+        if (deletedCount > 0) {
+            const moved = movedToRecycleBinMessage(deletedCount, 'secret', 'secrets');
+            this.toastService.success(alreadyGoneNote ? `${moved} ${alreadyGoneNote}` : moved);
+        } else if (alreadyGoneNote) {
+            this.toastService.info(alreadyGoneNote);
+        }
+
+        if (failed.length) {
+            this.toastService.error(
+                `Couldn't delete ${pluralize(failed.length, 'secret', 'secrets')}. ${this.failureReason(failed)} Not deleted: ${this.joinNames(failed)}.`
+            );
+        }
+    }
+
+    /** The server's reason when every failure gives the same one; different reasons have no single one to show. */
+    private failureReason(failed: Extract<BulkDeleteOutcome, { result: 'failed' }>[]): string {
+        const reasons = failed.map((outcome) => extractHttpErrorMessage(outcome.error, GENERIC_FAILURE_REASON).trim());
+        if (reasons.some((reason) => reason !== reasons[0])) return GENERIC_FAILURE_REASON;
+        return /[.!?]$/.test(reasons[0]) ? reasons[0] : `${reasons[0]}.`;
+    }
+
+    private joinNames(outcomes: BulkDeleteOutcome[]): string {
+        return outcomes.map((outcome) => outcome.name).join(', ');
     }
 }

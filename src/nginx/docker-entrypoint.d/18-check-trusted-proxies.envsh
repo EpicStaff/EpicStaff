@@ -1,0 +1,84 @@
+# Sourced by the nginx image's /docker-entrypoint.sh before 20-envsubst-on-templates.sh. Turns
+# NGINX_TRUSTED_PROXIES into NGINX_TRUSTED_PROXY_GEO_ENTRIES, the entries of default.conf.template's
+# geo block: the proxies whose X-Forwarded-Proto nginx passes on, such as a load balancer that ends
+# TLS in front of nginx. `none` (any case) trusts nobody. Otherwise it is a comma-separated list of
+# IPv4 addresses and CIDRs. The entries are rendered into the configuration, so anything else stops
+# the container (exit 64) instead of breaking or widening it, and so do a /0 range (every client)
+# and a CIDR with host bits set (192.0.2.5/24 trusts all of 192.0.2.0/24, likely not what was meant).
+
+if [ -z "${NGINX_TRUSTED_PROXIES+set}" ]; then
+  echo "ERROR: environment variable NGINX_TRUSTED_PROXIES is not set." >&2
+  exit 64
+fi
+
+# $1 = a dotted IPv4 address already checked against trusted_proxy_address_pattern; prints it as
+# one number. The pattern allows no leading zero, which the shell would read as octal.
+trusted_proxy_number() {
+  trusted_proxy_octets=$1
+  trusted_proxy_value=0
+  for _ in 1 2 3 4; do
+    trusted_proxy_value=$((trusted_proxy_value * 256 + ${trusted_proxy_octets%%.*}))
+    trusted_proxy_octets=${trusted_proxy_octets#*.}
+  done
+  echo "$trusted_proxy_value"
+}
+
+trusted_proxy_octet='(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
+trusted_proxy_address_pattern="^($trusted_proxy_octet\.){3}$trusted_proxy_octet(/(3[0-2]|[12]?[0-9]))?\$"
+trusted_proxy_usage="Set it to none, or to the addresses nginx sees your load balancer connect from, comma-separated IPv4 addresses or CIDRs such as 192.0.2.10 or 192.0.2.0/28 (see docs/setup/ssl.md)."
+trusted_proxies=$(printf '%s' "$NGINX_TRUSTED_PROXIES" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+NGINX_TRUSTED_PROXY_GEO_ENTRIES=
+case "$trusted_proxies" in
+  [Nn][Oo][Nn][Ee]) ;;
+  *)
+    # Only digits, dots, slashes, commas and spaces: nothing that could end a directive or name a
+    # variable. grep matches line by line, so this also refuses a newline.
+    case "$trusted_proxies" in
+      '' | *[!0-9./,\ ]*)
+        echo "ERROR: NGINX_TRUSTED_PROXIES='$NGINX_TRUSTED_PROXIES' is not none or a list of IPv4 addresses and CIDRs. $trusted_proxy_usage" >&2
+        exit 64
+        ;;
+    esac
+    trusted_proxy_rest="$trusted_proxies,"
+    while [ -n "$trusted_proxy_rest" ]; do
+      trusted_proxy_entry=$(printf '%s' "${trusted_proxy_rest%%,*}" | sed 's/^ *//;s/ *$//')
+      trusted_proxy_rest=${trusted_proxy_rest#*,}
+      # A stray comma leaves an empty entry: name that cause rather than an entry ''.
+      if [ -z "$trusted_proxy_entry" ]; then
+        echo "ERROR: NGINX_TRUSTED_PROXIES='$NGINX_TRUSTED_PROXIES' has an empty entry (a trailing, leading or doubled comma). $trusted_proxy_usage" >&2
+        exit 64
+      fi
+      if ! printf '%s\n' "$trusted_proxy_entry" | grep -Eq "$trusted_proxy_address_pattern"; then
+        echo "ERROR: NGINX_TRUSTED_PROXIES='$NGINX_TRUSTED_PROXIES' holds '$trusted_proxy_entry', which is not an IPv4 address or CIDR. $trusted_proxy_usage" >&2
+        exit 64
+      fi
+      case "$trusted_proxy_entry" in
+        */*)
+          trusted_proxy_prefix=${trusted_proxy_entry#*/}
+          if [ "$trusted_proxy_prefix" -eq 0 ]; then
+            echo "ERROR: NGINX_TRUSTED_PROXIES holds '$trusted_proxy_entry', which is every address: any client could then claim https. List only your load balancer's own addresses, or set none." >&2
+            exit 64
+          fi
+          trusted_proxy_host_mask=$(((1 << (32 - trusted_proxy_prefix)) - 1))
+          trusted_proxy_address=${trusted_proxy_entry%/*}
+          trusted_proxy_address_number=$(trusted_proxy_number "$trusted_proxy_address")
+          if [ $((trusted_proxy_address_number & trusted_proxy_host_mask)) -ne 0 ]; then
+            trusted_proxy_network=$((trusted_proxy_address_number & ~trusted_proxy_host_mask))
+            trusted_proxy_network=$((trusted_proxy_network >> 24 & 255)).$((trusted_proxy_network >> 16 & 255)).$((trusted_proxy_network >> 8 & 255)).$((trusted_proxy_network & 255))
+            echo "ERROR: NGINX_TRUSTED_PROXIES holds '$trusted_proxy_entry', whose address has host bits set: it would trust all of $trusted_proxy_network/$trusted_proxy_prefix, not $trusted_proxy_address alone. Write $trusted_proxy_address for that one address, or $trusted_proxy_network/$trusted_proxy_prefix if you mean the whole range." >&2
+            exit 64
+          fi
+          ;;
+      esac
+      NGINX_TRUSTED_PROXY_GEO_ENTRIES="$NGINX_TRUSTED_PROXY_GEO_ENTRIES    $trusted_proxy_entry 1;
+"
+    done
+    ;;
+esac
+export NGINX_TRUSTED_PROXY_GEO_ENTRIES
+
+# This file is sourced into the entrypoint's shell: leave nothing behind but the export.
+unset -f trusted_proxy_number
+unset trusted_proxy_octets trusted_proxy_value trusted_proxy_octet trusted_proxy_address_pattern \
+  trusted_proxy_usage trusted_proxies trusted_proxy_rest trusted_proxy_entry trusted_proxy_prefix \
+  trusted_proxy_host_mask trusted_proxy_address trusted_proxy_address_number trusted_proxy_network

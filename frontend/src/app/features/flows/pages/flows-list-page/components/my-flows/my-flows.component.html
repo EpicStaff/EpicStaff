@@ -57,6 +57,7 @@
                         (selectionToggle)="onFlowSelect(flow.id)"
                         (cardClick)="handleFlowCardAction({ action: 'open', flow: $event })"
                         (action)="handleFlowCardAction($event)"
+                        (labelDrop)="onLabelDrop($event)"
                     ></app-flow-card>
                 }
             }

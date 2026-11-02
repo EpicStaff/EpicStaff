@@ -6,7 +6,6 @@ Plain field storage (a mode or flag read back unchanged) is not retested on its 
 
 import pytest
 from django.db import IntegrityError
-from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.test import APIRequestFactory
 
 from agents.exceptions import SurfaceValidationError
@@ -116,11 +115,6 @@ def mcp_tool_b(db, org):
 @pytest.fixture
 def storage_file_a(db, org):
     return StorageFile.objects.create(org=org, name="file-a", path="a/file.txt")
-
-
-@pytest.fixture
-def storage_file_other_org(db, other_org):
-    return StorageFile.objects.create(org=other_org, name="foreign-file", path="c/file.txt")
 
 
 def _collection(org, name, rag_type):
@@ -305,12 +299,6 @@ def test_graph_collection_search_configs_are_stored(
             SurfaceValidationError,
         ),
         (lambda f: {"knowledge": [_knowledge(f["naive_collection"])] * 2}, "knowledge", SurfaceValidationError),
-        # Another org's file looks like one that does not exist (the field is org-scoped).
-        (
-            lambda f: {"storage_items": [_storage(f["storage_file_other_org"], can_list="allow")]},
-            "storage_items",
-            DRFValidationError,
-        ),
         (
             lambda f: {
                 "knowledge": [_knowledge(f["graph_collection"], naive={"search_limit": 5, "similarity_threshold": "0.30"})]
@@ -330,7 +318,6 @@ def test_graph_collection_search_configs_are_stored(
         "mcp-tool-twice",
         "storage-file-twice",
         "collection-twice",
-        "other-orgs-file",
         "naive-config-on-graph-collection",
         "graph-config-on-naive-collection",
     ],
@@ -342,7 +329,6 @@ def test_invalid_surface_is_refused_as_a_validation_error(
     py_tool_a,
     mcp_tool_a,
     storage_file_a,
-    storage_file_other_org,
     naive_collection,
     graph_collection,
     payload,

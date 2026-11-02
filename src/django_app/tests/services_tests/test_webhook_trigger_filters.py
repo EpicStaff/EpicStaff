@@ -66,7 +66,7 @@ from tables.services.webhook_trigger_service import WebhookTriggerService
 def _empty_session_data() -> SessionData:
     """Real session data with an empty graph: only the session's own records are under
     test, and a hand-made stand-in breaks as soon as production reads a new field."""
-    return SessionData(id=1, org_id=1, graph=GraphData(name="stub", entrypoint="__end__", end_node=None))
+    return SessionData(id=1, org_id=1, audit_retention_days=0, graph=GraphData(name="stub", entrypoint="__end__", end_node=None))
 
 
 def _stub_publish(monkeypatch):

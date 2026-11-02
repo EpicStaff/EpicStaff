@@ -58,6 +58,12 @@ from .helpers import (
     _strip_markdown_tables,
 )
 from .node_registry import FLOW_ASSISTANT_NODE_TYPES
+from .output_schema import (
+    ANTHROPIC_FLOW_ASSISTANT_OUTPUT_SCHEMA,
+    FLOW_ASSISTANT_OUTPUT_SCHEMA,
+    normalize_table_cells,
+    uses_anthropic_structured_output,
+)
 from .system_prompt import SystemPromptInputs, build_system_prompt
 from .tools import _TOOL_CALLABLES, TOOL_SPECS
 
@@ -187,7 +193,10 @@ class FlowAssistantService:
             nodes_section=nodes_section,
             subflow_summary=subflow_summary,
         )
-        return build_system_prompt(inputs)
+        return build_system_prompt(
+            inputs,
+            anthropic_tables=uses_anthropic_structured_output(flow_assistant.llm_config),
+        )
 
     def start_conversation(
         self, flow_assistant: FlowAssistant, organization_user
@@ -275,8 +284,6 @@ class FlowAssistantService:
         end via an UPDATE query — so the model object is never left in an
         inconsistent in-memory state visible to concurrent readers.
         """
-        from .output_schema import FLOW_ASSISTANT_OUTPUT_SCHEMA
-
         flow_assistant = await sync_to_async(
             lambda: FlowAssistant.objects.select_related(
                 "graph", "llm_config__model__llm_provider"
@@ -298,7 +305,11 @@ class FlowAssistantService:
         try:
             client = get_llm_client(
                 flow_assistant.llm_config,
-                output_schema=FLOW_ASSISTANT_OUTPUT_SCHEMA,
+                output_schema=(
+                    ANTHROPIC_FLOW_ASSISTANT_OUTPUT_SCHEMA
+                    if uses_anthropic_structured_output(flow_assistant.llm_config)
+                    else FLOW_ASSISTANT_OUTPUT_SCHEMA
+                ),
                 api_key=api_key,
             )
         except (UnsupportedLLMProviderError, InvalidLLMConfigError) as exc:
@@ -374,7 +385,9 @@ class FlowAssistantService:
                     }
                     structured_payload = _partial_json.try_parse_full(json_buffer)
                     if structured_payload is not None:
-                        partial["ef_tables"] = structured_payload.get("ef_tables") or []
+                        partial["ef_tables"] = normalize_table_cells(
+                            structured_payload.get("ef_tables") or []
+                        )
                         partial["action_message"] = structured_payload.get("action_message") or []
                     if partial_content or partial.get("ef_tables") or partial.get("action_message"):
                         working_messages.append(partial)
@@ -445,7 +458,9 @@ class FlowAssistantService:
                     }
                     structured_payload = _partial_json.try_parse_full(json_buffer)
                     if structured_payload is not None:
-                        partial["ef_tables"] = structured_payload.get("ef_tables") or []
+                        partial["ef_tables"] = normalize_table_cells(
+                            structured_payload.get("ef_tables") or []
+                        )
                         partial["action_message"] = structured_payload.get("action_message") or []
                     if partial_content or partial.get("ef_tables") or partial.get("action_message"):
                         working_messages.append(partial)
@@ -531,7 +546,7 @@ class FlowAssistantService:
 
             if structured_payload is not None:
                 final_text = structured_payload.get("message", "").strip()
-                ef_tables: list = structured_payload.get("ef_tables") or []
+                ef_tables: list = normalize_table_cells(structured_payload.get("ef_tables") or [])
                 action_message: list = structured_payload.get("action_message") or []
                 if ef_tables and final_text:
                     final_text = _strip_markdown_tables(final_text)
@@ -634,7 +649,9 @@ class FlowAssistantService:
                     }
                     structured_payload = _partial_json.try_parse_full(json_buffer)
                     if structured_payload is not None:
-                        partial["ef_tables"] = structured_payload.get("ef_tables") or []
+                        partial["ef_tables"] = normalize_table_cells(
+                            structured_payload.get("ef_tables") or []
+                        )
                         partial["action_message"] = structured_payload.get("action_message") or []
                     if partial_content or partial.get("ef_tables") or partial.get("action_message"):
                         working_messages.append(partial)

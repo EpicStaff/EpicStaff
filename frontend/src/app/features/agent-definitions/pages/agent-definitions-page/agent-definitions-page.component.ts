@@ -529,12 +529,11 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     private confirmDeleteAgent(agentId: number): Observable<boolean> {
-        const agent = this.store.agents().find((a) => a.id === agentId);
-        if (!agent) return of(false);
+        if (!this.store.agents().some((a) => a.id === agentId)) return of(false);
 
         const ownedSurfaceCount = this.store.surfaces().filter((s) => s.owner_agent === agentId).length;
         const usage = { agents: 0, flows: 0, chats: 0 };
-        const dialog = buildDeleteAgentDialog(agent, usage, ownedSurfaceCount, this.recycleBinSettings.retentionDays());
+        const dialog = buildDeleteAgentDialog(usage, ownedSurfaceCount, this.recycleBinSettings.retentionDays());
 
         return this.confirmationDialog
             .confirm(dialog, { width: DELETE_CONFIRM_DIALOG_WIDTH })

@@ -10,13 +10,23 @@
     }
 
     @if (showKey()) {
-        <input
-            class="condition-row__key"
-            type="text"
-            placeholder="Key, e.g. message_type"
-            [value]="condition().key"
-            (change)="setKey($event)"
-        />
+        @if (hasKeyOptions()) {
+            <app-audit-select
+                class="condition-row__key"
+                [options]="keyItems()"
+                [value]="condition().key"
+                (valueChange)="setKeyFromSelect($event)"
+                ariaLabel="Condition field"
+            />
+        } @else {
+            <input
+                class="condition-row__key"
+                type="text"
+                placeholder="Key, e.g. message_type"
+                [value]="condition().key"
+                (change)="setKey($event)"
+            />
+        }
     }
 
     <app-audit-operator-select
