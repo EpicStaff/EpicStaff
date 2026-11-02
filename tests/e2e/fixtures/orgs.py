@@ -1,7 +1,8 @@
 """Cross-org and low-privilege resources for the negative tests.
 
 superadmin_access_token -> other_org -> other_org_graph -> other_org_session
-superadmin_client -> viewer_role_id -> viewer_client
+superadmin_client -> viewer_role_id -> viewer_access_token -> viewer_client
+user_client -> own_org_graph
 """
 
 from collections.abc import Iterator
@@ -59,10 +60,20 @@ def viewer_role_id(superadmin_client: ApiClient) -> int:
 
 
 @pytest.fixture(scope="session")
-def viewer_client(
+def own_org_graph(user_client: ApiClient) -> dict:
+    """A Start -> End graph in the bootstrap organization, created with the test user's key."""
+    return create_flow(
+        user_client,
+        f"e2e-own-org-graph-{unique_suffix()}",
+        start_end_flow_save_payload,
+    ).saved
+
+
+@pytest.fixture(scope="session")
+def viewer_access_token(
     superadmin_client: ApiClient, anonymous_client: ApiClient, viewer_role_id: int, org_id: int
-) -> Iterator[ApiClient]:
-    """A second user with the built-in Viewer role, authenticated with their own API key.
+) -> Secret:
+    """The JWT (a `Secret`) of a second user, with the built-in Viewer role in the bootstrap org only.
 
     Logs in exactly once: login is throttled per IP + email.
     """
@@ -76,12 +87,19 @@ def viewer_client(
     login = protect(
         anonymous_client.post("/api/auth/login/", json={"email": email, "password": password}).json()
     )
-    viewer_with_jwt = ApiClient.with_jwt(BASE_URL, login["access"])
-    del login
+    return login["access"]
+
+
+@pytest.fixture(scope="session")
+def viewer_client(viewer_access_token: Secret, org_id: int) -> Iterator[ApiClient]:
+    """The Viewer of `viewer_access_token`, authenticated with their own API key."""
+    viewer_with_jwt = ApiClient.with_jwt(BASE_URL, viewer_access_token)
     try:
         key = protect(
             viewer_with_jwt.post(
-                "/api/profile/api-keys/", json={"name": "e2e-viewer", "expires_in_days": 1}, expect=201
+                "/api/profile/api-keys/",
+                json={"name": "e2e-viewer", "expires_in_days": 1, "org_id": org_id},
+                expect=201,
             ).json()
         )
     finally:

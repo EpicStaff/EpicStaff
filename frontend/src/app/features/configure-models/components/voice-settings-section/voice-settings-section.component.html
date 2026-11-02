@@ -47,7 +47,7 @@
                                 type="button"
                                 class="channel-card__action"
                                 aria-label="More actions"
-                                title="More"
+                                matTooltip="More"
                                 [cdkMenuTriggerFor]="menu"
                                 [cdkMenuPosition]="menuPositions"
                                 [class.channel-card__action--active]="menuTrigger.isOpen()"
@@ -78,7 +78,8 @@
                                 *appHasPermission="[ResourceCode.Voice, ActionCode.Update]"
                                 type="button"
                                 class="channel-card__action"
-                                title="Edit"
+                                aria-label="Edit"
+                                matTooltip="Edit"
                                 (click)="onEditChannel(channel)"
                             >
                                 <i
@@ -90,7 +91,8 @@
                                 *appHasPermission="[ResourceCode.Voice, ActionCode.Delete]"
                                 type="button"
                                 class="channel-card__action channel-card__action--delete"
-                                title="Delete"
+                                aria-label="Delete"
+                                matTooltip="Delete"
                                 (click)="onDeleteChannel(channel)"
                             >
                                 <i

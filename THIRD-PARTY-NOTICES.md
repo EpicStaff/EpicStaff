@@ -3989,7 +3989,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pydantic_core` | 2.46.4 | MIT | Copyright (c) 2022 Samuel Colvin |
 | `Pygments` | 2.20.0 | BSD-2-Clause | Copyright (c) 2006-2022 by the respective authors (see AUTHORS file). |
 | `Pygments` | 2.21.0 | BSD-2-Clause | Copyright (c) 2006-2022 by the respective authors (see AUTHORS file). |
-| `PyJWT` | 2.13.0 | MIT | Copyright (c) 2015-2022 José Padilla |
+| `PyJWT` | 2.15.1 | MIT | Copyright (c) 2015-2022 José Padilla |
 | `pyngrok` | 7.4.1 | MIT | Copyright (c) 2018-2025 Alex Laird |
 | `pypdfium2` | 5.12.1 | BSD-3-Clause, Apache-2.0, dependency licenses | Copyright (c) pypdfium2-team |
 | `pyperclip` | 1.11.0 | BSD License | Copyright (c) 2014, Al Sweigart |
@@ -29177,7 +29177,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 > No NOTICE file shipped by upstream.
 
-#### PyJWT@2.13.0
+#### PyJWT@2.15.1
 
 - **License:** MIT
 - **Author:** Jose Padilla <hello@jpadilla.com>

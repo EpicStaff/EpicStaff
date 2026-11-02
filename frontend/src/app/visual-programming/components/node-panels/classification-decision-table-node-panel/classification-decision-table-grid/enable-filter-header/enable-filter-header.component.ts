@@ -10,6 +10,7 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
@@ -25,7 +26,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
 
 @Component({
     selector: 'app-enable-filter-header',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     template: `
         <div class="enable-header">
             <span class="enable-label">{{ label }}</span>
@@ -35,7 +36,8 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 class="enable-filter-btn"
                 [class.active]="mode !== 'enabled'"
                 (click)="openMenu()"
-                title="Filter rows"
+                aria-label="Filter rows"
+                matTooltip="Filter rows"
             >
                 <app-svg-icon
                     icon="filter-rows"

@@ -73,7 +73,7 @@
             </app-button>
             <app-button
                 type="primary"
-                [disabled]="loading() || form.invalid"
+                [disabled]="loading() || form.invalid || orgId() === null"
                 (click)="onCreate()"
                 >Create Key
             </app-button>

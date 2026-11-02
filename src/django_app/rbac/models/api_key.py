@@ -9,8 +9,9 @@ class ApiKey(models.Model):
 
     - SYSTEM: singleton seeded from the DJANGO_API_KEY env var; no owner;
       never expires; resolves to SystemServicePrincipal (superadmin) at auth.
-    - USER: created via POST /api/profile/api-keys/; owned; inherits the
-      owner's live RBAC permissions per X-Organization-Id.
+    - USER: created via POST /api/profile/api-keys/; owned and bound to one
+      organization (`org`). It acts only in that org with the owner's live RBAC
+      permissions there; the X-Organization-Id header is not used.
 
     Crypto/format lives in ApiKeyGenerator — this model stores data only.
     """
@@ -30,6 +31,14 @@ class ApiKey(models.Model):
         on_delete=models.CASCADE,
         related_name="api_keys",
     )
+    # Nullable only because SYSTEM keys have no org; the constraint below requires it on USER keys.
+    org = models.ForeignKey(
+        "rbac.Organization",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="api_keys",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
@@ -40,10 +49,11 @@ class ApiKey(models.Model):
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    Q(key_type="user", created_by__isnull=False)
+                    Q(key_type="user", created_by__isnull=False, org__isnull=False)
                     | Q(
                         key_type="system",
                         created_by__isnull=True,
+                        org__isnull=True,
                         expires_at__isnull=True,
                     )
                 ),

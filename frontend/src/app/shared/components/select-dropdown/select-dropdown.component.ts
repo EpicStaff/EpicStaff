@@ -22,6 +22,7 @@ import {
     contentChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Observable } from 'rxjs';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -51,7 +52,7 @@ interface VisibleRow {
 
 @Component({
     selector: 'app-select-dropdown',
-    imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent],
+    imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent, MatTooltipModule],
     templateUrl: './select-dropdown.component.html',
     styleUrls: ['./select-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -106,11 +106,7 @@
                             size="12px"
                         ></app-svg-icon>
 
-                        <span
-                            class="files-dialog__item-name"
-                            [title]="node.name"
-                            >{{ node.name }}</span
-                        >
+                        <span class="files-dialog__item-name">{{ node.name }}</span>
 
                         @if (node.type === 'file' && node.size != null) {
                             <span class="files-dialog__item-size">({{ node.size | fileSize: 'auto' }})</span>
@@ -119,7 +115,8 @@
                         <button
                             class="files-dialog__link-btn"
                             (click)="onDeepLink($event, node)"
-                            title="Open in storage"
+                            aria-label="Open in storage"
+                            matTooltip="Open in storage"
                         >
                             <app-svg-icon
                                 icon="external-link"

@@ -49,10 +49,20 @@ class ApiKeyValidationService:
         else:
             expires_in_days = self.DEFAULT_TTL_DAYS
 
+        org_id = data.get("org_id")
+        if org_id is None:
+            errors.append(
+                {"field": "org_id", "value": org_id, "reason": "Organization is required."}
+            )
+        elif isinstance(org_id, bool) or not isinstance(org_id, int) or org_id < 1:
+            errors.append(
+                {"field": "org_id", "value": org_id, "reason": "Must be a positive integer."}
+            )
+
         if errors:
             raise FormValidationError(errors)
 
-        return {"name": name.strip(), "expires_in_days": expires_in_days}
+        return {"name": name.strip(), "expires_in_days": expires_in_days, "org_id": org_id}
 
     def validate_list_keys_query(self, params) -> dict:
         """`GET /api/admin/api-keys/` filters: ?user=&status=&search=."""

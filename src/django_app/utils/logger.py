@@ -27,6 +27,7 @@ logger.add(
     format="{time} {level} {message}",
     level=level,
     filter=without_bench(truncate_filter),
+    diagnose=False,
 )
 add_bench_sink(sys.stdout, level)
 # logger.add("logs/file.log", rotation="1 MB", compression="zip")

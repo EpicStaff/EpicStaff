@@ -2,8 +2,8 @@ import pytest
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
-from rbac.models import ApiKey, OrganizationUser, Role, RolePermission
-from rbac.models.enums import Permission
+from rbac.models import ApiKey, OrganizationUser
+from rbac.models.enums import Permission, ResourceType
 from rbac.governance.api_keys import ApiKeyManagementService
 from rbac.validation.api_key import ApiKeyValidationService
 from rbac.exceptions import (
@@ -20,17 +20,10 @@ def service():
 
 
 @pytest.fixture
-def make_key(db):
-    def _make(owner, name="k", revoked_at=None, expires_at=None):
-        return ApiKey.objects.create(
-            name=name,
-            key_type=ApiKey.KeyType.USER,
-            prefix="es-000000000",
-            key_hash=f"hash-{owner.id}-{name}",
-            created_by=owner,
-            revoked_at=revoked_at,
-            expires_at=expires_at,
-        )
+def make_key(issue_api_key):
+    def _make(owner, org, name="k", **overrides):
+        _, key = issue_api_key(user=owner, org=org, name=name, **overrides)
+        return key
 
     return _make
 
@@ -44,11 +37,28 @@ def acme_member(db, django_user_model, acme, role_member):
     return user
 
 
+@pytest.fixture
+def member_of_both(db, django_user_model, acme, beta, role_member):
+    user = django_user_model.objects.create_user(
+        email="in-both@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=acme, role=role_member)
+    OrganizationUser.objects.create(user=user, org=beta, role=role_member)
+    return user
+
+
+@pytest.fixture
+def admin_beta(db, django_user_model, beta, role_org_admin):
+    user = django_user_model.objects.create_user(
+        email="admin-beta@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=beta, role=role_org_admin)
+    return user
+
+
 @pytest.mark.django_db
-def test_list_returns_keys_of_members_of_readable_orgs(
-    service, admin_acme, acme_member, make_key
-):
-    make_key(acme_member, name="mine")
+def test_list_returns_keys_of_readable_orgs(service, admin_acme, acme_member, acme, make_key):
+    make_key(acme_member, acme, name="mine")
 
     names = [k.name for k in service.list_keys(actor=admin_acme, org_ids=None)]
 
@@ -56,18 +66,52 @@ def test_list_returns_keys_of_members_of_readable_orgs(
 
 
 @pytest.mark.django_db
-def test_list_excludes_keys_from_unreadable_orgs(
-    service, admin_acme, django_user_model, beta, role_member, make_key
+def test_admin_lists_only_keys_of_their_org(
+    service, admin_acme, member_of_both, acme, beta, make_key
 ):
-    outsider = django_user_model.objects.create_user(
-        email="beta-only-key@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=outsider, org=beta, role=role_member)
-    make_key(outsider, name="hidden")
+    make_key(member_of_both, acme, name="acme-key")
+    make_key(member_of_both, beta, name="beta-key")
 
     names = [k.name for k in service.list_keys(actor=admin_acme, org_ids=None)]
 
-    assert "hidden" not in names
+    assert names == ["acme-key"]
+
+
+@pytest.mark.django_db
+def test_admin_of_two_orgs_lists_each_key_once(
+    service, django_user_model, role_org_admin, acme, beta, member_of_both, make_key
+):
+    admin_both = django_user_model.objects.create_user(
+        email="admin-both@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=admin_both, org=acme, role=role_org_admin)
+    OrganizationUser.objects.create(user=admin_both, org=beta, role=role_org_admin)
+    make_key(member_of_both, acme, name="acme-key")
+    make_key(member_of_both, beta, name="beta-key")
+
+    rows = list(service.list_keys(actor=admin_both, org_ids=None))
+
+    assert sorted((k.name, k.org_id) for k in rows) == [
+        ("acme-key", acme.id),
+        ("beta-key", beta.id),
+    ]
+
+
+@pytest.mark.django_db
+def test_explicit_org_filter_narrows_to_that_org(
+    service, django_user_model, role_org_admin, acme, beta, member_of_both, make_key
+):
+    admin_both = django_user_model.objects.create_user(
+        email="admin-both-filter@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=admin_both, org=acme, role=role_org_admin)
+    OrganizationUser.objects.create(user=admin_both, org=beta, role=role_org_admin)
+    make_key(member_of_both, acme, name="acme-key")
+    make_key(member_of_both, beta, name="beta-key")
+
+    names = [k.name for k in service.list_keys(actor=admin_both, org_ids=[beta.id])]
+
+    assert names == ["beta-key"]
 
 
 @pytest.mark.django_db
@@ -75,7 +119,7 @@ def test_list_excludes_superadmin_owned_keys_for_delegated_callers(
     service, admin_acme, superadmin, acme, role_org_admin, make_key
 ):
     OrganizationUser.objects.create(user=superadmin, org=acme, role=role_org_admin)
-    make_key(superadmin, name="platform")
+    make_key(superadmin, acme, name="platform")
 
     names = [k.name for k in service.list_keys(actor=admin_acme, org_ids=None)]
 
@@ -84,12 +128,12 @@ def test_list_excludes_superadmin_owned_keys_for_delegated_callers(
 
 @pytest.mark.django_db
 def test_superadmin_caller_sees_superadmin_owned_keys(
-    service, superadmin, django_user_model, make_key
+    service, superadmin, django_user_model, acme, make_key
 ):
     other = django_user_model.objects.create_user(
         email="other-sa@example.com", password="StrongPass123!", is_superadmin=True
     )
-    make_key(other, name="peer-platform")
+    make_key(other, acme, name="peer-platform")
 
     names = [k.name for k in service.list_keys(actor=superadmin, org_ids=None)]
 
@@ -97,32 +141,11 @@ def test_superadmin_caller_sees_superadmin_owned_keys(
 
 
 @pytest.mark.django_db
-def test_owner_in_two_readable_orgs_yields_one_row(
-    service, django_user_model, role_org_admin, role_member, acme, beta, make_key
-):
-    admin_both = django_user_model.objects.create_user(
-        email="admin-both@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=admin_both, org=acme, role=role_org_admin)
-    OrganizationUser.objects.create(user=admin_both, org=beta, role=role_org_admin)
-    owner = django_user_model.objects.create_user(
-        email="in-both@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=owner, org=acme, role=role_member)
-    OrganizationUser.objects.create(user=owner, org=beta, role=role_member)
-    make_key(owner, name="once")
-
-    rows = list(service.list_keys(actor=admin_both, org_ids=None))
-
-    assert [k.name for k in rows] == ["once"]
-
-
-@pytest.mark.django_db
-def test_list_excludes_system_keys(service, admin_acme, acme_member, make_key):
+def test_list_excludes_system_keys(service, admin_acme, acme_member, acme, make_key):
     ApiKey.objects.create(
         name="system", key_type=ApiKey.KeyType.SYSTEM, prefix="es-sys", key_hash="sys"
     )
-    make_key(acme_member, name="user-key")
+    make_key(acme_member, acme, name="user-key")
 
     names = [k.name for k in service.list_keys(actor=admin_acme, org_ids=None)]
 
@@ -131,7 +154,7 @@ def test_list_excludes_system_keys(service, admin_acme, acme_member, make_key):
 
 @pytest.mark.django_db
 def test_superadmin_list_still_excludes_system_keys(
-    service, superadmin, django_user_model, make_key
+    service, superadmin, acme_member, acme, make_key
 ):
     ApiKey.objects.create(
         name="system",
@@ -139,10 +162,7 @@ def test_superadmin_list_still_excludes_system_keys(
         prefix="es-sys",
         key_hash="sys-superadmin-path",
     )
-    owner = django_user_model.objects.create_user(
-        email="sa-visible@example.com", password="StrongPass123!"
-    )
-    make_key(owner, name="user-key-sa")
+    make_key(acme_member, acme, name="user-key-sa")
 
     names = [k.name for k in service.list_keys(actor=superadmin, org_ids=None)]
 
@@ -151,24 +171,10 @@ def test_superadmin_list_still_excludes_system_keys(
 
 
 @pytest.mark.django_db
-def test_orphan_owner_keys_are_invisible_to_delegated_callers(
-    service, admin_acme, django_user_model, make_key
-):
-    orphan = django_user_model.objects.create_user(
-        email="orphan@example.com", password="StrongPass123!"
-    )
-    make_key(orphan, name="orphan-key")
-
-    names = [k.name for k in service.list_keys(actor=admin_acme, org_ids=None)]
-
-    assert "orphan-key" not in names
-
-
-@pytest.mark.django_db
 def test_revoke_sets_revoked_at_and_is_idempotent(
-    service, admin_acme, acme_member, make_key
+    service, admin_acme, acme_member, acme, make_key
 ):
-    key = make_key(acme_member, name="target")
+    key = make_key(acme_member, acme, name="target")
 
     first = service.revoke_key(actor=admin_acme, key_id=key.pk)
     stamp = first.revoked_at
@@ -179,8 +185,8 @@ def test_revoke_sets_revoked_at_and_is_idempotent(
 
 
 @pytest.mark.django_db
-def test_delete_removes_the_row(service, admin_acme, acme_member, make_key):
-    key = make_key(acme_member, name="doomed")
+def test_delete_removes_the_row(service, admin_acme, acme_member, acme, make_key):
+    key = make_key(acme_member, acme, name="doomed")
 
     service.delete_key(actor=admin_acme, key_id=key.pk)
 
@@ -188,67 +194,73 @@ def test_delete_removes_the_row(service, admin_acme, acme_member, make_key):
 
 
 @pytest.mark.django_db
-def test_unreachable_key_is_not_found(
-    service, admin_acme, django_user_model, beta, role_member, make_key
+@pytest.mark.parametrize("operation", ["revoke_key", "delete_key"])
+def test_admin_of_another_org_cannot_revoke_after_adding_the_owner(
+    service, admin_beta, acme_member, acme, beta, role_member, make_key, operation
 ):
-    outsider = django_user_model.objects.create_user(
-        email="unreachable@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=outsider, org=beta, role=role_member)
-    key = make_key(outsider, name="far")
+    key = make_key(acme_member, acme, name="acme-integration")
+    OrganizationUser.objects.create(user=acme_member, org=beta, role=role_member)
+
+    with pytest.raises(ApiKeyNotFoundError):
+        getattr(service, operation)(actor=admin_beta, key_id=key.pk)
+
+    key.refresh_from_db()
+    assert key.revoked_at is None
+
+
+@pytest.mark.django_db
+def test_key_in_an_unreachable_org_is_not_found(
+    service, admin_acme, member_of_both, beta, make_key
+):
+    key = make_key(member_of_both, beta, name="far")
 
     with pytest.raises(ApiKeyNotFoundError):
         service.revoke_key(actor=admin_acme, key_id=key.pk)
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("operation", ["revoke_key", "delete_key"])
 def test_superadmin_owned_key_is_not_found_for_delegated_caller(
-    service, admin_acme, superadmin, acme, role_org_admin, make_key
+    service, admin_acme, superadmin, acme, role_org_admin, make_key, operation
 ):
     OrganizationUser.objects.create(user=superadmin, org=acme, role=role_org_admin)
-    key = make_key(superadmin, name="platform")
+    key = make_key(superadmin, acme, name="platform")
 
     with pytest.raises(ApiKeyNotFoundError):
-        service.revoke_key(actor=admin_acme, key_id=key.pk)
+        getattr(service, operation)(actor=admin_acme, key_id=key.pk)
 
 
 @pytest.mark.django_db
 def test_superadmin_caller_may_revoke_a_superadmin_owned_key(
-    service, superadmin, django_user_model, make_key
+    service, superadmin, django_user_model, acme, make_key
 ):
     other = django_user_model.objects.create_user(
         email="peer-sa@example.com", password="StrongPass123!", is_superadmin=True
     )
-    key = make_key(other, name="peer")
+    key = make_key(other, acme, name="peer")
 
     assert service.revoke_key(actor=superadmin, key_id=key.pk).revoked_at is not None
 
 
 @pytest.mark.django_db
-def test_member_without_the_bit_is_denied(
-    service, django_user_model, acme, acme_member, make_key
+def test_reader_without_delete_in_key_org_gets_403(
+    service, custom_role_user, acme, acme_member, make_key
 ):
-    """Built-in Member holds no `api_keys` bits at all (migration 0242), so a
-    plain Member can't even see the key -- that's `ApiKeyNotFoundError`,
-    covered by `test_unreachable_key_is_not_found`. This test's own bit
-    (READ makes the key visible, missing DELETE is the honest 403) needs a
-    custom role, mirroring `test_read_without_verb_is_denied` in
-    `test_cross_org_authorize_any_org.py`.
-    """
-    key = make_key(acme_member, name="guarded")
-    reader_role = Role.objects.create(
-        name="ApiKeyReaderOnly", org=acme, is_built_in=False
+    key = make_key(acme_member, acme, name="guarded")
+    reader = custom_role_user(
+        acme, "api-key-reader@example.com", {ResourceType.API_KEYS: Permission.READ}
     )
-    RolePermission.objects.create(
-        role=reader_role, resource_type="api_keys", permissions=int(Permission.READ)
-    )
-    reader = django_user_model.objects.create_user(
-        email="api-key-reader@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=reader, org=acme, role=reader_role)
 
     with pytest.raises(PermissionDenied):
         service.revoke_key(actor=reader, key_id=key.pk)
+
+
+@pytest.mark.django_db
+def test_member_without_api_keys_bits_gets_404(service, member_only, acme_member, acme, make_key):
+    key = make_key(acme_member, acme, name="hidden")
+
+    with pytest.raises(ApiKeyNotFoundError):
+        service.revoke_key(actor=member_only, key_id=key.pk)
 
 
 @pytest.mark.django_db
@@ -262,25 +274,9 @@ def test_system_key_id_is_not_found(service, admin_acme):
 
 
 @pytest.mark.django_db
-def test_attach_visible_orgs_limits_to_readable_orgs(
-    service, admin_acme, django_user_model, acme, beta, role_member, make_key
-):
-    owner = django_user_model.objects.create_user(
-        email="two-orgs@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=owner, org=acme, role=role_member)
-    OrganizationUser.objects.create(user=owner, org=beta, role=role_member)
-    key = make_key(owner, name="spanning")
-
-    service.attach_visible_orgs(keys=[key], actor=admin_acme)
-
-    assert key._visible_org_ids == [acme.id]
-
-
-@pytest.mark.django_db
-def test_status_filter_selects_revoked(service, admin_acme, acme_member, make_key):
-    make_key(acme_member, name="live")
-    make_key(acme_member, name="dead", revoked_at=timezone.now())
+def test_status_filter_selects_revoked(service, admin_acme, acme_member, acme, make_key):
+    make_key(acme_member, acme, name="live")
+    make_key(acme_member, acme, name="dead", revoked_at=timezone.now())
 
     names = [
         k.name

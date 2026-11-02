@@ -437,6 +437,21 @@ def test_audit_endpoint_superadmin_can_list(
 
 
 @pytest.mark.django_db
+def test_audit_endpoint_refuses_a_superadmin_api_key(
+    graph, flow_assistant, conversation_a, superadmin_user, issue_api_key
+):
+    """Auditing every org is a platform action; a key acts only in its own org."""
+    raw_key, _ = issue_api_key(user=superadmin_user)
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw_key)
+
+    response = client.get(reverse("flow-assistant-audit-conversations"))
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
+    assert "results" not in response.data
+
+
+@pytest.mark.django_db
 def test_audit_endpoint_non_superadmin_gets_403(
     graph, flow_assistant, conversation_a, auth_client_a
 ):
