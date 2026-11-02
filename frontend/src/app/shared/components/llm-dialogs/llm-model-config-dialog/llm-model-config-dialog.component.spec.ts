@@ -3,7 +3,7 @@ import { HttpErrorResponse, HttpRequest } from '@angular/common/http';
 import { Component, forwardRef, input, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ControlValueAccessor, FormGroup, NG_VALUE_ACCESSOR } from '@angular/forms';
-import { GetLlmConfigRequest, LLMModel, ReasoningEffort } from '@shared/models';
+import { GetLlmConfigRequest, LlmConfigTimeoutLimits, LLMModel, ReasoningEffort } from '@shared/models';
 import {
     LlmConfigStorageService,
     LLMLibraryService,
@@ -300,7 +300,8 @@ async function render(
     config?: GetLlmConfigRequest,
     getModelById: (id: number) => Observable<LLMModel> = getCachedModelById,
     // An in-flight model lookup keeps the fixture unstable, so a test holding one open must not wait for it.
-    waitForLookup = true
+    waitForLookup = true,
+    timeoutLimits: Observable<LlmConfigTimeoutLimits> = EMPTY
 ): Promise<Rendered> {
     const createConfig = vi.fn(() => EMPTY);
     const updateConfig = vi.fn(() => EMPTY);
@@ -317,7 +318,7 @@ async function render(
                     getConfigById: () => (config ? of(config) : EMPTY),
                     createConfig,
                     updateConfig,
-                    getTimeoutLimits: () => EMPTY,
+                    getTimeoutLimits: () => timeoutLimits,
                 } as unknown as LlmConfigStorageService,
             },
             {
@@ -609,3 +610,120 @@ function saveButton(fixture: ComponentFixture<LlmModelConfigDialogComponent>): H
     );
     return buttons[buttons.length - 1];
 }
+
+const TIMEOUT_LIMITS: LlmConfigTimeoutLimits = { min_seconds: 1, max_seconds: 3600 };
+
+function timeoutField(fixture: ComponentFixture<LlmModelConfigDialogComponent>): HTMLElement {
+    return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('app-input-number')).find(
+        (field) => field.textContent!.includes('Timeout (seconds)')
+    )!;
+}
+
+/** Types into the Timeout field as a user would; an empty string clears it. */
+function typeTimeout(fixture: ComponentFixture<LlmModelConfigDialogComponent>, value: string): void {
+    const timeoutInput = timeoutField(fixture).querySelector('input')!;
+    timeoutInput.value = value;
+    timeoutInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+}
+
+function timeoutMarkedInvalid(fixture: ComponentFixture<LlmModelConfigDialogComponent>): boolean {
+    return timeoutField(fixture).querySelector('input')!.getAttribute('aria-invalid') === 'true';
+}
+
+function timeoutErrorText(fixture: ComponentFixture<LlmModelConfigDialogComponent>): string {
+    return timeoutField(fixture).parentElement!.querySelector('app-validation-errors')!.textContent!.trim();
+}
+
+describe('LlmModelConfigDialogComponent timeout limits', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    async function renderWithLimits(timeoutLimits: Observable<LlmConfigTimeoutLimits>): Promise<Rendered> {
+        const rendered = await render(undefined, getCachedModelById, true, timeoutLimits);
+        await pickModel(rendered.fixture, PLAIN_MODEL_ID);
+        return rendered;
+    }
+
+    function save(fixture: ComponentFixture<LlmModelConfigDialogComponent>): void {
+        fixture.componentInstance.onSave();
+        fixture.detectChanges();
+    }
+
+    it.each([
+        { typed: '3601', error: 'Max value is 3600.' },
+        { typed: '0.5', error: 'Min value is 1.' },
+    ])('refuses a timeout of $typed seconds outside the server limits', async ({ typed, error }) => {
+        const { fixture, createConfig } = await renderWithLimits(of(TIMEOUT_LIMITS));
+
+        typeTimeout(fixture, typed);
+        save(fixture);
+
+        expect(createConfig).not.toHaveBeenCalled();
+        expect(saveButton(fixture).disabled).toBe(true);
+        expect(timeoutMarkedInvalid(fixture)).toBe(true);
+        expect(timeoutErrorText(fixture)).toBe(error);
+    });
+
+    it.each([
+        { typed: '3600', seconds: 3600 },
+        { typed: '1', seconds: 1 },
+    ])('saves a timeout of $typed seconds on a server limit', async ({ typed, seconds }) => {
+        const { fixture, createConfig } = await renderWithLimits(of(TIMEOUT_LIMITS));
+
+        typeTimeout(fixture, typed);
+        save(fixture);
+
+        expect(timeoutMarkedInvalid(fixture)).toBe(false);
+        expect(createConfig).toHaveBeenCalledWith(expect.objectContaining({ timeout: seconds }));
+    });
+
+    it('saves an empty timeout, as before the limits came from the server', async () => {
+        const { fixture, createConfig } = await renderWithLimits(of(TIMEOUT_LIMITS));
+
+        typeTimeout(fixture, '');
+        save(fixture);
+
+        expect(createConfig).toHaveBeenCalledWith(expect.objectContaining({ timeout: null }));
+    });
+
+    it.each([
+        { case: 'before the server limits arrive', timeoutLimits: new Subject<LlmConfigTimeoutLimits>() },
+        { case: 'when the server limits fail to load', timeoutLimits: throwError(() => new Error('offline')) },
+    ])('leaves the maximum to the backend $case', async ({ timeoutLimits }) => {
+        const { fixture, createConfig } = await renderWithLimits(timeoutLimits);
+
+        typeTimeout(fixture, '100000');
+        save(fixture);
+
+        expect(timeoutMarkedInvalid(fixture)).toBe(false);
+        expect(createConfig).toHaveBeenCalledWith(expect.objectContaining({ timeout: 100000 }));
+    });
+
+    it('still refuses a timeout under 1 second before the server limits arrive', async () => {
+        const { fixture, createConfig } = await renderWithLimits(new Subject<LlmConfigTimeoutLimits>());
+
+        typeTimeout(fixture, '0.5');
+        save(fixture);
+
+        expect(createConfig).not.toHaveBeenCalled();
+        expect(timeoutErrorText(fixture)).toBe('Min value is 1.');
+    });
+
+    it('refuses a stored timeout above the server maximum once the limits arrive', async () => {
+        const timeoutLimits = new Subject<LlmConfigTimeoutLimits>();
+        const { fixture, updateConfig } = await render(
+            { ...storedConfig(PLAIN_MODEL_ID, null), timeout: 5000 },
+            getCachedModelById,
+            true,
+            timeoutLimits
+        );
+
+        timeoutLimits.next(TIMEOUT_LIMITS);
+        save(fixture);
+
+        expect(updateConfig).not.toHaveBeenCalled();
+        expect(saveButton(fixture).disabled).toBe(true);
+        expect(timeoutErrorText(fixture)).toBe('Max value is 3600.');
+    });
+});
