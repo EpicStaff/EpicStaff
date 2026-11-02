@@ -158,7 +158,7 @@ class RoleManagementService(CrossOrgResourceService):
 
     # ---- read authorization ----
 
-    def get_role_for_read(self, actor, role_id, scopes=None) -> Role:
+    def get_role_for_read(self, actor, role_id, scopes=None, org_ids=None) -> Role:
         """Fetch a role the actor is allowed to READ, with display data
         attached for serialization. Built-ins are visible to any principal
         with ROLES.READ anywhere; a custom role in an org the actor cannot
@@ -171,10 +171,16 @@ class RoleManagementService(CrossOrgResourceService):
         `None`: only built-in counting ever consults that argument, and no
         built-in can reach this branch, but an empty selection fails closed
         — counting nothing rather than everything — if that assumption is
-        ever wrong."""
+        ever wrong.
+
+        `org_ids` narrows the read like a list's `?org_ids=`: a custom role in
+        another org raises RoleNotFoundError, and a built-in's counts cover only
+        those orgs."""
         role, _ = self._get_role_with_read_access(actor=actor, role_id=role_id)
+        if org_ids is not None and not role.is_built_in and role.org_id not in org_ids:
+            raise RoleNotFoundError()
         scope_org_ids = (
-            self.resolve_scope_org_ids(actor, org_ids=None, scopes=scopes)
+            self.resolve_scope_org_ids(actor, org_ids=org_ids, scopes=scopes)
             if role.is_built_in
             else set()
         )

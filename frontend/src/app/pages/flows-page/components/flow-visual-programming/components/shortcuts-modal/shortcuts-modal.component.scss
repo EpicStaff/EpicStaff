@@ -248,14 +248,9 @@
         opacity 0.2s ease;
 }
 
-.shortcuts__close-btn:hover {
+.shortcuts__close-btn:is(:hover, :focus-visible) {
     background: var(--white-alpha-6);
     opacity: 1;
-}
-
-.shortcuts__close-btn:focus,
-.shortcuts__close-btn:focus-visible {
-    outline: none;
 }
 
 .shortcuts__close-icon {

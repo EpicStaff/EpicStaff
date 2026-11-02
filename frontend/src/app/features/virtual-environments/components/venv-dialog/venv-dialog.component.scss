@@ -202,7 +202,7 @@
         cursor: pointer;
         vertical-align: middle;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background-color: var(--color-ghost-btn-hover);
         }
 
@@ -218,7 +218,7 @@
         &--remove {
             color: var(--color-ks-transparent-text-60);
 
-            &:hover:not(:disabled) {
+            &:is(:hover, :focus-visible):not(:disabled) {
                 color: var(--color-text-primary);
             }
         }
@@ -234,7 +234,7 @@
         text-align: center;
         cursor: pointer;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--accent-color);
             border-color: var(--accent-color);
         }

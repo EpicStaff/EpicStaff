@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
@@ -88,6 +88,9 @@ const STATUS_ITEMS: SelectItem[] = [
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UsersTabComponent {
+    // Takes the focus when an action removes or swaps the row button that had it.
+    private readonly mainAction = viewChild<ButtonComponent>('mainAction');
+
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
     private adminUserService = inject(AdminUserService);
@@ -270,6 +273,7 @@ export class UsersTabComponent {
             .subscribe((result) => {
                 if (result === null) return;
                 this.toast.success('Account deactivated.');
+                this.focusMainAction();
                 this.reloadTrigger.update((v) => v + 1);
             });
     }
@@ -300,6 +304,7 @@ export class UsersTabComponent {
             .subscribe((result) => {
                 if (result === null) return;
                 this.toast.success('Account reactivated.');
+                this.focusMainAction();
                 this.reloadTrigger.update((v) => v + 1);
             });
     }
@@ -324,7 +329,10 @@ export class UsersTabComponent {
                 filter((deleted) => deleted === true),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe(() => this.reloadTrigger.update((v) => v + 1));
+            .subscribe(() => {
+                this.reloadTrigger.update((v) => v + 1);
+                this.focusMainAction();
+            });
     }
 
     /** Delegated admin: confirm + DELETE every membership in orgs where I hold `users:delete`. */
@@ -369,6 +377,7 @@ export class UsersTabComponent {
                     this.toast.error(`Removed from some orgs; failed on: ${failedOrgs}.`);
                 }
                 this.reloadTrigger.update((v) => v + 1);
+                this.focusMainAction();
             });
     }
 
@@ -411,6 +420,10 @@ export class UsersTabComponent {
                 this.reloadTrigger.update((v) => v + 1);
             }
         });
+    }
+
+    private focusMainAction(): void {
+        this.mainAction()?.focus();
     }
 
     private loadFromAdminUsers(orgIds: number[], searchTerm: string): Observable<AggregatedUser[]> {

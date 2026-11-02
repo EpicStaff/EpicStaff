@@ -16,8 +16,15 @@
     user-select: none;
     position: relative;
 
-    &:hover {
+    &:is(:hover, :has(> .row__name:focus-visible)) {
         background-color: var(--color-ghost-btn-hover);
+    }
+
+    // The name button does the row's action, so the row shows its keyboard focus;
+    // drawn inside, as the rows sit tight in a clipped section.
+    &:has(> .row__name:focus-visible) {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
     }
 
     &--selected {
@@ -101,13 +108,29 @@
         }
     }
 
+    // The label is a button; it looks like the text it replaced.
+    &__name {
+        padding: 0;
+        border: none;
+        background: none;
+        font-family: inherit;
+        line-height: inherit;
+        text-align: left;
+        cursor: inherit;
+
+        // The row draws it.
+        &:focus-visible {
+            outline: none;
+        }
+    }
+
     // 2.25rem clears the single 28px .row__hover-btn plus its 0.5rem right offset.
-    &--surface:hover &__label,
-    &--agent:hover &__label {
+    &--surface:is(:hover, :focus-within) &__label,
+    &--agent:is(:hover, :focus-within) &__label {
         padding-right: 2.25rem;
     }
 
-    &--surface:hover &__shared {
+    &--surface:is(:hover, :focus-within) &__shared {
         margin-right: 2.25rem;
     }
 
@@ -135,15 +158,29 @@
         transform: translateY(-50%);
         flex-shrink: 0;
         z-index: 2;
-        visibility: hidden;
+        // Transparent, not hidden: the ⋮ stays in the Tab order and can take back the focus a menu dialog returns.
+        opacity: 0;
 
         &--visible {
-            visibility: visible;
+            opacity: 1;
         }
+    }
+
+    &:focus-within &__hover-actions {
+        opacity: 1;
     }
 
     &__hover-btn {
         @include row-more-menu.trigger-button;
+
+        &:focus-visible {
+            color: var(--color-text-primary);
+            outline-offset: -2px;
+        }
+    }
+
+    &__chevron-btn:focus-visible {
+        outline-offset: 0;
     }
 }
 

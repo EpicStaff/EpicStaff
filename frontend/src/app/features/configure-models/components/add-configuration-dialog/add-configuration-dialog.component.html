@@ -17,6 +17,7 @@
         <button
             class="tab"
             [class.active]="activeTab() === 'llm'"
+            [attr.aria-pressed]="activeTab() === 'llm'"
             (click)="setActiveTab('llm')"
             type="button"
         >
@@ -26,6 +27,7 @@
         <button
             class="tab"
             [class.active]="activeTab() === 'realtime'"
+            [attr.aria-pressed]="activeTab() === 'realtime'"
             (click)="setActiveTab('realtime')"
             type="button"
         >
@@ -35,6 +37,7 @@
         <button
             class="tab"
             [class.active]="activeTab() === 'embedding'"
+            [attr.aria-pressed]="activeTab() === 'embedding'"
             (click)="setActiveTab('embedding')"
             type="button"
         >

@@ -5,6 +5,7 @@
         [class.detail-header__toggle--active]="showSidebar()"
         aria-label="Toggle Branches"
         matTooltip="Toggle Branches"
+        [attr.aria-pressed]="showSidebar()"
         (click)="toggleSidebar.emit()"
     >
         <app-svg-icon

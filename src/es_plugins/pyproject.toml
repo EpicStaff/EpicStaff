@@ -29,7 +29,7 @@ transitive-pins = [
     "cryptography==50.0.1",
     "idna==3.18",
     "pycparser==3.0",
-    "pyjwt==2.13.0",
+    "pyjwt==2.15.1",
 ]
 
 [tool.uv]

@@ -8,6 +8,8 @@
         <button
             class="close"
             type="button"
+            aria-label="Close"
+            matTooltip="Close"
             (click)="onCancel()"
         >
             <app-svg-icon
@@ -33,9 +35,12 @@
                     position="right"
                 />
             </label>
+            <!-- The dialog opens with the focus here, its first field. -->
             <app-custom-input
+                cdkFocusInitial
                 [id]="'profile-edit-full-name'"
                 placeholder="Enter full name..."
+                ariaLabel="Full Name"
                 formControlName="full_name"
             />
             <app-validation-errors [control]="form.get('full_name')!" />
@@ -56,6 +61,7 @@
             <app-custom-input
                 [id]="'profile-edit-email'"
                 placeholder="Enter email..."
+                ariaLabel="Email"
                 formControlName="email"
             />
         </div>
@@ -85,7 +91,7 @@
         >
         <app-button
             type="primary"
-            [disabled]="loading()"
+            [ariaDisabled]="loading()"
             (click)="onSave()"
             >Save Changes</app-button
         >

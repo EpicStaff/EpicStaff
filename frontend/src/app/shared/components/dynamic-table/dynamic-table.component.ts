@@ -14,6 +14,7 @@ import {
 import { FormControl, FormsModule, ReactiveFormsModule, ValidatorFn } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { CheckboxComponent } from '../checkbox/checkbox.component';
 import { TableColumnDef, TableRow } from './dynamic-table.models';
@@ -27,6 +28,7 @@ import { TableColumnDef, TableRow } from './dynamic-table.models';
         AppSvgIconComponent,
         CheckboxComponent,
         MatTooltipModule,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './dynamic-table.component.html',
     styleUrls: ['./dynamic-table.component.scss'],

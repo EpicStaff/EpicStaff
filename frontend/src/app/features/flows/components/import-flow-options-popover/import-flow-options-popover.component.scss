@@ -142,6 +142,11 @@
         color: var(--white);
         border-color: transparent;
     }
+
+    // Drawn inside: the slider sits right under the button.
+    &:focus-visible {
+        outline-offset: -2px;
+    }
 }
 
 .popover__footer {
@@ -161,7 +166,7 @@
     border-radius: 4px;
     transition: color 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--accent-color);
     }
 }

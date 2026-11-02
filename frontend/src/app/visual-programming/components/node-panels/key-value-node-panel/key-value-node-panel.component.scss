@@ -260,7 +260,7 @@ $field-height: 40px;
     color: var(--color-text-secondary);
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         color: var(--color-status-error);
     }
 

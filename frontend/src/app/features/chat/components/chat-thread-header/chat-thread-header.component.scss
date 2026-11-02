@@ -77,7 +77,7 @@ $usage-numbers-min-width: 480px;
 
         // Focusable for its tooltip (the full conversation id).
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
+            outline: 2px solid var(--accent-color);
             outline-offset: 2px;
         }
     }
@@ -103,7 +103,7 @@ $usage-numbers-min-width: 480px;
     }
 
     .mode-badge:focus-visible {
-        outline: 1px solid var(--accent-color);
+        outline: 2px solid var(--accent-color);
         outline-offset: 2px;
     }
 }
@@ -161,8 +161,8 @@ $usage-numbers-min-width: 480px;
     cursor: pointer;
 
     &:focus-visible {
-        outline: 1px solid var(--accent-color);
-        outline-offset: -1px;
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
     }
 }
 

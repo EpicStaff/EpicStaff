@@ -7,9 +7,9 @@
         #trigger="cdkOverlayOrigin"
         aria-haspopup="listbox"
         [attr.aria-expanded]="isOpen()"
-        (click)="toggle($event)"
         aria-label="Select color"
         matTooltip="Select color"
+        (click)="toggle($event)"
     >
         <span
             class="color-dot"

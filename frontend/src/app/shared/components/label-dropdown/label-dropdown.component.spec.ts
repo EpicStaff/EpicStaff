@@ -19,7 +19,7 @@ function label(id: number, name: string): LabelTreeNode {
     };
 }
 
-// The multi-mode footer buttons collapse on overflow through ResizeObserver, which jsdom lacks.
+// The trigger's overflow tooltip and the multi-mode footer buttons use ResizeObserver, which jsdom lacks.
 class ResizeObserverStub {
     observe(): void {}
     unobserve(): void {}
@@ -81,6 +81,9 @@ function click(panel: HTMLElement, selector: string, text: string): void {
 }
 
 describe('LabelDropdownComponent', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
     describe('single mode', () => {
         it('emits exactly the clicked label and closes', () => {
             const { fixture, panel, emitted } = open('single', [SUPPORT.id]);
@@ -232,9 +235,6 @@ describe('LabelDropdownComponent', () => {
     });
 
     describe('multi mode', () => {
-        beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
-        afterEach(() => vi.unstubAllGlobals());
-
         it('emits nothing while labels are toggled, then every checked label on Save', () => {
             const { fixture, panel, emitted } = open('multi', [SALES.id]);
 

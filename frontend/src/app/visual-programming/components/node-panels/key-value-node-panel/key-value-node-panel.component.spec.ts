@@ -243,6 +243,17 @@ function flowOf(node: KeyValueNodeModel): FlowModel {
 }
 
 describe('KeyValueNodePanelComponent', () => {
+    // jsdom has no ResizeObserver; the table name's tooltip, shown only for a cut-short name, needs one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
     afterEach(() => vi.useRealTimers());
 
     it('does not turn an unchanged read node into an update', () => {
@@ -780,6 +791,7 @@ describe('KeyValueNodePanelComponent', () => {
             pressCtrlS();
             expect(saved).toHaveBeenCalledTimes(1);
             expect((saved.mock.calls[0][0] as NodeModel).id).toBe(panel.node().id);
+            vi.unstubAllGlobals();
         });
 
         it('still holds back an invalid node name', () => {
