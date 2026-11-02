@@ -18,6 +18,10 @@ export interface PickerItem {
     displayLabel: string;
     depth: number;
     fullPath: string;
+    /** Formatted runtime value for display on the right side of the suggestion row. */
+    previewValue?: string;
+    /** True when this item is an array index — displayed as [0] instead of .key. */
+    isArrayItem?: boolean;
     /** Listed to keep the variables under it in place, but not offered: another row uses it. */
     disabled?: boolean;
 }
@@ -55,8 +59,12 @@ let nextPickerId = 0;
                             (mousemove)="highlight($index)"
                             (click)="pathSelected.emit(item.fullPath)"
                         >
-                            <span class="vpf-tag">{{ item.tag }}</span>
-                            <span class="vpf-label">{{ item.displayLabel }}</span>
+                            <span class="vpf-key">{{
+                                item.isArrayItem ? '[' + item.displayLabel + ']' : '.' + item.displayLabel
+                            }}</span>
+                            @if (item.previewValue !== undefined) {
+                                <span class="vpf-value">{{ item.previewValue }}</span>
+                            }
                             @if (item.disabled) {
                                 <span class="vpf-note">in use</span>
                             }
@@ -86,7 +94,6 @@ let nextPickerId = 0;
             .vpf-list {
                 overflow-y: auto;
                 flex: 1;
-                padding: 4px;
             }
 
             .vpf-empty {
@@ -102,7 +109,7 @@ let nextPickerId = 0;
                 gap: 6px;
                 width: 100%;
                 text-align: left;
-                padding: 5px 8px;
+                padding: 8px;
                 background: transparent;
                 border: none;
                 border-radius: 4px;
@@ -115,37 +122,39 @@ let nextPickerId = 0;
                     background: var(--color-ghost-btn-active);
                 }
 
+                &:not(:last-child) {
+                    border-bottom: 1px solid var(--color-divider-subtle);
+                }
+
                 &:disabled {
                     cursor: default;
                     opacity: 0.5;
                 }
             }
 
-            .vpf-tag {
-                flex-shrink: 0;
-                font-size: 0.68rem;
-                font-weight: 500;
-                padding: 1px 5px;
-                border-radius: 4px;
-                background: rgba(104, 95, 255, 0.25);
-                color: rgba(170, 160, 255, 0.9);
-                letter-spacing: 0.02em;
-                text-transform: lowercase;
-            }
-
-            .vpf-label {
+            .vpf-key {
                 flex: 1;
                 min-width: 0;
-                font-size: 0.8rem;
-                font-family: monospace;
+                font-size: 0.875rem;
                 color: var(--color-text-primary);
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
             }
 
-            .vpf-item--highlighted .vpf-label {
+            .vpf-item--highlighted .vpf-key {
                 color: var(--color-text-primary-hover);
+            }
+
+            .vpf-value {
+                flex-shrink: 0;
+                max-width: 45%;
+                font-size: 0.75rem;
+                font-family: monospace;
+                color: var(--text-secondary-60);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }
 
             .vpf-note {

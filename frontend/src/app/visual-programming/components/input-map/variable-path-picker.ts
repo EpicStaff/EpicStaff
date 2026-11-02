@@ -26,6 +26,13 @@ export interface VariablePathPickerRows {
     pathOf?(value: string, input: HTMLInputElement): string;
 }
 
+function formatPreviewValue(value: unknown): string {
+    if (Array.isArray(value)) return 'List';
+    if (isRecord(value)) return 'Object';
+    if (typeof value === 'string') return `"${value}"`;
+    return String(value);
+}
+
 /**
  * Every path under `variables` in the start node's initial state, each parent before its children,
  * labelled relative to `variables.`.
@@ -39,7 +46,16 @@ export function buildVariablePickerItems(state: Record<string, unknown>): Picker
             const fullPath = isArray ? `${pathPrefix}[${key}]` : `${pathPrefix}.${key}`;
             const child = value[key];
             const tag = isRecord(child) ? 'obj' : 'var';
-            items.push({ tag, label: fullPath.slice(VARIABLES_PREFIX.length), displayLabel: key, depth, fullPath });
+            const previewValue = formatPreviewValue(child);
+            items.push({
+                tag,
+                label: fullPath.slice(VARIABLES_PREFIX.length),
+                displayLabel: key,
+                depth,
+                fullPath,
+                previewValue,
+                isArrayItem: isArray,
+            });
             if (isRecord(child)) collect(child, fullPath, depth + 1);
         }
     };
