@@ -29,3 +29,20 @@ transitive-pins = [
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+addopts = "--disable-warnings -m \"not slow\""
+log_cli = true
+log_level = "WARNING"
+markers = [
+    "slow: writes 1000+ real objects against a live S3 backend; excluded from the default run",
+]
