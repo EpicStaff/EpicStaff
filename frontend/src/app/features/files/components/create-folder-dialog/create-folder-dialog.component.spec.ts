@@ -254,6 +254,12 @@ describe('CreateFolderDialogComponent unpack badge', () => {
     });
 });
 
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
 describe('CreateFolderDialogComponent file removal', () => {
     let fixture: ComponentFixture<CreateFolderDialogComponent>;
 
@@ -263,6 +269,8 @@ describe('CreateFolderDialogComponent file removal', () => {
     const chooseFilesButton = (): HTMLButtonElement => host().querySelector('.file-uploader__button')!;
 
     beforeEach(async () => {
+        // jsdom has no ResizeObserver; the file names' tooltips, shown only for a cut-short name, need one.
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         TestBed.configureTestingModule({
             providers: [
                 {
