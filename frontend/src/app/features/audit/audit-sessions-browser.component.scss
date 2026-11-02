@@ -1,3 +1,11 @@
+// a tab of the Audit page fills its body, so the footer stays at the bottom however few rows there are
+:host {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
 .audit-browser {
     display: flex;
     flex-direction: column;
