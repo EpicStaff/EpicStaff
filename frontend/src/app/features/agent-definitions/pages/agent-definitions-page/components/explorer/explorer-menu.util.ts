@@ -66,7 +66,7 @@ export function groupMenuItems(subject: ExplorerMenuSubject, groups: LabelDto[])
                 },
                 {
                     id: GROUP_MENU_ACTION.deleteGroup,
-                    label: 'Delete group',
+                    label: 'Ungroup',
                     resource: ResourceCode.Agents,
                     action: ActionCode.Delete,
                     danger: true,
@@ -106,7 +106,7 @@ export function groupMenuItems(subject: ExplorerMenuSubject, groups: LabelDto[])
     }
 }
 
-/** "Move to group" (every other group, then Ungrouped when grouped) and "New group…". */
+/** "Move to group" (every other group, then No group when grouped) and "New group…". */
 function itemGroupMenuItems(
     currentGroupId: number | null,
     groups: LabelDto[],
@@ -124,7 +124,7 @@ function itemGroupMenuItems(
     if (currentGroupId !== null) {
         targets.push({
             id: GROUP_MENU_ACTION.moveToGroupPrefix + GROUP_MENU_ACTION.ungrouped,
-            label: 'Ungrouped',
+            label: 'No group',
             resource,
             action: ActionCode.Update,
             dotColor: null,

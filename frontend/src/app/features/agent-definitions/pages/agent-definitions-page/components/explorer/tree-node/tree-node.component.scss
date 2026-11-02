@@ -28,6 +28,10 @@
         .row__chevron {
             color: var(--accent-color);
         }
+
+        .row__empty {
+            color: var(--purple-alpha-40);
+        }
     }
 
     &--drop-target {

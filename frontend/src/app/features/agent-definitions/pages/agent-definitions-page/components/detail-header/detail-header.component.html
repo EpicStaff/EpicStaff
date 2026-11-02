@@ -45,7 +45,6 @@
                     #groupTrigger
                     type="button"
                     class="crumbs__item crumbs__group"
-                    [class.crumbs__group--empty]="group.groupId === null"
                     aria-haspopup="listbox"
                     [attr.aria-expanded]="groupPicker.isOpen()"
                     [attr.aria-label]="group.groupId === null ? 'Add to group' : 'Group: ' + crumb.label"
@@ -68,7 +67,7 @@
                     #groupPicker
                     mode="single"
                     noun="group"
-                    emptyOptionLabel="Ungrouped"
+                    emptyOptionLabel="No group"
                     [hideTrigger]="true"
                     [selectedLabelIds]="group.groupId === null ? [] : [group.groupId]"
                     (selectionChange)="onGroupPicked($event)"

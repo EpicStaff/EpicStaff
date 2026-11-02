@@ -92,9 +92,9 @@
 }
 
 .crumbs__group {
-    padding: 2px 6px;
+    padding: 0;
     background: transparent;
-    border: 1px solid transparent;
+    border: none;
     border-radius: 4px;
     font: inherit;
     color: var(--color-text-secondary);
@@ -103,18 +103,11 @@
     &:hover,
     &[aria-expanded='true'] {
         color: var(--color-text-primary);
-        border-color: var(--color-input-border);
     }
 
     &:focus-visible {
         outline: 1px solid var(--accent-color);
-        outline-offset: 1px;
-    }
-
-    // "Add to group": a dashed outline makes the empty picker discoverable.
-    &--empty {
-        border-style: dashed;
-        border-color: var(--color-input-border);
+        outline-offset: 2px;
     }
 }
 

@@ -586,13 +586,13 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         ]
             .filter(Boolean)
             .join(' and ');
-        const outcome = members ? `Its ${members} will move to Ungrouped.` : 'The group is empty.';
+        const outcome = members ? `Its ${members} stay, just without a group.` : 'The group is empty.';
         this.confirmationDialog
             .confirm(
                 {
-                    title: 'Delete group',
-                    message: `Delete the <strong>${escapeHtml(group.name)}</strong> group? ${outcome}`,
-                    confirmText: 'Delete',
+                    title: 'Ungroup',
+                    message: `Remove the <strong>${escapeHtml(group.name)}</strong> group? ${outcome}`,
+                    confirmText: 'Ungroup',
                     type: 'danger',
                     isShownBorder: true,
                 },

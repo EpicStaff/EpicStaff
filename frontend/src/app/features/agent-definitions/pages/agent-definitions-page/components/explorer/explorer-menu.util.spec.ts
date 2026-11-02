@@ -21,16 +21,16 @@ const childLabel = (child: ExplorerMenuItem): string => `${child.label}${child.d
 describe('groupMenuItems', () => {
     it.each<[string, ExplorerMenuSubject, LabelDto[], string[]]>([
         [
-            'an ungrouped agent: every group, no Ungrouped',
+            'an ungrouped agent: every group, without No group',
             { kind: 'agent', agentId: 5, label: 'Closer', children: [], groupId: null },
             GROUPS,
             ['Move to group > Sales, Support', 'New group…'],
         ],
         [
-            'an agent in a group: the other groups, then Ungrouped',
+            'an agent in a group: the other groups, then No group',
             { kind: 'agent', agentId: 5, label: 'Closer', children: [], groupId: SALES },
             GROUPS,
-            ['Move to group > Support, Ungrouped', 'New group…'],
+            ['Move to group > Support, No group', 'New group…'],
         ],
         [
             'an ungrouped agent with no groups yet: only New group',
@@ -39,10 +39,10 @@ describe('groupMenuItems', () => {
             ['New group…'],
         ],
         [
-            'a shared surface in a group: the other groups, then Ungrouped',
+            'a shared surface in a group: the other groups, then No group',
             { kind: 'surface', surfaceId: 10, label: 'CRM access', groupId: SUPPORT },
             GROUPS,
-            ['Move to group > Sales, Ungrouped', 'New group…'],
+            ['Move to group > Sales, No group', 'New group…'],
         ],
         [
             "an agent's owned surface: nothing, it follows its agent",
@@ -60,18 +60,13 @@ describe('groupMenuItems', () => {
             'an Agents group header: its current color disabled',
             { kind: 'group-header', section: 'agents', groupId: SALES },
             GROUPS,
-            [
-                'New agent in Sales',
-                'Rename',
-                'Color > Default, Purple, Blue (current), Green, Orange, Red',
-                'Delete group',
-            ],
+            ['New agent in Sales', 'Rename', 'Color > Default, Purple, Blue (current), Green, Orange, Red', 'Ungroup'],
         ],
         [
             'a Shared Surfaces group header: no New agent',
             { kind: 'group-header', section: 'surfaces', groupId: SUPPORT },
             GROUPS,
-            ['Rename', 'Color > Default, Purple, Blue, Green (current), Orange, Red', 'Delete group'],
+            ['Rename', 'Color > Default, Purple, Blue, Green (current), Orange, Red', 'Ungroup'],
         ],
     ])('%s', (_description, subject, groups, expected) => {
         expect(outline(groupMenuItems(subject, groups))).toEqual(expected);
