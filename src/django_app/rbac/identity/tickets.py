@@ -40,6 +40,12 @@ class TicketService:
         return ticket, self._ttl_seconds
 
     def consume(self, ticket: str) -> object | None:
+        """Spend a ticket and return its user, or None when it grants nothing.
+
+        A deactivated user gets None, as an API key of theirs would be
+        refused: a ticket issued just before the deactivation must not open
+        a stream after it.
+        """
         if not isinstance(ticket, str) or not ticket:
             return None
         raw = self._redis().getdel(self._key(ticket))
@@ -49,7 +55,7 @@ class TicketService:
             user_id = int(raw)
         except (TypeError, ValueError):
             return None
-        return get_user_model().objects.filter(pk=user_id).first()
+        return get_user_model().objects.filter(pk=user_id, is_active=True).first()
 
 
 ws_ticket_service = TicketService(
