@@ -338,3 +338,7 @@ PYTHON_CODE_TOOL_IMPORT_POST = _import_post_schema(model_name="PythonCodeTool")
 MCP_TOOL_EXPORT_GET = _export_get_schema(model_name="McpTool")
 MCP_TOOL_BULK_EXPORT_POST = _bulk_export_post_schema(model_name="McpTool")
 MCP_TOOL_IMPORT_POST = _import_post_schema(model_name="McpTool")
+
+AGENT_DEFINITION_EXPORT_GET = _export_get_schema(model_name="AgentDefinition")
+AGENT_DEFINITION_BULK_EXPORT_POST = _bulk_export_post_schema(model_name="AgentDefinition")
+AGENT_DEFINITION_IMPORT_POST = _import_post_schema(model_name="AgentDefinition")
