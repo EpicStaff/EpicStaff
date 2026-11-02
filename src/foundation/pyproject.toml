@@ -17,6 +17,11 @@ litestar = [
     "litestar==2.24.0",
 ]
 
+s3-storage = [
+    "boto3==1.43.111",
+    "boto3-stubs==1.43.111",
+]
+
 transitive-pins = [
     "idna==3.18",
 ]
