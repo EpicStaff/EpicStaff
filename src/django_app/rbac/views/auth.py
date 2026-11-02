@@ -54,6 +54,7 @@ from rbac.serializers.auth import (
     TokenIntrospectRequestSerializer,
 )
 from rbac.throttles import (
+    LoginAccountThrottle,
     LoginIpThrottle,
     LoginThrottle,
     PasswordResetConfirmThrottle,
@@ -111,7 +112,7 @@ def _log_failed_login(request, email) -> None:
 
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
-    throttle_classes = [LoginThrottle, LoginIpThrottle]
+    throttle_classes = [LoginThrottle, LoginIpThrottle, LoginAccountThrottle]
     throttle_account_field = "email"
     parser_classes = [JSONParser]
 
@@ -333,7 +334,7 @@ class ApiKeyValidateView(APIView):
 class SwaggerTokenView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [LoginThrottle, LoginIpThrottle]
+    throttle_classes = [LoginThrottle, LoginIpThrottle, LoginAccountThrottle]
     throttle_account_field = "username"
 
     @extend_schema(**SWAGGER_TOKEN_POST)

@@ -41,12 +41,15 @@ Base URL in examples: `http://localhost:8000`.
 |---|---|---|---|
 | `/api/auth/login/`, `/api/auth/swagger-token/` | `<ip>\|<email>` | `DJANGO_LOGIN_THROTTLE_RATE` | `5/min` |
 | `/api/auth/login/`, `/api/auth/swagger-token/` | `<ip>` | `DJANGO_LOGIN_IP_THROTTLE_RATE` | `20/min` |
+| `/api/auth/login/`, `/api/auth/swagger-token/` | `<email>` | `DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE` | `30/hour` |
 | `/api/auth/password-reset/request/` | `<ip>\|<email>` | `DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` |
 | `/api/auth/password-reset/request/` | `<ip>` | `DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE` | `20/hour` |
 | `/api/auth/password-reset/confirm/` | `<ip>` | `DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` |
 | `/api/auth/refresh/` | `<ip>` | `DJANGO_TOKEN_REFRESH_THROTTLE_RATE` | `30/min` |
 
 Login and reset-request each apply two buckets, and a request is refused when either is exhausted. The `<ip>|<email>` bucket limits what one address can do to one account (guesses at its password, reset emails to its mailbox) without one user's attempts using up the allowance of everyone behind the same NAT. It never stops an address that names a new email on each request, since every email is a fresh bucket; the `<ip>` bucket caps that total. The `<ip>` bucket's `429` depends only on the caller's IP, so it reveals nothing about which emails are registered.
+
+Login applies a third bucket, `<email>` alone, so many addresses together cannot guess one account's password without limit. It counts the email as submitted, registered or not, so its `429` reveals nothing either. The trade-off: anyone can use it up and keep that account from logging in until the window passes (a password-reset link still works). The email is read from the field whose password the endpoint checks: `email` on login, `username` on swagger-token.
 
 Refresh and confirm key on IP alone: neither request carries an identifier to compose with — the refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the token being guessed, so bucketing by it would give an attacker a fresh allowance per attempt.
 
@@ -165,6 +168,7 @@ create_superadmin` workflow).
 | `DJANGO_FIRST_SETUP_MODE` | `cli_only` | `cli_only` refuses `POST /api/auth/first-setup/` with `403 first_setup_disabled`; only `manage.py create_superadmin` can create the first superadmin. `open` allows the HTTP endpoint too. Local dev (`src/.env` from `python scripts/envtool.py --dev`) sets `open`. |
 | `DJANGO_LOGIN_THROTTLE_RATE` | `5/min` | Rate for `POST /api/auth/login/` and `/api/auth/swagger-token/`, bucketed per `<ip>\|<email>`. |
 | `DJANGO_LOGIN_IP_THROTTLE_RATE` | `20/min` | Second rate for the same two endpoints, bucketed per IP whatever the email. |
+| `DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE` | `30/hour` | Third rate for the same two endpoints, bucketed per email from any address. |
 | `DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Rate for `POST /api/auth/password-reset/confirm/`, bucketed per IP. |
 | `DJANGO_TOKEN_REFRESH_THROTTLE_RATE` | `30/min` | Rate for `POST /api/auth/refresh/`, bucketed per IP. |
 
@@ -320,10 +324,11 @@ Response:
 - `401` on invalid credentials — flat envelope with no `errors` array, so the
   caller cannot distinguish which of email/password was wrong (user-enumeration
   protection).
-- `429` with `Retry-After` header once either bucket is exhausted: the
+- `429` with `Retry-After` header once any bucket is exhausted: the
   composite `<ip>|<email>` bucket (`DJANGO_LOGIN_THROTTLE_RATE`, default
-  `5/min`) or the per-IP bucket (`DJANGO_LOGIN_IP_THROTTLE_RATE`, default
-  `20/min`).
+  `5/min`), the per-IP bucket (`DJANGO_LOGIN_IP_THROTTLE_RATE`, default
+  `20/min`) or the per-email bucket (`DJANGO_LOGIN_ACCOUNT_THROTTLE_RATE`,
+  default `30/hour`).
 
 ### POST `/api/auth/refresh/`
 

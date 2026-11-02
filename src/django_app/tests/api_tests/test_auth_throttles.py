@@ -30,6 +30,7 @@ from django.urls import reverse
 from django_app.asgi import application, django_asgi_app
 from rbac.models import PasswordResetToken
 from rbac.throttles import (
+    LoginAccountThrottle,
     LoginIpThrottle,
     LoginThrottle,
     PasswordResetConfirmThrottle,
@@ -433,3 +434,87 @@ def test_bare_django_asgi_app_lets_a_forged_forwarded_for_dodge_the_login_ip_cap
     ]
 
     assert statuses == [401, 401, 401, 401]
+
+
+# ---- per-account cap, from any address ----
+
+LOGIN_ACCOUNT_RATE = "3/hour"
+
+
+@pytest.fixture
+def per_account_only():
+    """Leave only the per-account bucket able to refuse, so a 429 is its own."""
+    with (
+        patch.object(LoginThrottle, "rate", "1000/min", create=True),
+        patch.object(LoginIpThrottle, "rate", "1000/min", create=True),
+        patch.object(LoginAccountThrottle, "rate", LOGIN_ACCOUNT_RATE, create=True),
+    ):
+        cache.clear()
+        yield
+        cache.clear()
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("per_account_only")
+def test_login_guesses_against_one_account_from_many_addresses_are_capped(
+    api_client, regular_user
+):
+    for index in range(3):
+        address = f"10.0.1.{index}"
+        assert _login(api_client, regular_user.email, REMOTE_ADDR=address).status_code == 401
+
+    blocked = _login(api_client, regular_user.email, REMOTE_ADDR="10.0.1.99")
+
+    assert blocked.status_code == 429
+    # Another account is untouched, from the same address.
+    assert _login(api_client, "someone-else@example.com", REMOTE_ADDR="10.0.1.99").status_code == 401
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("per_account_only")
+def test_login_account_cap_ignores_case_and_spaces(api_client, regular_user):
+    for variant in [regular_user.email, regular_user.email.upper(), f"  {regular_user.email} "]:
+        assert _login(api_client, variant).status_code in (400, 401)
+
+    assert _login(api_client, regular_user.email).status_code == 429
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("per_account_only")
+def test_swagger_token_guesses_against_one_username_from_many_addresses_are_capped(
+    api_client, regular_user
+):
+    url = reverse("swagger_token")
+
+    def guess(address):
+        return api_client.post(
+            url,
+            data={"username": regular_user.email, "password": SPRAYED_PASSWORD},
+            format="json",
+            REMOTE_ADDR=address,
+        )
+
+    for index in range(3):
+        assert guess(f"10.0.2.{index}").status_code != 429
+
+    assert guess("10.0.2.99").status_code == 429
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("per_account_only")
+@patch.object(LoginAccountThrottle, "timer", staticmethod(lambda: FROZEN_NOW))
+def test_login_account_cap_answers_alike_for_registered_and_unknown_emails(
+    api_client, regular_user
+):
+    for _ in range(3):
+        _login(api_client, regular_user.email)
+        _login(api_client, "nobody@example.com")
+
+    # The correct password, so the 429 cannot hint at the password either.
+    registered = _login(api_client, regular_user.email, password="UserStrongPass123!")
+    unknown = _login(api_client, "nobody@example.com")
+
+    assert registered.status_code == unknown.status_code == 429
+    assert registered.json() == unknown.json()
+    assert registered.headers["Retry-After"] == unknown.headers["Retry-After"]
+    assert "access" not in registered.json()
