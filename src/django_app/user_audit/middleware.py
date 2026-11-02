@@ -53,6 +53,8 @@ FALLBACK_EXCLUDED_VIEWS = frozenset(
         LogoutView,
     }
 )
+# DRF actions that change only the caller's own preferences, never anything the org shares.
+FALLBACK_EXCLUDED_ACTIONS = frozenset({"favorite"})
 # Requests that act in no single org, recorded in every org the user is a member of.
 ORGLESS_FAN_OUT_PATH_PREFIXES = ("/api/profile/",)
 # The action recorded for a view with no DRF action name for the method.
@@ -167,6 +169,7 @@ def _record_unhandled_change(
             or status >= FIRST_FAILURE_STATUS
             or context.recorded
             or view_class in FALLBACK_EXCLUDED_VIEWS
+            or action in FALLBACK_EXCLUDED_ACTIONS
         ):
             return
         # None for an anonymous caller and a plugin's service account.
