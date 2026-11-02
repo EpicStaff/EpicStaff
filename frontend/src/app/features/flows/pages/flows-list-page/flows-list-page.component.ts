@@ -466,6 +466,11 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         this.importOptionsOpen.set(false);
     }
 
+    public onImportFromOptions(): void {
+        this.closeImportOptions();
+        this.onImportClick();
+    }
+
     public onImportClick(): void {
         const settings = this.importFlowSettings.requestSettings();
 
