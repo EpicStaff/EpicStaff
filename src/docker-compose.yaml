@@ -100,6 +100,8 @@ services:
       DJANGO_SGI_THREADS: ${DJANGO_SGI_THREADS:?}
       DJANGO_SGI_MAX_REQUESTS: ${DJANGO_SGI_MAX_REQUESTS:?}
       DJANGO_SGI_MAX_REQUESTS_JITTER: ${DJANGO_SGI_MAX_REQUESTS_JITTER:?}
+      DJANGO_SGI_MAX_CONCURRENT_REQUESTS: ${DJANGO_SGI_MAX_CONCURRENT_REQUESTS:?}
+      DJANGO_SGI_ADMISSION_TIMEOUT: ${DJANGO_SGI_ADMISSION_TIMEOUT:?}
       DJANGO_DB_POOL_MIN_SIZE: ${DJANGO_DB_POOL_MIN_SIZE:?}
       DJANGO_DB_POOL_MAX_SIZE: ${DJANGO_DB_POOL_MAX_SIZE:?}
       DJANGO_DB_POOL_TIMEOUT: ${DJANGO_DB_POOL_TIMEOUT:?}
@@ -598,6 +600,8 @@ services:
       NGINX_TRUSTED_PROXIES: ${NGINX_TRUSTED_PROXIES:?}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
+      # django_app's server count: one upstream server per server's own port, DJANGO_PORT + 1 up.
+      DJANGO_SGI_WORKERS: ${DJANGO_SGI_WORKERS:?}
       FRONTEND_HOST: ${FRONTEND_HOST:?}
       FRONTEND_PORT: ${FRONTEND_PORT:?}
       REALTIME_HOST: ${REALTIME_HOST:?}
@@ -661,6 +665,12 @@ services:
       - type: bind
         source: ./nginx/docker-entrypoint.d/18-check-trusted-proxies.envsh
         target: /docker-entrypoint.d/18-check-trusted-proxies.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/19-render-django-upstream.envsh
+        target: /docker-entrypoint.d/19-render-django-upstream.envsh
         read_only: true
         bind:
           create_host_path: false

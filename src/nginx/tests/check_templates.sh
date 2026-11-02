@@ -9,7 +9,11 @@
 #     each lab's nginx must set; and that the hooks refuse what they must: TLS on without a
 #     certificate, an NGINX_HSTS_ENABLED that is not a boolean, and an NGINX_TRUSTED_PROXIES that
 #     is not none or a list of IPv4 addresses and CIDRs, or that holds an empty entry, a /0 range
-#     or a CIDR with host bits set;
+#     or a CIDR with host bits set, and a DJANGO_SGI_WORKERS or DJANGO_PORT that is not a whole
+#     number in range;
+#   - that Django's upstreams are least_conn (requests) and round-robin (websockets, the session
+#     event stream) over django_app's servers, DJANGO_SGI_WORKERS of them on their own ports
+#     from DJANGO_PORT + 1 up;
 #   - that every X-Forwarded-Proto a template sets is $forwarded_proto, never the client's header,
 #     and never $scheme but on the plugin listeners, which no proxy is in front of; that every
 #     location that proxies and passes the client's headers on sends one, so none passes the
@@ -123,7 +127,7 @@ fail() {
 # (a check below fails when one is missing here), with this script's values.
 stack_environment=(
   NGINX_SERVER_NAME=epicstaff.test NGINX_SSL_MODE=off NGINX_HSTS_ENABLED=true NGINX_TRUSTED_PROXIES=none
-  DJANGO_HOST=django DJANGO_PORT=8000 FRONTEND_HOST=frontend FRONTEND_PORT=80
+  DJANGO_HOST=django DJANGO_PORT=8000 DJANGO_SGI_WORKERS=1 FRONTEND_HOST=frontend FRONTEND_PORT=80
   REALTIME_HOST=realtime REALTIME_PORT=8050 WEBHOOK_HOST=webhook WEBHOOK_PORT=8009
   AUDITOR_HOST=auditor AUDITOR_PORT=8010 CHAT_ENABLED=false CHAT_UPSTREAM_URL=http://chat:8200
   PLUGINS_ENABLED=false PLUGINS_DEV_MODE=false PLUGINS_BASE_DOMAIN=plugins.epicstaff.test
@@ -132,6 +136,11 @@ stack_environment=(
   STORAGE_HOST=storage STORAGE_PORT=9000 STORAGE_BUCKET=epicstaff
   AVATAR_URL_SIGNING_SECRET="$avatar_signing_secret"
 )
+
+# The live tests' stand-in Django listens on 127.0.0.1:8000. nginx sends Django's requests to each
+# server's own port, from DJANGO_PORT + 1 up (19-render-django-upstream.envsh), so with one server
+# those tests set DJANGO_PORT one below the stand-in's.
+live_django_port=7999
 
 # Fills docker_arguments with the stack's nginx environment, overridden by the NAME=value
 # arguments, and the mounts the image's entrypoint needs: the templates, every hook and the
@@ -339,7 +348,7 @@ END {
     if (location == "" || !(location in target)) continue
     label = location " -> " target[location]
     if (!hides(location, "x-frame-options")) print label ": passes X-Frame-Options through"
-    if (target[location] ~ /^http:\/\/backend_server(\/|$)/) { django++; continue }
+    if (target[location] ~ /^http:\/\/backend_(stream_)?server(\/|$)/) { django++; continue }
     elsewhere++
     if (!clears_cookie(location)) print label ": passes the browser's Cookie on"
     if (!hides(location, "set-cookie")) print label ": passes Set-Cookie through"
@@ -686,7 +695,7 @@ word[1] == "proxy_set_header" && (word[3] == "\"\"" || word[3] == "''") { blanke
 END {
   for (i = 1; i <= location_count; i++) {
     split(order[i], part, SUBSEP)
-    if (part[2] == "" || target[order[i]] !~ /^http:\/\/backend_server(\/|$)/) continue
+    if (part[2] == "" || target[order[i]] !~ /^http:\/\/backend_(stream_)?server(\/|$)/) continue
     if (!passes_caller_headers(part[1], part[2])) { closed++; continue }
     checked++
     level = header_level(part[1], part[2])
@@ -1158,6 +1167,63 @@ if expect_valid "NGINX_TRUSTED_PROXIES with /32, /31, /30, /24 and /1 ranges fro
     fail "those ranges render the geo block [$geo_entries]"
   fi
 fi
+
+# DJANGO_SGI_WORKERS (19-render-django-upstream.envsh): django_app runs single-worker servers, each
+# on its own port from DJANGO_PORT + 1 up (DJANGO_PORT is the one they share for direct callers).
+# nginx balances requests across them with least_conn, and the long-lived connections in turn.
+# $1 = upstream name; prints the directives of that upstream in the last render, one per line.
+django_upstream_directives() {
+  directives | awk -v name="$1" '$0 == "upstream " name " {" { inside = 1; next }
+    inside && /^\}/ { exit }
+    inside && NF { sub(/^[[:space:]]+/, ""); print }'
+}
+# $1 = description, $2 = the servers expected, joined by |; checks both Django upstreams.
+expect_django_upstreams() {
+  local requests streams
+  requests=$(django_upstream_directives backend_server | paste -sd '|' -)
+  streams=$(django_upstream_directives backend_stream_server | paste -sd '|' -)
+  if [ "$requests" = "zone backend_server 64k;|least_conn;|$2" ] \
+    && [ "$streams" = "zone backend_stream_server 64k;|$2" ]; then
+    pass "$1"
+  else
+    fail "$1: backend_server [$requests], backend_stream_server [$streams]"
+  fi
+}
+if expect_valid "DJANGO_SGI_WORKERS=1 is accepted"; then
+  expect_django_upstreams "DJANGO_SGI_WORKERS=1 sends Django's requests to the one server's own port, DJANGO_PORT + 1" \
+    "server django:8001 resolve;"
+fi
+if expect_valid "DJANGO_SGI_WORKERS=3 is accepted" DJANGO_SGI_WORKERS=3 DJANGO_PORT=8100; then
+  expect_django_upstreams "DJANGO_SGI_WORKERS=3 balances Django's requests across the three servers' own ports" \
+    "server django:8101 resolve;|server django:8102 resolve;|server django:8103 resolve;"
+fi
+if expect_valid "the highest ports are accepted" DJANGO_PORT=65532 DJANGO_SGI_WORKERS=3; then
+  expect_django_upstreams "DJANGO_PORT=65532 with three servers ends at 65535" \
+    "server django:65533 resolve;|server django:65534 resolve;|server django:65535 resolve;"
+fi
+# Only the websockets and the session event stream take the round-robin upstream; every other
+# location that reaches Django counts toward least_conn.
+stream_locations=$(directives | awk '/^[[:space:]]*location / { location = $0 }
+  /proxy_pass http:\/\/backend_stream_server/ { sub(/^[[:space:]]+/, "", location); print location }' \
+  | LC_ALL=C sort | paste -sd '|' -)
+if [ "$stream_locations" = "location ^~ /api/run-session/subscribe/ {|location ~ ^/ws/ {" ]; then
+  pass "only /ws/ and /api/run-session/subscribe/ proxy to backend_stream_server"
+else
+  fail "the locations proxying to backend_stream_server are [$stream_locations]"
+fi
+# Values that would break or inject into the upstream block, or start more servers than exist.
+for django_workers in "" " " 0 00 01 -1 1.5 "2 " "1; server evil:80" a 1000; do
+  expect_refused "DJANGO_SGI_WORKERS=$(printf '%q' "$django_workers") is refused" \
+    "ERROR: DJANGO_SGI_WORKERS='$django_workers'" "DJANGO_SGI_WORKERS=$django_workers"
+done
+expect_refused "an unset DJANGO_SGI_WORKERS is refused" \
+  "environment variable DJANGO_SGI_WORKERS is not set" unset:DJANGO_SGI_WORKERS
+for django_port in "" 0 08000 abc "8000;" 123456; do
+  expect_refused "DJANGO_PORT=$(printf '%q' "$django_port") is refused" \
+    "ERROR: DJANGO_PORT='$django_port'" "DJANGO_PORT=$django_port"
+done
+expect_refused "ports past 65535 are refused" \
+  "needs ports past 65535" DJANGO_PORT=65533 DJANGO_SGI_WORKERS=3
 
 # The NGINX_HSTS_ENABLED of a run of the loops below, $1 = CHAT_ENABLED, $2 = NGINX_SSL_MODE: over
 # a loop's four runs each TLS mode gets both values. True with TLS in nginx, or ended by a load
@@ -1924,7 +1990,7 @@ server {
     }
 }
 STUB
-set_docker_arguments PLUGINS_ENABLED=true PLUGINS_MAX_PACKAGE_MB=1 DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000
+set_docker_arguments PLUGINS_ENABLED=true PLUGINS_MAX_PACKAGE_MB=1 DJANGO_HOST=127.0.0.1 DJANGO_PORT=$live_django_port
 live_container=$(docker run -d "${docker_arguments[@]}" \
   -v "$work_dir/stub-django.conf:/etc/nginx/conf.d/zz-stub-django.conf:ro" "$image")
 live() { docker exec "$live_container" "$@"; }
@@ -2126,7 +2192,7 @@ live_container=""
 #     waiting for the body; nginx streams uploads unbuffered);
 #   - 301 MiB and one byte, more than the cap plus the framing allowance, get 413 before Django
 #     is asked anything.
-set_docker_arguments PLUGINS_ENABLED=true PLUGINS_MAX_PACKAGE_MB=300 DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000
+set_docker_arguments PLUGINS_ENABLED=true PLUGINS_MAX_PACKAGE_MB=300 DJANGO_HOST=127.0.0.1 DJANGO_PORT=$live_django_port
 live_container=$(docker run -d "${docker_arguments[@]}" \
   -v "$work_dir/stub-django.conf:/etc/nginx/conf.d/zz-stub-django.conf:ro" "$image")
 for _ in $(seq 50); do
@@ -2171,7 +2237,7 @@ live_container=""
 # the container a plugin backend. The 8081 listener reaches "Django"; EpicStaff's server and a
 # plugin host refuse it before any location, so even the plugin API's own error pages (which
 # would answer a refusal as 503 plugin_unavailable) never run.
-set_docker_arguments PLUGINS_ENABLED=true DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000 \
+set_docker_arguments PLUGINS_ENABLED=true DJANGO_HOST=127.0.0.1 DJANGO_PORT=$live_django_port \
   PLUGINS_NETWORK_SUBNET=127.0.0.0/8
 live_container=$(docker run -d "${docker_arguments[@]}" \
   -v "$work_dir/stub-django.conf:/etc/nginx/conf.d/zz-stub-django.conf:ro" "$image")
@@ -2249,7 +2315,7 @@ server {
 STUB
 for plugins_enabled in false true; do
   set_docker_arguments PLUGINS_ENABLED=$plugins_enabled CHAT_ENABLED=true \
-    CHAT_UPSTREAM_URL=http://127.0.0.1:8200 DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000 \
+    CHAT_UPSTREAM_URL=http://127.0.0.1:8200 DJANGO_HOST=127.0.0.1 DJANGO_PORT=$live_django_port \
     FRONTEND_HOST=127.0.0.1 FRONTEND_PORT=8001 WEBHOOK_HOST=127.0.0.1 WEBHOOK_PORT=8009 \
     AUDITOR_HOST=127.0.0.1 AUDITOR_PORT=8010 REALTIME_HOST=127.0.0.1 REALTIME_PORT=8050
   live_container=$(docker run -d "${docker_arguments[@]}" \
@@ -2365,7 +2431,7 @@ start_forwarded_proto_container() {
   [ $# -gt 0 ] && shift
   extra=("$@")
   set_docker_arguments PLUGINS_ENABLED=true CHAT_ENABLED=true \
-    CHAT_UPSTREAM_URL=http://127.0.0.1:8200 DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000 \
+    CHAT_UPSTREAM_URL=http://127.0.0.1:8200 DJANGO_HOST=127.0.0.1 DJANGO_PORT=$live_django_port \
     FRONTEND_HOST=127.0.0.1 FRONTEND_PORT=8001 WEBHOOK_HOST=127.0.0.1 WEBHOOK_PORT=8009 \
     AUDITOR_HOST=127.0.0.1 AUDITOR_PORT=8010 REALTIME_HOST=127.0.0.1 REALTIME_PORT=8050 "${overrides[@]}"
   live_container=$(docker run -d "${docker_arguments[@]}" \

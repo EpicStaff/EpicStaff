@@ -93,23 +93,81 @@ python manage.py send_session_callbacks &
 # Start Django application
 PORT="${DJANGO_PORT}"
 
-echo "Starting Django server on port $PORT..."
+# No default: compose always passes it, and epicstaff-nginx renders one upstream server per
+# Django server from the same value, so a guess here could disagree with nginx. A value that
+# starts no server would leave the container up with nothing answering.
+web_server_count=${DJANGO_SGI_WORKERS-}
+case "$web_server_count" in
+  '')
+    echo "ERROR: environment variable DJANGO_SGI_WORKERS is not set or empty." >&2
+    exit 64
+    ;;
+  *[!0-9]* | 0*)
+    echo "ERROR: DJANGO_SGI_WORKERS='$web_server_count' is not a whole number of 1 or more." >&2
+    exit 64
+    ;;
+esac
 
 # Local-run-only switch for auto-reload; deliberately not declared in env.yaml or compose.
 echo "DJANGO_SGI_RELOAD=$DJANGO_SGI_RELOAD"
 RELOAD_ARGS=""
 if env_bool DJANGO_SGI_RELOAD false; then
   RELOAD_ARGS="--reload"
+  if [ "$web_server_count" != 1 ]; then
+    echo "WARNING: DJANGO_SGI_RELOAD starts one Django server, but DJANGO_SGI_WORKERS=$web_server_count: epicstaff-nginx's upstream ports from $((PORT + 2)) up will refuse connections. Set DJANGO_SGI_WORKERS=1." >&2
+  fi
   echo "SETUP DJANGO_SGI_WORKERS and DJANGO_SGI_THREADS to 1"
   export DJANGO_SGI_WORKERS=1
   export DJANGO_SGI_THREADS=1
+  web_server_count=1
 fi
 
-exec gunicorn django_app.asgi:application \
-  -k uvicorn.workers.UvicornWorker \
-  --bind "0.0.0.0:$PORT" \
-  $RELOAD_ARGS \
-  --workers "${DJANGO_SGI_WORKERS:-1}" \
-  --threads "${DJANGO_SGI_THREADS:-4}" \
-  --max-requests "${DJANGO_SGI_MAX_REQUESTS:-1000}" \
-  --max-requests-jitter "${DJANGO_SGI_MAX_REQUESTS_JITTER:-100}"
+echo "Starting $web_server_count Django server(s): shared port $PORT, own ports from $((PORT + 1))..."
+
+# One single-worker server per process. Workers sharing one listening socket split a burst
+# unevenly: the first to wake accepts nearly every waiting connection (asyncio accepts up to the
+# backlog per wake-up), so one worker queues most of the burst while the others sit idle.
+# Each server listens on two ports:
+#   - its own, DJANGO_PORT + 1 + its index, which epicstaff-nginx balances across (least_conn
+#     over the servers 19-render-django-upstream.envsh renders from the same DJANGO_SGI_WORKERS);
+#   - DJANGO_PORT, shared by every server through SO_REUSEPORT, for the services that call
+#     django_app directly (crew, realtime, chat) and the healthcheck: the kernel spreads their
+#     connections across the servers' sockets.
+web_server_pids=()
+stop_requested=false
+# Installed before the first server starts. A stop from here on passes to the servers already
+# running, and no server starts after it.
+trap 'stop_requested=true; kill -TERM "${web_server_pids[@]}" 2>/dev/null || true' TERM INT
+for ((web_server_index = 0; web_server_index < web_server_count; web_server_index++)); do
+  if [ "$stop_requested" = true ]; then
+    break
+  fi
+  gunicorn django_app.asgi:application \
+    -k uvicorn.workers.UvicornWorker \
+    --reuse-port \
+    --bind "0.0.0.0:$PORT" \
+    --bind "0.0.0.0:$((PORT + 1 + web_server_index))" \
+    $RELOAD_ARGS \
+    --workers 1 \
+    --threads "${DJANGO_SGI_THREADS:-4}" \
+    --max-requests "${DJANGO_SGI_MAX_REQUESTS:-1000}" \
+    --max-requests-jitter "${DJANGO_SGI_MAX_REQUESTS_JITTER:-100}" &
+  web_server_pids+=("$!")
+done
+
+# The servers are children of this shell, which is PID 1: the trap above passes Docker's stop
+# signal on to them. When any server exits, stop the rest and exit with its status, so Docker
+# restarts the container (restart: unless-stopped) instead of nginx sending requests to a dead
+# port. After a stop during the start loop, skip the wait. The signal goes out again, because a
+# server started between the signal and its PID being recorded did not get it, and the script
+# exits once every server it started has stopped.
+web_server_status=0
+if [ "$stop_requested" = false ]; then
+  wait -n "${web_server_pids[@]}" || web_server_status=$?
+fi
+# Without a PID, kill would fail and wait would wait for the Redis workers too.
+if [ "${#web_server_pids[@]}" -gt 0 ]; then
+  kill -TERM "${web_server_pids[@]}" 2>/dev/null || true
+  wait "${web_server_pids[@]}" || true
+fi
+exit "$web_server_status"

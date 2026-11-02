@@ -27,10 +27,21 @@ map "$trusted_proxy:$http_x_forwarded_proto" $forwarded_proto {
     default   $scheme;
 }
 
+# django_app runs single-worker servers, each on a port of its own from DJANGO_PORT + 1 up;
+# 19-render-django-upstream.envsh renders one line per server from DJANGO_SGI_WORKERS. least_conn
+# sends each request to the server with the fewest active requests, so a burst spreads evenly and
+# a server busy with slow requests gets fewer new ones.
 upstream backend_server {
     zone backend_server 64k;
-    server ${DJANGO_HOST}:${DJANGO_PORT} resolve;
-}
+    least_conn;
+${NGINX_DJANGO_UPSTREAM_SERVERS}}
+
+# The same servers for the long-lived connections (websockets, the session event stream), in
+# turn. They sit idle most of their life: counted by backend_server's least_conn they would make
+# a server holding many of them look busy, and steer a burst onto the others.
+upstream backend_stream_server {
+    zone backend_stream_server 64k;
+${NGINX_DJANGO_UPSTREAM_SERVERS}}
 
 upstream frontend_server {
     zone frontend_server 64k;
@@ -97,11 +108,11 @@ server {
     add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; frame-src 'self' ${PLUGINS_FRAME_SRC}; frame-ancestors 'self'; base-uri 'self'" always;
 
     # ---- Cookies ----------------------------------------------------------
-    # Only Django reads and sets cookies. Every location that proxies anywhere but backend_server
-    # includes cookie-free-upstream.snippet (no Cookie to the upstream, no Set-Cookie from it),
-    # and a new one must too: tests/check_templates.sh fails otherwise. It has to be included in
-    # each location: a location that sets any proxy_set_header or proxy_hide_header of its own
-    # inherits none of the server's.
+    # Only Django reads and sets cookies. Every location that proxies anywhere but Django
+    # (backend_server, backend_stream_server) includes cookie-free-upstream.snippet (no Cookie
+    # to the upstream, no Set-Cookie from it), and a new one must too: tests/check_templates.sh
+    # fails otherwise. It has to be included in each location: a location that sets any
+    # proxy_set_header or proxy_hide_header of its own inherits none of the server's.
 
     location / {
         proxy_pass http://frontend_server;
@@ -116,7 +127,7 @@ server {
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
     location ^~ /api/run-session/subscribe/ {
-        proxy_pass http://backend_server;
+        proxy_pass http://backend_stream_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         
@@ -137,7 +148,7 @@ server {
     }
 
     location ~ ^/ws/ {
-        proxy_pass http://backend_server;
+        proxy_pass http://backend_stream_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_http_version 1.1;
@@ -151,6 +162,9 @@ server {
     }
 
     location = /api/storage/upload/stream {
+        # On least_conn backend_server, not backend_stream_server: an upload streams bytes the
+        # whole time, so counting it as load is accurate, unlike an idle websocket or SSE
+        # stream. Its own gate (UploadAdmission) bounds how many run.
         proxy_pass http://backend_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
