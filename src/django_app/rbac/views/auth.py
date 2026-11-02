@@ -83,16 +83,28 @@ def _require_json_body(request) -> None:
         raise UnsupportedMediaType(request.content_type)
 
 
+# The longest valid email address; anything longer is cut so one request
+# cannot write megabytes into the log.
+_LOGGED_ACCOUNT_MAX_LENGTH = 254
+
+
 def _log_failed_login(request, email) -> None:
     """Record a refused login with the account it named and the caller's address.
 
     The address is resolved the way the login throttles resolve it, so the log
     line matches the bucket that counts the attempt. `!r` keeps a submitted
     value with line breaks on one log line.
+
+    The account is logged as typed, so a password typed into the email field
+    lands in the log. Accepted: naming the targeted account is the point of
+    the line, and the log is operator-only.
     """
-    logger.warning(
-        "login_failed account={account!r} address={address}",
-        account=email if isinstance(email, str) else None,
+    account = email[:_LOGGED_ACCOUNT_MAX_LENGTH] if isinstance(email, str) else None
+    # Bound above, so exempt from the logger's 200-character cut, which would
+    # otherwise drop the address after a long account.
+    logger.bind(audit=True).warning(
+        "login_failed account={account!r} address={address!r}",
+        account=account,
         address=LoginIpThrottle().get_ident(request),
     )
 

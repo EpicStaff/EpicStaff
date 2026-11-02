@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.base_user import AbstractBaseUser
 from django.db import transaction
 from utils.logger import logger
 
@@ -23,14 +24,26 @@ class ResetUserService:
     created here — personal keys come only from POST /api/profile/api-keys/.
 
     Returns the new user. The view layer wraps it in the response payload.
-    Writes one audit log line naming the actor (None means the CLI), how many
-    users were deleted and the new superadmin.
+    Once the transaction commits, writes one audit log line naming the actor,
+    how many users were deleted and the new superadmin.
     """
 
     _bootstrap = SuperadminBootstrap()
 
     @transaction.atomic
-    def reset(self, *, email: str, password: str, display_name: str | None = None, actor=None):
+    def reset(
+        self,
+        *,
+        email: str,
+        password: str,
+        display_name: str | None = None,
+        actor: AbstractBaseUser | None = None,
+    ):
+        """Replace every user with one superadmin.
+
+        Args:
+            actor: The superadmin who asked for the reset; None means the CLI.
+        """
         acquire_bootstrap_lock()
 
         SnapshotAuthorshipScrubService().scrub_every_user()
@@ -41,10 +54,14 @@ class ResetUserService:
         result = self._bootstrap.provision(
             email=email, password=password, display_name=display_name
         )
-        logger.info(
-            "ResetUserService.reset actor={actor} users_deleted={deleted} new_superadmin={new}",
-            actor=getattr(actor, "email", "cli"),
-            deleted=users_deleted,
-            new=result.user.email,
+        actor_email = getattr(actor, "email", "cli")
+        new_superadmin_email = result.user.email
+        transaction.on_commit(
+            lambda: logger.bind(audit=True).info(
+                "ResetUserService.reset actor={actor} users_deleted={deleted} new_superadmin={new}",
+                actor=actor_email,
+                deleted=users_deleted,
+                new=new_superadmin_email,
+            )
         )
         return result.user

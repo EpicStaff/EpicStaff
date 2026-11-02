@@ -84,17 +84,23 @@ def test_cli_reset_logs_target(regular_user, captured_log_messages):
 
 @pytest.mark.django_db
 def test_reset_user_logs_actor_deleted_count_and_new_superadmin(
-    superadmin_client, superadmin_user, regular_user, default_org, captured_log_messages
+    superadmin_client,
+    superadmin_user,
+    regular_user,
+    default_org,
+    captured_log_messages,
+    django_capture_on_commit_callbacks,
 ):
     # The reset adopts the flagged default org instead of creating one.
     default_org.is_default = True
     default_org.save(update_fields=["is_default"])
 
-    response = superadmin_client.post(
-        reverse("reset_user"),
-        data={"email": "new-root@example.com", "password": NEW_PASSWORD},
-        format="json",
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        response = superadmin_client.post(
+            reverse("reset_user"),
+            data={"email": "new-root@example.com", "password": NEW_PASSWORD},
+            format="json",
+        )
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     (line,) = _lines_with(captured_log_messages, "ResetUserService.reset")
@@ -116,7 +122,7 @@ def test_failed_login_logs_account_and_address(api_client, regular_user, capture
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     (line,) = _lines_with(captured_log_messages, "login_failed")
     assert f"account='{regular_user.email}'" in line
-    assert "address=203.0.113.7" in line
+    assert "address='203.0.113.7'" in line
     assert "wrong-password" not in line
 
 
@@ -131,10 +137,45 @@ def test_failed_swagger_token_logs_account_and_address(
         REMOTE_ADDR="203.0.113.8",
     )
 
-    assert response.status_code != status.HTTP_200_OK
+    # 403, not the 401 the view intends: a known separate defect (see
+    # test_auth_throttles.py). Only the log line is under test here.
+    assert response.status_code == status.HTTP_403_FORBIDDEN
     (line,) = _lines_with(captured_log_messages, "login_failed")
     assert f"account='{regular_user.email}'" in line
-    assert "address=203.0.113.8" in line
+    assert "address='203.0.113.8'" in line
+
+
+@pytest.mark.django_db
+def test_failed_login_logs_an_oversized_account_cut_to_email_length(
+    api_client, regular_user, captured_log_messages
+):
+    response = api_client.post(
+        reverse("login"),
+        data={"email": "a" * 10_000, "password": "wrong-password"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    (line,) = _lines_with(captured_log_messages, "login_failed")
+    assert f"account='{'a' * 254}'" in line
+
+
+@pytest.mark.django_db
+def test_reset_user_logs_nothing_before_commit(
+    superadmin_client, default_org, captured_log_messages, django_capture_on_commit_callbacks
+):
+    default_org.is_default = True
+    default_org.save(update_fields=["is_default"])
+
+    with django_capture_on_commit_callbacks(execute=False) as callbacks:
+        superadmin_client.post(
+            reverse("reset_user"),
+            data={"email": "new-root@example.com", "password": NEW_PASSWORD},
+            format="json",
+        )
+
+    assert len(callbacks) == 1
+    assert _lines_with(captured_log_messages, "ResetUserService.reset") == []
 
 
 @pytest.mark.django_db
