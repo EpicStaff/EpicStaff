@@ -252,7 +252,12 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
             control?.setValue(path);
             control?.markAsDirty();
         },
-        pathOf: writeSourcePath,
+        pathOf: (displayValue: string) => {
+            const rawPath = writeSourcePath(displayValue);
+            if (!rawPath) return 'variables.';
+            if (rawPath.startsWith('.')) return 'variables' + rawPath;
+            return 'variables.' + rawPath;
+        },
     });
     // The same picker for a `{variables.…` placeholder at a key's caret; any flow variable may go into a key.
     protected readonly keyVariablePicker = new VariablePathPicker({
@@ -541,6 +546,38 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     protected onValueKeydown(entryIndex: number, event: KeyboardEvent): void {
         this.variablePicker.onKeydown(entryIndex, event);
         this.moveOnEnter(entryIndex, event);
+    }
+
+    protected onValueInput(entryIndex: number, event: Event): void {
+        const input = event.target as HTMLInputElement;
+        const valueCtrl = this.entries.at(entryIndex).get('value');
+        valueCtrl?.setValue(this.displayToFormValue(input.value), { emitEvent: true });
+        valueCtrl?.markAsDirty();
+        this.variablePicker.onInput(entryIndex, event);
+    }
+
+    protected onValueBlur(entryIndex: number, event: FocusEvent): void {
+        this.entries.at(entryIndex).get('value')?.markAsTouched();
+        this.variablePicker.onBlur(entryIndex, event);
+    }
+
+    /** Returns the portion of the form value to show in the display input (strips the `variables` prefix). */
+    protected getValueDisplayText(entryIndex: number): string {
+        const val = (this.entries.at(entryIndex).get('value')?.value ?? '') as string;
+        if (!val || val === 'variables.' || val === 'variables') return '';
+        if (val.startsWith('variables.')) return val.slice(9); // "variables.topic" → ".topic"
+        return val;
+    }
+
+    protected isValueInvalid(entryIndex: number): boolean {
+        const ctrl = this.entries.at(entryIndex).get('value');
+        return (ctrl?.invalid ?? false) && (ctrl?.touched ?? false);
+    }
+
+    private displayToFormValue(displayVal: string): string {
+        if (!displayVal) return 'variables.';
+        if (displayVal.startsWith('.')) return 'variables' + displayVal;
+        return 'variables.' + displayVal;
     }
 
     protected isKeyListOpen(entryIndex: number): boolean {
