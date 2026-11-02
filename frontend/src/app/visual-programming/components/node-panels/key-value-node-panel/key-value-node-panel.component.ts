@@ -100,6 +100,8 @@ import {
     buildVariablePickerItems,
     isPlainEnter,
     VariablePathPicker,
+    variablesDisplayToFormValue,
+    variablesFormValueToDisplay,
     withoutUsedPaths,
 } from '../../input-map/variable-path-picker';
 import { highlightVariablesHtml } from '../shared/variable-highlight-textarea/highlight-variables';
@@ -551,7 +553,7 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     protected onValueInput(entryIndex: number, event: Event): void {
         const input = event.target as HTMLInputElement;
         const valueCtrl = this.entries.at(entryIndex).get('value');
-        valueCtrl?.setValue(this.displayToFormValue(input.value), { emitEvent: true });
+        valueCtrl?.setValue(variablesDisplayToFormValue(input.value), { emitEvent: true });
         valueCtrl?.markAsDirty();
         this.variablePicker.onInput(entryIndex, event);
     }
@@ -563,21 +565,12 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
 
     /** Returns the portion of the form value to show in the display input (strips the `variables` prefix). */
     protected getValueDisplayText(entryIndex: number): string {
-        const val = (this.entries.at(entryIndex).get('value')?.value ?? '') as string;
-        if (!val || val === 'variables.' || val === 'variables') return '';
-        if (val.startsWith('variables.')) return val.slice(9); // "variables.topic" → ".topic"
-        return val;
+        return variablesFormValueToDisplay((this.entries.at(entryIndex).get('value')?.value ?? '') as string);
     }
 
     protected isValueInvalid(entryIndex: number): boolean {
         const ctrl = this.entries.at(entryIndex).get('value');
         return (ctrl?.invalid ?? false) && (ctrl?.touched ?? false);
-    }
-
-    private displayToFormValue(displayVal: string): string {
-        if (!displayVal) return 'variables.';
-        if (displayVal.startsWith('.')) return 'variables' + displayVal;
-        return 'variables.' + displayVal;
     }
 
     protected isKeyListOpen(entryIndex: number): boolean {

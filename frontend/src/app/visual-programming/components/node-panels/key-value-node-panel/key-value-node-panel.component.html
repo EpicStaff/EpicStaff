@@ -150,15 +150,13 @@
                             </ng-template>
                             <ng-template #valueField>
                                 <div class="entry-field">
-                                    <div
-                                        class="value-field-wrapper"
-                                        [class.duplicate]="isConflictingVariable(i)"
-                                        [class.invalid-border]="isValueInvalid(i)"
-                                    >
+                                    <div class="value-field-wrapper">
                                         <span class="variables-prefix">variables</span>
                                         <input
                                             type="text"
                                             class="entry-input"
+                                            [class.duplicate]="isConflictingVariable(i)"
+                                            [class.invalid-border]="isValueInvalid(i)"
                                             [value]="getValueDisplayText(i)"
                                             placeholder="all fields"
                                             aria-label="Variable path"

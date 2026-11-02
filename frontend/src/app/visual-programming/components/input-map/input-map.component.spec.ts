@@ -31,7 +31,7 @@ class PythonPanelHostComponent {
 describe('InputMapComponent variable picker', () => {
     let fixture: ComponentFixture<PythonPanelHostComponent>;
 
-    const valueInput = (): HTMLInputElement => fixture.nativeElement.querySelector('input[formControlName="value"]');
+    const valueInput = (): HTMLInputElement => fixture.nativeElement.querySelector('.value-field-wrapper input');
     const listed = (): string[] =>
         Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), (item) => item.title);
     const typeValue = (text: string): void => {
@@ -69,20 +69,20 @@ describe('InputMapComponent variable picker', () => {
             'variables.my_object.user_email',
         ]);
 
-        typeValue('variables.user');
+        typeValue('.user');
         expect(listed()).toEqual([
             'variables.my_object',
             'variables.my_object.user_id',
             'variables.my_object.user_email',
         ]);
 
-        typeValue('variables.my_object.user_e');
+        typeValue('.my_object.user_e');
         expect(listed()).toEqual(['variables.my_object.user_email']);
     });
 
     describe('with another row using the object', () => {
         const valueInputs = (): HTMLInputElement[] =>
-            Array.from(fixture.nativeElement.querySelectorAll('input[formControlName="value"]'));
+            Array.from(fixture.nativeElement.querySelectorAll('.value-field-wrapper input'));
         const pairs = (): FormArray => fixture.componentInstance.form.get('input_map') as FormArray;
         const press = (key: string, init: KeyboardEventInit = {}): void => {
             valueInputs()[1].dispatchEvent(
@@ -123,7 +123,7 @@ describe('InputMapComponent variable picker', () => {
         });
 
         it('picks the first field on Enter once something is typed, passing the object by', () => {
-            valueInputs()[1].value = 'variables.my';
+            valueInputs()[1].value = '.my';
             valueInputs()[1].dispatchEvent(new Event('input'));
             fixture.detectChanges();
 
@@ -148,7 +148,7 @@ describe('InputMapComponent variable picker', () => {
         });
 
         it('still adds a row on Enter while the list has nothing to pick', () => {
-            valueInputs()[1].value = 'variables.nothing';
+            valueInputs()[1].value = '.nothing';
             valueInputs()[1].dispatchEvent(new Event('input'));
             fixture.detectChanges();
 

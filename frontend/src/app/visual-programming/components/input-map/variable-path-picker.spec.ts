@@ -48,11 +48,51 @@ class RowsHostComponent {
 describe('buildVariablePickerItems', () => {
     it('lists every variable path, each parent first, tagged and indented by depth', () => {
         expect(buildVariablePickerItems(STATE)).toEqual([
-            { tag: 'obj', label: 'user', displayLabel: 'user', depth: 0, fullPath: 'variables.user' },
-            { tag: 'var', label: 'user.id', displayLabel: 'id', depth: 1, fullPath: 'variables.user.id' },
-            { tag: 'obj', label: 'user.tags', displayLabel: 'tags', depth: 1, fullPath: 'variables.user.tags' },
-            { tag: 'var', label: 'user.tags[0]', displayLabel: '0', depth: 2, fullPath: 'variables.user.tags[0]' },
-            { tag: 'var', label: 'plan', displayLabel: 'plan', depth: 0, fullPath: 'variables.plan' },
+            {
+                tag: 'obj',
+                label: 'user',
+                displayLabel: 'user',
+                depth: 0,
+                fullPath: 'variables.user',
+                previewValue: 'Object',
+                isArrayItem: false,
+            },
+            {
+                tag: 'var',
+                label: 'user.id',
+                displayLabel: 'id',
+                depth: 1,
+                fullPath: 'variables.user.id',
+                previewValue: '1',
+                isArrayItem: false,
+            },
+            {
+                tag: 'obj',
+                label: 'user.tags',
+                displayLabel: 'tags',
+                depth: 1,
+                fullPath: 'variables.user.tags',
+                previewValue: 'List',
+                isArrayItem: false,
+            },
+            {
+                tag: 'var',
+                label: 'user.tags[0]',
+                displayLabel: '0',
+                depth: 2,
+                fullPath: 'variables.user.tags[0]',
+                previewValue: '"a"',
+                isArrayItem: true,
+            },
+            {
+                tag: 'var',
+                label: 'plan',
+                displayLabel: 'plan',
+                depth: 0,
+                fullPath: 'variables.plan',
+                previewValue: '"free"',
+                isArrayItem: false,
+            },
         ]);
     });
 

@@ -152,14 +152,16 @@
                                 autocomplete="off"
                             />
                         </div>
-                        <app-svg-icon
-                            icon="trash"
-                            size="1rem"
-                            class="delete-icon"
-                            matTooltip="Remove"
-                            matTooltipPosition="above"
-                            (click)="removeTestVariable(i)"
-                        ></app-svg-icon>
+                        @if (!parentForm.disabled) {
+                            <app-svg-icon
+                                icon="trash"
+                                size="1rem"
+                                class="delete-icon"
+                                matTooltip="Remove"
+                                matTooltipPosition="above"
+                                (click)="removeTestVariable(i)"
+                            ></app-svg-icon>
+                        }
                     </div>
                 </div>
             }
@@ -169,7 +171,11 @@
             class="add-pair-btn"
             (click)="addTestVariable()"
         >
-            <i class="ti ti-plus"></i> Add Input
+            <app-svg-icon
+                icon="plus"
+                size="16px"
+            ></app-svg-icon>
+            Add Input
         </button>
         <div
             class="test-input-dirty-warning"

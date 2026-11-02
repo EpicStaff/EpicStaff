@@ -79,6 +79,20 @@ export function withoutUsedPaths(items: PickerItem[], usedPaths: ReadonlySet<str
         .map((item) => (isUsed(item) ? { ...item, disabled: true } : item));
 }
 
+/** Converts a display value (what the user sees after the "variables" prefix) to the stored form value. */
+export function variablesDisplayToFormValue(displayValue: string): string {
+    if (!displayValue) return 'variables.';
+    if (displayValue.startsWith('.')) return 'variables' + displayValue;
+    return 'variables.' + displayValue;
+}
+
+/** Strips the `variables` prefix from a stored form value for display (e.g. "variables.topic" → ".topic"). */
+export function variablesFormValueToDisplay(formValue: string): string {
+    if (!formValue || formValue === 'variables.' || formValue === 'variables') return '';
+    if (formValue.startsWith('variables.')) return formValue.slice(9);
+    return formValue;
+}
+
 /** Enter with no modifier key, as Angular's `keydown.enter` matches it. */
 export function isPlainEnter(event: KeyboardEvent): boolean {
     return event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;

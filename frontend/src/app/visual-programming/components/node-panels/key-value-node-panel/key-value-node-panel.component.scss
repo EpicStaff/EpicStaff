@@ -157,11 +157,6 @@ $field-height: 40px;
     align-items: center;
     transition: border-color 0.2s ease;
 
-    &.duplicate,
-    &.invalid-border {
-        border-color: var(--color-status-error);
-    }
-
     // Dim the whole row (prefix + input) when disabled, matching the locked .entry-input opacity.
     &:has(.entry-input:disabled) {
         opacity: 0.7;
@@ -170,7 +165,7 @@ $field-height: 40px;
     .variables-prefix {
         padding-right: 0.375rem;
         font-size: 0.875rem;
-        color: var(--text-secondary);
+        color: var(--color-text-primary);
         flex-shrink: 0;
         user-select: none;
         pointer-events: none;
@@ -190,6 +185,11 @@ $field-height: 40px;
 
         &:focus {
             border-color: var(--accent-color);
+        }
+
+        &.duplicate,
+        &.invalid-border {
+            border-color: var(--color-status-error);
         }
 
         &:disabled {

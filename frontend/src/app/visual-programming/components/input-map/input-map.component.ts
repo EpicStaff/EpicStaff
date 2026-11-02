@@ -1,11 +1,14 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
+    ElementRef,
     EventEmitter,
     inject,
+    Injector,
     Input,
     input,
     OnChanges,
@@ -37,7 +40,14 @@ import { FlowService } from '../../services/flow.service';
 import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
 import { PickerItem } from './var-picker-flat.component';
-import { buildVariablePickerItems, isPlainEnter, VariablePathPicker, withoutUsedPaths } from './variable-path-picker';
+import {
+    buildVariablePickerItems,
+    isPlainEnter,
+    VariablePathPicker,
+    variablesDisplayToFormValue,
+    variablesFormValueToDisplay,
+    withoutUsedPaths,
+} from './variable-path-picker';
 
 /** Keys to rename, add and remove in the visible rows, e.g. after an owner's code changed its parameter names. */
 export interface InputMapKeyChanges {
@@ -67,7 +77,7 @@ export interface InputMapKeyChanges {
     styleUrls: ['./input-map.component.scss'],
 })
 export class InputMapComponent implements OnInit, OnChanges {
-    @Input() activeColor: string = '#685fff';
+    @Input() activeColor: string = 'var(--accent-color)';
     @Input() testMode: boolean = false;
     @Input() showTestMode: boolean = false;
     @Input() pythonNodeId: number | null = null;
@@ -96,6 +106,8 @@ export class InputMapComponent implements OnInit, OnChanges {
     /** Per rows array, the values of the rows `applyKeyChanges` removed, by key, to give back if the key returns. */
     private readonly removedValuesByRows = new WeakMap<FormArray, Map<string, string>>();
 
+    private readonly elementRef = inject(ElementRef);
+    private readonly injector = inject(Injector);
     private readonly pythonCodeRunService = inject(PythonCodeRunService);
     private readonly graphSessionService = inject(GraphSessionService);
     private readonly runSessionSSEService = inject(RunSessionSSEService);
@@ -228,15 +240,16 @@ export class InputMapComponent implements OnInit, OnChanges {
 
         this.addPair();
 
-        setTimeout(() => {
-            const newIndex = currentIndex + 1;
-            const newPairElement = document.querySelector(
-                `[formGroupName="${newIndex}"] input[formControlName="key"]`
-            ) as HTMLInputElement;
-            if (newPairElement) {
-                newPairElement.focus();
-            }
-        }, 0);
+        afterNextRender(
+            () => {
+                const newIndex = currentIndex + 1;
+                const newPairElement = this.elementRef.nativeElement.querySelector(
+                    `[formGroupName="${newIndex}"] input[formControlName="key"]`
+                ) as HTMLInputElement;
+                newPairElement?.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     onTestModeToggle(value: boolean): void {
@@ -616,23 +629,14 @@ export class InputMapComponent implements OnInit, OnChanges {
     onValueInput(rowIndex: number, event: Event): void {
         const input = event.target as HTMLInputElement;
         const valueCtrl = this.pairs.at(rowIndex).get('value');
-        valueCtrl?.setValue(this.displayToFormValue(input.value), { emitEvent: true });
+        valueCtrl?.setValue(variablesDisplayToFormValue(input.value), { emitEvent: true });
         valueCtrl?.markAsDirty();
         this.variablePicker.onInput(rowIndex, event);
     }
 
     /** Returns the portion of the form value to display in the value input (strips the `variables` prefix). */
     getValueDisplayText(pair: AbstractControl): string {
-        const val = (pair.get('value')?.value ?? '') as string;
-        if (!val || val === 'variables.' || val === 'variables') return '';
-        if (val.startsWith('variables.')) return val.slice(9); // keeps leading dot: "variables.topic" → ".topic"
-        return val;
-    }
-
-    private displayToFormValue(displayVal: string): string {
-        if (!displayVal) return 'variables.';
-        if (displayVal.startsWith('.')) return 'variables' + displayVal;
-        return 'variables.' + displayVal;
+        return variablesFormValueToDisplay((pair.get('value')?.value ?? '') as string);
     }
 
     /** Enter picks the highlighted variable; with none highlighted, e.g. on the untouched prefill, it adds a row as in the key input. */
@@ -649,13 +653,6 @@ export class InputMapComponent implements OnInit, OnChanges {
             if (value) used.add(value);
         });
         return used;
-    }
-
-    private getValidInputPairs(): AbstractControl[] {
-        return this.pairs.controls.filter((control) => {
-            const value = control.value;
-            return value.key?.trim() !== '';
-        });
     }
 
     private checkSuccessfulSessions(): void {

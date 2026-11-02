@@ -568,8 +568,8 @@ describe('KeyValueNodePanelComponent', () => {
                 fixture.detectChanges();
             };
             const rows: [string, string][] = [
-                ['test1', 'variables.my_key1'],
-                ['test2', 'variables.my_key2'],
+                ['test1', '.my_key1'],
+                ['test2', '.my_key2'],
             ];
             // The node opens on one blank row; Add key adds the rest.
             rows.forEach(([key, value], row) => {
@@ -580,7 +580,7 @@ describe('KeyValueNodePanelComponent', () => {
                 type('Key', row, key);
                 type('Variable path', row, value);
             });
-            const typed = rows.map(([key, value]) => ({ key, value }));
+            const typed = rows.map(([key, displayValue]) => ({ key, value: 'variables' + displayValue }));
 
             switchTo('delete');
             switchTo('write');
@@ -1779,7 +1779,7 @@ describe('KeyValueNodePanelComponent', () => {
                 expect(input.getAttribute('role')).toBe('combobox');
                 expect(input.getAttribute('aria-expanded')).toBe('true');
 
-                typeValue(fixture, 'variables.US');
+                typeValue(fixture, '.US');
                 expect(listed()).toEqual(['variables.user', 'variables.user.id']);
 
                 document.querySelectorAll<HTMLElement>('.vpf-item')[1].click();
@@ -1798,18 +1798,18 @@ describe('KeyValueNodePanelComponent', () => {
                 initialState,
             });
 
-            typeValue(fixture, 'variables.plan');
+            typeValue(fixture, '.plan');
             expect(listed()).toEqual([]);
 
-            typeValue(fixture, 'variables.pl');
+            typeValue(fixture, '.pl');
             expect(listed()).toEqual(['variables.plan']);
             typeValue(fixture, 'plan');
             expect(listed()).toEqual([]);
 
             // The path before a |default is what counts.
-            typeValue(fixture, 'variables.plan|free');
+            typeValue(fixture, '.plan|free');
             expect(listed()).toEqual([]);
-            typeValue(fixture, 'variables.pl|free');
+            typeValue(fixture, '.pl|free');
             expect(listed()).toEqual(['variables.plan']);
         });
 
@@ -1860,13 +1860,13 @@ describe('KeyValueNodePanelComponent', () => {
 
                 focusValue(fixture);
                 expect(listed()).toEqual(all);
-                typeValue(fixture, 'variables.user');
+                typeValue(fixture, '.user');
                 expect(listed()).toEqual(all);
-                typeValue(fixture, 'variables.my_object.');
+                typeValue(fixture, '.my_object.');
                 expect(listed()).toEqual(['variables.my_object.user_id', 'variables.my_object.user_email']);
 
                 // The object itself is a valid read target and write source.
-                typeValue(fixture, 'variables.');
+                typeValue(fixture, '');
                 document.querySelector<HTMLElement>('.vpf-item')!.click();
                 fixture.detectChanges();
                 expect(entriesOf(panel).at(0).get('value')!.value).toBe('variables.my_object');
@@ -1916,8 +1916,8 @@ describe('KeyValueNodePanelComponent', () => {
             focusValue(fixture);
             expect(listed()).toEqual([]);
 
-            // The input shows only the prefix while the row still holds variables.user.
-            valueInput(fixture).value = 'variables.';
+            // The input shows nothing while the row still holds variables.user.
+            valueInput(fixture).value = '';
             focusValue(fixture);
             expect(listed()).toEqual(['variables.user', 'variables.user.id']);
             expect(document.querySelectorAll('.vpf-item:disabled').length).toBe(0);
@@ -1989,7 +1989,7 @@ describe('KeyValueNodePanelComponent', () => {
                     { renderTemplate: true, initialState: nested }
                 );
 
-                valueInput(fixture).value = 'variables.';
+                valueInput(fixture).value = '';
                 focusValue(fixture);
 
                 expect(listed()).toEqual([
@@ -2048,7 +2048,7 @@ describe('KeyValueNodePanelComponent', () => {
             it('offers the object the other row uses, and its fields, all enabled', () => {
                 const { panel, fixture } = openLoaded();
 
-                typeValue(fixture, 'variables.', 1);
+                typeValue(fixture, '', 1);
                 expect(listed()).toEqual(ALL);
                 expect(disabled()).toEqual([]);
 
@@ -2062,7 +2062,7 @@ describe('KeyValueNodePanelComponent', () => {
             it('picks a field with the arrow keys and Enter', () => {
                 Element.prototype.scrollIntoView = vi.fn();
                 const { panel, fixture } = openLoaded();
-                const input = typeValue(fixture, 'variables.', 1);
+                const input = typeValue(fixture, '', 1);
                 const press = (key: string): KeyboardEvent => {
                     const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
                     input.dispatchEvent(event);
@@ -2082,7 +2082,7 @@ describe('KeyValueNodePanelComponent', () => {
 
             it('picks nothing on Enter once the pointer has left the list while the prefill is untouched', () => {
                 const { panel, fixture } = openLoaded();
-                const input = typeValue(fixture, 'variables.', 1);
+                const input = typeValue(fixture, '', 1);
                 document.querySelectorAll('.vpf-item')[2].dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
                 document.querySelector('.vpf-list')!.dispatchEvent(new MouseEvent('mouseleave'));
                 fixture.detectChanges();
@@ -2099,7 +2099,7 @@ describe('KeyValueNodePanelComponent', () => {
 
             it('wires the value input to the list as a combobox, and closes the list when focus leaves', () => {
                 const { fixture } = openLoaded();
-                const input = typeValue(fixture, 'variables.', 1);
+                const input = typeValue(fixture, '', 1);
                 expect(input.getAttribute('aria-controls')).toBe(document.querySelector('.vpf-list')!.id);
 
                 input.dispatchEvent(new FocusEvent('blur'));
