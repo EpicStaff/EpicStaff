@@ -10,6 +10,7 @@ from rbac.access.org_context import cache_active_org_id
 from rbac.identity.authentication import JwtOrApiKeyAuthentication
 from rbac.models import OrganizationConfig, OrganizationUser
 from src.shared.models import UserAction
+from agents.models import AgentDefinition, Surface
 from tables.models import Graph, PythonCode, PythonNode, SourceCollection, WebhookTrigger
 from user_audit import recorder
 from user_audit.actor import Actor, actor_from_request
@@ -80,6 +81,25 @@ def test_record_sends_event_after_commit_only(
         str(flow.id),
         "Billing flow",
     )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("agent_specific", [True, False])
+def test_record_names_a_surfaces_owner_agent_as_its_parent(
+    agent_specific, acme, admin_acme, sent_events, django_capture_on_commit_callbacks
+):
+    agent = AgentDefinition.objects.create(org=acme, name="Researcher")
+    surface = Surface.objects.create(
+        org=acme, name="notes", owner_agent=agent if agent_specific else None
+    )
+
+    with user_action_context(request_as(admin_acme)):
+        with django_capture_on_commit_callbacks(execute=True):
+            record_user_action(action=UserAction.UPDATED, org_id=acme.id, target=surface)
+
+    [event] = sent_events
+    expected_parent = ("agent", str(agent.id), "Researcher") if agent_specific else (None, None, None)
+    assert (event.parent_type, event.parent_id, event.parent_name) == expected_parent
 
 
 @pytest.mark.django_db

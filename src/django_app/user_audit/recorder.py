@@ -12,7 +12,7 @@ from src.shared.retention import DataType
 from user_audit.actor import Actor, actor_from_request
 from user_audit.context import UserActionContext, current_context
 from user_audit.sender import get_user_audit_sender
-from user_audit.targets import TargetDescription, describe
+from user_audit.targets import TargetDescription, describe, target_parent
 
 
 def record_user_action(
@@ -38,6 +38,7 @@ def record_user_action(
             the request; never the raw `X-Organization-Id` header.
         target_description: For a target that no longer exists as a model instance;
             takes precedence over `target`.
+        parent: Defaults to the target's own parent (`target_parent`), if it has one.
         route: Set only by the middleware's fallback record.
     """
     try:
@@ -52,6 +53,8 @@ def record_user_action(
             context.recorded = True
 
         target_description = target_description or (describe(target) if target else None)
+        if parent is None and target is not None:
+            parent = target_parent(target)
         parent_description = describe(parent) if parent is not None else None
         event = UserActionEvent(
             id=str(uuid4()),

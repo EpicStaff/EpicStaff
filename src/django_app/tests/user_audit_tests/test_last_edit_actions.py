@@ -183,7 +183,7 @@ def test_creating_agent_records_created(
     assert response.status_code == status.HTTP_201_CREATED, response.content
     agent = AgentDefinition.objects.get(pk=response.data["id"])
     [event] = sent_events
-    assert _target(event) == ("created", "agent definition", str(agent.id), "invoice-agent")
+    assert _target(event) == ("created", "agent", str(agent.id), "invoice-agent")
     assert (event.org_id, event.actor_user_id) == (default_org.id, regular_user.id)
 
 
