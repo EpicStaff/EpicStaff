@@ -190,12 +190,12 @@ describe('AuditUserActionsBrowserComponent', () => {
         );
         expect(headers).toEqual(['Date', 'User', 'Action', 'Target Type', 'Target Name', 'Target Parent']);
         expect(rows).toEqual([
-            ['ann@example.com via API key Deploy bot', 'Renamed', 'flow', 'Invoices v2 → Billing', ''],
-            ['ann@example.com', 'Import entity', 'python node', 'Parse invoice', 'Billing · flow'],
+            ['ann@example.com via API key Deploy bot', 'Renamed', 'Flow', 'Invoices v2 → Billing', ''],
+            ['ann@example.com', 'Import entity', 'Python node', 'Parse invoice', 'Billing · Flow'],
             ['ann@example.com', 'Sign-in failed', '', '', ''],
-            ['ann@example.com', 'Updated', '', '', 'Billing · flow'],
-            ['ann@example.com', 'Deleted', 'tool', '#9', 'Researcher · agent'],
-            ['ann@example.com', 'Updated', '', '', 'flow'],
+            ['ann@example.com', 'Updated', '', '', 'Billing · Flow'],
+            ['ann@example.com', 'Deleted', 'Tool', '#9', 'Researcher · Agent'],
+            ['ann@example.com', 'Updated', '', '', 'Flow'],
         ]);
     });
 

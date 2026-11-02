@@ -123,7 +123,7 @@
                                         }
                                     </td>
                                     <td>{{ row.actionLabel }}</td>
-                                    <td>{{ row.event.target_type }}</td>
+                                    <td>{{ row.targetType }}</td>
                                     <td>
                                         <app-audit-highlight
                                             [text]="row.targetName"
@@ -135,7 +135,7 @@
                                             [text]="row.parentName"
                                             [term]="highlightTerm()"
                                         />
-                                        @if (row.event.parent_type; as parentType) {
+                                        @if (row.parentType; as parentType) {
                                             <span class="audit-name-label">
                                                 @if (row.parentName) {
                                                     ·

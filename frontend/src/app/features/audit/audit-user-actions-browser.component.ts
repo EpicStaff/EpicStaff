@@ -31,7 +31,12 @@ import { AuditResizableColumns } from './utils/audit-resizable-columns.util';
 import { buildTimeZoneLabel } from './utils/audit-time-zone-label.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
 import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
-import { userActionLabel, userActionParentName, userActionTargetName } from './utils/describe-user-action.util';
+import {
+    userActionLabel,
+    userActionParentName,
+    userActionTargetName,
+    userActionTypeLabel,
+} from './utils/describe-user-action.util';
 
 const DEFAULT_PAGE_SIZE = 20;
 const MIN_PAGE_SIZE = 10;
@@ -71,8 +76,10 @@ const USER_ACTION_COLUMNS: UserActionColumn[] = [
 interface UserActionRow {
     event: AuditUserAction;
     actionLabel: string;
+    targetType: string;
     targetName: string;
     parentName: string;
+    parentType: string;
 }
 
 @Component({
@@ -117,8 +124,10 @@ export class AuditUserActionsBrowserComponent implements OnInit {
         this.events().map((event) => ({
             event,
             actionLabel: userActionLabel(event.action),
+            targetType: userActionTypeLabel(event.target_type),
             targetName: userActionTargetName(event),
             parentName: userActionParentName(event),
+            parentType: userActionTypeLabel(event.parent_type),
         }))
     );
     protected readonly appliedChips = computed(() =>

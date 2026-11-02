@@ -1,5 +1,10 @@
 import { AuditUserAction } from '../models/audit-user-action.models';
-import { userActionLabel, userActionParentName, userActionTargetName } from './describe-user-action.util';
+import {
+    userActionLabel,
+    userActionParentName,
+    userActionTargetName,
+    userActionTypeLabel,
+} from './describe-user-action.util';
 
 const baseAction: AuditUserAction = {
     id: 'action-1',
@@ -68,5 +73,15 @@ describe('userActionParentName', () => {
         ['no parent', { target_type: 'flow', target_name: 'Billing' }, ''],
     ])('describes %s', (_case, change, expected) => {
         expect(userActionParentName({ ...baseAction, ...change })).toBe(expected);
+    });
+});
+
+describe('userActionTypeLabel', () => {
+    it.each<[string | null, string]>([
+        ['python node', 'Python node'],
+        ['flow', 'Flow'],
+        [null, ''],
+    ])('labels %s as "%s"', (type, expected) => {
+        expect(userActionTypeLabel(type)).toBe(expected);
     });
 });
