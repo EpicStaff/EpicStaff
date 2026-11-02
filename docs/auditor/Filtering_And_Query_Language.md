@@ -47,11 +47,14 @@ top-level `and` (never `or`/`not` — see `src/auditor/app/services/duration_fil
 The `user_actions` domain (`/api/audit/user_actions/...`, catalog in
 `src/auditor/app/domains/user_actions/fields.py`) has its own field set. It has no
 `match_scope` and no computed `duration`; the operators and query language are the same.
+`number` is the short record number from one deployment-wide sequence: increasing, with
+gaps. Records stored before it existed have none: `equals`, `in` and the range ops never
+match them, `not_equal` and `not_in` always do.
 
 | Field | Allowed ops |
 |---|---|
 | `action`, `target_type`, `parent_type` (select) | `in`, `not_in`, `equals`, `not_equal` |
-| `actor_user_id` (numeric) | `in`, `not_in`, `equals`, `not_equal`, `gt`, `lt`, `gte`, `lte` |
+| `number`, `actor_user_id` (numeric) | `in`, `not_in`, `equals`, `not_equal`, `gt`, `lt`, `gte`, `lte` |
 | `target_id`, `parent_id`, `actor_api_key_name`, `route` | `in`, `not_in`, `equals`, `not_equal` |
 | `id` | `in`, `not_in`, `equals`, `not_equal`, `gt`, `lt`, `gte`, `lte` |
 | `event_time` | `equals`, `gt`, `lt`, `gte`, `lte` (see "Working with dates") |

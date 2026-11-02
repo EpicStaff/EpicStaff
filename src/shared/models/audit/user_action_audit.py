@@ -20,6 +20,9 @@ class UserActionEvent(BaseAuditEvent):
     """One action a user (or an API key) took, as it was at the time it happened.
 
     Attributes:
+        number: Short record number from one deployment-wide sequence, increasing with
+            each record but with gaps. Every record sent now carries one; it is None only
+            on records stored before numbering existed. `id` stays the unique key.
         actor_email: Email at the time of the action; empty for the system API key.
         action: A UserAction value, or a custom DRF action name ("copy") for fallback records.
         target_type: Display label such as "python node", "flow" or "member".
@@ -27,6 +30,7 @@ class UserActionEvent(BaseAuditEvent):
         route: Fallback records only, e.g. "POST api/graphs/<pk>/copy/".
     """
 
+    number: int | None = None
     actor_user_id: int | None
     actor_email: str
     actor_api_key_name: str | None = None

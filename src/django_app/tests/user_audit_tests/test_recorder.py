@@ -2,6 +2,7 @@ import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.db import connection, transaction
 from django.test import RequestFactory
+from loguru import logger
 from rest_framework.request import Request
 
 from plugins.identity.principals import PluginServiceAccountPrincipal
@@ -217,6 +218,7 @@ def test_record_for_user_orgs_writes_one_event_per_membership(
     assert sorted(event.org_id for event in sent_events) == sorted([acme.id, beta.id])
     assert {event.action for event in sent_events} == {"signed_in"}
     assert {event.actor_user_id for event in sent_events} == {admin_acme.id}
+    assert len({event.number for event in sent_events}) == 2
 
 
 @pytest.mark.django_db
@@ -332,3 +334,38 @@ def test_retention_is_read_once_per_org_per_request(
 
     assert sorted(reads) == sorted([acme.id, beta.id])
     assert len(sent_events) == 3
+
+
+@pytest.mark.django_db
+def test_records_get_increasing_numbers(
+    acme, admin_acme, flow, sent_events, django_capture_on_commit_callbacks
+):
+    with user_action_context(request_as(admin_acme)):
+        with django_capture_on_commit_callbacks(execute=True):
+            record_user_action(action=UserAction.CREATED, org_id=acme.id, target=flow)
+            record_user_action(action=UserAction.UPDATED, org_id=acme.id, target=flow)
+
+    first, second = sent_events
+    assert isinstance(first.number, int)
+    assert second.number > first.number
+
+
+@pytest.mark.django_db
+def test_failed_record_number_read_is_logged_and_leaves_the_callers_transaction_usable(
+    acme, admin_acme, flow, sent_events, django_capture_on_commit_callbacks
+):
+    errors = []
+    sink_id = logger.add(lambda message: errors.append(str(message)), level="ERROR")
+    try:
+        with user_action_context(request_as(admin_acme)), transaction.atomic():
+            # Dropped inside the test's transaction, so it is back for the next test.
+            with connection.cursor() as cursor:
+                cursor.execute("DROP SEQUENCE user_action_record_number_seq")
+            with django_capture_on_commit_callbacks(execute=True):
+                record_user_action(action=UserAction.UPDATED, org_id=acme.id, target=flow)
+            assert Graph.objects.filter(pk=flow.pk).exists()
+    finally:
+        logger.remove(sink_id)
+
+    assert sent_events == []
+    assert any("Failed to record user action updated" in error for error in errors)

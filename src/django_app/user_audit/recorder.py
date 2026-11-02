@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 from django.conf import settings
-from django.db import models, transaction
+from django.db import connection, models, transaction
 from django.utils import timezone
 from loguru import logger
 from rbac.governance.organization_retention import effective_retention_days_for_org
@@ -58,6 +58,7 @@ def record_user_action(
         parent_description = describe(parent) if parent is not None else None
         event = UserActionEvent(
             id=str(uuid4()),
+            number=_next_record_number(),
             org_id=org_id,
             event_time=timezone.now(),
             retention_days=_retention_days(org_id, context),
@@ -78,6 +79,15 @@ def record_user_action(
         transaction.on_commit(lambda: get_user_audit_sender().send([event]), robust=True)
     except Exception:
         logger.exception("Failed to record user action {} in org {}", action, org_id)
+
+
+def _next_record_number() -> int:
+    # Gaps are expected: nextval is not transactional, so a rolled-back transaction
+    # burns its number. A savepoint, so a failed read caught by the caller leaves its
+    # transaction usable.
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("SELECT nextval('user_action_record_number_seq')")
+        return cursor.fetchone()[0]
 
 
 def _retention_days(org_id: int, context: UserActionContext | None) -> int:

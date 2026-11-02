@@ -6,6 +6,7 @@
   "mappings": {
     "properties": {
       "id": { "type": "keyword" },
+      "number": { "type": "long" },
       "org_id": { "type": "long" },
       "actor_user_id": { "type": "long" },
       "actor_api_key_name": { "type": "keyword" },

@@ -6,6 +6,7 @@ TEXT_FIELDS = ("actor_email", "target_name", "parent_name", "previous_name")
 
 KNOWN_FIELDS: dict[str, FieldSpec] = {
     "id": FieldSpec(RANGE_OPS | SELECT_OPS),
+    "number": FieldSpec(SELECT_OPS | RANGE_OPS, numeric=True),
     "event_time": FieldSpec(RANGE_OPS),
     # select fields
     "action": FieldSpec(SELECT_OPS),

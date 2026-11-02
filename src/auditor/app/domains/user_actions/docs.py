@@ -45,6 +45,10 @@ SEARCH_REQUEST_EXAMPLES = {
         "summary": "Actions by one email address, newest first",
         "value": {"query": 'actor_email = "user@example.com"'},
     },
+    "record number range (query)": {
+        "summary": "Records numbered 100 to 200",
+        "value": {"query": "number >= 100 and number <= 200"},
+    },
     "free text (query)": {
         "summary": "Bare word searches the email and name fields",
         "value": {"query": "onboarding"},
