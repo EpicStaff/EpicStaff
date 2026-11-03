@@ -28,6 +28,23 @@ class AbstractUVProvider(abc.ABC):
         A venv with no lock file resolves nothing.
         """
 
+    @classmethod
+    @abc.abstractmethod
+    async def build_wheel(cls, source_dir: Path, output_dir: Path) -> Path:
+        """Build the source tree at `source_dir` into a wheel under `output_dir`.
+
+        Args:
+            source_dir: Directory holding the unpacked source distribution.
+            output_dir: Directory the wheel is written to. Expected to be empty, so
+                that the build's own output is the only wheel in it.
+
+        Returns:
+            Path of the wheel that was built.
+
+        Raises:
+            UVBuildError: The source could not be built, or produced no wheel.
+        """
+
     @staticmethod
     def get_python_binary(venv_path: Path) -> Path:
         return venv_path / "bin/python"
