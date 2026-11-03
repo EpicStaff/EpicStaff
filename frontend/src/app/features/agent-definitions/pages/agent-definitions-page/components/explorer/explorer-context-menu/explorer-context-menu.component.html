@@ -25,13 +25,6 @@
                 [attr.aria-controls]="item.children && expandedId() === item.id ? groupId(item) : null"
                 (click)="onRowClick(item)"
             >
-                @if (item.dotColor !== undefined) {
-                    <span
-                        class="explorer-menu__dot"
-                        [class.explorer-menu__dot--empty]="item.dotColor === null"
-                        [style.background-color]="item.dotColor"
-                    ></span>
-                }
                 <span class="explorer-menu__label">{{ item.label }}</span>
                 @if (item.children) {
                     <app-svg-icon
@@ -61,13 +54,6 @@
                             [disabled]="child.disabled"
                             (click)="onRowClick(child)"
                         >
-                            @if (child.dotColor !== undefined) {
-                                <span
-                                    class="explorer-menu__dot"
-                                    [class.explorer-menu__dot--empty]="child.dotColor === null"
-                                    [style.background-color]="child.dotColor"
-                                ></span>
-                            }
                             <span class="explorer-menu__label">{{ child.label }}</span>
                         </button>
                     }

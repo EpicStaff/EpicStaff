@@ -1,4 +1,4 @@
-import { ActionCode, getLabelColorOption, LABEL_COLOR_OPTIONS, LabelDto, ResourceCode } from '@shared/models';
+import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 
 import { BranchTreeNode } from '../../../../models/tree-node.model';
 import { ExplorerMenuItem, ExplorerMenuSubject } from './explorer-context-menu/explorer-menu.model';
@@ -11,7 +11,6 @@ export const GROUP_MENU_ACTION = {
     newGroup: 'new-group',
     newAgentInGroup: 'new-agent-in-group',
     renameGroup: 'rename-group',
-    groupColorPrefix: 'group-color:',
     deleteGroup: 'delete-group',
     collapseAll: 'collapse-all',
     expandAll: 'expand-all',
@@ -49,20 +48,6 @@ export function groupMenuItems(subject: ExplorerMenuSubject, groups: LabelDto[])
                     label: 'Rename',
                     resource: ResourceCode.Agents,
                     action: ActionCode.Update,
-                },
-                {
-                    id: 'group-color',
-                    label: 'Color',
-                    resource: ResourceCode.Agents,
-                    action: ActionCode.Update,
-                    children: LABEL_COLOR_OPTIONS.map((option) => ({
-                        id: GROUP_MENU_ACTION.groupColorPrefix + option.id,
-                        label: option.id.charAt(0).toUpperCase() + option.id.slice(1),
-                        resource: ResourceCode.Agents,
-                        action: ActionCode.Update,
-                        dotColor: option.circleBg,
-                        disabled: (group.metadata?.color ?? LABEL_COLOR_OPTIONS[0].id) === option.id,
-                    })),
                 },
                 {
                     id: GROUP_MENU_ACTION.deleteGroup,
@@ -119,7 +104,6 @@ function itemGroupMenuItems(
             label: group.name,
             resource,
             action: ActionCode.Update,
-            dotColor: getLabelColorOption(group.metadata?.color).circleBg,
         }));
     if (currentGroupId !== null) {
         targets.push({
@@ -127,7 +111,6 @@ function itemGroupMenuItems(
             label: 'No group',
             resource,
             action: ActionCode.Update,
-            dotColor: null,
         });
     }
     const items: ExplorerMenuItem[] = [];

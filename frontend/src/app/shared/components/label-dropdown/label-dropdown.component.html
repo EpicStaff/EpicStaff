@@ -114,10 +114,12 @@
                     (keyup.escape)="cancelAdd()"
                     autofocus
                 />
-                <app-label-color-picker
-                    [selectedColor]="newLabelColor()"
-                    (colorChange)="newLabelColor.set($event)"
-                ></app-label-color-picker>
+                @if (!isSingle()) {
+                    <app-label-color-picker
+                        [selectedColor]="newLabelColor()"
+                        (colorChange)="newLabelColor.set($event)"
+                    ></app-label-color-picker>
+                }
                 <button
                     type="button"
                     class="cancel-btn-icon"
@@ -166,7 +168,6 @@
                         [attr.aria-selected]="localCheckedIds().size === 0"
                         (click)="selectSingle(null)"
                     >
-                        <span class="label-dot label-dot--empty"></span>
                         <span class="label-name">{{ emptyOptionLabel() }}</span>
                     </button>
                     @for (item of flatTree(); track item.node.id) {
@@ -178,10 +179,6 @@
                             [attr.aria-selected]="isSelected(item.node.id)"
                             (click)="selectSingle(item.node.id)"
                         >
-                            <span
-                                class="label-dot"
-                                [style.background-color]="labelColor(item.node)"
-                            ></span>
                             <span class="label-name">{{ item.node.name }}</span>
                         </button>
                     }

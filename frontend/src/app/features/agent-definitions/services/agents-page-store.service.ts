@@ -1,6 +1,6 @@
 ﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActionCode, LabelColor, labelColorInTurn, LabelDto, ResourceCode } from '@shared/models';
+import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 import { computeUniqueCopyName, computeUniqueName, movedToRecycleBinMessage } from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap, tap } from 'rxjs/operators';
@@ -539,7 +539,6 @@ export class AgentsPageStore {
             blocks.push({
                 groupId: group.id,
                 label: group.name,
-                color: group.metadata?.color ?? LabelColor.Default,
                 memberCount: members.length,
                 nodes,
             });
@@ -551,7 +550,6 @@ export class AgentsPageStore {
             blocks.push({
                 groupId: null,
                 label: 'Ungrouped',
-                color: null,
                 memberCount: ungrouped.length,
                 nodes: ungroupedNodes,
             });
@@ -654,15 +652,11 @@ export class AgentsPageStore {
     }
 
     /**
-     * Creates a group (flat, next color in turn) and moves `assign` into it. Errors are left to the
+     * Creates a group (flat) and moves `assign` into it. Errors are left to the
      * caller, which shows them next to the name it asked for.
      */
-    createGroup(
-        name: string,
-        assign: GroupAssignTarget | null,
-        color: LabelColor = labelColorInTurn(this.groups().length)
-    ): Observable<LabelDto> {
-        return this.groupsStore.createLabel(name.trim(), null, color).pipe(
+    createGroup(name: string, assign: GroupAssignTarget | null): Observable<LabelDto> {
+        return this.groupsStore.createLabel(name.trim(), null).pipe(
             tap((created) => {
                 if (assign) this.moveToGroup(assign, created.id);
             })
@@ -683,14 +677,8 @@ export class AgentsPageStore {
         const group = this.groupsById().get(groupId);
         const trimmed = name.trim();
         if (!group || !trimmed || trimmed === group.name) return;
-        this.groupsStore.renameLabel(groupId, trimmed, group.metadata?.color ?? LabelColor.Default).subscribe({
+        this.groupsStore.renameLabel(groupId, trimmed).subscribe({
             error: (err) => this.toast.error(this.extractError(err, 'Failed to rename group')),
-        });
-    }
-
-    setGroupColor(groupId: number, color: LabelColor): void {
-        this.groupsStore.updateLabelColor(groupId, color).subscribe({
-            error: (err) => this.toast.error(this.extractError(err, 'Failed to change group color')),
         });
     }
 

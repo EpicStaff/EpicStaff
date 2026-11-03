@@ -1,4 +1,4 @@
-import { LabelColor, LabelDto } from '@shared/models';
+import { LabelDto } from '@shared/models';
 
 import { ExplorerMenuItem, ExplorerMenuSubject } from './explorer-context-menu/explorer-menu.model';
 import { groupMenuItems } from './explorer-menu.util';
@@ -6,17 +6,17 @@ import { groupMenuItems } from './explorer-menu.util';
 const SALES = 1;
 const SUPPORT = 2;
 
-function group(id: number, name: string, color: LabelColor): LabelDto {
-    return { id, name, parent: null, full_path: name, created_at: '', metadata: { color } };
+function group(id: number, name: string): LabelDto {
+    return { id, name, parent: null, full_path: name, created_at: '', metadata: {} };
 }
 
-const GROUPS = [group(SALES, 'Sales', LabelColor.Blue), group(SUPPORT, 'Support', LabelColor.Green)];
+const GROUPS = [group(SALES, 'Sales'), group(SUPPORT, 'Support')];
 
-/** Each item as its label, an expandable one followed by its children; a disabled child is marked "(current)". */
+/** Each item as its label, an expandable one followed by its children's labels. */
 const outline = (items: ExplorerMenuItem[]): string[] =>
-    items.map((item) => (item.children ? `${item.label} > ${item.children.map(childLabel).join(', ')}` : item.label));
-
-const childLabel = (child: ExplorerMenuItem): string => `${child.label}${child.disabled ? ' (current)' : ''}`;
+    items.map((item) =>
+        item.children ? `${item.label} > ${item.children.map((child) => child.label).join(', ')}` : item.label
+    );
 
 describe('groupMenuItems', () => {
     it.each<[string, ExplorerMenuSubject, LabelDto[], string[]]>([
@@ -57,16 +57,16 @@ describe('groupMenuItems', () => {
             [],
         ],
         [
-            'an Agents group header: its current color disabled',
+            'an Agents group header: New agent, Rename, Ungroup',
             { kind: 'group-header', section: 'agents', groupId: SALES },
             GROUPS,
-            ['New agent in Sales', 'Rename', 'Color > Default, Purple, Blue (current), Green, Orange, Red', 'Ungroup'],
+            ['New agent in Sales', 'Rename', 'Ungroup'],
         ],
         [
             'a Shared Surfaces group header: no New agent',
             { kind: 'group-header', section: 'surfaces', groupId: SUPPORT },
             GROUPS,
-            ['Rename', 'Color > Default, Purple, Blue, Green (current), Orange, Red', 'Ungroup'],
+            ['Rename', 'Ungroup'],
         ],
     ])('%s', (_description, subject, groups, expected) => {
         expect(outline(groupMenuItems(subject, groups))).toEqual(expected);

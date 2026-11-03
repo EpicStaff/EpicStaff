@@ -8,8 +8,6 @@ export interface ExplorerMenuItem {
     resource: ResourceCode;
     action: ActionCode;
     disabled?: boolean;
-    /** Draws a color dot before the label; `null` draws an empty one (Ungrouped). */
-    dotColor?: string | null;
     danger?: boolean;
     /** The item only expands these; picking one of them is the action. */
     children?: ExplorerMenuItem[];

@@ -17,7 +17,7 @@
     &__item {
         gap: 8px;
 
-        // An expanded sub-list ("Move to group", "Color") sits on its own band so it reads as one block
+        // An expanded sub-list ("Move to group") sits on its own band so it reads as one block
         // under its parent row. Mixed from the text color, so it lifts in the dark theme and dims in the
         // light one; hover still tints over it.
         &--nested {
@@ -36,17 +36,6 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-    }
-
-    &__dot {
-        flex-shrink: 0;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-
-        &--empty {
-            border: 1px dashed var(--color-text-secondary);
-        }
     }
 
     &__chevron {

@@ -25,7 +25,7 @@ import {
     UnsavedChangesDialogService,
 } from '@shared/components';
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
-import { ActionCode, LABEL_COLOR_OPTIONS, ResourceCode } from '@shared/models';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml } from '@shared/utils';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -554,12 +554,6 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         }
         if (node.kind !== 'group-header') return false;
         const groupId = node.groupId;
-        if (action.startsWith(GROUP_MENU_ACTION.groupColorPrefix)) {
-            const color = action.slice(GROUP_MENU_ACTION.groupColorPrefix.length);
-            const option = LABEL_COLOR_OPTIONS.find((candidate) => candidate.id === color);
-            if (option) this.store.setGroupColor(groupId, option.id);
-            return true;
-        }
         switch (action) {
             case GROUP_MENU_ACTION.newAgentInGroup:
                 this.guardUnsaved(() => {

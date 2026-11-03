@@ -16,10 +16,6 @@
             >
                 @if (renaming()) {
                     <div class="group-header__main">
-                        <span
-                            class="group-header__dot"
-                            [style.background-color]="dotColor()"
-                        ></span>
                         <input
                             #renameInput
                             class="group-header__rename"
@@ -44,10 +40,6 @@
                             icon="chevron-down-filled"
                             size="8px"
                         />
-                        <span
-                            class="group-header__dot"
-                            [style.background-color]="dotColor()"
-                        ></span>
                         <span class="group-header__name">{{ b.label }}</span>
                         <span class="group-header__count">{{ b.memberCount }}</span>
                     </button>

@@ -429,14 +429,3 @@
         border-color: var(--accent-color);
     }
 }
-
-.label-dot {
-    flex-shrink: 0;
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 50%;
-
-    &--empty {
-        border: 1px dashed var(--color-text-secondary);
-    }
-}

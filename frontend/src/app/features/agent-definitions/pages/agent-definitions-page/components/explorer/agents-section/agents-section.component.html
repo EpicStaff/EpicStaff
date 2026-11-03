@@ -1,26 +1,18 @@
 @if (store.newGroupDraft()) {
     <div class="new-group">
-        <div
-            class="new-group__field"
-            (focusout)="onNewGroupFocusOut($event, newGroupInput.value)"
-        >
-            <input
-                #newGroupInput
-                class="new-group__input"
-                type="text"
-                placeholder="Group name"
-                aria-label="New group name"
-                [class.new-group__input--error]="newGroupError()"
-                [disabled]="creatingGroup()"
-                (input)="newGroupError.set(null)"
-                (keydown.enter)="createGroup(newGroupInput.value)"
-                (keydown.escape)="cancelNewGroup()"
-            />
-            <app-label-color-picker
-                [selectedColor]="newGroupColor()"
-                (colorChange)="onNewGroupColor($event)"
-            ></app-label-color-picker>
-        </div>
+        <input
+            #newGroupInput
+            class="new-group__input"
+            type="text"
+            placeholder="Group name"
+            aria-label="New group name"
+            [class.new-group__input--error]="newGroupError()"
+            [disabled]="creatingGroup()"
+            (input)="newGroupError.set(null)"
+            (keydown.enter)="createGroup(newGroupInput.value)"
+            (keydown.escape)="cancelNewGroup()"
+            (blur)="onNewGroupBlur(newGroupInput.value)"
+        />
         @if (newGroupError(); as error) {
             <div
                 class="new-group__error"
