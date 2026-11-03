@@ -24,7 +24,6 @@ from rbac.identity.tickets import sse_ticket_service
 from rbac.models.enums import Permission, ResourceType
 from rest_framework import status
 from rest_framework.exceptions import APIException, PermissionDenied
-from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -55,6 +54,7 @@ from tables.services.llm_clients import (
 from tables.services.secrets import SecretResolutionError
 from tables.utils.mixins import SSEMixin
 from utils.logger import logger
+from utils.pagination import DefaultLimitOffsetPagination
 
 
 def _get_graph_in_org_or_404(graph_id: int, org_id: int):
@@ -180,7 +180,7 @@ class FlowAssistantConversationsView(APIView):
             .order_by("-last_message_at")
         )
 
-        paginator = LimitOffsetPagination()
+        paginator = DefaultLimitOffsetPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
         serializer = SessionSummarySerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
@@ -403,7 +403,7 @@ class FlowAssistantAuditView(APIView):
     """
 
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, IsSuperadmin]
-    pagination_class = LimitOffsetPagination
+    pagination_class = DefaultLimitOffsetPagination
 
     def get(self, request):
         from django.utils.dateparse import parse_datetime
@@ -444,7 +444,7 @@ class FlowAssistantAuditView(APIView):
         if include_deleted not in ("true", "1", "yes"):
             queryset = queryset.filter(deleted_at__isnull=True)
 
-        paginator = LimitOffsetPagination()
+        paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request, view=self)
         serializer = AuditConversationSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
