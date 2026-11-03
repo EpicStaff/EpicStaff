@@ -1,9 +1,17 @@
 @use '../../../../../styles/a11y-mixins' as a11y;
 
 :host {
+    position: relative;
     display: inline-flex;
     min-width: 0;
     max-width: 100%;
+}
+
+// A disabled button gets no mouse events, so while it is disabled this layer over it takes the hover that shows
+// the tooltip (its own, or a caller's on the host), and ends a click there as the disabled button would.
+.btn-disabled-hover-target {
+    position: absolute;
+    inset: 0;
 }
 
 .btn {
@@ -26,7 +34,7 @@
 .btn-primary {
     background: var(--accent-color);
     border: 1px solid transparent;
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--accent-color-hover);
     }
     // A disabled button is never pressed; an aria-disabled one must not look pressed either.
@@ -45,7 +53,7 @@
 .btn-secondary {
     background: var(--color-nodes-background);
     border: 1px solid var(--color-divider-subtle);
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--color-secondary-btn-background-hover);
     }
     //   &:active {
@@ -57,7 +65,7 @@
     background: transparent;
     color: var(--accent-color);
     border: 1px solid transparent;
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--color-ghost-btn-hover);
     }
     &:active:not(:is(:disabled, [aria-disabled='true'])) {
@@ -71,7 +79,7 @@
     color: var(--color-ks-button-activated);
     border: 1px solid var(--color-ks-button-activated);
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         border-color: var(--accent-color-hover);
         color: var(--accent-color-hover);
     }
@@ -90,7 +98,7 @@
     color: var(--color-error);
     border: 1px solid var(--color-error);
 
-    &:hover:not(:is(:disabled, [aria-disabled='true'])) {
+    &:is(:hover, :focus-visible):not(:is(:disabled, [aria-disabled='true'])) {
         background: var(--transparent-white-8);
     }
 
@@ -105,7 +113,7 @@
     background: var(--color-error);
     border: 1px solid transparent;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background: color-mix(in srgb, var(--color-error) 92%, black);
     }
 
@@ -119,7 +127,7 @@
     color: var(--color-ks-text);
     border: 1px solid var(--color-input-border);
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         border-color: var(--accent-color-hover);
         color: var(--accent-color-hover);
     }

@@ -1,8 +1,20 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import {
+    afterNextRender,
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    Injector,
+    OnInit,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AuthorshipDetailsDialogService,
     AuthorshipDetailsSource,
@@ -36,10 +48,13 @@ import { WebhookTriggerEditPermissionService } from '../../services/webhook-trig
         CdkMenuTrigger,
         CdkMenu,
         CdkMenuItem,
+        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WebhookTriggersSectionComponent implements OnInit {
+    private readonly addButton = viewChild('addButton', { read: ButtonComponent });
+
     private service = inject(WebhookTriggerService);
     private dialog = inject(Dialog);
     private confirmationDialogService = inject(ConfirmationDialogService);
@@ -48,6 +63,7 @@ export class WebhookTriggersSectionComponent implements OnInit {
     private readonly editPermission = inject(WebhookTriggerEditPermissionService);
     private destroyRef = inject(DestroyRef);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
+    private readonly injector = inject(Injector);
 
     status = signal<LoadingState>(LoadingState.IDLE);
     triggers = signal<WebhookTriggerModel[]>([]);
@@ -177,6 +193,8 @@ export class WebhookTriggersSectionComponent implements OnInit {
                     .subscribe({
                         next: () => {
                             this.triggers.update((list) => list.filter((t) => t.id !== id));
+                            // The card took its focused Delete button along.
+                            afterNextRender(() => this.addButton()?.focus(), { injector: this.injector });
                             this.toastService.success(
                                 movedToRecycleBinMessage(1, 'webhook trigger', 'webhook triggers')
                             );

@@ -2,6 +2,26 @@ import { NodeType } from '@shared/models';
 
 import { getDefaultNodeSize, readNoteSize } from '../../core/helpers/node-size.util';
 import { NodeDtoMetadata } from '../../core/models/node-metadata.model';
+import { clamp, clampPosition, isFiniteNumber } from './metadata-bounds';
+
+const MIN_SIZE = 1;
+const MAX_SIZE = 10_000;
+
+function finiteNumberOr(value: unknown, fallback: number): number {
+    return isFiniteNumber(value) ? value : fallback;
+}
+
+/** A note's own stored size, kept within bounds so a huge stored value cannot break the canvas. */
+function readBoundedNoteSize(metadata: Record<string, unknown> | undefined | null): {
+    width: number;
+    height: number;
+} {
+    const size = readNoteSize(metadata);
+    return {
+        width: clamp(size.width, MIN_SIZE, MAX_SIZE),
+        height: clamp(size.height, MIN_SIZE, MAX_SIZE),
+    };
+}
 
 /**
  * Size comes from frontend constants, so stale values stored in the backend
@@ -11,14 +31,14 @@ export function mapNodeDtoMetadataToFlowNodeMetadata(
     metadata: Record<string, unknown> | undefined | null,
     nodeType: NodeType
 ): NodeDtoMetadata {
-    const position = metadata?.['position'] as { x?: number; y?: number } | undefined;
+    const position = metadata?.['position'] as { x?: unknown; y?: unknown } | undefined | null;
 
     return {
         position: {
-            x: position?.x ?? 0,
-            y: position?.y ?? 0,
+            x: clampPosition(finiteNumberOr(position?.x, 0)),
+            y: clampPosition(finiteNumberOr(position?.y, 0)),
         },
-        size: nodeType === NodeType.NOTE ? readNoteSize(metadata) : getDefaultNodeSize(nodeType),
+        size: nodeType === NodeType.NOTE ? readBoundedNoteSize(metadata) : getDefaultNodeSize(nodeType),
     };
 }
 

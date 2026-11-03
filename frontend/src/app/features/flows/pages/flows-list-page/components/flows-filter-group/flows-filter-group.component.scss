@@ -96,7 +96,7 @@ $padding-x: 10px;
     color: var(--color-text-secondary);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
         color: var(--color-text-primary);
     }
@@ -107,6 +107,8 @@ $padding-x: 10px;
     }
 }
 
+// Collapsed is only zero height, so its fields would still take Tab focus while unseen: hidden once the collapse
+// animation ends, shown at once on open.
 .filter-group__body {
     display: grid;
     grid-template-rows: 1fr;
@@ -114,6 +116,10 @@ $padding-x: 10px;
 
     &.is-collapsed {
         grid-template-rows: 0fr;
+        visibility: hidden;
+        transition:
+            grid-template-rows 160ms ease,
+            visibility 0s linear 160ms;
     }
 }
 

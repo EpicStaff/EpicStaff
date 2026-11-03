@@ -1,5 +1,6 @@
-import { signal } from '@angular/core';
+import { getDebugNode, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { of } from 'rxjs';
@@ -9,13 +10,14 @@ import { GraphDto } from '../../../features/flows/models/graph.model';
 import { GraphVersionSnapshot } from '../../../features/flows/models/graph-version-preview.model';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { KeyValueMode } from '../../core/models/key-value-node.model';
-import { NodeModel } from '../../core/models/node.model';
+import { NodeModel, SubGraphNodeModel } from '../../core/models/node.model';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
 import { mapGraphDtoToFlowModel } from '../../utils/load/map-graph-dto-to-flow-model';
 import { mapKeyValueNodeToModel } from '../../utils/load/nodes/key-value-node.mapper';
 import { mapStartNodeToModel } from '../../utils/load/nodes/start-node.mapper';
+import { mapSubGraphNodeToModel } from '../../utils/load/nodes/subgraph-node.mapper';
 import { buildPreviewFlowModel } from '../../utils/load/snapshot/map-snapshot-to-graph-dto';
 import { liveGraph, livePython } from '../../utils/testing/live-graph.fixture';
 import { normalizedCssColor, WRONG_APPEARANCE } from '../../utils/testing/node-appearance.fixture';
@@ -60,6 +62,7 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.llm-warning-badge')).find(
             (badge) => badge.textContent!.trim() === 'No table'
         );
+    const tooltipOf = (element: HTMLElement): string => getDebugNode(element)!.injector.get(MatTooltip).message;
 
     function render(node: NodeModel, readOnly = false): void {
         TestBed.configureTestingModule({
@@ -87,7 +90,7 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         expect(summaryParts()).toEqual(['Write', 'Very very long tabl…', '2 keys']);
         expect(separators()).toEqual(['/', '/']);
         expect(summaryTab()!.textContent).not.toContain('#');
-        expect(summaryTab()!.title).toBe('Write / Very very long table name / 2 keys');
+        expect(tooltipOf(summaryTab()!)).toBe('Write / Very very long table name / 2 keys');
     });
 
     it('reads the summary once to screen readers, from the header icon, with the table name in full', () => {
@@ -132,13 +135,13 @@ describe('FlowBaseNodeComponent key-value summary', () => {
     it('flags a node without a table and says where to pick one', () => {
         render(NO_TABLE_NODE);
 
-        expect(noTableBadge()!.title).toBe('Select a table in the node panel');
+        expect(tooltipOf(noTableBadge()!)).toBe('Select a table in the node panel');
     });
 
     it('flags a node without a table in a read-only flow without asking to pick one', () => {
         render(NO_TABLE_NODE, true);
 
-        expect(noTableBadge()!.title).toBe('No table selected');
+        expect(tooltipOf(noTableBadge()!)).toBe('No table selected');
     });
 
     it('is only for key-value nodes', () => {
@@ -384,5 +387,94 @@ describe('FlowBaseNodeComponent header', () => {
 
         // Ports are drawn through foblex directives that need a flow canvas; the header does not depend on them.
         expectTypeAppearance(renderHeaderIcon({ ...previewed, ports: [] }), NodeType.PYTHON);
+    });
+});
+
+describe('FlowBaseNodeComponent subflow node whose flow was deleted', () => {
+    let fixture: ComponentFixture<FlowBaseNodeComponent>;
+
+    const element = (selector: string): HTMLElement | null => fixture.nativeElement.querySelector(selector);
+
+    // The backend nulls `subgraph` once the target flow is deleted; the loader then flags the node.
+    const BLOCKED_SUBFLOW_NODE: SubGraphNodeModel = {
+        ...mapSubGraphNodeToModel({
+            id: 21,
+            created_at: '2026-01-01T00:00:00Z',
+            node_number: 2,
+            node_name: 'Billing',
+            graph: 1,
+            subgraph: null,
+            subgraph_detail: null,
+            input_map: {},
+            output_variable_path: null,
+            metadata: {},
+            created_by: null,
+            last_edited_by: null,
+            last_edited_at: null,
+        }),
+        isBlocked: true,
+    };
+    const REATTACHED_SUBFLOW_NODE: SubGraphNodeModel = {
+        ...BLOCKED_SUBFLOW_NODE,
+        data: { id: 7, uuid: 'invoices-uuid', name: 'Invoices', description: '', tags: [] },
+        isBlocked: false,
+    };
+
+    function render(node: NodeModel): void {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(false) } },
+                { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
+                { provide: LlmConfigStorageService, useValue: { isConfigsLoaded: signal(false), configs: signal([]) } },
+                { provide: KeyValueTablesStorageService, useValue: { tables: signal([]), loadTables: () => of([]) } },
+            ],
+        });
+        fixture = TestBed.createComponent(FlowBaseNodeComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+    }
+
+    function clickNodeBody(): void {
+        const body = element('.interactive-node-body')!;
+        body.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 10 }));
+        body.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: 10 }));
+    }
+
+    it('opens its panel on a click, so another flow can be chosen', () => {
+        render(BLOCKED_SUBFLOW_NODE);
+        const opened: NodeModel[] = [];
+        fixture.componentInstance.editClicked.subscribe((node) => opened.push(node));
+
+        clickNodeBody();
+
+        expect(opened).toEqual([BLOCKED_SUBFLOW_NODE]);
+    });
+
+    it('keeps Unpack and Go to flow disabled and shows the missing-flow badge', () => {
+        render(BLOCKED_SUBFLOW_NODE);
+        let unpacked = 0;
+        fixture.componentInstance.unpackClicked.subscribe(() => unpacked++);
+
+        element('.unpack-button')!.click();
+
+        expect(unpacked).toBe(0);
+        expect(element('.unpack-button')!.classList).toContain('disabled');
+        expect(element('.go-to-flow')).toBeNull();
+        expect(element('.blocked-badge')!.textContent!.trim()).toBe('Missing flow');
+        expect(element('.title')!.textContent!.trim()).toBe('Deleted Flow');
+    });
+
+    it("an attached subflow node enables Unpack and Go to flow and shows its flow's name", () => {
+        render(REATTACHED_SUBFLOW_NODE);
+        let unpacked = 0;
+        fixture.componentInstance.unpackClicked.subscribe(() => unpacked++);
+
+        element('.unpack-button')!.click();
+
+        expect(unpacked).toBe(1);
+        expect(element('.unpack-button')!.classList).not.toContain('disabled');
+        expect(element('.go-to-flow a')!.getAttribute('href')).toBe('/flows/7');
+        expect(element('.blocked-badge')).toBeNull();
+        expect(element('.title')!.textContent!.trim()).toBe('Invoices');
     });
 });

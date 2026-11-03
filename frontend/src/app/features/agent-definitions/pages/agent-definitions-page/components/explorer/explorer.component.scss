@@ -37,6 +37,11 @@
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
+
+    // Drawn inside: the button clips its overflowing title.
+    &:focus-visible {
+        outline-offset: -2px;
+    }
 }
 
 .explorer__title {
@@ -79,7 +84,7 @@
     cursor: pointer;
     flex-shrink: 0;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 }

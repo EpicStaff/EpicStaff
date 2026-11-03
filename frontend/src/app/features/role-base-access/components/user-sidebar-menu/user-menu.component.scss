@@ -67,12 +67,21 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    width: 100%;
+    background: none;
+    border: none;
+    text-align: left;
     cursor: pointer;
     transition: background-color 0.15s ease;
     padding: 5.5px 16px;
 
-    &:hover:not(.disabled) {
+    &:is(:hover, :focus-visible):not(.disabled) {
         background-color: var(--color-secondary-btn-background-hover);
+    }
+
+    // The panel clips what is drawn outside it.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &.active {
@@ -125,8 +134,12 @@
     font-size: 0.875rem;
     transition: background-color 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-secondary-btn-background-hover);
+    }
+
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &.active {

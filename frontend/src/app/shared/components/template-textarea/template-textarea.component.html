@@ -38,6 +38,7 @@
                 spellcheck="false"
                 [attr.rows]="rows()"
                 [placeholder]="placeholder()"
+                [attr.aria-label]="fieldName()"
                 [disabled]="isDisabled()"
                 [value]="value()"
                 (input)="handleInput($event)"
@@ -48,7 +49,7 @@
             @if (resizable() && !isDisabled()) {
                 <span
                     class="template-textarea__resize-handle"
-                    title="Drag to resize"
+                    matTooltip="Drag to resize"
                     (pointerdown)="onResizeStart($event)"
                     (pointermove)="onResizeMove($event)"
                     (pointerup)="onResizeEnd($event)"

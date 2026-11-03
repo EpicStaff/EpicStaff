@@ -28,23 +28,8 @@ echo $DB_NAME
 # If the correct value is displayed, the setup is fine.
 ```
 ---
-## 3. Podman Socket Configuration
 
-```bash
-podman system service -t 0 &
-
-echo $XDG_RUNTIME_DIR/podman/podman.sock
-
-# Set the variable (use the path from the previous command)
-PODMAN_SOCKET="<output_from_echo>" 
-```
-Usually, it will be:
-```bash
-PODMAN_SOCKET="/run/user/1000/podman/podman.sock"
-```
----
-
-## 4. Create Networks and Volumes
+## 3. Create Networks and Volumes
 
 ```bash
 podman network create backend-network
@@ -59,7 +44,7 @@ podman volume create opensearch_data
 
 ---
 
-## 5. Build Images
+## 4. Build Images
 
 ```bash
 podman build -t crewdb -f ./crewdb/Dockerfile.crewdb ./crewdb
@@ -68,13 +53,15 @@ podman build -t manager -f ./manager/Dockerfile.man .
 podman build -t knowledge -f ./knowledge/Dockerfile.knowledge ./knowledge
 podman build -t realtime -f ./realtime/Dockerfile.realtime ./realtime
 podman build -t crew -f ./crew/Dockerfile.crew .
-podman build -t sandbox -f ./sandbox/Dockerfile.sandbox .
+podman build -t sandbox_new -f ./sandbox_new/Dockerfile .
 podman build -t frontend -f ../frontend/Dockerfile.fe ../frontend
 ```
 
 ---
 
-## 6. Run Containers
+## 5. Run Containers
+
+Most containers below get the whole `.env` through `--env-file .env`, so each one holds every secret in it, including credentials of services it never talks to. `src/docker-compose.yaml` gives each service only the variables it needs; for a deployment reachable by others, prefer running that file, or trim each container's variables to the ones its compose service lists.
 
 ### Redis
 
@@ -89,7 +76,7 @@ Run this from `EpicStaff/src` so `redis.conf` is found. The config file sets the
 ### CrewDB
 
 ```bash
-podman run -d   --name crewdb   --network backend-network   -p ${DB_PORT}:${DB_PORT}   -v crew_pgdata:${PGDATA}   -e POSTGRES_DB=${POSTGRES_DB}   -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD}   -e PGDATA=${PGDATA}   -e DB_MANAGER_USER=${DB_MANAGER_USER}   -e DB_MANAGER_PASSWORD=${DB_MANAGER_PASSWORD}   -e DB_KNOWLEDGE_USER=${DB_KNOWLEDGE_USER}   -e DB_KNOWLEDGE_PASSWORD=${DB_KNOWLEDGE_PASSWORD}   -e DB_REALTIME_USER=${DB_REALTIME_USER}   -e DB_REALTIME_PASSWORD=${DB_REALTIME_PASSWORD}   --health-cmd="bash -c 'pg_isready -U postgres || exit 1 && /usr/local/bin/custom-docker-entrypoint.sh healthcheck-users'"   --health-interval=15s   --health-timeout=10s   --health-retries=10   --health-start-period=15s   crewdb
+podman run -d   --name crewdb   --network backend-network   -p ${DB_PORT}:${DB_PORT}   -v crew_pgdata:${PGDATA}   -e POSTGRES_USER=${DB_USER}   -e POSTGRES_DB=${DB_NAME}   -e POSTGRES_PASSWORD=${DB_PASSWORD}   -e PGDATA=${PGDATA}   -e MANAGER_DB_USER=${MANAGER_DB_USER}   -e MANAGER_DB_PASSWORD=${MANAGER_DB_PASSWORD}   -e KNOWLEDGE_DB_USER=${KNOWLEDGE_DB_USER}   -e KNOWLEDGE_DB_PASSWORD=${KNOWLEDGE_DB_PASSWORD}   -e REALTIME_DB_USER=${REALTIME_DB_USER}   -e REALTIME_DB_PASSWORD=${REALTIME_DB_PASSWORD}   -e SANDBOX_DB_USER=${SANDBOX_DB_USER}   -e SANDBOX_DB_PASSWORD=${SANDBOX_DB_PASSWORD}   -e SANDBOX_DB_SCHEMA=${SANDBOX_DB_SCHEMA}   --health-cmd="bash -c 'pg_isready -U postgres || exit 1 && /usr/local/bin/custom-docker-entrypoint.sh healthcheck-users'"   --health-interval=15s   --health-timeout=10s   --health-retries=10   --health-start-period=15s   crewdb
 ```
 
 ---
@@ -131,16 +118,20 @@ podman run -d   --name realtime   --network backend-network   -p 8050:8050   --e
 ### Crew
 
 ```bash
-podman run -d   --name crew   --network backend-network   --network mcp-network   -p 8002:8000   -v crew_config:/home/user/root/app/env_config/   --add-host host.docker.internal:host-gateway   --env-file .env   -t   -i   -v /run/user/1000/podman/podman.sock:/var/run/docker.sock   crew
+podman run -d   --name crew   --network backend-network   --network mcp-network   -p 8002:8000   -v crew_config:/home/user/root/app/env_config/   --add-host host.docker.internal:host-gateway   --env-file .env   -t   -i   crew
 ```
+
+Crew gets no container socket: it runs code through the sandbox's API and never starts containers. A socket mounted into it would give anything running in crew control over every container of your user.
 
 ---
 
 ### Sandbox
 
 ```bash
-podman run -d   --name sandbox   --cap-add NET_ADMIN   --network backend-network   -v sandbox_venvs:${BASE_VENV_PATH}   --env-file .env   -t   -i   sandbox
+podman run -d   --name sandbox_new   --init   --network backend-network   -v sandbox_venvs:${SANDBOX_VENVS_DIR}   --memory 2g   --security-opt no-new-privileges   --cap-drop ALL   --cap-add SETUID   --cap-add SETGID   --cap-add CHOWN   --cap-add DAC_OVERRIDE   --cap-add FOWNER   --cap-add KILL   --env-file .env   sandbox_new ./entrypoint.sh
 ```
+
+The sandbox runs user code, so it gets the same hardening as in `src/docker-compose.yaml`: every capability dropped except the few its root parent needs to switch each run to an unprivileged user, chown that run's directories and kill it on timeout, and `no-new-privileges` so user code cannot regain privileges through a setuid binary.
 
 ---
 
@@ -174,5 +165,4 @@ http://127.0.0.1:4200
 ## Notes
 
 - Ensure all required environment variables are defined in `.env` before starting containers.
-- Verify that Podman socket path is correct for your user (`$PODMAN_SOCKET`).
 - This configuration assumes Linux environment.

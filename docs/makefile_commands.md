@@ -246,22 +246,26 @@ over while keeping the existing credentials. It needs a terminal: in Docker, run
 only the variables your `src/.env` lacks and never changes existing lines.
 
 Without Python, copy the tracked template instead: `cp src/.env.example src/.env`.
-`src/.env.example` is the **production** template: fill in the `CHANGE ME` lines
-(secrets and passwords), and either set `NGINX_SSL_MODE=off` or provide certificates
-(see [setup/ssl.md](setup/ssl.md)). A stack left running on the shipped
-defaults for `POSTGRES_PASSWORD`, `STORAGE_SECRET_KEY`, or `REDIS_PASSWORD` is running
-on credentials published in this repository.
+`src/.env.example` is the **production** template: every variable without a default is
+commented out as `# NAME=<enter your value>` — the database, Redis and storage users and
+passwords, `DJANGO_SECRET_KEY` and the other secrets, `DJANGO_FRONTEND_BASE_URL`,
+`DJANGO_CORS_ALLOWED_ORIGINS` and a few more. Uncomment each one and set a value (long random
+strings for the secrets — `envtool.py --setup` generates them for you); compose refuses to
+start while one of them is missing. Also either set `NGINX_SSL_MODE=off` or provide
+certificates (see [setup/ssl.md](setup/ssl.md)).
 
-For a public deployment, also change the host-facing values in `src/.env` by hand —
-`DOMAIN_NAME`, `API_URL`, `REALTIME_API_URL`, `FRONTEND_BASE_URL`, `ALLOWED_HOSTS`,
-`CORS_ALLOWED_ORIGINS` (see [setup/cors.md](setup/cors.md)), `NGINX_SSL_MODE` (see
-[setup/ssl.md](setup/ssl.md)), and `EMAIL_HOST` / `EMAIL_PORT`
-(see [rbac/password_recovery.md](rbac/password_recovery.md)). Note that the default
-`EMAIL_HOST=mailpit` is a development mail catcher with a web UI on port 8025 — left
-as shipped, a public deployment sends its password-reset tokens there instead of to
-users. Optional voice/tunnelling values (`NGROK_AUTHTOKEN`, `NGROK_DOMAIN`,
-`TWILIO_*`, `VOICE_AGENT_ID`, `VOICE_STREAM_URL`) only matter if you use those
-features.
+For a public deployment, also set the host-facing values in `src/.env` by hand —
+`NGINX_SERVER_NAME` (the public domain), `DJANGO_FRONTEND_BASE_URL`, `DJANGO_ALLOWED_HOSTS`
+(default `*`), `NGINX_SSL_MODE` together with `DJANGO_REFRESH_COOKIE_SECURE=true` for HTTPS
+(see [setup/ssl.md](setup/ssl.md)), `DJANGO_CORS_ALLOWED_ORIGINS` only when the frontend and
+API are on different origins (see [setup/cors.md](setup/cors.md)), and the SMTP values
+`DJANGO_EMAIL_HOST` / `DJANGO_EMAIL_PORT` / `DJANGO_EMAIL_USER` / `DJANGO_EMAIL_PASSWORD`
+(see [rbac/password_recovery.md](rbac/password_recovery.md)). Left blank, email falls back to
+the console backend and self-service password reset is disabled. The development defaults
+(`--dev`) set `DJANGO_EMAIL_HOST=mailpit`, a mail catcher with a web UI on port 8025 — never
+deploy publicly with it, or password-reset tokens go there instead of to users. The webhook
+tunnel values (`WEBHOOK_USE_TUNNEL`, `WEBHOOK_NGROK_AUTHTOKEN`, `WEBHOOK_NGROK_DOMAIN`) only
+matter if you expose webhooks through ngrok.
 
 ---
 

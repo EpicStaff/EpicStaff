@@ -23,7 +23,7 @@ from rbac.governance.authorship import (
 from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.guards import UserManagementGuards
 from rbac.governance.role_assignment_checks import assert_role_assignment_allowed
-from rbac.models import Organization, OrganizationUser, Role
+from rbac.models import ApiKey, Organization, OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
 
 
@@ -93,7 +93,7 @@ class MembershipManagementService(CrossOrgResourceService):
             qs = qs.filter(user__is_active=False)
         return qs
 
-    def list_assignable_users(self, actor, search=None, scopes=None):
+    def list_assignable_users(self, actor, search=None, scopes=None, org_ids=None):
         """Accounts the actor may attach to an organization: active,
         non-superadmin users already visible to them through an org where they
         can read members. A superadmin sees every active non-superadmin account,
@@ -106,9 +106,14 @@ class MembershipManagementService(CrossOrgResourceService):
         `Lower("email")` is annotated rather than used directly in `order_by`
         because the queryset is DISTINCT, and Postgres requires every ORDER BY
         expression to appear in the select list.
+
+        `org_ids` narrows the readable orgs like a list's `?org_ids=` (a
+        forbidden id is a 403), so even a superadmin then sees only their members.
         """
         UserModel = get_user_model()  # noqa: N806    # noqa: N806
-        readable = self.resolve_readable_org_ids(actor, scopes=scopes)
+        readable = self._narrow_to_requested(
+            readable=self.resolve_readable_org_ids(actor, scopes=scopes), org_ids=org_ids
+        )
 
         visible_memberships = OrganizationUser.objects.select_related("org")
         if readable is not None:
@@ -202,10 +207,12 @@ class MembershipManagementService(CrossOrgResourceService):
 
     @transaction.atomic
     def remove_member(self, actor, membership_id):
-        """Remove a membership and clear the user's authorship in that org.
+        """Remove a membership, clear the user's authorship in that org and delete
+        their API keys bound to it.
 
         Clears the user as author and last editor of the org's resources and of the
-        flow version snapshots recorded in it, in the same transaction.
+        flow version snapshots recorded in it, in the same transaction. Their keys in
+        other orgs are untouched.
 
         A membership the caller cannot see → 404 (no-leak; see change_role);
         own → 403; visible but lacking MEMBERSHIPS.DELETE → 403. No
@@ -223,13 +230,17 @@ class MembershipManagementService(CrossOrgResourceService):
         scrubbed_snapshots = SnapshotAuthorshipScrubService().scrub_in_organization(
             user_id=membership.user_id, org_id=membership.org_id
         )
+        deleted_api_keys, _ = ApiKey.objects.filter(
+            created_by_id=membership.user_id, org_id=membership.org_id
+        ).delete()
         logger.info(
             "MembershipManagementService.remove_member actor={a} membership={m} "
-            "released_authorship={r} scrubbed_snapshots={v}",
+            "released_authorship={r} scrubbed_snapshots={v} deleted_api_keys={k}",
             a=getattr(actor, "email", "system"),
             m=membership_id,
             r=released,
             v=scrubbed_snapshots,
+            k=deleted_api_keys,
         )
 
     # ---- internals ----

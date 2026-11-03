@@ -22,7 +22,7 @@
     flex-direction: column;
 }
 
-.field label {
+.field-label {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -41,6 +41,14 @@
     display: flex;
     gap: 10px;
     align-items: center;
+}
+
+.missing-flow-hint {
+    margin-top: 4px;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-status-error);
 }
 
 .selected-flow-row app-go-to-button {

@@ -150,6 +150,22 @@ class SubGraphValidationError(CustomAPIExeption):
     default_detail = "ValidationError occured in SubGraphValidator during subgraph validation"
 
 
+class ExportCycleError(CustomAPIExeption):
+    """A cycle was detected among the entities being exported."""
+
+    status_code = 400
+    default_code = "export_cycle_detected"
+
+    def __init__(self, cycle_path: list[tuple[str, int]]):
+        self.cycle_path = cycle_path
+        cycle_str = " → ".join(
+            f"{entity_type}({entity_id})" for entity_type, entity_id in cycle_path
+        )
+        super().__init__(
+            detail=f"Cycle detected in export dependencies: {cycle_str}", code=self.default_code
+        )
+
+
 class BuiltInToolModificationError(CustomAPIExeption):
     """
     Exception raised when someone tries to modify a built-in PythonCodeTool.

@@ -1,10 +1,12 @@
 import { Dialog } from '@angular/cdk/dialog';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
     computed,
     effect,
+    ElementRef,
     inject,
     Injector,
     input,
@@ -35,7 +37,7 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, FullLLMConfigService, SecretsStorageService } from '@shared/services';
 import { downloadBlob, formatNodeLabel, getProviderIconPath } from '@shared/utils';
@@ -93,6 +95,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
 @Component({
     selector: 'app-classification-decision-table-node-panel',
     imports: [
+        TooltipOnOverflowDirective,
         ReactiveFormsModule,
         FormsModule,
         CustomInputComponent,
@@ -122,6 +125,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public override readonly isExpanded = input<boolean>(true);
     public readonly graphId = input<number | null>(null);
     public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
+    private readonly addPromptButton = viewChild<ElementRef<HTMLButtonElement>>('addPromptButton');
 
     private flowService = inject(FlowService);
     private undoRedoService = inject(UndoRedoService);
@@ -745,6 +749,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .subscribe((result) => {
                 if (result === true) {
                     this.performDeletePrompt(id);
+                    // The dialog gave the focus back to the prompt's Delete button, which is gone now.
+                    afterNextRender(() => this.addPromptButton()?.nativeElement.focus(), { injector: this.injector });
                 }
             });
     }

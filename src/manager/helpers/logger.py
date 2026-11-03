@@ -4,7 +4,7 @@ import settings
 from loguru import logger
 
 logger.remove()
-logger.add(sys.stdout, format="{time} {level} {message}", level=settings.LOG_LEVEL)
+logger.add(sys.stdout, format="{time} {level} {message}", level=settings.LOG_LEVEL, diagnose=False)
 
 
 def log_exception(exc_type, exc_value, exc_traceback):

@@ -1,7 +1,8 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
 import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
+import { of } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { StorageGraph, StorageItemInfo } from '../../models/storage.models';
@@ -152,4 +153,62 @@ describe('StorageDetailsDialogComponent used in flows', () => {
             expect(host.querySelectorAll('.storage-details-dialog__chip-remove').length).toBe(expectedButtons);
         }
     );
+});
+
+describe('StorageDetailsDialogComponent focus after removing the item from a flow', () => {
+    const USED_IN: StorageGraph[] = [
+        { id: 1, name: 'Sales' },
+        { id: 2, name: 'Support' },
+    ];
+
+    function mountRemovable(usedIn: StorageGraph[]): {
+        fixture: ComponentFixture<StorageDetailsDialogComponent>;
+        host: HTMLElement;
+    } {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: PermissionsService, useValue: { can: ALL_PERMISSIONS } },
+                { provide: DIALOG_DATA, useValue: { ...AUTHORED_FILE, usedIn } },
+                { provide: DialogRef, useValue: { close: vi.fn() } },
+                { provide: StorageApiService, useValue: { removeFromGraph: () => of(undefined) } },
+                { provide: ConfirmationDialogService, useValue: { confirm: () => of(true) } },
+            ],
+        });
+        const fixture = TestBed.createComponent(StorageDetailsDialogComponent);
+        fixture.detectChanges();
+        return { fixture, host: fixture.nativeElement as HTMLElement };
+    }
+
+    function removeButtons(host: HTMLElement): HTMLButtonElement[] {
+        return Array.from(host.querySelectorAll<HTMLButtonElement>('.storage-details-dialog__chip-remove'));
+    }
+
+    async function removeWithKeyboardFocus(
+        fixture: ComponentFixture<StorageDetailsDialogComponent>,
+        button: HTMLButtonElement
+    ): Promise<void> {
+        button.focus();
+        button.click();
+        fixture.detectChanges();
+        await fixture.whenStable();
+    }
+
+    it('moves the focus to the Remove button now in the place of the removed one', async () => {
+        const { fixture, host } = mountRemovable(USED_IN);
+
+        await removeWithKeyboardFocus(fixture, removeButtons(host)[0]);
+
+        expect(removeButtons(host)).toHaveLength(1);
+        expect(document.activeElement).toBe(removeButtons(host)[0]);
+        expect(document.activeElement?.getAttribute('aria-label')).toBe('Remove from flow Support');
+    });
+
+    it('moves the focus to Close once no flow is left', async () => {
+        const { fixture, host } = mountRemovable([USED_IN[0]]);
+
+        await removeWithKeyboardFocus(fixture, removeButtons(host)[0]);
+
+        expect(removeButtons(host)).toHaveLength(0);
+        expect(document.activeElement?.getAttribute('aria-label')).toBe('Close dialog');
+    });
 });

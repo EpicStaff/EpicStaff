@@ -154,8 +154,13 @@ Stops at the first failing check. If this passes, `frontend-checks` in CI will t
 ### What CI runs
 
 The `frontend-checks` job in [../.github/workflows/pr.yml](../.github/workflows/pr.yml) runs on
-every PR to `main` — including backend-only ones, deliberately: the advisory database moves on
-its own, so a PR that touches nothing here can still be the first to surface a new finding.
+PRs to `main` and `developer` that change `frontend/` (or `pr.yml` or either check script);
+a backend-only PR skips it. Within the job, the licence-notices and advisory steps run only when
+`frontend/package.json` or `frontend/package-lock.json` (or the notices script) changes — nothing
+else in the tree can move their result. The advisory database moves on its own, though, so a new
+finding against an unchanged lockfile surfaces in the weekly Trivy scan of `frontend/` in
+[../.github/workflows/dependency-scan.yml](../.github/workflows/dependency-scan.yml) (Mondays
+06:00 UTC), not on a PR.
 
 | Step                 | Command                                                 |
 | -------------------- | ------------------------------------------------------- |
@@ -163,9 +168,9 @@ its own, so a PR that touches nothing here can still be the first to surface a n
 | lint                 | `npm run lint`                                           |
 | format               | `npm run format:check`                                   |
 | undeclared imports   | `node scripts/check-undeclared-imports.mjs`              |
-| licence notices      | `node scripts/check-third-party-notices.mjs`             |
+| licence notices      | `node scripts/check-third-party-notices.mjs` — dependency changes only |
 | tests                | `npm test`                                               |
-| advisories           | `npm audit --audit-level=high`                           |
+| advisories           | `npm audit --audit-level=high` — dependency changes only |
 
 The Docker `build` job depends on `frontend-checks`, so a red check blocks the build rather than
 running beside it. The production build itself — and with it the full `tsconfig.app.json`

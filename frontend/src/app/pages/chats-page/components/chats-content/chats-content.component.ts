@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { RouterModule } from '@angular/router';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -9,7 +10,7 @@ import { ChatComponent } from './chat/chat.component';
 
 @Component({
     selector: 'app-chats-content',
-    imports: [RouterModule, ChatComponent, HasPermissionDirective],
+    imports: [RouterModule, ChatComponent, HasPermissionDirective, MatTooltip],
     templateUrl: './chats-content.component.html',
     styleUrls: ['./chats-content.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

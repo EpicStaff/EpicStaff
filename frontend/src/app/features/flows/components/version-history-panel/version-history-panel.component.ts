@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import {
@@ -54,6 +55,7 @@ const RENAME_DOUBLE_CLICK_WINDOW_MS = 250;
 @Component({
     selector: 'app-version-history-panel',
     imports: [
+        CdkTrapFocus,
         IconButtonComponent,
         CommonModule,
         FormsModule,

@@ -35,7 +35,7 @@
         cursor: pointer;
         transition: color 0.2s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--white-alpha-90);
         }
     }
@@ -136,7 +136,6 @@
             background: var(--red-580);
             color: var(--white);
             border: none;
-            outline: none;
             padding: 6px 16px;
             border-radius: 6px;
             font-size: 0.95em;
@@ -145,7 +144,7 @@
             white-space: nowrap;
             transition: background 0.18s;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: var(--red-700);
             }
 
@@ -240,7 +239,7 @@
         border-color 0.15s,
         color 0.15s;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: color-mix(in srgb, var(--accent-color) 18%, var(--color-sidenav-background));
         border-color: var(--accent-color);
         color: var(--color-text-primary);
@@ -341,7 +340,7 @@
         flex-shrink: 0;
         transition: background 0.18s;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--accent-color-hover);
         }
     }

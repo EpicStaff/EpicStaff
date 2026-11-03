@@ -28,7 +28,8 @@
             @if (summary()) {
                 <span
                     class="filter-group__summary"
-                    [title]="summary()"
+                    appTooltipOnOverflow
+                    [matTooltip]="summary()"
                     >{{ summary() }}</span
                 >
             }
@@ -39,6 +40,7 @@
                 class="filter-group__clear"
                 type="button"
                 [attr.aria-label]="'Clear ' + label()"
+                [matTooltip]="'Clear ' + label()"
                 (click)="cleared.emit()"
             >
                 <app-svg-icon

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ToggleSwitchComponent } from '../form-controls/toggle-switch/toggle-switch.component';
@@ -7,7 +8,7 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-slider-with-stepper',
-    imports: [FormsModule, AppSvgIconComponent, TooltipComponent, ToggleSwitchComponent],
+    imports: [MatTooltip, FormsModule, AppSvgIconComponent, TooltipComponent, ToggleSwitchComponent],
     templateUrl: './slider-with-stepper.component.html',
     styleUrls: ['./slider-with-stepper.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

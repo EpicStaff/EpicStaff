@@ -120,6 +120,18 @@ function instructionsOf(fixture: ComponentFixture<AgentNodePanelComponent>): str
 }
 
 describe('AgentNodePanelComponent inserting an input into instructions (collapsed layout)', () => {
+    // jsdom has no ResizeObserver; the panel's tooltips shown only for cut-short text need one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+
     it('inserts into the task whose instructions cell was focused, at the caret', () => {
         const fixture = createCollapsedPanel();
         const secondTextarea = instructionsTextareas(fixture)[1];

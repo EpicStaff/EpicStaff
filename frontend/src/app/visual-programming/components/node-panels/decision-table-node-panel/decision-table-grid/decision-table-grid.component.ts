@@ -9,6 +9,7 @@ import {
     output,
     signal,
 } from '@angular/core';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS } from '@angular/material/tooltip';
 import { ButtonComponent, HelpTooltipComponent } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { formatNodeLabel } from '@shared/utils';
@@ -16,6 +17,7 @@ import { AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
     CellClickedEvent,
+    CellKeyDownEvent,
     CellValueChangedEvent,
     ColDef,
     GridApi,
@@ -184,6 +186,7 @@ export class DecisionTableGridComponent implements OnInit {
             editable: true,
             flex: 1,
             minWidth: 180,
+            tooltipValueGetter: (params) => params.value,
             cellEditor: 'agLargeTextCellEditor',
             cellEditorParams: {
                 maxLength: 255,
@@ -224,6 +227,7 @@ export class DecisionTableGridComponent implements OnInit {
             field: 'next_node',
             editable: true,
             width: 200,
+            tooltipValueGetter: (params) => params.valueFormatted,
             singleClickEdit: true,
             cellEditor: NextNodeEditorComponent,
             cellEditorPopup: true,
@@ -282,8 +286,11 @@ export class DecisionTableGridComponent implements OnInit {
         animateRows: true,
         suppressColumnVirtualisation: false,
         stopEditingWhenCellsLoseFocus: true,
+        tooltipShowMode: 'whenTruncated',
+        tooltipShowDelay: inject(MAT_TOOLTIP_DEFAULT_OPTIONS).showDelay,
         onCellValueChanged: (event: CellValueChangedEvent) => this.onCellValueChanged(event),
         onCellClicked: (event: CellClickedEvent) => this.onCellClicked(event),
+        onCellKeyDown: (event: CellKeyDownEvent) => this.onCellKeyDown(event),
     };
 
     public onGridReady(params: GridReadyEvent): void {
@@ -364,6 +371,47 @@ export class DecisionTableGridComponent implements OnInit {
                 this.removeConditionGroup(rowIndex);
             }
         }
+    }
+
+    /**
+     * The delete icon is not a control of its own: the actions cell takes the click, so
+     * Enter or Space on the focused cell must delete the row the same way.
+     */
+    public onCellKeyDown(event: CellKeyDownEvent): void {
+        if (this.readonly() || event.colDef.field !== 'actions') return;
+        const keyboardEvent = event.event as KeyboardEvent | null | undefined;
+        if (!keyboardEvent || (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ')) return;
+        // Modified keys are not a press of the icon; a held key would delete row after row.
+        if (
+            keyboardEvent.ctrlKey ||
+            keyboardEvent.metaKey ||
+            keyboardEvent.altKey ||
+            keyboardEvent.shiftKey ||
+            keyboardEvent.repeat
+        ) {
+            return;
+        }
+        const rowIndex = event.rowIndex;
+        if (rowIndex === null || rowIndex === undefined) return;
+        // Space would scroll the panel; neither key may reach the flow editor's own shortcuts.
+        keyboardEvent.preventDefault();
+        keyboardEvent.stopPropagation();
+        this.removeConditionGroup(rowIndex);
+        this.refocusAfterRowDeletion(rowIndex);
+    }
+
+    /**
+     * The deleted row's cell had the focus; without this it would fall to `<body>`,
+     * where Delete deletes the selected flow node.
+     */
+    private refocusAfterRowDeletion(deletedRowIndex: number): void {
+        if (!this.gridApi) return;
+        const remainingRowCount = this.rowData().length;
+        if (remainingRowCount === 0) {
+            this.gridApi.setFocusedHeader('group_name');
+            return;
+        }
+        this.gridApi.setFocusedCell(Math.min(deletedRowIndex, remainingRowCount - 1), 'actions');
     }
 
     public addConditionGroup(): void {

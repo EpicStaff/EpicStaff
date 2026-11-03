@@ -1524,7 +1524,7 @@ describe('FlowGraphComponent', () => {
                     trigger,
                 ]);
                 const before = cloneFlowState(flowService.getFlowState());
-                expect(autoArrangeButton().disabled).toBe(false);
+                expect(autoArrangeButton().getAttribute('aria-disabled')).toBeNull();
                 expect(autoArrangeButton().getAttribute('aria-label')).toBe('Auto arrange');
 
                 autoArrange();
@@ -1590,7 +1590,7 @@ describe('FlowGraphComponent', () => {
                 );
                 mountCanvas(use ? FLOW_ACTIONS_WITH_USE : FLOW_ACTIONS_WITHOUT_USE, [...others, scheduleTriggerNode()]);
 
-                expect(autoArrangeButton().disabled).toBe(disabled);
+                expect(autoArrangeButton().getAttribute('aria-disabled') === 'true').toBe(disabled);
             }
         );
 

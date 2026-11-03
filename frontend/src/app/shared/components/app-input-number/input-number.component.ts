@@ -19,6 +19,7 @@ import {
     ValidationErrors,
     Validator,
 } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { generateUuid } from '@shared/utils';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -28,7 +29,7 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
     templateUrl: './input-number.component.html',
     styleUrls: ['./input-number.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FormsModule, NgClass, TooltipComponent],
+    imports: [FormsModule, NgClass, TooltipComponent, MatTooltip],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -69,6 +70,9 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     readonly nativeInput = viewChild<ElementRef<HTMLInputElement>>('nativeInput');
 
     hovered = signal<boolean>(false);
+    // Keyboard focus anywhere in the field (input or a step button) shows the steps, so Tab can reach them.
+    protected readonly focusWithin = signal(false);
+    protected readonly stepsShown = computed(() => this.hovered() || this.focusWithin() || !!this.alwaysShowSteps());
     // The browser holds text it cannot parse as a number (e.g. "1.2.3" or a pasted "1,5") and reports it as empty.
     private readonly hasBadInput = signal(false);
 
@@ -104,6 +108,8 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
         return '';
     });
     protected readonly messageId = `input-number-message-${generateUuid()}`;
+    /** Shown as the input's tooltip. */
+    protected readonly fieldName = computed(() => this.label() || this.ariaLabel() || this.placeholder());
 
     onChange: (value: number | null) => void = () => {};
     onTouched: () => void = () => {};
@@ -142,6 +148,8 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
         if (min !== null && next < min) next = min;
         if (max !== null && next > max) next = max;
 
+        // Already at the bound: nothing changed, so nothing is emitted and the form stays pristine.
+        if (next === this.value()) return;
         this.updateValue(next);
     }
 
@@ -170,11 +178,22 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     onKeyDown(event: KeyboardEvent) {
         const allowedKeys = ['Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End'];
         if (allowedKeys.includes(event.key)) return;
+        // Steps from the input itself, as a native number field does.
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            event.preventDefault();
+            this.onStep(event.key === 'ArrowUp' ? 1 : -1);
+            return;
+        }
         if (this.allowDecimal() && event.key === '.') return;
 
         if (!/^\d$/.test(event.key)) {
             event.preventDefault();
         }
+    }
+
+    protected onFocusOut(event: FocusEvent): void {
+        const wrapper = event.currentTarget as HTMLElement;
+        if (!wrapper.contains(event.relatedTarget as Node | null)) this.focusWithin.set(false);
     }
 
     private updateValue(value: number | null) {

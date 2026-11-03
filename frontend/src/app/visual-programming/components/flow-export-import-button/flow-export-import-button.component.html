@@ -2,9 +2,13 @@
     <button
         #origin="cdkOverlayOrigin"
         cdkOverlayOrigin
+        type="button"
         class="feib"
         [class.feib--active]="selectedCount() > 0"
         [class.feib--open]="isOpen()"
+        aria-label="Export / Import nodes"
+        aria-haspopup="menu"
+        [attr.aria-expanded]="isOpen()"
         [matTooltip]="keymap.withShortcut('Export / Import nodes', 'flow.export-import')"
         matTooltipPosition="below"
         (click)="toggle($event)"
@@ -42,15 +46,23 @@
         (overlayOutsideClick)="close()"
         (detach)="close()"
     >
-        <!-- Esc closes this menu and goes on to the editor in the same press, unlike the node menu, which keeps it. -->
+        <!-- The focus moves in on open and back to what had it on close. Escape closes only this menu: it is handled
+             here, ahead of the tooltip of the focused item, which would take the first one, and of the editor. -->
         <div
             class="action-dropdown-panel__inner"
+            role="menu"
+            aria-label="Export / Import nodes"
+            cdkTrapFocus
+            [cdkTrapFocusAutoCapture]="true"
             (keydown)="onMenuKeydown($event)"
+            (keydown.escape)="onMenuEscape($event)"
         >
             @if (selectedCount() > 0) {
                 <button
                     #menuItem
                     *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+                    type="button"
+                    role="menuitem"
                     class="action-dropdown-panel__item"
                     matTooltip="Start and End nodes excluded"
                     (click)="onExportSelectedJson()"
@@ -61,6 +73,8 @@
                     <button
                         #menuItem
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+                        type="button"
+                        role="menuitem"
                         class="action-dropdown-panel__item"
                         matTooltip="Start and End nodes excluded"
                         (click)="onExportSelectedCsv()"
@@ -68,21 +82,31 @@
                         Export Selected as CSV
                     </button>
                 }
-                <div class="action-dropdown-panel__separator"></div>
+                <div
+                    class="action-dropdown-panel__separator"
+                    role="separator"
+                ></div>
             }
             <button
                 #menuItem
                 *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+                type="button"
+                role="menuitem"
                 class="action-dropdown-panel__item"
                 matTooltip="Start and End nodes excluded"
                 (click)="onExportJson()"
             >
                 Export All as JSON
             </button>
-            <div class="action-dropdown-panel__separator"></div>
+            <div
+                class="action-dropdown-panel__separator"
+                role="separator"
+            ></div>
             <button
                 #menuItem
                 *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                type="button"
+                role="menuitem"
                 class="action-dropdown-panel__item"
                 (click)="onImport()"
             >

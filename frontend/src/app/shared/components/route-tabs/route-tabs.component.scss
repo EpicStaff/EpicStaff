@@ -20,7 +20,7 @@
         color 0.15s,
         border-color 0.15s;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 
