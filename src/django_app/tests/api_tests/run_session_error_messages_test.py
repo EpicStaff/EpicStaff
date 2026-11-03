@@ -19,6 +19,11 @@ from tables.models import (
 from tables.models.graph_models import (
     AgentNode,
     AgentNodeTask,
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
+    ConditionGroup,
+    DecisionTableNode,
     Edge,
     EndNode,
     StartNode,
@@ -363,3 +368,165 @@ def test_unexpected_failure_logs_its_traceback_once(
 
     assert response.data == {"error": FLOW_START_FAILED_MESSAGE}
     assert len(_tracebacks(captured_log_records)) == 1
+
+
+def _decision_table_routing_to_end(graph: Graph, *, next_node_id: int | None = None):
+    """A Decision Table node "Route #4" after Start, with one condition "High score"."""
+    end_node = EndNode.objects.create(graph=graph, output_map={})
+    table = DecisionTableNode.objects.create(
+        graph=graph, node_name="Route", node_number=4, default_next_node_id=end_node.id
+    )
+    ConditionGroup.objects.create(
+        decision_table_node=table,
+        group_name="High score",
+        group_type="complex",
+        expression="variables.score > 5",
+        next_node_id=next_node_id,
+    )
+    _chain_from_start(graph, table)
+    return table, end_node
+
+
+@pytest.mark.django_db
+def test_decision_tables_crew_runs_without_failing_run(
+    auth_client, redis_client_mock, session_data, graph
+):
+    # Crew takes the default route for a table without conditions, goes on past a
+    # condition without a next node or a complex one without an expression, and
+    # matches an empty simple group.
+    _decision_table_routing_to_end(graph, next_node_id=None)
+    DecisionTableNode.objects.create(graph=graph, node_name="Empty", node_number=5)
+    triage = DecisionTableNode.objects.create(graph=graph, node_name="Triage", node_number=6)
+    ConditionGroup.objects.create(
+        decision_table_node=triage, group_name="Unwritten", group_type="complex", order=1
+    )
+    ConditionGroup.objects.create(
+        decision_table_node=triage, group_name="Anything", group_type="simple", order=2
+    )
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    redis_client_mock.publish.assert_called()
+
+
+@pytest.mark.django_db
+def test_decision_table_condition_with_a_blank_expression_inside_a_subflow_names_the_flow(
+    auth_client, redis_client_mock, session_data, graph, child_flow
+):
+    _run_subflow(graph, child_flow)
+    table, _ = _decision_table_routing_to_end(child_flow)
+    ConditionGroup.objects.filter(decision_table_node=table).update(expression="  ")
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {
+        "error": 'Condition "High score" in Decision Table node "Route #4" in flow '
+        '"Invoice parser" has no expression.'
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("has_error_route", "expected_status"),
+    [
+        pytest.param(True, status.HTTP_201_CREATED, id="with-error-route-runs"),
+        pytest.param(False, status.HTTP_400_BAD_REQUEST, id="without-error-route-is-refused"),
+    ],
+)
+def test_decision_table_blank_expression_is_refused_only_without_an_error_route(
+    auth_client, redis_client_mock, session_data, graph, has_error_route, expected_status
+):
+    table, end_node = _decision_table_routing_to_end(graph)
+    ConditionGroup.objects.filter(decision_table_node=table).update(expression="  ")
+    if has_error_route:
+        DecisionTableNode.objects.filter(pk=table.pk).update(next_error_node_id=end_node.id)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == expected_status, response.content
+    if not has_error_route:
+        assert response.data == {
+            "error": 'Condition "High score" in Decision Table node "Route #4" has no expression.'
+        }
+
+
+def _classification_table_after_start(graph: Graph, *, default_llm_config=None):
+    """A Classification Table node "Route #4" after Start, with one prompt "classify"
+    used by its row "High score"."""
+    table = ClassificationDecisionTableNode.objects.create(
+        graph=graph, node_name="Route", node_number=4, default_llm_config=default_llm_config
+    )
+    prompt = ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=table, prompt_key="classify", prompt_text="Classify {text}"
+    )
+    ClassificationConditionGroup.objects.create(
+        classification_decision_table_node=table, group_name="High score", prompt=prompt
+    )
+    _chain_from_start(graph, table)
+    return prompt
+
+
+@pytest.mark.django_db
+def test_classification_table_prompt_without_an_llm_is_named_with_its_fix(
+    auth_client, redis_client_mock, session_data, graph
+):
+    _classification_table_after_start(graph)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {
+        "error": 'Prompt "classify" in Classification Table node "Route #4" has no LLM. '
+        "Choose one for it, or set a default LLM for the node."
+    }
+    redis_client_mock.publish.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_classification_table_prompt_without_an_llm_runs_with_an_error_route(
+    auth_client, redis_client_mock, session_data, graph
+):
+    prompt = _classification_table_after_start(graph)
+    end_node = EndNode.objects.create(graph=graph, output_map={})
+    ClassificationDecisionTableNode.objects.filter(pk=prompt.cdt_node_id).update(
+        next_error_node_id=end_node.id
+    )
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    redis_client_mock.publish.assert_called()
+
+
+@pytest.mark.django_db
+def test_classification_table_row_using_a_prompt_in_the_recycle_bin_runs(
+    auth_client, redis_client_mock, session_data, graph
+):
+    # Crew skips a prompt it wasn't sent, so the binned prompt's missing LLM never matters.
+    prompt = _classification_table_after_start(graph)
+    ClassificationDecisionTablePrompt.objects.filter(pk=prompt.pk).update(
+        active=False, soft_deleted_at=timezone.now()
+    )
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    redis_client_mock.publish.assert_called()
+
+
+@pytest.mark.django_db
+def test_set_up_decision_and_classification_tables_run(
+    auth_client, redis_client_mock, session_data, graph, llm_config
+):
+    _, end_node = _decision_table_routing_to_end(graph)
+    ConditionGroup.objects.filter(decision_table_node__graph=graph).update(
+        next_node_id=end_node.id
+    )
+    _classification_table_after_start(graph, default_llm_config=llm_config)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    redis_client_mock.publish.assert_called()

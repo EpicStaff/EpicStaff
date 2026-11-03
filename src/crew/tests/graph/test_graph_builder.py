@@ -283,6 +283,34 @@ def test_compiled_graph_runs_the_flow_and_routes_through_the_decision_table(
     assert published_message_types == expected_message_types
 
 
+def test_failing_decision_table_without_error_route_fails_the_flow_with_its_error(
+    mock_services, mock_session_data
+):
+    """Without an error route the table's error ends the run as a failure, which the
+    session reports with the same text, instead of routing to the end as a success."""
+    mock_session_data.graph.decision_table_node_list = [
+        DecisionTableNodeData(
+            node_name="decision_table_node_1",
+            conditional_group_list=[
+                ConditionGroupData(
+                    group_name="High score",
+                    group_type="complex",
+                    expression="scroe > 1",
+                    next_node="end_node",
+                ),
+            ],
+            default_next_node="end_node",
+            next_error_node=None,
+        )
+    ]
+    compiled_graph = _builder(mock_services).compile_from_schema(mock_session_data)
+
+    with pytest.raises(NodeExecutionError) as raised:
+        _final_variables(compiled_graph, {})
+
+    assert raised.value.public_message == "Condition \"High score\": name 'scroe' is not defined"
+
+
 def _task_node_session_data(mock_llm_data) -> SessionData:
     return SessionData(
         id=456,

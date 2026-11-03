@@ -126,10 +126,14 @@ jobs:
             # es_plugins installs src/plugin_sdk (package rules, signatures and
             # the runtime file contract), so a change there runs its suite too,
             # and its policy contract test runs the egress proxy's host helper
-            # on the policy it writes.
+            # on the policy it writes. crew's decision table tests run code
+            # through the sandbox's own code wrapper, so a change to it runs
+            # crew's suite too.
             also=''
             if [ "$svc" = es_plugins ]; then
               also='src/plugin_sdk/|src/plugins_egress/plugin_host_acl\.py$|src/plugins_egress/private_ranges\.txt$|'
+            elif [ "$svc" = crew ]; then
+              also='src/sandbox_new/worker/infrastructure/execution/code_wrapper\.py$|'
             fi
             filter "be_$svc" "^(${also}src/$svc/|$backend_wide)"
             if [ "$result" = true ]; then

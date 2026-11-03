@@ -75,6 +75,10 @@ from tables.services.surface_knowledge_warning_service import (
 from tables.services.task_node_payload_service import TaskNodePayloadService
 from tables.services.trigger_spec import TriggerSpec
 from tables.validators.agent_node_validator import AgentNodeValidator
+from tables.validators.decision_table_node_validator import (
+    ClassificationDecisionTableNodeValidator,
+    DecisionTableNodeValidator,
+)
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.key_value_node_validator import KeyValueNodeValidator
@@ -103,6 +107,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         self.knowledge_node_validator: KnowledgeNodeValidator = KnowledgeNodeValidator()
         self.agent_node_validator: AgentNodeValidator = AgentNodeValidator()
         self.key_value_node_validator: KeyValueNodeValidator = KeyValueNodeValidator()
+        self.decision_table_node_validator = DecisionTableNodeValidator()
+        self.classification_decision_table_node_validator = (
+            ClassificationDecisionTableNodeValidator()
+        )
         self.end_node_validator: EndNodeValidator = EndNodeValidator()
         self.subgraph_validator = SubGraphValidator()
         self.persistent_variables_service = PersistentVariablesService()
@@ -570,9 +578,11 @@ class SessionManagerService(metaclass=SingletonMeta):
             graph=graph.pk
         ).order_by("node_number", "id")
         edge_list = Edge.objects.filter(graph=graph.pk)
-        decision_table_node_list = DecisionTableNode.objects.filter(
-            graph=graph.pk
-        ).prefetch_related("condition_groups__conditions")
+        decision_table_node_list = (
+            DecisionTableNode.objects.filter(graph=graph.pk)
+            .prefetch_related("condition_groups__conditions")
+            .order_by("node_number", "id")
+        )
         subgraph_node_list = (
             SubGraphNode.objects.filter(graph=graph.pk)
             .select_related("subgraph")
@@ -590,12 +600,18 @@ class SessionManagerService(metaclass=SingletonMeta):
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = (
             ClassificationDecisionTableNode.objects.filter(graph=graph.pk)
-            .select_related("pre_python_code__venv", "post_python_code__venv")
+            .select_related(
+                "pre_python_code__venv",
+                "post_python_code__venv",
+                "default_llm_config__model__llm_provider",
+            )
             .prefetch_related(
-                "condition_groups",
+                "condition_groups__prompt",
+                "prompt_configs__llm_config__model__llm_provider",
                 secret_names_prefetch("pre_python_code__secrets"),
                 secret_names_prefetch("post_python_code__secrets"),
             )
+            .order_by("node_number", "id")
         )
         task_node_list = (
             TaskNode.objects.filter(graph=graph.pk)
@@ -679,6 +695,12 @@ class SessionManagerService(metaclass=SingletonMeta):
             [*agent_node_list, *task_node_list], flow_name=subflow_name
         )
         self.key_value_node_validator.validate_runnable(key_value_node_list, flow_name=subflow_name)
+        self.decision_table_node_validator.validate_runnable(
+            decision_table_node_list, flow_name=subflow_name
+        )
+        self.classification_decision_table_node_validator.validate_runnable(
+            classification_decision_table_node_list, flow_name=subflow_name
+        )
 
         condition_group_next_ids = list(
             ConditionGroup.objects.filter(

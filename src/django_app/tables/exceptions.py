@@ -134,6 +134,20 @@ class KeyValueNodeRunValidationError(CustomAPIExeption):
     default_detail = "A Key-Value node has no table selected."
 
 
+class DecisionTableNodeRunValidationError(CustomAPIExeption):
+    """Raised on run when a condition is blank in a Decision Table without an error route."""
+
+    status_code = 400
+    default_detail = "A Decision Table node isn't set up."
+
+
+class ClassificationDecisionTableNodeRunValidationError(CustomAPIExeption):
+    """Raised on run when a prompt has no LLM in a Classification Table without an error route."""
+
+    status_code = 400
+    default_detail = "A Classification Table node isn't set up."
+
+
 class InvalidTaskOrderError(CustomAPIExeption):
     status_code = 409
     default_detail = "A task cannot be placed before its context dependency. Please reorder the tasks or delete context."

@@ -443,14 +443,12 @@ _FAILING_CODE = PythonCodeData(
         (fake_run_code_raises, "True", {}, "error_node"),
         (fake_run_code_error, None, {"pre_python_code": _FAILING_CODE}, "error_node"),
         (fake_run_code_error, None, {"post_python_code": _FAILING_CODE}, "error_node"),
-        (fake_run_code_error, "True", {"next_error_node": None}, END),
     ],
     ids=[
         "condition-error",
         "condition-unexpected-error",
         "pre-computation",
         "post-computation",
-        "no-error-node-ends",
     ],
 )
 async def test_error_route_emits_finish_after_error(
@@ -638,11 +636,9 @@ async def test_broken_expression_before_match_routes_to_error_after_earlier_rows
     ]
     assert messages[1]["group_name"] == "miss"
     assert messages[1]["result"] is False
-    error_details = messages[2]["details"]
-    assert error_details.startswith(
-        "Error in condition 'broken': Expression execution failed:"
+    assert messages[2]["details"] == (
+        "Condition \"broken\": name 'undefined_name' is not defined"
     )
-    assert "NameError" in error_details
 
 
 @pytest.mark.asyncio
@@ -667,7 +663,7 @@ async def test_non_boolean_expression_routes_to_error(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert "Expression must return a boolean value" in error_message["details"]
+    assert error_message["details"] == 'Condition "not_bool" must give true or false.'
 
 
 @pytest.mark.asyncio
@@ -796,9 +792,7 @@ async def test_exit_in_expression_is_reported_against_its_row(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert error_message["details"].startswith(
-        "Error in condition 'exits': Expression execution failed: SystemExit"
-    )
+    assert error_message["details"] == 'Condition "exits" stopped the code with exit().'
 
 
 # ---------------------------------------------------------------------------
@@ -875,10 +869,7 @@ async def test_batch_run_failure_names_the_row_range(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert error_message["details"] == (
-        "Error evaluating conditions from 'first' to 'last': "
-        "Expression execution failed: boom"
-    )
+    assert error_message["details"] == 'Conditions "first" to "last": boom'
 
 
 # ---------------------------------------------------------------------------
@@ -899,8 +890,9 @@ def first_error_message(redis_service: MagicMock) -> dict:
 
 @pytest.mark.asyncio
 async def test_llm_failure_reports_the_prompt_without_provider_exception_text(monkeypatch):
-    """A provider failure names the prompt; the provider's own message, which can
-    quote the API key and endpoint, stays in the logs."""
+    """A failure that isn't a provider error names the prompt and cites the log line;
+    the exception's own message, which can quote the API key and endpoint, stays in
+    the logs."""
     monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
     prompt_config = PromptConfigData(
         prompt_text="Classify {text}",
@@ -929,9 +921,13 @@ async def test_llm_failure_reports_the_prompt_without_provider_exception_text(mo
         result = await subgraph.ainvoke(make_state({"text": "hello"}))
 
     assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
-    assert first_error_message(redis_service)["details"] == (
-        "Error in condition 'prompt_row': LLM call failed for prompt 'classify'"
-    )
+    details = first_error_message(redis_service)["details"]
+    assert re.fullmatch(
+        'Prompt "classify": The LLM request for model "gpt-4o-mini" failed. '
+        r"Try again or contact your administrator \(reference: [0-9a-f]{12}\)\.",
+        details,
+    ), details
+    assert _SENSITIVE_EXCEPTION_TEXT not in details
 
 
 @pytest.mark.asyncio

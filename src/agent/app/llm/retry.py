@@ -22,7 +22,7 @@ from litellm.exceptions import APIError as LiteLLMAPIError
 from litellm.utils import _get_retry_after_from_exception_header
 from loguru import logger
 
-from app.llm.error_kind import is_quota_exhausted
+from shared.llm_error_kind import is_quota_exhausted
 
 T = TypeVar("T")
 

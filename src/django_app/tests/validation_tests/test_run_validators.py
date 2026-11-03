@@ -3,8 +3,12 @@
 import pytest
 
 from agents.models import AgentDefinition
+from django.utils import timezone
+
 from tables.exceptions import (
     AgentNodeRunValidationError,
+    ClassificationDecisionTableNodeRunValidationError,
+    DecisionTableNodeRunValidationError,
     EndNodeValidationError,
     FileNodeValidationError,
     KeyValueNodeRunValidationError,
@@ -16,9 +20,26 @@ from tables.models import (
     Graph,
     KeyValueNode,
     KeyValueTable,
+    LLMConfig,
 )
-from tables.models.graph_models import AgentNode, AgentNodeTask, EndNode, SubGraphNode, TaskNode
+from tables.models.graph_models import (
+    AgentNode,
+    AgentNodeTask,
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
+    Condition,
+    ConditionGroup,
+    DecisionTableNode,
+    EndNode,
+    SubGraphNode,
+    TaskNode,
+)
 from tables.validators.agent_node_validator import AgentNodeValidator
+from tables.validators.decision_table_node_validator import (
+    ClassificationDecisionTableNodeValidator,
+    DecisionTableNodeValidator,
+)
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.key_value_node_validator import KeyValueNodeValidator
@@ -595,3 +616,331 @@ class TestKeyValueNodeValidator:
         )
 
         self._validate(graph)
+
+
+# Any id: the validators don't look at the node a condition or an error route leads to.
+NEXT_NODE_ID = 9001
+
+
+def _decision_table(
+    graph, name: str, number: int, *, next_error_node_id: int | None = None
+) -> DecisionTableNode:
+    return DecisionTableNode.objects.create(
+        graph=graph, node_name=name, node_number=number, next_error_node_id=next_error_node_id
+    )
+
+
+def _complex_condition(
+    table: DecisionTableNode,
+    name: str,
+    *,
+    order: int = 0,
+    expression: str | None = "variables.score > 5",
+    next_node_id: int | None = NEXT_NODE_ID,
+) -> ConditionGroup:
+    return ConditionGroup.objects.create(
+        decision_table_node=table,
+        group_name=name,
+        group_type="complex",
+        order=order,
+        expression=expression,
+        next_node_id=next_node_id,
+    )
+
+
+def _simple_condition(
+    table: DecisionTableNode, name: str, condition_texts: list[str]
+) -> ConditionGroup:
+    group = ConditionGroup.objects.create(
+        decision_table_node=table,
+        group_name=name,
+        group_type="simple",
+        next_node_id=NEXT_NODE_ID,
+    )
+    for order, text in enumerate(condition_texts):
+        Condition.objects.create(
+            condition_group=group, condition_name=f"Check {order}", order=order, condition=text
+        )
+    return group
+
+
+def _validate_decision_tables(graph, flow_name: str | None = None) -> None:
+    DecisionTableNodeValidator().validate_runnable(
+        DecisionTableNode.objects.filter(graph=graph)
+        .prefetch_related("condition_groups__conditions")
+        .order_by("node_number", "id"),
+        flow_name=flow_name,
+    )
+
+
+def _decision_table_error(graph, flow_name: str | None = None) -> str:
+    with pytest.raises(DecisionTableNodeRunValidationError) as error:
+        _validate_decision_tables(graph, flow_name)
+    return str(error.value.detail)
+
+
+@pytest.mark.django_db
+class TestDecisionTableNodeValidator:
+    @pytest.mark.parametrize(
+        "make_table",
+        [
+            pytest.param(lambda table: None, id="no-conditions"),
+            pytest.param(
+                lambda table: _complex_condition(table, "High score", next_node_id=None),
+                id="condition-without-a-next-node",
+            ),
+            pytest.param(
+                lambda table: ConditionGroup.objects.filter(
+                    pk=_complex_condition(table, "High score", expression="  ").pk
+                ).update(active=False, soft_deleted_at=timezone.now()),
+                id="condition-with-a-blank-expression-in-the-recycle-bin",
+            ),
+            pytest.param(
+                lambda table: _complex_condition(table, "High score", expression=None),
+                id="complex-condition-without-an-expression",
+            ),
+            pytest.param(
+                lambda table: _simple_condition(table, "High score", []),
+                id="simple-condition-without-conditions",
+            ),
+        ],
+    )
+    def test_table_crew_runs_without_failing_runs(self, graph, make_table):
+        make_table(_decision_table(graph, "Route", 4))
+
+        _validate_decision_tables(graph)
+
+    @pytest.mark.parametrize("expression", ["", "   "], ids=["empty", "blank"])
+    def test_complex_condition_with_a_blank_expression_is_named(self, graph, expression):
+        _complex_condition(_decision_table(graph, "Route", 4), "High score", expression=expression)
+
+        assert _decision_table_error(graph) == (
+            'Condition "High score" in Decision Table node "Route #4" has no expression.'
+        )
+
+    @pytest.mark.parametrize(
+        "condition_texts",
+        [["  "], ["x > 1", "  "]],
+        ids=["only-blank-conditions", "one-blank-condition"],
+    )
+    def test_simple_condition_with_a_blank_condition_has_no_expression(
+        self, graph, condition_texts
+    ):
+        _simple_condition(_decision_table(graph, "Route", 4), "High score", condition_texts)
+
+        assert _decision_table_error(graph) == (
+            'Condition "High score" in Decision Table node "Route #4" has no expression.'
+        )
+
+    def test_conditions_with_blank_expressions_get_a_sentence_per_node_in_table_order(self, graph):
+        route = _decision_table(graph, "Route", 1)
+        _complex_condition(route, "Low score", order=2, expression="")
+        _complex_condition(route, "High score", order=1, expression="")
+        _complex_condition(route, "Kept", order=3)
+        _complex_condition(_decision_table(graph, "Triage", 2), "Urgent", expression="")
+
+        assert _decision_table_error(graph) == (
+            'Conditions "High score" and "Low score" in Decision Table node "Route #1" have no '
+            'expression. Condition "Urgent" in Decision Table node "Triage #2" has no expression.'
+        )
+
+    def test_node_inside_a_subflow_names_that_subflow(self, graph):
+        _complex_condition(_decision_table(graph, "Route", 4), "High score", expression="")
+
+        assert _decision_table_error(graph, flow_name="Invoice parser") == (
+            'Condition "High score" in Decision Table node "Route #4" in flow '
+            '"Invoice parser" has no expression.'
+        )
+
+    @pytest.mark.parametrize(
+        "make_condition",
+        [
+            pytest.param(
+                lambda table: _complex_condition(table, "High score", expression=" "),
+                id="blank-expression",
+            ),
+            pytest.param(
+                lambda table: _simple_condition(table, "High score", ["x > 1", " "]),
+                id="blank-condition",
+            ),
+        ],
+    )
+    def test_node_with_an_error_route_is_not_checked(self, graph, make_condition):
+        make_condition(_decision_table(graph, "Route", 4, next_error_node_id=NEXT_NODE_ID))
+
+        _validate_decision_tables(graph)
+
+    def test_set_up_simple_and_complex_conditions_pass(self, graph):
+        route = _decision_table(graph, "Route", 4)
+        _complex_condition(route, "High score", order=1)
+        _simple_condition(route, "Low score", ["variables.score < 2"])
+
+        _validate_decision_tables(graph)
+
+
+def _classification_table(
+    graph,
+    name: str,
+    number: int,
+    *,
+    default_llm_config: LLMConfig | None = None,
+    next_error_node_id: int | None = None,
+) -> ClassificationDecisionTableNode:
+    return ClassificationDecisionTableNode.objects.create(
+        graph=graph,
+        node_name=name,
+        node_number=number,
+        default_llm_config=default_llm_config,
+        next_error_node_id=next_error_node_id,
+    )
+
+
+def _prompt(
+    table: ClassificationDecisionTableNode, key: str, llm_config: LLMConfig | None = None
+) -> ClassificationDecisionTablePrompt:
+    return ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=table, prompt_key=key, llm_config=llm_config
+    )
+
+
+def _row(
+    table: ClassificationDecisionTableNode,
+    name: str,
+    prompt: ClassificationDecisionTablePrompt | None,
+    *,
+    order: int = 0,
+    enabled: bool = True,
+) -> ClassificationConditionGroup:
+    return ClassificationConditionGroup.objects.create(
+        classification_decision_table_node=table,
+        group_name=name,
+        order=order,
+        prompt=prompt,
+        dock_visible=enabled,
+    )
+
+
+def _bin(prompt: ClassificationDecisionTablePrompt) -> None:
+    ClassificationDecisionTablePrompt.objects.filter(pk=prompt.pk).update(
+        active=False, soft_deleted_at=timezone.now()
+    )
+
+
+def _validate_classification_tables(graph, flow_name: str | None = None) -> None:
+    ClassificationDecisionTableNodeValidator().validate_runnable(
+        ClassificationDecisionTableNode.objects.filter(graph=graph)
+        .select_related("default_llm_config__model")
+        .prefetch_related("condition_groups__prompt", "prompt_configs__llm_config__model")
+        .order_by("node_number", "id"),
+        flow_name=flow_name,
+    )
+
+
+def _classification_table_error(graph, flow_name: str | None = None) -> str:
+    with pytest.raises(ClassificationDecisionTableNodeRunValidationError) as error:
+        _validate_classification_tables(graph, flow_name)
+    return str(error.value.detail)
+
+
+@pytest.fixture
+def llm_config_without_model(default_org) -> LLMConfig:
+    return LLMConfig.objects.create(custom_name="Unfinished", model=None, org=default_org)
+
+
+@pytest.mark.django_db
+class TestClassificationDecisionTableNodeValidatorNoLlm:
+    def test_used_prompt_without_an_llm_or_a_default_is_named(self, graph):
+        table = _classification_table(graph, "Route", 4)
+        _row(table, "High score", _prompt(table, "classify"))
+
+        assert _classification_table_error(graph) == (
+            'Prompt "classify" in Classification Table node "Route #4" has no LLM. '
+            "Choose one for it, or set a default LLM for the node."
+        )
+
+    def test_prompt_whose_llm_has_no_model_does_not_fall_back_to_the_default(
+        self, graph, llm_config, llm_config_without_model
+    ):
+        table = _classification_table(graph, "Route", 4, default_llm_config=llm_config)
+        _row(table, "High score", _prompt(table, "classify", llm_config_without_model))
+
+        assert _classification_table_error(graph) == (
+            'Prompt "classify" in Classification Table node "Route #4" has no LLM. '
+            "Choose one for it, or set a default LLM for the node."
+        )
+
+    def test_default_llm_without_a_model_counts_as_none(self, graph, llm_config_without_model):
+        table = _classification_table(
+            graph, "Route", 4, default_llm_config=llm_config_without_model
+        )
+        _row(table, "High score", _prompt(table, "classify"))
+
+        assert _classification_table_error(graph) == (
+            'Prompt "classify" in Classification Table node "Route #4" has no LLM. '
+            "Choose one for it, or set a default LLM for the node."
+        )
+
+    def test_prompts_of_one_node_share_a_sentence_in_the_order_rows_use_them(self, graph):
+        table = _classification_table(graph, "Route", 4)
+        summarize = _prompt(table, "summarize")
+        classify = _prompt(table, "classify")
+        _row(table, "Low score", summarize, order=2)
+        _row(table, "High score", classify, order=1)
+        _row(table, "Again", classify, order=3)
+
+        assert _classification_table_error(graph) == (
+            'Prompts "classify" and "summarize" in Classification Table node "Route #4" have no '
+            "LLM. Choose one for each, or set a default LLM for the node."
+        )
+
+    def test_several_nodes_get_a_sentence_each(self, graph):
+        route = _classification_table(graph, "Route", 1)
+        _row(route, "High score", _prompt(route, "classify"))
+        triage = _classification_table(graph, "Triage", 2)
+        _row(triage, "Urgent", _prompt(triage, "detect"))
+
+        assert _classification_table_error(graph) == (
+            'Prompt "classify" in Classification Table node "Route #1" has no LLM. '
+            'Prompt "detect" in Classification Table node "Triage #2" has no LLM. '
+            "Choose one for each, or set a default LLM for each node."
+        )
+
+    def test_node_inside_a_subflow_names_that_subflow(self, graph):
+        table = _classification_table(graph, "Route", 4)
+        _row(table, "High score", _prompt(table, "classify"))
+
+        assert _classification_table_error(graph, flow_name="Invoice parser") == (
+            'Prompt "classify" in Classification Table node "Route #4" in flow '
+            '"Invoice parser" has no LLM. Choose one for it, or set a default LLM for the node.'
+        )
+
+    def test_prompts_crew_never_runs_are_not_checked(self, graph):
+        table = _classification_table(graph, "Route", 4)
+        _prompt(table, "unused")
+        _row(table, "Disabled", _prompt(table, "classify"), enabled=False)
+        _row(table, "No prompt", None)
+
+        _validate_classification_tables(graph)
+
+    def test_node_with_an_error_route_is_not_checked(self, graph):
+        table = _classification_table(graph, "Route", 4, next_error_node_id=NEXT_NODE_ID)
+        _row(table, "High score", _prompt(table, "classify"))
+
+        _validate_classification_tables(graph)
+
+    def test_row_using_a_prompt_in_the_recycle_bin_runs(self, graph):
+        # Crew skips a prompt it wasn't sent, so a binned one without an LLM runs too.
+        table = _classification_table(graph, "Route", 4)
+        prompt = _prompt(table, "classify")
+        _row(table, "High score", prompt)
+        _bin(prompt)
+
+        _validate_classification_tables(graph)
+
+    def test_prompt_with_its_own_llm_or_the_node_default_passes(self, graph, llm_config):
+        with_default = _classification_table(graph, "Route", 1, default_llm_config=llm_config)
+        _row(with_default, "High score", _prompt(with_default, "classify"))
+        with_own_llm = _classification_table(graph, "Triage", 2)
+        _row(with_own_llm, "Urgent", _prompt(with_own_llm, "detect", llm_config))
+
+        _validate_classification_tables(graph)

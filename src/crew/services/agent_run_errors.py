@@ -116,7 +116,6 @@ def agent_run_error(
     raw_error = payload.get("error")
     stop_reason = payload.get("stop_reason")
     error_kind = payload.get("error_kind")
-    model = llm.config.model
 
     if stop_reason == StopReason.TIMEOUT:
         limit_s = agent_definition.max_execution_time
@@ -144,15 +143,22 @@ def agent_run_error(
     kind = _known_kind(error_kind)
     if kind is LLMErrorKind.UNKNOWN:
         reference = _log_unexplained_failure(raw_error, run_correlation_id)
-        return AgentTaskError(
-            _LLM_ERROR_TEXTS[kind].format(model=model, reference=reference),
-            correlation_id=reference,
-        )
+        return AgentTaskError(llm_error_text(kind, llm, reference), correlation_id=reference)
 
     _log_explained_failure(kind.value, run_correlation_id)
+    return AgentTaskError(llm_error_text(kind, llm))
+
+
+def llm_error_text(kind: LLMErrorKind, llm: LLMData, reference: str | None = None) -> str:
+    """Return the text that tells the user why a call to ``llm`` failed.
+
+    Args:
+        reference: The log line's reference; required for ``UNKNOWN``, whose text cites it.
+    """
+    model = llm.config.model
     if kind is LLMErrorKind.MODEL_NOT_FOUND and llm.config.base_url:
-        return AgentTaskError(_MODEL_NOT_FOUND_AT_CUSTOM_BASE_URL_TEXT.format(model=model))
-    return AgentTaskError(_LLM_ERROR_TEXTS[kind].format(model=model))
+        return _MODEL_NOT_FOUND_AT_CUSTOM_BASE_URL_TEXT.format(model=model)
+    return _LLM_ERROR_TEXTS[kind].format(model=model, reference=reference)
 
 
 def _agent_time_limit_error(agent_name: str, limit_s: float) -> AgentTaskTimeoutError:

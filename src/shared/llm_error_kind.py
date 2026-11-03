@@ -1,4 +1,8 @@
-"""Classify a failed LLM call into an ``LLMErrorKind`` crew can explain to the user."""
+"""Classify a failed LLM call into an ``LLMErrorKind`` crew can explain to the user.
+
+Used by the agent service, for an agent's LLM calls, and by crew, for a Classification
+Decision Table's prompts. Imports litellm, so only import it from a service that has litellm.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +21,7 @@ from litellm.exceptions import (
     Timeout,
 )
 
-from shared.models.agent_service import LLMErrorKind
+from .models.agent_service import LLMErrorKind
 
 # The classes litellm maps every provider error to; litellm checks the same list to
 # tell an error it has already mapped.

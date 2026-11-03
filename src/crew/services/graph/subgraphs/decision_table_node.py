@@ -8,6 +8,18 @@ from models.graph_models import GraphMessage
 from models.state import State
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
+from services.graph.exceptions import NodeExecutionError, StopSession
+from services.graph.subgraphs.decision_table_errors import (
+    CONDITION_FAILURE_SOURCE,
+    ConditionFailure,
+    DecisionTableError,
+    UserCodePart,
+    check_code_ran,
+    condition_error,
+    condition_subject,
+    manipulation_error,
+    unreadable_result_error,
+)
 from services.run_python_code_service import RunPythonCodeService
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
 from src.shared.models import (
@@ -16,10 +28,42 @@ from src.shared.models import (
     PythonCodeData,
 )
 from src.shared.models.storage_scope import StorageCredentials
+from src.shared.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 
+# The expression arrives as data and is compiled on its own, so an error in it is reported
+# as the expression's, not as a line of this code. It sees what it saw when it was pasted
+# into main(): `variables`, then the sandbox module globals.
+_EVALUATE_CONDITION_CODE = (
+    CONDITION_FAILURE_SOURCE
+    + """
 
-class DecisionTableNodeDataError(Exception):
-    """Custom exception for errors related to DecisionTableNodeData."""
+def main(expression, variables):
+    try:
+        result = eval(
+            compile(expression, "<condition>", "eval"), {**globals(), "variables": variables}
+        )
+    # BaseException so that exit() in an expression is reported as the condition's error.
+    except BaseException as error:
+        return {"result": None, "error": _condition_failure(error)}
+    if not isinstance(result, bool):
+        return {"result": None, "error": _NOT_BOOLEAN_FAILURE}
+    return {"result": result, "error": None}
+"""
+)
+
+# The manipulation is pasted after the indentation of its first line, so it can span
+# lines only if the user indents every further line.
+_MANIPULATION_CODE_PREFIX = """
+def main(**kwargs) -> bool:
+    variables = kwargs.get("variables", {})
+    """
+_MANIPULATION_CODE_SUFFIX = """
+    return variables
+"""
 
 
 class DecisionTableNodeSubgraph:
@@ -76,6 +120,7 @@ class DecisionTableNodeSubgraph:
         if condition_group.group_type == "simple":
             for condition in condition_group.condition_list:
                 if not await self._execute_expression(
+                    condition_name=condition_group.group_name,
                     expression=condition.condition,
                     state=state,
                 ):
@@ -89,6 +134,7 @@ class DecisionTableNodeSubgraph:
                 logger.error("Complex condition group must have an expression")
                 return False
             condition_group_result = await self._execute_expression(
+                condition_name=condition_group.group_name,
                 expression=condition_group.expression,
                 state=state,
             )
@@ -97,18 +143,20 @@ class DecisionTableNodeSubgraph:
 
     async def _execute_manipulation(
         self,
+        condition_name: str,
         manipulation: str | None,
         state: State,
     ) -> bool:
         if manipulation is None:
             return True
 
-        code = f"""
-def main(**kwargs) -> bool:
-    variables = kwargs.get("variables", {{}})
-    {manipulation}
-    return variables
-"""
+        code = _MANIPULATION_CODE_PREFIX + manipulation + _MANIPULATION_CODE_SUFFIX
+        manipulation_part = UserCodePart(
+            label="manipulation code",
+            first_line=_MANIPULATION_CODE_PREFIX.count("\n") + 1,
+            line_count=manipulation.count("\n") + 1,
+            shows_line_numbers=True,
+        )
         python_code_data = PythonCodeData(
             code=code,
             entrypoint="main",
@@ -125,42 +173,86 @@ def main(**kwargs) -> bool:
             python_code_execution_data["execution_id"],
             python_code_execution_data["returncode"],
         )
+        check_code_ran(python_code_execution_data, condition_subject(condition_name))
         if python_code_execution_data["returncode"] != 0:
-            raise DecisionTableNodeDataError(
-                f"Manipulation execution failed with error: {python_code_execution_data['stderr']}"
+            raise manipulation_error(
+                condition_name, python_code_execution_data["stderr"], [manipulation_part]
             )
 
-        variables = json.loads(python_code_execution_data["result_data"])
+        try:
+            variables = json.loads(python_code_execution_data["result_data"])
+        except (TypeError, ValueError) as error:
+            raise unreadable_result_error(
+                condition_subject(condition_name), python_code_execution_data["result_data"]
+            ) from error
         state["variables"].update(variables)
 
     async def _execute_expression(
         self,
+        condition_name: str,
         expression: str,
         state: State,
     ) -> bool:
-        code = f"""
-def main(variables: dict) -> bool:
-    result: bool = {expression}
-    assert isinstance(result, bool), "Expression must return a boolean value"
-    return result
-"""
-
-        python_code_data = PythonCodeData(
-            code=code,
-            entrypoint="main",
-        )
-
+        subject = condition_subject(condition_name)
         python_code_execution_data: dict = await self.run_code_execution_service.run_code(
-            python_code_data=python_code_data,
-            inputs={"variables": state["variables"].model_dump()},
+            python_code_data=PythonCodeData(code=_EVALUATE_CONDITION_CODE, entrypoint="main"),
+            # Stripped: unlike the assignment it used to be pasted into, compile() in "eval"
+            # mode rejects leading spaces.
+            inputs={
+                "expression": expression.strip(),
+                "variables": state["variables"].model_dump(),
+            },
             stop_event=self.stop_event,
             storage_credentials=self.storage_credentials,
         )
+        check_code_ran(python_code_execution_data, subject)
         if python_code_execution_data["returncode"] != 0:
-            raise DecisionTableNodeDataError(
-                f"Expression execution failed with error: {python_code_execution_data['stderr']}"
-            )
-        return json.loads(python_code_execution_data["result_data"]) or False
+            # The evaluation reports the expression's own errors in its result, so this is
+            # the sandbox stopping the code, e.g. at its time limit.
+            raise DecisionTableError(f"{subject}: {python_code_execution_data['stderr'].strip()}")
+
+        result_data = python_code_execution_data["result_data"]
+        try:
+            evaluation = json.loads(result_data)
+            failure = ConditionFailure.from_result(evaluation["error"])
+            result = evaluation["result"]
+        except (TypeError, ValueError, KeyError) as error:
+            raise unreadable_result_error(subject, result_data) from error
+        if failure is not None:
+            raise condition_error(condition_name, failure)
+        if not isinstance(result, bool):
+            raise unreadable_result_error(subject, result_data)
+        return result
+
+    async def _fail(
+        self,
+        state: State,
+        writer: StreamWriter,
+        error: Exception,
+        public_message: str,
+        correlation_id: str | None,
+    ) -> None:
+        """Show the error, then take the error route, or fail the session if there is none.
+
+        Raises:
+            NodeExecutionError: The node has no error route; the session fails repeating
+                `public_message`.
+        """
+        msg = self.custom_session_message_writer.add_error_message(
+            session_id=self.session_id,
+            node_name=self.node_name,
+            writer=writer,
+            execution_order=self.execution_order(state),
+            node_type=self.TYPE,
+            public_details=public_message,
+        )
+        await self._publish_message(msg)
+        next_error_node = self.decision_table_node_data.next_error_node
+        if next_error_node is None:
+            raise NodeExecutionError(public_message, correlation_id=correlation_id) from error
+        decision_node_variables = state["system_variables"]["nodes"][self.node_name]
+        decision_node_variables["result_node"] = next_error_node
+        decision_node_variables["next_node"] = END
 
     def execution_order(self, state: State):
         return state["system_variables"]["nodes"][self.node_name]["execution_order"]
@@ -284,9 +376,9 @@ def main(variables: dict) -> bool:
             condition_group: ConditionGroupData,
         ) -> callable:
             async def condition_group_function(state: State, writer: StreamWriter):
+                decision_node_variables = state["system_variables"]["nodes"][self.node_name]
                 try:
                     logger.debug("Executing condition group: {}", condition_group.group_name)
-                    decision_node_variables = state["system_variables"]["nodes"][self.node_name]
                     condition_result = await self._execute_condition_group(
                         condition_group=condition_group,
                         state=state,
@@ -304,6 +396,7 @@ def main(variables: dict) -> bool:
                         logger.debug("Condition group '{}' passed.", condition_group.group_name)
                         if condition_group.manipulation:
                             await self._execute_manipulation(
+                                condition_name=condition_group.group_name,
                                 manipulation=condition_group.manipulation,
                                 state=state,
                             )
@@ -318,22 +411,27 @@ def main(variables: dict) -> bool:
                             await self._publish_message(msg)
 
                         decision_node_variables["result_node"] = condition_group.next_node
-                except DecisionTableNodeDataError as e:
-                    error = f"Error executing condition group '{condition_group.group_name}': {e}"
-                    logger.error(error)
-                    decision_node_variables["result_node"] = (
-                        self.decision_table_node_data.next_error_node or END
+                except StopSession:
+                    raise
+                except DecisionTableError as error:
+                    logger.warning("Decision table '{}' failed: {}", self.node_name, error)
+                    await self._fail(state, writer, error, str(error), error.correlation_id)
+                except Exception as error:
+                    # The exception text can quote variables or code, so it stays in the
+                    # log; the user sees a reference to that log line.
+                    correlation_id = new_error_correlation_id()
+                    logger.opt(exception=error).error(
+                        "Decision table '{}' failed in condition '{}': {}: {} (correlation_id={})",
+                        self.node_name,
+                        condition_group.group_name,
+                        type(error).__name__,
+                        error,
+                        correlation_id,
                     )
-                    decision_node_variables["next_node"] = END
-                    msg = self.custom_session_message_writer.add_error_message(
-                        session_id=self.session_id,
-                        node_name=self.node_name,
-                        writer=writer,
-                        execution_order=self.execution_order(state),
-                        node_type=self.TYPE,
-                        public_details=error,
+                    public_message = build_public_error_message(
+                        PublicErrorMessage.NODE_EXECUTION_FAILED, correlation_id
                     )
-                    await self._publish_message(msg)
+                    await self._fail(state, writer, error, public_message, correlation_id)
 
                 return state
 
