@@ -56,6 +56,22 @@ RUN mkdir -p /app/.cache/tokie \
  && /app/.venv/bin/python -c "import tiktoken; tiktoken.get_encoding('o200k_base'); tiktoken.get_encoding('cl100k_base')" \
  && /app/.venv/bin/python -c "from tokie import Tokenizer; Tokenizer.from_pretrained('openai-community/gpt2').save('/app/.cache/tokie/gpt2.tkz')"
 
+# NLTK stopwords corpus for the HTML chunker's stopword_removal option, read
+# from NLTK_DATA at runtime (see html_chunker.py; nltk.download is never called
+# there). Fetched from a fixed nltk_data commit and checked against its sha256,
+# which matches the sha256_checksum the NLTK index publishes for this package.
+# To update: pick the newer commit, take the package's sha256_checksum from
+# index.xml at that commit, and change both ARGs together.
+ARG NLTK_DATA_COMMIT=98e14261eaec2244af1db4ec5b282112444495aa
+ARG NLTK_STOPWORDS_SHA256=48c0e52d8b52546e827f53761fb30300c0ab94f70660d28bd65ba0a86270946b
+RUN mkdir -p /app/.cache/nltk_data/corpora \
+ && /app/.venv/bin/python -c "import hashlib, io, sys, urllib.request, zipfile; \
+data = urllib.request.urlopen('https://raw.githubusercontent.com/nltk/nltk_data/${NLTK_DATA_COMMIT}/packages/corpora/stopwords.zip', timeout=60).read(); \
+digest = hashlib.sha256(data).hexdigest(); \
+digest == '${NLTK_STOPWORDS_SHA256}' or sys.exit(f'stopwords.zip sha256 mismatch: {digest}'); \
+zipfile.ZipFile(io.BytesIO(data)).extractall('/app/.cache/nltk_data/corpora')" \
+ && test -s /app/.cache/nltk_data/corpora/stopwords/english
+
 # Copy application source
 COPY ./knowledge_new /app/src/knowledge
 COPY ./shared /app/src/shared
@@ -81,6 +97,7 @@ COPY --from=builder /app /app
 # HF_HUB_OFFLINE=1 makes any huggingface_hub (Python) call fail loudly instead
 # of phoning home; it does not reach tokie, which is why the baked tokenizer
 # file above exists.
+# NLTK_DATA points nltk.data.find at the stopwords corpus baked above.
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime
 # trace, see the litellm finding in docs/backend-runtime-fetch-audit.md).
@@ -93,6 +110,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
     TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken \
     CUSTOM_TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken \
     HF_HUB_OFFLINE=1 \
+    NLTK_DATA=/app/.cache/nltk_data \
     LITELLM_LOCAL_MODEL_COST_MAP=True
 
 WORKDIR /app/src/knowledge
