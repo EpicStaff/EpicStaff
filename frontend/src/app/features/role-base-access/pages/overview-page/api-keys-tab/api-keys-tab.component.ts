@@ -21,8 +21,6 @@ import {
     ConfirmationDialogService,
     DeleteButtonComponent,
     LoadingSpinnerComponent,
-    MultiSelectComponent,
-    MultiSelectTriggerDirective,
     SearchComponent,
     SelectItem,
     StopButtonComponent,
@@ -34,6 +32,7 @@ import { getRelativeTime } from '@shared/utils';
 import { combineLatest, debounceTime, distinctUntilChanged, EMPTY, forkJoin, map, of, switchMap } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
 
+import { ActiveOrgService } from '../../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../services/notifications';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
@@ -70,8 +69,6 @@ const STATUS_ITEMS: SelectItem[] = [
         CdkConnectedOverlay,
         CdkOverlayOrigin,
         LoadingSpinnerComponent,
-        MultiSelectComponent,
-        MultiSelectTriggerDirective,
         SearchComponent,
         StatusBadgeComponent,
         UserAvatarComponent,
@@ -90,6 +87,7 @@ export class ApiKeysTabComponent {
     private readonly apiKeysService = inject(AdminApiKeysService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly organizationsService = inject(OrganizationsStorageService);
+    private readonly activeOrgService = inject(ActiveOrgService);
     private readonly confirmation = inject(ConfirmationDialogService);
     private readonly toast = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
@@ -125,6 +123,15 @@ export class ApiKeysTabComponent {
         this.readableOrgs().map((o) => ({ name: o.name, value: o.id }))
     );
 
+    /** Preselected org filter — follows the active org, but only if the caller can read API keys there.
+     *  Otherwise stays empty so the load falls back to all readable orgs. */
+    private readonly activeOrgDefault = computed<number[] | undefined>(() => {
+        const id = this.activeOrgService.activeOrgId();
+        if (id === null) return undefined;
+        if (this.permissionsService.isSuperadmin) return [id];
+        return this.readableOrgs().some((o) => o.id === id) ? [id] : undefined;
+    });
+
     protected readonly ownerFilterItems = computed<SelectItem[]>(() => {
         const items: SelectItem[] = [...this.knownOwners().entries()]
             .sort(([, a], [, b]) => a.name.localeCompare(b.name))
@@ -143,7 +150,16 @@ export class ApiKeysTabComponent {
             filterServerSide: true,
         },
         { key: 'name', label: 'NAME', width: 'minmax(140px, 1.5fr)' },
-        { key: 'orgName', label: 'ORGANIZATION', width: 'minmax(140px, 1.5fr)' },
+        {
+            key: 'orgName',
+            label: 'ORGANIZATION',
+            width: 'minmax(140px, 1.5fr)',
+            filterItems: this.orgFilterItems(),
+            filterKind: 'multi',
+            filterSearchable: true,
+            filterServerSide: true,
+            defaultValues: this.activeOrgDefault(),
+        },
         { key: 'key', label: 'KEY', width: 'minmax(140px, 1.2fr)' },
         { key: 'created', label: 'CREATED', width: 'minmax(110px, 1fr)' },
         { key: 'expires', label: 'EXPIRES', width: 'minmax(100px, 1fr)' },
@@ -243,13 +259,11 @@ export class ApiKeysTabComponent {
         return this.permissionsService.canInOrg(row['orgId'] as number, ResourceCode.ApiKeys, ActionCode.Delete);
     }
 
-    onOrgFilterChange(values: unknown[]): void {
-        this.orgFilterIds.set(values.map((v) => Number(v)).filter((n) => Number.isFinite(n)));
-    }
-
     onFilterChange({ key, values }: { key: string; values: unknown[] }): void {
         const first = values[0] ?? null;
-        if (key === 'owner') {
+        if (key === 'orgName') {
+            this.orgFilterIds.set(values.map((v) => Number(v)).filter((n) => Number.isFinite(n)));
+        } else if (key === 'owner') {
             this.ownerFilterId.set(first === null ? null : Number(first));
         } else if (key === 'status') {
             this.statusFilter.set(first === null ? null : (first as ApiKeyStatus));
