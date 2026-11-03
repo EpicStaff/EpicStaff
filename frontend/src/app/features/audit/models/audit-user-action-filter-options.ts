@@ -16,6 +16,9 @@ export const USER_ACTION_OPTIONS: AuditEnumOption[] = [
     { value: 'password_reset', label: 'Password reset' },
     { value: 'moved', label: 'Moved' },
     { value: 'copied', label: 'Copied' },
+    { value: 'paused', label: 'Paused' },
+    { value: 'resumed', label: 'Resumed' },
+    { value: 'key_rotated', label: 'Key rotated' },
     { value: 'import_entity', label: 'Import entity' },
 ];
 

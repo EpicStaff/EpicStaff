@@ -34,6 +34,9 @@ describe('userActionLabel', () => {
         ['moved_to_recycle_bin', 'Moved to Recycle Bin'],
         ['sign_in_failed', 'Sign-in failed'],
         ['import_entity', 'Import entity'],
+        ['paused', 'Paused'],
+        ['resumed', 'Resumed'],
+        ['key_rotated', 'Key rotated'],
         ['upload_stream', 'Upload stream'],
         ['register_webhook', 'Register webhook'],
     ])('labels %s as %s', (action, expected) => {
@@ -92,6 +95,7 @@ describe('userActionTypeLabel', () => {
     it.each<[string | null, string]>([
         ['python node', 'Python node'],
         ['flow', 'Flow'],
+        ['desk', 'Desk'],
         [null, ''],
     ])('labels %s as "%s"', (type, expected) => {
         expect(userActionTypeLabel(type)).toBe(expected);
@@ -106,6 +110,9 @@ describe('userActionTone', () => {
         ['renamed', 'changed'],
         ['moved', 'changed'],
         ['copied', 'added'],
+        ['resumed', 'added'],
+        ['key_rotated', 'changed'],
+        ['paused', 'alert'],
         ['moved_to_recycle_bin', 'removed'],
         ['deleted', 'destroyed'],
         ['sign_in_failed', 'destroyed'],
