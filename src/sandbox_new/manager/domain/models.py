@@ -8,11 +8,24 @@ from packaging.utils import canonicalize_name
 from pydantic import Field, field_validator, model_validator
 
 from manager.domain.enums import JobStatus, VenvStatus
+from manager.domain.errors import (
+    UVBuildError,
+    UVDependencyResolutionError,
+    UVPackageNotFoundError,
+    UVVersionNotFoundError,
+)
 from manager.domain.types import LibraryString
 
 __all__ = ["DEFAULT_VENV_NAME", "Job", "Library", "StorageCredentials", "Venv"]
 
 DEFAULT_VENV_NAME = "default"
+
+# Build errors whose text names only what the user declared, so it may be shown to them.
+_USER_FACING_BUILD_ERRORS = (
+    UVPackageNotFoundError,
+    UVVersionNotFoundError,
+    UVDependencyResolutionError,
+)
 
 VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_\.][a-z0-9]+)*)?$"
 
@@ -128,8 +141,31 @@ class Venv(Entity):
         self.status = VenvStatus.COMPLETED
 
     def mark_as_failed(self, error: Exception):
-        self.error = str(error)
+        """Mark the build failed and store a text about it that is safe to show.
+
+        The build errors that name just a declared package keep their own text. Any
+        other exception's text can carry paths or tool output, so it is stored as the
+        generic build-failure hint and its detail is left to the build's log line.
+        """
+        if isinstance(error, _USER_FACING_BUILD_ERRORS):
+            self.error = str(error)
+        else:
+            self.error = UVBuildError.default_message
         self.status = VenvStatus.FAILED
+
+    @property
+    def build_error_detail(self) -> str | None:
+        """The stored error when it names what the user declared, else None.
+
+        Recognised by its text, since only the text is stored: None for the generic
+        hint, and for an error stored before build errors were filtered, which can
+        still hold raw tool output.
+        """
+        if self.error is not None and any(
+            error_type.describes(self.error) for error_type in _USER_FACING_BUILD_ERRORS
+        ):
+            return self.error
+        return None
 
 
 class StorageCredentials(ValueObject):

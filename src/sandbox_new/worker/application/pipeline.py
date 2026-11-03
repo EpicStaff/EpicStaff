@@ -5,7 +5,8 @@ async ``__call__`` or a plain async function. Steps mutate the shared
 ``ExecutionContext`` instead of returning values. Running stops at the first step
 that marks the context complete (a refusal or the final capture) and a raised
 exception is caught and turned into a failure outcome, honoring the rule that the
-worker returns errors rather than crashing on them.
+worker returns errors rather than crashing on them. Its text stays in the log: the
+user sees a generic server error citing the log line's reference.
 """
 
 from typing import Protocol, runtime_checkable
@@ -33,12 +34,12 @@ class Pipeline:
             try:
                 await step(context)
             except Exception as error:
-                context.fail(error)
+                context.fail_on_sandbox_error(error)
                 break
             if context.completed:
                 break
 
         if not context.completed:
-            context.fail(RuntimeError("Execution pipeline produced no result."))
+            context.fail_on_sandbox_error("Execution pipeline produced no result.")
 
         return context

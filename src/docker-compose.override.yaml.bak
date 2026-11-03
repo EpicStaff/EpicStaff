@@ -1,0 +1,19 @@
+services:
+  django_app:
+    # Hot reload: run the host source instead of the copy baked into the image.
+    # entrypoint.sh turns DJANGO_SGI_RELOAD into gunicorn --reload (1 worker, 1 thread).
+    environment:
+      DJANGO_SGI_RELOAD: "true"
+      GUNICORN_CMD_ARGS: "--config /etc/gunicorn.dev.conf.py"
+    volumes:
+      - ./docker-compose.override.gunicorn.py:/etc/gunicorn.dev.conf.py:ro
+      - ./django_app:/app/src/django_app
+      - ./shared:/app/src/shared
+      - ./foundation:/app/foundation
+      - ./plugin_sdk/epicstaff_plugin:/app/plugin_sdk/epicstaff_plugin
+  crewdb:
+    ports:
+      - "127.0.0.1:${DB_PORT}:${DB_PORT}"
+  redis:
+    ports:
+      - "127.0.0.1:${REDIS_PORT}:${REDIS_PORT}"

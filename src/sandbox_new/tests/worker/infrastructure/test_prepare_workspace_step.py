@@ -13,6 +13,7 @@ from worker.infrastructure.execution.steps import PrepareWorkspaceStep
 from worker.infrastructure.execution.steps import prepare_workspace as prepare_workspace_module
 from worker.infrastructure.execution.privileges import SANDBOX_GID, SANDBOX_UID
 from tests.builders import make_context, make_worker_job, write_executable
+from tests.public_errors import SERVER_ERROR, logged_with, reference_in
 
 
 def build_context(tmp_path, **job_fields):
@@ -82,7 +83,7 @@ async def test_as_root_every_workspace_dir_is_handed_to_the_sandbox_user(tmp_pat
 
 
 async def test_a_workspace_whose_chown_failed_is_still_removed_after_the_run(
-    tmp_path, monkeypatch, result_sink
+    tmp_path, monkeypatch, result_sink, error_logs
 ):
     def refuse_chown(path, uid, gid):
         raise PermissionError(1, "Operation not permitted")
@@ -97,7 +98,8 @@ async def test_a_workspace_whose_chown_failed_is_still_removed_after_the_run(
 
     result, _ = result_sink.sent[0]
     assert result.returncode == 1
-    assert "could not chown execution dirs" in result.stderr
+    reference = reference_in(SERVER_ERROR, result.stderr)
+    assert "could not chown execution dirs" in logged_with(reference, error_logs)
     assert not (tmp_path / "executions" / "exec-1").exists()
 
 

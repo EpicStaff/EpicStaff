@@ -25,13 +25,15 @@ from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFail
 from manager.presentation.result_consumer import ResultConsumer
 from tests.builders import make_venv
 from tests.fakes import FakeClock, FakeResultPublisher, FakeUnitOfWork, FakeVenvRepository
+from tests.public_errors import SERVER_ERROR, logged_with, reference_in
 
 QUEUE_TIMEOUT = 120.0
 HOLD_TIMEOUT = 1800.0
 MAX_ACCEPTED = 2
 MAX_HELD = 2
-HOLD_TIMED_OUT_MESSAGE = (
-    "The execution environment did not finish building in time; the job was not run."
+HOLD_TIMED_OUT_MESSAGE = "The libraries are still being installed. Try again in a minute."
+GENERIC_VENV_FAILED_MESSAGE = (
+    "Couldn't install the libraries. Check the library names and versions."
 )
 
 SUBMISSION = {
@@ -183,7 +185,9 @@ async def test_submit_against_a_building_venv_holds_it(
 async def test_submit_against_a_failed_venv_reports_a_failure(
     uow, orchestrator, dispatcher, holding, failure_sink
 ):
-    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.FAILED, error="uv blew up"))[0]
+    venv = uow.venv_repo.seed(
+        make_venv(status=VenvStatus.FAILED, error="Package 'requests2' does not exist.")
+    )[0]
 
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
 
@@ -191,8 +195,35 @@ async def test_submit_against_a_failed_venv_reports_a_failure(
     assert holding.pending_venv_ids() == []
     [failure] = failure_sink.failures
     assert failure.execution_id == "exec-1"
-    assert "failed to build" in failure.message
+    assert failure.message == "Couldn't install the libraries: Package 'requests2' does not exist."
     assert (failure.session_id, failure.not_run_reason) == (7, "venv_failed")
+
+
+@pytest.mark.parametrize(
+    "stored_error",
+    [
+        GENERIC_VENV_FAILED_MESSAGE,
+        "Could not build the environment. Check the library names and version specifications.",
+        "uv pip compile failed: /var/lib/sandbox/venvs/venv-3 is not writable",
+        None,
+    ],
+    ids=[
+        "generic-build-error",
+        "generic-build-error-stored-in-its-earlier-wording",
+        "raw-text-stored-before-filtering",
+        "no-error",
+    ],
+)
+async def test_a_failed_venv_without_a_showable_error_reports_a_generic_hint(
+    uow, orchestrator, failure_sink, stored_error
+):
+    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.FAILED, error=stored_error))[0]
+
+    await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
+
+    assert [failure.message for failure in failure_sink.failures] == [
+        GENERIC_VENV_FAILED_MESSAGE
+    ]
 
 
 async def test_submit_without_a_venv_id_uses_the_default_venv(uow, orchestrator, dispatcher):
@@ -225,7 +256,7 @@ async def test_a_dispatch_failure_does_not_reach_the_caller(uow, orchestrator, d
 
 
 async def test_a_dispatch_failure_is_reported_as_a_failed_run(
-    uow, orchestrator, dispatcher, failure_sink
+    uow, orchestrator, dispatcher, failure_sink, error_logs
 ):
     """The caller was answered 202, so a result is the only way it learns the job
     never ran -- silence would leave it waiting and its credentials unrevoked."""
@@ -236,7 +267,12 @@ async def test_a_dispatch_failure_is_reported_as_a_failed_run(
 
     [failure] = failure_sink.failures
     assert failure.execution_id == "exec-1"
-    assert failure.message == "The job could not be handed to the worker and was not run."
+    reference = reference_in(SERVER_ERROR, failure.message)
+    log_line = logged_with(reference, error_logs)
+    assert "exec-1" in log_line
+    assert "RuntimeError" in log_line
+    # The type only: a dispatch error's text can quote the job's secrets.
+    assert "queue is gone" not in log_line
     assert (failure.session_id, failure.not_run_reason) == (7, "dispatch_failed")
 
 
@@ -300,7 +336,7 @@ async def test_flush_pending_fails_jobs_whose_venv_failed_to_build(
     venv = uow.venv_repo.seed(make_venv(status=VenvStatus.PROCESSING))[0]
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
     failed = (await uow.venv_repo.retrieve(venv.id)).model_copy(
-        update={"status": VenvStatus.FAILED, "error": "uv blew up"}
+        update={"status": VenvStatus.FAILED, "error": "Package 'requests2' does not exist."}
     )
     await uow.venv_repo.update(failed)
 
@@ -309,6 +345,9 @@ async def test_flush_pending_fails_jobs_whose_venv_failed_to_build(
     assert dispatcher.dispatched == []
     assert holding.pending_venv_ids() == []
     assert failure_sink.failures[0].execution_id == "exec-1"
+    assert failure_sink.failures[0].message == (
+        "Couldn't install the libraries: Package 'requests2' does not exist."
+    )
     assert failure_sink.failures[0].not_run_reason == "venv_failed"
 
 
@@ -351,6 +390,7 @@ async def test_flush_pending_fails_jobs_whose_venv_disappeared(
     assert dispatcher.dispatched == []
     assert holding.pending_venv_ids() == []
     assert failure_sink.failures[0].execution_id == "exec-1"
+    assert failure_sink.failures[0].message == GENERIC_VENV_FAILED_MESSAGE
 
 
 async def test_a_resubmitted_id_is_not_dispatched_again(uow, orchestrator, dispatcher):

@@ -1,0 +1,48 @@
+"""What a user sees when the sandbox itself fails, rather than their code.
+
+The detail of such a failure can name server settings and paths, or quote an exception
+whose text carries the job's code or secrets. It goes to the log under a fresh
+reference; the user sees a fixed text that cites the reference, so an administrator can
+find the log line without the user ever seeing its content.
+"""
+
+from enum import StrEnum
+
+from loguru import logger
+from src.shared.public_error import new_error_correlation_id
+
+__all__ = ["SandboxFailureMessage", "report_sandbox_failure"]
+
+
+class SandboxFailureMessage(StrEnum):
+    """Texts shown in place of a sandbox failure; each takes a ``reference``."""
+
+    SERVER_ERROR = (
+        "The code couldn't run because of a server error. Try again or contact your "
+        "administrator (reference: {reference})."
+    )
+    UNSAFE_TO_RUN = (
+        "This server can't run code safely right now, so the code wasn't run. Contact "
+        "your administrator (reference: {reference})."
+    )
+
+
+def report_sandbox_failure(
+    message: SandboxFailureMessage, detail: str, *, execution_id: str | None
+) -> str:
+    """Log ``detail`` under a fresh reference and return the user-facing text citing it.
+
+    Args:
+        detail: Logged as it is. Mask the job's secrets in it first; where the secrets
+            aren't at hand, pass only an exception's type name when its text may quote
+            them.
+        execution_id: Names the execution in the log line; None when it is unknown.
+    """
+    reference = new_error_correlation_id()
+    logger.error(
+        "Execution {} failed in the sandbox (reference: {}): {}",
+        execution_id,
+        reference,
+        detail,
+    )
+    return message.format(reference=reference)

@@ -7,10 +7,13 @@ wire result. Errors are recorded here via ``fail`` rather than raised, so a fail
 step ends the run cleanly instead of taking the worker down.
 """
 
+import traceback
 from pathlib import Path
 
+from common.public_errors import SandboxFailureMessage, report_sandbox_failure
 from pydantic import BaseModel, ConfigDict
 
+from worker.application.secret_scrubber import scrub
 from worker.domain.models import IsolationPlan, Job, StorageMutations
 
 __all__ = ["ExecutionContext"]
@@ -57,3 +60,25 @@ class ExecutionContext(BaseModel):
         self.stderr = f"{self.stderr}\n{message}" if self.stderr else message
         self.returncode = returncode
         self.completed = True
+
+    def fail_on_sandbox_error(
+        self,
+        detail: Exception | str,
+        *,
+        public_message: SandboxFailureMessage = SandboxFailureMessage.SERVER_ERROR,
+    ) -> None:
+        """Fail the run on the sandbox's own error, not the user's code.
+
+        ``detail`` can name server settings or quote raw exception text, so it is only
+        logged, under a fresh reference; the user sees ``public_message`` citing it.
+        An exception is logged with its traceback. Either way the job's secret values
+        are masked first, since an exception's text can quote them.
+        """
+        if isinstance(detail, BaseException):
+            detail = "".join(traceback.format_exception(detail)).rstrip("\n")
+        logged_detail = scrub(text=detail, secrets=self.job.secrets or {})
+        self.fail(
+            report_sandbox_failure(
+                public_message, logged_detail, execution_id=self.job.execution_id
+            )
+        )

@@ -186,7 +186,9 @@ async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
 
 
 async def test_a_job_whose_venv_failed_to_build_reaches_the_same_result_queue(uow, runtime):
-    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.FAILED, error="uv blew up"))[0]
+    venv = uow.venv_repo.seed(
+        make_venv(status=VenvStatus.FAILED, error="Package 'requests2' does not exist.")
+    )[0]
     manager = build_manager(uow, runtime)
 
     await manager.submit(
@@ -211,7 +213,7 @@ async def test_a_job_whose_venv_failed_to_build_reaches_the_same_result_queue(uo
     assert message.execution_id == EXECUTION_ID
     assert message.returncode == 1
     assert message.ran is False
-    assert "failed to build" in message.stderr
+    assert message.stderr == "Couldn't install the libraries: Package 'requests2' does not exist."
     assert (message.session_id, message.not_run_reason) == (7, "venv_failed")
 
 
@@ -377,3 +379,32 @@ async def test_a_file_one_run_writes_is_not_visible_to_the_next_run(runtime):
     assert writer_result.returncode == 0, writer_result.stderr
     assert reader_result.returncode == 0, reader_result.stderr
     assert json.loads(reader_result.result) is False
+
+
+async def test_a_failing_submission_comes_back_with_a_readable_scrubbed_error(uow, runtime):
+    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash=VENV_HASH))[0]
+    manager = build_manager(uow, runtime)
+
+    await manager.submit(
+        execution_id=EXECUTION_ID,
+        session_id=7,
+        code="def main(value):\n    lookup = {}\n\n    return lookup[value]\n",
+        entrypoint="main",
+        global_kwargs={},
+        func_kwargs={"value": "s3cret"},
+        secrets={"TOKEN": "s3cret"},
+        venv_id=venv.id,
+        use_storage=False,
+        storage_allowed_paths=[],
+        storage_org_prefix=None,
+        storage_credentials=None,
+        timeout=None,
+        reply_to_crew_channel=False,
+    )
+    job = await QueueJobSource(runtime["job_queue"]).get()
+
+    await build_worker(runtime).execute(job)
+
+    message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
+    assert message.returncode == 1
+    assert message.stderr == "KeyError on line 4: key '[REDACTED]' doesn't exist\n"

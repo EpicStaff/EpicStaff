@@ -110,7 +110,16 @@ async def test_a_hanging_child_is_terminated_and_reported_as_a_timeout(tmp_path)
     await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
 
     assert context.returncode == 124
-    assert "exceeded 0.2 seconds and was terminated" in context.stderr
+    assert context.stderr == "The code ran longer than 0.2 seconds and was stopped."
+
+
+async def test_a_one_second_timeout_is_reported_in_the_singular(tmp_path):
+    context = launchable(tmp_path, "import time\ntime.sleep(30)\n", timeout=1)
+
+    await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
+
+    assert context.returncode == 124
+    assert context.stderr == "The code ran longer than 1 second and was stopped."
 
 
 async def test_the_per_job_timeout_overrides_the_configured_default(tmp_path):
@@ -127,11 +136,11 @@ async def test_the_configured_default_applies_when_the_job_sets_no_timeout(tmp_p
     await LaunchStep(default_timeout=0.2, min_timeout=0, max_timeout=None)(context)
 
     assert context.returncode == 124
-    assert "exceeded 0.2 seconds" in context.stderr
+    assert context.stderr == "The code ran longer than 0.2 seconds and was stopped."
 
 
-async def test_a_child_that_cannot_be_killed_is_reported_as_possibly_still_running(
-    tmp_path, monkeypatch
+async def test_a_child_that_cannot_be_killed_is_logged_as_possibly_still_running(
+    tmp_path, monkeypatch, warning_logs
 ):
     process = FakeProcess(hang=True, kill_error=PermissionError(1, "Operation not permitted"))
 
@@ -150,8 +159,10 @@ async def test_a_child_that_cannot_be_killed_is_reported_as_possibly_still_runni
     await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
 
     assert context.returncode == 124
-    assert "may still be running" in context.stderr
+    assert context.stderr == "The code ran longer than 0.1 seconds and was stopped."
     assert process.kill_calls == 1
+    [still_running_log] = [line for line in warning_logs if "may still be running" in line]
+    assert "exec-1" in still_running_log
 
 
 @pytest.mark.parametrize(
@@ -287,4 +298,4 @@ async def test_a_requested_timeout_above_the_maximum_is_the_one_actually_applied
     await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=0.2)(context)
 
     assert context.returncode == 124
-    assert "exceeded 0.2 seconds and was terminated" in context.stderr
+    assert context.stderr == "The code ran longer than 0.2 seconds and was stopped."

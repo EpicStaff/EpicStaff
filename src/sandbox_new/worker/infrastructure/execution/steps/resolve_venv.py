@@ -8,13 +8,9 @@ venv is missing it fails the job rather than launching against a bad path.
 
 from pathlib import Path
 
-from loguru import logger
-
 from worker.application.context import ExecutionContext
 
 __all__ = ["ResolveVenvStep"]
-
-_VENV_UNAVAILABLE = "Execution environment is not available."
 
 
 class ResolveVenvStep:
@@ -27,13 +23,9 @@ class ResolveVenvStep:
         python_executable = venv_path / "bin" / "python"
 
         if not python_executable.exists():
-            logger.error(
-                "Venv for hash {} not found at {}; refusing to execute {}.",
-                venv_hash,
-                venv_path,
-                context.job.execution_id,
+            context.fail_on_sandbox_error(
+                f"Venv for hash {venv_hash} not found at {venv_path}; refusing to execute."
             )
-            context.fail(_VENV_UNAVAILABLE)
             return
 
         context.python_executable = python_executable

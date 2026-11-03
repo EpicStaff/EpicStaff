@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import settings
+from common.public_errors import SandboxFailureMessage, report_sandbox_failure
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
 
@@ -21,15 +22,12 @@ from manager.application.ports import (
 )
 from manager.application.registry import ExecutionRegistry
 from manager.domain.enums import ExecutionStatus, VenvOrder, VenvStatus
-from manager.domain.errors import VenvNotFoundError
+from manager.domain.errors import UVBuildError, VenvNotFoundError
 from manager.domain.models import Job, Library, StorageCredentials, Venv
 from manager.domain.types import NotRunReason
 
-_VENV_BUILD_FAILED_MESSAGE = "Execution environment failed to build; the job was not run."
-_DISPATCH_FAILED_MESSAGE = "The job could not be handed to the worker and was not run."
-_HOLD_TIMED_OUT_MESSAGE = (
-    "The execution environment did not finish building in time; the job was not run."
-)
+_VENV_BUILD_FAILED_MESSAGE = "Couldn't install the libraries: {error}"
+_HOLD_TIMED_OUT_MESSAGE = "The libraries are still being installed. Try again in a minute."
 
 __all__ = ["JobOrchestrator", "VenvBuildOrchestrator", "VenvCRUDOrchestrator"]
 
@@ -302,7 +300,7 @@ class JobOrchestrator:
 
         if venv.status is VenvStatus.FAILED:
             logger.warning("Execution {} rejected: venv {} failed to build", execution_id, venv.id)
-            await self._fail(job, _VENV_BUILD_FAILED_MESSAGE, not_run_reason="venv_failed")
+            await self._fail(job, _venv_build_failed_message(venv), not_run_reason="venv_failed")
         elif venv.status is VenvStatus.COMPLETED:
             await self._dispatch(job)
         else:
@@ -340,8 +338,9 @@ class JobOrchestrator:
                 venv = await self.uow.venv_repo.retrieve(venv_id)
 
             if venv is None or venv.status is VenvStatus.FAILED:
+                message = _venv_build_failed_message(venv)
                 for job in self.holding.release(venv_id):
-                    await self._fail(job, _VENV_BUILD_FAILED_MESSAGE, not_run_reason="venv_failed")
+                    await self._fail(job, message, not_run_reason="venv_failed")
                 continue
 
             if venv.status is VenvStatus.COMPLETED:
@@ -366,8 +365,12 @@ class JobOrchestrator:
             await self.dispatcher.dispatch(job)
         except Exception as error:
             # Type only: a validation error's text would quote the job's secrets.
-            logger.error("Failed to dispatch job {}: {}", job.execution_id, type(error).__name__)
-            await self._fail(job, _DISPATCH_FAILED_MESSAGE, not_run_reason="dispatch_failed")
+            message = report_sandbox_failure(
+                SandboxFailureMessage.SERVER_ERROR,
+                f"Failed to dispatch the job: {type(error).__name__}",
+                execution_id=job.execution_id,
+            )
+            await self._fail(job, message, not_run_reason="dispatch_failed")
 
     async def _fail(self, job: Job, message: str, *, not_run_reason: NotRunReason) -> None:
         await self.failure_sink.fail(
@@ -387,3 +390,16 @@ class JobOrchestrator:
         if venv is None:
             raise VenvNotFoundError(venv_id=venv_id)
         return venv
+
+
+def _venv_build_failed_message(venv: Venv | None) -> str:
+    """The text a job gets when its venv failed to build, or vanished while it was held.
+
+    Only an error naming what the user declared is quoted; any other failure gets a
+    generic hint, so an error stored before build errors were filtered never reaches
+    the run's message.
+    """
+    detail = venv.build_error_detail if venv is not None else None
+    if detail is not None:
+        return _VENV_BUILD_FAILED_MESSAGE.format(error=detail)
+    return UVBuildError.default_message

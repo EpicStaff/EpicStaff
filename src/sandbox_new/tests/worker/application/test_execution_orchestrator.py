@@ -10,6 +10,7 @@ from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
 from worker.domain.models import StorageMutations
 from tests.builders import make_worker_job
+from tests.public_errors import SERVER_ERROR, logged_with, reference_in
 
 
 def pipeline_that(**fields):
@@ -126,7 +127,7 @@ async def test_storage_mutations_are_handed_to_the_sink(result_sink):
     assert result_sink.sent[0][1] == mutations
 
 
-async def test_a_failing_pipeline_step_still_produces_a_result(result_sink):
+async def test_a_failing_pipeline_step_still_produces_a_result(result_sink, error_logs):
     async def step(context):
         raise RuntimeError("resolve venv blew up")
 
@@ -136,7 +137,23 @@ async def test_a_failing_pipeline_step_still_produces_a_result(result_sink):
 
     result, _ = result_sink.sent[0]
     assert result.returncode == 1
-    assert "resolve venv blew up" in result.stderr
+    reference = reference_in(SERVER_ERROR, result.stderr)
+    assert "resolve venv blew up" in logged_with(reference, error_logs)
+
+
+async def test_secrets_are_scrubbed_from_the_child_output_before_a_sandbox_failure(result_sink):
+    async def step(context):
+        context.stderr = "printed s3cret"
+        raise RuntimeError("capture blew up")
+
+    orchestrator = build(Pipeline().register(step), result_sink)
+
+    await orchestrator.execute(make_worker_job(secrets={"TOKEN": "s3cret"}))
+
+    result, _ = result_sink.sent[0]
+    child_output, public_text = result.stderr.split("\n")
+    assert child_output == "printed [REDACTED]"
+    reference_in(SERVER_ERROR, public_text)
 
 
 async def test_a_run_is_marked_as_having_run(result_sink):

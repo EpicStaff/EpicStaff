@@ -25,6 +25,11 @@ from src.shared.models.graph_nodes import (
     PromptConfigData,
 )
 from src.shared.models.storage_scope import StorageCredentials
+from src.shared.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 
 # litellm reports json_schema support for these providers, but their APIs reject it
 # ("This response_format type is unavailable now") and only accept json_object.
@@ -872,11 +877,20 @@ def main(**kwargs) -> dict:
                     return await route_to_error_node(state, writer, public_details=public_details)
                 except Exception as e:
                     scope = batch_failure_scope or f"in condition '{group.group_name}'"
-                    public_details = f"Unexpected error {scope}: {type(e).__name__}: {e}"
+                    # The exception text can quote variables, code or provider details, so
+                    # it stays in the log; the user sees a reference to that log line.
+                    correlation_id = new_error_correlation_id()
                     logger.opt(exception=e).error(
-                        "Classification decision table '{}' routed to its error node: {}",
+                        "Classification decision table '{}' routed to its error node after an "
+                        "unexpected error {}: {}: {} (correlation_id={})",
                         self.node_name,
-                        public_details,
+                        scope,
+                        type(e).__name__,
+                        e,
+                        correlation_id,
+                    )
+                    public_details = build_public_error_message(
+                        PublicErrorMessage.NODE_EXECUTION_FAILED, correlation_id
                     )
                     return await route_to_error_node(state, writer, public_details=public_details)
 

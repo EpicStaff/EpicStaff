@@ -37,6 +37,8 @@ LAUNCHER_PATH = Path(__file__).parents[2] / "isolation" / "launcher.py"
 # would keep communicate() from ever seeing EOF; without this bound that hangs.
 _TIMEOUT_DRAIN_GRACE_SECONDS = 5
 
+_TIMEOUT_MESSAGE = "The code ran longer than {timeout} {unit} and was stopped."
+
 
 def effective_timeout(
     requested: float | None, *, default: float, minimum: float, maximum: float | None
@@ -202,9 +204,13 @@ class LaunchStep:
         stdout = stdout_bytes.decode("utf-8", errors="replace")
         stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-        timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
         if not killed:
-            timeout_message += " Process could not be terminated and may still be running."
+            logger.warning(
+                "Timed-out execution {} could not be terminated and may still be running.",
+                execution_id,
+            )
+        unit = "second" if timeout == 1 else "seconds"
+        timeout_message = _TIMEOUT_MESSAGE.format(timeout=f"{timeout:g}", unit=unit)
         stderr = f"{stderr}\n{timeout_message}" if stderr else timeout_message
 
         context.stdout = stdout

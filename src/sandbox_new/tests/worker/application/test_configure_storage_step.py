@@ -2,7 +2,9 @@
 
 It only acts for a job that asked for storage, it builds the child's storage
 environment from the credentials the job carries, and it refuses to launch a job whose
-storage access is incomplete rather than handing the child half a configuration.
+storage access is incomplete rather than handing the child half a configuration. That
+refusal is the producer's bug, so the user sees a generic server error and the reason
+is only logged.
 """
 
 import json
@@ -12,6 +14,7 @@ import pytest
 from worker.application.steps import ConfigureStorageStep
 from worker.domain.models import StorageCredentials
 from tests.builders import make_context, make_worker_job
+from tests.public_errors import SERVER_ERROR, logged_with, reference_in
 
 STORAGE_ENDPOINT = "http://localhost:9000"
 STORAGE_BUCKET = "sandbox"
@@ -77,25 +80,27 @@ async def test_the_mutations_file_is_pointed_into_the_exec_dir(tmp_path, step):
     assert context.storage_mutations_path == tmp_path / "exec-1" / "storage_mutations.json"
 
 
-async def test_storage_without_credentials_fails_the_job(tmp_path, step):
+async def test_storage_without_credentials_fails_the_job(tmp_path, step, error_logs):
     context = storage_context(tmp_path, storage_credentials=None)
 
     await step(context)
 
     assert context.completed is True
     assert context.returncode == 1
-    assert "storage_credentials are required" in context.stderr
+    reference = reference_in(SERVER_ERROR, context.stderr)
+    assert "storage_credentials are required" in logged_with(reference, error_logs)
     assert context.env == {}
     assert context.storage_mutations_path is None
 
 
-async def test_storage_without_an_org_prefix_fails_the_job(tmp_path, step):
+async def test_storage_without_an_org_prefix_fails_the_job(tmp_path, step, error_logs):
     context = storage_context(tmp_path, storage_org_prefix=None)
 
     await step(context)
 
     assert context.completed is True
     assert context.returncode == 1
-    assert "storage_org_prefix is required" in context.stderr
+    reference = reference_in(SERVER_ERROR, context.stderr)
+    assert "storage_org_prefix is required" in logged_with(reference, error_logs)
     assert context.env == {}
     assert context.storage_mutations_path is None

@@ -4,6 +4,12 @@ import pytest
 from pydantic import ValidationError
 
 from manager.domain.enums import VenvStatus
+from manager.domain.errors import (
+    UVBuildError,
+    UVDependencyResolutionError,
+    UVPackageNotFoundError,
+    UVVersionNotFoundError,
+)
 from manager.domain.models import Library, Venv
 from tests.builders import make_library, make_venv
 
@@ -83,11 +89,78 @@ def test_venv_mark_as_completed_clears_the_error():
     assert venv.error is None
 
 
-def test_venv_mark_as_failed_records_the_exception_text():
-    venv = make_venv(status=VenvStatus.PROCESSING)
-    venv.mark_as_failed(RuntimeError("uv pip sync failed"))
+GENERIC_BUILD_ERROR = "Couldn't install the libraries. Check the library names and versions."
+EARLIER_GENERIC_BUILD_ERROR = (
+    "Could not build the environment. Check the library names and version specifications."
+)
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (UVPackageNotFoundError(package="requests2"), "Package 'requests2' does not exist."),
+        (
+            UVVersionNotFoundError(package="requests", specification="==99"),
+            "Package 'requests' has no version matching '==99'.",
+        ),
+        (
+            UVDependencyResolutionError(package="pandas"),
+            "Package 'pandas' requires versions of its dependencies "
+            "that conflict with the other requested packages.",
+        ),
+        (UVBuildError(), GENERIC_BUILD_ERROR),
+        (RuntimeError("uv pip sync failed in /var/lib/sandbox"), GENERIC_BUILD_ERROR),
+    ],
+    ids=["package-not-found", "version-not-found", "conflict", "unparsed-uv-error", "raw"],
+)
+def test_venv_mark_as_failed_stores_only_a_text_that_is_safe_to_show(error, expected):
+    venv = make_venv(status=VenvStatus.PROCESSING, error="from an earlier build")
+
+    venv.mark_as_failed(error)
+
     assert venv.status is VenvStatus.FAILED
-    assert venv.error == "uv pip sync failed"
+    assert venv.error == expected
+
+
+@pytest.mark.parametrize(
+    ("stored_error", "expected"),
+    [
+        ("Package 'requests2' does not exist.", "Package 'requests2' does not exist."),
+        (
+            "Package 'requests' has no version matching '>=2,<3'.",
+            "Package 'requests' has no version matching '>=2,<3'.",
+        ),
+        (
+            "Package 'pandas' requires versions of its dependencies "
+            "that conflict with the other requested packages.",
+            "Package 'pandas' requires versions of its dependencies "
+            "that conflict with the other requested packages.",
+        ),
+        (GENERIC_BUILD_ERROR, None),
+        (EARLIER_GENERIC_BUILD_ERROR, None),
+        (None, None),
+        ("uv pip compile failed: /var/lib/sandbox/venvs/venv-3 is not writable", None),
+        ("Package 'a' does not exist. Traceback in /var/lib/sandbox 'b' does not exist.", None),
+        ("Package 'requests2' does not exist.\n/var/lib/sandbox/build.log", None),
+    ],
+    ids=[
+        "package-not-found",
+        "version-not-found",
+        "conflict",
+        "generic-hint",
+        "generic-hint-in-its-earlier-wording",
+        "no-error",
+        "raw-text-stored-before-filtering",
+        "template-with-extra-quoted-text",
+        "template-with-a-trailing-line",
+    ],
+)
+def test_venv_build_error_detail_is_only_an_error_naming_a_declared_package(
+    stored_error, expected
+):
+    venv = make_venv(status=VenvStatus.FAILED, error=stored_error)
+
+    assert venv.build_error_detail == expected
 
 
 def test_venv_id_cannot_be_reassigned():

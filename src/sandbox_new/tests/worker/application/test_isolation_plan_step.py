@@ -3,6 +3,8 @@
 It decides nothing itself: it reads the ABI through the probe, hands it to the domain
 services, and either records the plan or fails the context. A refusal must leave
 ``isolation`` unset, because that is what keeps the launch step from running anything.
+A refusal names server settings, so the user sees only a fixed text citing the log
+line that carries them.
 """
 
 import pytest
@@ -11,6 +13,7 @@ from worker.application.steps import BuildIsolationPlan
 from worker.domain.enums import NetworkPolicy
 from tests.builders import make_context, make_worker_job
 from tests.fakes import FakeIsolationProbe
+from tests.public_errors import UNSAFE_TO_RUN, logged_with, reference_in
 
 STORAGE_PORT = 9000
 
@@ -54,13 +57,14 @@ async def test_the_jail_is_rooted_at_the_execution_workspace_and_the_venv(contex
     assert str(tmp_path / "venvs" / "venv-1abc") in jail.read_exec
 
 
-async def test_a_kernel_without_landlock_refuses_when_isolation_is_required(context):
+async def test_a_kernel_without_landlock_refuses_when_isolation_is_required(context, error_logs):
     await build_step(0)(context)
 
     assert context.isolation is None
     assert context.completed is True
     assert context.returncode == 1
-    assert "kernel lacks Landlock" in context.stderr
+    reference = reference_in(UNSAFE_TO_RUN, context.stderr)
+    assert "kernel lacks Landlock" in logged_with(reference, error_logs)
 
 
 async def test_a_kernel_without_landlock_runs_unconfined_when_isolation_is_optional(context):
@@ -72,22 +76,26 @@ async def test_a_kernel_without_landlock_runs_unconfined_when_isolation_is_optio
     assert context.isolation.network.policy is NetworkPolicy.BLOCK_ALL
 
 
-async def test_required_signal_isolation_on_an_old_kernel_refuses(context):
+async def test_required_signal_isolation_on_an_old_kernel_refuses(context, error_logs):
     await build_step(3)(context)
 
     assert context.isolation is None
     assert context.completed is True
-    assert "Landlock ABI 6+" in context.stderr
+    reference = reference_in(UNSAFE_TO_RUN, context.stderr)
+    log_line = logged_with(reference, error_logs)
+    assert "SANDBOX_REQUIRE_SIGNAL_ISOLATION=false" in log_line
+    assert "Landlock ABI found: 3." in log_line
 
 
-async def test_storage_on_a_kernel_too_old_for_the_port_carve_out_refuses(context):
+async def test_storage_on_a_kernel_too_old_for_the_port_carve_out_refuses(context, error_logs):
     context.job = make_worker_job(use_storage=True, storage_org_prefix="org1")
 
     await build_step(3, require_signal_isolation=False)(context)
 
     assert context.isolation is None
     assert context.completed is True
-    assert "Landlock ABI 4+" in context.stderr
+    reference = reference_in(UNSAFE_TO_RUN, context.stderr)
+    assert "SANDBOX_BLOCK_NETWORK=false" in logged_with(reference, error_logs)
 
 
 async def test_storage_on_a_new_enough_kernel_allows_only_the_storage_port(context):

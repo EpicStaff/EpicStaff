@@ -13,11 +13,13 @@ class with its own singleton.
 from __future__ import annotations
 
 import json
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from dotdict import DotDict
 from langgraph.graph import END, StateGraph
+from loguru import logger
 
 from models.state import State
 from services.graph.events import StopEvent
@@ -929,4 +931,35 @@ async def test_llm_failure_reports_the_prompt_without_provider_exception_text(mo
     assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
     assert first_error_message(redis_service)["details"] == (
         "Error in condition 'prompt_row': LLM call failed for prompt 'classify'"
+    )
+
+
+@pytest.mark.asyncio
+async def test_unexpected_error_streams_a_reference_and_logs_the_exception_text(monkeypatch):
+    """An unexpected exception can quote internal details, so the user sees only the
+    generic node error citing the log line that carries the exception text."""
+
+    async def run_code_raising_sensitive_text(self, python_code_data, inputs, *args, **kwargs):
+        raise RuntimeError(_SENSITIVE_EXCEPTION_TEXT)
+
+    monkeypatch.setattr(
+        RunPythonCodeService, "run_code", run_code_raising_sensitive_text, raising=True
+    )
+    groups = [row(0, "True", "node_A")]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups, next_error_node="error_node")
+    )
+    logged: list[str] = []
+    sink_id = logger.add(logged.append, level="ERROR")
+    try:
+        result = await subgraph.ainvoke(make_state())
+    finally:
+        logger.remove(sink_id)
+
+    details = first_error_message(redis_service)["details"]
+    match = re.fullmatch(r"Node execution failed \(reference: ([0-9a-f]{12})\)", details)
+    assert match is not None, details
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    assert any(
+        _SENSITIVE_EXCEPTION_TEXT in line and match.group(1) in line for line in logged
     )

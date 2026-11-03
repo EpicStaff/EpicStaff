@@ -1,3 +1,6 @@
+import re
+from string import Formatter
+
 __all__ = [
     "ExecutionNotFoundError",
     "SandboxOverloadedError",
@@ -19,15 +22,29 @@ class BaseError(Exception):
             message = self.default_message.format(**format_kwargs)
         super().__init__(message, *args)
 
+    @classmethod
+    def describes(cls, message: str) -> bool:
+        """Whether ``message`` is this error's default text, whatever fills its placeholders.
+
+        Only reliable for a template that quotes every value it inserts, as the UV
+        package errors do: a placeholder matches one line of text without a single
+        quote, so a longer text cannot pass as one of them. An unquoted placeholder,
+        like VenvNotFoundError's id, has no such bound.
+        """
+        pattern = []
+        for literal, field_name, _, _ in Formatter().parse(cls.default_message):
+            pattern.append(re.escape(literal))
+            if field_name is not None:
+                pattern.append(r"[^'\n]+")
+        return re.fullmatch("".join(pattern), message) is not None
+
 
 class VenvNotFoundError(BaseError):
     default_message: str = "Venv(id={venv_id}) not found."
 
 
 class UVBuildError(BaseError):
-    default_message: str = (
-        "Could not build the environment. Check the library names and version specifications."
-    )
+    default_message: str = "Couldn't install the libraries. Check the library names and versions."
 
 
 class UVPackageNotFoundError(BaseError):

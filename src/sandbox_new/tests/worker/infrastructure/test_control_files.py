@@ -11,6 +11,7 @@ import threading
 import pytest
 
 from worker.infrastructure.execution.control_files import (
+    ControlFileTooLargeError,
     UnsafeControlFileError,
     read_control_file,
 )
@@ -78,7 +79,8 @@ def test_a_file_over_the_size_limit_is_refused(tmp_path, size, refused):
     path.write_text("x" * size, encoding="utf-8")
 
     if refused:
-        with pytest.raises(UnsafeControlFileError):
+        with pytest.raises(ControlFileTooLargeError) as raised:
             read_control_file(path, max_bytes=10)
+        assert raised.value.max_bytes == 10
     else:
         assert read_control_file(path, max_bytes=10) == "x" * size

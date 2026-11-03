@@ -5,9 +5,11 @@ probe port and the configured requirement flags, hands them to the domain servic
 and stores the resulting ``IsolationPlan`` on the context. When a service refuses
 (storage without a new enough kernel, or isolation required but unavailable), it
 fails the context so the pipeline stops before anything is launched -- the error is
-returned, never raised.
+returned, never raised. A refusal names the kernel requirement and the setting that
+lifts it; that goes to the log, and the user sees a fixed text citing its reference.
 """
 
+from common.public_errors import SandboxFailureMessage
 from loguru import logger
 
 from worker.application.context import ExecutionContext
@@ -65,8 +67,7 @@ class BuildIsolationPlan:
             landlock_abi=abi, require_isolation=self._require_isolation
         )
         if filesystem is FilesystemIsolationPolicy.REFUSE:
-            logger.error("Filesystem isolation unavailable; refusing to execute {}.", execution_id)
-            context.fail(_FILESYSTEM_REFUSED)
+            self._refuse(context, _FILESYSTEM_REFUSED)
             return
         if filesystem is FilesystemIsolationPolicy.UNCONFINED:
             logger.warning(
@@ -77,12 +78,7 @@ class BuildIsolationPlan:
             landlock_abi=abi, require_signal_isolation=self._require_signal_isolation
         )
         if signal is SignalIsolationPolicy.REFUSE:
-            logger.error(
-                "Signal isolation unavailable (Landlock ABI {} < 6); refusing to execute {}.",
-                abi,
-                execution_id,
-            )
-            context.fail(_SIGNAL_REFUSED)
+            self._refuse(context, f"{_SIGNAL_REFUSED} Landlock ABI found: {abi}.")
             return
         if signal is SignalIsolationPolicy.UNISOLATED:
             logger.warning(
@@ -98,13 +94,7 @@ class BuildIsolationPlan:
             storage_port=self._storage_port,
         )
         if network.policy is NetworkPolicy.REFUSE:
-            logger.error(
-                "Network isolation unavailable (Landlock ABI {} < 4); refusing to execute "
-                "{} because it uses storage.",
-                abi,
-                execution_id,
-            )
-            context.fail(_NETWORK_REFUSED)
+            self._refuse(context, f"{_NETWORK_REFUSED} Landlock ABI found: {abi}.")
             return
 
         jail = None
@@ -120,3 +110,7 @@ class BuildIsolationPlan:
             isolate_signals=signal is SignalIsolationPolicy.ENFORCE,
             jail=jail,
         )
+
+    @staticmethod
+    def _refuse(context: ExecutionContext, detail: str) -> None:
+        context.fail_on_sandbox_error(detail, public_message=SandboxFailureMessage.UNSAFE_TO_RUN)

@@ -7,13 +7,15 @@ that expired in the queue, could not be decoded, or whose run blew up is failed 
 the orchestrator rather than dropped. One bad job or message never ends the loop.
 
 Messages here are logged with the execution id and the exception type only: an
-exception's text may quote the job's code, secrets or output.
+exception's text may quote the job's code, secrets or output. A job failed on the
+sandbox's own error tells the user only a generic server error citing that log line.
 """
 
 import asyncio
 import time
 from collections.abc import Callable
 
+from common.public_errors import SandboxFailureMessage, report_sandbox_failure
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
 
@@ -23,9 +25,8 @@ from worker.domain.models import Job
 
 __all__ = ["JobConsumer"]
 
-_EXPIRED_MESSAGE = "Sandbox overloaded: the job waited {waited} s in the queue and was not run."
-_UNDECODABLE_MESSAGE = "Sandbox could not read the job; it was not run."
-_RUN_FAILED_MESSAGE = "Sandbox failed to run the job."
+# How long the job waited goes to the log only: the user's next step is the same either way.
+_EXPIRED_MESSAGE = "The server was too busy to run the code in time. Try again in a minute."
 
 
 class JobConsumer:
@@ -65,10 +66,13 @@ class JobConsumer:
         try:
             job = await self._job_source.get()
         except UndecodableJobError as error:
-            logger.error("Job {} could not be decoded; failing it", error.execution_id)
             await self._orchestrator.fail(
                 error.execution_id,
-                _UNDECODABLE_MESSAGE,
+                report_sandbox_failure(
+                    SandboxFailureMessage.SERVER_ERROR,
+                    "The job could not be decoded; it was not run.",
+                    execution_id=error.execution_id,
+                ),
                 session_id=error.session_id,
                 reply_to_crew_channel=error.reply_to_crew_channel,
             )
@@ -110,11 +114,14 @@ class JobConsumer:
         try:
             await self._orchestrator.execute(job)
         except Exception as error:
-            logger.error("Worker failed to run job {}: {}", job.execution_id, type(error).__name__)
             try:
                 await self._orchestrator.fail(
                     job.execution_id,
-                    _RUN_FAILED_MESSAGE,
+                    report_sandbox_failure(
+                        SandboxFailureMessage.SERVER_ERROR,
+                        f"The worker failed to run the job: {type(error).__name__}",
+                        execution_id=job.execution_id,
+                    ),
                     session_id=job.session_id,
                     reply_to_crew_channel=job.reply_to_crew_channel,
                 )
@@ -152,7 +159,7 @@ class JobConsumer:
         )
         await self._orchestrator.fail(
             job.execution_id,
-            _EXPIRED_MESSAGE.format(waited=waited),
+            _EXPIRED_MESSAGE,
             session_id=job.session_id,
             reply_to_crew_channel=job.reply_to_crew_channel,
             not_run_reason="overloaded",

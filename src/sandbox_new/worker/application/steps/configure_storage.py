@@ -5,7 +5,8 @@ and travel on the job; this step neither mints nor revokes them. It points the
 mutations file into the exec dir (which activates the wrapper's mutation tail) and
 adds the ``STORAGE_*`` variables the in-sandbox storage library reads. A job that
 asks for storage without an org prefix or without credentials is failed rather than
-launched with broken or unscoped access.
+launched with broken or unscoped access; that is the producer's bug, not the user's,
+so the user sees a generic server error.
 """
 
 import json
@@ -26,12 +27,14 @@ class ConfigureStorageStep:
             return
 
         if not job.storage_org_prefix:
-            context.fail("storage_org_prefix is required when use_storage is set")
+            context.fail_on_sandbox_error("storage_org_prefix is required when use_storage is set")
             return
 
         credentials = job.storage_credentials
         if credentials is None:
-            context.fail("storage_credentials are required when use_storage is set")
+            context.fail_on_sandbox_error(
+                "storage_credentials are required when use_storage is set"
+            )
             return
 
         context.storage_mutations_path = context.exec_dir / "storage_mutations.json"

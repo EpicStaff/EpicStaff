@@ -13,8 +13,6 @@ import json
 import os
 from pathlib import Path
 
-from loguru import logger
-
 from worker.application.context import ExecutionContext
 from worker.infrastructure.execution.environment import build_base_env
 from worker.infrastructure.execution.privileges import (
@@ -48,8 +46,9 @@ class PrepareWorkspaceStep:
                 for directory in (exec_dir, home_dir, tmp_dir, work_dir):
                     os.chown(directory, SANDBOX_UID, SANDBOX_GID)
             except OSError as error:
-                logger.error("Failed to chown execution dirs (EPERM?): {}", error)
-                context.fail(f"Security setup failed: could not chown execution dirs: {error}")
+                context.fail_on_sandbox_error(
+                    f"Security setup failed: could not chown execution dirs: {error}"
+                )
                 return
 
         context.home_dir = home_dir
