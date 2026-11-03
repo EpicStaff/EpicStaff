@@ -1,5 +1,6 @@
-import { UpperCasePipe } from '@angular/common';
+import { DOCUMENT, UpperCasePipe } from '@angular/common';
 import {
+    afterNextRender,
     AfterViewInit,
     ChangeDetectionStrategy,
     Component,
@@ -7,6 +8,7 @@ import {
     effect,
     ElementRef,
     inject,
+    Injector,
     input,
     model,
     OnInit,
@@ -25,6 +27,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { isFocusLost } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -85,6 +88,10 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
     ]);
     description: FormControl = new FormControl('', [Validators.maxLength(COLLECTION_DESCRIPTION_MAX_LENGTH)]);
     private readonly descriptionTa = viewChild<ElementRef<HTMLTextAreaElement>>('descriptionTa');
+    private readonly fileUploader = viewChild(FileUploaderComponent);
+    private readonly injector = inject(Injector);
+    private readonly document = inject(DOCUMENT);
+    private hadDocuments = false;
     collection = input.required<CreateCollectionDtoResponse>();
     documents = model<DisplayedListDocument[]>([]);
     initialDocumentId = input<number | undefined>(undefined);
@@ -135,6 +142,20 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
             const invalidLocal = untracked(() => this.documents().filter((d) => !d.isValidType || !d.isValidSize));
 
             this.documents.set([...realDocs, ...uploading, ...invalidLocal]);
+        });
+
+        // Removing the last file swaps the list (and its focused Remove button) for the file picker: focus it.
+        effect(() => {
+            const hasDocuments = this.documents().length > 0;
+            const emptied = this.hadDocuments && !hasDocuments;
+            this.hadDocuments = hasDocuments;
+            if (!emptied) return;
+            afterNextRender(
+                () => {
+                    if (isFocusLost(this.document)) this.fileUploader()?.focus();
+                },
+                { injector: this.injector }
+            );
         });
 
         this.nameSave$

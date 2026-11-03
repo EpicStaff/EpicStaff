@@ -21,6 +21,7 @@
         <textarea
             #textareaRef
             class="vht-textarea"
+            [attr.aria-label]="fieldName() || null"
             [attr.rows]="rows()"
             [placeholder]="placeholder()"
             [disabled]="isDisabled()"

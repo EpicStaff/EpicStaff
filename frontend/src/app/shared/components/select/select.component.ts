@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import { NgClass } from '@angular/common';
@@ -18,12 +19,30 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { deepEqual } from '@shared/utils';
+import { filter } from 'rxjs';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
-export interface SelectItem<T = unknown> {
+/**
+ * An optional trailing action button at the end of an item row. A button with only an icon needs a name, so the label
+ * comes with the icon.
+ */
+type SelectItemTrailingAction =
+    | { trailingActionIcon?: undefined; trailingActionLabel?: undefined }
+    | {
+          /** app-svg-icon id of the button (e.g. edit-pencil). */
+          trailingActionIcon: string;
+          /** Names the button (its aria-label and tooltip), e.g. "Edit". */
+          trailingActionLabel: string;
+      };
+
+export type SelectItem<T = unknown> = SelectItemFields<T> & SelectItemTrailingAction;
+
+interface SelectItemFields<T> {
     name: string;
     tip?: string;
     subtitle?: string;
@@ -39,8 +58,6 @@ export interface SelectItem<T = unknown> {
     tipColor?: string;
     /** CSS color (e.g. `var(--success-color)`) of a dot shown before the name, in the trigger, options and readonly value. */
     dotColor?: string;
-    /** app-svg-icon id for an optional trailing action button rendered at the end of the item row (e.g. edit-pencil). */
-    trailingActionIcon?: string;
 }
 
 interface SelectItemGroup {
@@ -54,7 +71,15 @@ let nextSelectId = 0;
 
 @Component({
     selector: 'app-select',
-    imports: [NgClass, OverlayModule, TooltipComponent, AppSvgIconComponent],
+    imports: [
+        NgClass,
+        OverlayModule,
+        CdkTrapFocus,
+        TooltipComponent,
+        AppSvgIconComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './select.component.html',
     styleUrls: ['./select.component.scss'],
     providers: [
@@ -71,6 +96,8 @@ export class SelectComponent implements ControlValueAccessor {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    /** The field's name for the trigger's tooltip when it has no `label` (e.g. a caption outside the select). */
+    tooltip = input<string>('');
     loading = input<boolean>(false);
     mod = input<'default' | 'small'>('default');
     items = input<SelectItem[]>([]);
@@ -259,6 +286,14 @@ export class SelectComponent implements ControlValueAccessor {
         this.overlayRef
             .backdropClick()
             .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.close());
+
+        this.overlayRef
+            .keydownEvents()
+            .pipe(
+                filter((event) => event.key === 'Escape'),
+                takeUntilDestroyed(this.destroyRef)
+            )
             .subscribe(() => this.close());
 
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);

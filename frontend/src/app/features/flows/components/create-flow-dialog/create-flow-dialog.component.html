@@ -6,7 +6,9 @@
     <div class="dialog-header">
         <h2 class="dialog-title">{{ dialogTitle }}</h2>
         <button
+            type="button"
             class="close-button"
+            aria-label="Close"
             matTooltip="Close"
             matTooltipPosition="above"
             (click)="onCancel()"
@@ -37,6 +39,7 @@
                     <input
                         type="text"
                         id="name"
+                        cdkFocusInitial
                         formControlName="name"
                         placeholder="Enter flow name"
                         class="form-control"

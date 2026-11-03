@@ -20,7 +20,7 @@
         cursor: pointer;
         gap: 8px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--white-alpha-6);
         }
     }

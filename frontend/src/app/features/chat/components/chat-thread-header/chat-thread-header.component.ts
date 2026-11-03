@@ -1,6 +1,7 @@
 import { Component, computed, ElementRef, inject, input, viewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PhoneLayoutService } from '../../../../core/services/phone-layout.service';
@@ -27,7 +28,14 @@ import { ChatUsageRingComponent } from '../chat-usage-ring/chat-usage-ring.compo
  */
 @Component({
     selector: 'app-chat-thread-header',
-    imports: [MatTooltipModule, AppSvgIconComponent, ButtonComponent, ChatActionMenuComponent, ChatUsageRingComponent],
+    imports: [
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+        AppSvgIconComponent,
+        ButtonComponent,
+        ChatActionMenuComponent,
+        ChatUsageRingComponent,
+    ],
     templateUrl: './chat-thread-header.component.html',
     styleUrl: './chat-thread-header.component.scss',
     host: {

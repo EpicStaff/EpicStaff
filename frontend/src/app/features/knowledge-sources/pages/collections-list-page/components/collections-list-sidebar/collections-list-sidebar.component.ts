@@ -1,8 +1,23 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
+import {
+    afterNextRender,
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    effect,
+    inject,
+    Injector,
+    input,
+    output,
+    signal,
+    untracked,
+    viewChildren,
+} from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { ButtonComponent, SelectComponent, SelectItem } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { isFocusLost } from '@shared/utils';
 
 import { FilesSearchService } from '../../../../../files/services/files-search.service';
 import { RagType } from '../../../../models/base-rag.model';
@@ -55,6 +70,29 @@ export class CollectionsListItemSidebarComponent {
     });
 
     onCreateCollection = output();
+
+    private readonly collectionCards = viewChildren(CollectionComponent);
+    private readonly injector = inject(Injector);
+    private readonly document = inject(DOCUMENT);
+    private shownCollectionIds: number[] = [];
+
+    /** Deleting the open collection takes the focus away with its panel: hand it to the card now in its place. */
+    private readonly recoverFocusAfterRemoval = effect(() => {
+        const ids = this.filteredCollections().map((collection) => collection.collection_id);
+        untracked(() => {
+            const removedIndex = this.shownCollectionIds.findIndex((id) => !ids.includes(id));
+            this.shownCollectionIds = ids;
+            if (removedIndex === -1) return;
+            afterNextRender(() => this.focusCardIfFocusLost(removedIndex), { injector: this.injector });
+        });
+    });
+
+    private focusCardIfFocusLost(index: number): void {
+        if (!isFocusLost(this.document)) return;
+        const cards = this.collectionCards();
+        cards[Math.min(index, cards.length - 1)]?.focus();
+    }
+
     protected readonly ActionCode = ActionCode;
     protected readonly ResourceCode = ResourceCode;
 }

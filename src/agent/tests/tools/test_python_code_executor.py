@@ -10,6 +10,11 @@ import pytest
 
 from app.tools.executors.python_code import PythonCodeToolExecutor
 from shared.models.storage_scope import StorageCredentials
+from shared.sandbox_errors import (
+    SandboxExecutionLostError,
+    SandboxOverloadedError,
+    SandboxResultTimeoutError,
+)
 from shared.models.tools import (
     ArgsSchema,
     CodeResultData,
@@ -106,6 +111,23 @@ CREDENTIALS = StorageCredentials(access_key="test-access", secret_key="test-secr
             id="org-id-wins-over-global",
         ),
         pytest.param({"org_id": 77}, None, {"global_kwargs": {"org_id": 77}, "org_id": 77}, id="org-id-injected"),
+        # Tools read `session_id` from globals() (e.g. fanout_tool's recursion guard).
+        pytest.param({"session_id": 42}, None, {"global_kwargs": {"session_id": 42}, "session_id": 42}, id="session-id-injected"),
+        pytest.param(
+            {"session_id": 42, "global_kwargs": {"session_id": 999, "mode": "production"}}, None,
+            {"global_kwargs": {"session_id": 42, "mode": "production"}, "session_id": 42},
+            id="session-id-wins-over-global",
+        ),
+        pytest.param(
+            {"global_kwargs": {"session_id": 999}}, None,
+            {"global_kwargs": {"session_id": 999}, "session_id": None},
+            id="no-typed-session-id-leaves-global-untouched",
+        ),
+        pytest.param(
+            {"session_id": 42, "org_id": 77}, None,
+            {"global_kwargs": {"session_id": 42, "org_id": 77}},
+            id="session-id-and-org-id-both-injected",
+        ),
         # The sandbox enforces the tool's own timeout instead of its default.
         pytest.param({"execution_timeout": 42}, None, {"execution_timeout": 42}, id="execution-timeout"),
     ],
@@ -132,9 +154,12 @@ async def test_sandbox_task_carries_the_tool_configuration(python_code_overrides
             CodeResultData(execution_id="exec-1", result_data=None, stderr="", stdout="partial output", returncode=1),
             "partial output", True,
         ),
-        (ConnectionError("Redis gone"), "Sandbox transport error: Redis gone", True),
+        (ConnectionError("SandboxClient stopped"), "SandboxClient stopped", True),
+        (SandboxOverloadedError(120), "Sandbox overloaded: no free capacity within 120 s.", True),
+        (SandboxExecutionLostError(), "The sandbox lost the execution (it restarted, or its result was not delivered).", True),
+        (SandboxResultTimeoutError(2100), "Timed out waiting for the result after 2100 s.", True),
     ],
-    ids=["success", "stderr", "nonzero-uses-stdout", "transport-error"],
+    ids=["success", "stderr", "nonzero-uses-stdout", "client-stopped", "sandbox-full", "execution-lost", "backstop"],
 )
 async def test_sandbox_result_becomes_the_tool_result(sandbox_result, expected_content, expected_error):
     result = await PythonCodeToolExecutor(FakeSandbox(sandbox_result), _make_tool_data())({})

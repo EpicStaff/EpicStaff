@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
     AppTableCellDirective,
@@ -56,6 +56,9 @@ import { rbacErrorMessage } from '../../../utils';
     ],
 })
 export class RolesTabComponent {
+    // Takes the focus when a delete removes the row button that had it.
+    private readonly mainAction = viewChild<ButtonComponent>('mainAction');
+
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
     private toast = inject(ToastService);
@@ -278,6 +281,7 @@ export class RolesTabComponent {
                             ? `Role deleted. ${res.reassigned_count} user${res.reassigned_count === 1 ? '' : 's'} moved to Viewer.`
                             : 'Role deleted.'
                     );
+                    this.mainAction()?.focus();
                 },
                 error: (e) => this.toast.error(e.error?.message ?? 'Failed to delete role'),
             });

@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ChangeDetectionStrategy, Component, effect, input, output, signal } from '@angular/core';
 import { ButtonComponent, CheckboxComponent } from '@shared/components';
 
@@ -11,7 +12,7 @@ export const EMPTY_VENVS_FILTER: VenvsFilterState = { favoritesOnly: false };
 
 @Component({
     selector: 'app-venvs-filter-menu',
-    imports: [ButtonComponent, CheckboxComponent],
+    imports: [CdkTrapFocus, ButtonComponent, CheckboxComponent],
     templateUrl: './venvs-filter-menu.component.html',
     styleUrls: ['./venvs-filter-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,17 +1,22 @@
+import { A11yModule } from '@angular/cdk/a11y';
 import { Overlay } from '@angular/cdk/overlay';
 import {
     ChangeDetectionStrategy,
     Component,
+    ElementRef,
     inject,
     OnDestroy,
     TemplateRef,
     ViewChild,
+    viewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { IHeaderGroupAngularComp } from 'ag-grid-angular';
-import { IHeaderGroupParams } from 'ag-grid-community';
+import { Column, GridApi, IHeaderGroupParams } from 'ag-grid-community';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { headerBesideColumns, listenForHeaderActivation } from '../shared/header-keyboard.util';
 import { OverlayMenuController } from '../shared/overlay-menu.util';
 
 export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
@@ -25,7 +30,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
 
 @Component({
     selector: 'app-params-group-header',
-    imports: [AppSvgIconComponent],
+    imports: [A11yModule, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -33,9 +38,12 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             [class.params-group-header--add-only]="mode === 'add-only'"
         >
             <button
+                type="button"
+                #addBtn
                 class="add-btn"
                 (click)="handleAdd($event)"
-                title="Add variable"
+                aria-label="Add variable"
+                matTooltip="Add variable"
             >
                 <i class="ti ti-plus"></i>
             </button>
@@ -48,10 +56,12 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 </span>
                 <div class="dropdown-wrapper">
                     <button
+                        type="button"
                         #chevronBtn
                         class="chevron-btn"
                         (click)="toggleMenu($event)"
-                        title="Column options"
+                        aria-label="Column options"
+                        matTooltip="Column options"
                     >
                         <i class="ti ti-chevron-down"></i>
                     </button>
@@ -59,7 +69,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 @if (!(isPinned && isPinned())) {
                     <span
                         class="drag-grip-btn"
-                        title="Drag to reposition"
+                        matTooltip="Drag to reposition"
                     >
                         <app-svg-icon
                             icon="drag-grip"
@@ -71,8 +81,24 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
         </div>
 
         <ng-template #menuTemplate>
-            <div class="params-dropdown">
-                <div
+            <div
+                class="params-dropdown"
+                role="menu"
+                cdkTrapFocus
+                [cdkTrapFocusAutoCapture]="true"
+            >
+                <!-- The header cell takes Enter and Space for this menu, so the + button is reached from here. -->
+                <button
+                    type="button"
+                    role="menuitem"
+                    class="params-dropdown-item"
+                    (click)="handleAddFromMenu()"
+                >
+                    Add variable
+                </button>
+                <button
+                    type="button"
+                    role="menuitem"
                     class="params-dropdown-item"
                     (click)="handleFreeze()"
                 >
@@ -81,13 +107,15 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                     } @else {
                         Freeze Up to This Column
                     }
-                </div>
-                <div
+                </button>
+                <button
+                    type="button"
+                    role="menuitem"
                     class="params-dropdown-item"
                     (click)="handleHide()"
                 >
                     Hide
-                </div>
+                </button>
             </div>
         </ng-template>
     `,
@@ -194,13 +222,21 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
             }
             .params-dropdown-item {
+                display: block;
+                width: 100%;
                 padding: 8px 14px;
+                border: none;
+                background: none;
+                font-family: inherit;
                 font-size: 0.8125rem;
+                text-align: left;
                 color: rgba(255, 255, 255, 0.85);
                 cursor: pointer;
                 white-space: nowrap;
+                // The dropdown clips its overflow: the ring is drawn inside.
+                outline-offset: -2px;
             }
-            .params-dropdown-item:hover {
+            .params-dropdown-item:is(:hover, :focus-visible) {
                 background: rgba(104, 95, 255, 0.2);
             }
         `,
@@ -208,7 +244,8 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
 })
 export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDestroy {
     @ViewChild('menuTemplate') menuTemplate!: TemplateRef<unknown>;
-    @ViewChild('chevronBtn') chevronBtn!: HTMLButtonElement;
+    private readonly addButton = viewChild<ElementRef<HTMLButtonElement>>('addBtn');
+    private readonly chevronButton = viewChild<ElementRef<HTMLButtonElement>>('chevronBtn');
 
     mode: 'add-only' | 'full' = 'full';
     ownerLabel = '';
@@ -220,8 +257,20 @@ export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDe
     private overlay = inject(Overlay);
     private vcr = inject(ViewContainerRef);
     private menuCtrl = new OverlayMenuController(this.overlay, this.vcr);
+    private gridApi: GridApi | null = null;
+    private groupId = '';
+    private leafColumns: () => Column[] = () => [];
+    private stopListeningForActivation: (() => void) | null = null;
 
     agInit(params: ParamsGroupHeaderParams): void {
+        this.gridApi = params.api;
+        this.groupId = params.columnGroup.getGroupId();
+        this.leafColumns = () => params.columnGroup.getDisplayedLeafColumns();
+        // Enter or Space on the focused header does what a click on its main button does:
+        // opens the column menu, or the variable picker when there is no menu.
+        this.stopListeningForActivation = listenForHeaderActivation(params.eGridHeader, () =>
+            (this.chevronButton() ?? this.addButton())?.nativeElement.click()
+        );
         this.mode = params.mode ?? 'full';
         this.ownerLabel = params.ownerLabel ?? '';
         this.onAdd = params.onAdd;
@@ -239,22 +288,34 @@ export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDe
         this.onAdd?.(event);
     }
 
+    handleAddFromMenu(): void {
+        this.menuCtrl.close();
+        // The + button anchors the picker, as when it is clicked.
+        this.addButton()?.nativeElement.click();
+    }
+
     toggleMenu(event: MouseEvent): void {
         event.stopPropagation();
-        this.menuCtrl.toggle(event.currentTarget as HTMLElement, this.menuTemplate);
+        this.menuCtrl.toggle(event.currentTarget as HTMLElement, this.menuTemplate, { closeOnEscape: true });
     }
 
     handleFreeze(): void {
         this.menuCtrl.close();
         this.onFreeze?.();
+        // Freezing moves the header to the other side of the pin line, into a new cell; the focus follows it.
+        this.gridApi?.setFocusedHeader(this.groupId);
     }
 
     handleHide(): void {
         this.menuCtrl.close();
+        // The hidden group takes the focus with it; the header beside it gets it instead.
+        const next = this.gridApi ? headerBesideColumns(this.gridApi, this.leafColumns()) : null;
         this.onHide?.();
+        if (next) this.gridApi?.setFocusedHeader(next);
     }
 
     ngOnDestroy(): void {
+        this.stopListeningForActivation?.();
         this.menuCtrl.dispose();
     }
 }

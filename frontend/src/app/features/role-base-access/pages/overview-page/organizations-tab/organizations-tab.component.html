@@ -10,6 +10,7 @@
     <div class="toolbar-actions">
         @if (isSuperadmin) {
             <app-button
+                #mainAction
                 type="primary"
                 leftIcon="plus"
                 (click)="onCreateOrganization()"

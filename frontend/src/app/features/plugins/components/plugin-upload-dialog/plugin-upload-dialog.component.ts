@@ -1,6 +1,7 @@
 import { DialogRef } from '@angular/cdk/dialog';
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, FileUploaderComponent } from '@shared/components';
 import { formatFileSize } from '@shared/utils';
 import { finalize, Subscription } from 'rxjs';
@@ -22,7 +23,7 @@ export const PLUGIN_UPLOAD_DIALOG_TITLE_ID = 'plugin-upload-dialog-title';
  */
 @Component({
     selector: 'app-plugin-upload-dialog',
-    imports: [AppSvgIconComponent, ButtonComponent, FileUploaderComponent],
+    imports: [MatTooltip, AppSvgIconComponent, ButtonComponent, FileUploaderComponent],
     templateUrl: './plugin-upload-dialog.component.html',
     styleUrl: './plugin-upload-dialog.component.scss',
 })

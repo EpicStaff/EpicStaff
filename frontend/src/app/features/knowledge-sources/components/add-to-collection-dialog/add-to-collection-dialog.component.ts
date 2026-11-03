@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, SelectComponent, SelectItem } from '@shared/components';
 import { finalize } from 'rxjs/operators';
 
@@ -19,7 +20,7 @@ export interface AddToCollectionDialogData {
 
 @Component({
     selector: 'app-add-to-collection-dialog',
-    imports: [AppSvgIconComponent, ButtonComponent, SelectComponent],
+    imports: [MatTooltip, AppSvgIconComponent, ButtonComponent, SelectComponent],
     templateUrl: './add-to-collection-dialog.component.html',
     styleUrls: ['./add-to-collection-dialog.component.scss'],
 })

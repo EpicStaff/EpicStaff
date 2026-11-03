@@ -26,6 +26,7 @@ const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
             <div class="storage-header">
                 <span class="section-label">Enable Storage</span>
                 <app-toggle-switch
+                    ariaLabel="Enable Storage"
                     [disabled]="readonly()"
                     [checked]="enabled()"
                     (checkedChange)="onToggle($event)"

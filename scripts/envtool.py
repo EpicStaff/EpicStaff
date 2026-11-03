@@ -126,6 +126,7 @@ GENERATED_SECRETS = (
     "AUDIT_JWT_SECRET",
     "OPENSEARCH_PASSWORD",
     "AVATAR_URL_SIGNING_SECRET",
+    "CHAT_INTERNAL_API_KEY",
     *PLUGIN_SECRETS,
 )
 PRODUCTION_USERNAMES = {
@@ -204,6 +205,16 @@ CODE_TIME_LIMITS = {
     "5m": ("5 minutes", "15m"),
     "30m": ("30 minutes (the default)", "40m"),
     "2h": ("2 hours (flows also need a time to live above 2 hours)", "130m"),
+}
+# Production has no retention default on purpose: the operator chooses one, org admins may
+# override it per organization up to the RETENTION_*_MAX_DAYS caps.
+RETENTION_DAYS = ("RETENTION_SESSIONS_DAYS", "RETENTION_CONVERSATIONS_DAYS", "RETENTION_AUDIT_DAYS")
+RETENTION_CHOICES = {
+    "0": "Keep forever",
+    "30": "30 days",
+    "90": "90 days",
+    "180": "180 days",
+    "365": "365 days",
 }
 # Only the levels every service accepts: Django has no TRACE or SUCCESS, uvicorn (auditor,
 # webhook) no BENCH. TRACE, BENCH and SUCCESS stay per-service settings in the file.
@@ -385,7 +396,7 @@ def production_required(schema: dict) -> list[str]:
 
 def production_coverage_gaps(schema: dict) -> list[str]:
     """Production-required variables the wizard neither generates, asks for nor fills."""
-    covered = set(GENERATED_SECRETS) | {feature.flag for feature in FEATURES}
+    covered = set(GENERATED_SECRETS) | set(RETENTION_DAYS) | {feature.flag for feature in FEATURES}
     covered |= production_values("https://host", "nginx-tls", "v1").keys()
     return [name for name in production_required(schema) if name not in covered]
 
@@ -698,6 +709,13 @@ def ask_production_values(
     values = production_values(public_url, serving_mode, image_tag)
     if plugins_domain:
         values["PLUGINS_BASE_DOMAIN"] = plugins_domain
+    retention = screen.ask(
+        "Retention",
+        "How long to keep finished sessions, chat conversations and audit events? "
+        "Organization admins can change it for their organization",
+        choices=RETENTION_CHOICES,
+    )
+    values |= dict.fromkeys(RETENTION_DAYS, retention)
     if screen.ask_yes_no(
         "Advanced", "Adjust advanced settings (server size, code time limit, logging)?", False
     ):

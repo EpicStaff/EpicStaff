@@ -103,7 +103,7 @@
     font-size: 13px;
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--color-secondary-btn-background-hover);
     }
 
@@ -184,7 +184,8 @@
         font-weight: 500;
     }
 
-    tbody tr:hover {
+    // A row is not focused itself: a control in it is.
+    tbody tr:is(:hover, :has(:focus-visible)) {
         background-color: var(--color-ghost-btn-hover);
     }
 }
@@ -320,13 +321,22 @@
         inset: 0;
     }
 
-    &:focus-visible,
-    &.is-viewed {
+    // both rings go round the whole cell, like the hover and click area; the focus ring replaces the viewed one
+    &.is-viewed:not(:focus-visible) {
         outline: none;
 
         &::after {
             outline: 1px solid var(--accent-color);
             outline-offset: -1px;
+        }
+    }
+
+    &:focus-visible {
+        outline: none;
+
+        &::after {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
         }
     }
 }
@@ -407,11 +417,11 @@
     font-size: 13px;
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
         background-color: var(--color-secondary-btn-background-hover);
     }
 
-    &:disabled {
+    &:is(:disabled, [aria-disabled='true']) {
         opacity: 0.35;
         cursor: default;
     }
@@ -421,7 +431,7 @@
     background-color: var(--accent-color);
     border-color: var(--accent-color);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
         background-color: var(--accent-color-hover);
     }
 }
