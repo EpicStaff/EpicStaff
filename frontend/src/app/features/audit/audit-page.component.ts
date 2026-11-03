@@ -9,7 +9,7 @@ import { AuditDomainName } from './models/audit-domain.models';
 
 const TABS: Record<AuditDomainName, RouteTab> = {
     sessions: { routerLink: 'sessions', label: 'Sessions', isPermitted: () => true },
-    user_actions: { routerLink: 'actions', label: 'User actions', isPermitted: () => true },
+    user_actions: { routerLink: 'actions', label: 'User Actions', isPermitted: () => true },
 };
 
 @Component({

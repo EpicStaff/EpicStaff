@@ -66,7 +66,7 @@ describe('audit page', () => {
     it('shows both tabs when both are allowed', async () => {
         const harness = await openAudit(true, true);
 
-        expect(tabLabels(harness.routeNativeElement!)).toEqual(['Sessions', 'User actions']);
+        expect(tabLabels(harness.routeNativeElement!)).toEqual(['Sessions', 'User Actions']);
     });
 
     it('redirects /audit to the first allowed tab', async () => {
