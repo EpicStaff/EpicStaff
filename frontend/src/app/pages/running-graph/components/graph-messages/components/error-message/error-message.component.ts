@@ -8,7 +8,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
     selector: 'app-error-message',
     imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
     template: `
-        <div class="error-container">
+        <div class="session-message error-container">
             <div
                 class="error-header"
                 (click)="toggleMessage()"
@@ -25,19 +25,30 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                         size="1rem"
                     />
                 </div>
-                <h3>Error</h3>
+                <h3>
+                    <button
+                        type="button"
+                        class="message-toggle"
+                        [attr.aria-expanded]="isMessageExpanded"
+                    >
+                        Error
+                    </button>
+                </h3>
             </div>
 
             <!-- Collapsible Content -->
             <div
                 class="collapsible-content grid-collapsible"
                 [class.expanded]="isMessageExpanded"
+                [inert]="!isMessageExpanded"
             >
                 <div class="error-content">
                     <!-- Error Details Section -->
                     <div class="error-section">
-                        <div
+                        <button
+                            type="button"
                             class="section-heading"
+                            [attr.aria-expanded]="isErrorExpanded"
                             (click)="toggleErrorSection($event)"
                         >
                             <app-svg-icon
@@ -45,10 +56,11 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                                 size="1rem"
                             />
                             Error Details
-                        </div>
+                        </button>
                         <div
                             class="collapsible-content grid-collapsible"
                             [class.expanded]="isErrorExpanded"
+                            [inert]="!isErrorExpanded"
                         >
                             <div class="grid-collapsible__inner">
                                 <div
@@ -60,6 +72,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                                 </div>
                                 @if (shouldShowToggle() && isErrorExpanded) {
                                     <button
+                                        type="button"
                                         class="toggle-button"
                                         (click)="toggleCollapse($event)"
                                     >
@@ -73,8 +86,10 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                     <!-- Optional Data Subsection -->
                     @if (hasErrorData()) {
                         <div class="error-data-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isDataExpanded"
                                 (click)="toggleDataSection($event)"
                             >
                                 <app-svg-icon
@@ -82,10 +97,11 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                                     size="1rem"
                                 />
                                 Data
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isDataExpanded"
+                                [inert]="!isDataExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="result-content">
@@ -102,6 +118,18 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .error-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
@@ -170,7 +198,14 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             }
 
             /* Section styling */
+            // The button that folds its section, drawn as the heading row it was.
             .section-heading {
+                width: 100%;
+                padding: 0;
+                border: none;
+                background: none;
+                font-family: inherit;
+                text-align: left;
                 font-size: var(--text-body-medium-size);
                 font-weight: var(--text-body-medium-weight);
                 line-height: var(--text-body-medium-line-height);
@@ -180,6 +215,11 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                 user-select: none;
                 display: flex;
                 align-items: center;
+
+                // Drawn inside: the collapsible content around clips it.
+                &:focus-visible {
+                    outline-offset: -2px;
+                }
 
                 app-svg-icon {
                     margin-right: 8px;
@@ -227,7 +267,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                 margin-top: 0.25rem;
             }
 
-            .toggle-button:hover {
+            .toggle-button:is(:hover, :focus-visible) {
                 text-decoration: underline;
             }
 

@@ -30,7 +30,9 @@
             </div>
         </div>
         <div>
+            <!-- The edit dialog opens with the focus here: its provider is fixed, so this is its first field. -->
             <app-select
+                cdkFocusInitial
                 formControlName="api_key_secret_id"
                 label="API Key"
                 variant="boxed"

@@ -109,6 +109,20 @@ describe('KeymapService', () => {
         return button;
     }
 
+    /**
+     * Focuses the button as a Tab does. jsdom gives a focused element :focus-visible only for some focus origins,
+     * so the button reports it the way a browser does after keyboard navigation.
+     */
+    function keyboardFocused(element: HTMLButtonElement): HTMLButtonElement {
+        element.focus();
+        const matches = element.matches.bind(element);
+        vi.spyOn(element, 'matches').mockImplementation(
+            (selector: string) =>
+                (selector === ':focus-visible' && document.activeElement === element) || matches(selector)
+        );
+        return element;
+    }
+
     afterEach(() => {
         attached.splice(0).forEach((element) => element.remove());
         window.getSelection()?.removeAllRanges();
@@ -200,6 +214,66 @@ describe('KeymapService', () => {
             pressOn(buttonInside('div', 'monaco-editor'), { code: 'KeyA', shiftKey: true });
 
             expect(handler).not.toHaveBeenCalled();
+        });
+
+        it('keeps Delete and Backspace from deleting nodes while a button has the keyboard focus or in the side panel', () => {
+            const deleteNodes = vi.fn();
+            keymap().register('editing.delete', deleteNodes);
+            const toolbarButton = keyboardFocused(buttonInside('div'));
+
+            const onButton = pressOn(toolbarButton, { code: 'Delete' });
+            pressOn(toolbarButton, { code: 'Backspace' });
+            pressOn(buttonInside('app-node-panel-shell'), { code: 'Delete' });
+
+            expect(deleteNodes).not.toHaveBeenCalled();
+            expect(onButton.defaultPrevented).toBe(false);
+
+            toolbarButton.blur();
+            press({ code: 'Delete' });
+            expect(deleteNodes).toHaveBeenCalledOnce();
+        });
+
+        it('still deletes the selected nodes after a mouse click left the focus on a toolbar button', () => {
+            const deleteNodes = vi.fn();
+            keymap().register('editing.delete', deleteNodes);
+            const clickedButton = buttonInside('div');
+            clickedButton.focus();
+
+            pressOn(clickedButton, { code: 'Delete' });
+
+            expect(deleteNodes).toHaveBeenCalledOnce();
+        });
+
+        it('leaves an Escape to the menu or dialog it was pressed in, and to the control that already used it', () => {
+            const escape = vi.fn();
+            const deleteNodes = vi.fn();
+            keymap().register('editing.escape', escape, { allowInEditable: true });
+            keymap().register('editing.delete', deleteNodes);
+            const inOverlay = buttonInside('div', 'cdk-overlay-container');
+            const handledField = attach(document.createElement('input'));
+            handledField.addEventListener('keydown', (event) => event.preventDefault());
+
+            pressOn(inOverlay, { code: 'Escape' });
+            pressOn(inOverlay, { code: 'Delete' });
+            pressOn(handledField, { code: 'Escape' });
+            expect(escape).not.toHaveBeenCalled();
+            expect(deleteNodes).not.toHaveBeenCalled();
+
+            press({ code: 'Escape' });
+            expect(escape).toHaveBeenCalledOnce();
+        });
+
+        it('keeps the arrow keys from moving the canvas while a button has the keyboard focus', () => {
+            const pan = vi.fn();
+            keymap().register('navigating.pan-left', pan);
+            const button = keyboardFocused(buttonInside('div'));
+
+            pressOn(button, { code: 'ArrowLeft' });
+            expect(pan).not.toHaveBeenCalled();
+
+            button.blur();
+            press({ code: 'ArrowLeft' });
+            expect(pan).toHaveBeenCalledOnce();
         });
 
         it('delivers non-node actions from the side panel', () => {

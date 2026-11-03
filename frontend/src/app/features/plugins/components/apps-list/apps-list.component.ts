@@ -1,6 +1,8 @@
 import { Component, computed, input, output, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
 import { AppSvgIconComponent, SearchComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { isPlainPrimaryClick } from '@shared/utils';
 
 import { AvailablePlugin } from '../../models/available-plugin.model';
@@ -22,7 +24,14 @@ const NO_NEW_APPS: ReadonlySet<string> = new Set();
  */
 @Component({
     selector: 'app-apps-list',
-    imports: [RouterLink, AppSvgIconComponent, SearchComponent, PluginIconComponent],
+    imports: [
+        RouterLink,
+        AppSvgIconComponent,
+        SearchComponent,
+        PluginIconComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './apps-list.component.html',
     styleUrl: './apps-list.component.scss',
     host: {

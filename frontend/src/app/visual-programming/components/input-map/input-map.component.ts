@@ -1,11 +1,14 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
+    ElementRef,
     EventEmitter,
     inject,
+    Injector,
     Input,
     input,
     OnChanges,
@@ -13,6 +16,8 @@ import {
     Output,
     signal,
     SimpleChanges,
+    viewChild,
+    viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
@@ -80,6 +85,7 @@ const DEFAULT_TOOLTIP =
                         <div class="test-mode-header">
                             <span>Test mode</span>
                             <app-toggle-switch
+                                ariaLabel="Test mode"
                                 [checked]="testMode"
                                 (checkedChange)="onTestModeToggle($event)"
                             />
@@ -135,6 +141,7 @@ const DEFAULT_TOOLTIP =
                                         type="text"
                                         formControlName="key"
                                         [placeholder]="keyPlaceholder()"
+                                        [attr.aria-label]="keyPlaceholder()"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                         (keydown.enter)="onEnterKey($event, i)"
@@ -146,6 +153,7 @@ const DEFAULT_TOOLTIP =
                                         type="text"
                                         formControlName="value"
                                         [placeholder]="valuePlaceholder()"
+                                        [attr.aria-label]="valuePlaceholder()"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                         role="combobox"
@@ -160,14 +168,20 @@ const DEFAULT_TOOLTIP =
                                     />
                                 </div>
                                 @if (!parentForm.disabled) {
-                                    <app-svg-icon
-                                        icon="trash"
-                                        size="1rem"
+                                    <button
+                                        #removeButton
+                                        type="button"
                                         class="delete-icon"
+                                        aria-label="Remove input"
                                         matTooltip="Remove"
                                         matTooltipPosition="above"
-                                        (click)="removePair(i)"
-                                    ></app-svg-icon>
+                                        (click)="onRemoveButtonClick(i, false)"
+                                    >
+                                        <app-svg-icon
+                                            icon="trash"
+                                            size="1rem"
+                                        ></app-svg-icon>
+                                    </button>
                                 }
                             </div>
                         </div>
@@ -175,6 +189,7 @@ const DEFAULT_TOOLTIP =
                 </div>
                 @if (!parentForm.disabled) {
                     <button
+                        #addButton
                         type="button"
                         class="add-pair-btn"
                         (click)="addPair()"
@@ -203,6 +218,7 @@ const DEFAULT_TOOLTIP =
                                         type="text"
                                         formControlName="key"
                                         [placeholder]="keyPlaceholder()"
+                                        [attr.aria-label]="keyPlaceholder()"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                     />
@@ -213,23 +229,31 @@ const DEFAULT_TOOLTIP =
                                         type="text"
                                         formControlName="value"
                                         placeholder="Test value"
+                                        aria-label="Test value"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                     />
                                 </div>
-                                <app-svg-icon
-                                    icon="trash"
-                                    size="1rem"
+                                <button
+                                    #removeButton
+                                    type="button"
                                     class="delete-icon"
+                                    aria-label="Remove input"
                                     matTooltip="Remove"
                                     matTooltipPosition="above"
-                                    (click)="removeTestVariable(i)"
-                                ></app-svg-icon>
+                                    (click)="onRemoveButtonClick(i, true)"
+                                >
+                                    <app-svg-icon
+                                        icon="trash"
+                                        size="1rem"
+                                    ></app-svg-icon>
+                                </button>
                             </div>
                         </div>
                     }
                 </div>
                 <button
+                    #addButton
                     type="button"
                     class="add-pair-btn"
                     (click)="addTestVariable()"
@@ -373,6 +397,8 @@ const DEFAULT_TOOLTIP =
 
             .delete-icon {
                 font-size: 1rem;
+                border: none;
+                background: none;
                 cursor: pointer;
                 color: #ccc;
                 padding: 0.2rem;
@@ -385,7 +411,7 @@ const DEFAULT_TOOLTIP =
                 align-items: center;
                 justify-content: center;
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     color: red;
                     background-color: rgba(255, 0, 0, 0.1);
                 }
@@ -422,7 +448,7 @@ const DEFAULT_TOOLTIP =
                 background: var(--color-action-btn-background);
                 color: var(--color-text-primary);
 
-                &:hover:not(:disabled) {
+                &:is(:hover, :focus-visible):not(:disabled) {
                     background: var(--color-action-btn-background-hover);
                 }
 
@@ -437,7 +463,7 @@ const DEFAULT_TOOLTIP =
                 color: white;
                 border-color: #685fff;
 
-                &:hover:not(:disabled) {
+                &:is(:hover, :focus-visible):not(:disabled) {
                     background: #5a4ade;
                     border-color: #5a4ade;
                 }
@@ -565,6 +591,9 @@ export class InputMapComponent implements OnInit, OnChanges {
     private normalModeSnapshot: { key: string; value: string }[] = [];
 
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
+    private readonly removeButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeButton');
+    private readonly addButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
     private readonly keySubs = new WeakMap<AbstractControl, Subscription>();
     private readonly testKeySubs = new WeakMap<AbstractControl, Subscription>();
     private readonly lastKnownKeys = new WeakMap<AbstractControl, string>();
@@ -819,6 +848,23 @@ export class InputMapComponent implements OnInit, OnChanges {
             })
         );
         this.mirrorTestPairKey(this.testPairs.at(this.testPairs.length - 1));
+    }
+
+    /** The pressed Remove button is gone: the focus goes to the row now in its place, else to Add Input. */
+    protected onRemoveButtonClick(index: number, testRow: boolean): void {
+        if (testRow) {
+            this.removeTestVariable(index);
+        } else {
+            this.removePair(index);
+        }
+        afterNextRender(
+            () => {
+                const buttons = this.removeButtons();
+                const target = buttons[Math.min(index, buttons.length - 1)] ?? this.addButton();
+                target?.nativeElement.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     removeTestVariable(index: number): void {

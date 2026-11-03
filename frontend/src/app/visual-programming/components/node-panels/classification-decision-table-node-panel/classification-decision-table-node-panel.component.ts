@@ -1,6 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { NgTemplateOutlet } from '@angular/common';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
@@ -36,7 +37,7 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import {
     ExecutionTimeoutLimitsStorageService,
@@ -100,6 +101,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
 @Component({
     selector: 'app-classification-decision-table-node-panel',
     imports: [
+        TooltipOnOverflowDirective,
         ReactiveFormsModule,
         FormsModule,
         NgTemplateOutlet,
@@ -131,6 +133,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public override readonly isExpanded = input<boolean>(true);
     public readonly graphId = input<number | null>(null);
     public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
+    private readonly addPromptButton = viewChild<ButtonComponent>('addPromptButton');
 
     private flowService = inject(FlowService);
     private undoRedoService = inject(UndoRedoService);
@@ -785,6 +788,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .subscribe((result) => {
                 if (result === true) {
                     this.performDeletePrompt(id);
+                    // The dialog gave the focus back to the prompt's Delete button, which is gone now.
+                    afterNextRender(() => this.addPromptButton()?.focus(), { injector: this.injector });
                 }
             });
     }

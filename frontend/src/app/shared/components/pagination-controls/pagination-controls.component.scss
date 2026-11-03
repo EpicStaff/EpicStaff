@@ -42,7 +42,7 @@
         color 0.15s,
         border-color 0.15s;
 
-    &:hover:not(:disabled):not(.active) {
+    &:is(:hover, :focus-visible):not(:disabled):not(.active) {
         background: color-mix(in srgb, var(--accent-color) 15%, var(--color-background-body));
     }
 
@@ -63,7 +63,7 @@
             display: block;
         }
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background: var(--accent-color-hover);
             border-color: var(--accent-color-hover);
         }

@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -12,6 +13,7 @@ import {
     SimpleChanges,
     ViewChildren,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { DateRangeFilter } from '@shared/models';
 
 const MONTH_NAMES = [
@@ -45,7 +47,7 @@ interface MonthCell {
 
 @Component({
     selector: 'app-date-range-picker',
-    imports: [],
+    imports: [DatePipe, MatTooltip],
     templateUrl: './date-range-picker.component.html',
     styleUrls: ['./date-range-picker.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

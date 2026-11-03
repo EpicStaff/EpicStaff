@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     HelpTooltipComponent,
     RadioButtonComponent,
@@ -37,6 +38,7 @@ export interface AgentDefinitionRealtimeSettingsDialogData {
 @Component({
     selector: 'app-agent-definition-realtime-settings-dialog',
     imports: [
+        MatTooltip,
         EnterSubmitDirective,
         FormsModule,
         HelpTooltipComponent,

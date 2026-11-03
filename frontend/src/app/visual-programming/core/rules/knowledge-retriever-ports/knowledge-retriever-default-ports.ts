@@ -1,3 +1,5 @@
+import { NODE_COLORS, NodeType } from '@shared/models';
+
 import { BasePort } from '../../models/port.model';
 
 export const DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS: BasePort[] = [
@@ -25,7 +27,7 @@ export const DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS: BasePort[] = [
             'task-out',
         ],
         position: 'left',
-        color: '#D9D9DE',
+        color: NODE_COLORS[NodeType.KNOWLEDGE_RETRIEVER],
     },
     {
         port_type: 'output',
@@ -47,6 +49,6 @@ export const DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS: BasePort[] = [
             'task-in',
         ],
         position: 'right',
-        color: '#D9D9DE',
+        color: NODE_COLORS[NodeType.KNOWLEDGE_RETRIEVER],
     },
 ];

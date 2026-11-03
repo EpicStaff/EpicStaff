@@ -14,6 +14,7 @@ import {
     ViewEncapsulation,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     AuthorshipDetailsSource,
@@ -56,14 +57,21 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 
 @Component({
     selector: 'app-domain-dialog',
-    imports: [JsonEditorComponent, OverlayModule, AppSvgIconComponent, AuthorshipFooterComponent],
+    imports: [JsonEditorComponent, OverlayModule, AppSvgIconComponent, AuthorshipFooterComponent, MatTooltip],
     encapsulation: ViewEncapsulation.None,
     template: `
-        <div class="dialog-container">
+        <!-- Escape is handled here, ahead of the tooltip of the focused control, which would take the first one. -->
+        <div
+            class="dialog-container"
+            (keydown.escape)="onEscape($event)"
+        >
             <div class="dialog-header">
                 <h2 class="dialog-title">Domain Variables</h2>
                 <button
+                    type="button"
                     class="close-button"
+                    aria-label="Close"
+                    matTooltip="Close"
                     (click)="close()"
                 >
                     <app-svg-icon icon="x"></app-svg-icon>
@@ -165,7 +173,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 justify-content: center;
                 line-height: 1;
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     background: var(--color-surface-hover, #333);
                     color: var(--color-text-primary, #fff);
                 }
@@ -336,6 +344,14 @@ export class DomainDialogComponent implements OnDestroy {
                 this.close();
             }
         });
+    }
+
+    /** Escape closes the dialog, unless the variable picker is open or the editor already used this Escape. */
+    protected onEscape(event: Event): void {
+        if (event.defaultPrevented || this.overlayRef?.hasAttached()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.close();
     }
 
     ngOnDestroy(): void {

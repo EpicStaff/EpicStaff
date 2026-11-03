@@ -12,19 +12,25 @@
         <div class="input">
             <app-custom-input
                 [placeholder]="activePlaceholder()"
+                [ariaLabel]="label()"
                 [formControl]="inputControl"
                 (keydown)="onKeydown($event)"
             />
 
-            <app-svg-icon
+            <button
+                type="button"
                 class="input-icon"
                 [class.disabled]="inputControl.invalid"
-                icon="plus"
-                size="1.5rem"
+                [attr.aria-disabled]="inputControl.invalid || null"
+                [attr.aria-label]="addButtonTooltip()"
                 [matTooltip]="addButtonTooltip()"
-                matTooltipPosition="above"
                 (click)="onAdd()"
-            />
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="1.5rem"
+                />
+            </button>
         </div>
         <app-validation-errors [control]="inputControl" />
 
@@ -48,12 +54,18 @@
             <div class="chip">
                 {{ item }}
                 @if (!readOnly()) {
-                    <app-svg-icon
+                    <button
+                        type="button"
                         class="action"
-                        icon="close"
-                        size="1.25rem"
+                        [attr.aria-label]="'Remove ' + item"
+                        matTooltip="Remove"
                         (click)="onRemove(i)"
-                    />
+                    >
+                        <app-svg-icon
+                            icon="close"
+                            size="1.25rem"
+                        />
+                    </button>
                 }
             </div>
         }

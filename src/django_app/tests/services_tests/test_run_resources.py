@@ -187,6 +187,7 @@ class World:
             org=self.org,
             llm_config=self.llm_config(),
             fcm_llm_config=self.llm_config(),
+            fallback_llm_config=self.llm_config(),
         )
         self.make(
             "agents.AgentDefaultSurface", agent_definition=agent, surface=self.surface(), place="all"
@@ -478,6 +479,17 @@ def test_a_binned_node_is_not_followed(world):
 
 
 @pytest.mark.django_db
+def test_a_flow_run_follows_the_fallback_llm_of_its_agent(world):
+    flow = world.make("tables.Graph", name="fallback-agent", org=world.org)
+    agent = world.agent_definition()
+    world.make("tables.TaskNode", graph=flow, agent_definition=agent)
+
+    reached = _collect(RunKind.FLOW, flow).refs
+
+    assert {ref(agent.fallback_llm_config), ref(agent.fallback_llm_config.api_key_secret)} <= reached
+
+
+@pytest.mark.django_db
 def test_a_binned_forward_target_is_still_followed(world):
     flow = world.make("tables.Graph", name="binned-agent", org=world.org)
     agent = world.agent_definition()
@@ -561,6 +573,8 @@ def test_a_realtime_start_walks_the_agent_and_its_voice_configs(world):
         ref(agent),
         ref(agent.llm_config),
         ref(agent.fcm_llm_config),
+        ref(agent.fallback_llm_config),
+        ref(agent.fallback_llm_config.api_key_secret),
         ref(realtime),
         ref(realtime.openai_config.api_key_secret),
         ref(realtime.openai_config.transcription_api_key_secret),

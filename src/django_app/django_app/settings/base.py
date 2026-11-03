@@ -1,6 +1,7 @@
 from django.core.exceptions import ImproperlyConfigured
 from rbac.identity.first_setup_mode import FirstSetupMode
 from src.shared import humanize
+from src.shared.envtools import Env
 from src.shared.retention import load_retention_policy
 
 from django_app.settings import BASE_DIR, env
@@ -130,11 +131,25 @@ TUNNEL_URLS_HASH_KEY = "tunnel_urls"
 
 MALLOC_TRIM_INTERVAL = env.time("DJANGO_MALLOC_TRIM_INTERVAL")
 
+
+def read_recycle_bin_retention_days(environment: Env) -> int:
+    """Read DJANGO_RECYCLE_BIN_RETENTION_DAYS, the days an item stays in the recycle bin.
+
+    Only a whole number of at least 1 is accepted: 0 would make the nightly purge empty
+    every recycle bin on its next run, and `none` would leave the purge without a cutoff.
+    """
+    message = "DJANGO_RECYCLE_BIN_RETENTION_DAYS must be a whole number, at least 1."
+    try:
+        days = environment.int("DJANGO_RECYCLE_BIN_RETENTION_DAYS")
+    except ValueError as error:
+        raise ImproperlyConfigured(message) from error
+    if days is None or days < 1:
+        raise ImproperlyConfigured(message)
+    return days
+
+
 # Days a deleted item stays in the recycle bin before the purge job removes it for good.
-RECYCLE_BIN_RETENTION_DAYS = env.int("DJANGO_RECYCLE_BIN_RETENTION_DAYS")
-if RECYCLE_BIN_RETENTION_DAYS < 1:
-    # 0 would make the nightly purge empty every recycle bin on its next run.
-    raise ImproperlyConfigured("DJANGO_RECYCLE_BIN_RETENTION_DAYS must be at least 1.")
+RECYCLE_BIN_RETENTION_DAYS = read_recycle_bin_retention_days(env)
 
 try:
     RETENTION_POLICY = load_retention_policy(env)

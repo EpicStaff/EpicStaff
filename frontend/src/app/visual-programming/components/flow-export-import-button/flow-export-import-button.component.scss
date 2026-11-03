@@ -16,7 +16,7 @@
     cursor: pointer;
     transition: background 0.15s;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--graphite-822);
     }
 

@@ -265,6 +265,7 @@ from tables.serializers.model_serializers.realtime_serializers import (
 )
 from tables.serializers.serializers import (
     BulkExportSerializer,
+    BulkIdsSerializer,
     GraphNodesPartialExportSerializer,
     ImportRequestSerializer,
 )
@@ -747,12 +748,10 @@ class PythonCodeToolViewSet(
     @extend_schema(**PYTHON_CODE_TOOL_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
-        ids = request.data.get("ids", [])
-        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
-            return Response(
-                {"detail": "ids must be a list of integers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = BulkIdsSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        ids = body.validated_data["ids"]
 
         with transaction.atomic():
             # Built-in tools are silently excluded, never rejected — they are
@@ -2558,12 +2557,10 @@ class McpToolViewSet(
     @extend_schema(**MCP_TOOL_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
-        ids = request.data.get("ids", [])
-        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
-            return Response(
-                {"detail": "ids must be a list of integers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = BulkIdsSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        ids = body.validated_data["ids"]
 
         with transaction.atomic():
             # McpTool has no built-in concept — every matching id is deletable.
@@ -2854,8 +2851,9 @@ class GraphNoteViewSet(
 
 
 class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
-    """Shared behavior for the two independent label trees — Flow labels
-    (`LabelViewSet`) and Tool labels (`ToolLabelViewSet`). Each tree is a
+    """Shared behavior for the three independent label trees — Flow labels
+    (`LabelViewSet`), Tool labels (`ToolLabelViewSet`) and agent groups
+    (`AgentLabelViewSet`, flat, shared by agents and shared surfaces). Each tree is a
     disjoint subset of `Label` partitioned by `Label.scope`; concrete
     subclasses set `label_scope` and a `queryset` pre-filtered to it.
     """
@@ -2881,8 +2879,8 @@ class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
         # Build paths in memory (one extra lightweight query) to avoid N+1
         # and to correctly resolve parents that may be filtered out. Scoped to
-        # the active org and this tree's scope (the label tree never crosses
-        # orgs or Flow/Tool scopes).
+        # the active org and this tree's scope (a label tree never crosses
+        # orgs or the Flow, Tool and agent-group scopes).
         id_to_row = {
             row["id"]: row
             for row in Label.objects.filter(
@@ -2933,6 +2931,13 @@ class ToolLabelViewSet(BaseLabelViewSet):
     rbac_resource_type = ResourceType.TOOLS
     label_scope = Label.Scope.TOOL
     queryset = Label.objects.filter(scope=Label.Scope.TOOL)
+
+
+class AgentLabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.AGENTS
+    label_scope = Label.Scope.AGENT
+    queryset = Label.objects.filter(scope=Label.Scope.AGENT)
 
 
 class SecretViewSet(

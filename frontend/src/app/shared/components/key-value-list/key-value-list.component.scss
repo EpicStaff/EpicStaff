@@ -131,7 +131,7 @@
             font-size: 1rem;
         }
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             color: var(--color-text-primary);
             background-color: var(--white-alpha-8);
         }
@@ -180,7 +180,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 }

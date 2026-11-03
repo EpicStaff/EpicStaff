@@ -9,6 +9,8 @@ the way google-genai 1.19 delivers them (see gemini_live_fakes).
 import asyncio
 import audioop
 import base64
+import gc
+import weakref
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -585,6 +587,48 @@ async def test_tool_result_is_sent_back_for_its_call(live):
     )
     (response,) = live.sessions[0].tool_responses
     assert (response.id, response.name, response.response) == ("c1", "echo", {"result": "ok"})
+
+
+async def test_a_running_tool_call_survives_garbage_collection_and_is_released_when_done(live):
+    """The event loop holds tasks weakly: a tool call awaiting a future referenced
+    only by its own frame would be collected mid-run and its result never sent."""
+    client = _client(live)
+    pending_result: list[weakref.ref] = []
+
+    async def tool_waiting_on_an_unreferenced_future(**kwargs):
+        future = asyncio.get_running_loop().create_future()
+        pending_result.append(weakref.ref(future))
+        return await future
+
+    client.tool_manager_service.execute = tool_waiting_on_an_unreferenced_future
+    await client.connect()
+    tasks_before = asyncio.all_tasks()
+    await client.server_event_handler.handle_event(
+        types.LiveServerMessage(
+            tool_call=types.LiveServerToolCall(
+                function_calls=[types.FunctionCall(id="c1", name="echo", args={"text": "hi"})]
+            )
+        )
+    )
+    (tool_call_task,) = asyncio.all_tasks() - tasks_before
+    tool_call_task_ref = weakref.ref(tool_call_task)
+    del tool_call_task
+    await asyncio.sleep(0)
+
+    gc.collect()
+    future = pending_result[0]()
+    assert future is not None and not future.done()
+    future.set_result("ok")
+    del future
+    async with asyncio.timeout(LOOP_TIMEOUT_SECONDS):
+        while live.sessions[0].tool_responses == []:
+            await asyncio.sleep(0)
+
+    (response,) = live.sessions[0].tool_responses
+    assert (response.id, response.name, response.response) == ("c1", "echo", {"result": "ok"})
+    await asyncio.sleep(0)
+    gc.collect()
+    assert tool_call_task_ref() is None
 
 
 async def test_tool_result_is_dropped_when_the_session_was_replaced_meanwhile(live):

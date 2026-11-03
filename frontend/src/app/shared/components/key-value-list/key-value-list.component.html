@@ -19,6 +19,7 @@
                 [class.kv-list__input--error]="hasNameError(i)"
                 [placeholder]="namePlaceholder()"
                 [attr.aria-label]="rowLabel() + ' name, row ' + (i + 1)"
+                [matTooltip]="rowLabel() + ' name'"
                 [attr.aria-invalid]="hasNameError(i)"
                 [attr.aria-describedby]="hasNameError(i) ? errorId(i) : null"
                 [ngModel]="item.name"
@@ -34,6 +35,7 @@
                     [class.kv-list__input--has-badge]="isSecretValue(item.value)"
                     [placeholder]="valuePlaceholder()"
                     [attr.aria-label]="rowLabel() + ' value, row ' + (i + 1)"
+                    [matTooltip]="rowLabel() + ' value'"
                     [attr.aria-invalid]="hasValueError(i)"
                     [attr.aria-describedby]="hasValueError(i) ? errorId(i) : null"
                     [ngModel]="displayValue(item.value)"
@@ -85,6 +87,8 @@
             <button
                 type="button"
                 class="kv-list__suggestion-item"
+                appTooltipOnOverflow
+                [matTooltip]="item.name"
                 (click)="selectSuggestion(item)"
             >
                 {{ item.name }}

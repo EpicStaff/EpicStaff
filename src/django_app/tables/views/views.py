@@ -21,6 +21,7 @@ from rbac.access.gates import (
     HasOrgPermission,
 )
 from rbac.access.org_context import OrgContextService
+from rbac.access.principals import user_api_key_org_id
 from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
@@ -75,6 +76,7 @@ from tables.serializers.quickstart_serializers import (
 )
 from tables.serializers.serializers import (
     BulkExportSerializer,
+    BulkIdsSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
     ProcessRagIndexingEstimateSerializer,
@@ -399,12 +401,10 @@ class SessionViewSet(
     @extend_schema(**SESSION_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk_delete")
     def bulk_delete(self, request):
-        ids = request.data.get("ids", [])
-        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
-            return Response(
-                {"detail": "ids must be a list of integers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = BulkIdsSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        ids = body.validated_data["ids"]
 
         # Count the requested sessions before deleting: delete() also counts the
         # sub-sessions removed by the parent_session cascade. The row lock keeps a
@@ -475,7 +475,12 @@ class RunSession(APIView):
         graph_id = serializer.validated_data.get("graph_id")
         graph_uuid = serializer.validated_data.get("graph_uuid")
 
-        graph = get_runnable_graph(request.user, graph_id=graph_id, graph_uuid=graph_uuid)
+        graph = get_runnable_graph(
+            request.user,
+            graph_id=graph_id,
+            graph_uuid=graph_uuid,
+            api_key_org_id=user_api_key_org_id(request),
+        )
         graph_id = graph.id
 
         parent_session_id = serializer.validated_data.get("parent_session_id")
@@ -600,7 +605,9 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
 class GetUpdates(APIView):
     @extend_schema(**GET_UPDATES_GET)
     def get(self, request, *args, **kwargs):
-        session = get_accessible_session(request.user, kwargs["session_id"])
+        session = get_accessible_session(
+            request.user, kwargs["session_id"], api_key_org_id=user_api_key_org_id(request)
+        )
 
         return Response(
             data={"status": session.status},
@@ -611,7 +618,12 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session = get_accessible_session(request.user, kwargs["session_id"], Permission.USE)
+        session = get_accessible_session(
+            request.user,
+            kwargs["session_id"],
+            Permission.USE,
+            api_key_org_id=user_api_key_org_id(request),
+        )
         session_manager_service.stop_running_session(session=session)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

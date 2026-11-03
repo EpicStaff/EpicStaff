@@ -21,9 +21,11 @@
             }
         </span>
         <button
+            #removeButton
             class="filter-chip__remove"
             type="button"
             [attr.aria-label]="'Remove ' + chip.label + ' filter'"
+            [matTooltip]="'Remove ' + chip.label + ' filter'"
             (click)="removed.emit(chip.key)"
         >
             ✕

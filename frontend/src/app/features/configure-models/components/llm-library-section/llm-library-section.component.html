@@ -28,6 +28,7 @@
 
             <div class="filter">
                 <app-select
+                    tooltip="Capabilities"
                     [items]="capabilities()"
                     placeholder="All Capabilities"
                     (changed)="selectedCapability.set($event)"
@@ -46,6 +47,7 @@
                 </app-button>
             } @else {
                 <app-button
+                    #addButton
                     class="add-btn"
                     *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
                     (click)="onAddModel()"

@@ -6,6 +6,15 @@ import { of } from 'rxjs';
 
 import { KeyValueListComponent } from './key-value-list.component';
 
+// jsdom has no ResizeObserver; the overflow tooltips only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+
 @Component({
     imports: [KeyValueListComponent, ReactiveFormsModule],
     template: `<app-key-value-list [formControl]="control" />`,
@@ -42,6 +51,10 @@ describe('KeyValueListComponent', () => {
 
     function field(fixture: ComponentFixture<HostComponent>, row: number, kind: 'name' | 'value'): HTMLInputElement {
         return inputs(fixture)[row * 2 + (kind === 'name' ? 0 : 1)];
+    }
+
+    function describedBy(element: HTMLElement): string[] {
+        return (element.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean);
     }
 
     function removeButtons(fixture: ComponentFixture<HostComponent>): HTMLButtonElement[] {
@@ -128,8 +141,9 @@ describe('KeyValueListComponent', () => {
         expect(field(fixture, 0, 'name').getAttribute('aria-label')).toBe('Header name, row 1');
         expect(valueInput.getAttribute('aria-label')).toBe('Header value, row 1');
         expect(valueInput.getAttribute('aria-invalid')).toBe('true');
-        expect(valueInput.getAttribute('aria-describedby')).toBe(error.id);
-        expect(field(fixture, 0, 'name').getAttribute('aria-describedby')).toBeNull();
+        // The name tooltip may add its own description id: only which input the error describes matters here.
+        expect(describedBy(valueInput)).toContain(error.id);
+        expect(describedBy(field(fixture, 0, 'name'))).not.toContain(error.id);
         expect(removeButtons(fixture)[0].getAttribute('aria-label')).toBe('Remove header, row 1');
     });
 

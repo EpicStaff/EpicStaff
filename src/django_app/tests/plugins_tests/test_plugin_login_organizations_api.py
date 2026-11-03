@@ -116,3 +116,15 @@ def test_a_plugin_without_a_backend_is_not_found(client_as, member_only, running
     response = client_as(member_only).get(URL)
 
     assert (response.status_code, response.json()["code"]) == (404, "plugin_not_found")
+
+
+def test_a_user_api_key_gets_only_its_own_organization(issue_api_key, member_only, role_member, acme, beta, weather_in_acme_and_beta):
+    OrganizationUser.objects.create(user=member_only, org=beta, role=role_member)
+    raw_key, _ = issue_api_key(user=member_only, org=beta)
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw_key, HTTP_X_ORGANIZATION_ID=str(acme.pk))
+
+    response = client.get(URL)
+
+    assert response.status_code == 200, response.content
+    assert response.json()["organizations"] == [{"id": beta.pk, "name": beta.name}]

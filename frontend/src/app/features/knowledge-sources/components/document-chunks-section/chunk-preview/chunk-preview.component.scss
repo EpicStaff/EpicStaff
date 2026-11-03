@@ -70,9 +70,18 @@
         }
 
         &--clickable {
+            // A button drawn as the plain ID badge it was: only the left border shows.
+            border-width: 0 0 0 2px;
+            border-style: solid;
+            border-color: currentColor;
+            font-family: inherit;
+            font-size: inherit;
+            font-weight: inherit;
+            // The list keeps its text's whitespace; the template's line breaks around the ID must not show.
+            white-space: normal;
             cursor: pointer;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 opacity: 0.8;
             }
         }

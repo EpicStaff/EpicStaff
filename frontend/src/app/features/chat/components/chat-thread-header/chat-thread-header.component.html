@@ -7,6 +7,8 @@
                 type="button"
                 class="thread-header__back"
                 [attr.aria-label]="backLabel()"
+                appTooltipOnOverflow=".thread-header__back-label"
+                [matTooltip]="backLabel()"
                 (click)="openConversation.close()"
             >
                 <app-svg-icon

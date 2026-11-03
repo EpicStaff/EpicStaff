@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import {
     afterNextRender,
@@ -110,6 +111,7 @@ const SECTION_ORDER: readonly EditorActionSection[] = [
     selector: 'app-shortcuts-modal',
     imports: [
         AppSvgIconComponent,
+        CdkTrapFocus,
         MatTooltipModule,
         TooltipOnOverflowDirective,
         ButtonComponent,

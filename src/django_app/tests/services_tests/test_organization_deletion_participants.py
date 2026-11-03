@@ -169,6 +169,34 @@ def test_template_agent_referencing_two_organizations_survives_deleting_one_of_t
 
 
 @pytest.mark.django_db
+def test_agent_definitions_with_a_fallback_config_survive_deleting_the_org_that_owns_the_fallback(
+    actor, acme, beta
+):
+    from agents.models import AgentDefinition
+    from tables.models.llm_models import LLMConfig
+
+    acme_primary = LLMConfig.objects.create(custom_name="acme-primary", org=acme)
+    acme_fallback = LLMConfig.objects.create(custom_name="acme-fallback", org=acme)
+    beta_primary = LLMConfig.objects.create(custom_name="beta-primary", org=beta)
+    AgentDefinition.objects.create(
+        org=acme, name="acme-agent", llm_config=acme_primary, fallback_llm_config=acme_fallback
+    )
+    # Only reachable through the database: the API refuses another org's config.
+    beta_agent = AgentDefinition.objects.create(
+        org=beta, name="beta-agent", llm_config=beta_primary, fallback_llm_config=acme_fallback
+    )
+
+    OrganizationManagementService().delete_organization(
+        actor=actor, org_id=acme.pk, verification_phrase=f"delete-{acme.name}"
+    )
+
+    assert not AgentDefinition.all_objects.filter(org=acme).exists()
+    beta_agent.refresh_from_db()
+    assert beta_agent.llm_config_id == beta_primary.pk
+    assert beta_agent.fallback_llm_config_id is None
+
+
+@pytest.mark.django_db
 def test_realtime_agent_chat_referencing_two_organizations_survives_deleting_one_of_them(
     actor, acme, beta
 ):

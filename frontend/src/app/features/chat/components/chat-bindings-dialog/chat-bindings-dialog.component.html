@@ -8,6 +8,7 @@
             type="button"
             class="bindings-dialog__icon-btn"
             aria-label="Close dialog"
+            matTooltip="Close dialog"
             (click)="close()"
         >
             <app-svg-icon
@@ -72,29 +73,53 @@
                 class="bindings-dialog__tab"
                 [hidden]="activeTab() !== 'general'"
             >
-                <app-custom-input
-                    label="Name"
-                    formControlName="name"
-                    [required]="true"
-                    [errorMessage]="textFieldError('name')"
-                    placeholder="e.g. Support bot"
-                />
-                <app-custom-input
-                    label="Displayed bot name"
-                    formControlName="bot_display_name"
-                    [required]="true"
-                    [errorMessage]="textFieldError('bot_display_name')"
-                    tooltipText="Shown to visitors in the chat widget."
-                />
-                <app-select
-                    label="Flow"
-                    formControlName="graph_id"
-                    [items]="flowItems()"
-                    [required]="true"
-                    [showSearch]="true"
-                    placeholder="Select a flow"
-                    tooltipText="The start node must declare chat_history and user_message; the end node must return reply."
-                />
+                <div class="bindings-dialog__field">
+                    <!-- The dialog opens with the focus here, its first field. -->
+                    <app-custom-input
+                        cdkFocusInitial
+                        label="Name"
+                        formControlName="name"
+                        [required]="true"
+                        [invalid]="showsError('name')"
+                        [ariaDescribedby]="nameErrors.id()"
+                        placeholder="e.g. Support bot"
+                    />
+                    <app-validation-errors
+                        #nameErrors
+                        [control]="form.controls.name"
+                    />
+                </div>
+                <div class="bindings-dialog__field">
+                    <app-custom-input
+                        label="Displayed bot name"
+                        formControlName="bot_display_name"
+                        [required]="true"
+                        [invalid]="showsError('bot_display_name')"
+                        [ariaDescribedby]="botNameErrors.id()"
+                        tooltipText="Shown to visitors in the chat widget."
+                    />
+                    <app-validation-errors
+                        #botNameErrors
+                        [control]="form.controls.bot_display_name"
+                    />
+                </div>
+                <div class="bindings-dialog__field">
+                    <app-select
+                        label="Flow"
+                        formControlName="graph_id"
+                        [items]="flowItems()"
+                        [required]="true"
+                        [invalid]="showsError('graph_id')"
+                        [ariaDescribedby]="flowErrors.id()"
+                        [showSearch]="true"
+                        placeholder="Select a flow"
+                        tooltipText="The start node must declare chat_history and user_message; the end node must return reply."
+                    />
+                    <app-validation-errors
+                        #flowErrors
+                        [control]="form.controls.graph_id"
+                    />
+                </div>
                 @for (contractError of contractErrors(); track contractError) {
                     <div class="bindings-dialog__contract-error text-body-small">{{ contractError }}</div>
                 }
@@ -191,28 +216,40 @@
                     />
                 </div>
                 <div class="bindings-dialog__row">
-                    <app-input-number
-                        label="Daily tokens per conversation"
-                        formControlName="token_budget_per_conversation"
-                        [required]="true"
-                        [min]="1"
-                        [stepSize]="1000"
-                        [max]="budgetCaps().token_budget_per_conversation"
-                        [invalid]="!!budgetCapMessage('token_budget_per_conversation')"
-                        [errorMessage]="budgetCapMessage('token_budget_per_conversation')"
-                        [tooltipText]="budgetTooltips().token_budget_per_conversation"
-                    />
-                    <app-input-number
-                        label="Daily tokens per desk"
-                        formControlName="daily_token_budget"
-                        [required]="true"
-                        [min]="1"
-                        [stepSize]="1000"
-                        [max]="budgetCaps().daily_token_budget"
-                        [invalid]="!!budgetCapMessage('daily_token_budget')"
-                        [errorMessage]="budgetCapMessage('daily_token_budget')"
-                        [tooltipText]="budgetTooltips().daily_token_budget"
-                    />
+                    <div class="bindings-dialog__field">
+                        <app-input-number
+                            label="Daily tokens per conversation"
+                            formControlName="token_budget_per_conversation"
+                            [required]="true"
+                            [min]="1"
+                            [stepSize]="1000"
+                            [max]="budgetCaps().token_budget_per_conversation"
+                            [invalid]="showsError('token_budget_per_conversation')"
+                            [ariaDescribedby]="conversationBudgetErrors.id()"
+                            [tooltipText]="budgetTooltips().token_budget_per_conversation"
+                        />
+                        <app-validation-errors
+                            #conversationBudgetErrors
+                            [control]="form.controls.token_budget_per_conversation"
+                        />
+                    </div>
+                    <div class="bindings-dialog__field">
+                        <app-input-number
+                            label="Daily tokens per desk"
+                            formControlName="daily_token_budget"
+                            [required]="true"
+                            [min]="1"
+                            [stepSize]="1000"
+                            [max]="budgetCaps().daily_token_budget"
+                            [invalid]="showsError('daily_token_budget')"
+                            [ariaDescribedby]="deskBudgetErrors.id()"
+                            [tooltipText]="budgetTooltips().daily_token_budget"
+                        />
+                        <app-validation-errors
+                            #deskBudgetErrors
+                            [control]="form.controls.daily_token_budget"
+                        />
+                    </div>
                 </div>
                 <app-select
                     label="When the budget is exhausted"
@@ -236,35 +273,56 @@
                     formControlName="handoff_enabled"
                     tooltipText="The flow, a budget or an error can hand the conversation to an operator."
                 />
-                <app-custom-input
-                    label="Displayed operator name"
-                    formControlName="operator_display_name"
-                    [required]="true"
-                    [errorMessage]="textFieldError('operator_display_name')"
-                    tooltipText="Shown to visitors in the chat widget."
-                />
+                <div class="bindings-dialog__field">
+                    <app-custom-input
+                        label="Displayed operator name"
+                        formControlName="operator_display_name"
+                        [required]="true"
+                        [invalid]="showsError('operator_display_name')"
+                        [ariaDescribedby]="operatorNameErrors.id()"
+                        tooltipText="Shown to visitors in the chat widget."
+                    />
+                    <app-validation-errors
+                        #operatorNameErrors
+                        [control]="form.controls.operator_display_name"
+                    />
+                </div>
             </div>
             <div
                 class="bindings-dialog__tab"
                 [hidden]="activeTab() !== 'inactivity'"
             >
-                <app-input-number
-                    label="Response time (minutes)"
-                    formControlName="response_time_minutes"
-                    [required]="true"
-                    [min]="1"
-                    [max]="durationCaps().response_time_seconds"
-                    [invalid]="!!durationCapMessage('response_time_seconds')"
-                    [errorMessage]="durationCapMessage('response_time_seconds')"
-                    [tooltipText]="durationTooltips().response_time_seconds"
-                />
-                <app-select
-                    label="Then"
-                    formControlName="on_response_timeout"
-                    [items]="onResponseTimeoutItems"
-                    [required]="true"
-                    tooltipText="What happens once a visitor has waited for a person longer than the response time."
-                />
+                <div class="bindings-dialog__field bindings-dialog__field--stepper">
+                    <app-input-number
+                        label="Response time (minutes)"
+                        formControlName="response_time_minutes"
+                        [required]="true"
+                        [min]="1"
+                        [max]="durationCaps().response_time_seconds"
+                        [invalid]="showsError('response_time_minutes')"
+                        [ariaDescribedby]="responseTimeErrors.id()"
+                        [tooltipText]="durationTooltips().response_time_seconds"
+                    />
+                    <app-validation-errors
+                        #responseTimeErrors
+                        [control]="form.controls.response_time_minutes"
+                    />
+                </div>
+                <div class="bindings-dialog__field">
+                    <app-select
+                        label="Then"
+                        formControlName="on_response_timeout"
+                        [items]="onResponseTimeoutItems"
+                        [required]="true"
+                        [invalid]="showsError('on_response_timeout')"
+                        [ariaDescribedby]="timeoutActionErrors.id()"
+                        tooltipText="What happens once a visitor has waited for a person longer than the response time."
+                    />
+                    <app-validation-errors
+                        #timeoutActionErrors
+                        [control]="form.controls.on_response_timeout"
+                    />
+                </div>
                 @if (responseTimeoutAction() === 'handback') {
                     <app-textarea
                         label="Hand-back notice"
@@ -288,16 +346,22 @@
                         </app-hint-message>
                     }
                 } @else {
-                    <app-input-number
-                        label="Close after (hours)"
-                        formControlName="close_after_hours"
-                        [required]="true"
-                        [min]="1"
-                        [max]="durationCaps().close_after_seconds"
-                        [invalid]="!!durationCapMessage('close_after_seconds')"
-                        [errorMessage]="durationCapMessage('close_after_seconds')"
-                        [tooltipText]="durationTooltips().close_after_seconds"
-                    />
+                    <div class="bindings-dialog__field bindings-dialog__field--stepper">
+                        <app-input-number
+                            label="Close after (hours)"
+                            formControlName="close_after_hours"
+                            [required]="true"
+                            [min]="1"
+                            [max]="durationCaps().close_after_seconds"
+                            [invalid]="showsError('close_after_hours')"
+                            [ariaDescribedby]="closeAfterErrors.id()"
+                            [tooltipText]="durationTooltips().close_after_seconds"
+                        />
+                        <app-validation-errors
+                            #closeAfterErrors
+                            [control]="form.controls.close_after_hours"
+                        />
+                    </div>
                 }
                 <!-- Always there while the warning applies, so Save can point at it from any tab. -->
                 @if (backlogEffects().length) {

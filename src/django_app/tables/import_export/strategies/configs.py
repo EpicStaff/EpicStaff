@@ -261,7 +261,7 @@ class BaseProviderRealtimeConfigStrategy(EntityImportExportStrategy):
             base_name=data["custom_name"],
             existing_names=existing_names,
         )
-        serializer = self.serializer_class(data={**data, "org": org_id})
+        serializer = self.serializer_class(data={**data, "org": org_id}, context={"org_id": org_id})
         serializer.is_valid(raise_exception=True)
         return serializer.save(created_by=resolve_author(kwargs.get("user")))
 

@@ -434,11 +434,15 @@
     }
 
     .field-expand-icon {
+        display: flex;
+        padding: 0;
+        border: none;
+        background: none;
         color: var(--white-alpha-50);
         cursor: pointer;
         transition: color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--white);
         }
     }
@@ -506,6 +510,12 @@
     }
 
     .prompt-id {
+        min-width: 0;
+        padding: 0;
+        border: none;
+        background: none;
+        text-align: left;
+        cursor: inherit;
         font-family: inherit;
         font-weight: var(--text-h4-weight);
         font-size: var(--text-h4-size);
