@@ -18,7 +18,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, LlmModelSelectorComponent } from '@shared/components';
 import { EnterBlurDirective, HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
@@ -124,6 +124,8 @@ export class AgentDetailComponent implements OnInit {
     /** Applied on every new reference, so re-selecting the same agent re-opens and scrolls up. */
     focusRequest = input<AgentSelection | null>(null);
     sharedSurfaceIds = input<ReadonlySet<number>>(new Set<number>());
+    /** The groups in explorer order, for grouping the shared surfaces offered to attach. */
+    groups = input<LabelDto[]>([]);
     /** When true, disables the reactive form and blocks save/delete/duplicate emissions. */
     readOnly = input<boolean>(false);
 

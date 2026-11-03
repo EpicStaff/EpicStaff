@@ -26,7 +26,7 @@ import {
     HasPermissionDirective,
     TooltipWhenCollapsedDirective,
 } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 import { computeUniqueName } from '@shared/utils';
 
 import { PermissionsService } from '../../../../../../../services/auth/permissions.service';
@@ -82,6 +82,8 @@ export class AgentSurfacesPanelComponent {
     llmConfigId = input<number | null>(null);
     defaultSurfaces = input<AgentDefaultSurface[]>([]);
     sharedSurfaceIds = input<ReadonlySet<number>>(new Set<number>());
+    /** The groups in explorer order; "Add From Shared" lists the shared surfaces under them. */
+    groups = input<LabelDto[]>([]);
     saving = input<boolean>(false);
     /** Last surface-save failure from the store; forwarded to each card for per-id revert. */
     saveError = input<SurfaceSaveError | null>(null);
@@ -258,11 +260,24 @@ export class AgentSurfacesPanelComponent {
         return this.sharedSurfaceIds().has(surface.id);
     }
 
+    /**
+     * Shared surfaces under their group's title, groups in explorer order and the ungrouped last under
+     * "No group". No titles at all while none of them is in a group.
+     */
     private readonly sharedItems = computed<SelectDropdownListItem<number>[]>(() => {
         const shared = this.sharedSurfaceIds();
-        return this.surfaces()
-            .filter((s) => shared.has(s.id))
-            .map((s) => ({ name: s.name, value: s.id }));
+        const sharedSurfaces = this.surfaces().filter((s) => shared.has(s.id));
+        const groups = this.groups();
+        // A group missing from the list (just deleted) counts as no group, as in the explorer.
+        const rankByGroupId = new Map(groups.map((group, index) => [group.id, index]));
+        const rankOf = (surface: Surface): number =>
+            (surface.group == null ? undefined : rankByGroupId.get(surface.group)) ?? groups.length;
+        if (sharedSurfaces.every((s) => rankOf(s) === groups.length)) {
+            return sharedSurfaces.map((s) => ({ name: s.name, value: s.id }));
+        }
+        return [...sharedSurfaces]
+            .sort((a, b) => rankOf(a) - rankOf(b))
+            .map((s) => ({ name: s.name, value: s.id, group: groups[rankOf(s)]?.name ?? 'No group' }));
     });
 
     private readonly attachedSharedByCategory = computed<Map<SurfaceCategoryId, number[]>>(() => {

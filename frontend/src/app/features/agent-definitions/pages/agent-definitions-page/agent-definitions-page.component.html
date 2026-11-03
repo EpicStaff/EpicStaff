@@ -235,6 +235,7 @@
                             [surfaceCreateErrorTick]="store.surfaceCreateErrorTick()"
                             [instructionListError]="store.selectedAgentInstructionListError()"
                             [sharedSurfaceIds]="store.sharedSurfaceIdSet()"
+                            [groups]="store.groups()"
                             [readOnly]="agentsReadOnly()"
                             (save)="onSaveAgent($event)"
                             (delete)="onDeleteAgent($event)"
