@@ -48,60 +48,96 @@ const BEGIN_MARKER = `<!-- BEGIN GENERATED: ${REGION} -->`;
 const END_MARKER = `<!-- END GENERATED: ${REGION} -->`;
 
 // SPDX licence identifiers that have been reviewed for the shipped frontend.
-// A package declaring any other identifier stops the script: check that
-// licence's terms, then add its identifier here in the same change.
-const REVIEWED_LICENSE_IDS = new Set([
-  '0BSD',
-  'Apache-2.0',
-  'BSD-2-Clause',
-  'GPL-3.0-or-later',
-  'ISC',
-  'MIT',
-  'MPL-2.0',
-  'OFL-1.1',
-  'Zlib',
-]);
+// A package declaring any identifier outside these lists stops the script:
+// check that licence's terms, then add its identifier in the same change.
+//
+// Acceptable on their own: a package may be shipped under any one of these.
+const REVIEWED_LICENSE_IDS = new Set(['0BSD', 'Apache-2.0', 'BSD-2-Clause', 'ISC', 'MIT', 'OFL-1.1', 'Zlib']);
+// Reviewed, but acceptable only as an alternative in an OR expression whose
+// other side is acceptable, e.g. "(MIT OR GPL-3.0-or-later)": we take the
+// acceptable side. A package licensed under one of these alone stops the script.
+const ALTERNATIVE_ONLY_LICENSE_IDS = new Set(['GPL-3.0-or-later', 'MPL-2.0']);
+// SPDX licence exceptions (the part after WITH). None is reviewed yet.
+const REVIEWED_EXCEPTION_IDS = new Set([]);
 
-// Accepts an SPDX expression ("MIT", "(MIT OR Apache-2.0)", "GPL-2.0-only WITH
-// Classpath-exception-2.0") whose licence identifiers are all reviewed, and
-// returns the reason it is rejected otherwise.
-function licenseProblem(expression) {
+class LicenseExpressionError extends Error {}
+
+// Parses an SPDX licence expression (SPDX specification, annex D):
+//   expression := and ('OR' and)*
+//   and        := term ('AND' term)*
+//   term       := '(' expression ')' | identifier ['+'] ['WITH' exception]
+// and returns a tree of { kind: 'or' | 'and', parts } and
+// { kind: 'license', identifier, exception } nodes.
+function parseLicenseExpression(expression) {
   const tokens = expression.match(/\(|\)|[^\s()]+/g) || [];
-  let depth = 0;
-  let expectOperand = true;
-  for (let index = 0; index < tokens.length; index++) {
-    const token = tokens[index];
-    if (token === '(') {
-      if (!expectOperand) return 'is not a valid SPDX expression';
-      depth++;
-    } else if (token === ')') {
-      if (expectOperand || depth === 0) return 'is not a valid SPDX expression';
-      depth--;
-    } else if (token === 'AND' || token === 'OR') {
-      if (expectOperand) return 'is not a valid SPDX expression';
-      expectOperand = true;
-    } else if (token === 'WITH') {
-      // The exception names a licence exception, not a licence; it must follow one.
-      const exception = tokens[index + 1];
-      if (expectOperand || !exception || /^(AND|OR|WITH|\(|\))$/.test(exception)) {
-        return 'is not a valid SPDX expression';
-      }
-      index++;
-    } else {
-      if (!expectOperand) return 'is not a valid SPDX expression';
-      const identifier = token.replace(/\+$/, '');
-      if (!REVIEWED_LICENSE_IDS.has(identifier)) {
-        return `uses "${identifier}", which is not in REVIEWED_LICENSE_IDS`;
-      }
-      expectOperand = false;
+  let position = 0;
+  const peek = () => tokens[position];
+  const take = () => tokens[position++];
+  const isIdentifier = (token) => token !== undefined && /^[A-Za-z0-9.-]+\+?$/.test(token) && !/^(AND|OR|WITH)$/.test(token);
+
+  function parseTerm() {
+    if (peek() === '(') {
+      take();
+      const inner = parseOr();
+      if (take() !== ')') throw new LicenseExpressionError();
+      return inner;
     }
+    const token = take();
+    if (!isIdentifier(token)) throw new LicenseExpressionError();
+    const node = { kind: 'license', identifier: token.replace(/\+$/, ''), exception: null };
+    if (peek() === 'WITH') {
+      take();
+      const exception = take();
+      if (!isIdentifier(exception) || exception.endsWith('+')) throw new LicenseExpressionError();
+      node.exception = exception;
+    }
+    return node;
   }
-  if (expectOperand || depth !== 0) return 'is not a valid SPDX expression';
+  function parseSequence(operator, parsePart, kind) {
+    const parts = [parsePart()];
+    while (peek() === operator) {
+      take();
+      parts.push(parsePart());
+    }
+    return parts.length === 1 ? parts[0] : { kind, parts };
+  }
+  const parseAnd = () => parseSequence('AND', parseTerm, 'and');
+  const parseOr = () => parseSequence('OR', parseAnd, 'or');
+
+  const tree = parseOr();
+  if (position !== tokens.length) throw new LicenseExpressionError();
+  return tree;
+}
+
+// Returns why the expression may not be shipped, or null when it may.
+function licenseProblem(expression) {
+  let tree;
+  try {
+    tree = parseLicenseExpression(expression);
+  } catch (error) {
+    if (error instanceof LicenseExpressionError) return 'is not a valid SPDX expression';
+    throw error;
+  }
+  const unreviewed = [];
+  // True when the terms can be met using reviewed, acceptable licences only.
+  function acceptable(node) {
+    if (node.kind === 'or') return node.parts.map(acceptable).some(Boolean);
+    if (node.kind === 'and') return node.parts.map(acceptable).every(Boolean);
+    const known = REVIEWED_LICENSE_IDS.has(node.identifier) || ALTERNATIVE_ONLY_LICENSE_IDS.has(node.identifier);
+    if (!known) unreviewed.push(node.identifier);
+    if (node.exception !== null && !REVIEWED_EXCEPTION_IDS.has(node.exception)) unreviewed.push(node.exception);
+    return REVIEWED_LICENSE_IDS.has(node.identifier) && (node.exception === null || REVIEWED_EXCEPTION_IDS.has(node.exception));
+  }
+  const ok = acceptable(tree);
+  if (unreviewed.length > 0) {
+    return `uses ${unreviewed.map((identifier) => `"${identifier}"`).join(', ')}, not in the reviewed lists`;
+  }
+  if (!ok) return 'can only be met under a licence that is acceptable only as an alternative';
   return null;
 }
 
 function declaredLicenses(manifest) {
-  const declared = manifest.license ?? manifest.licenses;
+  const declared = manifest.license || manifest.licenses;
   const list = (Array.isArray(declared) ? declared : [declared])
     .map((entry) => (entry && typeof entry === 'object' ? entry.type || entry.name : entry))
     .filter((entry) => typeof entry === 'string' && entry.trim() !== '');
@@ -120,7 +156,9 @@ function declaredLicenses(manifest) {
 const LICENSE_FILE_PRECEDENCE = [/^LICENSE$/, /^LICENSE-\w+$/, /^LICENCE$/, /^LICENCE-\w+$/, /^COPYING$/, /^README$/];
 
 function licenseFileOf(packageDir) {
-  const files = fs.readdirSync(packageDir);
+  // Sorted, so the choice does not depend on the order the file system lists
+  // them in (zone.js ships both LICENSE and LICENSE.wrapped).
+  const files = fs.readdirSync(packageDir).sort((left, right) => left.toLowerCase().localeCompare(right.toLowerCase()));
   for (const pattern of LICENSE_FILE_PRECEDENCE) {
     const match = files.find((file) => pattern.test(path.basename(file, path.extname(file)).toUpperCase()));
     if (match && fs.lstatSync(path.join(packageDir, match)).isFile()) return path.join(packageDir, match);
@@ -160,24 +198,36 @@ function repositoryOf(manifest) {
     .replace(/\.git$/, '');
 }
 
-// npm accepts an author as an object or as the string "Name <email> (url)".
+// npm accepts an author as an object or as the string "Name <email> (url)",
+// parsed here the way npm's normalize-package-data parses it.
 function authorOf(manifest) {
   const author = manifest.author;
   if (author && typeof author === 'object') return author;
   if (typeof author !== 'string') return {};
-  const match = /^([^<(]+?)?[ \t]*(?:<([^>(]+?)>)?[ \t]*(?:\(([^)]+?)\)|$)/.exec(author);
-  return match ? { name: match[1], email: match[2], url: match[3] } : {};
+  const name = author.match(/^([^(<]+)/);
+  const email = author.match(/<([^<>]+)>/);
+  const url = author.match(/\(([^()]+)\)/);
+  return {
+    name: name && name[0].trim() ? name[0].trim() : undefined,
+    email: email ? email[1] : undefined,
+    url: url ? url[1] : undefined,
+  };
 }
 
 // The production tree is every package-lock.json entry npm does not mark
-// `dev`. An entry with no directory under node_modules is an optional package
-// for another platform, which is not installed and not shipped from here.
+// `dev`, other than links to local folders. An optional entry with no directory
+// under node_modules is a package for another platform, which is not installed
+// and not shipped from here.
 const lockFile = path.join(FRONTEND_DIR, 'package-lock.json');
 if (!fs.existsSync(lockFile)) {
   process.stderr.write(`Error: ${lockFile} does not exist.\n`);
   process.exit(1);
 }
-const lockedPackages = JSON.parse(fs.readFileSync(lockFile, 'utf8')).packages || {};
+const lockedPackages = JSON.parse(fs.readFileSync(lockFile, 'utf8')).packages;
+if (!lockedPackages || typeof lockedPackages !== 'object') {
+  process.stderr.write('Error: package-lock.json has no "packages" map (lockfile version 2 or later is required).\n');
+  process.exit(1);
+}
 if (!fs.existsSync(path.join(FRONTEND_DIR, 'node_modules'))) {
   process.stderr.write('Error: frontend/node_modules does not exist. Run `npm ci` first.\n');
   process.exit(1);
@@ -191,11 +241,17 @@ for (const [location, entry] of Object.entries(lockedPackages)) {
   const packageDir = path.join(FRONTEND_DIR, location);
   const manifestFile = path.join(packageDir, 'package.json');
   if (!fs.existsSync(manifestFile)) {
-    if (entry.optional) continue;
+    if (entry.optional || entry.devOptional) continue;
     process.stderr.write(`Error: ${location} is in package-lock.json but not installed. Run \`npm ci\` first.\n`);
     process.exit(1);
   }
   const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+  if (manifest.version !== entry.version) {
+    process.stderr.write(
+      `Error: ${location} is ${manifest.version} in node_modules but ${entry.version} in package-lock.json. Run \`npm ci\` first.\n`
+    );
+    process.exit(1);
+  }
   const key = `${manifest.name}@${manifest.version}`;
   if (data[key]) continue;
   const { licenses, problem } = declaredLicenses(manifest);
@@ -213,9 +269,9 @@ for (const [location, entry] of Object.entries(lockedPackages)) {
 if (licenseProblems.length > 0) {
   process.stderr.write(
     'Error: these production packages need their licence reviewed by hand:\n' +
-      [...new Set(licenseProblems)].sort().join('\n') +
-      '\nCheck each licence. If its terms are acceptable, add its SPDX identifier to ' +
-      'REVIEWED_LICENSE_IDS; otherwise remove the package. THIRD-PARTY-NOTICES.md was not changed.\n'
+      licenseProblems.sort().join('\n') +
+      '\nCheck each licence. If its terms are acceptable, add its SPDX identifier to the matching ' +
+      'list at the top of this script; otherwise remove the package. THIRD-PARTY-NOTICES.md was not changed.\n'
   );
   process.exit(1);
 }
@@ -228,14 +284,14 @@ for (const key of Object.keys(data).sort()) {
   const name = key.substring(0, atIdx);
   const version = key.substring(atIdx + 1);
 
-  let licenses = d.licenses || 'UNKNOWN';
+  const licenses = d.licenses;
 
   let licenseText = null;
   if (d.licenseFile) {
     try {
       const txt = fs.readFileSync(d.licenseFile, 'utf8');
       // Only include if it actually looks like a license (skip README files used as fallback)
-      const lower = d.licenseFile.toLowerCase();
+      const lower = path.basename(d.licenseFile).toLowerCase();
       if (lower.includes('license') || lower.includes('copying') || lower.includes('notice')) {
         licenseText = txt.trim();
       }
@@ -260,10 +316,7 @@ for (const e of entries) dist[e.licenses] = (dist[e.licenses] || 0) + 1;
 const generatedAt = new Date().toUTCString().replace(/\s+/g, ' ');
 const gitShaResult = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' });
 const gitSha = gitShaResult.status === 0 ? gitShaResult.stdout.trim() : 'UNKNOWN';
-const lockFilePath = path.join(FRONTEND_DIR, 'package-lock.json');
-const lockHash = fs.existsSync(lockFilePath)
-  ? createHash('sha256').update(fs.readFileSync(lockFilePath)).digest('hex').slice(0, 16)
-  : 'no-lock';
+const lockHash = createHash('sha256').update(fs.readFileSync(lockFile)).digest('hex').slice(0, 16);
 
 // Build markdown for the frontend region body
 const lines = [];
