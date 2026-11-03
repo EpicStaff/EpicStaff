@@ -1,5 +1,5 @@
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, BinaryIO
 
 from foundation.utils.lazy import LazyImport
 
@@ -35,7 +35,6 @@ class S3FileStorage:
         read_timeout: int = 60,
         retries: int = 3,
         max_pool_contections: int = 20,
-
     ):
         """Build the boto3 client this storage and every bucket/object under it shares.
 
@@ -63,8 +62,8 @@ class S3FileStorage:
                 connect_timeout=connect_timeout,
                 read_timeout=read_timeout,
                 retries={"mode": "standard", "max_attempts": retries},
-                max_pool_connections=max_pool_contections
-            )
+                max_pool_connections=max_pool_contections,
+            ),
         )
 
     def bucket(self, bucket: str) -> "S3Bucket":
@@ -170,7 +169,9 @@ class S3Bucket:
         paginator = self._client.get_paginator("list_objects_v2")
         objects: list[S3Object] = []
         for page in paginator.paginate(**kwargs, PaginationConfig=pagination_config):
-            objects.extend(S3Object(self._client, self._name, d["Key"]) for d in page.get("Contents", []))
+            objects.extend(
+                S3Object(self._client, self._name, d["Key"]) for d in page.get("Contents", [])
+            )
         return objects
 
     async def aexist(self) -> bool:
@@ -241,6 +242,36 @@ class S3Object:
         self._client.put_object(Bucket=self._bucket, Key=self._key, Body=data)
 
     @handle_error
+    def upload(self, file: BinaryIO):
+        """Send `file`'s contents to this object in parts, overwriting it if it exists.
+
+        The body never has to be in memory in one piece, unlike `write`: boto3 reads
+        `file` in chunks and switches to a multipart upload once it is large enough.
+
+        Args:
+            file: Readable binary file object, consumed from its current position.
+        """
+        self._client.upload_fileobj(file, self._bucket, self._key)
+
+    @handle_error
+    def download(self, file: BinaryIO):
+        """Fetch this object's body in parts and write it into `file`.
+
+        Takes a sink rather than returning the body, because a multipart download
+        fetches ranges in parallel and writes them out of order: there is no ordered
+        stream to hand back without first assembling the whole body in memory, which
+        is what this exists to avoid. A sink without `seek` makes boto3 fall back to
+        a sequential download.
+
+        Args:
+            file: Writable binary file object, written from its current position.
+
+        Raises:
+            S3ObjectNotExistError: No object with this key exists in the bucket.
+        """
+        self._client.download_fileobj(self._bucket, self._key, file)
+
+    @handle_error
     def delete(self):
         """Delete this object. A no-op if the key doesn't already exist."""
         self._client.delete_object(Bucket=self._bucket, Key=self._key)
@@ -256,6 +287,12 @@ class S3Object:
     async def awrite(self, data: bytes):
         """Async version of `write`, run in a worker thread."""
         await asyncio.to_thread(self.write, data)
+
+    async def aupload(self, file: BinaryIO):
+        await asyncio.to_thread(self.upload, file)
+
+    async def adownload(self, file: BinaryIO):
+        await asyncio.to_thread(self.download, file)
 
     async def adelete(self):
         """Async version of `delete`, run in a worker thread."""
