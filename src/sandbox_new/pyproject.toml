@@ -7,6 +7,8 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "boto3==1.43.111",
+    "boto3-stubs==1.43.111",
     "foundation",
     "litestar==2.24.0",
     "loguru==0.7.3",
