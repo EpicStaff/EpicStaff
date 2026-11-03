@@ -1,11 +1,13 @@
 import { GraphContentDto, GraphDto } from '../../../features/flows/models/graph.model';
 import { isNumberedNodeType } from '../../core/helpers/node-number.util';
+import { normalizeTableNodeSize } from '../../core/helpers/node-size.util';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import { NodeModel } from '../../core/models/node.model';
 import { mapClassificationDecisionTableToConnections } from './connections/classification-decision-table-connections.mapper';
 import { mapDecisionTableToConnections } from './connections/decision-table-connections.mapper';
 import { mapEdgesToConnections } from './connections/plain-edge.mapper';
+import { hasOutdatedStoredSize } from './node-dto-metadata-to-flow-metadata.mapper';
 import { mapAgentNodeToModel } from './nodes/agent-node.mapper';
 import { mapAudioToTextNodeToModel } from './nodes/audio-to-text-node.mapper';
 import { mapClassificationDecisionTableNodeToModel } from './nodes/classification-decision-table-node.mapper';
@@ -51,6 +53,44 @@ function deduplicateNodeNumbers(nodes: NodeModel[], graphId: number): NodeModel[
         );
     }
     return result;
+}
+
+/**
+ * Every node row of the graph. Only rows saved before node sizes came from frontend constants carry
+ * a stored size, so a node list added after that change never needs to be listed here.
+ */
+function storedNodeRows(graph: GraphContentDto): { id: number; metadata?: unknown }[] {
+    return [
+        ...(graph.start_node_list ?? []),
+        ...(graph.python_node_list ?? []),
+        ...(graph.task_node_list ?? []),
+        ...(graph.agent_node_list ?? []),
+        ...(graph.file_extractor_node_list ?? []),
+        ...(graph.audio_transcription_node_list ?? []),
+        ...(graph.subgraph_node_list ?? []),
+        ...(graph.graph_note_list ?? []),
+        ...(graph.webhook_trigger_node_list ?? []),
+        ...(graph.telegram_trigger_node_list ?? []),
+        ...(graph.schedule_trigger_node_list ?? []),
+        ...(graph.end_node_list ?? []),
+        ...(graph.decision_table_node_list ?? []),
+        ...(graph.classification_decision_table_node_list ?? []),
+        ...(graph.knowledge_node_list ?? []),
+        ...(graph.key_value_node_list ?? []),
+    ];
+}
+
+/** Backend ids of the nodes stored with a size they are no longer drawn at (see `hasOutdatedStoredSize`). */
+function findNodesWithOutdatedStoredSize(graph: GraphContentDto, nodeByBackendId: Map<number, NodeModel>): Set<number> {
+    const outdated = new Set<number>();
+    for (const row of storedNodeRows(graph)) {
+        const node = nodeByBackendId.get(row.id);
+        // A table's drawn height follows its rows, as normalizeFlowPorts sets it later in the load.
+        if (node && hasOutdatedStoredSize(row.metadata, node.type, normalizeTableNodeSize(node).size)) {
+            outdated.add(row.id);
+        }
+    }
+    return outdated;
 }
 
 export function mapGraphDtoToFlowModel(graph: GraphContentDto & Pick<GraphDto, 'id'>): FlowModel {
@@ -129,7 +169,12 @@ export function mapGraphDtoToFlowModel(graph: GraphContentDto & Pick<GraphDto, '
 
     // ── 5. Map all edge lists to canvas connections ──────────────────────
     const allConnections: ConnectionModel[] = [
-        ...mapEdgesToConnections(graph.edge_list ?? [], backendIdToUuid, nodeByBackendId),
+        ...mapEdgesToConnections(
+            graph.edge_list ?? [],
+            backendIdToUuid,
+            nodeByBackendId,
+            findNodesWithOutdatedStoredSize(graph, nodeByBackendId)
+        ),
         ...mapDecisionTableToConnections(
             decisionTableNodes,
             backendIdToUuid,

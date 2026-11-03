@@ -18,11 +18,15 @@ function extractPersistedWaypoints(metadata: Record<string, unknown>): IPoint[] 
  * Maps plain edges (edge_list) to canvas connections.
  * Skips edges where the source is a TABLE node — those are
  * handled by the decision-table mapper.
+ *
+ * @param nodesWithOutdatedStoredSize backend ids of nodes stored with a size they are no longer
+ *                                    drawn at (see `hasOutdatedStoredSize`)
  */
 export function mapEdgesToConnections(
     edges: Edge[],
     backendIdToUuid: Map<number, string>,
-    nodeByBackendId: Map<number, NodeModel>
+    nodeByBackendId: Map<number, NodeModel>,
+    nodesWithOutdatedStoredSize: ReadonlySet<number>
 ): ConnectionModel[] {
     const connections: ConnectionModel[] = [];
 
@@ -57,7 +61,11 @@ export function mapEdgesToConnections(
             continue;
         }
 
-        const restoredWaypoints = extractPersistedWaypoints(edge.metadata ?? {});
+        // Old rows were saved at a different node size, so the bends placed on a wire of such a node
+        // no longer meet its ports: the wire is routed afresh instead of restoring them.
+        const touchesOutdatedNode =
+            nodesWithOutdatedStoredSize.has(edge.start_node_id) || nodesWithOutdatedStoredSize.has(edge.end_node_id);
+        const restoredWaypoints = touchesOutdatedNode ? undefined : extractPersistedWaypoints(edge.metadata ?? {});
 
         connections.push({
             ...createFlowConnection(

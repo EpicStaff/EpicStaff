@@ -167,8 +167,6 @@ interface PanelInstanceView {
 })
 export class NodePanelShellComponent {
     public readonly node = input<NodeModel | null>(null);
-    protected readonly nodeColors = NODE_COLORS;
-    protected readonly nodeIcons = NODE_ICONS;
     public readonly currentFlowId = input<number | null>(null);
     public readonly save = output<NodeModel>();
     public readonly autosave = output<NodeModel>();
@@ -259,6 +257,8 @@ export class NodePanelShellComponent {
         const hasSomethingToSave = (panel?.isDirty?.() ?? false) || (panel?.needsSave?.() ?? false);
         return hasSomethingToSave && !!panel?.onSaveClick;
     });
+    protected readonly nodeColors = NODE_COLORS;
+    protected readonly nodeIcons = NODE_ICONS;
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
     private isAutosaving = false;

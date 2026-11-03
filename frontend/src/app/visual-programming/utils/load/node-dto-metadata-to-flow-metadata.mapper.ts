@@ -21,3 +21,22 @@ export function mapNodeDtoMetadataToFlowNodeMetadata(
         size: nodeType === NodeType.NOTE ? readNoteSize(metadata) : getDefaultNodeSize(nodeType),
     };
 }
+
+/**
+ * Whether a node row still carries a size from before node sizes came from frontend constants, and
+ * that size is not the one the node is drawn at now. Such a row was saved at a different size, so
+ * the node's ports have moved since and the bends a user placed on its wires no longer meet them.
+ * A note is drawn at its stored size, so a note's size is never outdated. A row without a stored
+ * size has nothing to compare, so it is not outdated either.
+ */
+export function hasOutdatedStoredSize(
+    metadata: unknown,
+    nodeType: NodeType,
+    drawnSize: { width: number; height: number }
+): boolean {
+    if (nodeType === NodeType.NOTE) return false;
+    const storedSize = (metadata as { size?: unknown } | null | undefined)?.size;
+    if (typeof storedSize !== 'object' || storedSize === null) return false;
+    const { width, height } = storedSize as { width?: unknown; height?: unknown };
+    return width !== drawnSize.width || height !== drawnSize.height;
+}

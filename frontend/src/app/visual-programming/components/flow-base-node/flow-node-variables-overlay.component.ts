@@ -52,8 +52,9 @@ import { BaseNodeModel, NodeModel } from '../../core/models/node.model';
 })
 export class FlowNodeVariablesOverlayComponent {
     @Input({ required: true }) node!: NodeModel;
-    protected readonly nodeColors = NODE_COLORS;
     @Input() showVariables = false;
+
+    protected readonly nodeColors = NODE_COLORS;
 
     public get baseNode(): (BaseNodeModel & NodeModel) | null {
         const node = this.node;
