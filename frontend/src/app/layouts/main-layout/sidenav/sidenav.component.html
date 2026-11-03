@@ -107,12 +107,12 @@
                     [cdkConnectedOverlayPositions]="popoverPositions"
                     [cdkConnectedOverlayPush]="true"
                     (attach)="focusOpenedPopover()"
-                    (detach)="closeLists()"
+                    (detach)="onPopoverDetach('switcher')"
                     (overlayOutsideClick)="closeLists()"
                     (overlayKeydown)="onPopoverKeydown($event, switcherRow)"
                 >
                     <div
-                        class="apps-popover"
+                        class="sidenav-popover"
                         role="dialog"
                         aria-label="Switch app"
                         cdkTrapFocus
@@ -270,12 +270,12 @@
                         [cdkConnectedOverlayPositions]="popoverPositions"
                         [cdkConnectedOverlayPush]="true"
                         (attach)="focusOpenedPopover()"
-                        (detach)="closeLists()"
+                        (detach)="onPopoverDetach('apps')"
                         (overlayOutsideClick)="closeLists()"
                         (overlayKeydown)="onPopoverKeydown($event, appsRow)"
                     >
                         <div
-                            class="apps-popover"
+                            class="sidenav-popover"
                             role="dialog"
                             aria-label="Apps"
                             cdkTrapFocus
@@ -357,6 +357,78 @@
                             <span class="sidenav-row-label text-body-medium">{{ item.label }}</span>
                         }
                     </a>
+                </li>
+            }
+        }
+
+        @if (showsHelp()) {
+            <li
+                class="sidenav-nav-item"
+                cdkOverlayOrigin
+                #helpOrigin="cdkOverlayOrigin"
+            >
+                <button
+                    #helpRow
+                    type="button"
+                    class="sidenav-nav-link sidenav-nav-button"
+                    [class.active]="openList() === 'help'"
+                    [attr.aria-expanded]="openList() === 'help'"
+                    [attr.aria-haspopup]="listsInline() ? null : 'dialog'"
+                    [attr.aria-controls]="listsInline() && openList() === 'help' ? 'sidenav-help-list' : null"
+                    [attr.aria-label]="isExpanded() ? null : 'Help'"
+                    matTooltip="Help"
+                    matTooltipPosition="right"
+                    [matTooltipDisabled]="isExpanded() || openList() === 'help'"
+                    (click)="toggleList('help')"
+                >
+                    <div class="sidenav-link-icon">
+                        <app-svg-icon
+                            icon="help"
+                            size="1.25rem"
+                        />
+                    </div>
+                    @if (isExpanded()) {
+                        <span class="sidenav-row-label text-body-medium">Help</span>
+                        <app-svg-icon
+                            class="sidenav-row-trail"
+                            [icon]="listsInline() && openList() === 'help' ? 'chevron-down' : 'chevron-right'"
+                            size="1rem"
+                        />
+                    }
+                </button>
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="helpOrigin"
+                    [cdkConnectedOverlayOpen]="openList() === 'help' && !listsInline()"
+                    [cdkConnectedOverlayPositions]="popoverPositions"
+                    [cdkConnectedOverlayPush]="true"
+                    (attach)="focusOpenedPopover()"
+                    (detach)="onPopoverDetach('help')"
+                    (overlayOutsideClick)="closeLists()"
+                    (overlayKeydown)="onPopoverKeydown($event, helpRow)"
+                >
+                    <div
+                        class="sidenav-popover"
+                        role="dialog"
+                        aria-label="Guides"
+                        cdkTrapFocus
+                    >
+                        <app-help-menu
+                            variant="popover"
+                            (tourChosen)="onTourChosen($event, helpRow)"
+                        />
+                    </div>
+                </ng-template>
+            </li>
+            @if (listsInline() && openList() === 'help') {
+                <li
+                    id="sidenav-help-list"
+                    class="sidenav-inline-list"
+                >
+                    <app-help-menu
+                        variant="inline"
+                        (tourChosen)="onTourChosen($event, helpRow)"
+                    />
                 </li>
             }
         }
