@@ -38,34 +38,36 @@
         [cdkTrapFocusAutoCapture]="!isSingle()"
         (click)="$event.stopPropagation()"
     >
-        <div
-            class="labels-section-header"
-            [class.labels-section-header--single]="isSingle()"
-        >
-            @if (!isSingle()) {
-                <div class="header-labels-left">
-                    <app-svg-icon
-                        icon="label"
-                        size="1.125rem"
-                        class="section-label-icon"
-                    />
-                    <span>{{ pluralTitle() }}</span>
-                </div>
-            }
-            @if (!addingRoot()) {
-                <button
-                    type="button"
-                    class="add-root-btn"
-                    (click)="startAddRoot()"
-                >
-                    <app-svg-icon
-                        icon="plus"
-                        size="0.6rem"
-                    />
-                    <span>{{ addButtonText() }}</span>
-                </button>
-            }
-        </div>
+        @if (!isSingle() || !addingRoot()) {
+            <div
+                class="labels-section-header"
+                [class.labels-section-header--single]="isSingle()"
+            >
+                @if (!isSingle()) {
+                    <div class="header-labels-left">
+                        <app-svg-icon
+                            icon="label"
+                            size="1.125rem"
+                            class="section-label-icon"
+                        />
+                        <span>{{ pluralTitle() }}</span>
+                    </div>
+                }
+                @if (!addingRoot()) {
+                    <button
+                        type="button"
+                        class="add-root-btn"
+                        (click)="startAddRoot()"
+                    >
+                        <app-svg-icon
+                            icon="plus"
+                            size="0.6rem"
+                        />
+                        <span>{{ addButtonText() }}</span>
+                    </button>
+                }
+            </div>
+        }
 
         @if (showSearch()) {
             <div class="labels-search">
@@ -96,7 +98,10 @@
         }
 
         @if (addingRoot()) {
-            <div class="add-label-row">
+            <div
+                class="add-label-row"
+                [class.add-label-row--single]="isSingle()"
+            >
                 <input
                     class="label-input"
                     [class.has-error]="addLabelError()"
