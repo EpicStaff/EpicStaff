@@ -49,6 +49,8 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     tooltipText = input<string>('');
     // accessible name for the field when it has no visible `label` (e.g. a plain text caption next to it)
     ariaLabel = input<string>('');
+    /** Ids of what else describes the input, e.g. the `app-validation-errors` saying why it is invalid. */
+    ariaDescribedby = input<string | null>(null);
     alwaysShowSteps = input<true>();
 
     mod = input<'default' | 'small'>('default');
@@ -104,6 +106,11 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
         return '';
     });
     protected readonly messageId = `input-number-message-${generateUuid()}`;
+    /** Its own message (while shown) and whatever else the parent says describes the input. */
+    protected readonly describedBy = computed(() => {
+        const ids = [this.message() ? this.messageId : null, this.ariaDescribedby()].filter(Boolean);
+        return ids.length ? ids.join(' ') : null;
+    });
 
     onChange: (value: number | null) => void = () => {};
     onTouched: () => void = () => {};
