@@ -224,7 +224,7 @@ jobs:
 
       - name: Install dependencies
         if: vars.CLA_ENFORCED == 'true'
-        run: pip install requests
+        run: python -m pip install --require-hashes -r .github/requirements/requests.txt
 
       - name: Verify PR author signed the CLA
         if: vars.CLA_ENFORCED == 'true'
@@ -287,7 +287,7 @@ jobs:
 
       - name: Test envtool and the setup wizard
         run: |
-          python -m pip install --quiet pyyaml==6.0.3
+          python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
           python -m unittest scripts/test_envtool.py
 
   # Backend half of the licence attribution guard: compares the uv.lock hashes
@@ -441,7 +441,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -456,7 +456,7 @@ jobs:
       # at collection and agent errors out across the board.
       - name: Generate dev env from env.yaml
         run: |
-          python -m pip install --quiet pyyaml
+          python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
           python scripts/envtool.py --dev
 
       # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
@@ -555,7 +555,7 @@ jobs:
           # --user because /usr/local is root-owned and this job is not root,
           # and GITHUB_PATH because nothing else puts that prefix's bin
           # directory on PATH, while the Makefile calls `uv` by name.
-          python -m pip install --no-cache-dir --user uv==0.11.21
+          python -m pip install --no-cache-dir --user --require-hashes -r .github/requirements/uv.txt
           echo "$PYTHONUSERBASE/bin" >> "$GITHUB_PATH"
 
       - name: Cache uv downloads
@@ -570,7 +570,7 @@ jobs:
       # the file is absent, so the suite cannot even be collected without this.
       - name: Generate dev env from env.yaml
         run: |
-          python -m pip install --quiet --user pyyaml
+          python -m pip install --quiet --user --require-hashes -r .github/requirements/pyyaml.txt
           python scripts/envtool.py --dev
 
       # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
@@ -605,7 +605,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -663,7 +663,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -724,7 +724,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -736,7 +736,7 @@ jobs:
       # Same reason as the matrix job: settings read src/.env at import time.
       - name: Generate dev env from env.yaml
         run: |
-          python -m pip install --quiet pyyaml
+          python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
           python scripts/envtool.py --dev
 
       # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
@@ -780,7 +780,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -793,7 +793,7 @@ jobs:
       # PyYAML also serves the lab's own envtool run.
       - name: Generate dev env from env.yaml
         run: |
-          python -m pip install --quiet pyyaml
+          python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
           python scripts/envtool.py --dev
 
       # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
@@ -861,7 +861,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install uv
-        run: python -m pip install --no-cache-dir uv==0.11.21
+        run: python -m pip install --no-cache-dir --require-hashes -r .github/requirements/uv.txt
 
       - name: Cache uv downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -970,7 +970,7 @@ jobs:
           python-version: '3.12.10'
 
       - name: Install PyYAML
-        run: python -m pip install --quiet pyyaml
+        run: python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
 
       - name: Describe the Docker host
         run: bash .github/scripts/describe_docker_host.sh

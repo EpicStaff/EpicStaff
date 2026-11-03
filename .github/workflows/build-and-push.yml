@@ -99,7 +99,7 @@ jobs:
 
       - name: Generate dev env from env.yaml
         run: |
-          python -m pip install --quiet pyyaml
+          python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
           python scripts/envtool.py --dev
 
       - name: Generate compose config json

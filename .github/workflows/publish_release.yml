@@ -80,7 +80,7 @@ jobs:
           python-version: "3.12.10"
 
       - name: Install python deps
-        run: pip install ruamel.yaml
+        run: python -m pip install --require-hashes -r .github/requirements/ruamel-yaml.txt
 
       # This uploads a two-file asset (docker-compose.yaml + .env.example), NOT a
       # standalone install bundle. That compose file still mounts ./nginx/templates
