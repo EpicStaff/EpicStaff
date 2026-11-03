@@ -14,6 +14,7 @@ from domain.errors import (
     FlowNotFoundError,
     NotFoundError,
     UnknownFlowError,
+    UpstreamUnavailableError,
 )
 from domain.models import Binding
 from domain.public_name import (
@@ -23,12 +24,16 @@ from domain.public_name import (
     same_public_name,
 )
 from litestar.exceptions import ClientException
+from loguru import logger
+from src.shared.models import UserAction
 
 from application.orchestrators.budgets import BindingLimits
 from application.ports import (
     AbstractFlowRunner,
     AbstractUnitOfWork,
+    AbstractUserActionRecorder,
     CallerCredentials,
+    DeskAction,
     GraphContract,
 )
 
@@ -112,12 +117,14 @@ class BindingOrchestrator:
         uow_factory: Callable[[], AbstractUnitOfWork],
         *,
         flows: AbstractFlowRunner,
+        user_actions: AbstractUserActionRecorder,
         public_base_url: str,
         widget_url: str,
         limits: BindingLimits,
     ):
         self._uow = uow_factory
         self._flows = flows
+        self._user_actions = user_actions
         self._limits = limits
         self._base_url = public_base_url.rstrip("/")
         self._widget_url = widget_url
@@ -136,6 +143,34 @@ class BindingOrchestrator:
         if binding is None:
             raise NotFoundError()
         return binding
+
+    async def _record(
+        self,
+        action: UserAction,
+        org_id: int,
+        user_id: int,
+        binding_id: UUID,
+        name: str,
+        previous_name: str | None = None,
+    ) -> None:
+        """Record a committed desk change in EpicStaff's audit trail, as done by `user_id`.
+
+        Best effort: the change stands either way, so a record EpicStaff did not take is logged,
+        never raised. Awaited, so an unreachable EpicStaff delays the answer by at most
+        CHAT_DJANGO_TIMEOUT.
+        """
+        desk_action = DeskAction(
+            action=action,
+            org_id=org_id,
+            actor_user_id=user_id,
+            desk_id=binding_id,
+            desk_name=name,
+            previous_name=previous_name,
+        )
+        try:
+            await self._user_actions.record_desk_action(desk_action)
+        except UpstreamUnavailableError as error:
+            logger.warning("Could not record {} of desk {}: {}", action, binding_id, error)
 
     async def _check(self, caller: CallerCredentials, graph_id: int) -> dict:
         try:
@@ -224,6 +259,7 @@ class BindingOrchestrator:
         async with self._uow() as uow:
             await uow.bindings.add(binding)
             await uow.commit()
+        await self._record(UserAction.CREATED, org_id, caller.user_id, binding.id, binding.name)
         return binding
 
     async def update(
@@ -234,7 +270,9 @@ class BindingOrchestrator:
         Every save re-checks the binding's flow (the new one when `graph_id` changes), read as
         `caller`. A failing contract is saved and pauses the binding; a passing one clears the
         stored errors but never resumes. A stored flow that was deleted is marked broken and
-        paused. Changing `identity_mode` revokes every visitor token of the binding.
+        paused. Changing `identity_mode` revokes every visitor token of the binding. Recorded as
+        `renamed` when the name changed, as `updated` when another field did, and not at all when
+        no value differs.
 
         Raises:
             BudgetAboveCapError: A budget is above the configured cap.
@@ -269,6 +307,7 @@ class BindingOrchestrator:
                 binding.id, public_name_key(changes["bot_display_name"])
             ):
                 raise BotNameTakenError()
+            previous_name = binding.name
             secret_rotated = False
             if "identity_mode" in changes and changes["identity_mode"] != binding.identity_mode:
                 # Tokens were issued under the old identity rules; every visitor starts over.
@@ -276,8 +315,13 @@ class BindingOrchestrator:
                 if changes["identity_mode"] == IdentityMode.SIGNED:
                     binding.identity_secret = new_identity_secret()
                     secret_rotated = True
-            for name, value in changes.items():
-                setattr(binding, name, _ENUM_FIELDS[name](value) if name in _ENUM_FIELDS else value)
+            values = {
+                name: _ENUM_FIELDS[name](value) if name in _ENUM_FIELDS else value
+                for name, value in changes.items()
+            }
+            changed = any(getattr(binding, name) != value for name, value in values.items())
+            for name, value in values.items():
+                setattr(binding, name, value)
             # shortcut: a concurrent save moved the row to another graph between the check and the
             # lock, so the check describes neither graph and the stored contract fields are kept; the
             # CHECK constraint still refuses an active row with errors. Re-check under the lock if this
@@ -287,18 +331,28 @@ class BindingOrchestrator:
             binding.updated_at = utcnow()
             await uow.bindings.update(binding)
             await uow.commit()
+        if binding.name != previous_name:
+            await self._record(
+                UserAction.RENAMED, org_id, caller.user_id, binding.id, binding.name, previous_name
+            )
+        elif changed:
+            await self._record(UserAction.UPDATED, org_id, caller.user_id, binding.id, binding.name)
         return binding, secret_rotated
 
-    async def pause(self, binding_id: UUID, org_id: int) -> Binding:
-        """Stop the widget answering; test conversations keep working. Pausing a paused binding is a no-op."""
+    async def pause(self, binding_id: UUID, org_id: int, user_id: int) -> Binding:
+        """Stop the widget answering; test conversations keep working. Pausing a paused binding is a
+        no-op, and records nothing."""
         async with self._uow() as uow:
             binding = await uow.bindings.get(binding_id, org_id=org_id, for_update=True)
             if binding is None:
                 raise NotFoundError()
+            was_active = binding.is_active
             binding.is_active = False
             binding.updated_at = utcnow()
             await uow.bindings.update(binding)
             await uow.commit()
+        if was_active:
+            await self._record(UserAction.PAUSED, org_id, user_id, binding.id, binding.name)
         return binding
 
     async def resume(self, binding_id: UUID, caller: CallerCredentials) -> Binding:
@@ -319,6 +373,7 @@ class BindingOrchestrator:
             binding = await uow.bindings.get(binding_id, org_id=caller.org_id, for_update=True)
             if binding is None:
                 raise NotFoundError()
+            was_active = binding.is_active
             # shortcut: as in update, a graph changed since the check keeps its stored contract fields.
             checked = binding.graph_id == current.graph_id
             if checked:
@@ -336,16 +391,21 @@ class BindingOrchestrator:
             await uow.commit()
         if failure:
             raise failure
+        if not was_active:
+            await self._record(
+                UserAction.RESUMED, caller.org_id, caller.user_id, binding.id, binding.name
+            )
         return binding
 
-    async def delete(self, binding_id: UUID, org_id: int) -> None:
+    async def delete(self, binding_id: UUID, org_id: int, user_id: int) -> None:
         async with self._uow() as uow:
-            deleted = await uow.bindings.delete(binding_id, org_id)
+            deleted_name = await uow.bindings.delete(binding_id, org_id)
             await uow.commit()
-        if not deleted:
+        if deleted_name is None:
             raise NotFoundError()
+        await self._record(UserAction.DELETED, org_id, user_id, binding_id, deleted_name)
 
-    async def rotate_key(self, binding_id: UUID, org_id: int) -> Binding:
+    async def rotate_key(self, binding_id: UUID, org_id: int, user_id: int) -> Binding:
         """New public key; every visitor token of the binding is revoked with the old key.
 
         Streams already open, and stream tickets issued in the last CHAT_TICKET_TTL, keep working
@@ -361,6 +421,7 @@ class BindingOrchestrator:
             binding.updated_at = utcnow()
             await uow.bindings.update(binding)
             await uow.commit()
+        await self._record(UserAction.KEY_ROTATED, org_id, user_id, binding.id, binding.name)
         return binding
 
     async def my_aliases(self, org_id: int, user_id: int) -> list[tuple[UUID, str]]:
@@ -395,6 +456,7 @@ class BindingOrchestrator:
             binding = await uow.bindings.get(binding_id, org_id=org_id, for_share=True)
             if binding is None:
                 raise NotFoundError()
+            previous_alias = await uow.operator_aliases.get(binding.id, user_id)
             if alias is None:
                 await uow.operator_aliases.clear(binding.id, user_id)
             elif same_public_name(alias, binding.bot_display_name):
@@ -402,6 +464,9 @@ class BindingOrchestrator:
             else:
                 await uow.operator_aliases.set(binding.id, user_id, alias, utcnow())
             await uow.commit()
+        # A change of case is a change: visitors see the new spelling.
+        if alias != previous_alias:
+            await self._record(UserAction.UPDATED, org_id, user_id, binding.id, binding.name)
         return alias, binding.operator_visible_name(alias)
 
     async def snippet(self, binding_id: UUID, org_id: int) -> dict:

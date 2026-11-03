@@ -97,6 +97,8 @@ CHANGING_WRITE_ROUTES = frozenset(
         "POST api/internal/sessions/<session_id>/key-value-tables/<table_id>/delete/",
         "POST api/internal/sessions/<session_id>/key-value-tables/<table_id>/read/",
         "POST api/internal/sessions/<session_id>/key-value-tables/<table_id>/write/",
+        # Records the chat service's desk changes itself, under the user who made them.
+        "POST api/internal/user-actions/",
         "DELETE api/key-value-tables/<pk>/purge/",
         "POST api/key-value-tables/<pk>/restore/",
         "POST api/key-value-tables/recycle-bin/purge/",

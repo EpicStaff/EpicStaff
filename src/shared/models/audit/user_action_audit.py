@@ -9,7 +9,8 @@ class UserAction(StrEnum):
     `MOVED_TO_RECYCLE_BIN` is a delete the user can undo (`RESTORED`); `DELETED` is gone
     for good, whether at once or purged from the recycle bin. A purge is told apart by the
     earlier `MOVED_TO_RECYCLE_BIN` record of the same target. `MOVED` and `COPIED` are
-    storage entries put at a new path.
+    storage entries put at a new path. `PAUSED`, `RESUMED` and `KEY_ROTATED` are a chat
+    desk stopped answering, answering again, and given a new public key.
     """
 
     CREATED = "created"
@@ -24,6 +25,9 @@ class UserAction(StrEnum):
     SIGN_IN_FAILED = "sign_in_failed"
     SIGNED_OUT = "signed_out"
     PASSWORD_RESET = "password_reset"
+    PAUSED = "paused"
+    RESUMED = "resumed"
+    KEY_ROTATED = "key_rotated"
 
 
 class UserActionEvent(BaseAuditEvent):
