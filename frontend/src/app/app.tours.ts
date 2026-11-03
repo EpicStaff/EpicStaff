@@ -4,6 +4,6 @@ import { createQuickStartTour } from './features/quick-start-tour/quick-start-to
 
 /**
  * Every guided tour of the app, registered in app.config.ts. The order is the order auto-start considers them in and
- * the order the account menu lists them in. Add a tour here and nowhere else; app.tours.spec.ts checks every one.
+ * the order the Help menu lists them in. Add a tour here and nowhere else; app.tours.spec.ts checks every one.
  */
 export const APP_TOURS: readonly TourDefinitionFactory[] = [createQuickStartTour, createCreateAgentTour];

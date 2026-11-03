@@ -141,7 +141,7 @@ describe('Create Agent tour definition', () => {
         expect(testbed.service.replayableTours().some((tour) => tour.key === 'create-agent')).toBe(isAvailable);
     });
 
-    it('never starts by itself, only from the account menu', async () => {
+    it('never starts by itself, only from the Help menu', async () => {
         testbed.connectAppShell();
 
         testbed.progressStore.signIn(1);

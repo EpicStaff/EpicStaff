@@ -132,7 +132,7 @@ export function createCreateAgentTour(): TourDefinition {
                     title: 'Your agent is ready',
                     body: [
                         'Use it in a flow, or come back here any time to refine it.',
-                        'You can replay this tour from your account menu.',
+                        'You can replay this tour from Help in the sidebar.',
                     ],
                 },
                 buttons: { next: 'Finish', back: false },
