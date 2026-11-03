@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, model } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AuditIdFilter, AuditIdMode } from '../../models/audit-filter.models';
 import { ID_MODE_OPTIONS } from '../../models/audit-filter-options';
@@ -7,7 +8,7 @@ import { AuditSelectComponent } from '../audit-select/audit-select.component';
 @Component({
     selector: 'app-audit-id-filter',
     standalone: true,
-    imports: [AuditSelectComponent],
+    imports: [AuditSelectComponent, MatTooltip],
     templateUrl: './audit-id-filter.component.html',
     styleUrl: './audit-id-filter.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -57,9 +57,6 @@ async function mount(isPreview: boolean): Promise<ComponentFixture<NodePanelShel
             { provide: PermissionsService, useValue: { can: () => true } },
             NodeAuthorshipStore,
         ],
-        // The shell passes `graphId` to every panel; the End panel does not declare it
-        // (a dev-mode console error in the app, a thrown error under TestBed's default).
-        errorOnUnknownProperties: false,
     });
     TestBed.overrideComponent(EndNodePanelComponent, { set: { template: '', imports: [] } });
     TestBed.inject(FlowService).setFlow({ nodes: [endNode], connections: [] });
@@ -85,6 +82,19 @@ function panelOf(fixture: ComponentFixture<NodePanelShellComponent>): EndNodePan
 }
 
 describe('NodePanelShellComponent', () => {
+    // jsdom has no ResizeObserver; the tooltip that shows only for a cut-short name needs one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => vi.unstubAllGlobals());
+
     afterEach(() => vi.restoreAllMocks());
 
     describe('version preview', () => {
@@ -154,6 +164,41 @@ describe('NodePanelShellComponent', () => {
             saveButton(fixture)!.click();
 
             expect(onSaveClick).toHaveBeenCalledTimes(1);
+        });
+
+        it('keeps the focus while it cannot save, and hands it to Close once the save leaves nothing to save', async () => {
+            const fixture = await mount(false);
+            document.body.appendChild(fixture.nativeElement);
+            try {
+                const isDirty = signal(true);
+                const isSaving = signal(false);
+                const onSaveClick = vi.fn(() => isSaving.set(true));
+                fixture.componentInstance['panelInstanceSig'].set({
+                    isDirty,
+                    isSaving,
+                    form: { invalid: false },
+                    onSaveClick,
+                });
+                fixture.detectChanges();
+                saveButton(fixture)!.focus();
+
+                saveButton(fixture)!.click();
+                fixture.detectChanges();
+                expect(saveButton(fixture)!.getAttribute('aria-disabled')).toBe('true');
+                expect(document.activeElement).toBe(saveButton(fixture));
+                saveButton(fixture)!.click();
+                expect(onSaveClick).toHaveBeenCalledTimes(1);
+
+                isSaving.set(false);
+                isDirty.set(false);
+                fixture.detectChanges();
+                await fixture.whenStable();
+
+                expect(saveButton(fixture)).toBeNull();
+                expect(document.activeElement?.getAttribute('aria-label')).toBe('Close');
+            } finally {
+                (fixture.nativeElement as HTMLElement).remove();
+            }
         });
 
         it('shows for a clean panel that says the node needs a save', async () => {
@@ -320,6 +365,28 @@ describe('NodePanelShellComponent', () => {
             expect(selectedNodeId()).toBeNull();
         });
 
+        it('keeps the Escape that closes the panel from reaching the canvas', () => {
+            const canvasKeydown = vi.fn();
+            window.addEventListener('keydown', canvasKeydown);
+            try {
+                press({ code: 'Escape', key: 'Escape' }, fieldInsidePanel());
+            } finally {
+                window.removeEventListener('keydown', canvasKeydown);
+            }
+
+            expect(selectedNodeId()).toBeNull();
+            expect(canvasKeydown).not.toHaveBeenCalled();
+        });
+
+        it('stays open on an Escape a control inside it already used', () => {
+            const field = fieldInsidePanel();
+            field.addEventListener('keydown', (event) => event.preventDefault());
+
+            press({ code: 'Escape', key: 'Escape' }, field);
+
+            expect(selectedNodeId()).toBe(endNode.id);
+        });
+
         it('saves the panel and keeps it open on Ctrl+S', () => {
             editPanel();
 
@@ -367,7 +434,6 @@ describe('NodePanelShellComponent', () => {
                     { provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } },
                     NodeAuthorshipStore,
                 ],
-                errorOnUnknownProperties: false,
             });
             // The panels' own forms are their specs' subject; here only the shell around them is.
             TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });

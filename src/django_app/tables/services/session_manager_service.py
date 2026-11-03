@@ -3,6 +3,7 @@ from dataclasses import replace
 from django.db import transaction
 from django.utils import timezone
 from rbac.access.principals import is_pinned_org_principal
+from rbac.governance.organization_retention import effective_retention_days_for_org
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import (
@@ -16,8 +17,9 @@ from src.shared.models import (
     SubGraphNodeData,
     TaskNodeData,
 )
+from src.shared.retention import DataType
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
-from tables.exceptions import GraphEntryPointException
+from tables.exceptions import GraphEntryPointException, SubGraphValidationError
 from tables.models import (
     AudioTranscriptionNode,
     Edge,
@@ -236,13 +238,15 @@ class SessionManagerService(metaclass=SingletonMeta):
             session.graph, unique_subgraphs, session, start_node=start_node
         )
 
+        org_id = session.graph.org_id
         return SessionData(
             id=session.pk,
-            org_id=session.graph.org_id,
+            org_id=org_id,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
             initial_state=dict(session.variables),
             run_type=run_type,
+            audit_retention_days=effective_retention_days_for_org(org_id, DataType.AUDIT),
             token_budget=token_budget,
         )
 
@@ -363,9 +367,6 @@ class SessionManagerService(metaclass=SingletonMeta):
                 org=graph.org,
             )
 
-            Session.objects.filter(pk=session.pk).update(
-                graph_schema=session_data.graph.model_dump(mode="json"),
-            )
             # Again just before crew hears of the session: a suspension that committed
             # while it was being built must not reach crew.
             assert_still_admitted(admission)
@@ -452,6 +453,8 @@ class SessionManagerService(metaclass=SingletonMeta):
         session: Session = None,
         *,
         start_node: StartNode | None,
+        visiting_graph_ids: set[int] | None = None,
+        parent_graph: Graph | None = None,
     ) -> GraphData:
         """Recursively build GraphData for a graph to handle subgraphs
 
@@ -460,7 +463,23 @@ class SessionManagerService(metaclass=SingletonMeta):
             unique_subgraphs: Dictionary to collect unique subgraphs (only used at top level)
             start_node: The graph's start node, already loaded by the caller, or
                 None when the graph has none.
+            visiting_graph_ids: Set of graph IDs currently being visited in the recursion stack.
+                Used to detect cycles that bypass the validator.
+            parent_graph: The graph whose subgraph reference led to this call, used only to
+                name the offending edge if the re-entry guard below fires.
         """
+        if visiting_graph_ids is None:
+            visiting_graph_ids = set()
+
+        # Guard against re-entry into a graph currently being built
+        if graph.pk in visiting_graph_ids:
+            parent_name = parent_graph.name if parent_graph else f"Flow {graph.pk}"
+            raise SubGraphValidationError(
+                f"Recursion detected: '{parent_name}' references '{graph.name}' which creates "
+                f"a cycle."
+            )
+
+        visiting_graph_ids_for_recursion = visiting_graph_ids | {graph.pk}
         python_node_list = (
             PythonNode.objects.filter(graph=graph.pk)
             .defer("test_input")
@@ -753,7 +772,12 @@ class SessionManagerService(metaclass=SingletonMeta):
             if unique_subgraphs is not None and item.subgraph_id not in unique_subgraphs:
                 subgraph_start_node = subgraph.start_node_list.first()
                 subgraph_data = self._build_graph_data(
-                    subgraph, unique_subgraphs, None, start_node=subgraph_start_node
+                    subgraph,
+                    unique_subgraphs,
+                    None,
+                    start_node=subgraph_start_node,
+                    visiting_graph_ids=visiting_graph_ids_for_recursion,
+                    parent_graph=graph,
                 )
                 # Not None here: _build_graph_data raises GraphEntryPointException without one.
                 variables = self._get_actual_variables(subgraph_start_node.variables or {})

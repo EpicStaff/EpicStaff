@@ -56,6 +56,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         [attr.aria-label]="ariaLabel() || null"
                         [attr.aria-describedby]="ariaDescribedby()"
                         [attr.aria-invalid]="errorMessage || invalid() ? true : null"
+                        [matTooltip]="fieldName"
                         [placeholder]="placeholder"
                         [(ngModel)]="value"
                         (focus)="focused.set(true)"
@@ -72,10 +73,9 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         <button
                             type="button"
                             class="toggle-visibility"
-                            [matTooltip]="passwordVisible ? 'Hide' : 'Show'"
-                            matTooltipPosition="above"
+                            [attr.aria-label]="passwordVisible ? 'Hide password' : 'Show password'"
+                            [matTooltip]="passwordVisible ? 'Hide password' : 'Show password'"
                             (click)="togglePasswordVisibility()"
-                            tabindex="-1"
                         >
                             <i [class]="'ti ' + (passwordVisible ? 'ti-eye' : 'ti-eye-off')"></i>
                         </button>
@@ -178,7 +178,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     align-items: center;
                     transition: color 0.2s ease;
 
-                    &:hover {
+                    &:is(:hover, :focus-visible) {
                         color: rgba(255, 255, 255, 0.9);
                     }
 
@@ -290,6 +290,11 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
 
     get isDisabled(): boolean {
         return this._disabled || this._controlDisabled;
+    }
+
+    /** The input's tooltip. */
+    get fieldName(): string {
+        return this.label || this.ariaLabel() || this.placeholder;
     }
 
     get isSecret(): boolean {

@@ -19,7 +19,9 @@
                 <button
                     type="button"
                     class="row__chevron-btn"
-                    aria-label="Toggle"
+                    [attr.aria-label]="isExpanded() ? 'Collapse' : 'Expand'"
+                    [attr.aria-expanded]="isExpanded()"
+                    [matTooltip]="isExpanded() ? 'Collapse' : 'Expand'"
                     (click)="onChevron($event)"
                 >
                     <app-svg-icon
@@ -39,15 +41,19 @@
                     size="12px"
                 />
             }
-            <span
-                class="row__label"
+            <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+            <button
+                type="button"
+                class="row__label row__name"
+                [attr.aria-current]="isSelected() ? 'true' : null"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
                 matTooltipPosition="above"
-                matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
-                >{{ n.label }}</span
+                (keydown)="onNameKeydown($event)"
             >
+                {{ n.label }}
+            </button>
             @if (!hasChildren()) {
                 <span class="row__empty">Empty</span>
             }
@@ -73,15 +79,19 @@
                 icon="surfaces-tab"
                 size="12px"
             />
-            <span
-                class="row__label row__label--surface"
+            <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+            <button
+                type="button"
+                class="row__label row__label--surface row__name"
+                [attr.aria-current]="isSelected() ? 'true' : null"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
                 matTooltipPosition="above"
-                matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
-                >{{ n.label }}</span
+                (keydown)="onNameKeydown($event)"
             >
+                {{ n.label }}
+            </button>
             @if (n.shared) {
                 <span class="row__shared">Shared</span>
             }
@@ -93,7 +103,9 @@
                     <button
                         type="button"
                         class="row__hover-btn"
-                        aria-label="More"
+                        aria-label="More actions"
+                        aria-haspopup="menu"
+                        matTooltip="More actions"
                         (click)="onMenuClick($event)"
                     >
                         <app-svg-icon
@@ -124,7 +136,9 @@
                 <button
                     type="button"
                     class="row__chevron-btn"
-                    aria-label="Toggle"
+                    [attr.aria-label]="isExpanded() ? 'Collapse' : 'Expand'"
+                    [attr.aria-expanded]="isExpanded()"
+                    [matTooltip]="isExpanded() ? 'Collapse' : 'Expand'"
                     (click)="onChevron($event)"
                 >
                     <app-svg-icon
@@ -142,15 +156,19 @@
                 icon="agents-tab"
                 size="0.95rem"
             />
-            <span
-                class="row__label"
+            <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+            <button
+                type="button"
+                class="row__label row__name"
+                [attr.aria-current]="isSelected() ? 'true' : null"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
                 matTooltipPosition="above"
-                matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
-                >{{ n.label }}</span
+                (keydown)="onNameKeydown($event)"
             >
+                {{ n.label }}
+            </button>
             @if (showHoverMenu()) {
                 <div
                     class="row__hover-actions"
@@ -159,7 +177,9 @@
                     <button
                         type="button"
                         class="row__hover-btn"
-                        aria-label="More"
+                        aria-label="More actions"
+                        aria-haspopup="menu"
+                        matTooltip="More actions"
                         (click)="onMenuClick($event)"
                     >
                         <app-svg-icon
@@ -186,15 +206,19 @@
                 icon="file"
                 size="0.95rem"
             />
-            <span
-                class="row__label"
+            <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+            <button
+                type="button"
+                class="row__label row__name"
+                [attr.aria-current]="isSelected() ? 'true' : null"
                 appTooltipOnOverflow
                 [matTooltip]="n.label"
                 matTooltipPosition="above"
-                matTooltipShowDelay="500"
                 matTooltipClass="tree-name-tooltip"
-                >{{ n.label }}</span
+                (keydown)="onNameKeydown($event)"
             >
+                {{ n.label }}
+            </button>
         </div>
     }
 }

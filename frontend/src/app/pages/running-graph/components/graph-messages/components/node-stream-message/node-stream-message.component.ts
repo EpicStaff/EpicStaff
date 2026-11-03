@@ -46,7 +46,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
-            class="node-stream-container"
+            class="session-message node-stream-container"
             [class.in-progress]="!isDone()"
             [style.--stream-color]="color()"
         >
@@ -71,7 +71,13 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                     />
                 </div>
                 <div class="header-text">
-                    <span class="node-name">{{ message().name | runtimeNodeLabel }}</span>
+                    <button
+                        type="button"
+                        class="message-toggle node-name"
+                        [attr.aria-expanded]="isExpanded()"
+                    >
+                        {{ message().name | runtimeNodeLabel }}
+                    </button>
                     @if (!isDone()) {
                         <span class="status-badge">working...</span>
                     }
@@ -91,6 +97,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
             <div
                 class="collapsible-content"
                 [class.expanded]="isExpanded()"
+                [inert]="!isExpanded()"
             >
                 <div class="collapsible-inner">
                     @if (hasContent()) {
@@ -109,8 +116,10 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                                     <div class="steps-container">
                                         @for (step of group.toolSteps; track step.key) {
                                             <div class="step-item">
-                                                <div
+                                                <button
+                                                    type="button"
                                                     class="step-header"
+                                                    [attr.aria-expanded]="isStepExpanded(step)"
                                                     (click)="toggleStep(step)"
                                                 >
                                                     <app-svg-icon
@@ -128,11 +137,12 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                                                         [class.is-error]="isStepError(step)"
                                                     />
                                                     <span class="step-summary">{{ getStepSummary(step) }}</span>
-                                                </div>
+                                                </button>
 
                                                 <div
                                                     class="collapsible-content"
                                                     [class.expanded]="isStepExpanded(step)"
+                                                    [inert]="!isStepExpanded(step)"
                                                 >
                                                     <div class="collapsible-inner">
                                                         <div class="step-content">
@@ -201,6 +211,18 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
         </div>
     `,
     styles: `
+        // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+        // its own click, which this button's click reaches.
+        .message-toggle {
+            padding: 0;
+            border: none;
+            background: none;
+            color: inherit;
+            font: inherit;
+            text-align: left;
+            cursor: inherit;
+        }
+
         :host {
             display: flex;
             flex-direction: column;
@@ -347,17 +369,29 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
             border-radius: 6px;
         }
 
+        // The button that folds its step, drawn as the row it was.
         .step-header {
             display: flex;
             align-items: center;
             gap: 8px;
+            width: 100%;
+            border: none;
+            background: none;
+            color: inherit;
+            font: inherit;
+            text-align: left;
             cursor: pointer;
             user-select: none;
             padding: 0.35rem 0.5rem;
             border-radius: 4px;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--gray-800);
+            }
+
+            // Drawn inside: the collapsible content around clips it.
+            &:focus-visible {
+                outline-offset: -2px;
             }
 
             app-svg-icon {

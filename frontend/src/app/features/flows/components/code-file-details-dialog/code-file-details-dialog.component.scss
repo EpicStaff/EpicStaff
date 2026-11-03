@@ -39,7 +39,7 @@
         cursor: pointer;
         border-radius: 4px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--transparent-white-8);
         }
     }

@@ -66,13 +66,16 @@ export interface CatalogResponse {
 
 export interface OrgCapability {
     org: { id: number; name: string };
-    role: { id: number; name: string };
+    /** `null` when the membership has no role assigned. */
+    role: { id: number; name: string } | null;
     permissions: Record<ResourceCode, ActionCode[]>;
 }
 
 /** Response from `GET /api/permissions/me/orgs/`.
- *  - Superadmin: `{ is_superadmin: true, permissions: '*' }` (no `orgs`).
- *  - Regular user: `{ is_superadmin: false, orgs: [...] }` (no `permissions`). */
+ *  - Superadmin (JWT session, as this app calls it): `{ is_superadmin: true, permissions: '*' }` (no `orgs`).
+ *  - Regular user: `{ is_superadmin: false, orgs: [...] }` (no `permissions`).
+ *  - USER API key caller (not this app): `orgs` with the key's org only, even for a superadmin
+ *    (`is_superadmin: true`, no `permissions`). */
 export interface MyOrgPermissionsResponse {
     is_superadmin: boolean;
     orgs?: OrgCapability[];

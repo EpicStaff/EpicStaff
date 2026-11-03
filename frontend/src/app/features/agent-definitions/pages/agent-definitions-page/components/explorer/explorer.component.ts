@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import {
     afterRenderEffect,
     ChangeDetectionStrategy,
@@ -10,6 +11,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, SectionHeaderComponent } from '@shared/components';
 import { DragHoverDirective, ResizableSectionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -45,6 +47,8 @@ import { TreeSearchComponent } from './tree-search/tree-search.component';
 @Component({
     selector: 'app-explorer',
     imports: [
+        CdkTrapFocus,
+        MatTooltip,
         AppSvgIconComponent,
         TreeSearchComponent,
         SectionHeaderComponent,
@@ -156,6 +160,12 @@ export class ExplorerComponent {
         this.filterOpen.set(false);
     }
 
+    /** Escape cancels the filter like its Cancel button; its focus trap returns the focus to the Branches button. */
+    onFilterEscape(event: Event): void {
+        event.stopPropagation();
+        this.onFilterCancel();
+    }
+
     onSearchChange(q: string): void {
         this.store.setSearch(q);
     }
@@ -191,6 +201,8 @@ export class ExplorerComponent {
 
     onMenuItemAction(action: string): void {
         const target = this.menuTarget;
+        // Off the item first: a dialog the action opens returns the focus to what had it, and the item goes away.
+        target?.trigger.focus();
         this.closeMenu();
         if (target) this.treeMenuAction.emit({ ...target, action });
     }

@@ -80,11 +80,13 @@
                                 <button
                                     type="button"
                                     class="search-config-toggle"
+                                    [attr.aria-expanded]="searchConfigOpen()"
                                     (click)="toggleSearchConfig()"
                                 >
                                     <span
                                         class="chevron"
                                         [class.open]="searchConfigOpen()"
+                                        aria-hidden="true"
                                         >▶</span
                                     >
                                     RAG Search Config
@@ -233,11 +235,13 @@
                             <button
                                 type="button"
                                 class="search-config-toggle"
+                                [attr.aria-expanded]="searchConfigOpen()"
                                 (click)="toggleSearchConfig()"
                             >
                                 <span
                                     class="chevron"
                                     [class.open]="searchConfigOpen()"
+                                    aria-hidden="true"
                                     >▶</span
                                 >
                                 RAG Search Config

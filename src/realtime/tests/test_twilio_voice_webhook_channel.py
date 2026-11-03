@@ -76,6 +76,37 @@ def _channel_with_nested_webhook_trigger(
     }
 
 
+OTHER_CHANNEL_TOKEN = "another-orgs-channel"
+FALLBACK_DOMAIN = "fallback.example.ngrok.io"
+
+
+@pytest.fixture
+def isolated_stream_token_repository(request, monkeypatch):
+    """An empty token store holding at most 1 pending token per channel (override with
+    `@pytest.mark.parametrize("isolated_stream_token_repository", [n], indirect=True)`), wired
+    into `api.main`. The previously registered singleton is restored afterwards."""
+    from infrastructure.persistence.stream_token_repository import StreamTokenRepository
+    from utils.singleton_meta import SingletonMeta
+
+    monkeypatch.delitem(SingletonMeta._instances, StreamTokenRepository, raising=False)
+    repository = StreamTokenRepository(max_tokens_per_key=getattr(request, "param", 1))
+    # Recorded after the delitem, so teardown unregisters this instance before the
+    # delitem's undo puts back whatever was registered before.
+    monkeypatch.setitem(SingletonMeta._instances, StreamTokenRepository, repository)
+    monkeypatch.setattr("api.main.stream_token_repository", repository)
+    return repository
+
+
+async def _signed_call_stream_token() -> str:
+    from api.main import twilio_voice_webhook_channel
+
+    response = await twilio_voice_webhook_channel(
+        CHANNEL_TOKEN, request=_fake_request(base_url=f"https://{FALLBACK_DOMAIN}")
+    )
+    (parameter,) = ET.fromstring(response.body).find("./Connect/Stream").findall("Parameter")
+    return parameter.get("value")
+
+
 @pytest.fixture
 def resolve_channel(monkeypatch):
     """Django's channel lookup is external; each test sets the channel it returns."""
@@ -118,6 +149,30 @@ async def test_signed_call_is_sent_to_the_channels_media_stream(
 
 
 @pytest.mark.asyncio
+async def test_twilio_form_post_is_parsed_and_answered_with_twiml(resolve_channel):
+    """Twilio posts its call parameters form-encoded; the real request parser must
+    read them, or no signature can be validated and every call fails."""
+    from httpx import ASGITransport, AsyncClient
+
+    from api.main import app
+
+    base_url = "https://fallback.example.ngrok.io"
+    path = f"/voice/{CHANNEL_TOKEN}"
+    call_parameters = {"CallSid": "CA123", "From": "+15550001111", "To": "+10000000000"}
+    resolve_channel(_channel_with_nested_webhook_trigger(live_url=None, ngrok_domain="fallback.example.ngrok.io"))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.post(
+            path,
+            data=call_parameters,
+            headers={"X-Twilio-Signature": _compute_signature(f"{base_url}{path}", call_parameters, AUTH_TOKEN)},
+        )
+
+    assert response.status_code == 200
+    assert ET.fromstring(response.content).find("./Connect/Stream") is not None
+
+
+@pytest.mark.asyncio
 async def test_twiml_carries_one_single_use_stream_token_bound_to_the_channel(resolve_channel):
     """Twilio drops the URL query on the Media Stream leg and relays only the nested
     <Parameter>, so the token travels in both, and they must be the same token."""
@@ -137,6 +192,25 @@ async def test_twiml_carries_one_single_use_stream_token_bound_to_the_channel(re
     assert re.search(r"&(?!amp;)", response.body.decode()) is None
     assert stream_token_repository.consume(query_token, bound_key=CHANNEL_TOKEN) is True
     assert stream_token_repository.consume(query_token, bound_key=CHANNEL_TOKEN) is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("isolated_stream_token_repository", [2], indirect=True)
+async def test_signed_calls_filling_a_channels_quota_never_drop_another_channels_call(
+    resolve_channel, isolated_stream_token_repository
+):
+    """Every tenant holds its own channel's auth token and can sign any number of
+    calls to its own route; that must only ever cost its own pending calls."""
+    pending_token_of_another_channel = isolated_stream_token_repository.mint(bound_key=OTHER_CHANNEL_TOKEN)
+    resolve_channel(_channel_with_nested_webhook_trigger(live_url=None, ngrok_domain=FALLBACK_DOMAIN))
+
+    oldest, middle, newest = [await _signed_call_stream_token() for _ in range(3)]
+
+    assert isolated_stream_token_repository.consume(pending_token_of_another_channel, bound_key=OTHER_CHANNEL_TOKEN) is True
+    # One token per call: with a quota of 2, only the first call's token is gone.
+    assert isolated_stream_token_repository.consume(oldest, bound_key=CHANNEL_TOKEN) is False
+    assert isolated_stream_token_repository.consume(middle, bound_key=CHANNEL_TOKEN) is True
+    assert isolated_stream_token_repository.consume(newest, bound_key=CHANNEL_TOKEN) is True
 
 
 def _legacy_only_channel():
@@ -170,11 +244,16 @@ def _channel_without_auth_token():
     ],
     ids=["bad-signature", "no-auth-token", "no-tunnel", "legacy-agent-only"],
 )
-async def test_call_is_refused_without_twiml(resolve_channel, channel, request_kwargs, status, detail):
+async def test_call_is_refused_without_twiml(
+    resolve_channel, isolated_stream_token_repository, channel, request_kwargs, status, detail
+):
+    """A refused call mints nothing: the channel's quota is 1 and already used by a
+    pending call, so any mint would evict that call's token."""
     from fastapi import HTTPException
 
     from api.main import twilio_voice_webhook_channel
 
+    pending_token = isolated_stream_token_repository.mint(bound_key=CHANNEL_TOKEN)
     resolve_channel(channel())
 
     with pytest.raises(HTTPException) as refused:
@@ -185,3 +264,4 @@ async def test_call_is_refused_without_twiml(resolve_channel, channel, request_k
         assert detail.search(refused.value.detail)
     else:
         assert refused.value.detail == detail
+    assert isolated_stream_token_repository.consume(pending_token, bound_key=CHANNEL_TOKEN) is True

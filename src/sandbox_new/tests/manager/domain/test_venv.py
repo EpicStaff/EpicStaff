@@ -41,6 +41,23 @@ def test_venv_rename_changes_the_name():
     assert venv.name == "new"
 
 
+@pytest.mark.parametrize("name", ["data", "Data Science", "data_science", "py311-base"])
+def test_venv_accepts_a_name_of_letters_digits_spaces_hyphens_and_underscores(name):
+    assert make_venv(name=name).name == name
+
+
+@pytest.mark.parametrize("name", ["", "data.science", "data/science", "venv!", "venv\u00e9"])
+def test_venv_rejects_a_name_with_any_other_character(name):
+    with pytest.raises(ValidationError):
+        make_venv(name=name)
+
+
+def test_venv_rename_rejects_a_name_with_any_other_character():
+    venv = make_venv(name="old")
+    with pytest.raises(ValidationError):
+        venv.rename("new!")
+
+
 def test_venv_set_libs_returns_the_venv_to_declared_and_clears_the_error():
     venv = make_venv(status=VenvStatus.FAILED, error="uv blew up")
     libs = [make_library(name="pandas")]

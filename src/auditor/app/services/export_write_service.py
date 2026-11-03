@@ -34,7 +34,7 @@ class ExportWriteService:
     @classmethod
     def _write_csv_page(cls, writer: csv.DictWriter, page: list[BaseAuditEvent]) -> None:
         for event in page:
-            row = event.model_dump(mode="json")
+            row = event.public_dump()
             writer.writerow({key: cls._to_csv_cell(value) for key, value in row.items()})
 
     @classmethod
@@ -43,7 +43,7 @@ class ExportWriteService:
         array) and keeps non-ASCII text readable instead of \\u-escaped."""
         for i, event in enumerate(page):
             f.write("\n" if is_first_page and i == 0 else ",\n")
-            event_json = json.dumps(event.model_dump(mode="json"), indent=2, ensure_ascii=False)
+            event_json = json.dumps(event.public_dump(), indent=2, ensure_ascii=False)
             f.write(textwrap.indent(event_json, "  "))
         return bool(page)
 
@@ -76,7 +76,7 @@ class ExportWriteService:
                 wrote_any_json_row = False
                 if body.format == "csv":
                     csv_writer = csv.DictWriter(
-                        f, fieldnames=list(pipeline.event_model.model_fields)
+                        f, fieldnames=pipeline.event_model.public_field_names()
                     )
                     await asyncio.to_thread(csv_writer.writeheader)
                 else:

@@ -13,7 +13,7 @@ from loguru import logger
 
 from app.emitters.base import Emitter
 from app.llm.client import LLMChunk
-from app.logging_utils import redact_payload, redact_value
+from app.logging_utils import format_exception_for_log, redact_payload, redact_value
 from shared.bench_log import BENCH_LEVEL
 from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
 from shared.redis_streams import RedisStreamClient, StreamEnvelope, agent_result_stream
@@ -172,5 +172,5 @@ class RedisStreamBatchEmitter(Emitter):
         logger.error(
             "published agent.error correlation_id={} error={}",
             self._correlation_id,
-            error,
+            format_exception_for_log(error),
         )

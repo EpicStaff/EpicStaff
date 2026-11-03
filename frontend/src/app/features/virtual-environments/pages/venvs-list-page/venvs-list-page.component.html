@@ -15,6 +15,7 @@
             </div>
             <div class="header-actions">
                 <app-button
+                    #createButton
                     *appHasPermission="[ResourceCode.Venvs, ActionCode.Create]"
                     type="primary"
                     leftIcon="plus"
@@ -34,40 +35,49 @@
                 </app-tab-button>
             </div>
             <div class="tabs-right">
-                <button
+                <!-- Two buttons drawn as one: the clear button cannot sit inside the toggle. -->
+                <div
                     #filterTrigger="cdkOverlayOrigin"
                     cdkOverlayOrigin
-                    type="button"
-                    class="filter-trigger"
-                    [class.active]="hasActiveFilter() || filterMenuOpen()"
-                    (click)="toggleFilterMenu()"
+                    class="menu-trigger filter-trigger"
+                    [class.active]="filterMenuOpen() || activeFilterCount() > 0"
                 >
-                    <app-svg-icon
-                        icon="filter-outline"
-                        size="1rem"
-                    />
-                    <span>Filter</span>
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="0.7rem"
-                        class="filter-chevron"
-                        [class.open]="filterMenuOpen()"
-                    />
-                </button>
-                @if (hasActiveFilter()) {
                     <button
+                        #filterToggle
                         type="button"
-                        class="filter-clear"
-                        matTooltip="Clear all filters"
-                        matTooltipPosition="above"
-                        (click)="clearAllFilters()"
+                        class="filter-trigger__toggle"
+                        aria-haspopup="dialog"
+                        [attr.aria-expanded]="filterMenuOpen()"
+                        (click)="toggleFilterMenu()"
                     >
                         <app-svg-icon
-                            icon="x"
-                            size="0.85rem"
+                            icon="filter-outline"
+                            size="0.875rem"
                         />
+                        <span>
+                            Filter
+                            @if (activeFilterCount() > 0) {
+                                <span class="filter-count">({{ activeFilterCount() }})</span>
+                            }
+                        </span>
                     </button>
-                }
+                    @if (activeFilterCount() > 0) {
+                        <!-- Goes away once the filters are cleared: the focus moves to the Filter button. -->
+                        <button
+                            type="button"
+                            class="filter-clear-inline"
+                            aria-label="Clear all filters"
+                            matTooltip="Clear all filters"
+                            (click)="clearAllFilters($event); filterToggle.focus()"
+                        >
+                            <app-svg-icon
+                                icon="x"
+                                size="0.875rem"
+                            />
+                        </button>
+                    }
+                </div>
+                <!-- Escape detaches the overlay, which closes the panel; its focus trap returns the focus to the Filter button. -->
                 <ng-template
                     cdkConnectedOverlay
                     [cdkConnectedOverlayOrigin]="filterTrigger"
@@ -75,32 +85,58 @@
                     [cdkConnectedOverlayHasBackdrop]="true"
                     cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
                     [cdkConnectedOverlayOffsetY]="6"
-                    [cdkConnectedOverlayPositions]="filterMenuPositions"
+                    [cdkConnectedOverlayPositions]="menuPositions"
                     (backdropClick)="closeFilterMenu()"
                     (detach)="closeFilterMenu()"
                 >
-                    <div
-                        class="filter-menu"
-                        role="menu"
-                    >
-                        <button
-                            type="button"
-                            class="menu-item"
-                            role="menuitem"
-                            (click)="applySort('name_asc')"
-                        >
-                            Sort from A to Z
-                        </button>
-                        <button
-                            type="button"
-                            class="menu-item"
-                            role="menuitem"
-                            (click)="applySort('name_desc')"
-                        >
-                            Sort from Z to A
-                        </button>
-                    </div>
+                    <app-venvs-filter-menu
+                        [initial]="filterState()"
+                        (save)="onFilterSave($event)"
+                        (cancel)="closeFilterMenu()"
+                        (clear)="onFilterClear()"
+                    />
                 </ng-template>
+
+                <button
+                    #sortTrigger="cdkOverlayOrigin"
+                    cdkOverlayOrigin
+                    type="button"
+                    class="menu-trigger"
+                    [class.active]="sortMenuOpen() || sortOrder() !== 'default'"
+                    aria-haspopup="menu"
+                    [attr.aria-expanded]="sortMenuOpen()"
+                    (click)="toggleSortMenu()"
+                >
+                    <app-svg-icon
+                        icon="arrow-up-down"
+                        size="0.875rem"
+                    />
+                    <span>{{ sortTriggerLabel() }}</span>
+                    <app-svg-icon
+                        icon="chevron-down"
+                        size="0.875rem"
+                        class="menu-chevron"
+                        [class.open]="sortMenuOpen()"
+                    />
+                </button>
+                <!-- Escape detaches the overlay, which closes the menu; its focus trap returns the focus here. -->
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="sortTrigger"
+                    [cdkConnectedOverlayOpen]="sortMenuOpen()"
+                    [cdkConnectedOverlayHasBackdrop]="true"
+                    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                    [cdkConnectedOverlayOffsetY]="6"
+                    [cdkConnectedOverlayPositions]="menuPositions"
+                    (backdropClick)="closeSortMenu()"
+                    (detach)="closeSortMenu()"
+                >
+                    <app-venvs-sort-menu
+                        [activeSort]="sortOrder()"
+                        (sortSelected)="onSortSelected($event)"
+                    />
+                </ng-template>
+
                 <app-search
                     class="search"
                     mod="small"
@@ -130,7 +166,7 @@
                     </div>
                 }
             </div>
-        } @else if (filteredVenvs().length === 0) {
+        } @else if (venvs().length === 0) {
             <div class="venvs-page__list">
                 <div class="venvs-page__empty text-body">
                     @if (searchTerm().trim()) {
@@ -142,13 +178,14 @@
             </div>
         } @else {
             <div class="venvs-page__list">
-                @for (venv of filteredVenvs(); track venv.id) {
+                @for (venv of venvs(); track venv.id) {
                     <app-venv-card
                         [venv]="venv"
                         [canEdit]="canUpdate()"
                         [canDelete]="canDelete()"
                         (editRequested)="onEdit(venv)"
                         (deleteRequested)="onDelete(venv)"
+                        (favoriteChange)="onFavoriteChange(venv, $event)"
                     />
                 }
             </div>

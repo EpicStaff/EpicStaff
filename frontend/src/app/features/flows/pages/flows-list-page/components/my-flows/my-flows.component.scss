@@ -49,8 +49,14 @@
     max-width: 100%;
     overflow-x: auto;
     box-shadow: var(--shadow-raised);
-    &:hover {
+    &:is(:hover, :has(:focus-visible)) {
         background: var(--graphite-690);
+    }
+
+    // The card scrolls its name, so it would clip the link's own ring: the card draws it.
+    &:has(:focus-visible) {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
     }
 
     scrollbar-width: none;
@@ -64,6 +70,10 @@
         color: var(--color-text-primary);
         white-space: nowrap;
         text-decoration: none;
+
+        &:focus-visible {
+            outline: none;
+        }
     }
 }
 

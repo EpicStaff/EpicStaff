@@ -14,7 +14,8 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
-import { getLabelColorOption, LabelDto } from '@shared/models';
+import { LabelDropDirective, TooltipOnOverflowDirective } from '@shared/directives';
+import { getLabelColorOption, LabelDto, ResourceCode } from '@shared/models';
 
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
 import { ToolCardIcon, ToolCardMenuAction, ToolCardMenuActionEvent, ToolCardVM } from './tool-card.model';
@@ -29,6 +30,8 @@ import { ToolCardMenuComponent } from './tool-card-menu.component';
         MatTooltipModule,
         OverlayModule,
         ToolCardMenuComponent,
+        LabelDropDirective,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './tool-card.component.html',
     styleUrls: ['./tool-card.component.scss'],
@@ -49,6 +52,8 @@ export class ToolCardComponent implements OnDestroy {
         read: ElementRef,
     });
 
+    private readonly nameButton = viewChild.required<ElementRef<HTMLButtonElement>>('nameButton');
+
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
 
     public readonly menuOpen = signal<boolean>(false);
@@ -56,6 +61,8 @@ export class ToolCardComponent implements OnDestroy {
     private readonly isMouseOnMenu = signal<boolean>(false);
     private readonly isLabelsOpen = signal<boolean>(false);
     private closeTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    protected readonly ResourceCode = ResourceCode;
 
     public readonly labels = computed<LabelDto[]>(() => {
         const ids = new Set(this.tool().labelIds);
@@ -159,7 +166,14 @@ export class ToolCardComponent implements OnDestroy {
         this.cancelCloseTimeout();
     }
 
+    /** Focuses the card's name button, which opens the tool. */
+    public focus(): void {
+        this.nameButton().nativeElement.focus();
+    }
+
     public onMenuAction(action: ToolCardMenuAction): void {
+        // Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away.
+        this.menuTriggerButton().nativeElement.focus();
         this.closeMenu();
         this.menuAction.emit({ tool: this.tool(), action, trigger: this.menuTriggerButton().nativeElement });
     }
@@ -167,6 +181,12 @@ export class ToolCardComponent implements OnDestroy {
     public onMenuLabelsChanged(labelIds: number[]): void {
         this.closeMenu();
         this.labelsChange.emit({ tool: this.tool(), labelIds });
+    }
+
+    public onLabelDropped(labelId: number): void {
+        const currentIds = this.tool().labelIds;
+        if (currentIds.includes(labelId)) return;
+        this.labelsChange.emit({ tool: this.tool(), labelIds: [...currentIds, labelId] });
     }
 
     public onLabelsWheel(event: WheelEvent): void {

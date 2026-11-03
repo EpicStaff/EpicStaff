@@ -1,8 +1,28 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import {
+    afterNextRender,
+    Component,
+    computed,
+    DestroyRef,
+    ElementRef,
+    inject,
+    Injector,
+    signal,
+    viewChild,
+    viewChildren,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+    AbstractControl,
+    FormArray,
+    FormControl,
+    FormGroup,
+    ReactiveFormsModule,
+    ValidationErrors,
+    Validators,
+} from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
@@ -11,9 +31,9 @@ import {
     HelpTooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { TooltipOnOverflowDirective } from '@shared/directives';
+import { EnterSubmitDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { extractHttpErrorMessage } from '@shared/utils';
-import { Observable } from 'rxjs';
+import { filter, Observable } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import {
@@ -21,12 +41,21 @@ import {
     Venv,
     VENV_LIBRARY_SPECIFICATION_PATTERN,
     VENV_LIBRARY_VERSION_PATTERN,
+    VENV_NAME_PATTERN,
     VenvLib,
 } from '../../models/venv.model';
 import { VenvsApiService } from '../../services/venvs-api.service';
 
 export interface VenvDialogData {
     venv?: Venv;
+}
+
+// An error of its own rather than `Validators.pattern`, whose message does not say which
+// characters a name may use.
+function venvNameValidator(control: AbstractControl): ValidationErrors | null {
+    const value: unknown = control.value;
+    if (typeof value !== 'string' || value === '') return null;
+    return VENV_NAME_PATTERN.test(value) ? null : { venvName: true };
 }
 
 interface LibraryRowGroup {
@@ -48,12 +77,17 @@ interface LibraryRowGroup {
         ButtonComponent,
         AppSvgIconComponent,
         MatTooltipModule,
+        EnterSubmitDirective,
         TooltipOnOverflowDirective,
     ],
     templateUrl: './venv-dialog.component.html',
     styleUrls: ['./venv-dialog.component.scss'],
 })
 export class VenvDialogComponent {
+    private readonly libraryNameInputs = viewChildren<ElementRef<HTMLInputElement>>('libraryNameInput');
+    private readonly removeLibraryButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeLibraryButton');
+    private readonly addLibraryButton = viewChild.required<ElementRef<HTMLButtonElement>>('addLibraryButton');
+
     readonly isSubmitting = signal(false);
 
     readonly data = inject<VenvDialogData | null>(DIALOG_DATA, { optional: true }) ?? {};
@@ -67,7 +101,7 @@ export class VenvDialogComponent {
     readonly form = new FormGroup({
         name: new FormControl('', {
             nonNullable: true,
-            validators: [Validators.required, Validators.maxLength(255)],
+            validators: [Validators.required, Validators.maxLength(255), venvNameValidator],
         }),
         libs: new FormArray<FormGroup<LibraryRowGroup>>([]),
     });
@@ -91,6 +125,7 @@ export class VenvDialogComponent {
     private readonly venvsApi = inject(VenvsApiService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     constructor() {
         const venv = this.data.venv;
@@ -100,6 +135,16 @@ export class VenvDialogComponent {
                 this.form.controls.libs.push(this.createLibraryRow(lib));
             }
         }
+        // disableClose keeps a stray backdrop click from throwing the table away; Escape is asked for, so it cancels.
+        this.dialogRef.keydownEvents
+            .pipe(
+                filter((event) => event.key === 'Escape' && !hasModifierKey(event) && !event.defaultPrevented),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((event) => {
+                event.preventDefault();
+                this.cancel();
+            });
     }
 
     get libs(): FormArray<FormGroup<LibraryRowGroup>> {
@@ -108,10 +153,20 @@ export class VenvDialogComponent {
 
     addLibrary(): void {
         this.libs.push(this.createLibraryRow());
+        // The new row is where the next keystrokes go.
+        afterNextRender(() => this.libraryNameInputs().at(-1)?.nativeElement.focus(), { injector: this.injector });
     }
 
     removeLibrary(index: number): void {
         this.libs.removeAt(index);
+        // The removed row takes its focused button along: the focus moves to the row now in its place.
+        afterNextRender(
+            () => {
+                const buttons = this.removeLibraryButtons();
+                (buttons[Math.min(index, buttons.length - 1)] ?? this.addLibraryButton()).nativeElement.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     removeAllLibraries(): void {

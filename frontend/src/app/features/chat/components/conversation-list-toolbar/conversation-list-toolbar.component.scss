@@ -65,13 +65,13 @@
     line-height: var(--text-body-small-large-line-height);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
         color: var(--color-text-primary);
     }
 
     &:focus-visible {
-        outline: 1px solid var(--accent-color);
+        outline: 2px solid var(--accent-color);
         outline-offset: 1px;
     }
 

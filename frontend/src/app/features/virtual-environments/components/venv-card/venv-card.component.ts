@@ -1,5 +1,5 @@
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
-import { Component, computed, input, output, signal } from '@angular/core';
+import { Component, computed, ElementRef, input, output, signal, viewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, formatAuthorshipTimestamp } from '@shared/components';
 import {
@@ -40,9 +40,18 @@ export class VenvCardComponent {
 
     readonly editRequested = output<void>();
     readonly deleteRequested = output<void>();
+    /** The state the star was clicked into, not the one it had. */
+    readonly favoriteChange = output<boolean>();
+
+    private readonly nameButton = viewChild<ElementRef<HTMLButtonElement>>('nameButton');
+    private readonly favoriteButton = viewChild.required<ElementRef<HTMLButtonElement>>('favoriteButton');
 
     protected readonly hiddenLibsOpen = signal(false);
     protected readonly updatesOpen = signal(false);
+
+    protected readonly favoriteLabel = computed(() =>
+        this.venv().is_favorite ? 'Remove from favorites' : 'Add to favorites'
+    );
 
     protected readonly updates = computed<VenvLibUpdate[]>(() => []);
     protected readonly updatableLibNames = computed(() => new Set(this.updates().map((update) => update.name)));
@@ -69,13 +78,24 @@ export class VenvCardComponent {
         { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },
     ];
 
+    /** Focuses the name button, which opens the venv; the star where the venv cannot be edited. */
+    focus(): void {
+        (this.nameButton() ?? this.favoriteButton()).nativeElement.focus();
+    }
+
     // appOverflowItems hides chips from the end, so the hidden ones are the last `count`.
     hiddenLibs(count: number): VenvLib[] {
         return count > 0 ? this.venv().libs.slice(-count) : [];
     }
 
-    onEdit(): void {
+    /** The whole card opens the venv, so the row carries the action the pencil used to. */
+    onCardClick(): void {
+        if (!this.canEdit()) return;
         this.editRequested.emit();
+    }
+
+    onToggleFavorite(): void {
+        this.favoriteChange.emit(!this.venv().is_favorite);
     }
 
     onDelete(): void {

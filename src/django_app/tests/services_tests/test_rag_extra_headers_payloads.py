@@ -1,8 +1,8 @@
 """RAG embedder/LLM extra headers travel next to the RAG api keys on every path.
 
 The payloads carry the raw headers, `epicstaff_secret(<name>)` markers included;
-SecretResolver fills them only on the published copy, so Session.graph_schema and
-any other persisted copy keep the markers.
+SecretResolver fills them only on the published copy, so any persisted copy keeps
+the markers.
 """
 
 from unittest.mock import MagicMock
@@ -114,7 +114,7 @@ def test_graph_knowledge_node_carries_embedder_and_llm_headers(org, collection):
 
     assert data.embedder_extra_headers == EMBEDDER_HEADERS
     assert data.llm_extra_headers == LLM_HEADERS
-    # The dump is what lands in Session.graph_schema: markers, never plaintext.
+    # The dump is what gets persisted: markers, never plaintext.
     dumped = data.model_dump()
     assert dumped["embedder_extra_headers"] == EMBEDDER_HEADERS
     assert dumped["llm_extra_headers"] == LLM_HEADERS

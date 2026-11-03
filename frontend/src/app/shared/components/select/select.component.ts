@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import { NgClass } from '@angular/common';
@@ -18,29 +19,67 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { deepEqual } from '@shared/utils';
+import { filter } from 'rxjs';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
-export interface SelectItem<T = unknown> {
+/**
+ * An optional trailing action button at the end of an item row. A button with only an icon needs a name, so the label
+ * comes with the icon.
+ */
+type SelectItemTrailingAction =
+    | { trailingActionIcon?: undefined; trailingActionLabel?: undefined }
+    | {
+          /** app-svg-icon id of the button (e.g. edit-pencil). */
+          trailingActionIcon: string;
+          /** Names the button (its aria-label and tooltip), e.g. "Edit". */
+          trailingActionLabel: string;
+      };
+
+export type SelectItem<T = unknown> = SelectItemFields<T> & SelectItemTrailingAction;
+
+interface SelectItemFields<T> {
     name: string;
     tip?: string;
     subtitle?: string;
     value: T;
     group?: string;
     icon?: string;
+    /** Shown, but not selectable: an option the user may not pick, such as a venv whose build failed. */
+    disabled?: boolean;
+    /** Secondary text between the name and `tip`, muted and truncated: what the option carries,
+     *  such as the libraries a venv installs. */
+    meta?: string;
+    /** CSS color for `tip`, where the text carries a state of its own (a build still running). */
+    tipColor?: string;
     /** CSS color (e.g. `var(--success-color)`) of a dot shown before the name, in the trigger, options and readonly value. */
     dotColor?: string;
-    /** app-svg-icon id for an optional trailing action button rendered at the end of the item row (e.g. edit-pencil). */
-    trailingActionIcon?: string;
+}
+
+interface SelectItemGroup {
+    group: string | null;
+    items: SelectItem[];
 }
 
 export type SelectVariant = 'default' | 'boxed';
 
+let nextSelectId = 0;
+
 @Component({
     selector: 'app-select',
-    imports: [NgClass, OverlayModule, TooltipComponent, AppSvgIconComponent],
+    imports: [
+        NgClass,
+        OverlayModule,
+        CdkTrapFocus,
+        TooltipComponent,
+        AppSvgIconComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './select.component.html',
     styleUrls: ['./select.component.scss'],
     providers: [
@@ -57,6 +96,8 @@ export class SelectComponent implements ControlValueAccessor {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    /** The field's name for the trigger's tooltip when it has no `label` (e.g. a caption outside the select). */
+    tooltip = input<string>('');
     loading = input<boolean>(false);
     mod = input<'default' | 'small'>('default');
     items = input<SelectItem[]>([]);
@@ -72,8 +113,15 @@ export class SelectComponent implements ControlValueAccessor {
     panelClass = input<string | string[]>('');
     variant = input<SelectVariant>('default');
     showSearch = input<boolean>(false);
+    /**
+     * Render each item under a heading taken from its `group`. Off by default: panels that
+     * already set `group` on their items were written before any heading was rendered.
+     */
+    grouped = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
     transparent = input<boolean>(false);
+    /** When true, the selected item's tip is shown at the end of the closed trigger too, not only in the list. */
+    showTipInTrigger = input<boolean>(false);
     /** When true, the user can commit the search text as a custom value (Enter or clicking the "Use ..." row). */
     allowCustomValue = input<boolean>(false);
     /**
@@ -84,6 +132,11 @@ export class SelectComponent implements ControlValueAccessor {
     readonly = input<boolean>(false);
     /** Text shown in readonly mode when no value is selected. */
     readonlyEmptyPlaceholder = input<string>('—');
+    /**
+     * Id of an external element that names the select (e.g. a column header). The trigger is then
+     * labelled by that element and by its own text, so the selected value is still announced.
+     */
+    ariaLabelledby = input<string | null>(null);
     /**
      * Stable `data-tour` anchor for the dropdown panel. The panel renders in a CDK overlay outside this host, so an
      * attribute on the host cannot reach it.
@@ -102,6 +155,45 @@ export class SelectComponent implements ControlValueAccessor {
         const term = this.search().toLowerCase().trim();
         if (!term) return this.items();
         return this.items().filter((i) => i.name.toLowerCase().includes(term));
+    });
+    /**
+     * The options as the panel lays them out: one headingless group when grouping is off, so
+     * the template has a single shape to render.
+     *
+     * Items without a `group` come first and keep no heading -- a picker's leading row, such
+     * as a "none" option. They are fixed rows: the search narrows the groups under them and
+     * leaves them where they are, so the way out of a search is always on screen.
+     *
+     * Groups follow in the order they first appear, and the order inside each one is the
+     * order of `items`, so a sort the caller applied survives the split. They are built from
+     * `filteredItems`, so a search narrows within the groups instead of collapsing them.
+     */
+    protected readonly groupedItems = computed<SelectItemGroup[]>(() => {
+        const items = this.filteredItems();
+        if (!this.grouped()) return [{ group: null, items }];
+
+        const pinned = this.items().filter((item) => !item.group);
+        const buckets = new Map<string, SelectItem[]>();
+        for (const item of items) {
+            if (!item.group) continue;
+            const bucket = buckets.get(item.group);
+            if (bucket) bucket.push(item);
+            else buckets.set(item.group, [item]);
+        }
+        return [
+            ...(pinned.length ? [{ group: null, items: pinned }] : []),
+            ...[...buckets].map(([group, bucketItems]) => ({ group, items: bucketItems })),
+        ];
+    });
+
+    /** Whether the panel has a row to show. Not `filteredItems`: in a grouped panel the fixed
+     *  rows survive a search, and an "empty" notice under them would contradict them. */
+    protected readonly hasVisibleItems = computed(() => this.groupedItems().some((group) => group.items.length > 0));
+
+    protected readonly triggerId = `app-select-trigger-${nextSelectId++}`;
+    protected readonly triggerLabelledBy = computed(() => {
+        const labelId = this.ariaLabelledby();
+        return labelId ? `${labelId} ${this.triggerId}` : null;
     });
     private controlDisabled = signal(false);
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
@@ -201,6 +293,14 @@ export class SelectComponent implements ControlValueAccessor {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.close());
 
+        this.overlayRef
+            .keydownEvents()
+            .pipe(
+                filter((event) => event.key === 'Escape'),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.close());
+
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);
         this.open.set(true);
@@ -216,6 +316,9 @@ export class SelectComponent implements ControlValueAccessor {
     }
 
     select(item: SelectItem) {
+        // Guarded here rather than only in the template: every other path into a selection,
+        // `commitCustomValue` among them, goes through this method.
+        if (item.disabled) return;
         if (this.isDisabled() || this.readonly()) return;
         this.onChange(item.value);
         this.onTouched();

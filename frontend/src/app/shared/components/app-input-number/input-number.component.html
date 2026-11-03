@@ -14,14 +14,19 @@
     [class.input__wrapper--disabled]="isDisabled()"
     (mouseenter)="hovered.set(true)"
     (mouseleave)="hovered.set(false)"
+    (focusin)="focusWithin.set(true)"
+    (focusout)="onFocusOut($event)"
 >
-    @if (hovered() || alwaysShowSteps()) {
+    @if (stepsShown()) {
         <button
             type="button"
             class="input__step input__step--minus"
             aria-label="Decrease"
-            (mousedown)="onStep(-1); $event.preventDefault()"
-            [disabled]="isDisabled() || !canStepDown()"
+            matTooltip="Decrease"
+            [disabled]="isDisabled()"
+            [attr.aria-disabled]="!canStepDown()"
+            (mousedown)="$event.preventDefault()"
+            (click)="onStep(-1)"
         >
             −
         </button>
@@ -34,6 +39,7 @@
         [ngClass]="'input--mod-' + mod()"
         [placeholder]="placeholder()"
         [attr.aria-label]="ariaLabel() || null"
+        [matTooltip]="fieldName()"
         [ngModel]="value()"
         [ngModelOptions]="{ standalone: true }"
         (ngModelChange)="onInputChange($event)"
@@ -44,13 +50,16 @@
         [attr.aria-describedby]="describedBy()"
     />
 
-    @if (hovered() || alwaysShowSteps()) {
+    @if (stepsShown()) {
         <button
             type="button"
             class="input__step input__step--plus"
             aria-label="Increase"
-            (mousedown)="onStep(1); $event.preventDefault()"
-            [disabled]="isDisabled() || !canStepUp()"
+            matTooltip="Increase"
+            [disabled]="isDisabled()"
+            [attr.aria-disabled]="!canStepUp()"
+            (mousedown)="$event.preventDefault()"
+            (click)="onStep(1)"
         >
             +
         </button>

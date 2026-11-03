@@ -363,17 +363,24 @@ describe(
             });
 
             it('shows the reason in a tooltip once the status icon is hovered', async () => {
-                const icon = cell(ROW.ignored, 'route_code').querySelector<HTMLElement>(
-                    '.cdt-route-code-cell__status .help-icon-wrapper'
+                const status = cell(ROW.ignored, 'route_code').querySelector<HTMLElement>(
+                    '.cdt-route-code-cell__status'
                 );
-                if (!icon) throw new Error('no status icon');
+                if (!status) throw new Error('no status icon');
 
-                icon.dispatchEvent(new MouseEvent('mouseenter'));
+                status.dispatchEvent(new MouseEvent('mouseenter'));
                 await settle();
 
                 expect(document.querySelector('.mat-mdc-tooltip')?.textContent?.trim()).toBe(
                     CDT_ROUTE_CONTINUE_COPY.routeCodeIgnored
                 );
+            });
+
+            it('keeps the status icon out of the tab order, so keyboard focus stays on the grid cell', () => {
+                const routeCell = cell(ROW.conflict, 'route_code');
+
+                expect(routeCell.querySelector('.cdt-route-code-cell__status')).not.toBeNull();
+                expect(routeCell.querySelector('button, a[href], [tabindex]:not([tabindex="-1"])')).toBeNull();
             });
 
             it('follows the canvas: wiring the dimmed route code turns it into a conflict', async () => {
@@ -385,6 +392,314 @@ describe(
 
                 expect(cell(ROW.ignored, 'route_code').classList).toContain('cell-required-invalid');
                 expect(cell(ROW.ignored, 'route_code').querySelector('.cdt-route-code-cell__code--ignored')).toBeNull();
+            });
+        });
+    }
+);
+
+/**
+ * The header row from the keyboard, through the real ag-grid DOM and the real CDK
+ * menus. jsdom lays nothing out, so CDK's focus trap finds no tabbable item on its
+ * own; the tests move the focus into a menu themselves, as the trap would.
+ */
+describe(
+    'ClassificationDecisionTableGridComponent — header row from the keyboard',
+    { timeout: GRID_TEST_TIMEOUT_MS },
+    () => {
+        let fixture: ComponentFixture<ClassificationDecisionTableGridComponent>;
+        let host: HTMLElement;
+
+        beforeAll(() => {
+            const scope = globalThis as unknown as { ResizeObserver?: unknown };
+            scope.ResizeObserver ??= class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            };
+        });
+
+        beforeEach(async () => {
+            vi.useFakeTimers();
+            TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+            fixture = TestBed.createComponent(ClassificationDecisionTableGridComponent);
+            host = fixture.nativeElement;
+            fixture.componentRef.setInput('currentNodeId', NODE_ID);
+            fixture.componentRef.setInput('conditionGroups', [
+                rule({ group_name: 'Approve', route_code: 'approve', order: 1 }),
+            ]);
+            await settle();
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+            document.querySelectorAll('.cdk-overlay-container').forEach((element) => (element.innerHTML = ''));
+            localStorage.clear();
+        });
+
+        async function settle(): Promise<void> {
+            for (let round = 0; round < 5; round++) {
+                await vi.advanceTimersByTimeAsync(50);
+                fixture.detectChanges();
+            }
+        }
+
+        function headerCell(colId: string): HTMLElement {
+            const found = host.querySelector<HTMLElement>(`.ag-header-cell[col-id="${colId}"]`);
+            if (!found) throw new Error(`no ${colId} header`);
+            return found;
+        }
+
+        function paramsGroupHeaderCell(): HTMLElement {
+            const found = host.querySelector('app-params-group-header')?.closest<HTMLElement>('.ag-header-group-cell');
+            if (!found) throw new Error('no params group header');
+            return found;
+        }
+
+        async function focusHeader(target: HTMLElement): Promise<void> {
+            target.focus();
+            await settle();
+        }
+
+        async function press(key: string, init: KeyboardEventInit = {}): Promise<void> {
+            const target = document.activeElement;
+            if (!target) throw new Error('nothing has the focus');
+            target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
+            await settle();
+        }
+
+        function menuItems(): HTMLElement[] {
+            return Array.from(
+                document.querySelectorAll<HTMLElement>(
+                    '.cdk-overlay-container [role="menuitem"], .cdk-overlay-container [role="menuitemradio"]'
+                )
+            );
+        }
+
+        function menuLabels(): string[] {
+            return menuItems().map((item) => item.textContent?.trim() ?? '');
+        }
+
+        function menuItem(label: string): HTMLElement {
+            const found = menuItems().find((item) => item.textContent?.trim() === label);
+            if (!found) throw new Error(`no "${label}" in the menu`);
+            return found;
+        }
+
+        /** Picks a menu item the way a keyboard user does: the focus is on it when it is activated. */
+        async function choose(label: string): Promise<void> {
+            const item = menuItem(label);
+            item.focus();
+            item.click();
+            await settle();
+        }
+
+        function focusedHeaderColId(): string | null {
+            return document.activeElement?.closest('.ag-header-cell')?.getAttribute('col-id') ?? null;
+        }
+
+        describe('the empty row-selection header', () => {
+            it('is passed over when something focuses it, such as Tab into the grid', async () => {
+                await focusHeader(headerCell('selection'));
+
+                expect(document.activeElement).toBe(headerCell('dock_visible'));
+            });
+
+            it('is not reached with ArrowLeft: the focus stays on the Enable header', async () => {
+                await focusHeader(headerCell('dock_visible'));
+                await press('ArrowLeft');
+
+                expect(document.activeElement).toBe(headerCell('dock_visible'));
+            });
+
+            it('is not reached with Shift+Tab: the focus leaves the header row', async () => {
+                await focusHeader(headerCell('dock_visible'));
+                await press('Tab', { shiftKey: true });
+
+                expect(focusedHeaderColId()).toBeNull();
+            });
+        });
+
+        describe('a column header with a menu', () => {
+            it.each([
+                ['Enter', 'Enter'],
+                ['Space', ' '],
+            ])('opens its Freeze / Hide menu on %s', async (_name, key) => {
+                await focusHeader(headerCell('group_name'));
+                await press(key);
+
+                expect(menuLabels()).toEqual(['Freeze Up to This Column', 'Hide']);
+            });
+
+            it('leaves Ctrl+Enter to ag-grid', async () => {
+                await focusHeader(headerCell('group_name'));
+                await press('Enter', { ctrlKey: true });
+
+                expect(menuItems()).toEqual([]);
+            });
+
+            it('gets the focus back when Escape closes the menu', async () => {
+                await focusHeader(headerCell('group_name'));
+                await press('Enter');
+                menuItem('Hide').focus();
+                await press('Escape');
+
+                expect(menuItems()).toEqual([]);
+                expect(document.activeElement).toBe(headerCell('group_name'));
+            });
+
+            it('keeps the focus on its header when Freeze rebuilds the header row', async () => {
+                await focusHeader(headerCell('group_name'));
+                await press('Enter');
+                await choose('Freeze Up to This Column');
+
+                expect(focusedHeaderColId()).toBe('group_name');
+            });
+
+            it('hands the focus to the header beside it when Hide removes it', async () => {
+                await focusHeader(headerCell('group_name'));
+                await press('Enter');
+                await choose('Hide');
+
+                expect(host.querySelector('.ag-header-cell[col-id="group_name"]')).toBeNull();
+                expect(focusedHeaderColId()).toBe('expression');
+            });
+        });
+
+        describe('the Enable header', () => {
+            it.each([
+                ['Enter', 'Enter'],
+                ['Space', ' '],
+            ])('opens its row filter on %s', async (_name, key) => {
+                await focusHeader(headerCell('dock_visible'));
+                await press(key);
+
+                expect(menuLabels()).toEqual(['Enable/Disable', 'Only Enable', 'Only Disable']);
+            });
+
+            it('keeps the focus on the rebuilt header once a filter is chosen', async () => {
+                await focusHeader(headerCell('dock_visible'));
+                await press('Enter');
+                await choose('Only Disable');
+
+                expect(menuItems()).toEqual([]);
+                expect(headerCell('dock_visible').textContent).toContain('Disable');
+                expect(document.activeElement).toBe(headerCell('dock_visible'));
+            });
+        });
+
+        describe('with a hidden column', () => {
+            beforeEach(async () => {
+                await focusHeader(headerCell('group_name'));
+                await press('Enter');
+                await choose('Hide');
+            });
+
+            function badge(): HTMLElement {
+                const found = host.querySelector<HTMLElement>('.hidden-col-badge');
+                if (!found) throw new Error('no hidden-column badge');
+                return found;
+            }
+
+            it('reaches its badge with Tab from the header before it', async () => {
+                await focusHeader(headerCell('dock_visible'));
+                await press('Tab');
+
+                expect(document.activeElement).toBe(badge());
+            });
+
+            it('goes on from the badge with Tab to the header after it', async () => {
+                badge().focus();
+                await press('Tab');
+
+                expect(document.activeElement).toBe(headerCell('expression'));
+            });
+
+            it('goes back from the badge with Shift+Tab to the header before it', async () => {
+                badge().focus();
+                await press('Tab', { shiftKey: true });
+
+                expect(document.activeElement).toBe(headerCell('dock_visible'));
+            });
+        });
+
+        describe('with the first column hidden', () => {
+            beforeEach(async () => {
+                fixture.componentInstance.hideColumn('dock_visible');
+                await settle();
+            });
+
+            it('takes Shift+Tab from the badge that opens the header to what precedes the grid', async () => {
+                host.querySelector<HTMLElement>('.hidden-col-badge')?.focus();
+                await press('Tab', { shiftKey: true });
+
+                // The last control before the grid: the "+" above it that adds the first manipulation variable.
+                expect(document.activeElement?.getAttribute('aria-label')).toBe('Add manipulation variable');
+            });
+        });
+
+        describe('with an expression variable', () => {
+            beforeEach(async () => {
+                fixture.componentInstance.addFieldColumn('amount');
+                await settle();
+            });
+
+            it('opens the Params menu, Add variable first, from the group header', async () => {
+                await focusHeader(paramsGroupHeaderCell());
+                await press('Enter');
+
+                expect(menuLabels()).toEqual(['Add variable', 'Freeze Up to This Column', 'Hide']);
+            });
+
+            it('keeps the focus on the group header when Freeze rebuilds the header row', async () => {
+                await focusHeader(paramsGroupHeaderCell());
+                await press('Enter');
+                await choose('Freeze Up to This Column');
+
+                expect(document.activeElement).toBe(paramsGroupHeaderCell());
+            });
+
+            it('opens the variable picker from Add variable', async () => {
+                await focusHeader(paramsGroupHeaderCell());
+                await press('Enter');
+                await choose('Add variable');
+
+                expect(menuLabels()).not.toContain('Hide');
+                expect(
+                    document.querySelector('.cdk-overlay-container input[placeholder="Search fields..."]')
+                ).not.toBeNull();
+            });
+
+            it('reaches the Params group header with Tab, and its first variable after it', async () => {
+                await focusHeader(headerCell('field_amount'));
+                await press('Tab', { shiftKey: true });
+
+                expect(document.activeElement).toBe(paramsGroupHeaderCell());
+
+                await press('Tab');
+
+                expect(document.activeElement).toBe(headerCell('field_amount'));
+            });
+
+            it('goes from the last header into the first body cell with Tab', async () => {
+                const headers = Array.from(host.querySelectorAll<HTMLElement>('.ag-header-cell[aria-colindex]'));
+                const columnIndex = (cell: HTMLElement): number => Number(cell.getAttribute('aria-colindex'));
+                const lastHeader = headers.reduce((last, cell) =>
+                    columnIndex(cell) > columnIndex(last) ? cell : last
+                );
+                await focusHeader(lastHeader);
+                await press('Tab');
+
+                const bodyCell = document.activeElement?.closest('.ag-cell');
+                expect(bodyCell?.getAttribute('col-id')).toBe('selection');
+                expect(bodyCell?.closest('.ag-row')?.getAttribute('row-index')).toBe('0');
+            });
+
+            it('ignores Enter on the variable header, whose only control deletes the variable', async () => {
+                await focusHeader(headerCell('field_amount'));
+                await press('Enter');
+
+                expect(menuItems()).toEqual([]);
+                expect(host.querySelector('.ag-header-cell[col-id="field_amount"]')).not.toBeNull();
             });
         });
     }

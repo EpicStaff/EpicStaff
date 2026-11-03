@@ -15,6 +15,8 @@ export class EnterSubmitDirective implements OnInit {
     ngOnInit(): void {
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
             if (event.key !== 'Enter') return;
+            // A control that acts on Enter itself (a toggle switch flips) has taken the key; it is not a submit.
+            if (event.defaultPrevented) return;
             if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
             if (this.appEnterSubmitDisabled()) return;
 

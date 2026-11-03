@@ -28,7 +28,7 @@ def build_search_router(domain: AuditDomain) -> APIRouter:
             size=body.size,
         )
         return search_response_model(
-            items=[event.model_dump(mode="json") for event in events],
+            items=[event.public_dump() for event in events],
             next_cursor=next_cursor,
             partial=partial,
         )

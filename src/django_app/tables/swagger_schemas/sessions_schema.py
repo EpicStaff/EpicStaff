@@ -3,12 +3,15 @@ from drf_spectacular.utils import (
     OpenApiExample,
     OpenApiParameter,
     OpenApiResponse,
-    inline_serializer,
 )
-from rest_framework import serializers as drf_serializers
 
-from tables.serializers.serializers import RunSessionSerializer, SessionTestRunSerializer
+from tables.serializers.serializers import (
+    BulkIdsSerializer,
+    RunSessionSerializer,
+    SessionTestRunSerializer,
+)
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
+from tables.serializers.utils.bulk_ids import BULK_DELETE_MAX_IDS
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
 RUN_SESSION_POST = {
@@ -370,21 +373,6 @@ SESSION_LIST_GET = {
                                 "status_data": {},
                                 "variables": {},
                                 "created_at": "2024-01-01T00:00:00Z",
-                                "graph_schema": {
-                                    "name": "string",
-                                    "end_node": None,
-                                    "graph_id": 0,
-                                    "edge_list": [],
-                                    "entrypoint": "string",
-                                    "python_node_list": [],
-                                    "subgraph_node_list": [],
-                                    "decision_table_node_list": [],
-                                    "file_extractor_node_list": [],
-                                    "key_value_node_list": [],
-                                    "audio_transcription_node_list": [],
-                                    "webhook_trigger_node_data_list": [],
-                                    "telegram_trigger_node_data_list": [],
-                                },
                                 "entrypoint": None,
                                 "token_usage": {
                                     "total_tokens": 0,
@@ -467,22 +455,6 @@ SESSION_RETRIEVE_GET = {
                         "status_data": {},
                         "variables": {},
                         "created_at": "2024-01-01T00:00:00Z",
-                        "graph_schema": {
-                            "name": "string",
-                            "end_node": None,
-                            "graph_id": 0,
-                            "edge_list": [],
-                            "entrypoint": "string",
-                            "crew_node_list": [],
-                            "python_node_list": [],
-                            "subgraph_node_list": [],
-                            "code_agent_node_list": [],
-                            "decision_table_node_list": [],
-                            "file_extractor_node_list": [],
-                            "audio_transcription_node_list": [],
-                            "webhook_trigger_node_data_list": [],
-                            "telegram_trigger_node_data_list": [],
-                        },
                         "entrypoint": None,
                         "token_usage": {
                             "total_tokens": 0,
@@ -570,12 +542,7 @@ SESSION_BULK_DELETE_POST = {
         "IDs that don't exist or belong to another organization are silently skipped, so `deleted` may be less than `len(ids)`. "
         "Sub-sessions of a deleted session are deleted with it; they count toward `deleted` only when their own ID was requested."
     ),
-    "request": inline_serializer(
-        name="SessionBulkDeleteRequest",
-        fields={
-            "ids": drf_serializers.ListField(child=drf_serializers.IntegerField()),
-        },
-    ),
+    "request": BulkIdsSerializer,
     "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -597,11 +564,20 @@ SESSION_BULK_DELETE_POST = {
         ),
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="`ids` is missing, not a list, or contains non-integer values.",
+            description=(
+                f"`ids` is missing, empty, longer than {BULK_DELETE_MAX_IDS}, or holds something other "
+                "than positive integers (booleans, strings and floats are rejected)."
+            ),
             examples=[
                 OpenApiExample(
                     "Invalid ids",
-                    value={"detail": "ids must be a list of integers."},
+                    value={"detail": "ids must be a list of positive integers."},
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+                OpenApiExample(
+                    "Too many ids",
+                    value={"detail": f"ids must have at most {BULK_DELETE_MAX_IDS} items."},
                     response_only=True,
                     status_codes=["400"],
                 ),

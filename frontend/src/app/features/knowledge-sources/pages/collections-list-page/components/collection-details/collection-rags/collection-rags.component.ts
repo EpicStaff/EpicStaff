@@ -1,11 +1,26 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
+import {
+    afterNextRender,
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    ElementRef,
+    inject,
+    Injector,
+    input,
+    output,
+    signal,
+    viewChildren,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { isFocusLost } from '@shared/utils';
 import { filter, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../../services/notifications';
@@ -13,7 +28,7 @@ import { GraphRagConfigurationDialog } from '../../../../../components/rag-confi
 import { NaiveRagConfigurationDialog } from '../../../../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
 import { RagConfigurationDialogComponent } from '../../../../../components/rag-configuration-dialog/rag-configuration-dialog.component';
 import { RAG_STATUS_CONFIG, RAG_TYPE_CONFIG } from '../../../../../constants/constants';
-import { getIndexingUsageLines } from '../../../../../helpers/format-indexing-usage.util';
+import { getIndexingUsageDetails, IndexingUsageDetail } from '../../../../../helpers/format-indexing-usage.util';
 import { RagType } from '../../../../../models/base-rag.model';
 import { CreateCollectionDtoResponse } from '../../../../../models/collection.model';
 import { CollectionsStorageService } from '../../../../../services/collections-storage.service';
@@ -37,16 +52,24 @@ export class CollectionRagsComponent {
     private ragDeleteRegistry = inject(RagDeleteRegistryService);
     private naiveRagDocumentsStorage = inject(NaiveRagDocumentsStorageService);
     private graphRagDocumentsStorage = inject(GraphRagDocumentsStorageService);
+    private readonly injector = inject(Injector);
+    private readonly document = inject(DOCUMENT);
 
     collection = input.required<CreateCollectionDtoResponse>();
+    /** The last RAG was deleted along with the focused button: the parent takes the focus instead. */
+    readonly lastRagRemoved = output<void>();
 
-    protected readonly usageLines = computed(() => {
-        const linesByType: Partial<Record<RagType, string[]>> = {};
+    private readonly ragNameButtons = viewChildren<ElementRef<HTMLButtonElement>>('ragNameButton');
+
+    protected readonly usageDetails = computed(() => {
+        const detailsByType: Partial<Record<RagType, IndexingUsageDetail[]>> = {};
         for (const config of this.collection().rag_configurations) {
-            linesByType[config.rag_type] = getIndexingUsageLines(config.indexing_usage);
+            detailsByType[config.rag_type] = getIndexingUsageDetails(config.indexing_usage);
         }
-        return linesByType;
+        return detailsByType;
     });
+    /** RAG types whose usage details are open; each row toggles on its own, all start collapsed. */
+    protected readonly expandedUsageTypes = signal<ReadonlySet<RagType>>(new Set());
 
     ragTypeConfig = RAG_TYPE_CONFIG;
     ragStatusConfig = RAG_STATUS_CONFIG;
@@ -66,8 +89,25 @@ export class CollectionRagsComponent {
         }
     }
 
+    protected toggleUsage(type: RagType): void {
+        this.expandedUsageTypes.update((expanded) => {
+            const next = new Set(expanded);
+            if (next.has(type)) {
+                next.delete(type);
+            } else {
+                next.add(type);
+            }
+            return next;
+        });
+    }
+
+    protected usageDetailsId(type: RagType): string {
+        return `rag-usage-${this.collection().collection_id}-${type}`;
+    }
+
     onDeleteRag(type: RagType, ragId: number): void {
         const ragName = this.ragTypeConfig[type].name;
+        const index = this.collection().rag_configurations.findIndex((config) => config.rag_type === type);
 
         this.confirmationService
             .confirmDelete(ragName)
@@ -86,7 +126,25 @@ export class CollectionRagsComponent {
                 } else if (type === 'graph') {
                     this.graphRagDocumentsStorage.clear();
                 }
+                this.keepFocusAfterRemoval(index);
             });
+    }
+
+    /** The deleted row takes its focused Delete button along: the focus moves to the RAG now in its place. */
+    private keepFocusAfterRemoval(index: number): void {
+        afterNextRender(
+            () => {
+                if (!isFocusLost(this.document)) return;
+                const buttons = this.ragNameButtons();
+                const next = buttons[Math.min(index, buttons.length - 1)];
+                if (next) {
+                    next.nativeElement.focus();
+                } else {
+                    this.lastRagRemoved.emit();
+                }
+            },
+            { injector: this.injector }
+        );
     }
 
     private openRagConfigurationDialog(

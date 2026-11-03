@@ -2,7 +2,9 @@ from django.db import transaction
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from loguru import logger
+
 from tables.models.session_models import Session
+from tables.services.session_callbacks.service import TERMINAL_STATUSES
 from tables.services.session_manager_service import SessionManagerService
 
 
@@ -17,7 +19,12 @@ def _stop_session_after_commit(session_id) -> None:
 
 @receiver(pre_delete, sender=Session)
 def session_pre_delete_handler(sender, instance, **kwargs):
-    """Schedule `stop_session` to run after the deleting transaction commits, whether the Session is deleted directly or via cascade (e.g. its parent Graph being deleted)."""
+    """Schedule `stop_session` to run after the deleting transaction commits, whether the Session is deleted directly or via cascade (e.g. its parent Graph being deleted).
+
+    A session that already finished has nothing running to stop, so nothing is published.
+    """
     session_id = instance.pk
+    if instance.status in TERMINAL_STATUSES:
+        return
     logger.info(f"Triggered pre_delete signal for Session ID: {session_id}")
     transaction.on_commit(lambda: _stop_session_after_commit(session_id))

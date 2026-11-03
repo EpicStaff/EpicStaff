@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, input, Output } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 import { formatNodeLabel } from '@shared/utils';
@@ -18,6 +18,7 @@ import {
     template: `
         <div
             class="search-node-item"
+            [class.search-node-item--active]="active()"
             (click)="onNodeClick()"
             (dblclick)="onNodeDoubleClick($event)"
         >
@@ -64,7 +65,8 @@ import {
                 position: relative;
                 overflow: hidden;
 
-                &:hover {
+                &:hover,
+                &--active {
                     background-color: var(--gray-800, #1a1a1a);
                     border-color: var(--gray-700, #333);
 
@@ -151,6 +153,8 @@ import {
 })
 export class SearchNodeItemComponent {
     @Input() public node!: NodeModel;
+    /** Highlighted by the search's arrow keys; looks like the hovered item. */
+    public readonly active = input(false);
     @Output() public nodeSelected = new EventEmitter<NodeModel>();
     @Output() public nodeDoubleClicked = new EventEmitter<{
         node: NodeModel;

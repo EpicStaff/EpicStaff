@@ -1,4 +1,4 @@
-"""Tests for app.logging_utils — redact(), redact_value(), redact_messages(), redact_payload()."""
+"""Tests for app.logging_utils — redaction of payloads, messages and exceptions."""
 
 from __future__ import annotations
 
@@ -7,10 +7,21 @@ import re
 
 import pytest
 from app import logging_utils
-from app.logging_utils import redact, redact_messages, redact_payload, redact_value
+from app.logging_utils import (
+    format_exception_for_log,
+    redact,
+    redact_messages,
+    redact_payload,
+    redact_value,
+    summarize_validation_error,
+)
+from pydantic import BaseModel, ValidationError
 
 _DIGEST_PATTERN = re.compile(r"^<redacted len=(\d+) digest=[0-9a-f]{12}>$")
 _TEST_DIGEST_KEY = b"deterministic-test-key"
+
+# Every substring pydantic adds to a rendered error that can echo the rejected input.
+_PYDANTIC_LEAK_MARKERS = ("input_value", "input_type", "msg", "ctx", "url", "Input should")
 
 
 @pytest.fixture
@@ -420,3 +431,157 @@ def test_redact_payload_non_dict_input_is_digested():
 
     assert result == redact_value(sensitive_value)
     assert sensitive_value not in result
+
+
+class _CodeTask(BaseModel):
+    venv_id: str
+    secrets: dict[str, str]
+    storage_credentials: dict[str, str] | None = None
+
+
+def _validation_error(**overrides) -> ValidationError:
+    payload = {"venv_id": "venv-1", "secrets": {}}
+    payload.update(overrides)
+    with pytest.raises(ValidationError) as raised:
+        _CodeTask(**payload)
+    return raised.value
+
+
+def test_summarize_validation_error_reports_type_and_location():
+    error = _validation_error(secrets="sk-live-abcdef")
+
+    summary = summarize_validation_error(error)
+
+    assert summary.startswith("ValidationError:")
+    assert "dict_type at secrets" in summary
+    assert "1 error(s)" in summary
+
+
+def test_summarize_validation_error_does_not_leak_the_rejected_input():
+    secret_value = "sk-live-abcdef-super-secret"
+
+    summary = summarize_validation_error(_validation_error(secrets=secret_value))
+
+    assert secret_value not in summary
+    assert "sk-live" not in summary
+
+
+def test_summarize_validation_error_omits_pydantic_rendering_markers():
+    summary = summarize_validation_error(
+        _validation_error(secrets="sk-live-abcdef", storage_credentials=["not", "a", "dict"])
+    )
+
+    for marker in _PYDANTIC_LEAK_MARKERS:
+        assert marker not in summary
+
+
+def test_summarize_validation_error_reports_every_failure():
+    summary = summarize_validation_error(
+        _validation_error(venv_id=42, secrets="sk-live-abcdef")
+    )
+
+    assert "2 error(s)" in summary
+    assert "at venv_id" in summary
+    assert "at secrets" in summary
+
+
+def test_summarize_validation_error_joins_a_nested_location():
+    summary = summarize_validation_error(_validation_error(secrets={"OPENAI_API_KEY": 123}))
+
+    assert "at secrets.OPENAI_API_KEY" in summary
+
+
+def test_summarize_validation_error_locations_name_the_secret_key_not_its_value():
+    """Accepted limitation: a dict field's key reaches the log, its value never does."""
+    summary = summarize_validation_error(
+        _validation_error(secrets={"OPENAI_API_KEY": ["sk-live-abcdef"]})
+    )
+
+    assert "OPENAI_API_KEY" in summary
+    assert "sk-live-abcdef" not in summary
+
+
+class _UnreadableValidationError(Exception):
+    """Stands in for a validation error whose entries cannot be read."""
+
+    def errors(self):
+        raise RuntimeError("entries unavailable")
+
+    def __str__(self):
+        raise RuntimeError("str is broken too")
+
+
+def test_summarize_validation_error_fails_closed_to_the_class_name():
+    assert summarize_validation_error(_UnreadableValidationError()) == "_UnreadableValidationError"
+
+
+class _EntriesMissingType(Exception):
+    def errors(self):
+        return [{"loc": ("secrets",), "input": "sk-live-abcdef"}]
+
+
+def test_summarize_validation_error_fails_closed_when_an_entry_lacks_a_key():
+    summary = summarize_validation_error(_EntriesMissingType())
+
+    assert summary == "_EntriesMissingType"
+    assert "sk-live-abcdef" not in summary
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_class"),
+    [
+        (ValueError("secret-bearing message sk-live-abcdef"), "ValueError"),
+        (KeyError("api_key"), "KeyError"),
+        (RuntimeError(""), "RuntimeError"),
+        (TimeoutError(), "TimeoutError"),
+    ],
+    ids=["value_error", "key_error", "empty_message", "no_message"],
+)
+def test_format_exception_for_log_is_the_class_name_and_a_digest(error, expected_class):
+    assert format_exception_for_log(error) == f"{expected_class}: {redact_value(str(error))}"
+
+
+def test_format_exception_for_log_digest_follows_the_class_name():
+    formatted = format_exception_for_log(ValueError("sk-live-abcdef"))
+
+    class_name, _, digest = formatted.partition(": ")
+    assert class_name == "ValueError"
+    assert _DIGEST_PATTERN.match(digest) is not None
+
+
+def test_format_exception_for_log_does_not_leak_the_message():
+    secret_value = "Bearer sk-live-abcdef"
+
+    formatted = format_exception_for_log(RuntimeError(f"request failed: {secret_value}"))
+
+    assert secret_value not in formatted
+    assert "sk-live" not in formatted
+
+
+def test_format_exception_for_log_carries_no_stack_frames():
+    try:
+        raise ValueError("sk-live-abcdef")
+    except ValueError as error:
+        formatted = format_exception_for_log(error)
+
+    assert "Traceback" not in formatted
+    assert __file__ not in formatted
+    assert "line " not in formatted
+
+
+class _BrokenStr(Exception):
+    def __str__(self):
+        raise RuntimeError("cannot stringify")
+
+
+def test_format_exception_for_log_fails_closed_on_a_broken_str():
+    assert format_exception_for_log(_BrokenStr()) == "_BrokenStr"
+
+
+def test_format_exception_for_log_reports_a_validation_error_class():
+    formatted = format_exception_for_log(_validation_error(secrets="sk-live-abcdef"))
+
+    assert formatted.startswith("ValidationError: ")
+    assert "sk-live-abcdef" not in formatted
+    for marker in _PYDANTIC_LEAK_MARKERS:
+        assert marker not in formatted

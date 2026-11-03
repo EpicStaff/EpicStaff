@@ -63,3 +63,29 @@ def test_deleting_parent_session_schedules_stop_for_cascaded_children(
         call.kwargs["session_id"] for call in mock_stop_session.call_args_list
     }
     assert stopped_session_ids == subtree_ids
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "status, is_stopped",
+    [
+        (Session.SessionStatus.RUN, True),
+        (Session.SessionStatus.WAIT_FOR_USER, True),
+        (Session.SessionStatus.END, False),
+        (Session.SessionStatus.ERROR, False),
+        (Session.SessionStatus.STOP, False),
+        (Session.SessionStatus.EXPIRED, False),
+    ],
+)
+def test_deleting_a_session_stops_it_only_while_it_is_still_running(
+    graph, django_capture_on_commit_callbacks, status, is_stopped
+):
+    session = Session.objects.create(graph=graph, status=status, variables={})
+
+    with patch(
+        "tables.signals.session_signals.SessionManagerService.stop_session"
+    ) as mock_stop_session:
+        with django_capture_on_commit_callbacks(execute=True):
+            session.delete()
+
+    assert mock_stop_session.called is is_stopped

@@ -1,0 +1,134 @@
+<div class="dialog-container">
+    <div class="dialog-header">
+        <div class="dialog-title-row">
+            <span class="dialog-icon">
+                <app-svg-icon
+                    icon="warning"
+                    size="1.25rem"
+                />
+            </span>
+            <h2
+                [id]="titleId"
+                class="dialog-title"
+            >
+                {{ title }}
+            </h2>
+        </div>
+        <app-icon-button
+            icon="x"
+            size="2rem"
+            ariaLabel="Close"
+            tooltip="Close"
+            (click)="onClose()"
+            class="close-button"
+        ></app-icon-button>
+    </div>
+
+    <div class="dialog-body">
+        @if (isSingleItemNoUsage) {
+            <p class="summary-message">{{ summaryText }}</p>
+        } @else {
+            @if (!isEmpty) {
+                <p class="summary-message">{{ summaryText }}</p>
+            }
+            @if (hasItemInUse) {
+                <app-hint-message
+                    class="usage-banner"
+                    tone="warning"
+                >
+                    Where these are used, the reference will be removed.
+                </app-hint-message>
+            }
+            @for (section of sections; track section.id) {
+                <section
+                    class="breakdown"
+                    [class.breakdown--neutral]="section.kind === 'not-found'"
+                >
+                    <button
+                        type="button"
+                        class="breakdown-header"
+                        [attr.aria-expanded]="isSectionOpen(section)"
+                        [attr.aria-controls]="section.id"
+                        (click)="toggleSection(section)"
+                    >
+                        <app-icon
+                            icon="ui/chevron-down"
+                            size="0.85rem"
+                            class="breakdown-chevron"
+                            [class.collapsed]="!isSectionOpen(section)"
+                        />
+                        <span class="breakdown-title">{{ section.title }}</span>
+                        <span class="breakdown-total">{{ section.count }}</span>
+                    </button>
+                    <div
+                        class="grid-collapsible"
+                        [class.expanded]="isSectionOpen(section)"
+                    >
+                        <div>
+                            <ul
+                                class="breakdown-list"
+                                [id]="section.id"
+                            >
+                                @for (row of section.rows; track row.id) {
+                                    <!-- Plain rows skip the tooltip directive: a list can hold hundreds of them. -->
+                                    @if (row.tooltip) {
+                                        <li
+                                            class="item"
+                                            [class.item--blocked]="row.kind === 'blocked'"
+                                            [class.item--in-use]="row.kind === 'in-use'"
+                                        >
+                                            <span class="item-name">{{ row.name }}</span>
+                                            <!-- The tooltip sits on the label, so it centres over it. -->
+                                            <span
+                                                class="item-label"
+                                                tabindex="0"
+                                                matTooltipPosition="above"
+                                                matTooltipClass="multiline-tooltip"
+                                                [matTooltip]="row.tooltip"
+                                                >{{ row.label }}</span
+                                            >
+                                        </li>
+                                    } @else {
+                                        <li class="item">
+                                            <span class="item-name">{{ row.name }}</span>
+                                        </li>
+                                    }
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                    @if (section.kind === 'not-found') {
+                        <p class="section-note">These no longer exist and were removed from the list.</p>
+                    }
+                </section>
+            }
+        }
+    </div>
+
+    <div class="dialog-actions">
+        @if (isEmpty) {
+            <button
+                type="button"
+                class="button close-text-button"
+                (click)="onClose()"
+            >
+                Close
+            </button>
+        } @else {
+            <button
+                type="button"
+                class="button cancel-button"
+                (click)="onCancel()"
+            >
+                Cancel
+            </button>
+            <app-button
+                class="confirm-button"
+                type="danger"
+                (click)="onConfirm()"
+            >
+                Delete
+            </app-button>
+        }
+    </div>
+</div>

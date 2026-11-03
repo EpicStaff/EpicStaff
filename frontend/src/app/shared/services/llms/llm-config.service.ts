@@ -2,11 +2,14 @@ import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import {
     ActionCode,
+    BulkDeleteOptions,
+    BulkDeleteResponse,
     CreateLLMConfigRequest,
     GetLlmConfigRequest,
     ResourceCode,
     UpdateLLMConfigRequest,
 } from '@shared/models';
+import { bulkDeleteParams } from '@shared/utils';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
@@ -77,9 +80,11 @@ export class LLMConfigService {
         });
     }
 
-    deleteConfig(id: number): Observable<void> {
-        return this.http.delete<void>(`${this.apiUrl}${id}/`, {
-            headers: this.headers,
-        });
+    bulkDelete(ids: number[], options: BulkDeleteOptions = {}): Observable<BulkDeleteResponse> {
+        return this.http.post<BulkDeleteResponse>(
+            `${this.apiUrl}bulk-delete/`,
+            { ids },
+            { params: bulkDeleteParams(options) }
+        );
     }
 }

@@ -1,6 +1,7 @@
 export * from './app-storage.service';
 export * from './app-storage.token';
 export * from './base-labels-store.service';
+export * from './bulk-delete/bulk-delete.service';
 export * from './dropdown-manager.service';
 export * from './embeddings/embedding-config-storage.service';
 export * from './embeddings/embedding-configs.service';

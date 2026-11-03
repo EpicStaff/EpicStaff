@@ -12,6 +12,7 @@ import {
     ValidatorFn,
     Validators,
 } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -187,6 +188,7 @@ export interface ChatBindingsDialogData {
     imports: [
         NgTemplateOutlet,
         ReactiveFormsModule,
+        MatTooltip,
         AppSvgIconComponent,
         ButtonComponent,
         ChipsInputComponent,

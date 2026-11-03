@@ -283,10 +283,19 @@ class GraphVersioningService:
         }
 
     def _prepare(self, version: GraphVersion) -> PreparedVersion:
+        dependencies_validation = self._manager.validate_dependencies(
+            version.dependencies or {}, version.graph.org_id
+        )
+        # Must run before conversion: it mutates version.snapshot in place, so a
+        # v4-or-earlier snapshot's synthetic venv ids would otherwise look "recorded".
+        self._manager.resolve_venv_availability(
+            version.snapshot, dependencies_validation["available"], version.graph.org_id
+        )
         converted_snapshot = self._manager.convert_snapshot_to_current_version(version.snapshot)
-        dependencies_validation = self._manager.validate_dependencies(version.dependencies or {})
         filtered_snapshot, filter_warnings = self._manager.filter_snapshot(
-            converted_snapshot, dependencies_validation["missing"]
+            converted_snapshot,
+            dependencies_validation["missing"],
+            dependencies_validation["available"],
         )
         return PreparedVersion(
             converted_snapshot=converted_snapshot,

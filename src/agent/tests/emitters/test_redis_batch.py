@@ -356,3 +356,20 @@ async def test_on_final_masks_error_text_in_logs_but_not_published_payload():
     assert "llm_error" in result_line, "stop_reason must stay readable"
 
     assert _decode_payload(published[0])["error"] == error_marker
+
+
+async def test_on_error_masks_error_text_in_logs_but_not_published_payload():
+    """str(exception) can echo prompt content; the ERROR line must not carry it."""
+    emitter, published = _make_emitter()
+    error_marker = "ERROR_ECHOING_USER_PROMPT_271"
+
+    with capture_logs_at("ERROR") as logs:
+        await emitter.on_error(RuntimeError(f"call failed: {error_marker}"))
+
+    error_line = log_line_starting_with(logs, "published agent.error ")
+    assert error_marker not in error_line
+    assert "correlation_id=test-corr" in error_line, "correlation_id must stay readable"
+    assert "RuntimeError" in error_line
+    assert "<redacted" in error_line
+
+    assert _decode_payload(published[0])["error"] == f"call failed: {error_marker}"

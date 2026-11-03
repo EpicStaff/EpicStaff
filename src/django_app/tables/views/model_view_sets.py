@@ -134,12 +134,14 @@ from tables.models import (
     PythonNode,
     RealtimeModel,
     Secret,
+    Session,
     StartNode,
     SubGraphNode,
     TaskNode,
 )
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
+from tables.models.flow_filter_preset_models import FlowFilterPreset
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     Condition,
@@ -171,6 +173,7 @@ from tables.models.realtime_models import (
     RealtimeAgentDefinition,
     RealtimeSessionItem,
 )
+from tables.models.tool_filter_preset_models import ToolFilterPreset
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     ProviderType,
@@ -200,6 +203,7 @@ from tables.serializers.model_serializers import (
     ElevenLabsRealtimeConfigSerializer,
     EndNodeSerializer,
     FileExtractorNodeSerializer,
+    FlowFilterPresetSerializer,
     GeminiRealtimeConfigSerializer,
     GraphLightSerializer,
     GraphNoteSerializer,
@@ -234,6 +238,7 @@ from tables.serializers.model_serializers import (
     TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
     TelegramWebhookInfoSerializer,
+    ToolFilterPresetSerializer,
     TwilioChannelSerializer,
     WebhookTriggerFlowsSerializer,
     WebhookTriggerNodeReadSerializer,
@@ -258,6 +263,7 @@ from tables.serializers.model_serializers.realtime_serializers import (
 )
 from tables.serializers.serializers import (
     BulkExportSerializer,
+    BulkIdsSerializer,
     GraphNodesPartialExportSerializer,
     ImportRequestSerializer,
 )
@@ -271,6 +277,15 @@ from tables.services.copy_services import (
     GraphCopyService,
     McpToolCopyService,
     PythonCodeToolCopyService,
+)
+from tables.services.delete_services import (
+    ElevenLabsRealtimeConfigDeleteService,
+    EmbeddingConfigDeleteService,
+    GeminiRealtimeConfigDeleteService,
+    GraphDeleteService,
+    GraphVersionDeleteService,
+    LLMConfigDeleteService,
+    OpenAIRealtimeConfigDeleteService,
 )
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.graph_bulk_save_service.registry import TRIGGER_NODE_LIST_KEYS
@@ -316,6 +331,15 @@ from tables.swagger_schemas.audit_filter_preset_schemas import (
     AUDIT_FILTER_PRESET_EXPORT_ALL,
     AUDIT_FILTER_PRESET_EXPORT_ONE,
     AUDIT_FILTER_PRESET_IMPORT,
+)
+from tables.swagger_schemas.bulk_delete_schemas import (
+    ELEVENLABS_REALTIME_CONFIG_BULK_DELETE_POST,
+    EMBEDDING_CONFIG_BULK_DELETE_POST,
+    GEMINI_REALTIME_CONFIG_BULK_DELETE_POST,
+    GRAPH_BULK_DELETE_POST,
+    GRAPH_VERSION_BULK_DELETE_POST,
+    LLM_CONFIG_BULK_DELETE_POST,
+    OPENAI_REALTIME_CONFIG_BULK_DELETE_POST,
 )
 from tables.swagger_schemas.common_schemas import FLOW_WITH_TRIGGER_NODES_403_RESPONSE
 from tables.swagger_schemas.graph_copy_schemas import GRAPH_COPY_POST
@@ -372,6 +396,7 @@ from tables.swagger_schemas.webhook_schemas import (
 from tables.utils.helpers import generate_file_name, natural_sort_key
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.views.mixins import (
+    BulkDeleteActionMixin,
     CopyActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
@@ -444,10 +469,14 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
         instance.delete()
 
 
-class LLMConfigReadWriteViewSet(SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, ModelViewSet):
+@extend_schema_view(bulk_delete=extend_schema(**LLM_CONFIG_BULK_DELETE_POST))
+class LLMConfigReadWriteViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = LLMConfigDeleteService
     secret_use_check = check_llm_config_write
     # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
     secret_use_check_locks_rows = True
@@ -550,12 +579,14 @@ class EmbeddingModelReadWriteViewSet(
     filterset_class = EmbeddingModelFilter
 
 
+@extend_schema_view(bulk_delete=extend_schema(**EMBEDDING_CONFIG_BULK_DELETE_POST))
 class EmbeddingConfigReadWriteViewSet(
-    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, ModelViewSet
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = EmbeddingConfigDeleteService
     secret_use_check = check_embedding_config_write
     # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
     secret_use_check_locks_rows = True
@@ -697,12 +728,10 @@ class PythonCodeToolViewSet(
     @extend_schema(**PYTHON_CODE_TOOL_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
-        ids = request.data.get("ids", [])
-        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
-            return Response(
-                {"detail": "ids must be a list of integers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = BulkIdsSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        ids = body.validated_data["ids"]
 
         with transaction.atomic():
             # Built-in tools are silently excluded, never rejected — they are
@@ -798,9 +827,13 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
-@extend_schema_view(copy=extend_schema(**GRAPH_COPY_POST))
+@extend_schema_view(
+    bulk_delete=extend_schema(**GRAPH_BULK_DELETE_POST),
+    copy=extend_schema(**GRAPH_COPY_POST),
+)
 class GraphViewSet(
     OrgScopedViewSetMixin,
+    BulkDeleteActionMixin,
     CopyActionMixin,
     InspectActionMixin,
     RecycleBinActionsMixin,
@@ -820,11 +853,13 @@ class GraphViewSet(
         "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
         "delete_by_uuid": Permission.DELETE,
+        "bulk_delete": Permission.DELETE,
         "subflow_usage": Permission.READ,
     }
     recycle_bin_resource_key = RecycleBinSource.FLOW
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
+    delete_service_class = GraphDeleteService
 
     serializer_class = GraphSerializer
     filter_backends = [DjangoFilterBackend, LabelFilterBackend]
@@ -1285,8 +1320,9 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             )
         ],
     ),
+    bulk_delete=extend_schema(**GRAPH_VERSION_BULK_DELETE_POST),
 )
-class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -1294,8 +1330,10 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         "all": Permission.READ,
         "restore": Permission.UPDATE,
         "create_graph": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
         "preview": Permission.READ,
     }
+    delete_service_class = GraphVersionDeleteService
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph_id"]
 
@@ -1495,11 +1533,16 @@ class TaskNodeViewSet(
                 "attached surfaces and inline surface.",
             ),
             400: OpenApiResponse(description="Conflicting RAG configs."),
+            403: OpenApiResponse(description="Caller lacks surfaces READ."),
         },
     )
     @action(detail=True, methods=["get"], url_path="combine")
     def combine(self, request, pk=None):
         node = self.get_object()
+        # The combined view is the node's surface content, so it needs surfaces READ too.
+        assert_org_permission(
+            request.user, self.get_active_org_id(), ResourceType.SURFACES, Permission.READ
+        )
         combined = NodeSurfaceService.build_combined_surface(node)
         return Response(combined, status=status.HTTP_200_OK)
 
@@ -1538,11 +1581,16 @@ class AgentNodeViewSet(
                 "attached surfaces and inline surface.",
             ),
             400: OpenApiResponse(description="Conflicting RAG configs."),
+            403: OpenApiResponse(description="Caller lacks surfaces READ."),
         },
     )
     @action(detail=True, methods=["get"], url_path="combine")
     def combine(self, request, pk=None):
         node = self.get_object()
+        # The combined view is the node's surface content, so it needs surfaces READ too.
+        assert_org_permission(
+            request.user, self.get_active_org_id(), ResourceType.SURFACES, Permission.READ
+        )
         combined = NodeSurfaceService.build_combined_surface(node)
         return Response(combined, status=status.HTTP_200_OK)
 
@@ -1554,7 +1602,13 @@ class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     queryset = AgentNodeTask.objects.all()
     serializer_class = AgentNodeTaskSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["agent_node"]
+
+    class AgentNodeTaskFilter(FilterSet):
+        # Plain number, not ModelChoiceFilter: that validates against every org's
+        # agent nodes, so a foreign id (200, empty) would be distinguishable from a missing one (400).
+        agent_node = NumberFilter(field_name="agent_node_id")
+
+    filterset_class = AgentNodeTaskFilter
 
     def _clean_and_save(self, serializer):
         instance = serializer.save()
@@ -1619,7 +1673,8 @@ class GraphSessionMessageReadOnlyViewSet(OrgScopedChildViewSetMixin, ReadOnlyMod
     filterset_class = GraphSessionMessageFilter
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # The messages of a session hidden with its binned flow (Session.visible) are hidden too.
+        qs = super().get_queryset().filter(session__in=Session.objects.visible())
         if not self.request.query_params.get("parent_subgraph_execution_id"):
             qs = qs.filter(parent_subgraph_execution_id__isnull=True)
         return qs
@@ -1788,34 +1843,49 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         return Response({"detail": "Updated"})
 
 
+@extend_schema_view(bulk_delete=extend_schema(**OPENAI_REALTIME_CONFIG_BULK_DELETE_POST))
 class OpenAIRealtimeConfigViewSet(
-    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+    SecretUseCheckedViewSetMixin,
+    OrgScopedViewSetMixin,
+    BulkDeleteActionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = OpenAIRealtimeConfigDeleteService
     secret_use_check = check_openai_realtime_config_write
     queryset = OpenAIRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = OpenAIRealtimeConfigSerializer
 
 
+@extend_schema_view(bulk_delete=extend_schema(**ELEVENLABS_REALTIME_CONFIG_BULK_DELETE_POST))
 class ElevenLabsRealtimeConfigViewSet(
-    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+    SecretUseCheckedViewSetMixin,
+    OrgScopedViewSetMixin,
+    BulkDeleteActionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = ElevenLabsRealtimeConfigDeleteService
     secret_use_check = check_elevenlabs_realtime_config_write
     queryset = ElevenLabsRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = ElevenLabsRealtimeConfigSerializer
 
 
+@extend_schema_view(bulk_delete=extend_schema(**GEMINI_REALTIME_CONFIG_BULK_DELETE_POST))
 class GeminiRealtimeConfigViewSet(
-    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+    SecretUseCheckedViewSetMixin,
+    OrgScopedViewSetMixin,
+    BulkDeleteActionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = GeminiRealtimeConfigDeleteService
     secret_use_check = check_gemini_realtime_config_write
     queryset = GeminiRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = GeminiRealtimeConfigSerializer
@@ -2467,12 +2537,10 @@ class McpToolViewSet(
     @extend_schema(**MCP_TOOL_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
-        ids = request.data.get("ids", [])
-        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
-            return Response(
-                {"detail": "ids must be a list of integers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = BulkIdsSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        ids = body.validated_data["ids"]
 
         with transaction.atomic():
             # McpTool has no built-in concept — every matching id is deletable.
@@ -2989,6 +3057,54 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             org_id=self.get_active_org_id(),
         )
         return Response(summary, status=status.HTTP_200_OK)
+
+
+class ToolFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    """Saved tool-list filter presets, private to the author.
+
+    Gated on TOOLS:read — presets are a convenience over tool browsing,
+    so every action maps to READ.
+    """
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.TOOLS
+    rbac_action_map = {
+        "list": Permission.READ,
+        "retrieve": Permission.READ,
+        "create": Permission.READ,
+        "update": Permission.READ,
+        "partial_update": Permission.READ,
+        "destroy": Permission.READ,
+    }
+    queryset = ToolFilterPreset.objects.all()
+    serializer_class = ToolFilterPresetSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().filter(created_by=self.request.user)
+
+
+class FlowFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    """Saved flow-list filter presets, private to the author.
+
+    Gated on FLOWS:read — presets are a convenience over flow browsing,
+    so every action maps to READ.
+    """
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {
+        "list": Permission.READ,
+        "retrieve": Permission.READ,
+        "create": Permission.READ,
+        "update": Permission.READ,
+        "partial_update": Permission.READ,
+        "destroy": Permission.READ,
+    }
+    queryset = FlowFilterPreset.objects.all()
+    serializer_class = FlowFilterPresetSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().filter(created_by=self.request.user)
 
 
 class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):

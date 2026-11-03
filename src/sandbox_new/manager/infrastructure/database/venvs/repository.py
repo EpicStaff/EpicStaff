@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import builtins
 
-from manager.domain.enums import VenvStatus
+from piccolo.querystring import QueryString
+
+from manager.domain.enums import VenvOrder, VenvStatus
 from manager.domain.models import DEFAULT_VENV_NAME, Venv
 from manager.domain.ports import AbstractVenvRepository
 from manager.infrastructure.database.venvs.mappers import VenvMapper
 from manager.infrastructure.database.venvs.tables import VenvTable
+
+LIKE_WILDCARDS = str.maketrans({"\\": "\\\\", "%": "\\%", "_": "\\_"})
+
+ORDER_BY = {
+    VenvOrder.DEFAULT: (VenvTable.id, True),
+    VenvOrder.NAME_ASC: (QueryString('LOWER("name")'), True),
+    VenvOrder.NAME_DESC: (QueryString('LOWER("name")'), False),
+}
 
 
 class PiccoloVenvRepository(AbstractVenvRepository):
@@ -14,19 +24,30 @@ class PiccoloVenvRepository(AbstractVenvRepository):
         self,
         *,
         ids: builtins.list[int] | None = None,
+        name_contains: str | None = None,
+        order: VenvOrder = VenvOrder.DEFAULT,
         limit: int | None = None,
         offset: int | None = None,
     ) -> tuple[builtins.list[Venv], int]:
         if ids is not None and not ids:
             return [], 0
 
+        conditions = []
+        if ids is not None:
+            conditions.append(VenvTable.id.is_in(ids))
+        if name_contains:
+            pattern = name_contains.translate(LIKE_WILDCARDS)
+            conditions.append(VenvTable.name.ilike(f"%{pattern}%"))
+
         rows_query = VenvTable.objects()
         count_query = VenvTable.count()
-        if ids is not None:
-            rows_query = rows_query.where(VenvTable.id.is_in(ids))
-            count_query = count_query.where(VenvTable.id.is_in(ids))
+        for condition in conditions:
+            rows_query = rows_query.where(condition)
+            count_query = count_query.where(condition)
 
         total = await count_query
+        column, ascending = ORDER_BY[order]
+        rows_query = rows_query.order_by(column, ascending=ascending)
         if offset is not None:
             rows_query = rows_query.offset(offset)
         if limit is not None:

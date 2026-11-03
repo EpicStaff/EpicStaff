@@ -164,7 +164,8 @@ describe('ConversationRowComponent', () => {
 
         it('describes the row with the last message, sender included', () => {
             render(conversation({ last_message_role: 'assistant' }));
-            const description = document.getElementById(rowButton().getAttribute('aria-describedby')!);
+            // Looked up inside this row: other specs' leftover markup can reuse the same conversation id.
+            const description = host().querySelector(`[id="${rowButton().getAttribute('aria-describedby')}"]`);
             expect(plain(description?.textContent)).toBe('Bot: Where is my order?');
         });
 

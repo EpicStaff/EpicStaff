@@ -13,7 +13,14 @@ Adding a resource to the recycle bin, and the test that fails if a step is misse
    `bin_resources()` below.
 3. Presentation: a BinPresentation in `presentation.bin_presentations()` under the
    same key, even with no contents. Caught by
-   test_recycle_bin_api.py::test_every_bin_resource_has_a_presentation.
+   test_recycle_bin_api.py::test_every_bin_resource_has_a_presentation. Each
+   ContentSource gives its rows' ResourceType, a DetailField naming an item of
+   another type sets `names`, and an extra-details builder asks
+   `DetailContext.can_read` before naming one: the bin names an item only to a
+   user with READ on its type. A text DetailField whose path crosses a relation
+   without `names` fails
+   test_recycle_bin_contents_access.py::test_every_related_detail_line_says_what_it_names
+   unless it's the item's own data in OWN_RELATED_PATHS there.
 4. Viewset: RecycleBinActionsMixin, `recycle_bin_resource_key` and
    RECYCLE_BIN_ACTION_MAP in its `rbac_action_map`. The map has no purge entries:
    the mixin gates the purges as superadmin-only. Add it to WIRED_VIEWSETS and a
@@ -70,6 +77,9 @@ class BinResource:
         after_restore: Reconnects what the restore can't bring back by itself
             (a webhook trigger's Telegram bots). Called with the restored root
             once the restore has committed.
+        before_purge: Deletes, in bounded batches, rows the purge's one cascade
+            would load all at once (a flow's sessions). Called with the root inside
+            the purge's transaction, before the root is purged.
     """
 
     model: type[Model]
@@ -84,6 +94,7 @@ class BinResource:
     global_names: bool = field(default=False)
     before_restore: Callable[[Model, uuid.UUID], None] | None = field(default=None)
     after_restore: Callable[[Model], None] | None = field(default=None)
+    before_purge: Callable[[Model], None] | None = field(default=None)
 
     @property
     def keeps_references(self) -> bool:
@@ -105,13 +116,16 @@ def bin_resources() -> dict[RecycleBinSource, BinResource]:
     )
     from tables.models.mcp_models import McpTool
     from tables.models.python_models import PythonCodeTool
+    from tables.services.recycle_bin.purge_hooks import delete_flow_sessions
     from tables.services.recycle_bin.restore_hooks import (
         drop_taken_phone_number,
         register_telegram_bots,
     )
 
     return {
-        RecycleBinSource.FLOW: BinResource(Graph, "name", "org", ResourceType.FLOWS),
+        RecycleBinSource.FLOW: BinResource(
+            Graph, "name", "org", ResourceType.FLOWS, before_purge=delete_flow_sessions
+        ),
         RecycleBinSource.PYTHON_TOOL: BinResource(
             PythonCodeTool, "name", "org", ResourceType.TOOLS, also_taken=Q(built_in=True)
         ),

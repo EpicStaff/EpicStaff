@@ -68,7 +68,9 @@
                                         <div class="blob-preview__csv-delimiters">
                                             @for (d of csvDelimiters; track d.value) {
                                                 <button
+                                                    type="button"
                                                     class="blob-preview__csv-btn"
+                                                    [matTooltip]="d.label + ' delimiter'"
                                                     [class.blob-preview__csv-btn--active]="csvDelimiter() === d.value"
                                                     (click)="onDelimiterChange(d.value)"
                                                 >
@@ -82,6 +84,7 @@
                                     <div class="blob-preview__sheet-tabs">
                                         @for (name of data.sheetNames; track name) {
                                             <button
+                                                type="button"
                                                 class="blob-preview__sheet-tab"
                                                 [class.blob-preview__sheet-tab--active]="name === data.activeSheet"
                                                 (click)="onSheetChange(name)"

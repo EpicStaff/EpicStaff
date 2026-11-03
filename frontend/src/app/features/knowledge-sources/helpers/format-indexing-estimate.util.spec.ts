@@ -1,66 +1,49 @@
-import { formatCostUsd } from '@shared/utils';
-
 import { IndexingEstimate } from '../models/base-rag.model';
-import {
-    ALREADY_INDEXED_MESSAGE,
-    ESTIMATE_DISCLAIMER,
-    formatEmbeddingEstimate,
-    getIndexingEstimateHtml,
-} from './format-indexing-estimate.util';
+import { IndexingEstimateView, toIndexingEstimateView } from './format-indexing-estimate.util';
 
-const NAIVE_ESTIMATE: IndexingEstimate = {
-    rag_type: 'naive',
-    document_count: 2,
-    chunk_count: 40,
-    embedding: { tokens: 12345, exact: false, cost_usd: 0.5 },
-};
+function naiveEstimate(embedding: IndexingEstimate['embedding'], documentCount: number = 2): IndexingEstimate {
+    return { rag_type: 'naive', document_count: documentCount, chunk_count: 40, embedding };
+}
 
-describe('format-indexing-estimate.util', () => {
-    it('formats cost with a floor for sub-cent values', () => {
-        expect(formatCostUsd(0.004)).toBe('< $0.01');
-        expect(formatCostUsd(1.239)).toBe('$1.24');
-        expect(formatCostUsd(0)).toBe('$0.00');
+describe('toIndexingEstimateView', () => {
+    it.each<[string, IndexingEstimate | null, IndexingEstimateView]>([
+        [
+            'an approximate estimate',
+            naiveEstimate({ tokens: 3547, exact: false, cost_usd: 0.5 }),
+            { state: 'ready', tokens: '≈ 3,547', cost: '≈ $0.50' },
+        ],
+        [
+            'an exact estimate',
+            naiveEstimate({ tokens: 10, exact: true, cost_usd: 1 }),
+            { state: 'ready', tokens: '10', cost: '$1.00' },
+        ],
+        [
+            'a sub-cent approximate cost, without a second bound',
+            naiveEstimate({ tokens: 3547, exact: false, cost_usd: 0.004 }),
+            { state: 'ready', tokens: '≈ 3,547', cost: '< $0.01' },
+        ],
+        [
+            'an unknown cost',
+            naiveEstimate({ tokens: 1000, exact: false, cost_usd: null }),
+            { state: 'ready', tokens: '≈ 1,000', cost: null },
+        ],
+        ['no estimate', null, { state: 'unavailable' }],
+        ['nothing to index', naiveEstimate({ tokens: 0, exact: true, cost_usd: 0 }, 0), { state: 'already-indexed' }],
+    ])('maps %s', (_case, estimate, expected) => {
+        expect(toIndexingEstimateView(estimate)).toEqual(expected);
     });
 
-    it('formats embedding with approximation prefix unless exact', () => {
-        expect(formatEmbeddingEstimate(NAIVE_ESTIMATE.embedding)).toBe('≈ 12,345 tokens · ≈ $0.50');
-        expect(formatEmbeddingEstimate({ tokens: 10, exact: true, cost_usd: 1 })).toBe('10 tokens · $1.00');
+    it('treats a malformed estimate as unavailable instead of throwing', () => {
+        const badTokens = { rag_type: 'naive', document_count: 1, embedding: { tokens: 'abc', exact: true } };
+        const noEmbedding = { rag_type: 'naive', document_count: 1 };
+
+        expect(toIndexingEstimateView(badTokens as unknown as IndexingEstimate)).toEqual({ state: 'unavailable' });
+        expect(toIndexingEstimateView(noEmbedding as unknown as IndexingEstimate)).toEqual({ state: 'unavailable' });
     });
 
-    it('shows tokens only when cost is unknown', () => {
-        expect(formatEmbeddingEstimate({ tokens: 1000, exact: false, cost_usd: null })).toBe('≈ 1,000 tokens');
-    });
+    it('drops a malformed cost but keeps the tokens', () => {
+        const estimate = naiveEstimate({ tokens: 10, exact: true, cost_usd: 'x' as unknown as number });
 
-    it('returns an empty string when there is no estimate', () => {
-        expect(getIndexingEstimateHtml(null)).toBe('');
-    });
-
-    it('renders html for a naive estimate', () => {
-        const html = getIndexingEstimateHtml(NAIVE_ESTIMATE);
-        expect(html).toContain('class="dialog-callout"');
-        expect(html).toContain('<div class="dialog-callout__title">Estimated usage</div>');
-        expect(html).toContain('<div class="dialog-callout__line">Embedding: ≈ 12,345 tokens · ≈ $0.50</div>');
-        expect(html).toContain(`<div class="dialog-callout__note">${ESTIMATE_DISCLAIMER}</div>`);
-    });
-
-    it('renders only the message line when there is nothing to index', () => {
-        const html = getIndexingEstimateHtml({ ...NAIVE_ESTIMATE, document_count: 0 });
-        expect(html).toContain(`<div class="dialog-callout__line">${ALREADY_INDEXED_MESSAGE}</div>`);
-        expect(html).not.toContain('dialog-callout__title');
-        expect(html).not.toContain('dialog-callout__note');
-        expect(html).not.toContain(ESTIMATE_DISCLAIMER);
-    });
-
-    it('skips invalid values instead of throwing on a malformed estimate', () => {
-        const malformed = {
-            rag_type: 'naive',
-            document_count: 1,
-            chunk_count: 1,
-            embedding: { tokens: 'abc', exact: true, cost_usd: 'x' },
-        } as unknown as IndexingEstimate;
-        expect(getIndexingEstimateHtml(malformed)).toBe('');
-        expect(getIndexingEstimateHtml({ rag_type: 'naive', document_count: 1 } as unknown as IndexingEstimate)).toBe(
-            ''
-        );
+        expect(toIndexingEstimateView(estimate)).toEqual({ state: 'ready', tokens: '10', cost: null });
     });
 });

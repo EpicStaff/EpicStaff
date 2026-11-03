@@ -20,7 +20,7 @@ BOT_TOKEN = "555555555:AAH-signal-logging-SECRET-bot-token"
 
 @pytest.fixture
 def captured_log_records():
-    """Collect (level name, fully formatted text) like a production sink with diagnose on."""
+    """Collect (level name, fully formatted text) through a worst-case sink with diagnose on."""
     records = []
     sink_id = loguru_logger.add(
         lambda message: records.append((message.record["level"].name, str(message))),

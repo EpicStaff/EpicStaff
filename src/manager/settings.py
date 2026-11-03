@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from src.shared.envtools import Env
+from src.shared.retention import load_retention_policy
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -32,3 +33,11 @@ SESSION_TIMEOUT_SWEEP_INTERVAL_SECONDS = 15
 AUDITOR_REDIS_DB = env.int("AUDITOR_REDIS_DB")
 AUDITOR_EXPORT_DATA_DIR = env.str("AUDITOR_EXPORT_DATA_DIR")
 AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS = env.int("AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS")
+
+RETENTION_POLICY = load_retention_policy(env)
+
+# The retention job asks the chat service to purge conversations, calling it directly:
+# nginx hides /chat/internal/ from outside the compose network.
+CHAT_ENABLED = env.bool("CHAT_ENABLED")
+CHAT_UPSTREAM_URL = env.str("CHAT_UPSTREAM_URL")
+CHAT_INTERNAL_API_KEY = env.secret("CHAT_INTERNAL_API_KEY")

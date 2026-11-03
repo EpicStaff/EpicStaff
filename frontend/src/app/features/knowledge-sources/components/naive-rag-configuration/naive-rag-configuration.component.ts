@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -29,13 +30,12 @@ import { EMPTY, Observable, of } from 'rxjs';
 import { catchError, defaultIfEmpty, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
 import {
     BulkUpdateNaiveRagDocumentsResponse,
     EstimateDocumentConfig,
     UpdateNaiveRagDocumentDtoRequest,
 } from '../../models/naive-rag-document.model';
-import { RagConfiguration } from '../../models/rag-configuration';
+import { IndexingDocumentInfo, RagConfiguration } from '../../models/rag-configuration';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
 import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { NaiveRagService } from '../../services/naive-rag.service';
@@ -58,6 +58,7 @@ import { DocumentStatusFilter } from './configuration-table/configuration-table.
         AppSvgIconComponent,
         SelectComponent,
         HasPermissionDirective,
+        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

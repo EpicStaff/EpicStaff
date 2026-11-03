@@ -11,6 +11,16 @@ const TREE: NodeListItem[] = [
     { name: 'b.pdf', nodeType: 'file', key: 'b.pdf', depth: 0 },
 ];
 
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('FlowNodeListComponent', () => {
     let fixture: ComponentFixture<FlowNodeListComponent<NodeListItem>>;
 

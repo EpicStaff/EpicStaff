@@ -305,6 +305,11 @@ One entry per organization the caller has a membership row in. Each
 entry's `permissions` uses the same per-resource action-list shape as
 `/api/permissions/me/`, just nested under its own org.
 
+**User API key caller:** a key acts only in its own organization, so `orgs`
+holds that organization alone (none if it is inactive or the owner is no
+longer a member). A superadmin's key gets this form too, with
+`"is_superadmin": true` and that entry's `"role": null, "permissions": "*"`.
+
 **Errors:** none beyond the standard 401 for unauthenticated callers.
 
 ---
@@ -999,7 +1004,7 @@ Two patterns beyond plain org ownership:
 | API_KEYS † | admin/api-keys | — | R D |
 
 † `API_KEYS` is cross-org rather than active-org scoped — it is governed by `?org_ids=` against
-the key owner's memberships, not the `X-Organization-Id` header. See
+each key's own organization, not the `X-Organization-Id` header. See
 [api_keys.md](api_keys.md).
 
 **Cross-org references are rejected** like a non-existent pk (`400 Invalid pk … does not exist`): a

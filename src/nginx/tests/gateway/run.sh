@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The plugin gateway lab: EpicStaff's nginx templates under the pinned nginx image, against a
-# stand-in decision service and two plugin backends. Prints one `ok -` / `not ok -` line per
-# check, then the gateway's latency under load, and removes every container, volume, network and
-# image it made. Needs Docker. Usage, from anywhere: bash src/nginx/tests/gateway/run.sh
+# stand-in decision service, two plugin backends and a load balancer that ends TLS in front of
+# nginx. Prints one `ok -` / `not ok -` line per check, then the gateway's latency under load,
+# and removes every container, volume, network and image it made. Needs Docker. Usage, from
+# anywhere: bash src/nginx/tests/gateway/run.sh
 #   DURATION=5s bash .../run.sh    shorter load runs (default 10s)
 set -euo pipefail
 cd "$(dirname "$0")"

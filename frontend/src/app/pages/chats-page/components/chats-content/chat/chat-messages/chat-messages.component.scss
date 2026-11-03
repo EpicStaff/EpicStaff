@@ -140,11 +140,18 @@
 
     .tool-arguments,
     .tool-response {
+        // The buttons that fold a tool call's arguments and output, drawn as the heading rows they were.
         .tool-arguments-header,
         .tool-response-header {
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            width: 100%;
+            border: none;
+            background: none;
+            color: inherit;
+            font: inherit;
+            text-align: left;
             cursor: pointer;
             padding: 0.25rem 0;
             font-weight: 400;
@@ -158,7 +165,7 @@
                 }
             }
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 opacity: 0.8;
             }
         }

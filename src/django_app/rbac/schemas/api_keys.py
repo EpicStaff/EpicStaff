@@ -43,7 +43,7 @@ _ADMIN_LIST_403_RESPONSE = OpenApiResponse(
 
 _ADMIN_RETIRE_403_RESPONSE = admin_write_forbidden_403(
     "Caller holds api_keys delete in no organization, or can see the key "
-    "(api_keys read in a shared organization) but may not retire it "
+    "(api_keys read in the key's organization) but may not retire it "
     "(permission_denied)."
 )
 
@@ -81,9 +81,11 @@ PROFILE_API_KEYS_GET = {
 PROFILE_API_KEYS_POST = {
     "summary": "Create an API key (raw key returned once)",
     "description": (
-        "Creates a personal API key. `expires_in_days`: omit for the 90-day "
+        "Creates a personal API key bound to `org_id`; the key works only in "
+        "that organization. The caller must be a member of it (a superadmin may "
+        "pick any active organization). `expires_in_days`: omit for the 90-day "
         "default, send null for a non-expiring key. The raw key appears only "
-        "in this response. At most 5 active keys per user."
+        "in this response. At most 5 active keys per user and organization."
     ),
     "request": ApiKeyCreateRequestSerializer,
     "responses": {
@@ -98,8 +100,9 @@ PROFILE_API_KEYS_POST = {
                         "status_code": 400,
                         "code": "api_key_limit_exceeded",
                         "message": (
-                            "ApiKeyLimitExceededError: Maximum number of active API "
-                            "keys reached (5). Revoke or delete an existing key first."
+                            "ApiKeyLimitExceededError: Maximum number of active API keys "
+                            "in this organization reached (5). Revoke or delete an existing "
+                            "key first."
                         ),
                     },
                     response_only=True,
@@ -113,11 +116,9 @@ PROFILE_API_KEYS_POST = {
                         "message": "Validation failed",
                         "errors": [
                             {
-                                "field": "expires_in_days",
-                                "value": 0,
-                                "reason": (
-                                    "Must be null (no expiry) or an integer between 1 and 3650."
-                                ),
+                                "field": "org_id",
+                                "value": None,
+                                "reason": "Organization is required.",
                             }
                         ],
                     },
@@ -127,22 +128,57 @@ PROFILE_API_KEYS_POST = {
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: _JWT_ONLY_403_RESPONSE,
+        403: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description=(
+                "API-key caller (key management requires a JWT session), or the caller "
+                "is not a member of `org_id` or it is inactive (org_membership_required)."
+            ),
+            examples=[
+                _API_KEY_ON_JWT_ONLY_ENDPOINT_EXAMPLE,
+                OpenApiExample(
+                    "Not a member of the organization",
+                    value={
+                        "status_code": 403,
+                        "code": "org_membership_required",
+                        "message": "You are not a member of this organization.",
+                    },
+                    response_only=True,
+                    status_codes=["403"],
+                ),
+            ],
+        ),
+        404: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Superadmin named an organization that does not exist.",
+            examples=[
+                OpenApiExample(
+                    "Unknown organization",
+                    value={
+                        "status_code": 404,
+                        "code": "organization_not_found",
+                        "message": "Organization not found.",
+                    },
+                    response_only=True,
+                    status_codes=["404"],
+                ),
+            ],
+        ),
     },
     "examples": [
         OpenApiExample(
             "Default expiry (90 days)",
-            value={"name": "my-mcp-client"},
+            value={"name": "my-mcp-client", "org_id": 1},
             request_only=True,
         ),
         OpenApiExample(
             "Custom expiry",
-            value={"name": "ci-pipeline", "expires_in_days": 30},
+            value={"name": "ci-pipeline", "org_id": 1, "expires_in_days": 30},
             request_only=True,
         ),
         OpenApiExample(
             "Never expires",
-            value={"name": "long-lived-integration", "expires_in_days": None},
+            value={"name": "long-lived-integration", "org_id": 1, "expires_in_days": None},
             request_only=True,
         ),
     ],
@@ -174,9 +210,10 @@ PROFILE_API_KEY_DELETE = {
 API_KEYS_MANAGEMENT_LIST = {
     "summary": "List members' API keys",
     "description": (
-        "Keys owned by members of every organization where the caller holds "
-        "api_keys read. Superadmins see all. System keys never appear, and "
-        "superadmin-owned keys are visible only to superadmins."
+        "Keys of every organization where the caller holds api_keys read; each "
+        "key belongs to one organization (`org_id`, `org_name`). Superadmins see "
+        "all. System keys never appear, and superadmin-owned keys are visible "
+        "only to superadmins."
     ),
     "parameters": [
         OpenApiParameter(
@@ -184,7 +221,7 @@ API_KEYS_MANAGEMENT_LIST = {
             type=OpenApiTypes.STR,
             location=OpenApiParameter.QUERY,
             required=False,
-            description="Comma-separated organization ids to restrict the list to.",
+            description="Comma-separated organization ids to restrict the list to (matched against the key's organization).",
         ),
         OpenApiParameter(
             name="user",
@@ -239,8 +276,8 @@ API_KEYS_MANAGEMENT_LIST = {
 API_KEYS_MANAGEMENT_REVOKE_POST = {
     "summary": "Revoke a member's API key",
     "description": (
-        "Requires api_keys delete in an organization the owner belongs to. "
-        "Revocation disables the key in every organization the owner belongs to."
+        "Requires api_keys delete in the key's organization; the owner's other "
+        "organizations grant nothing. A key outside the caller's reach is 404."
     ),
     "request": None,
     "responses": {
@@ -254,8 +291,8 @@ API_KEYS_MANAGEMENT_REVOKE_POST = {
 API_KEYS_MANAGEMENT_DELETE = {
     "summary": "Delete a member's API key",
     "description": (
-        "Requires api_keys delete in an organization the owner belongs to. "
-        "Removes the record; revoke instead to keep it."
+        "Requires api_keys delete in the key's organization; the owner's other "
+        "organizations grant nothing. Removes the record; revoke instead to keep it."
     ),
     "responses": {
         204: OpenApiResponse(description="Deleted"),

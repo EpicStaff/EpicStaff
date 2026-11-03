@@ -17,6 +17,19 @@ import {
 } from '../../../utils/testing/permissions.fixture';
 import { FlowGraphCoreMenuComponent } from './flow-graph-core-menu.component';
 
+// jsdom has no ResizeObserver; the tooltip that shows only for a cut-short name needs one.
+beforeEach(() =>
+    vi.stubGlobal(
+        'ResizeObserver',
+        class {
+            observe(): void {}
+            unobserve(): void {}
+            disconnect(): void {}
+        }
+    )
+);
+afterEach(() => vi.unstubAllGlobals());
+
 describe('FlowGraphCoreMenuComponent', () => {
     let fixture: ComponentFixture<FlowGraphCoreMenuComponent>;
 
@@ -40,7 +53,7 @@ describe('FlowGraphCoreMenuComponent', () => {
     }
 
     function itemNamed(label: string): HTMLElement | undefined {
-        return queryAll('li').find(
+        return queryAll('li .menu-item').find(
             (item) => item.querySelector('.menu-group__item-label')?.textContent?.trim() === label
         );
     }
@@ -94,7 +107,20 @@ describe('FlowGraphCoreMenuComponent', () => {
         fixture.detectChanges();
 
         expect(itemNamed('End')?.classList).toContain('disabled');
+        expect(itemNamed('End')?.getAttribute('aria-disabled')).toBe('true');
         expect(itemNamed('Python Code Node')?.classList).not.toContain('disabled');
+    });
+
+    it('adds no End from the keyboard while the flow already has one', () => {
+        const emitted: CreateNodeRequest[] = [];
+        fixture.componentInstance.nodeSelected.subscribe((value) => emitted.push(value));
+        TestBed.inject(FlowService).setFlow(mapGraphDtoToFlowModel(liveGraph));
+        fixture.detectChanges();
+
+        // Enter or Space on a focused button arrives as a click.
+        itemNamed('End')?.click();
+
+        expect(emitted).toEqual([]);
     });
 
     it('shows no groups when nothing matches', () => {
@@ -164,7 +190,7 @@ describe('FlowGraphCoreMenuComponent key hint', () => {
     }
 
     function row(label: string): HTMLElement {
-        const item = Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('li')).find(
+        const item = Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('li .menu-item')).find(
             (element) => element.querySelector('.menu-group__item-label')?.textContent?.trim() === label
         );
         if (!item) {

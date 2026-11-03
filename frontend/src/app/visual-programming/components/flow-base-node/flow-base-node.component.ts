@@ -139,9 +139,7 @@ export class FlowBaseNodeComponent implements OnInit {
             event.preventDefault();
             event.stopPropagation();
         }
-        if (this.isBlockedSubgraph) {
-            return;
-        }
+        // A subflow node whose flow was deleted opens too: its panel is where another flow is chosen.
         this.editClicked.emit(this.node);
     }
 

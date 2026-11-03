@@ -74,6 +74,34 @@ describe('forbiddenInterceptor', () => {
             );
         }));
 
+    it('does not force a session refresh or toast for an in_use_restricted 403 (bulk-delete single-item block)', () =>
+        new Promise<void>((resolve, reject) => {
+            httpClient.delete('/api/flows/1/').subscribe({
+                next: () => reject(new Error('expected the request to error')),
+                error: (err: HttpErrorResponse) => {
+                    try {
+                        expect(err.status).toBe(403);
+                        expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
+                        expect(router.navigateByUrl).not.toHaveBeenCalled();
+                        expect(toastService.error).not.toHaveBeenCalled();
+                        resolve();
+                    } catch (e) {
+                        reject(e as Error);
+                    }
+                },
+            });
+
+            const req = httpMock.expectOne('/api/flows/1/');
+            req.flush(
+                {
+                    status_code: 403,
+                    code: 'in_use_restricted',
+                    message: 'InUseRestrictedError: This flow is in use and cannot be deleted.',
+                },
+                { status: 403, statusText: 'Forbidden' }
+            );
+        }));
+
     it('does not force a session refresh or toast for a key_value_mode_denied 403', () =>
         new Promise<void>((resolve, reject) => {
             httpClient.post('/api/graphs/1/save-flow/', {}).subscribe({

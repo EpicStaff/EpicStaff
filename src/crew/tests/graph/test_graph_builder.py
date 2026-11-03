@@ -103,6 +103,7 @@ def mock_session_data() -> SessionData:
     return SessionData(
         id=123,
         org_id=1,
+        audit_retention_days=0,
         initial_state={"input": "Hello"},
         graph=GraphData(
             name="example_graph",
@@ -285,6 +286,7 @@ def _task_node_session_data(mock_llm_data) -> SessionData:
     return SessionData(
         id=456,
         org_id=1,
+        audit_retention_days=0,
         initial_state={},
         graph=GraphData(
             name="task_node_graph",
@@ -312,6 +314,7 @@ def _agent_node_session_data(mock_llm_data) -> SessionData:
     return SessionData(
         id=789,
         org_id=1,
+        audit_retention_days=0,
         initial_state={},
         graph=GraphData(
             name="agent_node_graph",
@@ -449,6 +452,7 @@ def _storage_subgraph_session_data(
     return SessionData(
         id=777,
         org_id=1,
+        audit_retention_days=0,
         initial_state={},
         storage_credentials=storage_credentials,
         unique_subgraph_list=[
@@ -502,6 +506,7 @@ def _two_level_storage_subgraph_session_data(
     return SessionData(
         id=778,
         org_id=1,
+        audit_retention_days=0,
         initial_state={},
         storage_credentials=storage_credentials,
         unique_subgraph_list=[

@@ -15,6 +15,7 @@ from loguru import logger
 from mcp import McpError
 
 from app.exceptions import McpToolError
+from app.logging_utils import format_exception_for_log
 from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.schema_sanitizer import (
     MAX_TEXT_CHARS,
@@ -222,7 +223,7 @@ class McpToolGateway:
                     "Failed to cancel MCP tool_name={} request_id={}: {}",
                     tool_name,
                     request_id,
-                    error,
+                    format_exception_for_log(error),
                 )
 
         if scope.cancelled_caught:

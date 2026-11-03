@@ -60,7 +60,6 @@ class SessionSerializer(serializers.ModelSerializer):
             "created_at",
             "finished_at",
             "graph",
-            "graph_schema",
             "parent_session",
             "trigger",
             "principal",

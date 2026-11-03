@@ -1,4 +1,4 @@
-"""Logging helpers — redact secrets before dumping request/config/messages to logs."""
+"""Logging helpers — redact secrets before dumping request/config/messages/errors to logs."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ import hashlib
 import hmac
 import secrets
 from typing import Any
+
+from pydantic import ValidationError
 
 _DIGEST_CHARS = 12
 
@@ -62,6 +64,48 @@ def redact_value(value) -> str:
     text = str(value)
     digest = hmac.new(_DIGEST_KEY, text.encode("utf-8"), hashlib.sha256).hexdigest()
     return f"<redacted len={len(text)} digest={digest[:_DIGEST_CHARS]}>"
+
+
+def summarize_validation_error(error: ValidationError) -> str:
+    """Summarize a pydantic `ValidationError` as types and locations only.
+
+    Pydantic's own rendering error can contains sensitive data. This
+    reads exactly two keys per entry — `type` and `loc` — and never touches `msg`,
+    `input`, `ctx` or `url`.
+
+    Known limitation, accepted: for a `dict[str, X]` field the `loc` tuple contains the
+    dict *key*, so a secret's name (not its value) can reach the log.
+
+    Fails closed: any problem reading the entries yields the class name alone.
+    """
+    try:
+        failures = [
+            f"{entry['type']} at {_format_location(entry['loc'])}" for entry in error.errors()
+        ]
+        return f"{type(error).__name__}: {len(failures)} error(s) [{'; '.join(failures)}]"
+    except Exception:
+        return type(error).__name__
+
+
+def _format_location(location: tuple) -> str:
+    return ".".join(str(part) for part in location) or "<root>"
+
+
+def format_exception_for_log(error: BaseException) -> str:
+    """Render an exception as its class name plus a digest of its message.
+
+    Replaces `logger.exception` / `str(error)` at sites that handle untrusted or
+    secret-bearing data: a traceback repeats the arguments of every frame on the stack,
+    and an exception message routinely quotes the value that caused it. The class name
+    says what went wrong; the digest lets two log lines be compared for equal content
+    without revealing it.
+
+    Fails closed: if the exception's `__str__` raises, the class name alone is returned.
+    """
+    try:
+        return f"{type(error).__name__}: {redact_value(str(error))}"
+    except Exception:
+        return type(error).__name__
 
 
 _MESSAGE_PASSTHROUGH_KEYS = {"role", "tool_call_id", "name"}
@@ -145,6 +189,5 @@ def redact_payload(payload: Any, *, passthrough: set[str]) -> dict | str:
         return redact_value(payload)
 
     return {
-        key: value if key in passthrough else redact_value(value)
-        for key, value in payload.items()
+        key: value if key in passthrough else redact_value(value) for key, value in payload.items()
     }

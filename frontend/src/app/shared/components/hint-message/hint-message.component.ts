@@ -3,7 +3,7 @@ import { Component, input } from '@angular/core';
 /** `hint` (the default): an accent callout for a tip. `warning`: what the user should know before going on. */
 export type HintMessageTone = 'hint' | 'warning';
 
-/** Small accent-colored callout for a short inline hint under a form field. Content is projected
+/** Small colored callout for a short inline hint under a form field. Content is projected
  *  so callers can still bold part of the message (e.g. `<strong>Secrets tab</strong>`). */
 @Component({
     selector: 'app-hint-message',
@@ -17,8 +17,13 @@ export type HintMessageTone = 'hint' | 'warning';
     `,
     styles: [
         `
+            // The space above sits on the host, so a caller can override it with a plain rule.
+            :host {
+                display: block;
+                margin-top: 0.5rem;
+            }
+
             .hint-message {
-                margin: 0.5rem 0 0;
                 padding: 8px 12px;
                 border-left: 3px solid var(--accent-color);
                 border-radius: 4px;
