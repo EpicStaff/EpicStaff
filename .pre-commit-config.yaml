@@ -1,5 +1,5 @@
 # Installation
-# pip install pre-commit
+# pip install pre-commit  (CI: the pre-commit job in .github/workflows/pr.yml)
 # pre-commit install -t pre-commit
 
 exclude: |
@@ -13,7 +13,7 @@ fail_fast: true
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: check-yaml
         exclude: ^src/docker-compose\.plugins-dev\.yaml$
@@ -25,7 +25,7 @@ repos:
         files: ^src/docker-compose\.plugins-dev\.yaml$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.8
+    rev: 2eeb5678de71a00c0902cbda7105d328432f72cb  # frozen: v0.16.8
     hooks:
       - id: ruff
         args: [ "--fix", "--config", ".ruff.toml" ]
