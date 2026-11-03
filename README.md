@@ -209,7 +209,7 @@ Repeat with `.env.example` and `.env.example.sigstore.json`. A modified file, in
 
 ### Running a verified release
 
-The release's `docker-compose.yaml` is not a standalone install: it still mounts `nginx/templates` and `nginx/certs` from the checkout next to it. Use it as an overlay on a clone of the same tag, so `docker compose up` pulls the digest-pinned images you just verified instead of building from source:
+The two files attached to a release, `docker-compose.yaml` and `.env.example`, are for verifying its digests and signatures only. They are not a standalone install: the compose file mounts `redis.conf`, `nginx/templates/` and `nginx/certs` from the folder next to it, none of them is in the download, and unpacked into an empty folder the stack does not start. Running a release requires the source at that tag. Use the compose file as an overlay on a clone of the same tag, so `docker compose up` pulls the digest-pinned images you just verified instead of building from source:
 
 ```bash
 git clone -b vX.Y.Z https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff
