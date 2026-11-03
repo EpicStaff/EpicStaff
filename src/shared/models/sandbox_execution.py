@@ -24,6 +24,8 @@ class ExecutionStorageCredentials(BaseModel):
     # in-sandbox storage library, which refuses disallowed operations up front.
     shared_actions: list[StorageAction] | None = None
     own_paths: list[str] = Field(default_factory=list)
+    free_bytes: int | None = None
+    purgeable_bytes: int | None = None
 
 
 class ExecutionRequest(BaseModel):

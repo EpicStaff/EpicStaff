@@ -112,11 +112,13 @@ async def test_mutations_are_carried_onto_the_wire():
             execution_id="exec-1",
             org_prefix="org1",
             session_id=7,
+            access_key="AK123",
             mutations=[{"path": "docs/a.txt"}],
         ),
     )
 
     message = queue.get_nowait()
+    assert message.mutations.access_key == "AK123"
     assert message.mutations.org_prefix == "org1"
     assert message.mutations.session_id == 7
     assert message.mutations.mutations == [{"path": "docs/a.txt"}]
@@ -217,3 +219,23 @@ async def test_the_credential_scope_is_decoded_onto_the_job():
 
     assert job.storage_credentials.shared_actions == ["read", "delete"]
     assert job.storage_credentials.own_paths == ["sessions/7/"]
+
+
+async def test_the_remaining_storage_is_decoded_onto_the_job():
+    queue: asyncio.Queue[ExecutionJobMessage] = asyncio.Queue()
+    queue.put_nowait(
+        ExecutionJobMessage(
+            execution_id="exec-10",
+            venv_hash="4abc",
+            code="",
+            entrypoint="main",
+            use_storage=True,
+            storage_credentials=StorageCredentialsMessage(
+                access_key="AK123", secret_key="SK456", free_bytes=5, purgeable_bytes=9
+            ),
+        )
+    )
+
+    job = await QueueJobSource(queue).get()
+
+    assert (job.storage_credentials.free_bytes, job.storage_credentials.purgeable_bytes) == (5, 9)

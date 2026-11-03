@@ -27,6 +27,8 @@ class StorageCredentialsMessage(Schema):
     secret_key: str
     shared_actions: list[str] | None = None
     own_paths: list[str] = Field(default_factory=list)
+    free_bytes: int | None = None
+    purgeable_bytes: int | None = None
 
 
 class ExecutionJobMessage(Schema):
@@ -64,6 +66,7 @@ class StorageMutationsMessage(Schema):
 
     org_prefix: str
     session_id: int | None = None
+    access_key: str | None = None
     mutations: list[dict] = Field(default_factory=list)
 
 

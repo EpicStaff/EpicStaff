@@ -61,6 +61,15 @@ class TemporaryStorageAccount(models.Model):
         blank=True,
         related_name="+",
     )
+    # The org-relative folders (ending in "/") and files the account's policy grants, the
+    # run's own folders included. Python code can write there without reporting it, so
+    # they are reconciled into the file index when the run ends. Null for accounts issued
+    # before this was recorded.
+    granted_folders = models.JSONField(null=True, blank=True)
+    # Whether the run's writes may have the org's storage bin purged to make room, decided
+    # at mint from the kind of principal acting (a plugin credential never purges, even
+    # though the person it acts for is recorded above for revocation).
+    may_purge_storage_bin = models.BooleanField(default=False)
     access_key = models.CharField(max_length=255, unique=True)
     issued_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 

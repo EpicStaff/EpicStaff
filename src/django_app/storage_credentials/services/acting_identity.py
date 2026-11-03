@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, replace
 
+from django.contrib.auth import get_user_model
 from loguru import logger
 from rbac.access.principals import acting_person
 from rbac.access.resolver import PermissionResolver
@@ -121,6 +122,28 @@ class ActingIdentity:
         if self.bounded_by is not None:
             actions &= self.bounded_by.shared_actions(org_id)
         return actions
+
+    def may_purge_storage_bin(self, org_id: int) -> bool:
+        """Whether a write of this run may purge the org's storage bin to make room.
+
+        Only a run acting as a user, because purging cannot be undone: an API key, a
+        plugin credential (even one acting for a person) and a trigger with no user never
+        purge, which is what `StorageBinPurgeAccess` does for requests. The user needs the
+        DELETE storage action, so FILES:DELETE and also FILES:READ, which is stricter than
+        `StorageBinPurgeAccess`, where DELETE alone is enough. A sub-flow's root starter
+        must not be a plugin or an API key either.
+        """
+        if self.api_key is not None or not isinstance(self.principal, get_user_model()):
+            return False
+        if self.bounded_by is not None and not self.bounded_by._is_user_session_or_trigger():
+            return False
+        return StorageAction.DELETE in self.shared_actions(org_id)
+
+    def _is_user_session_or_trigger(self) -> bool:
+        """A root starter that does not rule out a purge: a user, or a trigger with no identity."""
+        if self.denied or self.api_key is not None:
+            return False
+        return self.principal is None or isinstance(self.principal, get_user_model())
 
     def _own_actions(self, org_id: int) -> frozenset[StorageAction]:
         if self.denied:

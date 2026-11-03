@@ -110,6 +110,8 @@ class StorageCredentialsSchema(ExecutionStorageCredentials):
                 else [str(action) for action in self.shared_actions]
             ),
             own_paths=self.own_paths,
+            free_bytes=self.free_bytes,
+            purgeable_bytes=self.purgeable_bytes,
         )
 
 

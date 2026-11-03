@@ -17,6 +17,7 @@ from src.shared.redis_keys import (
     SESSION_STATUS_CHANNEL_PATTERN,
     session_final_variables_key,
 )
+from storage_credentials.services.run_quota_enforcer import run_quota_enforcer
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import (
     Session,
@@ -262,10 +263,10 @@ class RedisPubSub:
 
             close_old_connections()
 
-            from tables.services.storage_service.quota import is_over_quota
             from tables.validators.file_upload_validator import FileValidator
 
             file_validator = FileValidator()
+            stored_write_confirmed = False
 
             for mutation in event.mutations:
                 rel_path = mutation.path
@@ -284,8 +285,8 @@ class RedisPubSub:
                                 rel_path,
                                 org_id,
                             )
-                        else:
-                            self._record_external_write(org_id, rel_path)
+                        elif self._record_external_write(org_id, rel_path):
+                            stored_write_confirmed = True
                     elif mutation.op == "delete":
                         self._record_external_delete(org_id, rel_path)
                 except Exception:
@@ -313,14 +314,15 @@ class RedisPubSub:
 
                 self.redis_client.expire(redis_key, 7200)
 
-            # Agent writes are already stored, so they cannot be rejected; flag them.
-            if any(mutation.op == "write" for mutation in event.mutations) and is_over_quota(
-                org_id
-            ):
-                logger.warning(
-                    "Org {} is over its storage quota after agent writes (execution {})",
-                    org_id,
-                    event.execution_id,
+            # Agent writes are already stored, so they cannot be rejected: the org's bin is
+            # purged or the run's credentials revoked instead. Only a write the store holds
+            # an object for counts; a forged report must not cost anyone their bin.
+            if stored_write_confirmed:
+                run_quota_enforcer.enforce_after_write(
+                    org_id=org_id,
+                    access_key=event.access_key,
+                    session_id=event.session_id,
+                    execution_id=event.execution_id,
                 )
 
         except Exception as e:
@@ -348,11 +350,14 @@ class RedisPubSub:
             )
 
     @staticmethod
-    def _record_external_write(org_id: int, rel_path: str) -> None:
+    def _record_external_write(org_id: int, rel_path: str) -> bool:
         """Record an agent write at its stored size; if the store can't be asked, without a size.
 
         A write the store has no object for, or whose path is not a valid storage path,
         is skipped: the report is a hint, not proof.
+
+        Returns:
+            True if the store confirmed the object exists, False otherwise.
         """
         from tables.services.storage_service import get_storage_manager
         from tables.services.storage_service.db_sync import StorageFileSync
@@ -363,12 +368,14 @@ class RedisPubSub:
             logger.warning(
                 "Skipping storage write of {} in org {}: no such object", rel_path, org_id
             )
+            return False
         except ValueError:
             logger.warning(
                 "Skipping storage write of {} in org {}: not a valid storage path",
                 rel_path,
                 org_id,
             )
+            return False
         except Exception:
             logger.exception(
                 "Could not read the stored size of {} in org {}; recording it without one",
@@ -376,6 +383,8 @@ class RedisPubSub:
                 org_id,
             )
             StorageFileSync.on_upload(org_id, rel_path)
+            return False
+        return True
 
     def webhook_events_handler(self, message: dict):
         try:

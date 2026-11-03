@@ -47,6 +47,8 @@ class QueueJobDispatcher(AbstractJobDispatcher):
                     secret_key=job.storage_credentials.secret_key,
                     shared_actions=job.storage_credentials.shared_actions,
                     own_paths=job.storage_credentials.own_paths,
+                    free_bytes=job.storage_credentials.free_bytes,
+                    purgeable_bytes=job.storage_credentials.purgeable_bytes,
                 )
             ),
             session_id=job.session_id,

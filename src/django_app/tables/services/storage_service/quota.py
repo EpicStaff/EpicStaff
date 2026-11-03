@@ -48,6 +48,19 @@ def org_writable_bytes(org_id: int, replacing=(), *, bin_purge: BinPurgeGrant | 
     return max(0, purgeable - _shortfall(org_id, 0, replacing))
 
 
+def org_headroom(org_id: int, *, bin_purge: BinPurgeGrant | None) -> tuple[int, int]:
+    """(free bytes, purgeable bytes): what may still be added, and what purging the bin adds to that.
+
+    The purgeable bytes are what is left of the bin's bytes once an overage of the quota is
+    covered, and zero without a `bin_purge` grant. The same numbers as `org_free_bytes` and
+    `org_writable_bytes`, from one pass over the org's files.
+    """
+    shortfall = _shortfall(org_id, 0)
+    free_bytes = max(0, -shortfall)
+    binned_bytes = StorageRecycleBinService.binned_bytes(org_id) if bin_purge is not None else 0
+    return free_bytes, max(0, binned_bytes - shortfall) - free_bytes
+
+
 def is_over_quota(org_id: int) -> bool:
     return org_used_bytes(org_id) > settings.ORG_STORAGE_QUOTA
 
@@ -109,3 +122,26 @@ def record_files_within_quota(
             org_id, files, folders, user=user, authors_by_path=authors_by_path
         )
     return purged
+
+
+def purge_bin_to_fit_quota(
+    org_id: int, *, recycle_bin: StorageRecycleBinService, bin_purge: BinPurgeGrant
+) -> list[PurgedBinEntry]:
+    """Bring an org that already stored bytes past its quota back under it by purging its bin.
+
+    Meant for writes that are already stored (python code writes straight to storage) and so
+    cannot be rejected. Purges the org's oldest storage bin entries, just enough of them, like
+    record_files_within_quota does for a write that doesn't fit, under the same org row lock.
+
+    Returns:
+        The bin entries purged, oldest first; empty when the org was not over its quota.
+
+    Raises:
+        StorageQuotaExceeded: the whole bin is not enough; nothing is purged.
+    """
+    with transaction.atomic():
+        Organization.objects.select_for_update().get(pk=org_id)
+        overage = _shortfall(org_id, 0)
+        if overage <= 0:
+            return []
+        return recycle_bin.make_room(org_id, overage, actor=bin_purge.actor)

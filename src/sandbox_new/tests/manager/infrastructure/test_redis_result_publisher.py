@@ -129,8 +129,26 @@ async def test_mutations_are_published_on_their_own_channel(redis, publisher):
         "execution_id": "exec-1",
         "org_prefix": "org1",
         "session_id": 7,
+        "access_key": None,
         "mutations": [{"path": "docs/a.txt"}],
     }
+
+
+async def test_the_run_access_key_travels_in_the_mutation_event(redis, publisher):
+    mutations = await subscribe(redis, MUTATION_CHANNEL)
+
+    await publisher.publish(
+        ExecutionResultMessage(
+            execution_id="exec-1",
+            mutations=StorageMutationsMessage(
+                org_prefix="org1", access_key="AK123", mutations=[{"path": "docs/a.txt"}]
+            ),
+        )
+    )
+
+    event = await next_payload(mutations)
+    assert event["access_key"] == "AK123"
+    assert "secret" not in json.dumps(event)
 
 
 async def test_no_mutation_message_without_mutations(redis, publisher):
@@ -197,5 +215,6 @@ async def test_a_crew_result_still_reports_its_mutations_on_the_mutation_channel
         "execution_id": "exec-1",
         "org_prefix": "org1",
         "session_id": 7,
+        "access_key": None,
         "mutations": [{"path": "docs/a.txt"}],
     }

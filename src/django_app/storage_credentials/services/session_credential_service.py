@@ -14,6 +14,11 @@ talks to the storage backend to delete a service account and drop its row.
 A fourth entry point, `revoke_for_identity`, revokes by who the accounts were
 issued for rather than by owner: it finds many accounts at once and deletes them
 in one storage connection per organization (`_revoke_accounts`).
+
+Python code writes to storage without telling django, so each account records the
+folders its policy grants, and a revocation that ends a run first reconciles them into
+the file index (`_reconcile_granted_folders`). An organization already over its storage
+quota gets accounts that cannot write, whatever the identity's permissions are.
 """
 
 import asyncio
@@ -30,6 +35,10 @@ from rbac.models import Organization
 from src.shared.models.sessions import SessionData
 from src.shared.models.storage_scope import StorageAction, StorageCredentials
 from tables.models import PythonCodeResult, RealtimeAgentChat, Session
+from tables.services.storage_service import get_storage_backend
+from tables.services.storage_service.dataclasses import BinPurgeGrant
+from tables.services.storage_service.quota import is_over_quota, org_headroom
+from tables.services.storage_service.reconciler import StorageReconciler
 
 from storage_credentials.clients.minio_admin_client import StorageAdminGateway
 from storage_credentials.exceptions import (
@@ -41,6 +50,7 @@ from storage_credentials.policies import build_temporary_policy
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.acting_identity import ActingIdentity
 from storage_credentials.services.org_credential_store import org_credential_store
+from storage_credentials.services.run_bin_purge import purge_bin_for_run
 from storage_credentials.services.scope_validator import credential_scope_validator
 from storage_credentials.services.storage_demand_collector import collect_storage_demand
 
@@ -188,6 +198,13 @@ class SessionCredentialService:
         folders. The identity is recorded on the row so the account can be revoked
         when that identity's access changes.
 
+        An organization with no storage left (its free bytes, plus its storage bin's when
+        the identity may purge it, are zero) gets an account with no write access at all,
+        own folders included; the run still starts. The returned credentials carry
+        the free and purgeable bytes, so the library refuses a write that does not fit.
+        The identity's actions stay as they are there, so a refused write reads as a
+        full quota rather than a missing permission.
+
         Raises:
             CredentialScopeValidationError: `allowed_paths` is empty or escapes
                 the org prefix, or nothing is left to grant because the identity may
@@ -216,11 +233,26 @@ class SessionCredentialService:
             raise CredentialScopeValidationError(
                 "You don't have access to the files this agent's tools use."
             )
+        may_purge_bin = acting_identity.may_purge_storage_bin(org_id)
+        free_bytes, purgeable_bytes = org_headroom(
+            org_id, bin_purge=BinPurgeGrant(actor="") if may_purge_bin else None
+        )
+        own_actions = frozenset(StorageAction)
+        policy_shared_actions = shared_actions
+        if free_bytes + purgeable_bytes <= 0:
+            logger.info(
+                "Organization {} has no storage left: {} gets an account that cannot write",
+                org_id,
+                owner_label,
+            )
+            policy_shared_actions = shared_actions - {StorageAction.WRITE}
+            own_actions = own_actions - {StorageAction.WRITE}
         policy = build_temporary_policy(
             bucket=settings.STORAGE_BUCKET_NAME,
             shared_folders=set(shared_folders),
-            shared_actions=shared_actions,
+            shared_actions=policy_shared_actions,
             own_folders=set(scoped_folders.own),
+            own_actions=own_actions,
         )
 
         try:
@@ -260,6 +292,10 @@ class SessionCredentialService:
                 issued_for_api_key=acting_identity.api_key,
                 issued_for_root_user=root_identity.recorded_user if root_identity else None,
                 issued_for_root_api_key=root_identity.api_key if root_identity else None,
+                may_purge_storage_bin=may_purge_bin,
+                granted_folders=self._org_relative_grants(
+                    org_id, scoped_folders.own | shared_folders
+                ),
                 **{fk_field: fk_value},
             )
             logger.info("Persisted temporary storage account for {}", owner_label)
@@ -276,7 +312,15 @@ class SessionCredentialService:
             secret_key=secret_key,
             shared_actions=[action for action in StorageAction if action in shared_actions],
             own_paths=sorted(own_paths),
+            free_bytes=free_bytes,
+            purgeable_bytes=purgeable_bytes,
         )
+
+    @staticmethod
+    def _org_relative_grants(org_id: int, scoped_folders: Iterable[str]) -> list[str]:
+        """The granted paths without the org prefix, sorted, in the form the file index uses."""
+        org_prefix = f"{org_storage_prefix(org_id)}/"
+        return sorted(folder.removeprefix(org_prefix) for folder in scoped_folders)
 
     async def _mint_temporary_service_account(
         self, org_creds, policy: dict, expiration: timedelta | None
@@ -441,7 +485,10 @@ class SessionCredentialService:
 
         Deletes a `TemporaryStorageAccount` row only for an account the backend
         confirmed gone, so a failed revocation leaves just that row for the manager's
-        cleanup job. Best-effort: every failure is logged, none is raised.
+        cleanup job. Best-effort: every failure is logged, none is raised. Each account's
+        run is synced into the file index first (`_sync_run_storage`), so a revocation in
+        the middle of a run loses none of what it wrote. The manager's expiry cleanup of
+        stale accounts does not.
 
         Args:
             accounts: (access key, id of the org that owns the account). An account
@@ -460,6 +507,7 @@ class SessionCredentialService:
 
         for org_id, access_keys in access_keys_by_org.items():
             try:
+                self._sync_runs_storage(org_id, access_keys)
                 org_creds = org_credential_store.get(org_id=org_id)
                 revoked = asyncio.run(
                     self._delete_service_accounts(org_creds=org_creds, access_keys=access_keys)
@@ -535,6 +583,7 @@ class SessionCredentialService:
                 )
                 return
 
+            self._sync_run_storage(account, account.owner_org_id, owner_label)
             self.revoke(access_key=account.access_key, org_id=account.owner_org_id)
             logger.info("Revoked temporary storage account for {}", owner_label)
 
@@ -543,6 +592,85 @@ class SessionCredentialService:
         except Exception as error:
             logger.warning(
                 "Failed to revoke temporary storage credentials for {}: {}", owner_label, error
+            )
+
+    @staticmethod
+    def _reconcile_granted_folders(
+        *, org_id: int, granted_folders: list[str] | None, owner_label: str
+    ) -> None:
+        """Index what a run that is ending wrote under its granted folders, before its account goes.
+
+        Python code can write without reporting it, and a report is only a hint, so the
+        storage itself is read: the file index and the org's used bytes then include what
+        the run left behind. Best-effort: a failure is logged and never blocks the
+        revocation. Executables stay unindexed, as the reconciler already does.
+
+        Only adds and updates rows, never deletes them: other uploads and runs write to
+        storage while this listing is taken, and sweeping would drop the rows of live
+        files. The cost is that a row of an object the code deleted without reporting it
+        stays and overcounts the org's bytes, until the manual reconcile fixes it.
+        """
+        # A granted folder holds every path granted under it, so reconciling those twice
+        # would only list the same objects again.
+        outermost: list[str] = []
+        for path in sorted(granted_folders or []):
+            if not any(kept.endswith("/") and path.startswith(kept) for kept in outermost):
+                outermost.append(path)
+        if not outermost:
+            return
+        try:
+            reconciler = StorageReconciler(get_storage_backend(organization_prefix=""))
+        except Exception as error:
+            logger.warning("Cannot reconcile the end of {}: {}", owner_label, error)
+            return
+        for path in outermost:
+            try:
+                # A granted path ending in "/" is a folder, anything else a single file.
+                if path.endswith("/"):
+                    reconciler.reconcile_tree(org_id, prefix=path, sweep_stale_rows=False)
+                else:
+                    reconciler.reconcile_file(org_id, path, sweep_stale_rows=False)
+            except Exception as error:
+                logger.warning(
+                    "Failed to reconcile '{}' of org {} into the file index at the end of {}: {}",
+                    path,
+                    org_id,
+                    owner_label,
+                    error,
+                )
+
+    def _sync_runs_storage(self, org_id: int, access_keys: list[str]) -> None:
+        """`_sync_run_storage` for each account with these access keys; a failure only skips the sync."""
+        try:
+            accounts = list(
+                TemporaryStorageAccount.objects.filter(access_key__in=access_keys).select_related(
+                    "issued_for_user", "issued_for_root_user"
+                )
+            )
+        except Exception as error:
+            logger.warning("Cannot load accounts to sync before revoking them: {}", error)
+            return
+        for account in accounts:
+            self._sync_run_storage(account, org_id, f"account {account.pk}")
+
+    def _sync_run_storage(
+        self, account: TemporaryStorageAccount, org_id: int, owner_label: str
+    ) -> None:
+        """Before an account is revoked: index what its run wrote, then make room if that left the org over quota.
+
+        The reconcile only adds (see `_reconcile_granted_folders`), and the purge needs the
+        run to be allowed one (see `purge_bin_for_run`). No revocation follows from being
+        over quota here: the account is being revoked anyway. Best-effort, like the revocation.
+        """
+        self._reconcile_granted_folders(
+            org_id=org_id, granted_folders=account.granted_folders, owner_label=owner_label
+        )
+        try:
+            if is_over_quota(org_id):
+                purge_bin_for_run(account, org_id, f"the end of {owner_label}")
+        except Exception as error:
+            logger.warning(
+                "Failed to purge the storage bin at the end of {}: {}", owner_label, error
             )
 
     def revoke(self, access_key: str, org_id: int) -> None:

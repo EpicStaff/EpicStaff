@@ -114,12 +114,15 @@ def build_temporary_policy(
     shared_folders: set[str],
     shared_actions: frozenset[StorageAction],
     own_folders: set[str],
+    own_actions: frozenset[StorageAction] = frozenset(StorageAction),
 ) -> dict[str, Any]:
     """Policy for a per-execution temporary service account.
 
     Scoped to exactly `shared_folders` and `own_folders` (together a subset of the
     owning org's prefix, validated by `CredentialScopeValidator` before this is
-    called). `own_folders` are the run's own folders and always get every action.
+    called). `own_folders` are the run's own folders and get `own_actions`, every
+    action unless the caller narrows them (an organization over its storage quota
+    gets no write anywhere).
     `shared_folders` are the files attached to the run and get only
     `shared_actions`, which django derives from the acting identity's FILES
     permissions: user code holds these credentials and can call S3 directly, so
@@ -158,7 +161,7 @@ def build_temporary_policy(
 
     prefixes_by_actions: dict[frozenset[StorageAction], set[str]] = {}
     if own_prefixes:
-        prefixes_by_actions.setdefault(frozenset(StorageAction), set()).update(own_prefixes)
+        prefixes_by_actions.setdefault(frozenset(own_actions), set()).update(own_prefixes)
     if shared_prefixes:
         prefixes_by_actions.setdefault(granted_shared_actions, set()).update(shared_prefixes)
 

@@ -147,3 +147,15 @@ async def test_the_credential_scope_is_put_on_the_wire():
     wire = queue.get_nowait().storage_credentials
     assert wire.shared_actions == ["read"]
     assert wire.own_paths == ["sessions/7/"]
+
+
+async def test_the_remaining_storage_is_put_on_the_wire():
+    queue: asyncio.Queue[ExecutionJobMessage] = asyncio.Queue()
+    credentials = StorageCredentials(
+        access_key="AK123", secret_key="SK456", free_bytes=700, purgeable_bytes=300
+    )
+
+    await QueueJobDispatcher(queue).dispatch(make_manager_job(storage_credentials=credentials))
+
+    wire = queue.get_nowait().storage_credentials
+    assert (wire.free_bytes, wire.purgeable_bytes) == (700, 300)

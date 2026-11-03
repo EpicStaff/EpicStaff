@@ -7,6 +7,7 @@ a reporting problem, not an execution failure.
 
 import json
 
+from worker.domain.models import StorageCredentials
 from worker.infrastructure.execution.steps import CaptureMutationsStep, CaptureResultStep
 from tests.builders import make_context, make_worker_job
 
@@ -185,3 +186,23 @@ async def test_a_mutations_file_over_the_configured_cap_fails_the_run(tmp_path):
     assert context.storage_mutations is None
     assert context.returncode == 1
     assert "larger than 4 bytes" in context.stderr
+
+
+async def test_the_access_key_of_the_jobs_credentials_is_recorded_not_taken_from_the_file(tmp_path):
+    path = tmp_path / "storage_mutations.json"
+    path.write_text(
+        json.dumps([{"path": "docs/a.txt", "access_key": "FORGED"}]), encoding="utf-8"
+    )
+    context = make_context(
+        make_worker_job(
+            use_storage=True,
+            storage_org_prefix="org1",
+            storage_credentials=StorageCredentials(access_key="AK123", secret_key="SK456"),
+        ),
+        returncode=0,
+        storage_mutations_path=path,
+    )
+
+    await CaptureMutationsStep(max_bytes=MAX_BYTES)(context)
+
+    assert context.storage_mutations.access_key == "AK123"
