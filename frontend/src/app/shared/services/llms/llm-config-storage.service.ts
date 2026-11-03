@@ -80,7 +80,6 @@ export class LlmConfigStorageService implements StorageService, BulkDeleteTarget
     }
 
     getTimeoutLimits(): Observable<LlmConfigTimeoutLimits> {
-        // shareReplay resubscribes after an error, so a failed request is retried next time.
         this.timeoutLimitsRequest$ ??= this.llmConfigService.getTimeoutLimits().pipe(shareReplay(1));
         return this.timeoutLimitsRequest$;
     }

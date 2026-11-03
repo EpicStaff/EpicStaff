@@ -209,9 +209,8 @@ class LiteLLMClient(BaseLLMClient):
         Only the call and the fetching of the next chunk sit inside the `try`, so the
         caller's own chunk handling is never mistaken for a provider failure.
 
-        The whole reply must arrive within the config's timeout (capped at the maximum,
-        also when unset): litellm applies it to each read only, so a server at the
-        org-set base_url that keeps sending chunks would otherwise hold the call forever.
+        The whole reply must arrive within the config's timeout, capped at the maximum
+        (also when unset): litellm only bounds each read, not the whole reply.
         """
         timeout = min(
             self._config.timeout or LLM_CONFIG_TIMEOUT_MAX_SECONDS, LLM_CONFIG_TIMEOUT_MAX_SECONDS
@@ -247,9 +246,7 @@ class LiteLLMClient(BaseLLMClient):
                 message=provider_error[1],
             ) from exc
         finally:
-            # Releases the connection as soon as the deadline or an error ends the stream: a
-            # server that keeps sending would otherwise hold it after the deadline. When the
-            # caller stops early after a normal reply, asyncio's generator finalizer runs this.
+            # A server that keeps sending would otherwise hold the connection past the deadline.
             if response is not None:
                 await response.aclose()
 

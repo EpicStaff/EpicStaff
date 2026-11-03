@@ -1,4 +1,4 @@
-from tables.serializers.llm_config_timeout_limits_serializers import (
+from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigTimeoutLimitsSerializer,
 )
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE

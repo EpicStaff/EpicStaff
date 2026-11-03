@@ -141,9 +141,7 @@ class CdtExplainService:
         self, client, table: dict, batches: list[list[dict]]
     ) -> tuple[dict[str, str], int]:
         semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
-        # One deadline for the whole request: the view is sync and holds a worker thread
-        # until this returns, however many batches wait their turn. A batch it cuts off
-        # counts as failed.
+        # One deadline for the whole request: the sync view holds a worker thread until it ends.
         deadline = asyncio.get_running_loop().time() + LLM_CONFIG_TIMEOUT_MAX_SECONDS
 
         async def guarded(batch):

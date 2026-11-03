@@ -6,7 +6,7 @@ from tables.models.llm_models import (
     LLM_CONFIG_TIMEOUT_MAX_SECONDS,
     LLM_CONFIG_TIMEOUT_MIN_SECONDS,
 )
-from tables.serializers.llm_config_timeout_limits_serializers import (
+from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigTimeoutLimitsSerializer,
 )
 from tables.swagger_schemas.llm_config_timeout_limits_schemas import (
