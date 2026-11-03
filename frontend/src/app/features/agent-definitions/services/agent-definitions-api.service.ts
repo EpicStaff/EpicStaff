@@ -71,6 +71,7 @@ export class AgentDefinitionsApiService {
             llm_config: source.llm_config,
             fcm_llm_config: source.fcm_llm_config,
             default_surfaces: source.default_surfaces,
+            group: source.group,
             metadata: source.metadata,
             max_iter: source.max_iter,
             max_rpm: source.max_rpm,
