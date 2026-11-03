@@ -38,8 +38,10 @@ export function createCreateAgentTour(): TourDefinition {
                 id: 'welcome',
                 content: {
                     title: 'Create your first agent',
+                    titleEmoji: '🤖',
                     body: [
                         'Agents do the work in your flows. Each one has a model to think with, instructions to follow and Surfaces that decide which tools and knowledge it may use.',
+                        'We’ll create one together and set it up step by step.',
                     ],
                 },
                 buttons: { next: 'Get started', skip: 'Skip' },
