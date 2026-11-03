@@ -5,9 +5,11 @@ lifespan hooks open a database pool, connect to Redis and build the default venv
 of which belong in a unit suite. ``debug=True`` so an unexpected failure shows its
 traceback in the response body instead of a bare 500.
 
-``job_intake`` mirrors what ``common.bootstrap.lifespan`` publishes on ``app.state``. It
-is rebuilt here from fakes instead of imported, so importing this conftest does not
-register the real runtime's startup hooks.
+``job_intake`` and ``custom_library_storage`` mirror what the startup hooks publish on
+``app.state``. They are rebuilt here from fakes instead of imported, so importing this
+conftest does not register the real runtime's startup hooks. The dependencies are the
+real ones, with only the unit of work swapped, so a controller reaching the object store
+goes through the same provider it would in production.
 
 The error handlers are the real ones, so a test can assert the status a rejected request
 actually gets rather than the one the controller hoped for.
@@ -16,7 +18,7 @@ actually gets rather than the one the controller hoped for.
 from dataclasses import dataclass
 
 import pytest
-from foundation.utils.litestar import error_handler
+from foundation.utils.litestar import di, error_handler
 from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.testing import create_test_client
@@ -24,7 +26,12 @@ from litestar.testing import create_test_client
 import manager.bootstrap  # noqa: F401  registers the error handlers below
 from manager.application.holding import JobHoldingRegistry
 from manager.application.ports import AbstractUnitOfWork
-from manager.presentation.rest.controllers import ExecutionController, VenvController
+from manager.presentation.rest.controllers import (
+    CustomLibraryController,
+    ExecutionController,
+    VenvController,
+    WheelController,
+)
 from tests.fakes import FakeJobDispatcher, FakeJobFailureSink
 
 
@@ -46,14 +53,19 @@ def job_intake(dispatcher, holding, failure_sink) -> JobIntakeDouble:
 
 
 @pytest.fixture
-def client(uow, job_intake):
+def client(uow, job_intake, file_storage):
     async def provide_uow() -> AbstractUnitOfWork:
         return uow
 
     with create_test_client(
-        route_handlers=[VenvController, ExecutionController],
-        dependencies={"uow": Provide(provide_uow)},
-        state=State({"job_intake": job_intake}),
+        route_handlers=[
+            VenvController,
+            ExecutionController,
+            CustomLibraryController,
+            WheelController,
+        ],
+        dependencies={**di.get_dependencies(), "uow": Provide(provide_uow)},
+        state=State({"job_intake": job_intake, "custom_library_storage": file_storage}),
         exception_handlers=error_handler.get_handlers(),
         debug=True,
     ) as test_client:
