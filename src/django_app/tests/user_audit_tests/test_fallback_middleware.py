@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 
 from rbac.models import OrganizationUser
 from tables.models import Graph, Provider, SourceCollection
+from tables.models.default_models import DefaultModels
 from tables.services.quickstart_service import QuickstartService
 from tables.services.storage_service.upload import admission, archive_upload, file_upload
 from tables.views.model_view_sets import GraphViewSet
@@ -220,19 +221,23 @@ def test_fallback_keeps_a_custom_action_name(
     assert event.action == "reindex"
 
 
-def test_fallback_records_a_quickstart_apply_in_the_checked_org(
-    admin_client, admin_acme, acme, sent_events, django_capture_on_commit_callbacks
+def test_quickstart_apply_records_the_default_models_update_and_no_fallback_record(
+    admin_in_two_orgs, client_as, acme, sent_events, django_capture_on_commit_callbacks
 ):
     Provider.objects.create(name="openai")
     QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=acme.id, user=None)
+    client = client_as(admin_in_two_orgs)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
 
     with django_capture_on_commit_callbacks(execute=True):
-        response = admin_client.post("/api/quickstart/apply/", {}, format="json")
+        response = client.post("/api/quickstart/apply/", {}, format="json")
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert [(event.action, event.org_id, event.actor_user_id, event.route) for event in sent_events] == [
-        ("created", acme.id, admin_acme.id, "POST api/quickstart/apply/")
-    ]
+    default_models = DefaultModels.objects.get(org=acme)
+    assert [
+        (event.action, event.org_id, event.actor_user_id, event.target_type, event.target_id, event.route)
+        for event in sent_events
+    ] == [("updated", acme.id, admin_in_two_orgs.id, "default models", str(default_models.pk), None)]
 
 
 def test_fallback_ignores_unverified_org_header(

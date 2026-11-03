@@ -904,7 +904,6 @@ class QuickstartView(APIView):
         provider = serializer.validated_data["provider"]
         api_key = serializer.validated_data.get("api_key")
         secret = serializer.validated_data.get("api_key_secret_id")
-        # Cached on the request, so the user-action fallback records the run in this org.
         org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
@@ -971,7 +970,6 @@ class QuickstartApplyView(APIView):
 
     @extend_schema(**QUICKSTART_APPLY_POST)
     def post(self, request):
-        # Cached on the request, so the user-action fallback records the apply in this org.
         org_id = resolve_active_org_id(request)
         for required_action in self.rbac_required_actions:
             assert_org_permission(

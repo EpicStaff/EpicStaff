@@ -1,6 +1,8 @@
 from django.db import transaction
+from django.forms.models import model_to_dict
 from loguru import logger
 from rbac.authorship import record_last_edits, resolve_author
+from src.shared.models import UserAction
 from tables.models.default_models import DefaultModels
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
 from tables.models.llm_models import (
@@ -16,6 +18,8 @@ from tables.models.tag_models import (
 )
 from tables.models.user import User
 from tables.services.secrets import secret_service
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 from utils.singleton_meta import SingletonMeta
 
 QUICKSTART_UNEXPECTED_ERROR_MESSAGE = "Quickstart failed. Please try again or contact support."
@@ -71,6 +75,9 @@ class QuickstartService(metaclass=SingletonMeta):
         Exactly one of `api_key` (cold start — a Secret is created and named after
         the bundle) or `secret` (reuse — nothing is created) is expected; the
         serializer enforces that. A `user` that is not a real user leaves the rows unauthored.
+
+        Records a `created` user action for every row the run created, in the request's
+        context; a reused Secret is not one of them. Outside a request nothing is recorded.
 
         A failure returns `{"success": False, "error": <message>, "unexpected": <bool>}`.
         A `QuickstartError` carries its own user-facing message (`unexpected` is False);
@@ -131,6 +138,9 @@ class QuickstartService(metaclass=SingletonMeta):
                     org_id=org_id,
                 )
                 record_last_edits([llm_config, embedding_config, *realtime_configs], user)
+                created_secrets = [] if secret else [bundle_secret]
+                for created in [*created_secrets, llm_config, embedding_config, *realtime_configs]:
+                    record_user_action(action=UserAction.CREATED, org_id=org_id, target=created)
 
             logger.success(f"Quickstart configuration: {config_name} created successfully!")
             return {
@@ -207,11 +217,15 @@ class QuickstartService(metaclass=SingletonMeta):
         """
         Applies the given quickstart config to the organization's DefaultModels row.
         Sets all relevant FKs based on what configs exist for that config_name.
+
+        Records an `updated` user action on the row when this changed it; an apply that
+        changed nothing records nothing, not even the request's fallback record.
         """
         llm = LLMConfig.objects.filter(custom_name=config_name, org_id=org_id).first()
         embedding = EmbeddingConfig.objects.filter(custom_name=config_name, org_id=org_id).first()
 
         dm = DefaultModels.load_for_org(org_id)
+        defaults_before = model_to_dict(dm)
         if llm:
             dm.agent_llm_config = llm
             dm.agent_fcm_llm_config = llm
@@ -219,7 +233,12 @@ class QuickstartService(metaclass=SingletonMeta):
             dm.memory_llm_config = llm
         if embedding:
             dm.memory_embedding_config = embedding
+        changed = model_to_dict(dm) != defaults_before
         dm.save()
+        if changed:
+            record_user_action(action=UserAction.UPDATED, org_id=org_id, target=dm)
+        else:
+            mark_request_handled()
         return dm
 
     def is_synced(self, last_config: dict, *, org_id: int) -> bool:
@@ -376,6 +395,7 @@ class QuickstartService(metaclass=SingletonMeta):
             is_custom=True,
             created_by=author,
         )
+        record_user_action(action=UserAction.CREATED, org_id=org_id, target=model)
         logger.info(
             "Created custom {} {} for provider {} in org {}",
             model_class.__name__,

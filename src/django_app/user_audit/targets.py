@@ -9,6 +9,10 @@ TARGET_TYPE_LABELS = {
     "graph": "flow",
     "graphversion": "flow version",
     "agentdefinition": "agent",
+    "llmconfig": "LLM config",
+    "llmmodel": "LLM model",
+    "openairealtimeconfig": "OpenAI realtime config",
+    "elevenlabsrealtimeconfig": "ElevenLabs realtime config",
     # A venv lives in the sandbox; this side keeps only the binding that stands for it.
     "sandboxvenvbinding": "venv",
 }
