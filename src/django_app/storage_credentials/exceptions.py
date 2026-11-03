@@ -50,6 +50,16 @@ class CredentialScopeValidationError(StorageCredentialError):
     default_code = "credential_scope_validation_error"
 
 
+class TemporaryPolicyTooLargeError(CredentialScopeValidationError):
+    """The access rules for a run's files exceed what the storage backend accepts."""
+
+    default_detail = (
+        "Too many files are attached to this flow for one run to access. "
+        "Attach a folder instead of individual files."
+    )
+    default_code = "temporary_policy_too_large"
+
+
 class TemporaryCredentialError(StorageCredentialError):
     """Base class for issuing/revoking one per-execution service account."""
 

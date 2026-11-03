@@ -7,6 +7,7 @@ from collections.abc import Generator
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
+from .blocked_extensions import BLOCKED_EXTENSIONS
 from .path_safety import sanitize_storage_path
 
 
@@ -28,6 +29,38 @@ MAX_LINE_READ_BYTES = 50 * 1024 * 1024
 # path_utils.TRASH_DIRECTORY: this library can't import django_app). Runtime
 # code never reads, writes or lists it, whatever its allowed paths say.
 RESERVED_DIRECTORY = ".recycle-bin"
+
+# Operation names passed to `check_storage_permission`, mapped to the actions they
+# need on a path outside the run's own folders. Values are `StorageAction` values
+# (a copy: this library can't import shared.models). Edit/append/insert have no entry
+# of their own: they read first and then write, so they hit "read" and "write".
+# A move needs READ on its source as well, because it copies before it deletes.
+_REQUIRED_ACTIONS: dict[str, tuple[str, ...]] = {
+    "read": ("read",),
+    "read_bytes": ("read",),
+    "list": ("read",),
+    "walk": ("read",),
+    "exists": ("read",),
+    "info": ("read",),
+    "as_local": ("read",),
+    "copy": ("read",),
+    "write": ("write",),
+    "write_bytes": ("write",),
+    "mkdir": ("write",),
+    "copy_dst": ("write",),
+    "move_dst": ("write",),
+    "delete": ("delete",),
+    "move": ("delete", "read"),
+}
+
+# Operations whose path is created or overwritten, so an executable name is refused.
+_WRITE_TARGET_OPERATIONS = frozenset({"write", "write_bytes", "copy_dst", "move_dst"})
+
+_MISSING_PERMISSION_HINTS = {
+    "read": "reading files needs the Files: Read permission",
+    "write": "writing files needs the Files: Create and Files: Update permissions",
+    "delete": "deleting files needs the Files: Delete permission",
+}
 
 
 def split_lines(content: str) -> list[str]:
@@ -60,6 +93,20 @@ def __get_allowed_paths() -> list[str] | None:
         raw = os.environ.get("STORAGE_ALLOWED_PATHS")
         __cache["allowed"] = json.loads(raw) if raw is not None else None
     return __cache["allowed"]
+
+
+def __get_allowed_actions() -> list[str] | None:
+    if "actions" not in __cache:
+        raw = os.environ.get("STORAGE_ALLOWED_ACTIONS")
+        __cache["actions"] = json.loads(raw) if raw is not None else None
+    return __cache["actions"]
+
+
+def __get_own_paths() -> list[str]:
+    if "own" not in __cache:
+        raw = os.environ.get("STORAGE_OWN_PATHS")
+        __cache["own"] = json.loads(raw) if raw is not None else None
+    return __cache["own"] or []
 
 
 def _safe_relative_path(path: str) -> str:
@@ -104,6 +151,34 @@ def is_reserved_path(relative_path: str) -> bool:
     return relative_path.lstrip("/").split("/", 1)[0] == RESERVED_DIRECTORY
 
 
+def __check_allowed_actions(operation: str, path: str, normalized_path: str) -> None:
+    """Refuse an operation whose action the run's FILES permissions don't grant.
+
+    Skipped when the issuer did not narrow the actions (env var absent) and for paths
+    inside the run's own folders, where every action is allowed. An operation missing
+    from `_REQUIRED_ACTIONS` is refused whenever the actions are narrowed.
+    """
+    allowed_actions = __get_allowed_actions()
+    if allowed_actions is None:
+        return
+    # An operation without an entry would otherwise need no action and always pass, so
+    # a new operation added without one fails closed instead of bypassing the narrowing.
+    required_actions = _REQUIRED_ACTIONS.get(operation)
+    if required_actions is None:
+        raise StoragePermissionError(
+            f"Access denied: {operation} on '{path}' has no permission mapping, so it "
+            "is refused for this run."
+        )
+    if __is_path_allowed(normalized_path, __get_own_paths()):
+        return
+    for action in required_actions:
+        if action not in allowed_actions:
+            raise StoragePermissionError(
+                f"Access denied: {operation} on '{path}' is not allowed for this run: "
+                f"{_MISSING_PERMISSION_HINTS[action]}."
+            )
+
+
 def check_storage_permission(operation: str, path: str) -> None:
     normalized = _safe_relative_path(path)
     if is_reserved_path(normalized):
@@ -111,9 +186,7 @@ def check_storage_permission(operation: str, path: str) -> None:
             f"Access denied: '{RESERVED_DIRECTORY}' holds deleted files and is not available to flows."
         )
     allowed = __get_allowed_paths()
-    if allowed is None:
-        return
-    if not __is_path_allowed(normalized, allowed):
+    if allowed is not None and not __is_path_allowed(normalized, allowed):
         if allowed:
             allowed_hint = (
                 f" Allowed paths: [{__format_allowed_paths(allowed)}]. "
@@ -125,6 +198,14 @@ def check_storage_permission(operation: str, path: str) -> None:
             f"Access denied: {operation} on '{path}' is not within this flow's "
             f"allowed files.{allowed_hint}"
         )
+    __check_allowed_actions(operation, path, normalized)
+    if operation in _WRITE_TARGET_OPERATIONS:
+        extension = os.path.splitext(normalized)[1].lower()
+        if extension in BLOCKED_EXTENSIONS:
+            raise StoragePermissionError(
+                f"Access denied: {operation} on '{path}' is refused: files with the "
+                f"'{extension}' extension are executable and cannot be stored."
+            )
 
 
 def get_mutations() -> list[dict]:
@@ -194,6 +275,13 @@ class EpicStaffStorage:
                 code = error.response["Error"]["Code"]  # type: ignore[attr-defined]
                 if code in ("NoSuchKey", "404"):
                     raise FileNotFoundError(f"Not found in storage: {path}") from error
+                if code in ("AccessDenied", "403"):
+                    storage_operation = error.operation_name  # type: ignore[attr-defined]
+                    raise StoragePermissionError(
+                        f"Access denied: storage refused {storage_operation} on '{path}'. "
+                        "The storage account of this run is not allowed to do this; "
+                        "check the Files permissions of the user who started it."
+                    ) from error
         except ImportError:
             pass
         raise RuntimeError(f"Storage error for '{path}': {error}") from error
@@ -350,7 +438,8 @@ class EpicStaffStorage:
                             return False
             except ImportError:
                 pass
-            raise RuntimeError(f"Storage error for '{path}': {error}") from error
+            self._handle_client_error(error, path)
+            raise  # unreachable, satisfies type checker
 
     def delete(self, path: str) -> None:
         check_storage_permission("delete", path)

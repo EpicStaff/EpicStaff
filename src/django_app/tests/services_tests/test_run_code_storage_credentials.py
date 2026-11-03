@@ -95,7 +95,12 @@ def test_storage_tool_run_gets_credentials_scoped_to_its_own_folder(
     execution_id, submitted = _run(python_code, org, user, sandbox_intake)
 
     (task,) = submitted
-    assert task["storage_credentials"] == {"access_key": "temp-access-1", "secret_key": "temp-secret-1"}
+    assert task["storage_credentials"] == {
+        "access_key": "temp-access-1",
+        "secret_key": "temp-secret-1",
+        "shared_actions": [],
+        "own_paths": [f"test-runs/{execution_id}/"],
+    }
     assert list(_temporary_accounts(execution_id).values_list("access_key", flat=True)) == ["temp-access-1"]
     (minted,) = gateway.created
     assert f"/org_{org.id}/test-runs/{execution_id}/*" in json.dumps(minted["policy"])

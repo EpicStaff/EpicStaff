@@ -504,6 +504,28 @@ class StorageManager:
             org_id, path, size=stored.size, s3_modified=parse_datetime(stored.modified)
         )
 
+    def record_external_delete(self, org_id: int, path: str) -> bool:
+        """Drop the index rows of a path an agent or sandbox reports deleted, if storage agrees.
+
+        The report comes from code that can forge it, so it is only a hint: rows go
+        only when no object is left at the path or anywhere under it (files, `.keep`
+        and folder markers all count).
+
+        Returns:
+            True if the rows were dropped, False if something still exists there.
+
+        Raises:
+            Exception: The store could not be asked; the rows are left as they are.
+        """
+        key = self._build_storage_key(org_id, path.rstrip("/"))
+        still_stored = self._backend.head_file(key) is not None or self._backend.has_any_key(
+            key + "/"
+        )
+        if still_stored:
+            return False
+        StorageFileSync.on_delete(org_id, path)
+        return True
+
     def info(self, org_id: int, path: str) -> FileInfo | FolderInfo:
         clean_path = path.rstrip("/")
         org_rows = _with_last_edit(StorageFile.objects.filter(org_id=org_id))

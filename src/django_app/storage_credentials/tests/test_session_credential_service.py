@@ -15,13 +15,14 @@ from django.conf import settings
 from rbac.models import Organization
 from src.shared.models.graph_nodes import EndNodeData, GraphData, PythonNodeData
 from src.shared.models.sessions import SessionData
-from src.shared.models.storage_scope import StorageCredentials
+from src.shared.models.storage_scope import StorageAction, StorageCredentials
 from src.shared.models.tools import PythonCodeData
 from storage_credentials.exceptions import (
     CredentialScopeValidationError,
     TemporaryCredentialIssueError,
 )
 from storage_credentials.models import TemporaryStorageAccount
+from storage_credentials.services.acting_identity import ActingIdentity
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import Graph, PythonCodeResult, RealtimeAgentChat, Session
 
@@ -125,7 +126,8 @@ class TestIssueForSessionNoStorage(TestCase):
         session_data = _make_session_data(self.session.id, _make_graph())
 
         result = session_credential_service.issue_for_session(
-            session_data=session_data, session_orm=self.session, org=self.org
+            session_data=session_data, session_orm=self.session, org=self.org,
+            acting_identity=ActingIdentity.unattributed(),
         )
 
         assert result is None
@@ -134,7 +136,7 @@ class TestIssueForSessionNoStorage(TestCase):
         """Verify no TemporaryStorageAccount row is created for sessions without storage."""
         session_data = _make_session_data(self.session.id, _make_graph())
 
-        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
+        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org, acting_identity=ActingIdentity.unattributed())
 
         assert not TemporaryStorageAccount.objects.filter(session=self.session).exists()
 
@@ -179,6 +181,7 @@ class TestIssueForSessionWithStorage(TestCase):
             session_data=self._storage_session_data(self.session.id),
             session_orm=self.session,
             org=self.org,
+            acting_identity=ActingIdentity.unattributed(),
         )
 
         assert result is not None
@@ -219,14 +222,16 @@ class TestIssueForSessionWithStorage(TestCase):
         )
         session_data = _make_session_data(self.session.id, graph)
 
-        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
+        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org, acting_identity=ActingIdentity.unattributed())
 
         mock_build_policy.assert_called_once_with(
             bucket=settings.STORAGE_BUCKET_NAME,
-            allowed_folders={
+            shared_folders={
                 f"org_{self.org.id}/path_a/",
                 f"org_{self.org.id}/path_b/",
             },
+            shared_actions=frozenset(StorageAction),
+            own_folders={f"org_{self.org.id}/sessions/{self.session.id}/"},
         )
 
     @mock.patch("storage_credentials.services.session_credential_service.asyncio.run")
@@ -247,7 +252,8 @@ class TestIssueForSessionWithStorage(TestCase):
         ):
             with pytest.raises(TemporaryCredentialIssueError) as exc_info:
                 session_credential_service.issue_for_session(
-                    session_data=session_data, session_orm=self.session, org=self.org
+                    session_data=session_data, session_orm=self.session, org=self.org,
+                    acting_identity=ActingIdentity.unattributed(),
                 )
 
         detail = str(exc_info.value)
@@ -292,6 +298,7 @@ class TestIssueForSessionWithStorage(TestCase):
                 session_data=self._storage_session_data(self.session.id),
                 session_orm=self.session,
                 org=self.org,
+                acting_identity=ActingIdentity.unattributed(),
             )
             assert first_result is not None
             assert first_result.access_key == "access1"
@@ -300,6 +307,7 @@ class TestIssueForSessionWithStorage(TestCase):
                 session_data=self._storage_session_data(second_session.id),
                 session_orm=second_session,
                 org=self.org,
+                acting_identity=ActingIdentity.unattributed(),
             )
             assert second_result is not None
             assert second_result.access_key == "access2"
@@ -346,10 +354,12 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
             ),
         )
 
-        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
+        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org, acting_identity=ActingIdentity.unattributed())
 
+        # The session's own folder is always part of the account, next to the attached files.
         assert _object_resources(_minted_policy(gateway)) == [
-            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/flow_files/*"
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/flow_files/*",
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/sessions/{self.session.id}/*",
         ]
 
     def test_session_policy_ignores_node_declared_org_prefix_of_another_org(
@@ -373,11 +383,12 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
             ),
         )
 
-        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
+        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org, acting_identity=ActingIdentity.unattributed())
 
         resources = _object_resources(_minted_policy(gateway))
         assert resources == [
-            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/victim_files/*"
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/sessions/{self.session.id}/*",
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/victim_files/*",
         ]
         assert not any("org_999" in resource for resource in resources)
 
@@ -394,6 +405,7 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
             python_code_result=python_code_result,
             storage_allowed_paths=["test-runs/exec-org-prefix/"],
             org_id=self.org.id,
+            own_paths=["test-runs/exec-org-prefix/"], acting_identity=ActingIdentity.unattributed(),
         )
 
         assert credentials.access_key == "test_run_key"
@@ -416,6 +428,7 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
             realtime_agent_chat=chat,
             storage_allowed_paths=["shared/notes.txt"],
             org_id=self.org.id,
+            acting_identity=ActingIdentity.unattributed(),
         )
 
         assert credentials.access_key == "realtime_key"
@@ -452,6 +465,7 @@ class TestTemporaryCredentialExpiration(TestCase):
             python_code_result=self.python_code_result,
             storage_allowed_paths=["test-runs/exec-ttl/"],
             org_id=self.org.id,
+            own_paths=[], acting_identity=ActingIdentity.unattributed(),
         )
 
     def test_ttl_sets_the_lifetime_and_zero_or_less_means_none(self, mock_gateway_class, mock_org_store):
@@ -487,6 +501,7 @@ class TestScopeValidationRejectsBadPaths(TestCase):
             python_code_result=self.python_code_result,
             storage_allowed_paths=storage_allowed_paths,
             org_id=self.org.id,
+            own_paths=[], acting_identity=ActingIdentity.unattributed(),
         )
 
     def test_bad_paths_are_rejected_before_storage_is_contacted(self, mock_gateway_class, mock_org_store):

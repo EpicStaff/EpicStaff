@@ -113,6 +113,33 @@ def test_submit_with_storage_carries_the_storage_fields_to_the_worker(
     assert job.storage_credentials.secret_key == "SK456"
 
 
+def test_submit_with_storage_carries_the_credential_scope_onto_the_job(
+    client, venv_repository, dispatcher
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={
+            **SUBMISSION,
+            "venv_id": venv.id,
+            "use_storage": True,
+            "storage_allowed_paths": ["docs/", "sessions/7/"],
+            "storage_org_prefix": "org1",
+            "storage_credentials": {
+                **CREDENTIALS,
+                "shared_actions": ["read", "delete"],
+                "own_paths": ["sessions/7/"],
+            },
+        },
+    )
+
+    assert response.status_code == status_codes.HTTP_202_ACCEPTED
+    credentials = dispatcher.dispatched[0].storage_credentials
+    assert credentials.shared_actions == ["read", "delete"]
+    assert credentials.own_paths == ["sessions/7/"]
+
+
 def test_submit_with_storage_but_no_credentials_is_rejected(
     client, venv_repository, dispatcher
 ):

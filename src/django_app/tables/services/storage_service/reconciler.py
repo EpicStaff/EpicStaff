@@ -8,9 +8,12 @@ from tables.services.storage_service.db_sync import (
     _parent_of,
 )
 from tables.services.storage_service.path_utils import TRASH_DIRECTORY, is_trash_path
+from tables.validators.file_upload_validator import FileValidator
+from utils.logger import logger
 
 _SYNCED_FIELDS = ["name", "item_type", "size", "s3_modified", "parent_path"]
 _BATCH_SIZE = 1000
+_SKIPPED_SAMPLE_SIZE = 5
 
 
 class StorageReconciler:
@@ -27,6 +30,10 @@ class StorageReconciler:
     def reconcile_tree(self, org_id: int, prefix: str = "") -> None:
         """Make the org's live StorageFile rows match the backend's objects under `prefix`.
 
+        Objects with a blocked executable extension are never indexed (and any live row
+        for one is swept as stale); they are logged, not deleted, because deleting is
+        the mutation handler's job.
+
         Recycle-bin rows are left alone: their objects live under the reserved
         trash folder, which is skipped here, so they are neither re-created as
         live files nor swept as stale.
@@ -42,14 +49,19 @@ class StorageReconciler:
 
         raw_objects = self._backend.list_all_objects(full_prefix)
 
+        file_validator = FileValidator()
         desired: dict[str, StorageFile] = {}
         ancestor_paths: set[str] = set()
+        skipped_executables: list[str] = []
 
         for key, size, modified_iso in raw_objects:
             if not key.startswith(org_prefix):
                 continue
             rel_path = key[len(org_prefix) :]
             if is_trash_path(rel_path):
+                continue
+            if file_validator.is_executable_filename(rel_path):
+                skipped_executables.append(rel_path)
                 continue
 
             desired[rel_path] = StorageFile(
@@ -62,6 +74,14 @@ class StorageReconciler:
                 parent_path=_parent_of(rel_path),
             )
             ancestor_paths.update(_ancestor_paths(rel_path))
+
+        if skipped_executables:
+            logger.warning(
+                "Not indexing {} executable object(s) in org {}, e.g. {}",
+                len(skipped_executables),
+                org_id,
+                skipped_executables[:_SKIPPED_SAMPLE_SIZE],
+            )
 
         for folder_path in ancestor_paths:
             if folder_path not in desired:

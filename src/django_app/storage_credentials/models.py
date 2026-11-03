@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.db.models import CheckConstraint, Q
 from tables.models import (
@@ -25,6 +26,40 @@ class TemporaryStorageAccount(models.Model):
         on_delete=models.CASCADE,
         null=True,
         blank=True,
+    )
+    # Whose FILES permissions the account's policy was built from, so its access can
+    # be revoked when that identity's permissions change. A run started with an API
+    # key records the key, any other run records the user; a run with no acting
+    # identity (schedule, webhook and telegram triggers) records neither.
+    # A sub-flow's account also records who started the root session, whose permissions
+    # bound it, in the `issued_for_root_*` fields.
+    issued_for_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    issued_for_api_key = models.ForeignKey(
+        "rbac.ApiKey",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    issued_for_root_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    issued_for_root_api_key = models.ForeignKey(
+        "rbac.ApiKey",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
     )
     access_key = models.CharField(max_length=255, unique=True)
     issued_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)

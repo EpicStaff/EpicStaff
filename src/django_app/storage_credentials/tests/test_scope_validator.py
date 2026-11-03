@@ -38,7 +38,33 @@ def warning_logs():
     ids=["subfolders", "another-orgs-name-is-nested"],
 )
 def test_allowed_paths_are_scoped_under_the_org_prefix(validator, paths, scoped_folders):
-    assert validator.validate(org_id=1, storage_org_prefix="org_1", storage_allowed_paths=paths) == scoped_folders
+    scope = validator.validate(org_id=1, storage_org_prefix="org_1", storage_allowed_paths=paths)
+
+    assert scope.shared == scoped_folders
+    assert scope.own == frozenset()
+
+
+def test_own_paths_are_scoped_and_taken_out_of_the_shared_folders(validator):
+    scope = validator.validate(
+        org_id=1,
+        storage_org_prefix="org_1",
+        storage_allowed_paths=["reports/", "sessions/5/"],
+        own_paths=["sessions/5/"],
+    )
+
+    assert scope.own == {"org_1/sessions/5/"}
+    assert scope.shared == {"org_1/reports/"}
+
+
+@pytest.mark.parametrize("own_path", ["../org_2/", "", ".recycle-bin/x/"])
+def test_an_own_path_that_could_reach_outside_the_org_is_rejected(validator, own_path):
+    with pytest.raises(CredentialScopeValidationError):
+        validator.validate(
+            org_id=1,
+            storage_org_prefix="org_1",
+            storage_allowed_paths=["reports/"],
+            own_paths=[own_path],
+        )
 
 
 @pytest.mark.parametrize(

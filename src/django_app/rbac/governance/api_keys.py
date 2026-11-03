@@ -7,6 +7,7 @@ from loguru import logger
 from rbac.access.cross_org_resolver import OrgScope
 from rbac.exceptions import ApiKeyNotFoundError
 from rbac.governance.cross_org_base import CrossOrgResourceService
+from rbac.governance.storage_revocation import revoke_storage_access_on_commit
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 
@@ -61,6 +62,7 @@ class ApiKeyManagementService(CrossOrgResourceService):
         if key.revoked_at is None:
             key.revoked_at = timezone.now()
             key.save(update_fields=["revoked_at"])
+        revoke_storage_access_on_commit(org_id=key.org_id, api_key_ids=[key.pk])
         logger.info(
             "ApiKeyManagementService.revoke_key actor={a} key={k} owner={o} org={org}",
             a=getattr(actor, "email", "system"),
@@ -84,6 +86,7 @@ class ApiKeyManagementService(CrossOrgResourceService):
             o=key.created_by_id,
             org=key.org_id,
         )
+        revoke_storage_access_on_commit(org_id=key.org_id, api_key_ids=[key.pk])
         key.delete()
 
     def _get_key_for_delete(self, actor, key_id: int) -> ApiKey:

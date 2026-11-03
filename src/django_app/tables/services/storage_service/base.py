@@ -159,6 +159,10 @@ class AbstractStorageBackend(ABC):
         """Return True if the path exists."""
 
     @abstractmethod
+    def has_any_key(self, prefix: str) -> bool:
+        """Return True if any key at all starts with prefix: files, `.keep` and folder markers."""
+
+    @abstractmethod
     def list_all_keys(self, prefix: str) -> list[str]:
         """Recursively list all file keys under prefix (excludes folder markers)."""
 

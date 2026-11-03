@@ -1,6 +1,22 @@
 """Storage credentials and scope contract for session, test-run, and realtime execution."""
 
-from pydantic import BaseModel, ConfigDict
+from enum import StrEnum
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class StorageAction(StrEnum):
+    """What a run's code may do to the files attached to it (outside its own folders).
+
+    Derived by django from the acting identity's FILES permissions: READ needs
+    FILES:READ; WRITE needs READ plus both FILES:CREATE and FILES:UPDATE, because
+    storage cannot tell creating an object from overwriting one; DELETE needs READ
+    plus FILES:DELETE.
+    """
+
+    READ = "read"
+    WRITE = "write"
+    DELETE = "delete"
 
 
 class StorageCredentials(BaseModel):
@@ -16,6 +32,17 @@ class StorageCredentials(BaseModel):
 
     secret_key: str
     """Temporary service account secret key — NOT logged."""
+
+    shared_actions: list[StorageAction] | None = None
+    """Actions the account allows on the allowed paths outside `own_paths`.
+
+    Mirrors the account's policy so `epicstaff_storage` can refuse an operation
+    before calling storage. None means the issuer did not narrow them, and the
+    library keeps its path-only checks.
+    """
+
+    own_paths: list[str] = Field(default_factory=list)
+    """The run's own folders (`sessions/<id>/`, `test-runs/...`): every action allowed."""
 
     model_config = ConfigDict(from_attributes=True)
 

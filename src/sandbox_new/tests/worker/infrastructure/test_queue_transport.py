@@ -193,3 +193,27 @@ async def test_whether_the_job_ran_is_encoded_onto_the_wire_result(ran):
     await QueueResultSink(queue).send(ExecutionResult(execution_id="exec-1", ran=ran))
 
     assert queue.get_nowait().ran is ran
+
+
+async def test_the_credential_scope_is_decoded_onto_the_job():
+    queue: asyncio.Queue[ExecutionJobMessage] = asyncio.Queue()
+    queue.put_nowait(
+        ExecutionJobMessage(
+            execution_id="exec-9",
+            venv_hash="4abc",
+            code="",
+            entrypoint="main",
+            use_storage=True,
+            storage_credentials=StorageCredentialsMessage(
+                access_key="AK123",
+                secret_key="SK456",
+                shared_actions=["read", "delete"],
+                own_paths=["sessions/7/"],
+            ),
+        )
+    )
+
+    job = await QueueJobSource(queue).get()
+
+    assert job.storage_credentials.shared_actions == ["read", "delete"]
+    assert job.storage_credentials.own_paths == ["sessions/7/"]

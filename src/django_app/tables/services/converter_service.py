@@ -45,6 +45,7 @@ from storage_credentials.exceptions import (
     TemporaryCredentialIssueError,
 )
 from storage_credentials.resource_names import org_storage_prefix
+from storage_credentials.services.acting_identity import ActingIdentity
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.exceptions import ConfigProviderMissingError
 from tables.models import PythonCode, PythonCodeTool, Secret
@@ -302,7 +303,10 @@ class ConverterService(metaclass=SingletonMeta):
         return BaseToolData(unique_name=unique_name, data=data)
 
     def convert_rt_agent_definition_chat_to_pydantic(
-        self, rt_agent_chat: RealtimeAgentChat, user_id: int | None = None
+        self,
+        rt_agent_chat: RealtimeAgentChat,
+        acting_identity: ActingIdentity,
+        user_id: int | None = None,
     ) -> RealtimeAgentChatData:
         ad = rt_agent_chat.rt_agent_definition.agent_definition.fill_with_defaults()
 
@@ -412,6 +416,7 @@ class ConverterService(metaclass=SingletonMeta):
                         realtime_agent_chat=rt_agent_chat,
                         storage_allowed_paths=list(union_allowed_paths),
                         org_id=ad.org_id,
+                        acting_identity=acting_identity,
                     )
                 )
         except (TemporaryCredentialIssueError, CredentialScopeValidationError):

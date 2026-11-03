@@ -14,6 +14,7 @@ instead) -- `convert_rt_agent_definition_chat_to_pydantic`
 import pytest
 
 from agents.models import AgentDefinition, DefaultAgentDefinitionConfig
+from storage_credentials.services.acting_identity import ActingIdentity
 from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
     RealtimeAgentChat,
@@ -64,7 +65,9 @@ def test_convert_rt_agent_definition_chat_to_pydantic_populates_rt_base_url(
         openai_config=config,
     )
 
-    data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
+    data = converter.convert_rt_agent_definition_chat_to_pydantic(
+        chat, acting_identity=ActingIdentity.unattributed()
+    )
 
     assert data.rt_base_url == "https://my-proxy.internal"
 
@@ -95,7 +98,9 @@ def test_convert_rt_agent_definition_chat_to_pydantic_defaults_rt_base_url_to_no
         openai_config=config,
     )
 
-    data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
+    data = converter.convert_rt_agent_definition_chat_to_pydantic(
+        chat, acting_identity=ActingIdentity.unattributed()
+    )
 
     assert data.rt_base_url is None
 
@@ -128,7 +133,9 @@ def test_convert_rt_agent_definition_chat_to_pydantic_carries_rt_agent_definitio
         openai_config=config,
     )
 
-    data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
+    data = converter.convert_rt_agent_definition_chat_to_pydantic(
+        chat, acting_identity=ActingIdentity.unattributed()
+    )
 
     assert data.rt_agent_definition_id == rt_agent_definition.pk
 
@@ -187,6 +194,8 @@ def test_convert_rt_agent_definition_chat_to_pydantic_takes_temperature_from_llm
         openai_config=config,
     )
 
-    data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
+    data = converter.convert_rt_agent_definition_chat_to_pydantic(
+        chat, acting_identity=ActingIdentity.unattributed()
+    )
 
     assert data.temperature == expected_temperature

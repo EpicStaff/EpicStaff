@@ -30,8 +30,10 @@ def minted_credentials(monkeypatch):
     """Stand in for minting a test run's storage credentials; records each scope asked for."""
     requested_scopes = []
 
-    def issue_for_test_run(*, python_code_result, storage_allowed_paths, org_id):
-        requested_scopes.append({"storage_allowed_paths": storage_allowed_paths, "org_id": org_id})
+    def issue_for_test_run(*, python_code_result, storage_allowed_paths, org_id, own_paths, acting_identity):
+        requested_scopes.append(
+            {"storage_allowed_paths": storage_allowed_paths, "org_id": org_id, "own_paths": own_paths}
+        )
         return StorageCredentials(access_key="test-access-key", secret_key="test-secret-key")
 
     monkeypatch.setattr(session_credential_service, "issue_for_test_run", issue_for_test_run)
@@ -105,7 +107,11 @@ class TestPythonNodeTarget:
         assert task["storage_org_prefix"] == f"org_{acme.id}"
         assert task["storage_credentials"]["access_key"] == "test-access-key"
         assert minted_credentials == [
-            {"storage_allowed_paths": task["storage_allowed_paths"], "org_id": acme.id}
+            {
+                "storage_allowed_paths": task["storage_allowed_paths"],
+                "org_id": acme.id,
+                "own_paths": [f"test-runs/python_node-{node.id}/"],
+            }
         ]
         assert task["global_kwargs"]["org_id"] == acme.id
         assert task["session_id"] is None
@@ -199,7 +205,11 @@ class TestWebhookTriggerNodeTarget:
         assert task["storage_org_prefix"] == f"org_{acme.id}"
         assert task["storage_credentials"]["access_key"] == "test-access-key"
         assert minted_credentials == [
-            {"storage_allowed_paths": task["storage_allowed_paths"], "org_id": acme.id}
+            {
+                "storage_allowed_paths": task["storage_allowed_paths"],
+                "org_id": acme.id,
+                "own_paths": [f"test-runs/webhook_trigger_node-{node.id}/"],
+            }
         ]
         assert task["global_kwargs"]["org_id"] == acme.id
         assert task["session_id"] is None

@@ -191,6 +191,10 @@ class InMemoryStorageBackend(AbstractStorageBackend):
 
     # --- Listing ---
 
+    def has_any_key(self, prefix: str) -> bool:
+        full_prefix = self._full_path(prefix)
+        return any(key.startswith(full_prefix) for key in self._objects)
+
     def list_all_keys(self, prefix: str) -> list[str]:
         full_prefix = self._full_path(prefix)
         if not full_prefix.endswith("/"):

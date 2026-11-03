@@ -214,6 +214,12 @@ class S3StorageBackend(AbstractStorageBackend):
             return full_key[len(self.organization_prefix) :]
         return full_key
 
+    def has_any_key(self, prefix: str) -> bool:
+        response = self.client.list_objects_v2(
+            Bucket=self.bucket_name, Prefix=self._full_path(prefix), MaxKeys=1
+        )
+        return response.get("KeyCount", 0) > 0
+
     def list_all_keys(self, prefix: str) -> list[str]:
         full_prefix = self._full_path(prefix)
         if not full_prefix.endswith("/"):

@@ -128,6 +128,8 @@ class TestSessionPayloadSecrets:
         assert json.loads(published[0])["storage_credentials"] == {
             "access_key": "AK-run-session",
             "secret_key": "SK-run-session",
+            "shared_actions": None,
+            "own_paths": [],
         }
         assert "SK-run-session" not in _stored_sessions(graph), "storage secret key was persisted"
 
@@ -166,6 +168,8 @@ class TestSessionPayloadSecrets:
         assert payload["storage_credentials"] == {
             "access_key": "AK-published-only",
             "secret_key": "SK-published-only",
+            "shared_actions": None,
+            "own_paths": [],
         }
 
     def test_published_copy_carries_no_credentials_when_none_were_issued(

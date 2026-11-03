@@ -131,3 +131,19 @@ async def test_a_job_that_never_ran_keeps_the_crew_reply_flag_on_its_failed_resu
     )
 
     assert queue.get_nowait().reply_to_crew_channel is True
+
+
+async def test_the_credential_scope_is_put_on_the_wire():
+    queue: asyncio.Queue[ExecutionJobMessage] = asyncio.Queue()
+    credentials = StorageCredentials(
+        access_key="AK123",
+        secret_key="SK456",
+        shared_actions=["read"],
+        own_paths=["sessions/7/"],
+    )
+
+    await QueueJobDispatcher(queue).dispatch(make_manager_job(storage_credentials=credentials))
+
+    wire = queue.get_nowait().storage_credentials
+    assert wire.shared_actions == ["read"]
+    assert wire.own_paths == ["sessions/7/"]

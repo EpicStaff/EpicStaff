@@ -141,6 +141,10 @@ class StorageCredentials(ValueObject):
 
     access_key: str
     secret_key: str
+    # Actions allowed on the allowed paths outside `own_paths`; None means not narrowed.
+    shared_actions: list[str] | None = None
+    # The run's own folders, where every action is allowed.
+    own_paths: list[str] = Field(default_factory=list)
 
 
 class Job(Entity):

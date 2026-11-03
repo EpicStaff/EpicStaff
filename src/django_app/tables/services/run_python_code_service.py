@@ -11,6 +11,7 @@ from src.shared.models import CodeResultData, CodeTaskData
 from src.shared.models.storage_scope import StorageCredentials
 from storage_credentials.exceptions import StorageCredentialError
 from storage_credentials.resource_names import org_storage_prefix
+from storage_credentials.services.acting_identity import ActingIdentity
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.clients import SandboxExecutionClient
 from tables.exceptions import CodeRunTargetNotFoundError
@@ -49,6 +50,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         organization_id: int,
         user,
         additional_global_kwargs: dict[str, Any] | None = None,
+        api_key=None,
     ) -> str:
         """
         Submits Python code to the sandbox for execution.
@@ -57,6 +59,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code_id (int): The ID of the Python code in the database.
             variables (dict): A dictionary containing key-value pairs to be used as input for the Python code.
             additional_global_kwargs (dict[str, Any], optional): Additional global keyword arguments to be passed to the Python code. Defaults to None.
+            api_key: The API key the request authenticated with, if any. The run's files
+                are accessible as that key's owner may access them.
         Returns:
             str: The execution ID of the Python code.
 
@@ -119,6 +123,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code_result=python_code_result,
             storage_allowed_paths=storage_allowed_paths,
             org_id=organization_id,
+            own_paths=storage_allowed_paths or [],
+            acting_identity=ActingIdentity.for_request(user, api_key),
         )
         if not ok:
             return execution_id
@@ -162,6 +168,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         variables: dict,
         organization_id: int,
         user,
+        api_key=None,
     ) -> str:
         """Test-run one code slot with the payload a real run of that slot would send.
 
@@ -222,6 +229,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code_result=python_code_result,
             storage_allowed_paths=resolved.storage_allowed_paths,
             org_id=resolved.org_id,
+            own_paths=[storage_path_for_test_run(target_type, target_id)],
+            acting_identity=ActingIdentity.for_request(user, api_key),
         )
         if not ok:
             return execution_id
@@ -267,6 +276,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         python_code_result: PythonCodeResult,
         storage_allowed_paths: list[str] | None,
         org_id: int,
+        own_paths: list[str],
+        acting_identity: ActingIdentity,
     ) -> tuple[StorageCredentials | None, bool]:
         """Mint storage credentials if needed. Returns (credentials, ok);
         ok=False means the execution already failed (ERROR, best-effort revoke)
@@ -279,6 +290,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                     python_code_result=python_code_result,
                     storage_allowed_paths=storage_allowed_paths,
                     org_id=org_id,
+                    own_paths=own_paths,
+                    acting_identity=acting_identity,
                 ),
                 True,
             )
@@ -345,6 +358,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         python_code_result: PythonCodeResult,
         storage_allowed_paths: list[str] | None,
         org_id: int,
+        own_paths: list[str],
+        acting_identity: ActingIdentity,
     ):
         if not use_storage:
             return None
@@ -352,6 +367,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code_result=python_code_result,
             storage_allowed_paths=storage_allowed_paths,
             org_id=org_id,
+            own_paths=own_paths,
+            acting_identity=acting_identity,
         )
 
     def _revoke_storage_credentials_safely(self, *, use_storage: bool, execution_id: str) -> None:

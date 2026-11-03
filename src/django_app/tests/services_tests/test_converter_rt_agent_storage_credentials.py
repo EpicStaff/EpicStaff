@@ -16,6 +16,7 @@ from agents.models.agent_models import AgentDefaultSurface, SurfacePlace
 from agents.models.surface_models import SurfacePythonTool, SurfaceStorageItem, ToolMode
 from rbac.models import Organization
 from storage_credentials.models import TemporaryStorageAccount
+from storage_credentials.services.acting_identity import ActingIdentity
 from tables.models import OpenAIRealtimeConfig, PythonCode, PythonCodeTool, RealtimeAgentChat, RealtimeAgentDefinition, Secret
 from tables.models.graph_models import StorageFile
 from tables.services.converter_service import ConverterService
@@ -81,7 +82,9 @@ def test_one_account_per_chat_only_when_a_storage_tool_is_granted(gateway, org, 
     grant = StorageFile.objects.create(org=org, name="report.txt", path="reports/report.txt")
     SurfaceStorageItem.objects.create(surface=surface, storage_file=grant, can_view="allow")
 
-    chat_data = ConverterService().convert_rt_agent_definition_chat_to_pydantic(chat)
+    chat_data = ConverterService().convert_rt_agent_definition_chat_to_pydantic(
+        chat, acting_identity=ActingIdentity.unattributed()
+    )
 
     accounts = TemporaryStorageAccount.objects.filter(realtime_agent_chat=chat)
     if not minted:

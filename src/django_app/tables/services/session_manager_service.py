@@ -357,14 +357,23 @@ class SessionManagerService(metaclass=SingletonMeta):
             # TODO: add ping or waiting for crew to accept connections
 
             # Issue temporary storage credentials if needed
+            from storage_credentials.services.acting_identity import ActingIdentity
             from storage_credentials.services.session_credential_service import (
                 session_credential_service,
             )
 
+            # A sub-flow may do only what both the caller and whoever started the root
+            # session may do.
+            acting_identity = (
+                ActingIdentity.for_sub_flow(user, api_key, parent_session_id)
+                if parent_session_id is not None
+                else ActingIdentity.for_request(user, api_key)
+            )
             storage_credentials = session_credential_service.issue_for_session(
                 session_data=session_data,
                 session_orm=session,
                 org=graph.org,
+                acting_identity=acting_identity,
             )
 
             # Again just before crew hears of the session: a suspension that committed
