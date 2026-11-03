@@ -65,6 +65,8 @@ class SSEMixin(View, ABC):
     """
 
     ping_interval = 15  # seconds
+    # Set from the ticket in `get()`; None for a session ticket.
+    api_key_org_id: int | None = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -265,9 +267,11 @@ class SSEMixin(View, ABC):
         starts. The ticket proves only who the user is, so every view must check
         access to what it streams (org membership and permission on the resource,
         taken from the streamed row's org: EventSource cannot send
-        X-Organization-Id). There is deliberately no default: a view without its
-        own check cannot be instantiated, rather than streaming to every ticket
-        holder.
+        X-Organization-Id). A ticket issued with a USER API key also sets
+        `self.api_key_org_id`: the key acts only in that org, so a row of any other
+        org must be refused like a missing one. There is deliberately no
+        default: a view without its own check cannot be instantiated, rather
+        than streaming to every ticket holder.
 
         Returns:
             An HttpResponse to refuse the stream, or None to open it.
@@ -280,10 +284,11 @@ class SSEMixin(View, ABC):
 
     async def get(self, request, *args, **kwargs):
         ticket = request.GET.get("ticket", "")
-        user = await sync_to_async(sse_ticket_service.consume)(ticket)
-        if user is None:
+        holder = await sync_to_async(sse_ticket_service.consume)(ticket)
+        if holder is None:
             return _refusal(401, "invalid_sse_ticket", "Invalid or expired SSE ticket.")
-        self.user = user
+        self.user = holder.user
+        self.api_key_org_id = holder.api_key_org_id
 
         auth_response = await self.authorize(request, *args, **kwargs)
         if auth_response is not None:

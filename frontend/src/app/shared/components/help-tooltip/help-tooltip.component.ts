@@ -20,6 +20,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 type="button"
                 class="help-icon-wrapper"
                 [attr.aria-label]="ariaLabel()"
+                (keydown.enter)="$event.preventDefault()"
                 [matTooltip]="text"
                 [matTooltipPosition]="tooltipPosition"
                 [matTooltipClass]="tooltipClass"

@@ -38,7 +38,7 @@ dev = [
 transitive-pins = [
     "anyio==4.14.2",
     "idna==3.18",
-    "pyjwt==2.13.0",
+    "pyjwt==2.15.1",
     "certifi==2026.7.22"
 ]
 

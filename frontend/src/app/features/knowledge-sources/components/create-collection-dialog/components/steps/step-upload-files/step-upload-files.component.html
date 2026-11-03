@@ -13,9 +13,11 @@
         </div>
 
         <div class="dialog__form-input-wrap">
+            <!-- The dialog opens with the focus here: the first field it asks for. -->
             <input
                 type="text"
                 id="collection-name"
+                cdkFocusInitial
                 class="dialog__form-input"
                 [formControl]="collectionName"
                 placeholder="Enter collection name"

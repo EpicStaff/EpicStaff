@@ -9,6 +9,7 @@
             type="button"
             class="usage-dialog__close"
             aria-label="Close"
+            matTooltip="Close"
             (click)="close()"
         >
             <app-svg-icon
@@ -73,7 +74,8 @@
                         <button
                             type="button"
                             class="usage-row__open"
-                            aria-label="Open agent"
+                            [attr.aria-label]="'Open ' + a.agentName"
+                            [matTooltip]="'Open ' + a.agentName"
                             (click)="openAgent(a.agentId)"
                         >
                             <app-svg-icon
@@ -109,7 +111,8 @@
                         <button
                             type="button"
                             class="usage-row__open"
-                            aria-label="Open flow"
+                            [attr.aria-label]="'Open ' + f.name"
+                            [matTooltip]="'Open ' + f.name"
                         >
                             <app-svg-icon
                                 icon="arrow-up-right"
@@ -138,7 +141,8 @@
                         <button
                             type="button"
                             class="usage-row__open"
-                            aria-label="Open chat"
+                            [attr.aria-label]="'Open ' + c.name"
+                            [matTooltip]="'Open ' + c.name"
                         >
                             <app-svg-icon
                                 icon="arrow-up-right"

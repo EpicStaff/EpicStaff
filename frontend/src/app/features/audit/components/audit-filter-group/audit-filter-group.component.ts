@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, input, model, output } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    ElementRef,
+    input,
+    model,
+    output,
+    viewChild,
+} from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
@@ -20,6 +29,8 @@ export class AuditFilterGroupComponent {
     public expanded = model<boolean>(false);
     public readonly cleared = output<void>();
 
+    private readonly header = viewChild.required<ElementRef<HTMLButtonElement>>('header');
+
     public isOpen = computed(() => this.expanded() && !this.disabled());
 
     public toggle(): void {
@@ -27,5 +38,11 @@ export class AuditFilterGroupComponent {
             return;
         }
         this.expanded.update((isExpanded) => !isExpanded);
+    }
+
+    // the clear button goes with the summary it clears, so the focus moves to the group's header
+    public clear(): void {
+        this.cleared.emit();
+        this.header().nativeElement.focus();
     }
 }

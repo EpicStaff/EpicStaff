@@ -40,7 +40,7 @@
             cursor: default;
         }
 
-        &:hover:not(:disabled) {
+        &:not(:disabled):is(:hover, :focus-visible) {
             border-color: var(--accent-color-hover);
             color: var(--accent-color-hover);
         }

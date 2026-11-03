@@ -126,12 +126,12 @@ export class LeftSidebarComponent {
     public readonly expandedToggle = output<void>();
 
     /** The open apps popover's focus trap. */
-    private readonly appsListFocusTrap = viewChild(CdkTrapFocus);
+    private readonly appsListFocusTrap = viewChild('appsListTrap', { read: CdkTrapFocus });
 
     // Declared ahead of the state, whose initializers read the apps through it.
     private readonly appNavigation = inject(AppNavigationService);
 
-    /** Expanded rows show their labels, so the hover tooltips (which repeat the label) are suppressed. */
+    /** Expanded rows show their labels next to their icons; collapsed, only the icons. */
     protected readonly isExpanded = computed(() => isMainSidenavExpanded(this.width()));
     protected readonly sidebarToggleLabel = computed(() => (this.isExpanded() ? 'Close sidebar' : 'Open sidebar'));
 
@@ -177,6 +177,8 @@ export class LeftSidebarComponent {
     public isUserMenuOpen = signal<boolean>(false);
     protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
     protected readonly backToEpicStaffLabel = BACK_TO_EPICSTAFF_LABEL;
+    /** Names the account row when collapsed, and is its tooltip. */
+    protected readonly accountTooltip = 'Account';
     protected readonly manageAppsUrl = MANAGE_APPS_URL;
     protected readonly popoverPositions = RIGHT_OF_ROW;
 
@@ -351,6 +353,13 @@ export class LeftSidebarComponent {
 
     public closeUserMenu(): void {
         this.isUserMenuOpen.set(false);
+    }
+
+    /** Escape closes the open account menu (its focus trap hands the focus back to the row), and only that. */
+    protected closeUserMenuOnEscape(event: Event): void {
+        if (!this.isUserMenuOpen()) return;
+        event.stopPropagation();
+        this.closeUserMenu();
     }
 
     public toggleUserMenu(event: MouseEvent): void {

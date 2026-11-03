@@ -3,7 +3,7 @@ import io
 from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
 from rbac.exceptions import (
     AvatarTooLargeError,
@@ -101,16 +101,16 @@ class UserAvatarStorageService:
             raise InvalidAvatarError() from exc
 
         try:
-            with Image.open(buf) as img:
+            with Image.open(buf, formats=tuple(self._FORMAT_TO_EXT)) as img:
                 img.verify()
-        except (UnidentifiedImageError, OSError, ValueError) as exc:
+        except Exception as exc:
             raise InvalidAvatarError() from exc
 
         try:
             buf.seek(0)
-            with Image.open(buf) as img:
+            with Image.open(buf, formats=tuple(self._FORMAT_TO_EXT)) as img:
                 format_name = (img.format or "").upper()
-        except (UnidentifiedImageError, OSError, ValueError) as exc:
+        except Exception as exc:
             raise InvalidAvatarError() from exc
 
         # 3. format whitelist.

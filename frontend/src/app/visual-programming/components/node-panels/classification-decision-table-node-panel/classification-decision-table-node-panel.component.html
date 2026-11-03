@@ -78,6 +78,7 @@
                                 [class.tab-btn--active]="activeTab() === 'table'"
                                 (click)="setActiveTab('table')"
                                 type="button"
+                                [attr.aria-pressed]="activeTab() === 'table'"
                             >
                                 Decision Table
                             </button>
@@ -88,6 +89,7 @@
                                 [class.tab-link--active]="activeTab() === 'precomputation'"
                                 (click)="setActiveTab('precomputation')"
                                 type="button"
+                                [attr.aria-pressed]="activeTab() === 'precomputation'"
                             >
                                 Pre-computation
                             </button>
@@ -97,6 +99,7 @@
                                 [class.tab-link--active]="activeTab() === 'postcomputation'"
                                 (click)="setActiveTab('postcomputation')"
                                 type="button"
+                                [attr.aria-pressed]="activeTab() === 'postcomputation'"
                             >
                                 Post-computation
                             </button>
@@ -106,6 +109,7 @@
                                 [class.tab-link--active]="activeTab() === 'prompts'"
                                 (click)="setActiveTab('prompts')"
                                 type="button"
+                                [attr.aria-pressed]="activeTab() === 'prompts'"
                             >
                                 Prompt library
                             </button>
@@ -314,6 +318,7 @@
                                     />
                                 </span>
                                 <button
+                                    #addPromptButton
                                     *appIfFlowEditable
                                     type="button"
                                     class="add-prompt-header-btn"
@@ -348,7 +353,16 @@
                                                         icon="play"
                                                         size="8px"
                                                     ></app-svg-icon>
-                                                    <span class="prompt-id">{{ prompt.id }}</span>
+                                                    <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+                                                    <button
+                                                        type="button"
+                                                        class="prompt-id"
+                                                        [attr.aria-expanded]="editingPromptId() === prompt.id"
+                                                        appTooltipOnOverflow
+                                                        [matTooltip]="prompt.id"
+                                                    >
+                                                        {{ prompt.id }}
+                                                    </button>
                                                     @if (prompt.result_variable) {
                                                         <span class="result-badge">{{ prompt.result_variable }}</span>
                                                     }
@@ -385,6 +399,7 @@
                                                             [ngModel]="pendingPromptName()"
                                                             [ngModelOptions]="{ standalone: true }"
                                                             [readonly]="isReadOnly()"
+                                                            aria-label="Name"
                                                             (ngModelChange)="pendingPromptName.set($event)"
                                                             (blur)="commitPromptRename(prompt.id)"
                                                             (keydown.enter)="commitPromptRename(prompt.id)"
@@ -413,6 +428,7 @@
                                                             [ngModel]="prompt.result_variable"
                                                             [ngModelOptions]="{ standalone: true }"
                                                             [readonly]="isReadOnly()"
+                                                            aria-label="Result Variable"
                                                             (ngModelChange)="
                                                                 updatePrompt(prompt.id, 'result_variable', $event)
                                                             "
@@ -427,13 +443,18 @@
                                                         <div class="prompt-field">
                                                             <div class="field-label-row">
                                                                 <label class="field-label">Prompt</label>
-                                                                <app-svg-icon
+                                                                <button
+                                                                    type="button"
                                                                     class="field-expand-icon"
-                                                                    icon="editor-expand"
-                                                                    size="0.875rem"
+                                                                    aria-label="Expand prompt"
                                                                     matTooltip="Expand"
                                                                     (click)="openSideEditor(prompt.id, 'prompt')"
-                                                                />
+                                                                >
+                                                                    <app-svg-icon
+                                                                        icon="editor-expand"
+                                                                        size="0.875rem"
+                                                                    />
+                                                                </button>
                                                             </div>
                                                             <div class="prompt-textarea-wrapper">
                                                                 <div
@@ -446,6 +467,7 @@
                                                                 <textarea
                                                                     class="prompt-textarea prompt-textarea--transparent"
                                                                     rows="8"
+                                                                    aria-label="Prompt"
                                                                     [ngModel]="prompt.prompt_text"
                                                                     [readonly]="isReadOnly()"
                                                                     [ngModelOptions]="{ standalone: true }"
@@ -571,6 +593,7 @@
                                                 ></div>
                                                 <textarea
                                                     class="prompt-textarea prompt-textarea--transparent"
+                                                    aria-label="Prompt"
                                                     [ngModel]="prompt.prompt_text"
                                                     [readonly]="isReadOnly()"
                                                     [ngModelOptions]="{ standalone: true }"

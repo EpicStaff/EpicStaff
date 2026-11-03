@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, effect, input, output, viewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -9,7 +10,7 @@ import { ToolCardMenuAction } from './tool-card.model';
 
 @Component({
     selector: 'app-tool-card-menu',
-    imports: [LabelDropdownComponent, HasPermissionDirective, MatTooltipModule],
+    imports: [CdkTrapFocus, LabelDropdownComponent, HasPermissionDirective, MatTooltipModule],
     templateUrl: './tool-card-menu.component.html',
     styleUrls: ['./tool-card-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,5 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Inject } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 
 import { RestoreWarning } from '../../models/graph.model';
@@ -17,7 +19,7 @@ const PREVIEW_MESSAGE =
 
 @Component({
     selector: 'app-restore-warnings-dialog',
-    imports: [AppSvgIconComponent, ButtonComponent],
+    imports: [NgTemplateOutlet, AppSvgIconComponent, ButtonComponent, MatTooltip],
     templateUrl: './restore-warnings-dialog.component.html',
     styleUrl: './restore-warnings-dialog.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,

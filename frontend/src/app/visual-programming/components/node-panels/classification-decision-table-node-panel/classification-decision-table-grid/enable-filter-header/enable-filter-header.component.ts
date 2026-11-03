@@ -1,3 +1,4 @@
+import { A11yModule } from '@angular/cdk/a11y';
 import { Overlay } from '@angular/cdk/overlay';
 import {
     ChangeDetectionStrategy,
@@ -15,6 +16,7 @@ import { AppSvgIconComponent } from '@shared/components';
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
 
+import { listenForHeaderActivation } from '../shared/header-keyboard.util';
 import { OverlayMenuController } from '../shared/overlay-menu.util';
 
 export type EnableFilterMode = 'all' | 'enabled' | 'disabled';
@@ -26,7 +28,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
 
 @Component({
     selector: 'app-enable-filter-header',
-    imports: [AppSvgIconComponent, MatTooltipModule],
+    imports: [A11yModule, AppSvgIconComponent, MatTooltipModule],
     template: `
         <div class="enable-header">
             <span class="enable-label">{{ label }}</span>
@@ -47,28 +49,42 @@ interface EnableFilterHeaderParams extends IHeaderParams {
         </div>
 
         <ng-template #menuTemplate>
-            <div class="ef-dropdown">
-                <div
+            <div
+                class="ef-dropdown"
+                role="menu"
+                cdkTrapFocus
+                [cdkTrapFocusAutoCapture]="true"
+            >
+                <button
+                    type="button"
+                    role="menuitemradio"
                     class="ef-item"
                     [class.selected]="mode === 'all'"
+                    [attr.aria-checked]="mode === 'all'"
                     (click)="select('all')"
                 >
                     Enable/Disable
-                </div>
-                <div
+                </button>
+                <button
+                    type="button"
+                    role="menuitemradio"
                     class="ef-item"
                     [class.selected]="mode === 'enabled'"
+                    [attr.aria-checked]="mode === 'enabled'"
                     (click)="select('enabled')"
                 >
                     Only Enable
-                </div>
-                <div
+                </button>
+                <button
+                    type="button"
+                    role="menuitemradio"
                     class="ef-item"
                     [class.selected]="mode === 'disabled'"
+                    [attr.aria-checked]="mode === 'disabled'"
                     (click)="select('disabled')"
                 >
                     Only Disable
-                </div>
+                </button>
             </div>
         </ng-template>
     `,
@@ -117,14 +133,20 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 min-width: 160px;
             }
             .ef-item {
+                display: block;
+                width: 100%;
                 padding: 8px 12px;
+                border: none;
+                background: none;
+                font-family: inherit;
                 font-size: 0.8125rem;
+                text-align: left;
                 color: var(--color-text-primary);
                 border-radius: 4px;
                 cursor: pointer;
                 user-select: none;
             }
-            .ef-item:hover {
+            .ef-item:is(:hover, :focus-visible) {
                 background: rgba(255, 255, 255, 0.04);
             }
             .ef-item.selected {
@@ -146,9 +168,12 @@ export class EnableFilterHeaderComponent implements IHeaderAngularComp, OnDestro
     public mode: EnableFilterMode = 'enabled';
     private params!: EnableFilterHeaderParams;
     private menuCtrl = new OverlayMenuController(this.overlay, this.vcr);
+    private stopListeningForActivation: (() => void) | null = null;
 
     agInit(params: EnableFilterHeaderParams): void {
         this.params = params;
+        // Enter or Space on the focused header opens the filter menu, as a click on its button does.
+        this.stopListeningForActivation = listenForHeaderActivation(params.eGridHeader, () => this.openMenu());
         this.mode = params.getMode();
         this.label = this.labelForMode(this.mode);
     }
@@ -164,18 +189,21 @@ export class EnableFilterHeaderComponent implements IHeaderAngularComp, OnDestro
     // Config that reproduces enable-filter-header's original single-position,
     // no-withPush behaviour (distinct from the two-position default used by
     // column-header-menu and params-group-header).
-    private readonly menuCfg = { withFlipFallback: false, withPush: false };
+    private readonly menuCfg = { withFlipFallback: false, withPush: false, closeOnEscape: true };
 
     public openMenu(): void {
         this.menuCtrl.toggle(this.anchorEl.nativeElement, this.menuTemplate, this.menuCfg);
     }
 
     public select(mode: EnableFilterMode): void {
-        this.params.setMode(mode);
+        // Closed first, so the focus is back on the header when `setMode` rebuilds the
+        // header row: ag-grid then carries it over to the new header cell instead of
+        // dropping it on <body>, where Delete would delete the selected flow node.
+        this.menuCtrl.close();
         this.mode = mode;
         this.label = this.labelForMode(mode);
         this.cdr.markForCheck();
-        this.menuCtrl.close();
+        this.params.setMode(mode);
     }
 
     private labelForMode(mode: EnableFilterMode): string {
@@ -190,6 +218,7 @@ export class EnableFilterHeaderComponent implements IHeaderAngularComp, OnDestro
     }
 
     ngOnDestroy(): void {
+        this.stopListeningForActivation?.();
         this.menuCtrl.dispose();
     }
 }

@@ -1,7 +1,10 @@
+<!-- Takes the focus when it opens and hands it back to the ⋮ button when it closes. -->
 <div
     #panel
     class="card-menu"
     role="menu"
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
     (click)="$event.stopPropagation()"
 >
     <button
@@ -21,6 +24,7 @@
         type="button"
         class="menu-item"
         role="menuitem"
+        aria-haspopup="menu"
         (click)="$event.stopPropagation(); ld.openAt(panel, labelsPositions)"
     >
         <span class="label">Manage Labels</span>

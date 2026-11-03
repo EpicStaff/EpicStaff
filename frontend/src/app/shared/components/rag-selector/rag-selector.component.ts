@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
@@ -15,7 +16,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
+import { filter } from 'rxjs';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
@@ -48,7 +52,14 @@ const RAG_STATUS_DISPLAY: Record<RagSelectorStatus, RagStatusDisplay> = {
 
 @Component({
     selector: 'app-rag-selector',
-    imports: [OverlayModule, TooltipComponent, AppSvgIconComponent],
+    imports: [
+        CdkTrapFocus,
+        MatTooltip,
+        OverlayModule,
+        TooltipComponent,
+        AppSvgIconComponent,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './rag-selector.component.html',
     styleUrls: ['./rag-selector.component.scss'],
     providers: [
@@ -138,6 +149,13 @@ export class RagSelectorComponent implements ControlValueAccessor {
             this.overlayRef
                 .backdropClick()
                 .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe(() => this.close());
+            this.overlayRef
+                .keydownEvents()
+                .pipe(
+                    filter((event) => event.key === 'Escape'),
+                    takeUntilDestroyed(this.destroyRef)
+                )
                 .subscribe(() => this.close());
         }
 

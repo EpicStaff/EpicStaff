@@ -11,6 +11,15 @@ import { ToolCardVM } from '../tool-card/tool-card.model';
 import { ToolsListComponent } from './tools-list.component';
 import { TOOLS_LIST_PORT } from './tools-list-port';
 
+// jsdom has no ResizeObserver; the overflow tooltips only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+
 const MCP_TOOL: GetMcpToolRequest = {
     id: 9,
     name: 'Weather MCP',

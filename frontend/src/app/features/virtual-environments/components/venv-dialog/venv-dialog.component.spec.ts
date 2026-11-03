@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
 
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
@@ -52,7 +53,10 @@ describe('VenvDialogComponent library rows', () => {
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
-                { provide: DialogRef, useValue: { close } as unknown as DialogRef },
+                {
+                    provide: DialogRef,
+                    useValue: { close, keydownEvents: new Subject<KeyboardEvent>() } as unknown as DialogRef,
+                },
                 { provide: DIALOG_DATA, useValue: data },
                 { provide: ToastService, useValue: { error: vi.fn() } as unknown as ToastService },
             ],

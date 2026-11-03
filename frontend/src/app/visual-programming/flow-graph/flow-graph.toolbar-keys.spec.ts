@@ -278,27 +278,54 @@ describe('FlowGraphComponent canvas toolbar keys', () => {
         it.each([
             ['Alt+X', () => press(EXPORT_IMPORT, document.body)],
             ['a click', () => host().querySelector<HTMLButtonElement>('.feib')!.click()],
-        ])('one Esc closes the menu opened with %s and still ends multi-select', (_opener, openMenu) => {
-            const component = mount();
-            vi.useFakeTimers();
-            component.onToggleMultiSelect();
-            // Inside the Angular zone, where the app's own change detection runs.
+        ])(
+            'one Esc closes only the menu opened with %s, even over a tooltip; the next ends multi-select',
+            (_opener, openMenu) => {
+                const component = mount();
+                vi.useFakeTimers();
+                component.onToggleMultiSelect();
+                // Inside the Angular zone, where the app's own change detection runs.
+                TestBed.inject(NgZone).run(() => {
+                    openMenu();
+                    fixture.detectChanges();
+                    TestBed.tick();
+                });
+                // Long enough for a tooltip to show.
+                vi.advanceTimersByTime(1000);
+                fixture.detectChanges();
+                expect(exportMenuItems()).not.toEqual([]);
+                expect(document.activeElement).toBe(exportMenuItems()[0]);
+
+                // keyCode as a browser sets it: the CDK overlay closes on Esc by keyCode.
+                press({ code: 'Escape', key: 'Escape', keyCode: 27 }, document.activeElement ?? document.body);
+                fixture.detectChanges();
+
+                expect(exportMenuItems()).toEqual([]);
+                expect(component.selectionManager.multiSelectActive()).toBe(true);
+
+                press({ code: 'Escape', key: 'Escape', keyCode: 27 }, document.activeElement ?? document.body);
+
+                expect(component.selectionManager.multiSelectActive()).toBe(false);
+            }
+        );
+
+        it('gives the focus back to the Export / Import button when its menu closes on Esc', () => {
+            mount();
+            const trigger = host().querySelector<HTMLButtonElement>('.feib')!;
+            trigger.focus();
             TestBed.inject(NgZone).run(() => {
-                openMenu();
+                trigger.click();
                 fixture.detectChanges();
                 TestBed.tick();
             });
-            // Long enough for a tooltip to show.
-            vi.advanceTimersByTime(1000);
-            fixture.detectChanges();
-            expect(exportMenuItems()).not.toEqual([]);
-            expect(document.querySelector('.mat-mdc-tooltip')).toBeNull();
+            expect(trigger.getAttribute('aria-expanded')).toBe('true');
 
-            // keyCode as a browser sets it: the CDK overlay closes on Esc by keyCode.
-            press({ code: 'Escape', key: 'Escape', keyCode: 27 }, document.activeElement ?? document.body);
+            press({ code: 'Escape', key: 'Escape', keyCode: 27 }, document.activeElement!);
+            fixture.detectChanges();
 
             expect(exportMenuItems()).toEqual([]);
-            expect(component.selectionManager.multiSelectActive()).toBe(false);
+            expect(document.activeElement).toBe(trigger);
+            expect(trigger.getAttribute('aria-expanded')).toBe('false');
         });
 
         it('Alt+G extracts the selected nodes into a subflow like the Extract to Subflow button', () => {
@@ -579,12 +606,13 @@ describe('FlowGraphComponent canvas toolbar keys', () => {
             );
         });
 
-        it('give Multi-select one tooltip, without a key', () => {
+        it('give Multi-select one tooltip with its state, without a key', () => {
             mount();
 
             const multiSelect = host().querySelector('app-flow-shortcuts-button') as HTMLElement;
 
-            expect(tooltipsIn(multiSelect)).toEqual(['Multi-select']);
+            expect(tooltipsIn(multiSelect)).toEqual(['Multi-select: Off']);
+            expect(multiSelect.querySelector('button')!.getAttribute('aria-pressed')).toBe('false');
         });
     });
 });

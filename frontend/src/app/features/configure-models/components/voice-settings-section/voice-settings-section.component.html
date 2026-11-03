@@ -5,6 +5,7 @@
             <p class="tab__subtitle">Manage realtime voice channels and their Twilio configuration.</p>
         </div>
         <app-button
+            #addButton
             *appHasPermission="[ResourceCode.Voice, ActionCode.Create]"
             type="primary"
             [disabled]="status() === 'error'"
@@ -47,7 +48,7 @@
                                 type="button"
                                 class="channel-card__action"
                                 aria-label="More actions"
-                                matTooltip="More"
+                                matTooltip="More actions"
                                 [cdkMenuTriggerFor]="menu"
                                 [cdkMenuPosition]="menuPositions"
                                 [class.channel-card__action--active]="menuTrigger.isOpen()"
@@ -78,7 +79,7 @@
                                 *appHasPermission="[ResourceCode.Voice, ActionCode.Update]"
                                 type="button"
                                 class="channel-card__action"
-                                aria-label="Edit"
+                                [attr.aria-label]="'Edit ' + channel.name"
                                 matTooltip="Edit"
                                 (click)="onEditChannel(channel)"
                             >
@@ -91,7 +92,7 @@
                                 *appHasPermission="[ResourceCode.Voice, ActionCode.Delete]"
                                 type="button"
                                 class="channel-card__action channel-card__action--delete"
-                                aria-label="Delete"
+                                [attr.aria-label]="'Delete ' + channel.name"
                                 matTooltip="Delete"
                                 (click)="onDeleteChannel(channel)"
                             >

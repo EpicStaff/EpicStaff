@@ -33,6 +33,7 @@
         <app-table
             class="assign-table"
             [class.assign-table--disabled]="disabled()"
+            [attr.inert]="disabled() ? '' : null"
             [columns]="columns"
             [data]="organizationsTableData()"
             [rowVisible]="matchesSearch()"

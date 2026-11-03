@@ -31,6 +31,11 @@
         align-items: center;
         border: 1px solid var(--gray-750);
 
+        // The message field shows its focus on this box's border, like other text fields.
+        &:focus-within {
+            border-color: var(--accent-color);
+        }
+
         .message-input {
             flex: 1;
             background-color: transparent;
@@ -68,7 +73,7 @@
             border-radius: 50%;
             transition: all 0.2s ease;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--purple-alpha-10);
             }
 
@@ -113,11 +118,11 @@
         max-width: 100%;
         overflow: hidden;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
             background-color: var(--purple-alpha-80);
         }
 
-        &:disabled {
+        &:is(:disabled, [aria-disabled='true']) {
             opacity: 0.7;
         }
 
@@ -178,9 +183,14 @@
                 justify-content: center;
             }
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--gray-700);
                 color: var(--white);
+            }
+
+            // Drawn inside: the buttons sit tight in their group.
+            &:focus-visible {
+                outline-offset: -2px;
             }
 
             &.active {
@@ -189,7 +199,7 @@
             }
 
             &.end-btn {
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     background-color: var(--crimson-600-alpha-20);
                     color: var(--crimson-600);
                 }

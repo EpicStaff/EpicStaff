@@ -1,7 +1,7 @@
 <div class="header">
     <div class="title-search">
         <h2 class="title">
-            <div
+            <a
                 class="flows-prefix"
                 routerLink="/flows"
             >
@@ -11,13 +11,19 @@
                     class="back-arrow"
                 />
                 <span>Flows</span>
-            </div>
+            </a>
             <span class="slash">/</span>
             <div class="graph-name-row">
-                <div class="graph-name project-link">
+                <div
+                    class="graph-name project-link"
+                    appTooltipOnOverflow
+                    [matTooltip]="graphName ?? ''"
+                    matTooltipPosition="below"
+                >
                     {{ graphName ?? 'Loading...' }}
                 </div>
                 <button
+                    type="button"
                     *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                     class="edit-name-btn"
                     (click)="openRenameDialog()"
@@ -55,6 +61,7 @@
     <app-graph-presence-indicators [editors]="editors" />
     <div class="header-actions">
         <span
+            #sessionsTooltip="matTooltip"
             class="tooltip-host"
             [matTooltip]="
                 isPreviewMode() ? previewBlockedMessages.sessions : keymap.withShortcut('Sessions', 'flow.sessions')
@@ -62,7 +69,11 @@
             matTooltipPosition="below"
         >
             <button
+                type="button"
                 class="sessions-button"
+                aria-label="Sessions"
+                (focus)="showTooltipOnKeyboardFocus($event, sessionsTooltip)"
+                (blur)="sessionsTooltip.hide()"
                 [appCollapseOnOverflow]="true"
                 collapseOnOverflowTarget=".btn-label"
                 collapseOnOverflowClass="btn--icon-only"
@@ -79,6 +90,7 @@
         </span>
         @if (canUseFlow()) {
             <span
+                #curlTooltip="matTooltip"
                 class="tooltip-host"
                 [matTooltip]="
                     isPreviewMode() ? previewBlockedMessages.getCurl : keymap.withShortcut('Get cURL', 'flow.curl')
@@ -86,7 +98,10 @@
                 matTooltipPosition="below"
             >
                 <button
+                    type="button"
                     class="get-curl-button"
+                    (focus)="showTooltipOnKeyboardFocus($event, curlTooltip)"
+                    (blur)="curlTooltip.hide()"
                     [appCollapseOnOverflow]="true"
                     collapseOnOverflowTarget=".btn-label"
                     collapseOnOverflowClass="btn--icon-only"
@@ -99,11 +114,13 @@
             </span>
         }
         <button
+            type="button"
             class="open-chat-button"
             [appCollapseOnOverflow]="true"
             collapseOnOverflowTarget=".btn-label"
             collapseOnOverflowClass="btn--icon-only"
             collapseOnOverflowRequireSelector=".open-chat-button__icon"
+            [attr.aria-label]="isAssistantOpen ? 'Close chat' : 'Open chat'"
             [matTooltip]="keymap.withShortcut(isAssistantOpen ? 'Close chat' : 'Open chat', 'flow.chat')"
             matTooltipPosition="below"
             (click)="onToggleAssistant()"
@@ -130,15 +147,22 @@
                 collapseOnOverflowRequireSelector="app-svg-icon"
             >
                 <span
+                    #saveTooltip="matTooltip"
                     class="tooltip-host"
                     [matTooltip]="
                         isPreviewMode() ? previewBlockedMessages.save : keymap.withShortcut('Save', 'editing.save')
                     "
                     matTooltipPosition="below"
                 >
+                    <!-- aria-disabled while saving or running: a press that disables it would drop the keyboard focus. -->
                     <button
+                        type="button"
                         class="save-split-btn__main"
-                        [disabled]="isSaving || isRunning || isPreviewMode()"
+                        aria-label="Save"
+                        [disabled]="isPreviewMode()"
+                        [attr.aria-disabled]="isSaving || isRunning || null"
+                        (focus)="showTooltipOnKeyboardFocus($event, saveTooltip)"
+                        (blur)="saveTooltip.hide()"
                         (click)="onSave()"
                     >
                         @if (isSaving) {
@@ -153,13 +177,21 @@
                     </button>
                 </span>
                 <span
+                    #saveOptionsTooltip="matTooltip"
                     class="tooltip-host"
                     [matTooltip]="isPreviewMode() ? previewBlockedMessages.save : 'Save options'"
                     matTooltipPosition="below"
                 >
                     <button
+                        type="button"
                         class="save-split-btn__chevron"
-                        [disabled]="isSaving || isRunning || isPreviewMode()"
+                        aria-label="Save options"
+                        aria-haspopup="menu"
+                        [attr.aria-expanded]="isSaveDropdownOpen()"
+                        [disabled]="isPreviewMode()"
+                        [attr.aria-disabled]="isSaving || isRunning || null"
+                        (focus)="showTooltipOnKeyboardFocus($event, saveOptionsTooltip)"
+                        (blur)="saveOptionsTooltip.hide()"
                         (click)="toggleSaveDropdown($event)"
                     >
                         <app-svg-icon
@@ -186,6 +218,7 @@
                 (detach)="closeSaveDropdown()"
             >
                 <app-save-dropdown
+                    (keydown.escape)="onSaveDropdownEscape($event)"
                     (save)="onSave(); closeSaveDropdown()"
                     (saveVersion)="saveVersion.emit(); closeSaveDropdown()"
                     (viewVersionHistory)="viewVersionHistory.emit(); closeSaveDropdown()"
@@ -194,17 +227,24 @@
         </ng-container>
         @if (canUseFlow()) {
             <span
+                #runTooltip="matTooltip"
                 class="tooltip-host"
                 [matTooltip]="isPreviewMode() ? previewBlockedMessages.run : keymap.withShortcut('Run', 'flow.run')"
                 matTooltipPosition="below"
             >
+                <!-- aria-disabled while saving or running: a press that disables it would drop the keyboard focus. -->
                 <button
+                    type="button"
                     class="run-button"
+                    aria-label="Run"
                     [appCollapseOnOverflow]="true"
                     collapseOnOverflowTarget=".btn-label"
                     collapseOnOverflowClass="btn--icon-only"
                     collapseOnOverflowRequireSelector="app-svg-icon"
-                    [disabled]="isSaving || isRunning || isPreviewMode()"
+                    [disabled]="isPreviewMode()"
+                    [attr.aria-disabled]="isSaving || isRunning || null"
+                    (focus)="showTooltipOnKeyboardFocus($event, runTooltip)"
+                    (blur)="runTooltip.hide()"
                     (click)="onRun()"
                 >
                     @if (isRunning) {

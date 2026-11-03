@@ -1,9 +1,12 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
+import { DatePipe } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    DestroyRef,
     ElementRef,
     forwardRef,
     inject,
@@ -12,7 +15,10 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
+import { filter } from 'rxjs';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
@@ -63,7 +69,7 @@ function formatDate(date: Date): string {
 
 @Component({
     selector: 'app-date-picker',
-    imports: [FormsModule, OverlayModule, TooltipComponent],
+    imports: [FormsModule, OverlayModule, TooltipComponent, MatTooltip, CdkTrapFocus, DatePipe],
     templateUrl: './date-picker.component.html',
     styleUrls: ['./date-picker.component.scss'],
     providers: [
@@ -104,6 +110,8 @@ export class DatePickerComponent implements ControlValueAccessor {
     });
 
     resolvedActiveColor = computed<string>(() => this.activeColor() || '#685fff');
+    /** The input's accessible name and tooltip: the label shown above it isn't tied to it. */
+    protected readonly fieldName = computed(() => this.label() || 'Date');
 
     dayCells = computed<DayCell[]>(() => {
         const view = this.viewDate();
@@ -147,6 +155,9 @@ export class DatePickerComponent implements ControlValueAccessor {
     private overlay = inject(Overlay);
     private overlayPositionBuilder = inject(OverlayPositionBuilder);
     private vcr = inject(ViewContainerRef);
+    private readonly destroyRef = inject(DestroyRef);
+    // Disposing the overlay also completes its event streams; the subscriptions end with the component too.
+    private readonly disposeOverlayOnDestroy = this.destroyRef.onDestroy(() => this.overlayRef?.dispose());
 
     private onChange: (v: string) => void = () => {};
     private onTouched: () => void = () => {};
@@ -307,7 +318,17 @@ export class DatePickerComponent implements ControlValueAccessor {
             backdropClass: 'transparent-backdrop',
         });
 
-        this.overlayRef.backdropClick().subscribe(() => this.close());
+        this.overlayRef
+            .backdropClick()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.close());
+        this.overlayRef
+            .keydownEvents()
+            .pipe(
+                filter((event) => event.key === 'Escape'),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.close());
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);
         this.isOpen.set(true);

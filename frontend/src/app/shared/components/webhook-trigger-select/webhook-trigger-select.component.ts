@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
@@ -28,6 +29,7 @@ import {
     WebhookTriggerAuthKind,
     WebhookTriggerModel,
 } from '@shared/models';
+import { filter } from 'rxjs';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
@@ -42,7 +44,7 @@ import {
     selector: 'app-webhook-trigger-select',
     templateUrl: './webhook-trigger-select.component.html',
     styleUrls: ['./webhook-trigger-select.component.scss'],
-    imports: [FormsModule, OverlayModule, TooltipComponent, WarningNoteComponent, MatTooltipModule],
+    imports: [FormsModule, OverlayModule, CdkTrapFocus, TooltipComponent, WarningNoteComponent, MatTooltipModule],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -207,6 +209,13 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
             this.overlayRef
                 .backdropClick()
                 .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe(() => this.close());
+            this.overlayRef
+                .keydownEvents()
+                .pipe(
+                    filter((event) => event.key === 'Escape'),
+                    takeUntilDestroyed(this.destroyRef)
+                )
                 .subscribe(() => this.close());
         }
 

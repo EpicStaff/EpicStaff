@@ -1,6 +1,9 @@
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 
 @Component({
+    imports: [TooltipOnOverflowDirective, MatTooltip],
     selector: 'app-inputs-you-can-use',
     templateUrl: './inputs-you-can-use.component.html',
     styleUrls: ['./inputs-you-can-use.component.scss'],

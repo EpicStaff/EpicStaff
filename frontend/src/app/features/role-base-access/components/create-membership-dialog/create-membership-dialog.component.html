@@ -15,7 +15,8 @@
             </app-button>
             <app-button
                 type="primary"
-                [disabled]="submitDisabled()"
+                [disabled]="hasInvalidInput()"
+                [ariaDisabled]="isSubmitting()"
                 (click)="onSubmit()"
             >
                 {{ editMode() ? 'Save' : 'Add' }}
@@ -42,7 +43,9 @@
                         }
                     </div>
                 } @else {
+                    <!-- A new membership's dialog opens with the focus here, its first field. -->
                     <app-select
+                        cdkFocusInitial
                         variant="boxed"
                         [allowCustomValue]="true"
                         [items]="userSelectItems()"

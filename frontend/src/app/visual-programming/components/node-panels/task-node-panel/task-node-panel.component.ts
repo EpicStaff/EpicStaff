@@ -192,6 +192,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
                 value: LOCAL_SURFACE_VALUE,
                 group: 'Local surface',
                 trailingActionIcon: 'edit-label',
+                trailingActionLabel: 'Edit local surface',
             });
         }
 
