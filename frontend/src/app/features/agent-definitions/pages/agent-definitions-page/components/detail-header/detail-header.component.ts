@@ -1,3 +1,4 @@
+import { CdkMonitorFocus } from '@angular/cdk/a11y';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, LabelDropdownComponent } from '@shared/components';
@@ -22,7 +23,7 @@ export interface DetailCrumb {
 
 @Component({
     selector: 'app-detail-header',
-    imports: [AppSvgIconComponent, LabelDropdownComponent, MatTooltip],
+    imports: [AppSvgIconComponent, CdkMonitorFocus, LabelDropdownComponent, MatTooltip],
     templateUrl: './detail-header.component.html',
     styleUrls: ['./detail-header.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
