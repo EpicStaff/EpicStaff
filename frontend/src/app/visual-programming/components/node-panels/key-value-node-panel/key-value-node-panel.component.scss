@@ -155,18 +155,16 @@ $field-height: 40px;
     @include diff-value-mark.row-frame(var(--color-diff-added));
 }
 
-// A row only on the canvas, as the removed rows of the Input List: red, struck, faded.
+// A row only on the canvas shows its key and value as text in the box of an input. Its red, struck, faded look is
+// in .entry-row-mark--removed .entry-input, which is more specific than .entry-input, so it wins over that colour.
 .entry-input--removed {
     display: flex;
     align-items: center;
     flex: 1;
     min-width: 0;
     overflow: hidden;
-    color: var(--color-diff-deleted);
-    text-decoration: line-through;
     text-overflow: ellipsis;
     white-space: nowrap;
-    opacity: var(--diff-deleted-opacity);
 }
 
 .entry-field {
@@ -211,6 +209,14 @@ $field-height: 40px;
     &::placeholder {
         color: var(--color-text-tertiary);
     }
+}
+
+// A row only on the canvas, as the removed rows of the Input List and the agent's tasks: red, struck, faded. Only the
+// cells fade, not the row, so the opacity is applied once.
+.entry-row-mark--removed .entry-input {
+    color: var(--color-diff-deleted);
+    text-decoration: line-through;
+    opacity: var(--diff-deleted-opacity);
 }
 
 // The key input is the task node's highlight field on one line: the key's text is drawn by a

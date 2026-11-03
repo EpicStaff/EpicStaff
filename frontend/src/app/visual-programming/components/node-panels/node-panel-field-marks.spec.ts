@@ -412,6 +412,30 @@ describe('Key-Value entries on the Changes tab', () => {
         expect(markedFields(root)).toEqual([]);
     });
 
+    it('draws a row only the canvas has in the deleted colour, struck and faded, as the other removed values', () => {
+        const root = openEntries([...VERSION_ENTRIES, { key: 'gone', value: 'variables.gone' }]);
+        const look = (cell: Element) => {
+            const style = getComputedStyle(cell);
+            return { color: style.color, textDecoration: style.textDecoration, opacity: style.opacity };
+        };
+        const removedCells = Array.from(root.querySelectorAll('.entry-row-mark--removed .entry-input'), look);
+        const keptCell = look(root.querySelector('.entry-row-mark:not(.entry-row-mark--removed) .entry-input')!);
+
+        expect(removedCells).toEqual([
+            {
+                color: 'var(--color-diff-deleted)',
+                textDecoration: 'line-through',
+                opacity: 'var(--diff-deleted-opacity)',
+            },
+            {
+                color: 'var(--color-diff-deleted)',
+                textDecoration: 'line-through',
+                opacity: 'var(--diff-deleted-opacity)',
+            },
+        ]);
+        expect(keptCell.color).not.toBe(removedCells[0].color);
+    });
+
     it('shows the canvas variable path of a changed row in its tooltip', () => {
         const root = openEntries([{ key: 'customer', value: 'variables.client' }, ...VERSION_ENTRIES.slice(1)]);
 
