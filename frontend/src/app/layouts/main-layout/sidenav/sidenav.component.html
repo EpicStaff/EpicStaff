@@ -40,7 +40,8 @@
         />
     </div>
 
-    <!-- EpicStaff's pages, or the open app's navigation: the context follows the address. Scrolls on its own. -->
+    <!-- EpicStaff's pages, or the open app's navigation: the context follows the address. Scrolls on its own.
+         Every row names itself in a tooltip on its right, on hover and on keyboard focus. -->
     <ul
         class="sidenav-nav main-nav"
         cdkScrollable
@@ -71,6 +72,7 @@
                 cdkOverlayOrigin
                 #switcherOrigin="cdkOverlayOrigin"
             >
+                <!-- No tooltip while its list is open: it would cover the list. -->
                 <button
                     #switcherRow
                     type="button"
@@ -112,6 +114,7 @@
                     (overlayKeydown)="onPopoverKeydown($event, switcherRow)"
                 >
                     <div
+                        #appsListTrap
                         class="sidenav-popover"
                         role="dialog"
                         aria-label="Switch app"
@@ -210,6 +213,8 @@
                                 class="sidenav-badge-link"
                                 [routerLink]="item.badgeLink"
                                 [attr.aria-label]="item.badgeLabel?.(count) ?? null"
+                                [matTooltip]="item.badgeLabel?.(count) ?? ''"
+                                matTooltipPosition="right"
                             >
                                 <span class="sidenav-badge">{{ count > 99 ? '99+' : count }}</span>
                             </a>
@@ -228,6 +233,7 @@
                     cdkOverlayOrigin
                     #appsOrigin="cdkOverlayOrigin"
                 >
+                    <!-- No tooltip while its list is open: it would cover the list. -->
                     <button
                         #appsRow
                         type="button"
@@ -275,6 +281,7 @@
                         (overlayKeydown)="onPopoverKeydown($event, appsRow)"
                     >
                         <div
+                            #appsListTrap
                             class="sidenav-popover"
                             role="dialog"
                             aria-label="Apps"
@@ -408,6 +415,7 @@
                     (overlayKeydown)="onPopoverKeydown($event, helpRow)"
                 >
                     <div
+                        #appsListTrap
                         class="sidenav-popover"
                         role="dialog"
                         aria-label="Guides"
@@ -442,12 +450,17 @@
                 class="sidenav-nav-item user-menu-item"
                 appClickOutside
                 (appClickOutside)="closeUserMenu()"
+                (keydown.escape)="closeUserMenuOnEscape($event)"
             >
-                <div
+                <!-- No tooltip while its menu is open: it would cover the menu. -->
+                <button
+                    type="button"
                     class="user-avatar-btn"
                     [class.opened]="isUserMenuOpen()"
                     [class.active]="isAccountRoute()"
-                    matTooltip="Account"
+                    [attr.aria-expanded]="isUserMenuOpen()"
+                    [attr.aria-label]="isExpanded() ? null : accountTooltip"
+                    [matTooltip]="accountTooltip"
                     matTooltipPosition="right"
                     [matTooltipDisabled]="isExpanded() || isUserMenuOpen()"
                     (click)="toggleUserMenu($event)"
@@ -485,9 +498,12 @@
                             >
                         }
                     }
-                </div>
+                </button>
                 @if (isUserMenuOpen()) {
+                    <!-- Takes the focus when it opens and hands it back to the account row when it closes. -->
                     <app-user-menu
+                        cdkTrapFocus
+                        [cdkTrapFocusAutoCapture]="true"
                         [user]="user"
                         [(isUserMenuOpen)]="isUserMenuOpen"
                     />

@@ -183,7 +183,8 @@ plugin login token is refused) and ignores `X-Organization-Id`.
 ```
 
 The list holds only the caller's own organizations, sorted by name, and is empty for a
-SuperAdmin who is a member nowhere. An unknown plugin, one that is not running, or one without
+SuperAdmin who is a member nowhere. With a user API key it holds at most the key's
+organization. An unknown plugin, one that is not running, or one without
 a backend gets `404 plugin_not_found`.
 
 ## What a plugin can rely on

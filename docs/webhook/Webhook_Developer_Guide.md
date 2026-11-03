@@ -57,6 +57,7 @@ tunnel_registry.py: Replaces the old webhook_service.py to maintain a pool of mu
 
 provider_factory.py / ngrok_tunnel.py: Factories and implementation for configuring robust Ngrok connections.
 
+What an ngrok tunnel exposes: every tunnel forwards to `NGROK_TARGET_HOST:NGROK_TARGET_PORT`, by default `epicstaff-nginx:8083` -- nginx's webhook tunnel listener (`src/nginx/templates/default.conf.template`). That listener serves only the routes in `tunnel-routes.snippet.template`: `/webhooks/` (this service: generic webhooks and the Telegram callback) and `/voice/` (the realtime service's Twilio call webhook and MediaStream WebSocket). Every other path is a 404, so the tunnel's public URL never exposes EpicStaff's frontend, API, admin or media. It is always plain HTTP, whatever `NGINX_SSL_MODE` (ngrok ends TLS at its edge), it is not published on the host, and with plugins on it refuses the plugins network. Never point a tunnel at nginx's port 80: that is the whole of EpicStaff, for every organization. A new route that an outside service must reach through the tunnel goes into `tunnel-routes.snippet.template`; `src/nginx/tests/check_templates.sh` checks the listener's routes and that its port matches the `NGROK_TARGET_PORT` default.
 
 graph_session_manager_service.py: The "Worker" service. Listens to Redis session_schema_channel and manages the session lifecycle.
 

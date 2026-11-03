@@ -12,6 +12,8 @@
             #input
             [(ngModel)]="value"
             class="expression-input"
+            aria-label="Expression"
+            matTooltip="Expression"
             [rows]="10"
             [cols]="50"
             (keydown)="onKeyDown($event)"

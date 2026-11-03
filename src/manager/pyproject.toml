@@ -33,7 +33,7 @@ transitive-pins = [
     "h11==0.16.0",
     "httpcore==1.0.9",
     "idna==3.18",
-    "pyjwt==2.13.0",
+    "pyjwt==2.15.1",
 ]
 
 [tool.uv]

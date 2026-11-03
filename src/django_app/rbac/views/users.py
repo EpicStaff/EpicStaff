@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from rbac.access.gates import IsSuperadmin, RestrictApiKeyToUserKeyReads
+from rbac.access.principals import limit_org_ids_to_api_key, user_api_key_org_id
 from rbac.governance.users import UserManagementService
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.schemas.users import (
@@ -82,6 +83,8 @@ class UserAdminViewSet(viewsets.ViewSet):
         cleaned = self._validator.validate_list_users_query(request.query_params)
         if org_ids is None and cleaned["organization_id"] is not None:
             org_ids = [cleaned["organization_id"]]
+        org_ids = limit_org_ids_to_api_key(request, org_ids)
+        key_org_id = user_api_key_org_id(request)
         qs = self._service.list_users(
             actor=request.user,
             search=cleaned["search"],
@@ -89,6 +92,7 @@ class UserAdminViewSet(viewsets.ViewSet):
             org_ids=org_ids,
             status_value=cleaned["status_value"],
             role_id=cleaned["role_id"],
+            membership_org_ids=None if key_org_id is None else [key_org_id],
         )
         qs = self._apply_ordering(qs, request.query_params.get("ordering"))
         paginator = self.pagination_class()

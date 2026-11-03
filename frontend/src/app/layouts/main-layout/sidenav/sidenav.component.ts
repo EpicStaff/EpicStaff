@@ -133,13 +133,13 @@ export class LeftSidebarComponent {
     /** The open/close control was used; the owner of the width decides the new one. */
     public readonly expandedToggle = output<void>();
 
-    /** The open popover's focus trap. */
-    private readonly popoverFocusTrap = viewChild(CdkTrapFocus);
+    /** The open popover's focus trap: Apps, the app switcher or Help. */
+    private readonly appsListFocusTrap = viewChild('appsListTrap', { read: CdkTrapFocus });
 
     // Declared ahead of the state, whose initializers read the apps through it.
     private readonly appNavigation = inject(AppNavigationService);
 
-    /** Expanded rows show their labels, so the hover tooltips (which repeat the label) are suppressed. */
+    /** Expanded rows show their labels next to their icons; collapsed, only the icons. */
     protected readonly isExpanded = computed(() => isMainSidenavExpanded(this.width()));
     protected readonly sidebarToggleLabel = computed(() => (this.isExpanded() ? 'Close sidebar' : 'Open sidebar'));
 
@@ -190,6 +190,8 @@ export class LeftSidebarComponent {
     protected readonly quickStartTourAnchors = QUICK_START_TOUR_ANCHORS;
     protected readonly createAgentTourAnchors = CREATE_AGENT_TOUR_ANCHORS;
     protected readonly backToEpicStaffLabel = BACK_TO_EPICSTAFF_LABEL;
+    /** Names the account row when collapsed, and is its tooltip. */
+    protected readonly accountTooltip = 'Account';
     protected readonly manageAppsUrl = MANAGE_APPS_URL;
     protected readonly popoverPositions = RIGHT_OF_ROW;
 
@@ -368,6 +370,13 @@ export class LeftSidebarComponent {
         this.isUserMenuOpen.set(false);
     }
 
+    /** Escape closes the open account menu (its focus trap hands the focus back to the row), and only that. */
+    protected closeUserMenuOnEscape(event: Event): void {
+        if (!this.isUserMenuOpen()) return;
+        event.stopPropagation();
+        this.closeUserMenu();
+    }
+
     public toggleUserMenu(event: MouseEvent): void {
         event.stopPropagation();
         this.isUserMenuOpen.update((prev) => !prev);
@@ -424,7 +433,7 @@ export class LeftSidebarComponent {
 
     /** A popover takes the focus on its search field when it has one, else on its first item. */
     protected focusOpenedPopover(): void {
-        afterNextRender(() => this.popoverFocusTrap()?.focusTrap.focusFirstTabbableElement(), {
+        afterNextRender(() => this.appsListFocusTrap()?.focusTrap.focusFirstTabbableElement(), {
             injector: this.injector,
         });
     }

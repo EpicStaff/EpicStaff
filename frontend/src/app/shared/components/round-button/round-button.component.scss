@@ -20,7 +20,7 @@
         border-color 0.15s ease,
         color 0.15s ease;
 
-    &:hover:not(.round-btn--active) {
+    &:is(:hover, :focus-visible):not(.round-btn--active) {
         border-color: var(--active-color, var(--accent-color, #685fff));
         color: var(--active-color, var(--accent-color, #685fff));
     }

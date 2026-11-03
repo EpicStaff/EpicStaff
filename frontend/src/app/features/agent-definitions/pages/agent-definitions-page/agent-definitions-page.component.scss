@@ -86,7 +86,7 @@
     cursor: pointer;
     flex-shrink: 0;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 }
@@ -117,14 +117,19 @@
     white-space: nowrap;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
+    }
+
+    // Drawn inside: the menu clips its items.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &--danger {
         color: var(--red-490);
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: color-mix(in srgb, var(--red-490) 10%, transparent);
         }
     }
@@ -150,7 +155,7 @@
     cursor: pointer;
     flex-shrink: 0;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         text-decoration: underline;
     }
 }

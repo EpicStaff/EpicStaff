@@ -47,7 +47,7 @@ $name-available-width: max($name-min-width, calc(100cqi - #{$row-indent} - #{$ro
         color: var(--color-text-secondary);
         border-radius: 0.25rem;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }
@@ -81,7 +81,7 @@ $name-available-width: max($name-min-width, calc(100cqi - #{$row-indent} - #{$ro
         color: var(--color-text-secondary);
         border-radius: 0.25rem;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }
@@ -118,8 +118,15 @@ $name-available-width: max($name-min-width, calc(100cqi - #{$row-indent} - #{$ro
         position: relative;
         height: 28px;
 
-        &:hover {
+        &:is(:hover, :has(.storage-tree__name:focus-visible)) {
             background-color: var(--color-ghost-btn-hover);
+        }
+
+        // The list clips anything drawn outside a full-width row. The row shows the keyboard focus of its name
+        // button, which selects it.
+        &:has(.storage-tree__name:focus-visible) {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
         }
 
         &--drop-target {
@@ -238,6 +245,18 @@ $name-available-width: max($name-min-width, calc(100cqi - #{$row-indent} - #{$ro
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        // A button that selects its row, drawn as the plain name it was.
+        padding: 0;
+        border: none;
+        background: none;
+        font-family: inherit;
+        text-align: left;
+        cursor: inherit;
+
+        // The row draws it.
+        &:focus-visible {
+            outline: none;
+        }
 
         // Capped by .storage-tree__folder-meta instead, which also holds the Empty badge.
         &--folder-meta {
@@ -275,6 +294,7 @@ $name-available-width: max($name-min-width, calc(100cqi - #{$row-indent} - #{$ro
 
         &:focus {
             outline: none;
+            border-color: var(--accent-color);
         }
     }
 
@@ -325,7 +345,9 @@ $name-available-width: max($name-min-width, calc(100cqi - #{$row-indent} - #{$ro
         z-index: 2;
         visibility: hidden;
 
-        &--visible {
+        // Shown while the row or one of its buttons has the keyboard focus too.
+        &--visible,
+        .storage-tree__item:focus-within > & {
             visibility: visible;
         }
     }
@@ -347,7 +369,7 @@ $name-available-width: max($name-min-width, calc(100cqi - #{$row-indent} - #{$ro
             color: var(--color-text-secondary);
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--fog-200);
         }
     }
@@ -394,8 +416,13 @@ $name-available-width: max($name-min-width, calc(100cqi - #{$row-indent} - #{$ro
         letter-spacing: 0;
         text-align: left;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-ghost-btn-hover);
+        }
+
+        // The menu clips anything drawn outside it.
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         &--disabled {

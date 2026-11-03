@@ -11,3 +11,9 @@
     z-index: 1001;
     @include row-more-menu.panel;
 }
+
+.explorer-menu__item:focus-visible {
+    background-color: var(--color-ghost-btn-hover);
+    // Drawn inside: the panel clips its items.
+    outline-offset: -2px;
+}

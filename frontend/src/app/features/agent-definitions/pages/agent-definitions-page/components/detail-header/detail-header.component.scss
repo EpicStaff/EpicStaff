@@ -27,7 +27,7 @@
     cursor: pointer;
     flex-shrink: 0;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
         border-color: var(--color-text-primary);
     }
@@ -36,7 +36,7 @@
         color: var(--accent-color);
         border-color: var(--accent-color);
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--accent-color);
             border-color: var(--accent-color);
         }
@@ -72,9 +72,14 @@
         color: var(--color-text-secondary);
         cursor: pointer;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--accent-color);
             text-decoration: underline;
+        }
+
+        // Drawn inside: the crumbs row clips its items.
+        &:focus-visible {
+            outline-offset: -2px;
         }
     }
 }

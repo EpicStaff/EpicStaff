@@ -12,7 +12,9 @@ import {
     chordFromEvent,
     formatChord,
     isEditableTarget,
+    isInsideOverlay,
     isInsideSidePanel,
+    isKeyboardFocusedControl,
     KeyChord,
 } from '../core/keymap/key-chord.util';
 import {
@@ -338,6 +340,16 @@ export class KeymapService {
 
     private isSuppressed(actionId: EditorActionId, event: KeyboardEvent): boolean {
         const fromSidePanel = event.target instanceof Element && isInsideSidePanel(event.target);
+        const fromKeyboardFocusedControl = event.target instanceof Element && isKeyboardFocusedControl(event.target);
+        const fromOverlay = event.target instanceof Element && isInsideOverlay(event.target);
+        if (actionId === 'editing.escape') {
+            // An Escape a menu, dropdown or dialog takes, or one a control already used, closes only that.
+            return event.defaultPrevented || fromOverlay;
+        }
+        if (actionId === 'editing.delete') {
+            // Delete or Backspace on a focused button or in a dialog never deletes the selected nodes behind it.
+            return fromSidePanel || fromOverlay || fromKeyboardFocusedControl;
+        }
         if (NODE_ACTION_IDS.has(actionId)) {
             return event.repeat || fromSidePanel;
         }
@@ -351,7 +363,7 @@ export class KeymapService {
             return this.dialog.openDialogs.length > 0;
         }
         if (PAN_ACTION_IDS.has(actionId)) {
-            return fromSidePanel;
+            return fromSidePanel || fromKeyboardFocusedControl;
         }
         if (actionId === 'editing.copy') {
             return !!window.getSelection()?.toString();

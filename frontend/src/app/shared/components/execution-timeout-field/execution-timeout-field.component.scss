@@ -120,7 +120,7 @@
             background-color 0.2s ease,
             color 0.2s ease;
 
-        &:hover:not(:disabled, .execution-timeout__step--unavailable) {
+        &:is(:hover, :focus-visible):not(:disabled, .execution-timeout__step--unavailable) {
             background-color: var(--color-secondary-btn-background-hover);
         }
 

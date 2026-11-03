@@ -1,4 +1,3 @@
-from collections import defaultdict
 from datetime import datetime
 
 from django.db.models import F, Q, QuerySet
@@ -8,17 +7,16 @@ from loguru import logger
 from rbac.access.cross_org_resolver import OrgScope
 from rbac.exceptions import ApiKeyNotFoundError
 from rbac.governance.cross_org_base import CrossOrgResourceService
-from rbac.models import ApiKey, OrganizationUser
+from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
-
-OWNER_ORG_PATH = "created_by__organization_memberships__org_id"
 
 
 class ApiKeyManagementService(CrossOrgResourceService):
     """Cross-org management of members' USER keys.
 
-    A key owns no organization: its scope is the set its owner belongs to.
-    A superadmin owner has none, so their keys are unreachable to delegates.
+    A key belongs to one org (`ApiKey.org`) and is governed only there: the
+    caller needs api_keys rights in the key's org, whatever other orgs the
+    owner belongs to. Superadmin-owned keys are reachable only by superadmins.
     """
 
     rbac_resource_type = ResourceType.API_KEYS
@@ -34,15 +32,15 @@ class ApiKeyManagementService(CrossOrgResourceService):
         search: str | None = None,
         scopes: list[OrgScope] | None = None,
     ) -> QuerySet[ApiKey]:
-        """USER keys owned by members of the caller's readable orgs."""
+        """USER keys of the orgs where the caller may read api_keys."""
         base_qs: QuerySet[ApiKey] = ApiKey.objects.filter(
             key_type=ApiKey.KeyType.USER
-        ).select_related("created_by")
+        ).select_related("created_by", "org")
         qs: QuerySet[ApiKey] = self.apply_org_scope(
             actor=actor,
             org_ids=org_ids,
             base_qs=base_qs,
-            org_field=OWNER_ORG_PATH,
+            org_field="org_id",
             scopes=scopes,
         )
         if owner_id is not None:
@@ -51,78 +49,59 @@ class ApiKeyManagementService(CrossOrgResourceService):
             qs = self._filter_status(qs, status_value)
         if search:
             qs = qs.filter(Q(name__icontains=search) | Q(prefix__icontains=search))
-        # distinct(): the owner-membership join is multi-valued.
-        return qs.distinct().order_by(F("last_used_at").desc(nulls_last=True), "-created_at", "id")
+        return qs.order_by(F("last_used_at").desc(nulls_last=True), "-created_at", "id")
 
-    def revoke_key(self, actor, key_id: int, scopes: list[OrgScope] | None = None) -> ApiKey:
-        """Disable a key everywhere, keeping the row. Idempotent."""
-        key: ApiKey = self._get_key_or_404(key_id)
-        self.authorize_any_org(actor, self._owner_org_ids(key), Permission.DELETE, scopes=scopes)
+    def revoke_key(self, actor, key_id: int) -> ApiKey:
+        """Disable a key, keeping the row. Idempotent.
+
+        Raises:
+            ApiKeyNotFoundError: No USER key with this id the caller may see in its org.
+        """
+        key: ApiKey = self._get_key_for_delete(actor, key_id)
         if key.revoked_at is None:
             key.revoked_at = timezone.now()
             key.save(update_fields=["revoked_at"])
         logger.info(
-            "ApiKeyManagementService.revoke_key actor={a} key={k} owner={o}",
+            "ApiKeyManagementService.revoke_key actor={a} key={k} owner={o} org={org}",
             a=getattr(actor, "email", "system"),
             k=key.pk,
             o=key.created_by_id,
+            org=key.org_id,
         )
         return key
 
-    def delete_key(self, actor, key_id: int, scopes: list[OrgScope] | None = None) -> None:
-        key: ApiKey = self._get_key_or_404(key_id)
-        self.authorize_any_org(actor, self._owner_org_ids(key), Permission.DELETE, scopes=scopes)
+    def delete_key(self, actor, key_id: int) -> None:
+        """Remove a key's row.
+
+        Raises:
+            ApiKeyNotFoundError: No USER key with this id the caller may see in its org.
+        """
+        key: ApiKey = self._get_key_for_delete(actor, key_id)
         logger.info(
-            "ApiKeyManagementService.delete_key actor={a} key={k} owner={o}",
+            "ApiKeyManagementService.delete_key actor={a} key={k} owner={o} org={org}",
             a=getattr(actor, "email", "system"),
             k=key.pk,
             o=key.created_by_id,
+            org=key.org_id,
         )
         key.delete()
 
-    def attach_visible_orgs(
-        self, keys: list[ApiKey], actor, scopes: list[OrgScope] | None = None
-    ) -> None:
-        """Set `_visible_org_ids` on each key: the owner's orgs, limited to
-        those the caller may read. One query for the whole page."""
-        owner_ids: set[int] = {key.created_by_id for key in keys}
-        if not owner_ids:
-            return
-        readable: set[int] | None = self.resolve_readable_org_ids(actor, scopes=scopes)
-        rows: QuerySet[OrganizationUser] = OrganizationUser.objects.filter(
-            user_id__in=owner_ids, org__is_active=True
-        )
-        if readable is not None:
-            rows = rows.filter(org_id__in=readable)
-        by_owner: dict[int, list[int]] = defaultdict(list)
-        for user_id, org_id in rows.values_list("user_id", "org_id"):
-            by_owner[user_id].append(org_id)
-        for key in keys:
-            key._visible_org_ids = sorted(by_owner.get(key.created_by_id, []))
-
-    @staticmethod
-    def _get_key_or_404(key_id: int) -> ApiKey:
-        """Owner status is not filtered here — a superadmin caller must reach
-        every key, and `authorize_any_org` bypasses before the org check."""
-        key: ApiKey | None = (
-            ApiKey.objects.filter(pk=key_id, key_type=ApiKey.KeyType.USER)
-            .select_related("created_by")
-            .first()
-        )
+    def _get_key_for_delete(self, actor, key_id: int) -> ApiKey:
+        """404 for a key outside the caller's reach, 403 for a visible key
+        the caller may not delete."""
+        qs: QuerySet[ApiKey] = ApiKey.objects.filter(
+            pk=key_id, key_type=ApiKey.KeyType.USER
+        ).select_related("created_by", "org")
+        # `resolve_for_write` lets an org admin through on a superadmin's key in
+        # their org; the list hides those keys, so this lookup must too.
+        if not getattr(actor, "is_superadmin", False):
+            qs = qs.filter(self.delegated_scope_q)
+        key: ApiKey | None = qs.first()
         if key is None:
             raise ApiKeyNotFoundError()
+        effective = self.resolve_for_write(actor, key.org_id, Permission.DELETE)
+        self.assert_can(effective, Permission.DELETE)
         return key
-
-    @staticmethod
-    def _owner_org_ids(key: ApiKey) -> set[int]:
-        """Orgs governing a key. A superadmin owner has none."""
-        if key.created_by.is_superadmin:
-            return set()
-        return set(
-            OrganizationUser.objects.filter(
-                user_id=key.created_by_id, org__is_active=True
-            ).values_list("org_id", flat=True)
-        )
 
     @staticmethod
     def _filter_status(qs: QuerySet[ApiKey], status_value: str) -> QuerySet[ApiKey]:

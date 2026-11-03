@@ -145,7 +145,8 @@
         cursor: pointer;
     }
 
-    &:hover:not(.table-row--selected) {
+    // A row is not focused itself: a control in it is.
+    &:is(:hover, :has(:focus-visible)):not(.table-row--selected) {
         background: var(--transparent-white-4);
     }
 }
@@ -231,7 +232,7 @@
             color 0.15s ease,
             border-color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--transparent-white-8);
             color: var(--text);
         }

@@ -1,6 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ListComponent, ListRowComponent, SelectComponent, SelectItem } from '@shared/components';
 import { ROLE_LABELS } from '@shared/constants';
 import { FullMembership, Role, UserRole } from '@shared/models';
@@ -17,7 +18,15 @@ import {
     selector: 'app-profile-overview-tab',
     templateUrl: './profile-overview-tab.component.html',
     styleUrls: ['./profile-overview-tab.component.scss'],
-    imports: [AppSvgIconComponent, OrgAvatarComponent, SelectComponent, ListComponent, ListRowComponent, DatePipe],
+    imports: [
+        AppSvgIconComponent,
+        OrgAvatarComponent,
+        SelectComponent,
+        ListComponent,
+        ListRowComponent,
+        DatePipe,
+        MatTooltip,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProfileOverviewTabComponent {

@@ -10,6 +10,7 @@ import {
     signal,
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { TooltipComponent } from '../../tooltip/tooltip.component';
 
@@ -25,7 +26,7 @@ import { TooltipComponent } from '../../tooltip/tooltip.component';
             multi: true,
         },
     ],
-    imports: [TooltipComponent],
+    imports: [TooltipComponent, MatTooltip],
 })
 export class ToggleSwitchComponent implements ControlValueAccessor {
     icon = input<string>('help_outline');
@@ -55,6 +56,8 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     private formDisabled = signal(false);
 
     isDisabled = computed(() => this.disabled() || this.formDisabled());
+    /** The switch's accessible name and tooltip. */
+    protected readonly fieldName = computed(() => this.ariaLabel() || this.label() || 'Toggle');
 
     onToggle() {
         if (this.isDisabled()) return;

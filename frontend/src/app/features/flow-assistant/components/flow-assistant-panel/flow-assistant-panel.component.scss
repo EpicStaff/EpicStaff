@@ -224,7 +224,7 @@
     opacity: 0.6;
     transition: opacity 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         opacity: 1;
     }
 
@@ -378,11 +378,11 @@
     color: var(--color-text-secondary);
     align-self: flex-start;
 
-    .message--assistant:hover & {
+    .message--assistant:is(:hover, :focus-within) & {
         opacity: 0.7;
     }
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         opacity: 1 !important;
         background-color: var(--ep-button-ghost-hover-bg);
     }
@@ -456,8 +456,13 @@
         list-style: none;
         user-select: none;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
+        }
+
+        // Drawn inside: the tool call box clips it.
+        &:focus-visible {
+            outline-offset: -2px;
         }
     }
 
@@ -493,7 +498,7 @@
         color 0.15s ease,
         border-color 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--ep-color-accent-soft);
         border-color: var(--ep-color-accent);
         color: var(--ep-color-text);
@@ -567,7 +572,7 @@
         cursor: pointer;
         transition: background-color 0.2s ease;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background-color: color-mix(in srgb, var(--ep-color-accent) 85%, black);
         }
 
@@ -579,7 +584,7 @@
         &--stop {
             background-color: var(--ep-color-danger);
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: color-mix(in srgb, var(--ep-color-danger) 85%, black);
             }
         }
@@ -614,7 +619,7 @@
         text-align: left;
         cursor: pointer;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--white-alpha-6);
         }
 
