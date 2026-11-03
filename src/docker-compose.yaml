@@ -362,11 +362,16 @@ services:
       REDIS_USER: ${REDIS_USER:?}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?}
     # The config file must stay the first argument: it carries the pub/sub output buffer
-    # limit. The flags after it override same-named directives in the file.
-    command: >
-      sh -c "redis-server /usr/local/etc/redis/redis.conf --port $${REDIS_PORT}
-      $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}
-      $${REDIS_USER:+--user \"$${REDIS_USER}\" on \">$${REDIS_PASSWORD}\" ~* &* +@all}"
+    # limit. The password reaches redis-server as config on stdin (the trailing "-"), never as
+    # an argument: every user on the host can read process arguments, and redis-server only
+    # hides its own once it has started. sed escapes \ and " for the quoted config values.
+    command:
+      - sh
+      - -c
+      - |
+        password=$$(printf '%s' "$$REDIS_PASSWORD" | sed 's/[\\"]/\\&/g')
+        printf 'requirepass "%s"\nuser "%s" on ">%s" ~* &* +@all\n' "$$password" "$$REDIS_USER" "$$password" |
+          redis-server /usr/local/etc/redis/redis.conf --port "$$REDIS_PORT" -
     healthcheck:
       # redis-cli reads the password from REDISCLI_AUTH: on a command line (-a) every user on the
       # host could read it in the process list.
