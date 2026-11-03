@@ -58,10 +58,13 @@ RUN mkdir -p /app/.cache/tokie \
 
 # NLTK stopwords corpus for the HTML chunker's stopword_removal option, read
 # from NLTK_DATA at runtime (see html_chunker.py; nltk.download is never called
-# there). Fetched from a fixed nltk_data commit and checked against its sha256,
-# which matches the sha256_checksum the NLTK index publishes for this package.
-# To update: pick the newer commit, take the package's sha256_checksum from
-# index.xml at that commit, and change both ARGs together.
+# there). Fetched from a fixed nltk_data commit and checked against the sha256
+# of that zip, which is also the sha256_checksum the NLTK index on the gh-pages
+# branch publishes for it. The index.xml stored at the same commit lags behind
+# and lists an older hash, so do not take the hash from there.
+# To update: pick the newer commit, compute the sha256 of
+# packages/corpora/stopwords.zip at that commit, check it against the
+# stopwords entry in gh-pages/index.xml, and change both ARGs together.
 ARG NLTK_DATA_COMMIT=98e14261eaec2244af1db4ec5b282112444495aa
 ARG NLTK_STOPWORDS_SHA256=48c0e52d8b52546e827f53761fb30300c0ab94f70660d28bd65ba0a86270946b
 RUN mkdir -p /app/.cache/nltk_data/corpora \
