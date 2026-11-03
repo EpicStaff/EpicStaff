@@ -12,14 +12,24 @@ import {
     signal,
 } from '@angular/core';
 import { FormControl, FormsModule, ReactiveFormsModule, ValidatorFn } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { CheckboxComponent } from '../checkbox/checkbox.component';
 import { TableColumnDef, TableRow } from './dynamic-table.models';
 
 @Component({
     selector: 'app-dynamic-table',
-    imports: [FormsModule, ReactiveFormsModule, DragDropModule, AppSvgIconComponent, CheckboxComponent],
+    imports: [
+        FormsModule,
+        ReactiveFormsModule,
+        DragDropModule,
+        AppSvgIconComponent,
+        CheckboxComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './dynamic-table.component.html',
     styleUrls: ['./dynamic-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -53,6 +63,9 @@ export class DynamicTableComponent implements OnInit {
 
     // When set, navigable rows show the navigate button inside this cell instead of the action column.
     navigateCellKey = input<string | null>(null);
+
+    // Label of that in-cell navigate control; `isEmpty` shows it as an "add" prompt instead of a summary.
+    navigateCellLabel = input<((row: TableRow) => { text: string; isEmpty: boolean }) | null>(null);
 
     // Optionally disable a cell input based on row and column key
     isCellDisabled = input<((row: TableRow, colKey: string) => boolean) | null>(null);

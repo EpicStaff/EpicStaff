@@ -21,6 +21,8 @@ from shared.models.ai_providers import LLMConfigData, LLMData
 from shared.models.knowledge import NaiveRagSearchConfig
 from shared.models.knowledge_new import FoundChunk, SearchUsage
 
+from tests.log_capture import assert_masked_exception, capture_logs_at, log_line_starting_with
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -838,3 +840,30 @@ async def test_llm_fallback_published_live_with_task_and_error_class_only():
         "error_type": "RateLimitError",
     }
     assert "secret-ish" not in published[1]["payload"]
+
+
+async def test_live_publish_failure_logs_class_name_and_digest_only():
+    """A publish error can quote the envelope it failed on, tool arguments included;
+    the WARNING line names the class and digests the message."""
+    secret_marker = "SENSITIVE_TOOL_ARGUMENTS_MARKER_24682"
+    client = MagicMock()
+
+    async def failing_publish(stream: str, fields: dict, **options) -> None:
+        raise RuntimeError(f"redis refused: {secret_marker}")
+
+    client.publish = failing_publish
+
+    emitter = RedisStreamToolEventEmitter(
+        client=client,
+        result_stream_prefix="agent.results",
+        correlation_id="test-corr",
+        result_stream_ttl_s=3600,
+    )
+
+    with capture_logs_at("WARNING") as logs:
+        await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
+
+    warning_line = log_line_starting_with(logs, "failed to publish live agent.tool_call ")
+    assert secret_marker not in warning_line
+    assert "correlation_id=test-corr" in warning_line
+    assert_masked_exception(warning_line, "RuntimeError")

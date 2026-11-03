@@ -1,11 +1,14 @@
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from tables.models.user import TOUR_KEY_MAX_LENGTH, TOURS_MAX_PER_USER
 
+from rbac.access.principals import user_api_key_org_id
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.identity.refresh_cookie import (
     get_refresh_from_cookie,
@@ -36,6 +39,9 @@ def _require_user_context(request):
 
 
 def _extract_active_org_id(request):
+    key_org_id = user_api_key_org_id(request)
+    if key_org_id is not None:
+        return key_org_id
     raw = request.headers.get("X-Organization-Id")
     if not raw:
         return None
@@ -59,7 +65,11 @@ class ProfileView(APIView):
     def get(self, request):
         _require_user_context(request)
         active_org_id = _extract_active_org_id(request)
-        user = self._service.get_profile(request.user, active_org_id=active_org_id)
+        user = self._service.get_profile(
+            request.user,
+            active_org_id=active_org_id,
+            api_key_org_id=user_api_key_org_id(request),
+        )
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 
     @extend_schema(
@@ -74,7 +84,7 @@ class ProfileView(APIView):
         _require_user_context(request)
         cleaned = self._validator.validate_profile_patch(request.data)
         user = self._service.update_profile(request.user, cleaned)
-        user = self._service.get_profile(user)
+        user = self._service.get_profile(user, api_key_org_id=user_api_key_org_id(request))
         if "display_name" in cleaned:
             profile_updated.send(sender=type(user), user=user)
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
@@ -109,7 +119,7 @@ class ProfileAvatarView(APIView):
         _require_user_context(request)
         uploaded = self._validator.validate_avatar_upload(request.data)
         user = self._service.update_avatar(request.user, uploaded)
-        user = self._service.get_profile(user)
+        user = self._service.get_profile(user, api_key_org_id=user_api_key_org_id(request))
         profile_updated.send(sender=type(user), user=user)
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 
@@ -125,24 +135,51 @@ class ProfileAvatarView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class ProfileQuickstartTourCompleteView(APIView):
+class ProfileTourCompleteView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     _service = UserProfileService()
+    _validator = UserValidationService()
 
     @extend_schema(
-        summary="Mark the Quick Start tour as completed or skipped for me",
-        description="Idempotent: repeated calls keep the first completion time.",
+        summary="Mark a guided tour as completed or skipped for me",
+        description=(
+            "Idempotent: repeated calls for the same tour keep the first completion time. "
+            "The tour appears in `completed_tours` of the returned profile."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "tour_key",
+                OpenApiTypes.STR,
+                OpenApiParameter.PATH,
+                description=(
+                    "Lowercase letters and digits in words joined by single hyphens, "
+                    f"at most {TOUR_KEY_MAX_LENGTH} characters, e.g. quick-start."
+                ),
+            )
+        ],
         request=None,
-        responses={200: ProfileResponseSerializer},
+        responses={
+            200: ProfileResponseSerializer,
+            400: OpenApiResponse(
+                description=(
+                    "`invalid`: malformed tour key, details in `errors`. "
+                    f"`tour_limit_exceeded`: {TOURS_MAX_PER_USER} other tours already completed."
+                )
+            ),
+        },
     )
-    def post(self, request):
+    def post(self, request, tour_key):
         _require_user_context(request)
-        self._service.complete_quickstart_tour(request.user)
-        # Same org context as GET: the frontend replaces its cached profile with this response.
+        tour_key = self._validator.validate_tour_key(tour_key)
+        self._service.complete_tour(request.user, tour_key)
+        # The response is the full profile, so render it with the same org context as GET
+        # rather than with null active-org fields.
         user = self._service.get_profile(
-            request.user, active_org_id=_extract_active_org_id(request)
+            request.user,
+            active_org_id=_extract_active_org_id(request),
+            api_key_org_id=user_api_key_org_id(request),
         )
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 

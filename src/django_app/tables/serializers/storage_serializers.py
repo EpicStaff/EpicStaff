@@ -2,11 +2,11 @@ import os
 
 from rbac.authorship import LastEditFieldsSerializerMixin
 from rest_framework import serializers
+from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from tables.serializers.recycle_bin_serializers import RecycleBinEntrySerializer
 from tables.services.storage_service.path_utils import (
     TRASH_DIRECTORY,
     is_trash_path,
-    sanitize_storage_path,
 )
 from tables.validators.file_upload_validator import FileValidator
 
@@ -54,6 +54,10 @@ class StorageMkdirSerializer(serializers.Serializer):
         return _normalize_path(value)
 
 
+# Each path adds a clause to every usage query, so the endpoint caps them.
+STORAGE_USAGE_MAX_PATHS = 500
+
+
 class StorageBulkDeleteSerializer(serializers.Serializer):
     paths = serializers.ListField(
         child=serializers.CharField(),
@@ -63,6 +67,36 @@ class StorageBulkDeleteSerializer(serializers.Serializer):
 
     def validate_paths(self, value: list[str]) -> list[str]:
         return [_normalize_source_path(path) for path in value]
+
+
+class StorageUsageRequestSerializer(StorageBulkDeleteSerializer):
+    paths = serializers.ListField(
+        child=serializers.CharField(),
+        min_length=1,
+        max_length=STORAGE_USAGE_MAX_PATHS,
+        help_text=f"Storage paths to check, at most {STORAGE_USAGE_MAX_PATHS}",
+    )
+
+
+class StorageUsageEntrySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class StorageUsageKindSerializer(serializers.Serializer):
+    used = serializers.BooleanField(
+        help_text="True when at least one live entry of this kind links to the paths"
+    )
+    items = StorageUsageEntrySerializer(
+        many=True,
+        help_text="Distinct entries ordered by name, then id; empty unless the caller can read this resource type",
+    )
+
+
+class StorageUsageResponseSerializer(serializers.Serializer):
+    flows = StorageUsageKindSerializer()
+    surfaces = StorageUsageKindSerializer()
+    agents = StorageUsageKindSerializer()
 
 
 class StorageDownloadZipSerializer(serializers.Serializer):

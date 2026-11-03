@@ -27,7 +27,12 @@ class AuditRepository(ABC, Generic[T]):  # noqa: UP046 - T is imported by implem
 
         Must be idempotent: re-sending a batch that includes an event with
         an `id` already stored must overwrite that event in place, not
-        create a duplicate.
+        create a duplicate. With monthly indices this holds within one
+        receive month: a re-send received in the next month lands in that
+        month's index, alongside the first copy. Readers then see both
+        copies in a search, and search_after paging (sort on event_time,
+        id - equal for both) can drop one of them at a page boundary.
+        Export de-duplicates by id, so an export file has one copy.
         """
 
     @abstractmethod

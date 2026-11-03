@@ -2,12 +2,15 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import {
     ActionCode,
+    BulkDeleteOptions,
+    BulkDeleteResponse,
     CreateEmbeddingConfigRequest,
     EmbeddingConfig,
     GetEmbeddingConfigRequest,
     ResourceCode,
     UpdateEmbeddingConfigRequest,
 } from '@shared/models';
+import { bulkDeleteParams } from '@shared/utils';
 import { map, Observable } from 'rxjs';
 
 import { withPermission } from '../../../core/http/permission-context';
@@ -69,10 +72,11 @@ export class EmbeddingConfigsService {
         });
     }
 
-    // DELETE embedding config
-    deleteEmbeddingConfig(id: number): Observable<void> {
-        return this.http.delete<void>(`${this.apiUrl}${id}/`, {
-            headers: this.headers,
-        });
+    bulkDelete(ids: number[], options: BulkDeleteOptions = {}): Observable<BulkDeleteResponse> {
+        return this.http.post<BulkDeleteResponse>(
+            `${this.apiUrl}bulk-delete/`,
+            { ids },
+            { params: bulkDeleteParams(options) }
+        );
     }
 }

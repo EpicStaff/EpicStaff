@@ -1,12 +1,22 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { computed, DestroyRef, inject, Injectable, InjectionToken, linkedSignal, NgZone, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CustomShortcutEntry, ShortcutParams, ShortcutSettings } from '@shared/models';
 import { catchError, concatMap, EMPTY, finalize, fromEvent, Subject } from 'rxjs';
 
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';
 import { EDITOR_ACTIONS, EditorAction, EditorActionId } from '../core/keymap/editor-actions';
-import { chordFromEvent, isEditableTarget, isInsideSidePanel, KeyChord } from '../core/keymap/key-chord.util';
+import {
+    chordFromEvent,
+    formatChord,
+    isEditableTarget,
+    isInsideOverlay,
+    isInsideSidePanel,
+    isKeyboardFocusedControl,
+    KeyChord,
+} from '../core/keymap/key-chord.util';
 import {
     applyShortcutChange,
     CustomShortcutRow,
@@ -46,8 +56,18 @@ const NODE_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
     EDITOR_ACTIONS.filter((action) => action.section === 'Nodes').map((action) => action.id)
 );
 
+const FLOW_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
+    EDITOR_ACTIONS.filter((action) => action.section === 'Flow actions').map((action) => action.id)
+);
+
+const ZOOM_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
+    EDITOR_ACTIONS.filter((action) => action.section === 'Zoom').map((action) => action.id)
+);
+
 const PAN_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
-    EDITOR_ACTIONS.filter((action: EditorAction) => action.pan !== undefined).map((action) => action.id)
+    EDITOR_ACTIONS.filter((action: EditorAction) => action.pan !== undefined || action.moveSelection !== undefined).map(
+        (action) => action.id
+    )
 );
 
 interface ShortcutState {
@@ -72,6 +92,8 @@ export class KeymapService {
     private readonly toastService = inject(ToastService);
     private readonly ngZone = inject(NgZone);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly dialog = inject(Dialog);
+    private readonly permissions = inject(PermissionsService);
 
     private readonly pendingSaves = signal(0);
     private lastRowId = 0;
@@ -116,6 +138,19 @@ export class KeymapService {
     readonly overriddenIds = computed<ReadonlySet<EditorActionId>>(() => new Set(this.resolved().overrides.keys()));
 
     readonly defaultsResetClearCount = computed(() => this.resolved().defaultsResetClearCount);
+
+    /**
+     * Actions whose button this user never sees: the shortcuts list and picker leave them out. Their keys and stored
+     * rows stay as they are, and the reset counts include them, since resetting changes the stored value.
+     */
+    readonly unavailableActionIds = computed<ReadonlySet<EditorActionId>>(
+        () =>
+            new Set(
+                EDITOR_ACTIONS.filter(
+                    (action: EditorAction) => action.requires !== undefined && !this.permissions.meets(action.requires)
+                ).map((action) => action.id)
+            )
+    );
 
     readonly canResetToDefaults = computed(
         () => this.resolved().defaultsResetClearCount > 0 || this.resolved().overrides.size > 0
@@ -174,6 +209,16 @@ export class KeymapService {
         return unregister;
     }
 
+    /**
+     * A button's tooltip with the key that runs it, e.g. "Auto arrange (Alt + L)". Reads the user's current key, so
+     * a changed key shows here too; with no key set it is the label alone.
+     */
+    withShortcut(label: string, actionId: EditorActionId): string {
+        const [chord] = this.bindings().get(actionId) ?? [];
+        if (!chord) return label;
+        return `${label} (${formatChord(chord, this.isMac).join(this.isMac ? '' : ' + ')})`;
+    }
+
     actionForChord(chord: KeyChord): EditorActionId | null {
         return this.resolved().holders.get(chord)?.action ?? null;
     }
@@ -187,16 +232,16 @@ export class KeymapService {
         return toCheck(this.preview(change));
     }
 
-    checkNodeKey(actionId: EditorActionId, chord: KeyChord | null): ShortcutCheck {
-        return toCheck(this.preview({ kind: 'set-node-key', action: actionId, chord }));
+    checkKeyOverride(actionId: EditorActionId, chord: KeyChord | null): ShortcutCheck {
+        return toCheck(this.preview({ kind: 'set-key-override', action: actionId, chord }));
     }
 
-    setNodeKey(actionId: EditorActionId, chord: KeyChord | null): ShortcutCheck {
-        return toCheck(this.apply({ kind: 'set-node-key', action: actionId, chord }));
+    setKeyOverride(actionId: EditorActionId, chord: KeyChord | null): ShortcutCheck {
+        return toCheck(this.apply({ kind: 'set-key-override', action: actionId, chord }));
     }
 
-    resetNodeKey(actionId: EditorActionId): ShortcutCheck {
-        return toCheck(this.apply({ kind: 'reset-node-key', action: actionId }));
+    resetKeyOverride(actionId: EditorActionId): ShortcutCheck {
+        return toCheck(this.apply({ kind: 'reset-key-override', action: actionId }));
     }
 
     addCustom(actionId: EditorActionId, chord: KeyChord | null, params?: ShortcutParams): CustomShortcutCheck {
@@ -295,11 +340,30 @@ export class KeymapService {
 
     private isSuppressed(actionId: EditorActionId, event: KeyboardEvent): boolean {
         const fromSidePanel = event.target instanceof Element && isInsideSidePanel(event.target);
+        const fromKeyboardFocusedControl = event.target instanceof Element && isKeyboardFocusedControl(event.target);
+        const fromOverlay = event.target instanceof Element && isInsideOverlay(event.target);
+        if (actionId === 'editing.escape') {
+            // An Escape a menu, dropdown or dialog takes, or one a control already used, closes only that.
+            return event.defaultPrevented || fromOverlay;
+        }
+        if (actionId === 'editing.delete') {
+            // Delete or Backspace on a focused button or in a dialog never deletes the selected nodes behind it.
+            return fromSidePanel || fromOverlay || fromKeyboardFocusedControl;
+        }
         if (NODE_ACTION_IDS.has(actionId)) {
             return event.repeat || fromSidePanel;
         }
+        if (FLOW_ACTION_IDS.has(actionId)) {
+            // A flow action behind a dialog would act on a flow the user cannot see. Dialogs only shield the keys
+            // they know (the Decision Tree dialog stops Ctrl+S, Delete…, not Ctrl+Enter or the Alt keys).
+            return event.repeat || this.dialog.openDialogs.length > 0;
+        }
+        if (ZOOM_ACTION_IDS.has(actionId)) {
+            // Over a dialog the key is left to the browser, which zooms the page as usual.
+            return this.dialog.openDialogs.length > 0;
+        }
         if (PAN_ACTION_IDS.has(actionId)) {
-            return fromSidePanel;
+            return fromSidePanel || fromKeyboardFocusedControl;
         }
         if (actionId === 'editing.copy') {
             return !!window.getSelection()?.toString();

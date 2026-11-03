@@ -97,7 +97,10 @@ QUICKSTART_POST = {
     "description": (
         "Initiates the quickstart process for a specified provider, creating default "
         "configurations and resources as needed. Supply exactly one of `api_key` "
-        "(cold start) or `api_key_secret_id` (reuse an existing Secret)."
+        "(cold start) or `api_key_secret_id` (reuse an existing Secret, which needs the "
+        "`Use` permission on Secrets). The key is attached to the provider's built-in "
+        "catalog model; if only the organization's own model of that name exists and it "
+        "has a custom `base_url`, the request is refused with a 400 and nothing is created."
     ),
     "request": QuickstartSerializer,
     "responses": {
@@ -128,12 +131,30 @@ QUICKSTART_POST = {
             examples=[
                 OpenApiExample(
                     "Quickstart error",
-                    value={"detail": "Error quickstart", "error": "Invalid API key"},
+                    value={
+                        "detail": "Error quickstart",
+                        "error": "Unsupported provider: anthropic. Supported providers: "
+                        "openai, gemini, cohere, mistral",
+                    },
                     response_only=True,
                 ),
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
+        500: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Unexpected quickstart failure; nothing is created",
+            examples=[
+                OpenApiExample(
+                    "Quickstart failure",
+                    value={
+                        "detail": "Error quickstart",
+                        "error": "Quickstart failed. Please try again or contact support.",
+                    },
+                    response_only=True,
+                ),
+            ],
+        ),
     },
 }
 

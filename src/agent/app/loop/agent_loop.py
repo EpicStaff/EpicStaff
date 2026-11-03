@@ -27,7 +27,7 @@ from app.emitters.base import Emitter
 from app.exceptions import FallbackLLMFailedError, RunCancelled
 from app.llm.client import LLMChunk, LLMClient
 from app.llm.retry import FALLBACK_TRIGGERS
-from app.logging_utils import redact
+from app.logging_utils import format_exception_for_log, redact_messages, redact_value
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
 from app.tools.registry import ToolRegistry
@@ -217,7 +217,11 @@ class DefaultAgentLoop(AgentLoop):
             )
 
         except Exception as error:
-            logger.exception("loop llm_error correlation_id={}", context.correlation_id)
+            logger.error(
+                "loop llm_error correlation_id={} error={}",
+                context.correlation_id,
+                format_exception_for_log(error),
+            )
             return LoopResult(
                 stop_reason=StopReason.LLM_ERROR.value,
                 final_text=state.final_text,
@@ -253,7 +257,7 @@ class DefaultAgentLoop(AgentLoop):
                 lambda: _iter,  # noqa: B023
                 lambda: _corr_id,  # noqa: B023
                 lambda: _msg_count,  # noqa: B023
-                lambda: redact(context.messages),
+                lambda: redact_messages(context.messages),
             )
 
             text_buf = ""
@@ -343,7 +347,12 @@ class DefaultAgentLoop(AgentLoop):
             for call_id, name, args_str in complete_calls:
                 await _raise_if_cancelled(context)
                 await emitter.on_tool_call({"id": call_id, "name": name, "arguments": args_str})
-                logger.debug("tool call id={} name={} args={}", call_id, name, args_str)
+                logger.opt(lazy=True).debug(
+                    "tool call id={} name={} args={}",
+                    lambda: call_id,  # noqa: B023
+                    lambda: name,  # noqa: B023
+                    lambda: redact_value(args_str),  # noqa: B023
+                )
 
                 if failure_limit_hit:
                     result = ToolResult(
@@ -382,11 +391,11 @@ class DefaultAgentLoop(AgentLoop):
                     if max_failures is not None and state.consecutive_failures >= max_failures:
                         failure_limit_hit = True
 
-                logger.debug(
-                    "tool result id={} is_error={} content={!r}",
-                    call_id,
-                    result.is_error,
-                    result.content,
+                logger.opt(lazy=True).debug(
+                    "tool result id={} is_error={} content={}",
+                    lambda: call_id,  # noqa: B023
+                    lambda: result.is_error,  # noqa: B023
+                    lambda: redact_value(result.content),  # noqa: B023
                 )
                 await emitter.on_tool_result(result)
                 context.append_message(
@@ -481,9 +490,9 @@ class DefaultAgentLoop(AgentLoop):
         primary = context.active_llm
         context.switch_to_fallback()
         logger.warning(
-            "primary llm failed, switching to fallback correlation_id={} error={!r}",
+            "primary llm failed, switching to fallback correlation_id={} error={}",
             context.correlation_id,
-            primary_error,
+            format_exception_for_log(primary_error),
         )
         await emitter.on_llm_fallback(primary, context.active_llm, primary_error)
 

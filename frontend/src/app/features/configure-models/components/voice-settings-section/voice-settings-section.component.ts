@@ -1,8 +1,20 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import {
+    afterNextRender,
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    Injector,
+    OnInit,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AuthorshipDetailsDialogService,
     ButtonComponent,
@@ -13,6 +25,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, RealtimeChannel, ResourceCode } from '@shared/models';
 import { RealtimeChannelService } from '@shared/services';
+import { movedToRecycleBinMessage } from '@shared/utils';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
@@ -36,10 +49,13 @@ import {
         CdkMenuTrigger,
         CdkMenu,
         CdkMenuItem,
+        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class VoiceSettingsSectionComponent implements OnInit {
+    private readonly addButton = viewChild('addButton', { read: ButtonComponent });
+
     private channelService = inject(RealtimeChannelService);
     private agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private dialog = inject(Dialog);
@@ -48,6 +64,7 @@ export class VoiceSettingsSectionComponent implements OnInit {
     private toastService = inject(ToastService);
     private destroyRef = inject(DestroyRef);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
+    private readonly injector = inject(Injector);
 
     status = signal<LoadingState>(LoadingState.IDLE);
 
@@ -155,7 +172,11 @@ export class VoiceSettingsSectionComponent implements OnInit {
                         .subscribe({
                             next: () => {
                                 this.channels.update((chs) => chs.filter((c) => c.id !== channel.id));
-                                this.toastService.success(`Channel "${channel.name}" deleted`);
+                                // The card took its focused Delete button along.
+                                afterNextRender(() => this.addButton()?.focus(), { injector: this.injector });
+                                this.toastService.success(
+                                    movedToRecycleBinMessage(1, 'voice channel', 'voice channels')
+                                );
                             },
                             error: () => this.toastService.error('Failed to delete channel'),
                         });

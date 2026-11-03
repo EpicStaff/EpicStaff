@@ -14,6 +14,7 @@ from tables.services.secrets.exceptions import (
     SecretDecryptionError,
     SecretResolutionError,
     SecretTooLargeError,
+    SecretUseDeniedError,
     UndeclaredSecretError,
 )
 from tables.services.secrets.parse_code import (
@@ -22,6 +23,11 @@ from tables.services.secrets.parse_code import (
 )
 from tables.services.secrets.secret_resolver import SecretResolver, secret_resolver
 from tables.services.secrets.secret_service import SecretService, secret_service
+from tables.services.secrets.secret_use_service import (
+    SecretActor,
+    SecretUseService,
+    secret_use_service,
+)
 from tables.services.secrets.usage_service import (
     SecretUsageService,
     UsageCounts,
@@ -33,6 +39,7 @@ __all__ = [
     "MAX_TEXT_BYTES",
     "DeclarationViolation",
     "SealedValue",
+    "SecretActor",
     "SecretDeclarationValidator",
     "SecretDecryptionError",
     "SecretEncryption",
@@ -41,6 +48,8 @@ __all__ = [
     "SecretService",
     "SecretTooLargeError",
     "SecretUsageService",
+    "SecretUseDeniedError",
+    "SecretUseService",
     "UndeclaredSecretError",
     "UsageCounts",
     "assert_tool_secrets_declared",
@@ -50,4 +59,5 @@ __all__ = [
     "secret_resolver",
     "secret_service",
     "secret_usage_service",
+    "secret_use_service",
 ]

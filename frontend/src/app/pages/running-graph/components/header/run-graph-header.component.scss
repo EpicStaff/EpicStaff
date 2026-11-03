@@ -34,6 +34,7 @@
 
         .flows-prefix {
             color: rgba(255, 255, 255, 0.6);
+            text-decoration: none;
             cursor: pointer;
             transition: all 0.2s ease;
             display: flex;
@@ -53,7 +54,7 @@
                 line-height: 1;
             }
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 color: rgba(255, 255, 255, 0.9);
             }
         }
@@ -73,8 +74,13 @@
             white-space: nowrap;
             display: block;
             vertical-align: bottom;
+            text-decoration: none;
+        }
+
+        a.flow-name {
             cursor: pointer;
-            &:hover {
+
+            &:is(:hover, :focus-visible) {
                 text-decoration: underline;
             }
         }
@@ -127,7 +133,7 @@
             text-overflow: ellipsis;
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--white) !important;
             background: rgba(255, 255, 255, 0.05) !important;
         }

@@ -5,8 +5,20 @@
             [avatarUrl]="user().avatar_url"
         />
         <div class="user-info">
-            <div class="user-name">{{ user().display_name || user().email }}</div>
-            <div class="user-email">{{ user().email }}</div>
+            <div
+                class="user-name"
+                appTooltipOnOverflow
+                [matTooltip]="user().display_name || user().email"
+            >
+                {{ user().display_name || user().email }}
+            </div>
+            <div
+                class="user-email"
+                appTooltipOnOverflow
+                [matTooltip]="user().email"
+            >
+                {{ user().email }}
+            </div>
         </div>
     </section>
 
@@ -14,17 +26,34 @@
         <div class="section-label text-body-small">Organizations</div>
         <ul class="org-list">
             @for (org of organizations(); track org.organization.id) {
-                <li
-                    class="org-row"
-                    [class.active]="activeOrgService.activeOrgId() === org.organization.id"
-                    [class.disabled]="switching()"
-                    (click)="onOrgClick(org.organization.id)"
-                >
-                    <app-org-avatar [name]="org.organization.name" />
-                    <div class="org-info">
-                        <div class="org-name text-body-small">{{ org.organization.name }}</div>
-                        <div class="org-role">{{ org.role.name }}</div>
-                    </div>
+                <li>
+                    <button
+                        type="button"
+                        class="org-row"
+                        [class.active]="activeOrgService.activeOrgId() === org.organization.id"
+                        [class.disabled]="switching()"
+                        [disabled]="switching()"
+                        [attr.aria-current]="activeOrgService.activeOrgId() === org.organization.id || null"
+                        (click)="onOrgClick(org.organization.id)"
+                    >
+                        <app-org-avatar [name]="org.organization.name" />
+                        <span class="org-info">
+                            <span
+                                class="org-name text-body-small"
+                                appTooltipOnOverflow
+                                [matTooltip]="org.organization.name"
+                            >
+                                {{ org.organization.name }}
+                            </span>
+                            <span
+                                class="org-role"
+                                appTooltipOnOverflow
+                                [matTooltip]="org.role.name"
+                            >
+                                {{ org.role.name }}
+                            </span>
+                        </span>
+                    </button>
                 </li>
             }
         </ul>
@@ -34,8 +63,11 @@
         <div class="section-label text-body-small">Navigation</div>
         @if (canVisitWorkspace()) {
             <button
+                type="button"
                 class="nav-item"
                 [class.active]="isWorkspaceRoute()"
+                appTooltipOnOverflow=".nav-label"
+                matTooltip="Workspace"
                 (click)="onWorkspaceClick()"
             >
                 <app-svg-icon
@@ -52,8 +84,11 @@
             </button>
         }
         <button
+            type="button"
             class="nav-item"
             [class.active]="isProfileRoute()"
+            appTooltipOnOverflow=".nav-label"
+            matTooltip="My Profile"
             (click)="onProfileClick()"
         >
             <app-svg-icon
@@ -71,21 +106,11 @@
     </section>
 
     <section class="menu-section">
-        @if (canStartQuickStartTour()) {
-            <button
-                class="nav-item"
-                (click)="onQuickStartTourClick()"
-            >
-                <app-svg-icon
-                    size="16px"
-                    icon="help"
-                    class="nav-icon"
-                />
-                <span class="nav-label text-body-small-large">Quick Start Tour</span>
-            </button>
-        }
         <button
+            type="button"
             class="nav-item"
+            appTooltipOnOverflow=".nav-label"
+            matTooltip="Sign out"
             (click)="onSignOutClick()"
         >
             <app-svg-icon

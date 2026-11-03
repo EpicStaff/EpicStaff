@@ -8,6 +8,7 @@
         <button
             type="button"
             class="create-model__close-btn"
+            aria-label="Close"
             matTooltip="Close"
             matTooltipPosition="above"
             (click)="onClose()"
@@ -18,6 +19,11 @@
             />
         </button>
     </div>
+
+    <app-error-banner
+        class="create-model__error"
+        [message]="errorMessage()"
+    />
 
     <div
         class="create-model__content"

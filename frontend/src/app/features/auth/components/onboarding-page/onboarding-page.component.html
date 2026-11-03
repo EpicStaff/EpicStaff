@@ -31,7 +31,10 @@
         </div>
 
         <div class="choices">
+            <!-- Takes the focus from step 1, which goes with the field or button that had it. -->
             <button
+                #firstChoice
+                type="button"
                 class="choice-card"
                 (click)="onStartWorking()"
             >
@@ -45,6 +48,7 @@
             </button>
 
             <button
+                type="button"
                 class="choice-card"
                 (click)="onSetupOrganizations()"
             >

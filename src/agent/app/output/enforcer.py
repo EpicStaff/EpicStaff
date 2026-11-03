@@ -6,6 +6,7 @@ from loguru import logger
 
 from app.constants import FAILURE_STOP_REASONS
 from app.exceptions import AgentServiceError, SchemaValidationError
+from app.logging_utils import redact_value
 from app.loop.agent_loop import AgentLoop
 from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.output.schema import ValidationOutcome, add_usage, validate_output
@@ -100,11 +101,11 @@ class StructuredOutputEnforcer:
                     tool_invocations=tool_invocations,
                 )
 
-            logger.debug(
+            logger.opt(lazy=True).debug(
                 "schema_enforce attempt={} correlation_id={} ok=False error={}",
-                attempt,
-                context.correlation_id,
-                outcome.error,
+                lambda: attempt,
+                lambda: context.correlation_id,
+                lambda: redact_value(outcome.error),
             )
             corrective = (
                 f"Your answer did not match the schema: {outcome.error}. "

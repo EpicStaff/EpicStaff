@@ -20,7 +20,11 @@ from tables.import_export.registry import entity_registry
 from tables.models import EmbeddingConfig, LLMConfig, Provider, Secret
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.llm_models import LLMModel
-from tables.serializers.utils.secret_destination_guard_mixin import SecretDestinationGuardMixin
+from tables.services.secrets.pinned_principal_rules import (
+    EMBEDDING_MODEL_ENDPOINT_FIELDS,
+    LLM_MODEL_ENDPOINT_FIELDS,
+)
+from tables.views.secret_use import ModelEndpointsGuardedViewSetMixin
 
 from tests.plugins_tests.conftest import GATEWAY_SECRET, service_account_client
 
@@ -82,6 +86,18 @@ def test_clearing_an_org_model_s_endpoint_is_refused(client, org_llm_model):
     response = client.patch(f"/api/llm-models/{org_llm_model.pk}/", {"base_url": None}, format="json")
 
     _refused(response, "base_url")
+
+
+def test_a_built_in_model_refuses_a_plugin_s_endpoint_change_before_its_own_protection(client, providers):
+    built_in = LLMModel.objects.create(name="built-in-gpt", llm_provider=providers[0], base_url=ACME_URL, org=None, is_custom=False)
+
+    repointed = client.patch(f"/api/llm-models/{built_in.pk}/", {"base_url": ELSEWHERE}, format="json")
+    renamed = client.patch(f"/api/llm-models/{built_in.pk}/", {"name": "renamed"}, format="json")
+
+    _refused(repointed, "base_url")
+    assert renamed.status_code == 403, renamed.content
+    built_in.refresh_from_db()
+    assert (built_in.name, built_in.base_url) == ("built-in-gpt", ACME_URL)
 
 
 @pytest.mark.parametrize(
@@ -251,8 +267,25 @@ def _write_serializers_of(model):
     ]
 
 
+def _guarded_endpoint_fields_by_serializer():
+    from tables import urls  # noqa: F401  -- importing registers every viewset
+
+    return {
+        viewset.serializer_class.__name__: viewset.model_endpoint_fields
+        for viewset in ModelEndpointsGuardedViewSetMixin.__subclasses__()
+    }
+
+
+def test_the_model_viewsets_guard_their_endpoint_fields():
+    assert _guarded_endpoint_fields_by_serializer() == {
+        "LLMModelSerializer": LLM_MODEL_ENDPOINT_FIELDS,
+        "EmbeddingModelSerializer": EMBEDDING_MODEL_ENDPOINT_FIELDS,
+    }
+
+
 def test_every_endpoint_field_of_a_model_a_config_with_a_secret_uses_is_guarded():
     targets = _models_secret_holding_configs_point_at()
+    guarded_by_serializer = _guarded_endpoint_fields_by_serializer()
     unguarded = []
     for model in targets:
         for serializer_class in _write_serializers_of(model):
@@ -261,7 +294,7 @@ def test_every_endpoint_field_of_a_model_a_config_with_a_secret_uses_is_guarded(
             writable = {
                 field.source for field in serializer_class().fields.values() if not field.read_only and field.source in ENDPOINT_FIELD_NAMES
             }
-            guarded = set(serializer_class.secret_destination_fields) if issubclass(serializer_class, SecretDestinationGuardMixin) else set()
+            guarded = set(guarded_by_serializer.get(serializer_class.__name__, ()))
             unguarded += [f"{serializer_class.__name__}.{source}" for source in sorted(writable - guarded)]
 
     assert {model._meta.label for model in targets} >= {"tables.LLMModel", "tables.EmbeddingModel"}

@@ -25,7 +25,11 @@ def run_migrations_offline() -> None:
 
 
 def _run_sync(connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    # One transaction per file: a migration with an autocommit block (CREATE INDEX CONCURRENTLY)
+    # commits whatever ran before it, so no run should span several files in one transaction.
+    context.configure(
+        connection=connection, target_metadata=target_metadata, transaction_per_migration=True
+    )
     with context.begin_transaction():
         context.run_migrations()
 

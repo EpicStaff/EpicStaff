@@ -1,12 +1,12 @@
 from collections.abc import Callable
 
 from rest_framework.exceptions import ValidationError
+from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from tables.exceptions import StoragePathIsFile
 from tables.models import StorageFile
 from tables.services.storage_service.path_utils import (
     check_new_name,
     check_path_length,
-    sanitize_storage_path,
 )
 from tables.validators.file_upload_validator import FileValidator
 

@@ -3,50 +3,79 @@
 The manager and worker are one process today, bridged by two in-memory queues. This
 module is the single place that owns that bridge: it creates the queues, builds the
 transports over them, and starts the background runners (worker job consumer, result
-consumer, held-job releaser). Splitting the two services later -- replacing the
-queues with a network transport -- is a change confined to this file; no application
-or domain code moves.
+consumer, held-job releaser, admission gate, gate sampler). Splitting the two services
+later -- replacing the queues with a network transport -- is a change confined to this
+file; no application or domain code moves.
 
-The job-intake singletons the request path needs are published on ``app.state`` so
-controllers reach them through Litestar's ``State`` injection, never through a module
-global or an import of this layer.
+What the request path needs is published on ``app.state``: a ``JobOrchestrator``
+factory closed over the runtime's singletons and settings, the intake gate (for the
+route guard, which cannot take dependencies) and the execution registry. The providers
+in ``manager.bootstrap.di`` hand them to controllers as Litestar dependencies, so no
+controller reaches a module global or imports this layer.
+
+Every runner is supervised: one that dies takes the process down with it, so the
+container restarts instead of accepting jobs nothing will ever run or answer.
 """
 
 import asyncio
-import contextlib
-from dataclasses import dataclass
+import os
+import signal
+from collections.abc import Callable
+from functools import partial
 
 import settings
 from foundation.utils.litestar import lifespan
 from litestar import Litestar
+from loguru import logger
 from manager.application.holding import JobHoldingRegistry
+from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
+from manager.application.ports import AbstractUnitOfWork
+from manager.application.registry import ExecutionRegistry
 from manager.infrastructure.database.unit_of_work import PiccoloUnitOfWork
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
 from manager.infrastructure.transport.redis_result_publisher import RedisResultPublisher
-from manager.infrastructure.transport.result_consumer import ResultConsumer
 from manager.presentation.held_job_releaser import HeldJobReleaser
+from manager.presentation.result_consumer import ResultConsumer
 from redis.asyncio import Redis
-from worker.bootstrap.di import build_job_consumer
+from worker.bootstrap.di import build_admission_gate, build_job_consumer
 
 from common.contracts import ExecutionJobMessage, ExecutionResultMessage
+from common.observability.gate_sampler import GateSampler
+from common.runner import Runner
 
-__all__ = ["JobIntake"]
+__all__ = ["supervise"]
 
 _RELEASE_INTERVAL_SECONDS = 2.0
 
 
-@dataclass(frozen=True)
-class JobIntake:
-    """The singletons the request path needs to accept a job.
+def _terminate_process() -> None:
+    # SIGTERM rather than an exit: uvicorn shuts down gracefully on it, running the
+    # shutdown hooks, and the container's restart policy brings the service back.
+    os.kill(os.getpid(), signal.SIGTERM)
 
-    Built once at startup and read off ``app.state`` by the execution controller.
+
+def supervise(task: asyncio.Task, *, stop: Callable[[], None] = _terminate_process) -> None:
+    """Stop the process when `task` ends for any reason other than being cancelled.
+
+    The runners loop forever, so any end -- an exception or a plain return -- means a
+    part of the pipeline is gone. Logged with the runner's name and the exception type
+    only: the exception's text may quote a job.
     """
 
-    dispatcher: QueueJobDispatcher
-    holding: JobHoldingRegistry
-    failure_sink: QueueJobFailureSink
+    def on_done(finished: asyncio.Task) -> None:
+        if finished.cancelled():
+            return
+        error = finished.exception()
+        logger.critical(
+            "Runtime runner '{}' stopped ({}); shutting the sandbox down",
+            finished.get_name(),
+            "returned" if error is None else type(error).__name__,
+        )
+        stop()
+
+    task.add_done_callback(on_done)
 
 
 @lifespan.on_startup
@@ -55,9 +84,29 @@ async def start_runtime(app: Litestar) -> None:
     result_queue: asyncio.Queue[ExecutionResultMessage] = asyncio.Queue()
 
     holding = JobHoldingRegistry()
+    registry = ExecutionRegistry()
+    admission_gate = build_admission_gate()
+    intake_gate = IntakeGate(
+        registry,
+        admission_gate.has_free_slot,
+        max_accepted=settings.MAX_ACCEPTED_EXECUTIONS,
+        max_held=settings.MAX_HELD_EXECUTIONS,
+        queue_timeout=settings.QUEUE_TIMEOUT,
+    )
     dispatcher = QueueJobDispatcher(job_queue)
     failure_sink = QueueJobFailureSink(result_queue)
-    app.state.job_intake = JobIntake(dispatcher, holding, failure_sink)
+    build_job_orchestrator: Callable[[AbstractUnitOfWork], JobOrchestrator] = partial(
+        JobOrchestrator,
+        dispatcher=dispatcher,
+        holding=holding,
+        failure_sink=failure_sink,
+        registry=registry,
+        intake_gate=intake_gate,
+        hold_timeout=settings.HOLD_TIMEOUT,
+    )
+    app.state.build_job_orchestrator = build_job_orchestrator
+    app.state.intake_gate = intake_gate
+    app.state.execution_registry = registry
 
     redis = Redis(
         host=settings.REDIS_HOST,
@@ -67,9 +116,12 @@ async def start_runtime(app: Litestar) -> None:
     )
     app.state.runtime_redis = redis
 
-    runners = [
-        build_job_consumer(job_queue=job_queue, result_queue=result_queue),
-        ResultConsumer(
+    runners: dict[str, Runner] = {
+        "admission gate": admission_gate,
+        "job consumer": build_job_consumer(
+            job_queue=job_queue, result_queue=result_queue, gate=admission_gate
+        ),
+        "result consumer": ResultConsumer(
             result_queue,
             RedisResultPublisher(
                 redis,
@@ -77,13 +129,18 @@ async def start_runtime(app: Litestar) -> None:
                 crew_result_channel=settings.CREW_JOB_RESULT_CHANNEL,
                 mutation_channel=settings.STORAGE_MUTATION_CHANNEL,
             ),
+            registry,
         ),
-        HeldJobReleaser(
-            JobOrchestrator(PiccoloUnitOfWork(), dispatcher, holding, failure_sink),
-            interval=_RELEASE_INTERVAL_SECONDS,
+        "held-job releaser": HeldJobReleaser(
+            build_job_orchestrator(PiccoloUnitOfWork()), interval=_RELEASE_INTERVAL_SECONDS
         ),
-    ]
-    app.state.runtime_tasks = [asyncio.create_task(runner.run()) for runner in runners]
+        "gate sampler": GateSampler(registry, admission_gate),
+    }
+    app.state.runtime_tasks = []
+    for name, runner in runners.items():
+        task = asyncio.create_task(runner.run(), name=name)
+        supervise(task)
+        app.state.runtime_tasks.append(task)
 
 
 @lifespan.on_shutdown
@@ -91,9 +148,9 @@ async def stop_runtime(app: Litestar) -> None:
     tasks: list[asyncio.Task] = getattr(app.state, "runtime_tasks", [])
     for task in tasks:
         task.cancel()
-    for task in tasks:
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+    # A runner that already died is why we are shutting down; its supervisor logged it,
+    # so its exception must not abort the rest of this shutdown.
+    await asyncio.gather(*tasks, return_exceptions=True)
 
     redis: Redis | None = getattr(app.state, "runtime_redis", None)
     if redis is not None:

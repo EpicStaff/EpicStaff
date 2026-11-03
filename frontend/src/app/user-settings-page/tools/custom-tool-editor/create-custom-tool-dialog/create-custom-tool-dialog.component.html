@@ -37,7 +37,6 @@
                     type="button"
                     [attr.aria-label]="isEditMode() ? 'Discard changes' : 'Cancel'"
                     matTooltip="Cancel"
-                    matTooltipPosition="above"
                     (click)="close()"
                 >
                     <app-svg-icon
@@ -53,7 +52,6 @@
                         [disabled]="isSaving()"
                         [attr.aria-label]="isEditMode() ? 'Save changes' : 'Create tool'"
                         matTooltip="Save"
-                        matTooltipPosition="above"
                         (click)="submit()"
                     >
                         <app-svg-icon
@@ -64,6 +62,11 @@
                 }
             </div>
         </header>
+
+        <app-error-banner
+            class="save-error"
+            [message]="errorMessage()"
+        />
 
         <div
             class="dialog-content"
@@ -80,7 +83,9 @@
                             <p class="readonly-field__value">{{ form.controls.name.value }}</p>
                         </div>
                     } @else {
+                        <!-- A new tool's dialog opens with the focus here, its first field. -->
                         <app-custom-input
+                            cdkFocusInitial
                             label="Name"
                             [required]="true"
                             tooltipText="A unique, descriptive name for your custom tool."
@@ -93,18 +98,36 @@
                     }
                 </div>
 
-                <div class="form-section">
-                    <app-textarea
-                        class="description-textarea"
-                        label="Description"
-                        [required]="true"
-                        [disabled]="isBuiltIn()"
-                        tooltipText="Describe what this tool does so agents know when to use it."
-                        formControlName="description"
-                        placeholder="Enter tool description..."
-                        [rows]="3"
-                        [invalid]="form.controls.description.touched && form.controls.description.invalid"
-                    ></app-textarea>
+                <div class="form-section description-section">
+                    <div class="section-header">
+                        <button
+                            type="button"
+                            class="collapse-toggle"
+                            [attr.aria-expanded]="descriptionExpanded()"
+                            (click)="descriptionExpanded.set(!descriptionExpanded())"
+                        >
+                            <app-svg-icon
+                                class="collapse-toggle__chevron"
+                                [class.collapse-toggle__chevron--rotated]="!descriptionExpanded()"
+                                icon="chevron-down-filled"
+                                size="8px"
+                            ></app-svg-icon>
+                            <span>Description<span class="collapse-toggle__required">*</span></span>
+                        </button>
+                        <app-help-tooltip
+                            text="Describe what this tool does so agents know when to use it."
+                        ></app-help-tooltip>
+                    </div>
+                    @if (descriptionExpanded()) {
+                        <app-textarea
+                            class="description-textarea"
+                            [disabled]="isBuiltIn()"
+                            formControlName="description"
+                            placeholder="Enter tool description..."
+                            [rows]="3"
+                            [invalid]="form.controls.description.touched && form.controls.description.invalid"
+                        ></app-textarea>
+                    }
                     @if (form.controls.description.touched) {
                         <app-validation-errors [control]="form.controls.description" />
                     }
@@ -129,8 +152,14 @@
                         placeholder="Select venv"
                         formControlName="venvId"
                         [items]="venvItems()"
+                        variant="boxed"
+                        [grouped]="true"
+                        [showSearch]="true"
+                        searchPlaceholder="Search by venv name..."
                         [loading]="loadingVenvs()"
                         [readonly]="isBuiltIn()"
+                        (opened)="onVenvDropdownOpened()"
+                        (changed)="onVenvChanged($event)"
                     />
                 </div>
 
@@ -152,8 +181,7 @@
                                 <button
                                     type="button"
                                     aria-label="Copy Python code"
-                                    matTooltip="Copy"
-                                    matTooltipPosition="above"
+                                    matTooltip="Copy Python code"
                                     (click)="copyPythonCode()"
                                 >
                                     <app-svg-icon
@@ -163,11 +191,13 @@
                                 </button>
                                 <button
                                     type="button"
+                                    [attr.aria-expanded]="pythonSectionExpanded()"
                                     [attr.aria-label]="
                                         pythonSectionExpanded() ? 'Collapse Python section' : 'Expand Python section'
                                     "
-                                    matTooltip="View"
-                                    matTooltipPosition="above"
+                                    [matTooltip]="
+                                        pythonSectionExpanded() ? 'Collapse Python section' : 'Expand Python section'
+                                    "
                                     (click)="togglePythonSection()"
                                 >
                                     <app-svg-icon
@@ -178,8 +208,7 @@
                                 <button
                                     type="button"
                                     aria-label="Show Python editor on the right"
-                                    matTooltip="Expand"
-                                    matTooltipPosition="above"
+                                    matTooltip="Show Python editor on the right"
                                     (click)="toggleEditor(ActiveEditor.Python)"
                                 >
                                     <app-svg-icon
@@ -220,6 +249,7 @@
                         <div class="parameters-mode-switch">
                             <span>Table mode</span>
                             <app-toggle-switch
+                                ariaLabel="Table mode"
                                 [checked]="parametersSwitchOn()"
                                 (checkedChange)="setParametersTableMode($event)"
                             ></app-toggle-switch>
@@ -231,7 +261,10 @@
                         <app-help-tooltip
                             text="Allow this tool to read and write files in EpicStaff storage."
                         ></app-help-tooltip>
-                        <app-toggle-switch formControlName="useStorage"></app-toggle-switch>
+                        <app-toggle-switch
+                            ariaLabel="Enable Storage"
+                            formControlName="useStorage"
+                        ></app-toggle-switch>
                     </div>
 
                     @if (parametersTableMode()) {
@@ -262,7 +295,7 @@
                                         <button
                                             type="button"
                                             class="revert-action"
-                                            title="Revert to the last valid JSON — the most recent version with no errors"
+                                            matTooltip="Revert to the last valid JSON — the most recent version with no errors"
                                             aria-label="Revert to the last valid JSON"
                                             (click)="revertToLastValidJson()"
                                         >
@@ -277,8 +310,7 @@
                                     <button
                                         type="button"
                                         aria-label="Copy JSON configuration"
-                                        matTooltip="Copy"
-                                        matTooltipPosition="above"
+                                        matTooltip="Copy JSON configuration"
                                         (click)="copyJsonConfiguration()"
                                     >
                                         <app-svg-icon
@@ -288,11 +320,13 @@
                                     </button>
                                     <button
                                         type="button"
+                                        [attr.aria-expanded]="jsonSectionExpanded()"
                                         [attr.aria-label]="
                                             jsonSectionExpanded() ? 'Collapse JSON section' : 'Expand JSON section'
                                         "
-                                        matTooltip="Collapse"
-                                        matTooltipPosition="above"
+                                        [matTooltip]="
+                                            jsonSectionExpanded() ? 'Collapse JSON section' : 'Expand JSON section'
+                                        "
                                         (click)="toggleJsonSection()"
                                     >
                                         <app-svg-icon
@@ -303,8 +337,7 @@
                                     <button
                                         type="button"
                                         aria-label="Show JSON editor on the right"
-                                        matTooltip="Expand"
-                                        matTooltipPosition="above"
+                                        matTooltip="Show JSON editor on the right"
                                         (click)="toggleEditor(ActiveEditor.Json)"
                                     >
                                         <app-svg-icon
@@ -339,7 +372,6 @@
                         <app-execution-timeout-field
                             [field]="executionTimeoutField"
                             [readonly]="isBuiltIn()"
-                            [hint]="executionTimeoutHint"
                         />
                     </div>
                 }
@@ -379,8 +411,11 @@
                                         ? 'Copy Python code'
                                         : 'Copy JSON configuration'
                                 "
-                                matTooltip="Copy"
-                                matTooltipPosition="above"
+                                [matTooltip]="
+                                    activeEditor() === ActiveEditor.Python
+                                        ? 'Copy Python code'
+                                        : 'Copy JSON configuration'
+                                "
                                 (click)="
                                     activeEditor() === ActiveEditor.Python ? copyPythonCode() : copyJsonConfiguration()
                                 "
@@ -393,8 +428,7 @@
                             <button
                                 type="button"
                                 aria-label="Collapse editor panel"
-                                matTooltip="Collapse"
-                                matTooltipPosition="above"
+                                matTooltip="Collapse editor panel"
                                 (click)="closeEditorPane()"
                             >
                                 <app-svg-icon

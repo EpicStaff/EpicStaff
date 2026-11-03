@@ -41,6 +41,7 @@ from tables.views.knowledge_views.search_config_views import (
     NaiveRagSuggestParamsView,
 )
 from tables.views.model_view_sets import (
+    AgentLabelViewSet,
     AgentNodeTaskViewSet,
     AgentNodeViewSet,
     AudioTranscriptionNodeViewSet,
@@ -54,6 +55,7 @@ from tables.views.model_view_sets import (
     EmbeddingModelReadWriteViewSet,
     EndNodeModelViewSet,
     FileExtractorNodeViewSet,
+    FlowFilterPresetViewSet,
     GeminiRealtimeConfigViewSet,
     GraphLightViewSet,
     GraphNoteViewSet,
@@ -90,6 +92,7 @@ from tables.views.model_view_sets import (
     SubGraphNodeModelViewSet,
     TaskNodeViewSet,
     TelegramTriggerNodeViewSet,
+    ToolFilterPresetViewSet,
     ToolLabelViewSet,
     TwilioChannelViewSet,
     TwilioConfigureWebhookView,
@@ -185,7 +188,10 @@ router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 
 router.register(r"labels", LabelViewSet)
 router.register(r"audit-filter-presets", AuditFilterPresetViewSet)
+router.register(r"flow-filter-presets", FlowFilterPresetViewSet)
+router.register(r"tool-filter-presets", ToolFilterPresetViewSet)
 router.register(r"tool-labels", ToolLabelViewSet, basename="tool-label")
+router.register(r"agent-labels", AgentLabelViewSet, basename="agent-label")
 router.register(r"secrets", SecretViewSet)
 router.register(r"key-value-tables", KeyValueTableViewSet, basename="key-value-tables")
 router.register(

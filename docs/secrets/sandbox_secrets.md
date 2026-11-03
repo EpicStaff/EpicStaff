@@ -28,9 +28,9 @@ inside its `try` block if any node reads a secret it did not declare. The sessio
 `ERROR` and **nothing is published** — no partial run, no secret delivered.
 
 **Step 2 — django_app resolves and publishes.** `redis_service.publish_session_data`
-deep-copies, fills plaintext into the copy, and publishes that. The original — the one saved
-to `Session.graph_schema` — keeps only carrier ids, which are `Field(exclude=True)` and so
-never serialize.
+deep-copies, fills plaintext into the copy, and publishes that. The caller's original stays
+unresolved and keeps only carrier ids, which are `Field(exclude=True)` and so never
+serialize.
 
 **Step 3 — crew is a courier, not a decryptor.** `crew` has no `SECRET_KEY`. The
 `PythonCodeData` it builds a `PythonNode` from already contains `{name: plaintext}` because

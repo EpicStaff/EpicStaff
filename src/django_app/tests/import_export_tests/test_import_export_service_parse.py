@@ -6,10 +6,12 @@ neither of which touches the ORM.
 """
 
 import io
+import json
 
 import pytest
 from rest_framework.exceptions import ValidationError
 
+from tables.import_export.constants import IMPORT_VERSION
 from tables.import_export.enums import EntityType
 from tables.services.import_export_service import ViewSetImportExportService
 
@@ -70,6 +72,23 @@ class TestParseAndValidateGuards:
         detail = str(exc_info.value.detail)
         assert "Flow" in detail
         assert "PythonCodeTool" in detail
+
+    @pytest.mark.parametrize(
+        ("version", "expected_message"),
+        [
+            (IMPORT_VERSION + 1, "is newer than supported"),
+            (0, "No migration path from version 0"),
+        ],
+    )
+    def test_unsupported_version_raises_validation_error(
+        self, service, version, expected_message
+    ):
+        payload = json.dumps(
+            {"main_entity": "PythonCodeTool", "version": version, "PythonCodeTool": []}
+        ).encode()
+        with pytest.raises(ValidationError) as exc_info:
+            service.inspect_entity(_file(payload))
+        assert expected_message in str(exc_info.value.detail)
 
     def test_valid_payload_returns_review_items(self, service):
         payload = (

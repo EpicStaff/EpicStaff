@@ -8,8 +8,10 @@ Related focused docs: [secrets_endpoints.md](secrets_endpoints.md),
 [sandbox_secrets.md](sandbox_secrets.md), [secret_usage.md](secret_usage.md).
 
 Who may **change** which secret a resource references is a separate, RBAC-side concern —
-`secrets:USE`, enforced by `SecretReferenceGuardMixin` and documented in
-[../rbac/DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6. Everything in
+`secrets:USE`, enforced by `SecretUseService` at each write point and documented in
+[../rbac/DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6. The same
+section covers the destination rule: a secret-bearing row may not be pointed at a new
+`base_url` / MCP `transport` without `USE`. Everything in
 *this* guide is about storing, resolving and delivering the value once a reference exists.
 
 ---
@@ -42,9 +44,10 @@ tests pass:
 - **django_app is the only decryption authority.** `SECRET_KEY` is set on the `django_app`
   service only — not in `x-common-env`. `crew`, `sandbox`, `manager` and `realtime` cannot
   decrypt anything; they receive already-resolved plaintext or nothing.
-- **Resolution happens on a copy.** `resolve_payload()` deep-copies before filling, because
-  the caller's object is what gets persisted to `Session.graph_schema`. Resolving in place
-  would write plaintext into the database.
+- **Resolution happens on a copy.** `resolve_payload()` deep-copies before filling, so
+  plaintext exists only in the payload published to Redis. The caller's object stays
+  unresolved; resolving in place would leave plaintext on it for any later code that logs
+  or stores it.
 - **A Secret is immutable.** Create and delete only. Rotating a credential means creating a
   new `Secret` and repointing references. `value` is `editable=False` and there is no update
   endpoint. Several design decisions follow from this — see §7.
@@ -202,14 +205,14 @@ a `{name: plaintext}` dict out. (No collision with the suffix rule —
 `"secret_names".endswith("_secret_id")` is `False`.)
 
 The carrier fields are declared `Field(exclude=True)` on the pydantic models, so
-`model_dump()` omits them. That is what keeps **both** plaintext *and* secret ids out of
-`Session.graph_schema`, which is built from the unresolved original:
+`model_dump()` omits them. That is what keeps secret ids out of the published Redis payload,
+and resolving on a copy keeps plaintext off the caller's unresolved original:
 
 ```python
 # tables/services/redis_service.py
 def publish_session_data(self, *, session_data: SessionData, org_id: int) -> int:
-    # Resolve here, not upstream: the caller's object is what gets persisted
-    # to Session.graph_schema, so plaintext must exist only on this copy.
+    # Resolve here, not upstream: the caller's object stays unresolved,
+    # so plaintext must exist only on this copy.
     resolved = secret_resolver.resolve_payload(payload=session_data, org_id=org_id)
     return self.redis_client.publish("sessions:schema", resolved.model_dump_json())
 ```
@@ -218,7 +221,7 @@ def publish_session_data(self, *, session_data: SessionData, org_id: int) -> int
 object — logging `resolved` would write credentials into the log stream.
 
 The regression guard for all of this is
-`tests/services_tests/test_graph_schema_no_plaintext.py`.
+`tests/services_tests/test_session_payload_no_plaintext.py`.
 
 ### 4.2 Errors
 
@@ -228,6 +231,7 @@ The regression guard for all of this is
 | Row present, value will not decrypt | `SecretResolutionError` | 500 |
 | Value over 8192 bytes on create | `SecretTooLargeError` | 400 |
 | Code reads an undeclared secret | `UndeclaredSecretError` | 400 |
+| Write needs `secrets:USE` and the actor lacks it | `SecretUseDeniedError`, rendered by `custom_exception_handler` (per node in graph bulk save) | 400 |
 
 A **null** reference is not an error — it means no credential is configured, which is
 legitimate for providers that need none.
@@ -353,12 +357,13 @@ Consequences worth knowing:
 4. If the value must reach another service, add the pydantic carrier pair
    (`<field>_secret_id` with `Field(exclude=True)`, plus the plaintext `<field>` slot) and
    let `resolve_payload` fill it. Do not decrypt at the call site.
-5. **Add the write field to the owning serializer's `secret_reference_fields`**, so changing
-   the reference requires `secrets:USE`. The serializer must carry
-   `SecretReferenceGuardMixin`, and if it defines its own `validate()` it **must** call
-   `super().validate(attrs)` — four serializers have silently bypassed the guard exactly that
-   way. `tests/services_tests/test_secret_reference_coverage.py` fails until the field is
-   registered or explicitly exempted with a written reason; see
+5. **Gate the field with a secret Use check**, so changing the reference requires
+   `secrets:USE`. The serializer does not check it: add or extend the entity's
+   `check_<entity>_write` in `tables/services/secrets/secret_use_checks.py`, call it at every
+   write point that saves the entity, and map the serializer in
+   `tests/services_tests/test_secret_reference_coverage.py`, which fails until the field is
+   mapped or explicitly exempted with a written reason. If the field also decides where the
+   secret is sent (a URL), add a destination check. See
    [../rbac/DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6.
 6. Register a usage source so deletion safety still tells the truth — see
    [secret_usage.md](secret_usage.md) §7 "Adding a source". Note that source needs an
@@ -383,8 +388,7 @@ Consequences worth knowing:
 - **Never log a resolved payload.** Log the unresolved one. `redis_service.py` shows the
   pattern.
 - **Never put a resolved value in `global_kwargs`.** It is repr-interpolated into generated
-  source that gets written to disk, and it is nested inside `GraphData`, which becomes
-  `Session.graph_schema`. Two leaks in one.
+  source that gets written to disk.
 - **Never resolve in place.** `resolve_payload` copies for a reason.
 - **Do not add a `default=` to `get_secret()`.** A silently-`None` credential fails later
   and more confusingly than an immediate exception.
@@ -402,7 +406,7 @@ All paths are relative to `src/django_app/` unless stated otherwise.
 | `secret_service` is the only writer | `tests/services_tests/test_secret_service_call_sites.py` |
 | CRUD API, permissions | `tests/api_tests/test_secret_api.py` |
 | Cross-org reference isolation | `tests/api_tests/test_secret_selection_cross_org.py`, `test_init_realtime_cross_org_secret.py`, `tests/services_tests/test_default_config_cross_org_secret.py` |
-| No plaintext or ids in `graph_schema` | `tests/services_tests/test_graph_schema_no_plaintext.py` |
+| No secret ids in the Redis payload, no plaintext on the caller's object | `tests/services_tests/test_session_payload_no_plaintext.py` |
 | Import/export exclusion guard | `tests/import_export_tests/test_secret_export_exclusion.py` |
 | Copy services preserve the FK | `tests/services_tests/test_copy_services_secret_fk.py` |
 | Allow-list: session start and save time | `tests/services_tests/test_secret_declaration_validator.py`, `tests/api_tests/test_secret_declaration_api.py` |
@@ -413,9 +417,10 @@ All paths are relative to `src/django_app/` unless stated otherwise.
 | Usage sources and payload | `tests/services_tests/test_secret_usage_sources.py`, `test_secret_usage_service.py`, `test_secret_usage_source_coverage.py` |
 | Usage endpoints, query cost | `tests/api_tests/test_secret_usage_api.py`, `test_graph_list_cdt_secrets_query_count.py` |
 | Usage visibility per role (readable/hidden) | `tests/services_tests/test_secret_usage_permission_filtering.py`, `tests/api_tests/test_secret_usage_permission_visibility.py` |
-| `secrets:USE` guard: delta rule, fail-safe | `tests/services_tests/test_secret_reference_guard.py` |
-| `secrets:USE` coverage — every field gated, guard actually reached | `tests/services_tests/test_secret_reference_coverage.py` |
-| `secrets:USE` per endpoint family | `tests/api_tests/test_secret_use_fk_fields.py`, `test_secret_use_bulk_save.py`, `test_secret_use_ngrok_inline.py`, `test_secret_use_webhook_trigger_auth.py`, `test_secret_use_permission_plumbing.py` |
+| `secrets:USE` service: delta, marker and destination rules, fail-safe | `tests/services_tests/test_secret_use_service.py`, `test_secret_use_view_glue.py`, `test_secret_use_exception_handler.py` |
+| `secrets:USE` coverage — every Secret field mapped to a write-point check | `tests/services_tests/test_secret_reference_coverage.py` |
+| `secrets:USE` per endpoint family | `tests/api_tests/test_secret_use_fk_fields.py`, `test_secret_use_bulk_save.py`, `test_secret_use_ngrok_inline.py`, `test_secret_use_webhook_trigger_auth.py`, `test_secret_use_permission_plumbing.py`, `test_config_extra_headers_secret_use.py`, `tests/import_export_tests/test_config_marker_import_secret_use.py` |
+| `secrets:USE` destination (`base_url`, model switch, MCP `transport`) | `tests/api_tests/test_secret_use_destination.py` |
 | Version round trip | `tests/graph_versioning_tests/test_secret_declarations.py`, `tests/api_tests/test_graph_version_secret_declarations.py` |
 | Sandbox delivery and scrubbing | `src/sandbox/tests/chain_tests/test_execute_code_handler_env.py`, `test_secret_scrubber.py` |
 

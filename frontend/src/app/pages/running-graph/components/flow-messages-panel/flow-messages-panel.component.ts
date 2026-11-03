@@ -2,13 +2,16 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    ElementRef,
     EventEmitter,
+    inject,
     Input,
     OnChanges,
     OnDestroy,
     OnInit,
     Output,
     SimpleChanges,
+    viewChild,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -21,6 +24,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { GraphSessionLight, GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { KeymapService } from '../../../../visual-programming/services/keymap.service';
 import { GraphMessagesComponent } from '../graph-messages/graph-messages.component';
 import { SessionIdSwitcherComponent } from '../session-id-switcher/session-id-switcher.component';
 
@@ -45,14 +49,22 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
     @Output() close = new EventEmitter<void>();
     @Output() sessionSelected = new EventEmitter<string>();
 
+    private readonly closeButton = viewChild.required<ElementRef<HTMLButtonElement>>('closeButton');
+
     public sessions: GraphSessionLight[] = [];
     public selectedSessionId: string | null = null;
     public sessionsLoaded = false;
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+    protected readonly keymap = inject(KeymapService);
 
     private readonly destroy$ = new Subject<void>();
+
+    /** Moves the keyboard focus into the panel, for its host to call when it opens the panel. */
+    public focus(): void {
+        this.closeButton().nativeElement.focus();
+    }
 
     constructor(
         private readonly graphSessionService: GraphSessionService,

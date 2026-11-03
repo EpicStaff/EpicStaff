@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -7,6 +8,7 @@ import {
     ConfirmationDialogData,
     ConfirmationDialogService,
     CustomInputComponent,
+    ErrorBannerComponent,
     HelpTooltipComponent,
     SelectComponent,
     SelectItem,
@@ -19,7 +21,7 @@ import {
     RealtimeConfigStorageService,
     TranscriptionConfigStorageService,
 } from '@shared/services';
-import { getProviderIconPath } from '@shared/utils';
+import { extractHttpErrorMessage, getProviderIconPath, isClientError } from '@shared/utils';
 import { EMPTY, filter, finalize, forkJoin, of } from 'rxjs';
 import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
@@ -35,7 +37,14 @@ import { QuickstartService } from '../../services/quickstart.service';
 
 @Component({
     selector: 'app-quickstart-section',
-    imports: [ReactiveFormsModule, CustomInputComponent, ButtonComponent, HelpTooltipComponent, SelectComponent],
+    imports: [
+        ReactiveFormsModule,
+        CustomInputComponent,
+        ButtonComponent,
+        ErrorBannerComponent,
+        HelpTooltipComponent,
+        SelectComponent,
+    ],
     templateUrl: './quickstart-section.component.html',
     styleUrls: ['./quickstart-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -60,7 +69,7 @@ export class QuickstartSectionComponent implements OnInit {
 
     public readonly quickStartForm = this.fb.group({
         apiKey: ['', [Validators.required]],
-        provider: [null, [Validators.required]],
+        provider: this.fb.control<string | null>(null, Validators.required),
     });
 
     public readonly quickstartCards = {
@@ -94,6 +103,8 @@ export class QuickstartSectionComponent implements OnInit {
     } as const;
 
     public isSaving = signal(false);
+    /** Why the server refused an Activate or an Update default models; shown above the form. */
+    public readonly errorMessage = signal<string | null>(null);
     public providers = signal<LLMProvider[]>([]);
     public quickstartStatus = signal<'activated' | 'updated' | 'synced' | null>(null);
 
@@ -172,6 +183,7 @@ export class QuickstartSectionComponent implements OnInit {
         };
 
         this.isSaving.set(true);
+        this.errorMessage.set(null);
 
         this.quickstartService
             .createQuickstart(data)
@@ -192,9 +204,9 @@ export class QuickstartSectionComponent implements OnInit {
                     this.hasActivatedInThisVisit.set(true);
                     this.toast.success('Quickstart created successfully.');
                 }),
-                catchError((error) => {
+                catchError((error: HttpErrorResponse) => {
                     console.error(error);
-                    this.toast.error('Failed to create/apply quickstart.');
+                    this.showError(error, 'Failed to create/apply quickstart.');
                     return EMPTY;
                 }),
                 finalize(() => {
@@ -257,13 +269,33 @@ export class QuickstartSectionComponent implements OnInit {
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 filter((result) => result === true),
+                tap(() => this.errorMessage.set(null)),
                 switchMap(() => this.quickstartService.applyQuickstart()),
                 tap((models) => {
                     this.defaultModelsStorageService.updateModelsInStorage(models);
                     this.quickstartStatus.set('synced');
                     this.toast.success('Models updated successfully.');
+                }),
+                catchError((error: HttpErrorResponse) => {
+                    console.error(error);
+                    this.showError(error, 'Failed to update default models.');
+                    return EMPTY;
                 })
             )
             .subscribe();
+    }
+
+    /**
+     * A refusal of the request (4xx) goes to the banner in the server's words; anything else keeps a generic toast.
+     * The quickstart endpoint answers its own refusals as `{detail: 'Error quickstart', error: <reason>}`, so the
+     * reason is read from `error` before the generic extraction, which would show only the `detail`.
+     */
+    private showError(error: HttpErrorResponse, fallback: string): void {
+        if (!isClientError(error)) {
+            this.toast.error(fallback);
+            return;
+        }
+        const reason: unknown = error.error?.error;
+        this.errorMessage.set(typeof reason === 'string' && reason ? reason : extractHttpErrorMessage(error, fallback));
     }
 }

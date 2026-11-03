@@ -14,8 +14,22 @@
     background: transparent;
     transition: border-color 0.2s ease;
 
-    &:hover {
+    &:is(:hover, :focus-within) {
         border-color: var(--white-alpha-16);
+    }
+
+    &--select-mode {
+        cursor: pointer;
+    }
+
+    &--selected {
+        border-color: var(--accent-color);
+    }
+
+    &__checkbox {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
     }
 
     &__top {
@@ -61,13 +75,13 @@
             line-height: 1;
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--purple-alpha-12);
             border-color: var(--purple-alpha-70);
         }
 
         &--delete {
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: var(--red-440-alpha-12);
                 border-color: var(--red-440-alpha-50);
                 color: var(--red-440);

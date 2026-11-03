@@ -2,7 +2,7 @@ from django.db.models import Q
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.base_models import SOFT_DELETE_FIELD_NAMES, without_internal_rows
-from tables.services.secrets.reference_guard import secret_reference_guard
+from tables.serializers.utils.persisted_links import current_linked_ids
 
 
 class ExcludeSoftDeleteFieldsMixin:
@@ -39,9 +39,9 @@ class KeptLinkPrimaryKeyRelatedField(OrgScopedPrimaryKeyRelatedField):
     other filter on the given queryset is dropped too, but the model's `internal_rows`
     (Secret's system rows) are always left out, kept or not.
 
-    "What the row links to now" comes from the secret reference guard's lookup, so a nested
-    serializer resolves through the same hooks (`parent_attribute`,
-    `get_current_secret_reference`). Works as a single FK and as the child of `many=True`.
+    "What the row links to now" comes from `current_linked_ids`, so a nested serializer
+    resolves it through its hooks (`parent_attribute`, `get_current_secret_reference`).
+    Works as a single FK and as the child of `many=True`.
     """
 
     def __init__(self, *args, queryset=None, **kwargs):
@@ -53,7 +53,7 @@ class KeptLinkPrimaryKeyRelatedField(OrgScopedPrimaryKeyRelatedField):
         queryset = super().get_queryset()
         owner, source = self._owner()
         kept_ids = (
-            secret_reference_guard.current_ids(serializer=owner, source=source)
+            current_linked_ids(serializer=owner, source=source)
             if owner is not None
             else frozenset()
         )

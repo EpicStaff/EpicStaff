@@ -3,6 +3,7 @@ import tarfile
 import zipfile
 import zlib
 
+from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from tables.exceptions import StorageQuotaExceeded
 from tables.services.storage_service.archive_unpacking.extraction_guard import ArchiveLimitExceeded
 from tables.services.storage_service.archive_unpacking.safe_readers import (
@@ -10,7 +11,7 @@ from tables.services.storage_service.archive_unpacking.safe_readers import (
     open_tar,
     zip_entry_count,
 )
-from tables.services.storage_service.path_utils import check_new_name, sanitize_storage_path
+from tables.services.storage_service.path_utils import check_new_name
 
 # Bytes with one of these signatures that fail to parse are a broken archive, not a plain file.
 _ARCHIVE_SIGNATURES = (b"PK\x03\x04", b"\x1f\x8b", b"BZh", b"\xfd7zXZ\x00")

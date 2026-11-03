@@ -74,3 +74,30 @@ describe('LlmLibraryCardComponent more menu', () => {
         expect(viewDetailsItem(overlay)).not.toBeNull();
     });
 });
+
+describe('LlmLibraryCardComponent temperature', () => {
+    it.each([
+        { temperature: 0.7, shown: '0.7°' },
+        { temperature: 0, shown: '0°' },
+    ])('shows a set temperature of $temperature', ({ temperature, shown }) => {
+        TestBed.configureTestingModule({
+            providers: [{ provide: PermissionsService, useValue: { can: () => false } }],
+        });
+        const fixture = TestBed.createComponent(LlmLibraryCardComponent);
+        fixture.componentRef.setInput('model', { ...MODEL, temperature });
+        fixture.detectChanges();
+
+        expect((fixture.nativeElement as HTMLElement).textContent).toContain(shown);
+    });
+
+    it('shows no temperature for a config that has none', () => {
+        TestBed.configureTestingModule({
+            providers: [{ provide: PermissionsService, useValue: { can: () => false } }],
+        });
+        const fixture = TestBed.createComponent(LlmLibraryCardComponent);
+        fixture.componentRef.setInput('model', { ...MODEL, temperature: null });
+        fixture.detectChanges();
+
+        expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('°');
+    });
+});

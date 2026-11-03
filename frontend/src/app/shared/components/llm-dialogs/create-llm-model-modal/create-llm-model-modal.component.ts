@@ -1,5 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -7,13 +8,14 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { EnterSubmitDirective } from '@shared/directives';
 import { LLMModel, LLMProvider } from '@shared/models';
 import { LlmModelsStorageService } from '@shared/services';
-import { getProviderIconPath } from '@shared/utils';
+import { extractHttpErrorMessage, getProviderIconPath, isClientError } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
 import { ButtonComponent } from '../../buttons';
+import { ErrorBannerComponent } from '../../error-banner/error-banner.component';
 import { ToggleSwitchComponent } from '../../form-controls';
 import { CustomInputComponent } from '../../form-input/form-input.component';
 import { TooltipComponent } from '../../tooltip/tooltip.component';
@@ -32,6 +34,7 @@ export interface CreateLlmModelDialogData {
         AppSvgIconComponent,
         CustomInputComponent,
         ButtonComponent,
+        ErrorBannerComponent,
         ToggleSwitchComponent,
         TooltipComponent,
         ValidationErrorsComponent,
@@ -51,6 +54,7 @@ export class CreateLlmModelModalComponent implements OnInit {
 
     isEditMode = !!this.dialogData.model;
     isSubmitting = signal(false);
+    errorMessage = signal<string | null>(null);
 
     form = this.fb.group({
         name: [this.dialogData.model?.name ?? '', Validators.required],
@@ -84,6 +88,7 @@ export class CreateLlmModelModalComponent implements OnInit {
 
         const value = this.form.getRawValue();
         this.isSubmitting.set(true);
+        this.errorMessage.set(null);
 
         const request$ = this.isEditMode
             ? this.modelsStorageService.patchModel(this.dialogData.model!.id, {
@@ -106,41 +111,21 @@ export class CreateLlmModelModalComponent implements OnInit {
             next: (result: LLMModel) => {
                 this.dialogRef.close(result);
             },
-            error: (error) => {
-                this.toastService.error(this.extractApiErrorMessage(error));
+            error: (error: HttpErrorResponse) => {
+                const fallback = this.isEditMode ? 'Failed to update model.' : 'Failed to create model.';
+                if (isClientError(error)) {
+                    this.errorMessage.set(this.clientErrorMessage(error, fallback));
+                    return;
+                }
+                this.toastService.error(fallback);
             },
         });
     }
 
-    private extractApiErrorMessage(error: unknown): string {
-        const fallback = this.isEditMode ? 'Failed to update model.' : 'Failed to create model.';
-        const httpError = error as { error?: unknown; message?: string };
-        const payload = httpError?.error;
-
-        if (typeof payload === 'string' && payload.trim()) {
-            return payload;
+    private clientErrorMessage(error: HttpErrorResponse, fallback: string): string {
+        if (error.error?.code === 'built_in_model_immutable') {
+            return 'This model is a shared built-in and cannot be edited or deleted.';
         }
-
-        if (payload && typeof payload === 'object') {
-            const errorPayload = payload as Record<string, unknown>;
-            if (errorPayload['code'] === 'built_in_model_immutable') {
-                return 'This model is a shared built-in and cannot be edited or deleted.';
-            }
-
-            const entries = Object.entries(errorPayload);
-            if (entries.length > 0) {
-                const [field, value] = entries[0];
-                const normalized = Array.isArray(value) ? value[0] : value;
-                if (typeof normalized === 'string' && normalized.trim()) {
-                    return `${field}: ${normalized}`;
-                }
-            }
-        }
-
-        if (httpError?.message) {
-            return httpError.message;
-        }
-
-        return fallback;
+        return extractHttpErrorMessage(error, fallback);
     }
 }

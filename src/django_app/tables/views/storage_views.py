@@ -11,6 +11,7 @@ from rbac.authorship import (
     resolve_author,
     user_summaries_by_id,
 )
+from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status
@@ -46,11 +47,13 @@ from tables.serializers.storage_serializers import (
     StorageSearchQuerySerializer,
     StorageTreeQuerySerializer,
     StorageUploadLimitsResponseSerializer,
+    StorageUsageRequestSerializer,
 )
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service import upload as upload_service
 from tables.services.storage_service.dataclasses import FolderInfo
 from tables.services.storage_service.recycle_bin import ENTRY_ORDERINGS, StorageRecycleBinService
+from tables.services.storage_service.usage import find_storage_usage
 from tables.swagger_schemas.storage_schema import (
     STORAGE_ADD_TO_GRAPH_SWAGGER,
     STORAGE_COPY_SWAGGER,
@@ -63,11 +66,14 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_LIST_SWAGGER,
     STORAGE_MKDIR_SWAGGER,
     STORAGE_MOVE_SWAGGER,
+    STORAGE_PREVIEW_SWAGGER,
+    STORAGE_RECYCLE_BIN_CONTENTS_SWAGGER,
     STORAGE_REMOVE_FROM_GRAPH_SWAGGER,
     STORAGE_RENAME_SWAGGER,
     STORAGE_SEARCH_SWAGGER,
     STORAGE_TREE_SWAGGER,
     STORAGE_UPLOAD_LIMITS_SWAGGER,
+    STORAGE_USAGE_SWAGGER,
 )
 from tables.views.recycle_bin_mixins import (
     PURGE_ACTIONS,
@@ -121,7 +127,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     rbac_action_map = {
         "list_files": Permission.READ,
         "info": Permission.READ,
-        "download": Permission.READ,
+        "download": Permission.EXPORT,
+        "preview": Permission.READ,
         "tree": Permission.READ,
         "graph_files": Permission.READ,
         "files_by_ids": Permission.READ,
@@ -136,6 +143,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "move": Permission.UPDATE,
         "copy": Permission.UPDATE,
         "delete_file": Permission.DELETE,
+        "usage": Permission.READ,
         "remove_from_graph": Permission.READ,
         **RECYCLE_BIN_ACTION_MAP,
     }
@@ -146,7 +154,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
     def _assert_cross_org_superadmin(self, request, src_org_id) -> bool:
         """True when this is a cross-org transfer; such transfers require
-        superadmin (operating across organizations is a platform action).
+        superadmin (operating across organizations is a platform action) signed
+        in with a session: an API key acts only in its own org.
 
         The transfer serializer guarantees both org ids or neither, and that they differ.
         """
@@ -155,6 +164,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         # CREATE in dst_org_id, Part of cross-org RBAC feature
         if cross_org and not getattr(request.user, "is_superadmin", False):
             raise PermissionDenied("Cross-organization file transfer requires superadmin.")
+        if cross_org and isinstance(request.auth, ApiKey):
+            raise PermissionDenied("Cross-organization file transfer is not available to API keys.")
         return cross_org
 
     @extend_schema(**STORAGE_LIST_SWAGGER)
@@ -208,9 +219,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             response["graphs"] = []
         return Response(response)
 
-    @extend_schema(**STORAGE_DOWNLOAD_SWAGGER)
-    @action(detail=False, methods=["get"], url_path="download")
-    def download(self, request):
+    def _file_content_response(self, request, disposition: str) -> HttpResponse:
         org_id = self.get_active_org_id()
         params = StoragePathQuerySerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
@@ -229,11 +238,21 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             if download.content_range
             else status.HTTP_200_OK,
         )
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
         response["Accept-Ranges"] = "bytes"
         if download.content_range:
             response["Content-Range"] = download.content_range
         return response
+
+    @extend_schema(**STORAGE_DOWNLOAD_SWAGGER)
+    @action(detail=False, methods=["get"], url_path="download")
+    def download(self, request):
+        return self._file_content_response(request, "attachment")
+
+    @extend_schema(**STORAGE_PREVIEW_SWAGGER)
+    @action(detail=False, methods=["get"], url_path="preview")
+    def preview(self, request):
+        return self._file_content_response(request, "inline")
 
     @extend_schema(**STORAGE_DOWNLOAD_ZIP_SWAGGER)
     @action(detail=False, methods=["post"], url_path="download-zip")
@@ -291,6 +310,30 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
                 raise ValidationError({"detail": str(e)}) from e
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(**STORAGE_USAGE_SWAGGER)
+    @action(detail=False, methods=["post"], url_path="usage")
+    def usage(self, request):
+        """Report what deleting the paths would unlink; `used` is always true, `items` only with READ on that type."""
+        org_id = self.get_active_org_id()
+        serializer = StorageUsageRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        usage = find_storage_usage(org_id, serializer.validated_data["paths"])
+        effective_permissions = PermissionResolver().resolve(user=request.user, org_id=org_id)
+
+        def _report(entries: list[dict], resource_type: ResourceType) -> dict:
+            # `used` is the truth for everyone; names only for callers who could list them anyway.
+            can_read = effective_permissions.can(resource_type, Permission.READ)
+            return {"used": bool(entries), "items": entries if can_read else []}
+
+        return Response(
+            {
+                "flows": _report(usage.flows, ResourceType.FLOWS),
+                "surfaces": _report(usage.surfaces, ResourceType.SURFACES),
+                "agents": _report(usage.agents, ResourceType.AGENTS),
+            }
+        )
 
     @extend_schema(**STORAGE_RENAME_SWAGGER)
     @action(detail=False, methods=["post"], url_path="rename")
@@ -474,6 +517,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @action(detail=False, methods=["get"], url_path="graph-files")
     def graph_files(self, request):
         org_id = self.get_active_org_id()
+        # Checked before the graph lookup: otherwise a caller who cannot read flows
+        # could tell existing graph ids (200) from missing ones (404).
+        assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.READ)
         params = StorageGraphFilesQuerySerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
         graph_id = params.validated_data["graph_id"]
@@ -562,15 +608,16 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             StorageRecycleBinEntrySerializer(entries, many=True).data
         )
 
-    @extend_schema(request=None, responses=RecycleBinContentsSerializer)
+    @extend_schema(**STORAGE_RECYCLE_BIN_CONTENTS_SWAGGER)
     @action(detail=False, methods=["get"], url_path=r"recycle-bin/(?P<entry_id>\d+)/contents")
     def recycle_bin_contents(self, request, entry_id=None):
-        """Files and folders deleted with one binned folder, up to 5,000: "Show all" past the list's 100."""
         contents, total = StorageRecycleBinService.contents_of(
             self.get_active_org_id(), int(entry_id)
         )
         return Response(
-            RecycleBinContentsSerializer({"contents": contents, "contents_total": total}).data
+            RecycleBinContentsSerializer(
+                {"contents": contents, "hidden_contents": [], "contents_total": total}
+            ).data
         )
 
     @extend_schema(

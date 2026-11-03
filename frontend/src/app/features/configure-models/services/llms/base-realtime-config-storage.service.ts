@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import { BulkDeleteOptions, BulkDeleteResponse, BulkDeleteTarget } from '@shared/models';
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
@@ -6,10 +7,14 @@ export interface RealtimeConfigApi<T, C, U> {
     getAll(): Observable<T[]>;
     create(data: C): Observable<T>;
     update(data: U): Observable<T>;
-    delete(id: number): Observable<void>;
+    bulkDelete(ids: number[], options?: BulkDeleteOptions): Observable<BulkDeleteResponse>;
 }
 
-export abstract class BaseRealtimeConfigStorageService<T extends { id: number }, C, U extends { id: number }> {
+export abstract class BaseRealtimeConfigStorageService<
+    T extends { id: number },
+    C,
+    U extends { id: number },
+> implements BulkDeleteTarget {
     protected abstract readonly api: RealtimeConfigApi<T, C, U>;
 
     private configsRequest$?: Observable<T[]>;
@@ -60,11 +65,20 @@ export abstract class BaseRealtimeConfigStorageService<T extends { id: number },
         );
     }
 
-    deleteConfig(id: number): Observable<void> {
-        return this.api.delete(id).pipe(
-            tap(() => this.configsSignal.update((configs) => configs.filter((c) => c.id !== id))),
-            catchError((err) => throwError(() => err))
-        );
+    previewBulkDelete(ids: number[]): Observable<BulkDeleteResponse> {
+        return this.api.bulkDelete(ids, { dryRun: true });
+    }
+
+    bulkDelete(ids: number[]): Observable<BulkDeleteResponse> {
+        return this.api
+            .bulkDelete(ids)
+            .pipe(tap((response) => this.removeFromCache([...response.deleted_ids, ...response.not_found_ids])));
+    }
+
+    removeFromCache(ids: number[]): void {
+        if (ids.length === 0) return;
+        const idSet = new Set(ids);
+        this.configsSignal.update((configs) => configs.filter((c) => !idSet.has(c.id)));
     }
 
     markConfigsOutdated(): void {

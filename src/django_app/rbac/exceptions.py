@@ -313,13 +313,24 @@ class SessionPasswordChangedError(AuthenticationFailed):
 
 class ApiKeyLimitExceededError(CustomAPIExeption):
     """Raised by ApiKeyService.create_key when the caller already has the
-    maximum number of active (non-revoked, non-expired) keys."""
+    maximum number of active (non-revoked, non-expired) keys in that organization."""
 
     status_code = 400
     default_detail = (
-        "Maximum number of active API keys reached (5). Revoke or delete an existing key first."
+        "Maximum number of active API keys in this organization reached (5). "
+        "Revoke or delete an existing key first."
     )
     default_code = "api_key_limit_exceeded"
+
+
+class TourLimitExceededError(CustomAPIExeption):
+    """Raised by UserProfileService.complete_tour when the user already has
+    the maximum number of completed tours and the key is a new one. The
+    raise-site puts the actual maximum in the detail."""
+
+    status_code = 400
+    default_detail = "Maximum number of completed tours reached."
+    default_code = "tour_limit_exceeded"
 
 
 class FirstSetupDisabledError(CustomAPIExeption):

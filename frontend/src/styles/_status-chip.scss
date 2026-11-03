@@ -30,6 +30,12 @@
     color: var(--red-580);
 }
 
+// Bright red: stopped by someone, set apart from a failure.
+@mixin stopped {
+    background: var(--red-alpha-8-flat);
+    color: var(--red-500);
+}
+
 // Green: done, or fine.
 @mixin completed {
     background: var(--mint-500-alpha-18);

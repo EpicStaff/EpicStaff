@@ -43,10 +43,9 @@ async def test_ngrok_tunnel_is_started_with_its_config_and_fully_torn_down(
     await tunnel_registry.register(config)
 
     connect_call = ngrok_environment.ngrok.connect.call_args
-    assert connect_call.args == (
-        f"{settings.NGROK_TARGET_HOST}:{settings.NGROK_TARGET_PORT}",
-        "http",
-    )
+    # nginx's tunnel listener, which serves only /webhooks/ and /voice/: never port 80, which is
+    # the whole of EpicStaff and would be published on the tunnel's public URL.
+    assert connect_call.args == ("epicstaff-nginx:8083", "http")
     assert connect_call.kwargs["domain"] == "my.ngrok.app"
     pyngrok_config = connect_call.kwargs["pyngrok_config"]
     assert pyngrok_config.auth_token == "secret-token"

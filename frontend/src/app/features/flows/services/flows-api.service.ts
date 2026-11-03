@@ -1,6 +1,7 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, BulkDeleteOptions, BulkDeleteResponse, ResourceCode } from '@shared/models';
+import { bulkDeleteParams } from '@shared/utils';
 import { forkJoin, Observable, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 
@@ -97,8 +98,12 @@ export class FlowsApiService {
         });
     }
 
-    deleteGraph(id: number): Observable<void> {
-        return this.http.delete<void>(`${this.apiUrl}${id}/`);
+    bulkDeleteGraphs(ids: number[], options: BulkDeleteOptions = {}): Observable<BulkDeleteResponse> {
+        return this.http.post<BulkDeleteResponse>(
+            `${this.apiUrl}bulk-delete/`,
+            { ids },
+            { params: bulkDeleteParams(options) }
+        );
     }
 
     copyGraph(id: number, name: string): Observable<GraphDto> {
@@ -141,8 +146,12 @@ export class FlowsApiService {
         });
     }
 
-    deleteGraphVersion(id: number): Observable<void> {
-        return this.http.delete<void>(`${this.configService.apiUrl}graph-versions/${id}/`);
+    bulkDeleteGraphVersions(ids: number[], options: BulkDeleteOptions = {}): Observable<BulkDeleteResponse> {
+        return this.http.post<BulkDeleteResponse>(
+            `${this.configService.apiUrl}graph-versions/bulk-delete/`,
+            { ids },
+            { params: bulkDeleteParams(options) }
+        );
     }
 
     getScheduleTriggerNode(id: number): Observable<GetScheduleTriggerNodeRequest> {

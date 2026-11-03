@@ -51,16 +51,18 @@ class CustomShortcutsSerializer(serializers.Serializer):
 
 
 class ProfileResponseSerializer(UserResponseSerializer):
-    """GET / PATCH / POST-avatar / POST-quickstart-tour response for /api/profile/.
+    """GET / PATCH / POST-avatar / POST-tour-complete response for /api/profile/.
 
     Strict superset of UserResponseSerializer: same fields, plus
-    `active_organization_id`, `active_permissions`, `quickstart_tour_completed`
-    and `custom_shortcuts` (the user's own preference, so it stays off the
+    `active_organization_id`, `active_permissions`, `completed_tours` and
+    `custom_shortcuts` (the user's own preferences, so they stay off the
     admin user directory's UserResponseSerializer). The
     `memberships` list is computed in UserProfileService.get_profile — a
     normal user's real active memberships, or (for a superadmin) every active
     organization with the built-in Superadmin role — so the response shape is
-    unchanged.
+    unchanged. `completed_tours` is attached there too and read by a method
+    field: a user that did not come from get_profile raises AttributeError
+    instead of silently rendering without the key.
     """
 
     avatar_url = serializers.SerializerMethodField()
@@ -73,7 +75,9 @@ class ProfileResponseSerializer(UserResponseSerializer):
     active_permissions = serializers.JSONField(
         source="_active_permissions", allow_null=True, default=None, read_only=True
     )
-    quickstart_tour_completed = serializers.SerializerMethodField()
+    completed_tours = serializers.SerializerMethodField(
+        help_text="Keys of the guided tours the user finished or skipped, sorted."
+    )
     custom_shortcuts = serializers.SerializerMethodField()
 
     class Meta(UserResponseSerializer.Meta):
@@ -82,13 +86,14 @@ class ProfileResponseSerializer(UserResponseSerializer):
             "avatar_url",
             "active_organization_id",
             "active_permissions",
-            "quickstart_tour_completed",
+            "completed_tours",
             "custom_shortcuts",
         ]
         read_only_fields = fields
 
-    def get_quickstart_tour_completed(self, user) -> bool:
-        return user.quickstart_tour_completed_at is not None
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_completed_tours(self, user) -> list[str]:
+        return user._completed_tours
 
     @extend_schema_field(CustomShortcutsSerializer)
     def get_custom_shortcuts(self, user):

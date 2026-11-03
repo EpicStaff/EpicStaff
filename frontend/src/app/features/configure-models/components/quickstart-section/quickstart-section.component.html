@@ -5,15 +5,18 @@
                 <h3 class="quickstart-section__title">Quickstart</h3>
                 <p class="quickstart-section__subtitle">Quickly configure your environment with your AI provider</p>
             </header>
+            <app-error-banner [message]="errorMessage()" />
             <form
                 class="quickstart-section__form"
                 [formGroup]="quickStartForm"
             >
                 <div class="quickstart-section__row">
                     <div class="quickstart-section__label">
-                        <span>Recommended Provider</span>
+                        <span id="quickstart-provider-label">Recommended Provider</span>
                     </div>
                     <app-select
+                        ariaLabelledby="quickstart-provider-label"
+                        tooltip="Recommended Provider"
                         [attr.data-tour]="tourAnchors.quickstartProvider"
                         [dropdownDataAnchor]="tourAnchors.quickstartProviderList"
                         formControlName="provider"
@@ -33,10 +36,10 @@
                             class="quickstart-section__tooltip-icon"
                             text="Your secret API key from the provider's dashboard. Keep it private."
                             position="right"
-                            tooltipClass="dialog__label-tooltip"
                         />
                     </div>
                     <app-custom-input
+                        ariaLabel="API Key"
                         formControlName="apiKey"
                         type="secret"
                         placeholder="Enter API key"
@@ -55,7 +58,8 @@
                             type="primary"
                             [attr.data-tour]="tourAnchors.quickstartActivate"
                             (click)="onQuickStart()"
-                            [disabled]="quickStartForm.invalid || isSaving()"
+                            [disabled]="quickStartForm.invalid"
+                            [ariaDisabled]="isSaving()"
                         >
                             Activate
                         </app-button>

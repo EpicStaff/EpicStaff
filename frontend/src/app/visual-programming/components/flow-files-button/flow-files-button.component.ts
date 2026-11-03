@@ -13,6 +13,7 @@ import {
 import { GraphFileRecord } from '../../../features/files/models/storage.models';
 import { StorageApiService } from '../../../features/files/services/storage-api.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
+import { KeymapService } from '../../services/keymap.service';
 
 @Component({
     selector: 'app-flow-files-button',
@@ -31,6 +32,7 @@ export class FlowFilesButtonComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
 
     readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
+    protected readonly keymap = inject(KeymapService);
     readonly attachedFiles = signal<GraphFileRecord[]>([]);
     readonly attachedCount = computed(() => this.attachedFiles().length);
 

@@ -167,7 +167,8 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
 
         org_id = self.get_active_org_id()
         # HasOrgPermission gates Knowledge Sources CREATE; reading the storage
-        # side is a second resource type, gated with the same verb as download.
+        # side is a second resource type. READ is enough: the copy stays inside
+        # the platform, nothing is taken out of it.
         assert_org_permission(request.user, org_id, ResourceType.FILES, Permission.READ)
         self.get_in_active_org_or_404(SourceCollection, collection_id)
 

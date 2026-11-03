@@ -2,6 +2,7 @@ from rbac.access.effective import EffectivePermissions
 from rbac.access.principals import is_pinned_org_principal
 from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models import OrganizationUser
+from rbac.scoping.fields import resolve_active_org_id
 
 
 class PermissionResolver:
@@ -42,3 +43,18 @@ class PermissionResolver:
             raise OrgMembershipRequiredError()
 
         return EffectivePermissions.from_role(membership.role)
+
+
+def resolve_request_permissions(request) -> EffectivePermissions:
+    """Return the caller's permissions in the request's active org, resolved once per request.
+
+    Shares the `_rbac_effective_permissions` cache with `HasOrgPermission`, so a
+    serializer rendering many rows behind that gate runs no extra query.
+    """
+    effective = getattr(request, "_rbac_effective_permissions", None)
+    if effective is None:
+        effective = PermissionResolver().resolve(
+            user=request.user, org_id=resolve_active_org_id(request)
+        )
+        request._rbac_effective_permissions = effective
+    return effective

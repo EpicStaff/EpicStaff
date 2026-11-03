@@ -15,7 +15,6 @@ from plugins.models import PluginGrant, PluginOwnedResource
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from rest_framework.exceptions import ValidationError
-from rest_framework.relations import ManyRelatedField
 from rest_framework.request import Request
 from rest_framework.test import APIClient, APIRequestFactory
 from django.urls import reverse
@@ -29,14 +28,13 @@ from tables.models.graph_models import PythonNode, StartNode, TelegramTriggerNod
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.webhook_models import WebhookTrigger, WebhookTriggerAuth, WebhookTriggerAuthKind
-from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
-from tables.serializers.model_serializers.llm_serializers import LLMConfigSerializer
-from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
-from tables.services.secrets import secret_service
-from tables.services.secrets.reference_guard import secret_reference_guard
+from tables.services.secrets import SecretUseDeniedError, secret_service, secret_use_checks
+from tables.services.secrets.request_actor import actor_from_request
+from tables.services.secrets.secret_use_service import secret_use_service
 
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.plugins_tests.conftest import GATEWAY_SECRET, service_account_client
+from tests.services_tests.test_secret_reference_coverage import SECRET_USE_CHECK_BY_SERIALIZER
 
 pytestmark = [pytest.mark.django_db]
 
@@ -344,19 +342,63 @@ def test_a_plugin_s_config_import_takes_a_marker_of_its_own_secret_only(
     assert imported.extra_headers == _marker_headers(own_secret.name)
 
 
-# ---- every guarded serializer ----
+# ---- every secret Use check ----
 
 
-def _guarded_serializer_classes():
-    from tables import urls  # noqa: F401  -- importing registers every serializer
+def _python_code(secret):
+    return {"secrets": [secret]}
 
-    seen, stack = set(), [SecretReferenceGuardMixin]
-    while stack:
-        for subclass in stack.pop().__subclasses__():
-            if subclass not in seen:
-                seen.add(subclass)
-                stack.append(subclass)
-    return sorted((cls for cls in seen if not cls.__module__.startswith("tests.")), key=lambda cls: cls.__name__)
+
+# Every secret reference a write can make, as (check, data the write carries, field reported).
+# Each write is a create (no persisted row), so the reference is the one in the data.
+GUARDED_REFERENCES = [
+    (secret_use_checks.check_llm_config_write, lambda secret: {"api_key_secret": secret}, "api_key_secret_id"),
+    (secret_use_checks.check_embedding_config_write, lambda secret: {"api_key_secret": secret}, "api_key_secret_id"),
+    (secret_use_checks.check_realtime_config_write, lambda secret: {"api_key_secret": secret}, "api_key_secret_id"),
+    (
+        secret_use_checks.check_realtime_transcription_config_write,
+        lambda secret: {"api_key_secret": secret},
+        "api_key_secret_id",
+    ),
+    (secret_use_checks.check_openai_realtime_config_write, lambda secret: {"api_key_secret": secret}, "api_key_secret_id"),
+    (
+        secret_use_checks.check_openai_realtime_config_write,
+        lambda secret: {"transcription_api_key_secret": secret},
+        "transcription_api_key_secret_id",
+    ),
+    (secret_use_checks.check_elevenlabs_realtime_config_write, lambda secret: {"api_key_secret": secret}, "api_key_secret_id"),
+    (secret_use_checks.check_gemini_realtime_config_write, lambda secret: {"api_key_secret": secret}, "api_key_secret_id"),
+    (secret_use_checks.check_twilio_channel_write, lambda secret: {"auth_token_secret": secret}, "auth_token_secret_id"),
+    (secret_use_checks.check_mcp_tool_write, lambda secret: {"auth_secret": secret}, "auth_secret_id"),
+    (secret_use_checks.check_webhook_trigger_write, lambda secret: {"auth_secret_id": secret}, "auth_secret_id"),
+    (
+        secret_use_checks.check_webhook_trigger_write,
+        lambda secret: {"ngrok_config": {"auth_token_secret": secret}},
+        "auth_token_secret_id",
+    ),
+    (
+        secret_use_checks.check_telegram_trigger_node_write,
+        lambda secret: {"telegram_bot_api_key_secret": secret},
+        "telegram_bot_api_key_secret_id",
+    ),
+    (secret_use_checks.check_python_node_write, lambda secret: {"python_code": _python_code(secret)}, "secret_ids"),
+    (secret_use_checks.check_webhook_trigger_node_write, lambda secret: {"python_code": _python_code(secret)}, "secret_ids"),
+    (secret_use_checks.check_python_code_tool_write, lambda secret: {"python_code": _python_code(secret)}, "secret_ids"),
+    (secret_use_checks.check_cdt_node_write, lambda secret: {"pre_python_code": _python_code(secret)}, "secret_ids"),
+    (secret_use_checks.check_cdt_node_write, lambda secret: {"post_python_code": _python_code(secret)}, "secret_ids"),
+    (
+        lambda actor, instance, data: secret_use_checks.check_quickstart(actor, data),
+        lambda secret: {"api_key_secret_id": secret},
+        "api_key_secret_id",
+    ),
+]
+# The checks whose header fields carry `epicstaff_secret(<name>)` markers.
+GUARDED_MARKER_CHECKS = [secret_use_checks.check_llm_config_write, secret_use_checks.check_embedding_config_write]
+# The guarded (check, field) pairs found today; a floor, so the table can never lose entries
+# silently.
+MINIMUM_GUARDED_FIELDS = 18
+# The same floor for header fields whose `epicstaff_secret(<name>)` markers name secrets.
+MINIMUM_GUARDED_MARKER_FIELDS = 2
 
 
 def _plugin_request(acme_key, acme):
@@ -373,28 +415,35 @@ def _plugin_request(acme_key, acme):
     return request
 
 
+def _plugin_actor(acme_key, acme):
+    return actor_from_request(_plugin_request(acme_key, acme))
+
+
+def test_the_table_covers_every_secret_use_check():
+    # check_python_code_write is reached through each Python-code parent's own check.
+    mapped = set(SECRET_USE_CHECK_BY_SERIALIZER.values()) - {"check_python_code_write"}
+    tabled = {check.__name__ for check, _, _ in GUARDED_REFERENCES} | {"check_quickstart"}
+
+    assert mapped <= tabled, mapped - tabled
+
+
 def test_every_guarded_field_refuses_an_org_secret_and_takes_the_plugin_s_own(acme_key, acme, org_secret, own_secret):
-    request = _plugin_request(acme_key, acme)
+    actor = _plugin_actor(acme_key, acme)
     checked, failures = [], []
-    for serializer_class in _guarded_serializer_classes():
-        serializer = serializer_class(context={"request": request})
-        for field_name in serializer.get_secret_reference_fields():
-            field = serializer.fields.get(field_name)
-            if field is None or field.read_only:
-                continue
-            checked.append(f"{serializer_class.__name__}.{field_name}")
-
-            def attrs(secret):
-                return {field.source: [secret] if isinstance(field, ManyRelatedField) else secret}
-
-            try:
-                secret_reference_guard.assert_unchanged_or_permitted(serializer=serializer, attrs=attrs(own_secret), fields=(field_name,))
-            except ValidationError as error:
-                failures.append(f"{checked[-1]} refused the plugin's own secret: {error.detail}")
-            with pytest.raises(ValidationError) as refused:
-                secret_reference_guard.assert_unchanged_or_permitted(serializer=serializer, attrs=attrs(org_secret), fields=(field_name,))
-            if REFUSED not in str(refused.value.detail.get(field_name)) or ORG_SECRET_NAME in str(refused.value.detail):
-                failures.append(f"{checked[-1]} answered {refused.value.detail}")
+    for check, data_with, field_name in GUARDED_REFERENCES:
+        checked.append(f"{check.__name__}.{field_name}")
+        try:
+            check(actor, None, data_with(own_secret))
+        except SecretUseDeniedError as error:
+            failures.append(f"{checked[-1]} refused the plugin's own secret: {error.field_errors()}")
+        with pytest.raises(SecretUseDeniedError) as refused:
+            check(actor, None, data_with(org_secret))
+        if (
+            refused.value.field_path[-1] != field_name
+            or REFUSED not in refused.value.message
+            or ORG_SECRET_NAME in str(refused.value.field_errors())
+        ):
+            failures.append(f"{checked[-1]} answered {refused.value.field_errors()}")
 
     assert failures == []
     assert len(checked) >= MINIMUM_GUARDED_FIELDS, checked
@@ -403,29 +452,26 @@ def test_every_guarded_field_refuses_an_org_secret_and_takes_the_plugin_s_own(ac
 def test_every_guarded_header_field_refuses_an_org_secret_s_marker_and_takes_the_plugin_s_own(
     acme_key, acme, org_secret, own_secret
 ):
-    request = _plugin_request(acme_key, acme)
+    actor = _plugin_actor(acme_key, acme)
     checked, failures = [], []
-    for serializer_class in _guarded_serializer_classes():
-        serializer = serializer_class(context={"request": request})
-        for field_name in serializer_class.secret_marker_fields:
-            field = serializer.fields.get(field_name)
-            if field is None or field.read_only:
-                continue
-            checked.append(f"{serializer_class.__name__}.{field_name}")
+    for check in GUARDED_MARKER_CHECKS:
+        checked.append(f"{check.__name__}.extra_headers")
 
-            def check(secret_name):
-                secret_reference_guard.assert_no_new_markers_or_permitted(
-                    serializer=serializer, attrs={field.source: _marker_headers(secret_name)}, fields=(field_name,)
-                )
+        def write(secret_name):
+            check(actor, None, {"extra_headers": _marker_headers(secret_name)})
 
-            try:
-                check(own_secret.name)
-            except ValidationError as error:
-                failures.append(f"{checked[-1]} refused the plugin's own secret: {error.detail}")
-            with pytest.raises(ValidationError) as refused:
-                check(ORG_SECRET_NAME)
-            if REFUSED not in str(refused.value.detail.get(field_name)) or ORG_SECRET_NAME in str(refused.value.detail):
-                failures.append(f"{checked[-1]} answered {refused.value.detail}")
+        try:
+            write(own_secret.name)
+        except SecretUseDeniedError as error:
+            failures.append(f"{checked[-1]} refused the plugin's own secret: {error.field_errors()}")
+        with pytest.raises(SecretUseDeniedError) as refused:
+            write(ORG_SECRET_NAME)
+        if (
+            refused.value.field_path != ("extra_headers",)
+            or REFUSED not in refused.value.message
+            or ORG_SECRET_NAME in str(refused.value.field_errors())
+        ):
+            failures.append(f"{checked[-1]} answered {refused.value.field_errors()}")
 
     assert failures == []
     assert len(checked) >= MINIMUM_GUARDED_MARKER_FIELDS, checked
@@ -505,22 +551,26 @@ def test_a_bulk_save_of_an_org_flow_whose_node_uses_an_org_secret_is_refused(cli
     assert node.python_code.code == NEUTRAL_CODE
 
 
-def test_the_guard_reads_a_stored_reference_only_for_a_field_the_payload_leaves_out(acme_key, acme, own_secret, mocker):
-    config = LLMConfig.objects.create(custom_name="Weather summaries", org=acme, api_key_secret=own_secret)
-    serializer = LLMConfigSerializer(config, context={"request": _plugin_request(acme_key, acme)})
-    stored_reads = mocker.spy(secret_reference_guard, "current_ids")
+def test_reading_a_stored_reference_the_payload_leaves_out_costs_no_query(acme_key, acme, own_secret, django_assert_num_queries):
+    config = LLMConfig.objects.get(pk=LLMConfig.objects.create(custom_name="Weather summaries", org=acme, api_key_secret=own_secret).pk)
+    actor = _plugin_actor(acme_key, acme)
+    # The plugin's own secrets are confirmed once per principal; confirm it before counting.
+    secret_use_checks.check_llm_config_write(actor, config, {"api_key_secret": own_secret})
 
-    secret_reference_guard.assert_unchanged_or_permitted(serializer=serializer, attrs={"api_key_secret": own_secret}, fields=("api_key_secret_id",))
-    carried = stored_reads.call_count
-    secret_reference_guard.assert_unchanged_or_permitted(serializer=serializer, attrs={}, fields=("api_key_secret_id",))
-
-    assert (carried, stored_reads.call_count) == (0, 1)
+    with django_assert_num_queries(0):
+        secret_use_checks.check_llm_config_write(actor, config, {})
 
 
 def test_a_bulk_save_of_many_nodes_resolves_secrets_use_once(client, own_secret, mocker):
     graph = Graph.objects.get(pk=client.post("/api/graphs/", {"name": "Weather flow"}, format="json").json()["id"])
-    nodes = [_python_node(graph, own_secret, f"node_{index}") for index in range(3)]
-    use_resolutions = mocker.spy(secret_reference_guard._resolver, "resolve")
+    # Declared by none of them yet: adding the secret to each node needs secrets:USE.
+    nodes = [
+        PythonNode.objects.create(
+            graph=graph, node_name=f"node_{index}", python_code=PythonCode.objects.create(code=NEUTRAL_CODE, entrypoint="main")
+        )
+        for index in range(3)
+    ]
+    use_resolutions = mocker.spy(secret_use_service._resolver, "resolve")
 
     response = _bulk_save(client, graph, nodes, secret_ids=[own_secret.pk])
 
@@ -529,15 +579,15 @@ def test_a_bulk_save_of_many_nodes_resolves_secrets_use_once(client, own_secret,
 
 
 @contextmanager
-def _statements_inside_the_guard_s_lookup():
-    """The SQL run inside `current_ids`, the guard's read of a stored reference, however it is reached."""
+def _statements_inside_the_stored_reference_lookup(monkeypatch):
+    """The SQL run inside `linked_ids`, the secret Use check's read of a node's stored references."""
     statements, depth = [], [0]
-    lookup = secret_reference_guard.current_ids
+    lookup = secret_use_checks.linked_ids
 
-    def counted_lookup(**kwargs):
+    def counted_lookup(value):
         depth[0] += 1
         try:
-            return lookup(**kwargs)
+            return lookup(value)
         finally:
             depth[0] -= 1
 
@@ -546,19 +596,16 @@ def _statements_inside_the_guard_s_lookup():
             statements.append(sql)
         return execute(sql, params, many, context)
 
-    secret_reference_guard.current_ids = counted_lookup
-    try:
-        with connection.execute_wrapper(record):
-            yield statements
-    finally:
-        del secret_reference_guard.current_ids
+    monkeypatch.setattr(secret_use_checks, "linked_ids", counted_lookup)
+    with connection.execute_wrapper(record):
+        yield statements
 
 
-def test_the_guard_s_lookups_cost_the_same_for_10_or_30_nodes_a_plugin_saves(client, own_secret):
+def test_the_stored_reference_lookups_cost_the_same_for_10_or_30_nodes_a_plugin_saves(client, own_secret, monkeypatch):
     def guard_statements(count):
         graph = Graph.objects.get(pk=client.post("/api/graphs/", {"name": f"Flow of {count}"}, format="json").json()["id"])
         nodes = [_python_node(graph, own_secret, f"node_{index}") for index in range(count)]
-        with _statements_inside_the_guard_s_lookup() as statements:
+        with _statements_inside_the_stored_reference_lookup(monkeypatch) as statements:
             response = _bulk_save(client, graph, nodes)
         assert response.status_code == 200, response.content
         return len(statements)
@@ -566,25 +613,34 @@ def test_the_guard_s_lookups_cost_the_same_for_10_or_30_nodes_a_plugin_saves(cli
     assert guard_statements(10) == guard_statements(30) == 0
 
 
-def test_a_stored_foreign_key_is_compared_by_its_id_without_loading_the_secret(acme, own_secret, django_assert_num_queries):
-    config_id = LLMConfig.objects.create(custom_name="By id", org=acme, api_key_secret=own_secret).pk
-    serializer = LLMConfigSerializer(LLMConfig.objects.get(pk=config_id))
+@pytest.mark.parametrize("stored", ["own_secret", "org_secret"])
+def test_a_stored_foreign_key_is_compared_by_its_id_without_loading_the_secret(
+    request, acme_key, acme, own_secret, org_secret, stored, django_assert_num_queries
+):
+    config_id = LLMConfig.objects.create(custom_name="By id", org=acme, api_key_secret=request.getfixturevalue(stored)).pk
+    config = LLMConfig.objects.get(pk=config_id)
+    actor = _plugin_actor(acme_key, acme)
+    # The plugin's own secrets are confirmed once per principal; confirm it before counting.
+    actor.principal.may_reference_secrets(frozenset({own_secret.pk}))
 
-    with django_assert_num_queries(0):
-        stored = secret_reference_guard.current_ids(serializer=serializer, source="api_key_secret")
+    if stored == "own_secret":
+        with django_assert_num_queries(0):
+            secret_use_checks.check_llm_config_write(actor, config, {})
+    else:
+        with pytest.raises(SecretUseDeniedError) as refused:
+            secret_use_checks.check_llm_config_write(actor, config, {})
+        assert refused.value.field_path == ("api_key_secret_id",)
 
-    assert stored == frozenset({own_secret.pk})
 
-
-def test_a_webhook_trigger_s_stored_secret_costs_only_its_auth_row(acme, own_secret, django_assert_num_queries):
+def test_a_webhook_trigger_s_stored_secret_costs_only_its_auth_row(acme_key, acme, own_secret, django_assert_num_queries):
     trigger = WebhookTrigger.objects.create(path="by-id", org=acme)
     WebhookTriggerAuth.objects.create(trigger=trigger, kind=WebhookTriggerAuthKind.WEBHOOK, secret=own_secret)
-    serializer = WebhookTriggerNestedSerializer(WebhookTrigger.objects.get(pk=trigger.pk))
+    actor = _plugin_actor(acme_key, acme)
+    actor.principal.may_reference_secrets(frozenset({own_secret.pk}))
+    instance = WebhookTrigger.objects.get(pk=trigger.pk)
 
     with django_assert_num_queries(1):
-        stored = secret_reference_guard.current_ids(serializer=serializer, source="auth_secret_id")
-
-    assert stored == frozenset({own_secret.pk})
+        secret_use_checks.check_webhook_trigger_write(actor, instance, {})
 
 
 # ---- a replace-import never re-links an organization's bot key ----

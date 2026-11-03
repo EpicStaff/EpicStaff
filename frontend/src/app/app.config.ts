@@ -1,19 +1,27 @@
+import { AriaDescriber } from '@angular/cdk/a11y';
+import { OverlayKeyboardDispatcher } from '@angular/cdk/overlay';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { ApplicationConfig, inject, provideAppInitializer, provideZoneChangeDetection } from '@angular/core';
 import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltipDefaultOptions } from '@angular/material/tooltip';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideMarkdown } from 'ngx-markdown';
 import { provideMonacoEditor } from 'ngx-monaco-editor-v2';
 import { firstValueFrom } from 'rxjs';
 
 import { routes } from './app.routes';
+import { APP_TOURS } from './app.tours';
 import { SAFE_MARKED_OPTIONS_PROVIDER } from './core/config/safe-markdown-options.factory';
+import { ProfileTourProgressStore, provideGuidedTours, TOUR_PROGRESS_STORE } from './core/guided-tour';
 import { activeOrgInterceptor } from './core/interceptors/active-org.interceptor';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { forbiddenInterceptor } from './core/interceptors/forbidden.interceptor';
 import { networkConnectionInterceptor } from './core/interceptors/network-connection.interceptor';
 import { preflightPermissionInterceptor } from './core/interceptors/preflight-permission.interceptor';
 import { validationErrorsInterceptor } from './core/interceptors/validation-errors.interceptor';
+import { TooltipAriaDescriber } from './core/services/tooltip-aria-describer';
+import { TooltipLastKeyboardDispatcher } from './core/services/tooltip-last-keyboard-dispatcher';
+import { provideAgentDefinitionsStorages } from './features/agent-definitions/agent-definitions.providers';
 import { provideAuditStorages } from './features/audit/audit.providers';
 import { provideChatStorages } from './features/chat/chat.providers';
 import { provideConfigureModelsStorages } from './features/configure-models/configure-models.providers';
@@ -48,6 +56,8 @@ export const appConfig: ApplicationConfig = {
         ),
         provideMarkdown({ markedOptions: SAFE_MARKED_OPTIONS_PROVIDER }),
         provideMonacoEditor(),
+        provideGuidedTours(...APP_TOURS),
+        { provide: TOUR_PROGRESS_STORE, useExisting: ProfileTourProgressStore },
 
         provideAppInitializer(async () => {
             const configService = inject(ConfigService);
@@ -61,6 +71,20 @@ export const appConfig: ApplicationConfig = {
                 appearance: 'outline',
             },
         },
+        {
+            // Without a delay, every pointer pass over a dense canvas or table flashes tooltips.
+            // Material replaces its defaults with this object instead of merging, so the rest repeat its values.
+            provide: MAT_TOOLTIP_DEFAULT_OPTIONS,
+            useValue: {
+                showDelay: 400,
+                hideDelay: 0,
+                touchendHideDelay: 1500,
+                // Above its element, so the design's arrow points down at it.
+                position: 'above',
+            } satisfies MatTooltipDefaultOptions,
+        },
+        { provide: OverlayKeyboardDispatcher, useClass: TooltipLastKeyboardDispatcher },
+        { provide: AriaDescriber, useClass: TooltipAriaDescriber },
 
         { provide: APP_STORAGE, useExisting: ActiveOrgService, multi: true },
         { provide: APP_STORAGE, useExisting: PermissionsService, multi: true },
@@ -69,6 +93,7 @@ export const appConfig: ApplicationConfig = {
         ...provideConfigureModelsStorages(),
         ...provideFlowsStorages(),
         ...provideToolsStorages(),
+        ...provideAgentDefinitionsStorages(),
         ...provideKnowledgeSourcesStorages(),
         ...provideKeyValueTablesStorages(),
         ...provideChatStorages(),

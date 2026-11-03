@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-import posixpath
 import tempfile
 from collections.abc import Generator
 from contextlib import contextmanager, suppress
 from pathlib import Path
+
+from .path_safety import sanitize_storage_path
 
 
 class StoragePermissionError(PermissionError):
@@ -61,19 +62,22 @@ def __get_allowed_paths() -> list[str] | None:
     return __cache["allowed"]
 
 
-def __normalize_path(path: str) -> str:
-    p = path.lstrip("/")
-    p = posixpath.normpath(p)
-    if p == ".":
-        p = ""
-    if p.startswith(".."):
-        raise StoragePermissionError(f"Path traversal detected: '{path}'")
-    return p
+def _safe_relative_path(path: str) -> str:
+    """Normalize a storage path and convert ValueError to StoragePermissionError.
+
+    This is the only place where ValueError from sanitize_storage_path adapts
+    to StoragePermissionError. All other call sites catch ValueError separately
+    (e.g., delete_folder) to preserve their documented behavior.
+    """
+    try:
+        return sanitize_storage_path(path, allow_empty=True, allow_leading_slash=True)
+    except ValueError as e:
+        raise StoragePermissionError(str(e)) from e
 
 
 def __is_path_allowed(normalized_path: str, allowed_paths: list[str]) -> bool:
     for allowed in allowed_paths:
-        allowed_norm = __normalize_path(allowed)
+        allowed_norm = _safe_relative_path(allowed)
         if allowed.endswith("/"):
             folder_prefix = allowed_norm + "/"
             if normalized_path == allowed_norm or normalized_path.startswith(folder_prefix):
@@ -101,14 +105,14 @@ def is_reserved_path(relative_path: str) -> bool:
 
 
 def check_storage_permission(operation: str, path: str) -> None:
-    if is_reserved_path(posixpath.normpath(path.lstrip("/"))):
+    normalized = _safe_relative_path(path)
+    if is_reserved_path(normalized):
         raise StoragePermissionError(
             f"Access denied: '{RESERVED_DIRECTORY}' holds deleted files and is not available to flows."
         )
     allowed = __get_allowed_paths()
     if allowed is None:
         return
-    normalized = __normalize_path(path)
     if not __is_path_allowed(normalized, allowed):
         if allowed:
             allowed_hint = (
@@ -162,7 +166,10 @@ class EpicStaffStorage:
         return self._client
 
     def _normalize_key(self, path: str) -> str:
-        relative = path.lstrip("/")
+        relative = _safe_relative_path(path)
+        # Preserve trailing slash if it was in the input
+        if relative and path.endswith("/"):
+            relative += "/"
         prefix = os.environ.get("STORAGE_ORG_PREFIX") or None
         if prefix:
             return f"{prefix}/{relative}"
@@ -395,9 +402,8 @@ class EpicStaffStorage:
                 successfully (this batch or earlier ones) are still
                 recorded as mutations before this is raised.
         """
-        relative = path.lstrip("/")
-        normalized = posixpath.normpath(relative) if relative else ""
-        if normalized in ("", "."):
+        normalized = _safe_relative_path(path)
+        if normalized == "":
             raise ValueError(f"Refusing to delete root or empty path: '{path}'")
 
         check_storage_permission("delete", path)

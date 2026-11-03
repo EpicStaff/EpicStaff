@@ -60,7 +60,7 @@ lives under `src/django_app/rbac/`; see §10 for the full file index.
 | `OrganizationUser` | `rbac_organization_user` | `rbac/models/organization_user.py` | Membership: (`user`, `org`) unique, carries exactly one `role`. Deleting the row revokes access. |
 | `Role` | `rbac_role` | `rbac/models/role.py` | `is_built_in=True, org=NULL` for the four built-ins (immutable); custom roles carry `org`. |
 | `RolePermission` | `rbac_role_permission` | `rbac/models/role.py` | One row per (role, resource_type) with an integer permission **bitmask**. |
-| `ApiKey` | — | `rbac/models/api_key.py` | Service-to-service auth. Stores a plain SHA-256 hash + 12-char `es-` prefix; `key_type` is `system` or `user`. System keys (no owner) resolve to `SystemServicePrincipal` (superadmin-equivalent); user keys resolve to their owning user. No scopes field — see [api_keys.md](api_keys.md) for detail. |
+| `ApiKey` | — | `rbac/models/api_key.py` | Service-to-service auth. Stores a plain SHA-256 hash + 12-char `es-` prefix; `key_type` is `system` or `user`. System keys (no owner, no org) resolve to `SystemServicePrincipal` (superadmin-equivalent); user keys resolve to their owning user and are bound to one org (`org` FK, `CASCADE`; required for `user` keys by the `api_key_type_invariants` constraint). No scopes field — see [api_keys.md](api_keys.md) for detail. |
 | `PasswordResetToken` | `rbac_password_reset_token` | `rbac/models/password_reset_token.py` | Single-use reset grant, TTL `PASSWORD_RESET_TOKEN_TTL` (default 900 s). Stores only `token_hash` (SHA-256 of a `secrets.token_urlsafe(32)` value) — the raw token exists once, in the emailed link, so a read of this table is not replayable. The row's existence *is* the grant: consuming or superseding one deletes it, so there is no `is_used` flag and no accumulation of spent verifiers. Generation, hashing and deletion live in `PasswordResetTokenRepository`. |
 | `OrgScopedModel` | abstract | `rbac/models/org_scoped.py` | Adds `org` FK (+ index) and `created_by` FK to any resource model. `org` is declared nullable in Python; NOT NULL is enforced per-table at the DB layer after backfill. |
 
@@ -105,10 +105,18 @@ class Permission(IntFlag):
     UPDATE = 4
     DELETE = 8
     EXPORT = 16  # 32 retired (was DOWNLOAD, folded into EXPORT)
-    USE = 64  # catalog action of `secrets` only; enforced by SecretReferenceGuard
+    USE = 64  # catalog action of `secrets`, `flows` and `chats`; see the table below
     LIST = 128  # reserved — not in the catalog, checked nowhere
-    RUN = 256  # catalog action of `flows` only; start/stop runs and write trigger nodes
 ```
+
+`USE` means something different on each resource that lists it in `applicable_actions`
+(`rbac/access/catalog.py`), and it is granted on no other:
+
+| Resource | What `use` allows | Enforced by |
+|---|---|---|
+| `secrets` | Attach a secret to a resource or change where it is sent (§5.6) | `SecretUseService` |
+| `flows` | Start and stop runs; write trigger nodes (§5.3) | `get_runnable_graph`, `get_accessible_session`, `trigger_node_access` |
+| `chats` | Operator support work: claim, release, reply, test conversation | the chat service, through the effective-permissions endpoint |
 
 ### 2.2 Built-in roles (declared in `rbac/access/builtin_roles.json`)
 
@@ -121,7 +129,7 @@ after `migrate`) makes the database match it exactly.
 "Member": {
   "description": "Builds and edits workspace resources; no organization administration.",
   "permissions": {
-    "flows": ["create", "read", "update", "run"],
+    "flows": ["create", "read", "update", "use"],
     "knowledge_sources": ["read"]
   }
 }
@@ -131,7 +139,7 @@ after `migrate`) makes the database match it exactly.
   a resource missing from `permissions` is removed entirely. To take a permission away, delete
   it from the file.
 - **Only grantable actions are accepted.** Each action must be in that resource's
-  `applicable_actions` in `rbac/access/catalog.py`, so `use` on `flows`, `list` anywhere, or a
+  `applicable_actions` in `rbac/access/catalog.py`, so `use` on `agents`, `list` anywhere, or a
   platform action is refused. To grant a new kind of action, add it to the catalog and enforce
   it first. This keeps every stored bit one the code enforces and the matrix can show — the
   escalation ceiling compares these masks, so a dead bit can still refuse a legitimate
@@ -185,16 +193,24 @@ first-setup, login, refresh, password-reset request/confirm, swagger-token).
 
 Two authentication classes (`rbac/identity/authentication.py`), both global defaults:
 - `JwtAuthentication` — `Authorization: Bearer <jwt>` → simplejwt (HS256, access 15 min,
-  refresh 7 d, rotation + blacklist on). Custom claims: `email`, `is_superadmin`,
+  refresh 7 d with remember-me or 30 min without, rotation + blacklist on; the refresh
+  token travels only in an HttpOnly cookie, `rbac/identity/refresh_cookie.py`). Custom claims: `email`, `is_superadmin`,
   `hash_password` (`CHECK_REVOKE_TOKEN=True`: binds the token to the password hash).
 - `ApiKeyAuthentication` — `X-Api-Key: <key>` or `Authorization: ApiKey <key>` → delegates to
-  `ApiKeyAuthenticator`, which resolves the raw key to an `ApiKey` row, then hands it to
+  `ApiKeyAuthenticator`, which resolves the raw key to an `ApiKey` row (401 when it is
+  missing, revoked or expired, its owner is inactive, or — for a user key — its org is
+  inactive or a non-superadmin owner has no membership there; the org check sits here
+  because superadmin permission paths never re-check the org), then hands it to
   `PrincipalResolver` (`rbac/identity/api_keys/principals.py`): a `system`-type key
   resolves to `SystemServicePrincipal` (superadmin-equivalent, no `email`/`pk`); a
   `user`-type key resolves to its owner. `request.user` is that principal, `request.auth`
-  is the `ApiKey` row. A user key inherits the owner's live RBAC permissions per the
-  `X-Organization-Id` header the caller sends — identical to that owner authenticating with
-  a JWT. Key management endpoints (`/api/profile/api-keys/`,
+  is the `ApiKey` row. A user key belongs to one org (`ApiKey.org`) and acts **only in that
+  org**, with the owner's live RBAC permissions there. The `X-Organization-Id` header (and an
+  `org_id` URL kwarg) is ignored for it — never read, never an error. Code that needs the org
+  of a user key calls `rbac.access.principals.user_api_key_org_id(request)` (the key's org,
+  or `None` for any other credential) instead of reading the header; `OrgContextService`,
+  `GET /api/profile/`, the flow-assistant org resolver and the admin views do so. Key
+  management endpoints (`/api/profile/api-keys/`,
   `/api/admin/api-keys/`) are JWT-only (`DenyApiKeyAuth`) — see
   [api_keys.md](api_keys.md). Every write on the governance surface
   (`/api/admin/roles|memberships|organizations|users/`, including permanent
@@ -209,9 +225,11 @@ Two authentication classes (`rbac/identity/authentication.py`), both global defa
 
 Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tickets
 (`TicketService`, `rbac/identity/tickets.py`): `POST /api/auth/sse-ticket/`
-or `/api/auth/ws-ticket/` with JWT → 30 s single-use ticket consumed atomically via
-`GETDEL`, passed as `?ticket=` on the stream URL. Redis stores only
-`sha256(ticket)` as the key, so Redis read access yields no replayable ticket.
+or `/api/auth/ws-ticket/` with JWT or a USER API key → 30 s single-use ticket consumed
+atomically via `GETDEL`, passed as `?ticket=` on the stream URL. Redis stores only
+`sha256(ticket)` as the key, so Redis read access yields no replayable ticket. `consume()`
+returns a `TicketHolder(user, api_key_org_id)`: a ticket issued with a USER key carries the
+key's org, and every stream must refuse a row of any other org as `not_found`.
 
 Throttling (`rbac/throttles.py`; `NotifyEmailThrottle` lives in `tables/throttles.py`) — every
 anonymous credential-adjacent endpoint is covered. Exceeding any bucket returns `429` with
@@ -254,22 +272,28 @@ See [auth_endpoints.md](auth_endpoints.md) and
 
 ## 4. Org context layer
 
-`OrgContextService.resolve(request, view_kwargs)` (`org_context_service.py`) is the single
+`OrgContextService.resolve(request, view_kwargs)` (`rbac/access/org_context.py`) is the single
 implementation. Resolution order:
 
+0. USER API key → the key's org (`user_api_key_org_id`). Steps 1 and 2 are skipped: a
+   request naming another org still acts in the key's org.
 1. URL kwarg `org_id` (target-context; used by `/api/admin/organizations/{org_id}/...`).
    The header is **ignored** on these endpoints.
 2. `X-Organization-Id` header (active-context; everything else).
 
-Then membership is asserted: a non-superadmin must have an `OrganizationUser` row in that
-org **and the org must be active**. Errors:
+Then membership is asserted (`assert_membership`, public — key creation reuses it): a
+non-superadmin must have an `OrganizationUser` row in that org **and the org must be
+active**. For a USER key this checks the key's owner, so an owner removed from the key's org,
+or an inactive org, gives `403`. Errors:
 
 | Condition | Exception | HTTP |
 |---|---|---|
 | Header/kwarg missing or non-integer | `OrgContextRequiredError` (`org_context_required`) | 400 |
 | Not a member / org inactive (non-superadmin) | `OrgMembershipRequiredError` (`org_membership_required`) | 403 |
+| Org inactive (superadmin) | `OrgMembershipRequiredError` (`org_membership_required`) | 403 |
+| Org does not exist (superadmin) | `OrganizationNotFoundError` (`organization_not_found`) | 404 |
 
-Superadmin skips the membership check (may target any org, including inactive ones).
+Superadmin skips the membership check (may target any existing, active org).
 The resolved id is cached per-request as `request._rbac_active_org_id` — both
 `OrgScopedResolverMixin.get_active_org_id()` and the serializer fields share that cache,
 so resolution runs at most once per request.
@@ -326,30 +350,39 @@ The quickstart endpoint (`tables/views/views.py`) is the reference example.
 
 Sessions have no org column; they are children of their graph. Non-ViewSet session
 surfaces (SSE stream, get-updates, stop) authorize via
-`get_accessible_session(user, session_id, action)`
+`get_accessible_session(user, session_id, action, *, api_key_org_id)`
 (`tables/services/session_access.py`): 404 when the session has no graph, then
-membership + FLOWS bit check against `session.graph.org_id`. SSE resolves the user from
-the single-use ticket first, then calls this. Reading a session (SSE, get-updates) needs
-`READ`; stopping one needs `RUN`, as starting one does (`get_runnable_graph`).
+membership + FLOWS bit check against `session.graph.org_id`. Reading a session (SSE,
+get-updates) needs `READ`; stopping one needs `USE`, as starting one does
+(`get_runnable_graph`).
+
+`api_key_org_id` is a **required** keyword on `get_accessible_session`,
+`get_runnable_graph`, `assert_graph_readable`, `get_streamable_conversation` and
+`assert_row_org_permission`, so no caller can forget it: a row of another org than the
+key's is refused as missing, even for a member there or a superadmin. An HTTP view passes
+`user_api_key_org_id(request)`; SSE and the websocket pass the ticket's `api_key_org_id`
+(they resolve the user from the single-use ticket first). Pass `None` explicitly only for
+a credential that is not a USER key.
 
 The graph co-editing WebSocket (`ws/graphs/<id>/edit/`, `tables/graph_collab/consumers.py`)
-follows the same pattern: the ticket carries only the user, so `connect()` calls
-`assert_graph_readable(user, graph_id)` from the same module, which takes the org from the
+follows the same pattern: the ticket carries the user (and a USER key's org, which
+`TicketAuthMiddleware` puts in `scope["api_key_org_id"]`), so `connect()` calls
+`assert_graph_readable(user, graph_id, api_key_org_id=...)` from the same module, which takes the org from the
 graph row and needs FLOWS `READ` — the same bit that opens the graph over HTTP. A missing
 graph, a binned one and another org's graph all close with `4404`; a member without the bit
 closes with `4403`. The check runs before the socket joins the graph's group or presence,
 so a refused caller never sees the editors and is never announced to them. Access is
 checked at connect only: an open socket is not closed when the membership is revoked.
 
-`RUN` also gates writing a trigger node (webhook, Telegram, schedule), because one starts
+`USE` on `flows` also gates writing a trigger node (webhook, Telegram, schedule), because one starts
 runs by itself. Which node types are triggers is declared once, by `starts_runs=True` on
 their `NodeTypeConfig` in `tables/services/graph_bulk_save_service/registry.py`
 (`TRIGGER_NODE_LIST_KEYS`, `TRIGGER_NODE_MODELS`); `tables/services/trigger_nodes.py`
 derives everything else from them:
 
-- Writing one trigger node — the bulk save and `TriggerNodeRunPermissionMixin`
+- Writing one trigger node — the bulk save and `TriggerNodeUsePermissionMixin`
   (`tables/views/mixins.py`) — calls `trigger_node_access.assert_may_write`, which raises
-  `TriggerNodesRequireRunPermissionError` (403 `trigger_nodes_require_run_permission`).
+  `TriggerNodesRequireUsePermissionError` (403 `trigger_nodes_require_use_permission`).
   `trigger_node_access` is the shared `TriggerNodeAccess` instance.
   Updating a `WebhookTrigger` that a live trigger node is attached to
   (`TriggerNodeInspector.has_any_attached_to_webhook_trigger`) goes through the same
@@ -359,8 +392,8 @@ derives everything else from them:
   `TriggerNodeInspector.graphs_attached_to_webhook_trigger`; it lists their names only
   when the caller also holds READ on flows, and always returns the count.
 - Recreating trigger nodes by copy, import, partial import or version create-graph /
-  restore raises `FlowWithTriggerNodesRequiresRunPermissionError`
-  (403 `flow_with_trigger_nodes_requires_run_permission`) through
+  restore raises `FlowWithTriggerNodesRequiresUsePermissionError`
+  (403 `flow_with_trigger_nodes_requires_use_permission`) through
   `trigger_node_access.assert_user_may_recreate` (views) or `assert_may_recreate` (the
   import services, with the `effective_permissions` the caller passes in). One "holds a
   trigger node" decision per source shape, on `TriggerNodeInspector`:
@@ -369,12 +402,12 @@ derives everything else from them:
   `has_any_in_flow_entry` (version snapshot). The views check after the org-scoped
   fetch, so another org's id stays a 404; the import services check before their
   transaction opens.
-- `run-python-code` needs RUN for code a trigger node owns, named by target
+- `run-python-code` needs USE for code a trigger node owns, named by target
   (`CodeRunTarget.owner_is_trigger_node`) or by `python_code_id`
   (`trigger_node_owns_python_code`).
 
 A new trigger node type only needs the flag.
-See `roles_and_permissions.md` → "Running flows: the `run` action" for the endpoint list.
+See `roles_and_permissions.md` → "Running flows: `use` on `flows`" for the endpoint list.
 
 ### 5.4 Superadmin-only and global surfaces
 
@@ -402,17 +435,19 @@ deliberate write-without-read grant working: a role carrying `delete` but not `r
 able to delete, not be told the row does not exist. `action` is a required argument precisely
 so every call site states which verb it authorizes.
 
-`authorize_any_org(actor, org_ids, action)` is the existential counterpart: it authorizes a row
-scoped through a *set* of orgs instead of a single column — an API key's scope is every
-organization its owner belongs to — and applies the same split over that set. The row is
-visible when **at least one** reachable org grants READ or `action`, and authorized when at
-least one grants `action`; sharing no org at all still 404s, exactly as `resolve_for_write`
-does for one.
 `delegated_scope_q`, an optional class attribute a subclass may declare, is an extra queryset
 restriction `apply_org_scope` applies only when a delegated (non-superadmin) caller is being
 org-scoped at all — never to a superadmin, who already bypasses the org filter entirely.
 `ApiKeyManagementService` sets it to exclude superadmin-owned keys from a delegated admin's
 list, since the superadmin's own request already reaches them without it.
+
+`limit_org_ids_to_api_key(request, org_ids)` (`rbac/access/principals.py`, next to
+`user_api_key_org_id`) narrows the admin read surface for a USER API key: it returns
+`[key org]` in place of whatever orgs the read named (or `None`), and passes `org_ids` through
+unchanged for any other credential. Every cross-org list (roles, memberships incl. `assignable-users`, organizations,
+users, plugin role permissions) calls it before the service; get-by-id reads (a role, an
+organization, its retention) return 404 outside the key's org. A new cross-org read action must
+call it too, or a USER key reads every org its owner can.
 
 ### 5.5 Service-layer guards (defense in depth)
 
@@ -449,45 +484,149 @@ invariant.
 
 ---
 
-### 5.6 Serializer-level guards — `secrets:USE` on secret references
+### 5.6 Write-point checks — `secrets:USE` on what a write does with secrets
 
-One check lives in neither the view nor the service: whether the caller may change
-**which Secret a resource references**. It is enforced in the serializer layer, and
-the reason is worth understanding before you move it.
+One check is neither a verb gate nor a structural invariant: whether this write changes
+**which secrets a resource uses, or where it sends them**. It needs `secrets:USE` on top of
+the endpoint's own permission.
 
-`SecretReferenceGuardMixin` (`tables/serializers/utils/secret_reference_guard_mixin.py`)
-declares the guarded fields and hooks `validate()`; the decision lives in
-`SecretReferenceGuard` (`tables/services/secrets/reference_guard.py`):
+**Serializers never check permissions.** They validate shape. The rule lives in
+`SecretUseService` (`tables/services/secrets/secret_use_service.py`), which knows nothing
+about requests or serializers, with one `check_<entity>_write(actor, instance, data)` per
+entity in `tables/services/secrets/secret_use_checks.py`. `instance` is the persisted row
+(`None` on create); `data` is `serializer.validated_data`, and a key absent from it means
+"unchanged". The write point calls the check **after** validation and **before** the write.
 
-```python
-class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
-    secret_reference_fields = ("auth_secret_id",)
-```
+**The four rules.** Each compares "after this write" with "persisted now", so a resend of the
+stored value is free — that is what makes `graph/{id}/save`, which resubmits the whole graph
+on every save, usable without `USE`.
 
-**The delta rule.** A secret reference is *state, not an operation*. Omitted from the
-payload → skip; present but equal to the persisted value → skip; different → require
-`secrets:USE`. This is what makes the guard usable from `graph/{id}/save`, which
-submits the whole graph on every save and would otherwise demand `USE` from anyone
-editing an unrelated node.
+1. **Reference change** — the set of secret ids a FK/M2M links to changes (including
+   clearing it, and any value on create). Binned secrets the row already links to count as
+   linked (`tables/services/secrets/linked_ids.py`).
+2. **New header marker** — an `extra_headers` dict gains an `epicstaff_secret(<name>)` name
+   it does not have now. Keeping or removing markers is free.
+3. **Destination change on a secret-bearing row** — the row, after the write, carries a
+   secret, and the place it sends requests changes:
+   - `LLMConfig`: its own `base_url` and its model's `base_url`. Switching `model` to one with
+     a different `base_url` counts; to one with the same `base_url` does not.
+     `LLMConfig.base_url` is not read at run time today and is gated anyway.
+   - `EmbeddingConfig`: its model's `base_url` (via a `model` switch).
+   - `OpenAIRealtimeConfig`: `base_url`, when either API-key secret is set.
+   - `McpTool`: `transport` (the URL the agent connects to, sending `auth_secret`), when
+     `auth_secret` is set. A PUT that resends the stored `transport` is not a change. A PUT
+     that omits `transport` never reaches the check: `McpToolViewSet.update` back-fills the
+     missing field with `None`, which the serializer rejects with a 400.
 
-`_assert_may_use` denies when there is no `request` in serializer context, because the
-active org cannot be resolved without one — fail-safe, not fail-open. Any service that
-drives these serializers must thread the request through (`GraphBulkSaveService` does).
+   "Carries a secret" means an API-key secret reference or any header marker.
+4. **Model `base_url` change while a secret-bearing config uses it** — `LLMModel` /
+   `EmbeddingModel` `base_url` changes while any config of that model carries a secret.
+   Not narrowed to the active org: a custom model belongs to one org, and counting more
+   configs can only deny more.
 
-**Diverging one request path.** `secret_reference_fields` is read through
-`get_secret_reference_fields()`, so a subclass may differ from the class its siblings
-share — e.g. a `*BulkSerializer` (graph save subclasses the node serializers) or an
-endpoint-specific variant:
+Only `base_url` and McpTool `transport` are destinations; provider, `deployment_id` and
+`api_version` cannot send a request to a host the caller picks. `None` and `""` are the same
+destination (both mean "the provider's default"), so a client sending `""` where `null` is
+stored is not denied.
 
-```python
-class McpToolBulkSerializer(McpToolSerializer):
-    def get_secret_reference_fields(self):
-        """Guard nothing on this path."""
-        return ()
-```
+No actor (no user to resolve), or an actor that is not a member of the org, is denied when a
+change needs `USE` — fail-safe, not fail-open.
 
-The coverage checks ask instances, not classes, so an override stays inside the
-guarantee.
+**Pinned-org principals (a plugin's service account).** On top of the rules above, a
+principal implementing `PinnedOrgPrincipal` is held to the rules in
+`tables/services/secrets/pinned_principal_rules.py`; people are never limited by them:
+
+- Every secret a row references *after* the write — changed or not, carried by the payload or
+  persisted — must pass `principal.may_reference_secrets` (`SecretUseService.check_references`),
+  and every header marker must name such a secret (`check_markers`, via
+  `may_reference_marker_names`; a name no secret has is refused). So a nested PythonCode is
+  checked on every write of it, even one that leaves `secret_ids` out. The denial is a
+  `SecretUseDeniedError` whose message names no secret.
+- It never sets or changes a model's endpoint fields (`base_url`, `deployment_id` /
+  `deployment`), on create or update: `ModelEndpointsGuardedViewSetMixin` (first in the LLM and
+  embedding model viewsets, so a built-in model answers 400, not its own 403) and the model
+  import strategies call `assert_endpoints_untouched`. Its `ModelEndpointNotSettableError` renders
+  as a 400 keyed by each field; the import strategies re-raise it as a `ValidationError`.
+- A run or indexing job it starts is refused with `409 secret_marker_not_referenceable` when a
+  marker it would resolve names a secret it may not reference (`assert_may_resolve_markers`,
+  called by the plugin run guard and `process-rag-indexing/`).
+- A request authenticated with a plugin credential whose user does not implement the protocol is
+  refused with 403 (`IncompletePluginCredentialError`, a Django `PermissionDenied`) by
+  `actor_from_request` (`pinned_principal_of_request`), never taken for a person.
+
+`actor_from_request` keeps one `SecretActor` per request, so `USE` is resolved at most once per
+request, however many nodes a bulk save checks.
+
+**Concurrent writes.** Rules 3 (model switch) and 4 read another row, so they lock the model
+row (`select_for_update`, two models in ascending pk order) and read `base_url` from the
+locked row; rule 4 locks before it counts configs. The LLM / embedding config and model
+viewsets set `secret_use_check_locks_rows = True`, which makes `SecretUseCheckedViewSetMixin` run the
+check and the save in one `transaction.atomic()`, so a concurrent model edit and config
+switch cannot both pass. Quickstart locks a reused org model the same way. Not covered: an
+admin adding a secret to a config while someone edits its (unchanged) model's `base_url` —
+the config write locks no model.
+
+**Write points.** Every place that saves a secret-bearing entity runs its check:
+
+| Write point | How |
+|---|---|
+| Model viewsets (LLM / embedding configs and models, realtime configs, Twilio channel, MCP tool, Python code tool, Python / webhook-trigger / Telegram-trigger node, webhook trigger) | `SecretUseCheckedViewSetMixin` (`tables/views/secret_use.py`) with `secret_use_check = check_<entity>_write`; place it **before** the `OrgScoped*` mixin, whose `perform_create` does not call `super()` |
+| Paths that bypass `perform_create` / `perform_update` (Twilio channel upsert in `create`, `WebhookTriggerViewSet`'s own overrides) | `self.run_secret_use_check(instance, data)` |
+| Graph bulk save | `NodeTypeConfig.secret_use_check` in `tables/services/graph_bulk_save_service/registry.py`; run per node after its serializer validates |
+| Classification decision table node | `ClassificationDecisionTableNodeService.create_or_update` calls `check_cdt_node_write` |
+| Quickstart | `QuickstartView.post` calls `check_quickstart` before `quickstart_service.quickstart` |
+| Config import | `BaseConfigStrategy` calls `check_config_import` with the strategy's `marker_fields`; actor from the importing user |
+
+PythonCode is always nested: each parent's check calls `check_python_code_write` with the
+attribute it nests it under.
+
+**Error shape.** A check raises the domain error `SecretUseDeniedError(field_path, message)`
+and the write point lets it propagate (rolling back any open transaction).
+`custom_exception_handler` (`utils/exception_handler.py`) renders it as a `ValidationError`
+of `denial.field_errors()`, nested along `field_path`: the usual 400 envelope with the field
+named in `message`, e.g. `("python_code", "secret_ids")` →
+`{"python_code": {"secret_ids": [...]}}`. Graph bulk save catches it and reports it per node, as
+`{"errors": {"<list_key>": [{"index", "errors": {...}}]}}`. The config import strategy also
+catches it and raises the same `ValidationError`, like every other rejection in that strategy
+(its callers and unit tests handle one kind of error). Because the check runs after
+validation, a shape error (an undeclared `get_secret`) wins over a `USE` denial.
+
+**Adding a secret-referencing field.**
+
+1. Add or extend the entity's `check_<entity>_write` in `secret_use_checks.py` (reference,
+   marker, and destination rules as they apply).
+2. Wire it at **every** write point that saves the entity — viewset `secret_use_check`, any
+   custom write path (`run_secret_use_check`), the bulk-save `NodeTypeConfig`, services.
+3. Map the serializer to the check in `SECRET_USE_CHECK_BY_SERIALIZER`
+   (`tests/services_tests/test_secret_reference_coverage.py`). That test discovers every
+   writable serializer field targeting `Secret` and fails on one whose serializer is not
+   mapped and not in `EXEMPT` (which needs a written reason). It proves the mapping, not the
+   wiring — add an API test for the write point too (`tests/api_tests/test_secret_use_*.py`).
+4. Add the field to `GUARDED_REFERENCES` in
+   `tests/plugins_tests/test_plugin_secret_references.py`, which proves every check refuses a
+   plugin's reference to a secret it did not create.
+
+**Deliberately ungated.**
+
+- **PythonCode content.** `USE` is needed only to *declare* secrets (`secret_ids`). Editing
+  the `code` or `venv_id` of a PythonCode that already declares secrets is free: the
+  declaration is what grants the access.
+- **Copy, graph-version restore, graph-import key re-link** reproduce an existing reference
+  inside one org rather than choosing a new one (pinned by `TestUngatedPathsStayUngated`
+  and `tests/graph_versioning_tests/test_secret_declarations.py`). An edit of the copy is
+  checked as usual.
+- **No user-chosen destination**: the Telegram bot key (always the Telegram Bot API), the
+  ElevenLabs and Gemini realtime configs (fixed provider hosts), the Twilio channel token
+  (only verifies inbound signatures). Only their reference rule applies.
+- **Quickstart** names no destination: it prefers the built-in catalog model, and refuses an
+  org's custom model of the same name that has its own `base_url`
+  (`QuickstartService._get_or_create_model`), so it never attaches the key to a URL the
+  caller chose.
+
+Kept links to binned secrets are not a permission rule: `KeptLinkPrimaryKeyRelatedField`
+reads "what the row links to now" from `tables/serializers/utils/persisted_links.py`
+(`current_linked_ids`, through the nested serializers' `parent_attribute` /
+`get_current_secret_reference` hooks).
 
 ---
 
@@ -548,8 +687,8 @@ Serializer rules for org-scoped models:
 | Header | Meaning |
 |---|---|
 | `Authorization: Bearer <jwt>` | End-user auth |
-| `X-Api-Key` / `Authorization: ApiKey <key>` | Service auth: a user key inherits its owner's permissions; the system key acts as a superadmin service principal |
-| `X-Organization-Id: <int>` | Active org for active-context endpoints. CORS-allowlisted in settings. |
+| `X-Api-Key` / `Authorization: ApiKey <key>` | Service auth: a user key acts in its own org with its owner's permissions there; the system key acts as a superadmin service principal |
+| `X-Organization-Id: <int>` | Active org for active-context endpoints (JWT and the system key). Ignored with a user API key. CORS-allowlisted in settings. |
 
 ### 7.2 Permissions for the FE
 
@@ -645,7 +784,8 @@ References to it from other serializers: `OrgVisiblePrimaryKeyRelatedField`.
 `org` explicitly, and must state a *precedence* when both a built-in and an own-org row can
 match: `org_visible_queryset(...)` returns both, and `.first()` on it has no `ORDER BY`, so
 the result is whatever Postgres feels like returning. See
-`QuickstartService._get_or_create_llm_model` for the pattern (own-org wins), and
+`QuickstartService._get_or_create_model` for the pattern (the built-in wins; the org's own
+row is used only when it has no `base_url`, see §5.6), and
 `upload_models.py` for the built-ins-only form (`org__isnull=True`) — Django strips
 `__`-lookups from `get_or_create`/`update_or_create` create params, so that filter narrows
 the lookup without leaking into the created row.
@@ -667,11 +807,13 @@ service, and never trust ids in the payload without an org-scoped fetch.
 ### 8.5 Streaming (SSE/WS) endpoint
 
 1. Client obtains a ticket (`/api/auth/sse-ticket/` or `/ws-ticket/`).
-2. Your consumer/view consumes it (`sse_ticket_service.consume(ticket)`) → user or 401
-   `invalid_sse_ticket`.
+2. Your consumer/view consumes it (`sse_ticket_service.consume(ticket)`) → a
+   `TicketHolder` or 401 `invalid_sse_ticket`. `SSEMixin` sets `self.user` and
+   `self.api_key_org_id` for you.
 3. Authorize against the org that owns the streamed object (for sessions:
-   `get_accessible_session`; for a graph: `assert_graph_readable`). Never trust an org
-   id supplied in the query string. Authorize before joining any channel group.
+   `get_accessible_session`; for a graph: `assert_graph_readable`), passing
+   `api_key_org_id` so a USER key's ticket cannot stream another org's row. Never trust an
+   org id supplied in the query string. Authorize before joining any channel group.
 
 ### 8.6 Global (non-org) resource
 
@@ -732,7 +874,9 @@ path — the default org is only for bootstrap and data migrations.
 | User account admin (superadmin: create / grant-revoke SA / activate-deactivate) | `rbac/governance/users.py`, `rbac/governance/guards.py`, `rbac/views/users.py` |
 | Roles CRUD + authoring ceiling + immutability guard + `?assignable_org_ids=` filter + the org-scoped `assigned_count` | `rbac/governance/roles.py`, `rbac/views/roles.py` |
 | Escalation ceiling (shared by authoring and assignment) | `rbac/access/asserts.py` (`assert_within_ceiling`), `rbac/access/effective.py` (`covers`, `bits_of`) |
-| API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys) | `rbac/governance/api_keys.py`, `rbac/views/api_keys_admin.py` |
+| API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys, scoped by the key's own org) | `rbac/governance/api_keys.py`, `rbac/views/api_keys_admin.py` |
+| Self-service API keys (one org per key, cap 5 per user and org) + key-org lookup | `rbac/identity/api_keys/service.py`, `rbac/views/api_keys.py`, `rbac/access/principals.py` (`user_api_key_org_id`) |
+| Admin read limit for a USER API key | `rbac/access/principals.py` (`limit_org_ids_to_api_key`) |
 | Permission gate (ViewSet) | `rbac/access/gates.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
 | Permission gate (APIView) | `rbac/access/asserts.py` |
 | Session/SSE and graph co-editing WS authorization | `tables/services/session_access.py`, `tables/views/sse_views.py`, `tables/graph_collab/consumers.py` (stays in `tables` — sessions are children of the graph, not an RBAC concept) |

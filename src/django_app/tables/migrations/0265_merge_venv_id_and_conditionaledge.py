@@ -1,4 +1,4 @@
-# Generated manually to merge two migration leaves created in parallel.
+# Generated manually to merge the two leaf migrations of the venv manager work and the conditional edge removal
 
 from django.db import migrations
 

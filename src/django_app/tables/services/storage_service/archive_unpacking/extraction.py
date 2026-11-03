@@ -1,12 +1,12 @@
 import zipfile
 from collections.abc import Iterator
 
+from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from tables.services.storage_service.archive_unpacking.extraction_guard import (
     ArchiveExtractionGuard,
     GuardedMemberReader,
 )
 from tables.services.storage_service.archive_unpacking.safe_readers import is_tar, open_tar
-from tables.services.storage_service.path_utils import sanitize_storage_path
 
 
 def iter_archive_members(

@@ -1,14 +1,17 @@
-"""/api/profile/: the signed-in user's own profile, avatar, password change and quick start tour."""
+"""/api/profile/: the signed-in user's own profile, avatar, password change and guided tours."""
 
 import io
 import json
 from datetime import timedelta
 from unittest.mock import ANY
+from urllib.parse import quote
 
 import pytest
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from PIL import Image
 from rest_framework import status
@@ -20,12 +23,19 @@ from rbac.identity.refresh_cookie import refresh_cookie_name
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from rbac.signals import profile_updated
+from tables.models import UserTourProgress
 
 PROFILE_URL = "/api/profile/"
 AVATAR_URL = "/api/profile/avatar/"
 REQUEST_URL = "/api/profile/password-change/request/"
 CONFIRM_URL = "/api/profile/password-change/confirm/"
-QUICKSTART_TOUR_URL = "/api/profile/quickstart-tour/complete/"
+
+
+def tour_url(tour_key: str) -> str:
+    return f"/api/profile/tours/{quote(tour_key, safe='')}/complete/"
+
+
+QUICK_START_TOUR_URL = tour_url("quick-start")
 
 
 @pytest.fixture
@@ -86,7 +96,7 @@ def _png_upload(name="a.png", content=None):
         ("delete", AVATAR_URL, None, None),
         ("post", REQUEST_URL, {"current_password": "x"}, "json"),
         ("post", CONFIRM_URL, {"ticket": "x", "new_password": "y"}, "json"),
-        ("post", QUICKSTART_TOUR_URL, None, None),
+        ("post", QUICK_START_TOUR_URL, None, None),
     ],
     ids=[
         "get",
@@ -95,7 +105,7 @@ def _png_upload(name="a.png", content=None):
         "delete-avatar",
         "password-change-request",
         "password-change-confirm",
-        "complete-quickstart-tour",
+        "complete-tour",
     ],
 )
 def test_an_env_api_key_has_no_profile(issue_api_key, tmp_media_root, method, url, body, format_name):
@@ -111,7 +121,7 @@ def test_an_env_api_key_has_no_profile(issue_api_key, tmp_media_root, method, ur
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize(("method", "url"), [("get", PROFILE_URL), ("post", QUICKSTART_TOUR_URL)])
+@pytest.mark.parametrize(("method", "url"), [("get", PROFILE_URL), ("post", QUICK_START_TOUR_URL)])
 def test_profile_needs_authentication(method, url):
     assert getattr(APIClient(), method)(url).status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -372,6 +382,8 @@ def test_patch_without_custom_shortcuts_keeps_them(member_acme):
         overrides({" !~": " !~"}),
         shortcuts([custom_entry(keys=None)], {"node.python": "Shift+KeyT"}),
         shortcuts([custom_entry(keys="Shift+KeyA")], {"node.python": "Shift+KeyB", "node.llm": None}),
+        overrides({"flow.run": "Alt+KeyR", "flow.chat": None}),
+        shortcuts([custom_entry(action="flow.curl", keys="Alt+KeyC")], {"flow.chat": None}),
     ],
     ids=[
         "empty", "unknown-action", "two-keys", "same-action-twice", "null-keys", "repeated-null-keys",
@@ -381,7 +393,7 @@ def test_patch_without_custom_shortcuts_keeps_them(member_acme):
         "entries-with-and-without-params", "override-chord", "override-null", "overrides-all-null",
         "overrides-at-limit", "overrides-at-limit-all-null", "override-action-and-chord-at-limit",
         "override-printable-ascii-edges", "override-chord-beside-a-null-custom-keys",
-        "overrides-and-custom-with-different-chords",
+        "overrides-and-custom-with-different-chords", "flow-action-overrides", "flow-action-custom-entry",
     ],
 )
 def test_patch_accepts_custom_shortcuts_up_to_the_limits(member_acme, payload):
@@ -767,75 +779,212 @@ def test_password_change_confirm_rejects_a_weak_password_without_echoing_it(memb
     assert member_acme.check_password("StrongPass123!")
 
 
-# ---- Quick start tour ----
+# ---- Guided tours ----
+
+
+def _store_completed_tours(user, tour_keys):
+    UserTourProgress.objects.bulk_create(
+        [UserTourProgress(user=user, tour_key=tour_key, completed_at=timezone.now()) for tour_key in tour_keys]
+    )
+
+
+def _numbered_tour_keys(count):
+    return [f"tour-{number}" for number in range(count)]
 
 
 @pytest.mark.django_db
-def test_a_fresh_user_has_not_completed_the_quickstart_tour(member_acme):
-    assert client_for(member_acme).get(PROFILE_URL).json()["quickstart_tour_completed"] is False
+def test_a_fresh_user_has_no_completed_tours(member_acme):
+    assert client_for(member_acme).get(PROFILE_URL).json()["completed_tours"] == []
 
 
 @pytest.mark.django_db
-def test_completing_the_quickstart_tour_marks_only_the_caller_and_returns_the_profile(member_acme, orphan_user):
+def test_completing_a_tour_records_it_and_returns_the_profile(member_acme):
     client = client_for(member_acme)
     updated_at_before = member_acme.updated_at
 
-    response = client.post(QUICKSTART_TOUR_URL)
+    response = client.post(QUICK_START_TOUR_URL)
 
     assert response.status_code == status.HTTP_200_OK
-    assert (response.json()["id"], response.json()["quickstart_tour_completed"]) == (member_acme.id, True)
-    assert client.get(PROFILE_URL).json()["quickstart_tour_completed"] is True
+    assert (response.json()["id"], response.json()["completed_tours"]) == (member_acme.id, ["quick-start"])
+    assert client.get(PROFILE_URL).json()["completed_tours"] == ["quick-start"]
     member_acme.refresh_from_db()
-    orphan_user.refresh_from_db()
-    assert member_acme.quickstart_tour_completed_at is not None
     # Finishing a tour is not a profile edit.
     assert member_acme.updated_at == updated_at_before
-    assert orphan_user.quickstart_tour_completed_at is None
 
 
 @pytest.mark.django_db
-def test_completing_the_quickstart_tour_again_keeps_the_first_timestamp(member_acme):
+def test_completing_a_tour_again_keeps_the_first_completion_time(member_acme):
     earlier = timezone.now() - timedelta(days=30)
-    member_acme.quickstart_tour_completed_at = earlier
-    member_acme.save(update_fields=["quickstart_tour_completed_at"])
+    UserTourProgress.objects.create(user=member_acme, tour_key="quick-start", completed_at=earlier)
 
-    response = client_for(member_acme).post(QUICKSTART_TOUR_URL)
+    response = client_for(member_acme).post(QUICK_START_TOUR_URL)
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.json()["quickstart_tour_completed"] is True
-    member_acme.refresh_from_db()
-    assert member_acme.quickstart_tour_completed_at == earlier
+    assert response.json()["completed_tours"] == ["quick-start"]
+    stored = UserTourProgress.objects.filter(user=member_acme).values_list("tour_key", "completed_at")
+    assert list(stored) == [("quick-start", earlier)]
 
 
 @pytest.mark.django_db
-def test_a_user_api_key_completes_the_quickstart_tour_for_its_owner(member_acme, issue_api_key):
+def test_completed_tours_are_listed_in_key_order(member_acme):
+    client = client_for(member_acme)
+    for tour_key in ["welcome", "quickstart", "quick-start", "flows"]:
+        assert client.post(tour_url(tour_key)).status_code == status.HTTP_200_OK
+
+    assert client.get(PROFILE_URL).json()["completed_tours"] == ["flows", "quick-start", "quickstart", "welcome"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "tour_key",
+    ["a", "a" * 64, "quick-start", "flows-v2", "2026"],
+    ids=["one-character", "64-characters", "hyphenated", "letters-and-digits", "digits-only"],
+)
+def test_a_well_formed_tour_key_is_accepted(member_acme, tour_key):
+    response = client_for(member_acme).post(tour_url(tour_key))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["completed_tours"] == [tour_key]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "tour_key",
+    [
+        "Quick",
+        "a" * 65,
+        "a--b",
+        "-quick",
+        "quick-",
+        "quick_start",
+        "quick start",
+        "тур",
+        "café",
+        "quick-start\n",
+    ],
+    ids=[
+        "uppercase",
+        "65-characters",
+        "double-hyphen",
+        "leading-hyphen",
+        "trailing-hyphen",
+        "underscore",
+        "space",
+        "cyrillic",
+        "accented-latin",
+        "trailing-newline",
+    ],
+)
+def test_a_malformed_tour_key_is_rejected_and_nothing_is_stored(member_acme, tour_key):
+    response = client_for(member_acme).post(tour_url(tour_key))
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    body = response.json()
+    assert body["code"] == "invalid"
+    assert [(error["field"], error["value"]) for error in body["errors"]] == [("tour_key", tour_key)]
+    assert not UserTourProgress.objects.filter(user=member_acme).exists()
+
+
+@pytest.mark.django_db
+def test_the_fiftieth_tour_is_accepted(member_acme):
+    _store_completed_tours(member_acme, _numbered_tour_keys(49))
+
+    response = client_for(member_acme).post(tour_url("the-last-one"))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()["completed_tours"]) == 50
+    assert "the-last-one" in response.json()["completed_tours"]
+
+
+@pytest.mark.django_db
+def test_a_new_tour_beyond_fifty_is_rejected_and_nothing_is_stored(member_acme):
+    _store_completed_tours(member_acme, _numbered_tour_keys(50))
+
+    response = client_for(member_acme).post(tour_url("one-too-many"))
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["code"] == "tour_limit_exceeded"
+    assert UserTourProgress.objects.filter(user=member_acme).count() == 50
+    assert not UserTourProgress.objects.filter(user=member_acme, tour_key="one-too-many").exists()
+
+
+@pytest.mark.django_db
+def test_completing_an_already_completed_tour_at_the_limit_still_succeeds(member_acme):
+    _store_completed_tours(member_acme, _numbered_tour_keys(50))
+
+    response = client_for(member_acme).post(tour_url("tour-7"))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert UserTourProgress.objects.filter(user=member_acme).count() == 50
+
+
+@pytest.mark.django_db
+def test_the_limit_counts_only_the_callers_own_tours(member_acme, orphan_user):
+    _store_completed_tours(orphan_user, _numbered_tour_keys(50))
+
+    response = client_for(member_acme).post(QUICK_START_TOUR_URL)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["completed_tours"] == ["quick-start"]
+
+
+@pytest.mark.django_db
+def test_completing_a_tour_neither_changes_nor_shows_another_users_tours(member_acme, orphan_user):
+    earlier = timezone.now() - timedelta(days=30)
+    UserTourProgress.objects.create(user=orphan_user, tour_key="quick-start", completed_at=earlier)
+    UserTourProgress.objects.create(user=orphan_user, tour_key="flows", completed_at=earlier)
+
+    response = client_for(member_acme).post(QUICK_START_TOUR_URL)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["completed_tours"] == ["quick-start"]
+    others = UserTourProgress.objects.filter(user=orphan_user).order_by("tour_key")
+    assert list(others.values_list("tour_key", "completed_at")) == [("flows", earlier), ("quick-start", earlier)]
+
+
+@pytest.mark.django_db
+def test_the_profile_reads_completed_tours_in_a_fixed_number_of_queries(member_acme):
+    client = client_for(member_acme)
+    _store_completed_tours(member_acme, ["quick-start"])
+    with CaptureQueriesContext(connection) as one_tour:
+        client.get(PROFILE_URL)
+
+    _store_completed_tours(member_acme, _numbered_tour_keys(9))
+    with CaptureQueriesContext(connection) as ten_tours:
+        assert len(client.get(PROFILE_URL).json()["completed_tours"]) == 10
+
+    assert len(ten_tours.captured_queries) == len(one_tour.captured_queries)
+
+
+@pytest.mark.django_db
+def test_a_user_api_key_completes_a_tour_for_its_owner(member_acme, issue_api_key):
     raw, _ = issue_api_key(user=member_acme)
     client = APIClient()
     client.credentials(HTTP_X_API_KEY=raw)
 
-    response = client.post(QUICKSTART_TOUR_URL)
+    response = client.post(QUICK_START_TOUR_URL)
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["id"] == member_acme.id
-    member_acme.refresh_from_db()
-    assert member_acme.quickstart_tour_completed_at is not None
+    stored_keys = UserTourProgress.objects.filter(user=member_acme).values_list("tour_key", flat=True)
+    assert list(stored_keys) == ["quick-start"]
 
 
 @pytest.mark.django_db
-def test_completing_the_quickstart_tour_is_post_only(member_acme):
-    assert client_for(member_acme).get(QUICKSTART_TOUR_URL).status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+def test_completing_a_tour_is_post_only(member_acme):
+    assert client_for(member_acme).get(QUICK_START_TOUR_URL).status_code == status.HTTP_405_METHOD_NOT_ALLOWED
 
 
 @pytest.mark.django_db
-def test_completing_the_quickstart_tour_keeps_the_active_org_context(api_client, jwt_tokens, default_org):
-    # The frontend replaces its cached profile with this response, so it must
-    # carry the same active-org data as GET /api/profile/.
+def test_completing_a_tour_keeps_the_active_org_context(api_client, jwt_tokens, default_org):
+    # The response is the full profile, so it carries the same active-org data
+    # as GET /api/profile/ for the same header.
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
 
-    response = api_client.post(QUICKSTART_TOUR_URL, HTTP_X_ORGANIZATION_ID=str(default_org.id))
+    response = api_client.post(QUICK_START_TOUR_URL, HTTP_X_ORGANIZATION_ID=str(default_org.id))
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert body["quickstart_tour_completed"] is True
+    assert body["completed_tours"] == ["quick-start"]
     assert body["active_organization_id"] == default_org.id
     assert body["active_permissions"]["role"]["name"] == "Org Admin"

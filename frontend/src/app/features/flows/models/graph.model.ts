@@ -30,6 +30,7 @@ export interface SubflowLightDto {
     label_ids?: number[];
     created_at?: string;
     updated_at?: string;
+    save_version?: number;
 }
 
 // Author and last-edit fields are optional like created_at/updated_at: light graphs are also

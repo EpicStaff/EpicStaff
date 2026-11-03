@@ -45,8 +45,8 @@ Extends `AbstractDefaultFillableModel` (from [`tables/models/base_models.py`](..
 
 | Field | Type | Notes |
 |---|---|---|
-| `organization` | FK → `rbac.Organization`, `CASCADE` | `related_name="agent_definitions"`. |
-| `name` | `CharField(max_length=255)` | Unique per organization via `UniqueConstraint(fields=["organization", "name"], name="unique_agent_definition_name_per_organization")`. Slug-like stable identifier used by flows/UI/code. |
+| `org` | FK → `rbac.Organization`, `CASCADE`, nullable | Inherited from `OrgScopedModel` (`rbac/models/org_scoped.py`), together with `created_by`; `related_name="agents_agentdefinition_set"`. |
+| `name` | `CharField(max_length=255)` | Unique per organization via `UniqueConstraint(fields=["org", "name"], condition=Q(active=True), name="unique_agent_definition_name_per_organization")` (a soft-deleted agent frees its name). Slug-like stable identifier used by flows/UI/code. |
 | `description` | `TextField`, blank, default `""` | Human-readable purpose/persona description. |
 | `instructions` | `TextField`, blank, default `""` | The agent's prompt — behavior, goals, tone, constraints. |
 | `metadata` | `JSONField`, default `dict`, blank | Free-form client/UI data. **Not used by execution.** |
@@ -119,14 +119,14 @@ Note the legacy sibling `RealtimeAgent` (same file) is the equivalent OneToOne w
 File: [`src/django_app/agents/serializers/agent_definition_serializers.py`](../../src/django_app/agents/serializers/agent_definition_serializers.py)
 
 - **`AgentDefinitionReadSerializer`** — all `AgentDefinition` fields, read-only (`read_only_fields = fields`), plus a computed `default_surfaces` field via `SerializerMethodField` → `AgentDefinitionSurfaceService.get_default_surfaces(obj)` (service module: [`agents/services/surface_service.py`](../../src/django_app/agents/services/surface_service.py)).
-- **`AgentDefinitionWriteSerializer`** — `ModelSerializer` over the writable fields. `llm_config` / `fcm_llm_config` are optional, nullable `PrimaryKeyRelatedField`s. `default_surfaces` is a nested list write (`AgentDefaultSurfaceWriteSerializer`: `surface` PK + `place` choice). Numeric bounds come from the model validators (see §2). `name` is trimmed, max 255, and unique per organization via `OrganizationScopedUniqueValidator` (duplicate → 400 on `name`); `create()`/`update()` also map a racing `IntegrityError` to the same 400, then delegate surface persistence to `AgentDefinitionSurfaceService.set_default_surfaces`. `validate()` runs `SurfaceValidator.validate_agent_default_surfaces` when `default_surfaces` and `organization` (from serializer context) are present.
+- **`AgentDefinitionWriteSerializer`** — `ModelSerializer` over the writable fields. `llm_config` / `fcm_llm_config` are optional, nullable `PrimaryKeyRelatedField`s. `default_surfaces` is a nested list write (`AgentDefaultSurfaceWriteSerializer`: `surface` PK + `place` choice). Numeric bounds come from the model validators (see §2). `name` is trimmed, max 255, and unique per organization via `OrgScopedUniqueValidator` (duplicate → 400 on `name`); `create()`/`update()` also map a racing `IntegrityError` to the same 400, then delegate surface persistence to `AgentDefinitionSurfaceService.set_default_surfaces`. `validate()` runs `SurfaceValidator.validate_agent_default_surfaces` when `default_surfaces` is present.
 - `AgentDefaultSurfaceReadSerializer` / `AgentDefaultSurfaceWriteSerializer` — the through-row shape (`surface`, `place`).
 
 ViewSet: [`AgentDefinitionViewSet`](../../src/django_app/agents/views/agent_definition_views.py) (`viewsets.ModelViewSet`)
 
-- `queryset` — `select_related("organization", "llm_config", "fcm_llm_config")`, `prefetch_related("default_surfaces__surface", "owned_surfaces")`.
+- `queryset` — `select_related("org", "llm_config", "fcm_llm_config", "realtime_agent")`, `prefetch_related("default_surfaces__surface", "owned_surfaces", *authorship_prefetches())`.
 - `filter_backends = [DjangoFilterBackend]`, `filterset_fields = ["llm_config", "fcm_llm_config"]`.
-- Organization is hardcoded to `DEFAULT_ORGANIZATION_NAME` (`tables.constants.organization_constants`) via `_get_organization()` — no multi-org selection yet.
+- Organization comes from the caller's active organization: `OrgScopedViewSetMixin` (`rbac/scoping/mixins.py`) filters the queryset to `get_active_org_id()` and stamps that org (and `created_by`) on create, so another organization's agents are not found (404).
 - `get_serializer_class()` splits read (`list`/`retrieve`) vs write (everything else).
 - `create`/`update`/`partial_update` are overridden, wrapped in `@transaction.atomic`, and each write-then-re-read: validate with the write serializer, save, then re-serialize the instance with `AgentDefinitionReadSerializer` for the response (so responses always include `default_surfaces` and other computed/read-only data).
 
@@ -151,7 +151,7 @@ Directory: [`src/django_app/tables/import_export/`](../../src/django_app/tables/
 - `EntityType.AGENT_DEFINITION = "AgentDefinition"` is distinct from the legacy `EntityType.AGENT = "Agent"` ([`enums.py`](../../src/django_app/tables/import_export/enums.py)).
 - Strategy: [`strategies/agent_definition.py`](../../src/django_app/tables/import_export/strategies/agent_definition.py) — `AgentDefinitionStrategy`:
   - `extract_dependencies_from_instance` — deps are `llm_config` + `fcm_llm_config` (dedup'd into `LLM_CONFIG`), and the union of `owned_surfaces` ∪ `default_surface_list` (into `SURFACE`).
-  - `create_entity` — remaps FKs via `IDMapper`, forces the target organization to `DEFAULT_ORGANIZATION_NAME`, and dedupes the `name` via `ensure_unique_identifier` before creating. Afterward it assigns `llm_config`/`fcm_llm_config` (`_assign_llm_configs`), reassigns owned surfaces by setting `Surface.owner_agent` (`_assign_owned_surfaces`), and rebuilds `AgentDefaultSurface` rows (`_assign_default_surfaces`).
+  - `create_entity` — remaps FKs via `IDMapper`, stamps the importing caller's active organization via `resolve_import_organization(org_id)` (falls back to the default organization only when no `org_id` is passed or it matches no organization), and dedupes the `name` within that organization via `ensure_unique_identifier` before creating. Afterward it assigns `llm_config`/`fcm_llm_config` (`_assign_llm_configs`), reassigns owned surfaces by setting `Surface.owner_agent` (`_assign_owned_surfaces`), and rebuilds `AgentDefaultSurface` rows (`_assign_default_surfaces`).
 - Serializer: [`serializers/agent_definition.py`](../../src/django_app/tables/import_export/serializers/agent_definition.py) (`AgentDefinitionImportSerializer`).
 - Node handlers: [`strategies/node_handlers.py`](../../src/django_app/tables/import_export/strategies/node_handlers.py):
   - `import_task_node` / `import_agent_node` remap `agent_definition` via the `IDMapper`, reassign `surface_list` (`_assign_node_surface_list`), and rebuild the node's inline surface via `_create_inline_surface` — `InlineSurface` (owner: `task_node`) for `TaskNode`, `AgentInlineSurface` (owner: `agent_node`) for `AgentNode`, both defined in [`agents/models/surface_models.py`](../../src/django_app/agents/models/surface_models.py).
@@ -181,7 +181,7 @@ As with all model changes, run migrations via `make django-makemigrations` / `ma
 classDiagram
     class AgentDefinition {
         +id
-        +organization FK
+        +org FK
         +name
         +description
         +instructions
@@ -208,7 +208,7 @@ classDiagram
     }
 
     class Surface {
-        +organization FK
+        +org FK
         +name
         +instructions
         +owner_agent FK nullable (owned_surfaces)

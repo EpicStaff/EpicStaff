@@ -9,6 +9,7 @@
             class="close-btn"
             (click)="cancel()"
             aria-label="Close"
+            matTooltip="Close"
         >
             <app-svg-icon
                 icon="x"
@@ -45,6 +46,7 @@
                 <button
                     type="button"
                     class="operator-btn"
+                    matTooltip="Operator"
                     [class.open]="operatorOpenFor() === 'primary'"
                     (click)="toggleOperator('primary')"
                 >
@@ -76,6 +78,8 @@
                 type="text"
                 class="value-input"
                 placeholder="Enter value..."
+                aria-label="First value"
+                matTooltip="First value"
                 [ngModel]="primaryValue()"
                 (ngModelChange)="primaryValue.set($event)"
             />
@@ -107,6 +111,7 @@
                 <button
                     type="button"
                     class="operator-btn"
+                    matTooltip="Operator"
                     [class.open]="operatorOpenFor() === 'secondary'"
                     (click)="toggleOperator('secondary')"
                 >
@@ -138,6 +143,8 @@
                 type="text"
                 class="value-input"
                 placeholder="Enter value..."
+                aria-label="Second value"
+                matTooltip="Second value"
                 [ngModel]="secondaryValue()"
                 (ngModelChange)="secondaryValue.set($event)"
             />

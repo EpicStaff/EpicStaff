@@ -1,0 +1,21 @@
+<!-- Takes the focus when it opens and hands it back to the Sort button when it closes. -->
+<div
+    class="sort-menu"
+    role="menu"
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
+    (click)="$event.stopPropagation()"
+>
+    @for (item of items; track item.value) {
+        <button
+            type="button"
+            class="menu-item"
+            [class.is-active]="activeSort() === item.value"
+            role="menuitemradio"
+            [attr.aria-checked]="activeSort() === item.value"
+            (click)="onSelect(item.value)"
+        >
+            <span class="label">{{ item.label }}</span>
+        </button>
+    }
+</div>

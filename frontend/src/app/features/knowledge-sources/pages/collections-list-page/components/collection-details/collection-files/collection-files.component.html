@@ -7,7 +7,11 @@
         let-item
         let-i="index"
     >
-        <app-list-row class="files__file">
+        <app-list-row
+            class="files__file"
+            [class.files__file--previewable]="item.document_id"
+            (click)="onPreview(item)"
+        >
             <div class="files__name-column">
                 <span>{{ i + 1 }}</span>
                 <app-svg-icon
@@ -15,13 +19,25 @@
                     size="0.75rem"
                 />
 
-                <span
-                    class="files__name"
-                    [matTooltip]="item.file_name"
-                    matTooltipPosition="above"
-                >
-                    {{ item.file_name }}
-                </span>
+                @if (item.document_id) {
+                    <!-- Opens the preview, from the keyboard too; its click reaches the row's handler. -->
+                    <button
+                        type="button"
+                        class="files__name files__name--button"
+                        appTooltipOnOverflow
+                        [matTooltip]="item.file_name"
+                    >
+                        {{ item.file_name }}
+                    </button>
+                } @else {
+                    <span
+                        class="files__name"
+                        appTooltipOnOverflow
+                        [matTooltip]="item.file_name"
+                    >
+                        {{ item.file_name }}
+                    </span>
+                }
                 <div [class.files__file-error]="!item.isValidSize || !item.isValidType">
                     @if (!item.isValidType) {
                         Invalid file type
@@ -41,34 +57,34 @@
                 } @else {
                     <app-list-actions>
                         @if (item.document_id) {
-                            <app-svg-icon
-                                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Read]"
-                                icon="eye"
-                                size="0.875rem"
-                                class="files__close-action"
-                                matTooltip="Preview file"
-                                matTooltipPosition="above"
-                                (click)="previewRequested.emit(item.document_id)"
-                            />
-                            <app-svg-icon
+                            <button
                                 *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
-                                icon="download"
-                                size="0.875rem"
+                                type="button"
                                 class="files__close-action"
+                                [attr.aria-label]="'Download ' + item.file_name"
                                 matTooltip="Download file"
-                                matTooltipPosition="above"
-                                (click)="onDownload(item.document_id)"
-                            />
+                                (click)="$event.stopPropagation(); onDownload(item.document_id)"
+                            >
+                                <app-svg-icon
+                                    icon="download"
+                                    size="0.875rem"
+                                />
+                            </button>
                         }
-                        <app-svg-icon
+                        <button
+                            #removeButton
                             *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
-                            icon="x"
-                            size="1rem"
+                            type="button"
                             class="files__close-action"
+                            [attr.aria-label]="'Remove ' + item.file_name"
                             matTooltip="Remove file"
-                            matTooltipPosition="above"
-                            (click)="onDelete(item)"
-                        />
+                            (click)="$event.stopPropagation(); onDelete(item)"
+                        >
+                            <app-svg-icon
+                                icon="x"
+                                size="1rem"
+                            />
+                        </button>
                     </app-list-actions>
                 }
             </div>

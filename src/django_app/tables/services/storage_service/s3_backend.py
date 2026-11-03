@@ -7,6 +7,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError, HTTPClientError
 from botocore.exceptions import ConnectionError as SdkConnectionError
 from django.conf import settings
+from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from tables.exceptions import RangeNotSatisfiable
 from tables.services.storage_service.base import (
     AbstractStorageBackend,
@@ -19,7 +20,6 @@ from tables.services.storage_service.dataclasses import (
     FolderInfo,
     TreeNode,
 )
-from tables.services.storage_service.path_utils import sanitize_storage_path
 from utils.logger import logger
 
 # One short attempt, no retries: head_file's caller (the pub/sub listener) must not stall.

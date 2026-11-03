@@ -1,0 +1,20 @@
+// A dialog places it (margins) from its own stylesheet.
+:host {
+    display: block;
+    flex-shrink: 0;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-sm);
+    // As the error banners this replaced. No semantic subtle-error background token exists yet
+    // (`--color-status-error-subtle` is a different red at 15%), so the same primitive they used.
+    background-color: var(--red-450-alpha-10);
+    color: var(--color-error);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+    overflow-wrap: anywhere;
+}
+
+// `display: block` above would otherwise override the hidden attribute.
+:host([hidden]) {
+    display: none;
+}

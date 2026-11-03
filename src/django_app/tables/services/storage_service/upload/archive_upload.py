@@ -10,6 +10,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db import close_old_connections
 from rest_framework.exceptions import ValidationError
+from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from tables.exceptions import StoragePathIsFile, StorageUnavailable, UploadTooLarge
 from tables.services.storage_service import get_storage_backend
 from tables.services.storage_service.archive_unpacking.extraction_guard import (
@@ -22,7 +23,6 @@ from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.path_utils import (
     check_new_name,
     check_path_length,
-    sanitize_storage_path,
     storage_key,
 )
 from tables.services.storage_service.quota import org_writable_bytes, record_files_within_quota

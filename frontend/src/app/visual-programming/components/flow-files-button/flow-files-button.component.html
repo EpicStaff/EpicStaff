@@ -1,11 +1,13 @@
 <button
+    type="button"
     class="flow-files-btn"
+    [attr.aria-label]="isReadOnly() ? 'View flow files' : 'Add files to flow'"
     [class.flow-files-btn--active]="attachedCount() > 0"
     [appCollapseOnOverflow]="true"
     collapseOnOverflowTarget=".flow-files-btn__label"
     collapseOnOverflowClass="flow-files-btn--icon-only"
     (click)="openDialog()"
-    [matTooltip]="isReadOnly() ? 'View flow files' : 'Add files to flow'"
+    [matTooltip]="keymap.withShortcut(isReadOnly() ? 'View flow files' : 'Add files to flow', 'flow.add-files')"
 >
     <app-svg-icon
         icon="file-upload"

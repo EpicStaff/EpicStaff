@@ -1,7 +1,6 @@
-"""Coverage tests for the secrets:USE guard: every Secret-writing field must be gated or exempt, the paths the design leaves ungated must stay ungated, and every guarded serializer's validate() chain must actually reach the guard."""
+"""Coverage tests for secrets:USE: every Secret-writing serializer field has a secret Use check at its write point or is exempt, and the paths the design leaves ungated stay ungated."""
 
 import pytest
-from rest_framework.exceptions import ValidationError
 from rest_framework.relations import ManyRelatedField, PrimaryKeyRelatedField
 from rest_framework.serializers import BaseSerializer
 from rest_framework.test import APIClient
@@ -11,17 +10,48 @@ from tables.models.graph_models import Graph, PythonNode
 from tables.models.python_models import PythonCode
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
-from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_service
-from tables.services.secrets.reference_guard import secret_reference_guard
+from tables.services.secrets import secret_use_checks
 
 NEUTRAL_CODE = "def main(**kwargs):\n    return 1\n"
 
+#: The secret Use check that gates writes of each serializer's entity, by serializer
+#: class name. Serializers never check permissions themselves: the write point that
+#: saves the entity (viewset, graph bulk save, service, import strategy) calls this
+#: `secret_use_checks` function after validation and before the write. Subclasses are
+#: listed by their own name on purpose: a new subclass is often a new request path, and
+#: whoever adds one must confirm that path's write point runs the check too.
+#: Whether a write point really runs its check is pinned by the API tests of each
+#: endpoint family (tests/api_tests/test_secret_use_*.py), not here.
+SECRET_USE_CHECK_BY_SERIALIZER: dict[str, str] = {
+    "LLMConfigSerializer": "check_llm_config_write",
+    "EmbeddingConfigSerializer": "check_embedding_config_write",
+    "RealtimeConfigSerializer": "check_realtime_config_write",
+    "RealtimeTranscriptionConfigSerializer": "check_realtime_transcription_config_write",
+    "OpenAIRealtimeConfigSerializer": "check_openai_realtime_config_write",
+    "ElevenLabsRealtimeConfigSerializer": "check_elevenlabs_realtime_config_write",
+    "GeminiRealtimeConfigSerializer": "check_gemini_realtime_config_write",
+    "TwilioChannelSerializer": "check_twilio_channel_write",
+    "McpToolSerializer": "check_mcp_tool_write",
+    "WebhookTriggerNestedSerializer": "check_webhook_trigger_write",
+    # Renders a trigger for the realtime service's lookup_by_token; nothing is written
+    # through it, and the trigger it renders is gated where it is written.
+    "_WebhookTriggerInternalSerializer": "check_webhook_trigger_write",
+    # Nested in WebhookTriggerNestedSerializer; the trigger check gates its token.
+    "NgrokConfigInlineSerializer": "check_webhook_trigger_write",
+    "TelegramTriggerNodeSerializer": "check_telegram_trigger_node_write",
+    "TelegramTriggerNodeReadSerializer": "check_telegram_trigger_node_write",
+    # Graph bulk save: NodeTypeConfig.secret_use_check in the bulk-save registry.
+    "TelegramTriggerNodeBulkSerializer": "check_telegram_trigger_node_write",
+    # Always nested: every parent's check (Python node, webhook trigger node, Python
+    # code tool, classification decision table node) calls check_python_code_write.
+    "PythonCodeSerializer": "check_python_code_write",
+    "QuickstartSerializer": "check_quickstart",
+}
+
 #: Fields deliberately left ungated. Each entry is ("SerializerClassName", "field_name")
 #: and must come with a written reason in a comment here explaining why an org-scoped
-#: secrets:USE gate does not apply to it. A subclass that NARROWS its guarded fields via
-#: get_secret_reference_fields() lands here too: widening a path's coverage is free, but
-#: removing protection from one has to be justified in writing. See guide section 5.6.
+#: secrets:USE gate does not apply to it. See the RBAC backend guide section 5.6.
 EXEMPT: set[tuple[str, str]] = {
     # Query input of the Twilio phone-numbers lookup, not a stored reference: nothing
     # is saved, the token is only sent to Twilio and never returned, and the id is
@@ -54,12 +84,12 @@ KNOWN_SKIPS = {
     "SecretUsageCountListSerializer",
 }
 
-#: The number of Secret-targeting field occurrences Check 1 discovers today (see the
-#: task report for the full inventory). A floor, not an exact match, so a legitimately
-#: new guarded field can push it up -- but it must never silently drop: moving a
-#: serializer out of tables.urls' import chain, or replacing a field's `queryset=` with
-#: a `get_queryset()` override, would make the walk lose a field while the "no unguarded
-#: field" assertion below stays green, and this is what would catch that.
+#: The number of Secret-targeting field occurrences Check 1 discovers today. A floor,
+#: not an exact match, so a legitimately new checked field can push it up -- but it
+#: must never silently drop: moving a serializer out of tables.urls' import chain, or
+#: replacing a field's `queryset=` with a `get_queryset()` override, would make the
+#: walk lose a field while the "no unchecked field" assertion below stays green, and
+#: this is what would catch that.
 MINIMUM_DISCOVERED_SECRET_FIELDS = 17
 
 
@@ -112,28 +142,17 @@ def _secret_fields_of(instance):
             yield name
 
 
-def _guarded_fields_of(instance):
-    """The guarded field names this serializer INSTANCE reports, honouring a per-path override."""
-    # Asked of the instance, not the class: SecretReferenceGuardMixin exposes
-    # get_secret_reference_fields() so a per-path subclass can narrow or widen what its
-    # siblings guard. Reading the class attribute here would let such an override slip
-    # outside both coverage checks below -- the exact silent-gap this file exists to close.
-    getter = getattr(instance, "get_secret_reference_fields", None)
-    if getter is not None:
-        return set(getter())
-    return set(getattr(instance, "secret_reference_fields", ()))
-
-
 # ---------------------------------------------------------------------------
-# Check 1 -- every Secret-targeting writable field is registered
+# Check 1 -- every Secret-targeting writable field has a write-point check
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_every_secret_field_is_guarded_or_exempt():
+def test_every_secret_field_has_a_secret_use_check_or_is_exempt():
     skipped = []
     discovered = []
-    unguarded = []
+    discovered_serializers = set()
+    unchecked = []
 
     for serializer_class in _all_serializer_classes():
         instance, error = _try_instantiate(serializer_class)
@@ -151,14 +170,14 @@ def test_every_secret_field_is_guarded_or_exempt():
             skipped.append(serializer_class.__name__)
             continue
 
-        guarded = _guarded_fields_of(instance)
+        serializer_name = serializer_class.__name__
         for name in fields:
-            discovered.append(f"{serializer_class.__name__}.{name}")
-            if name in guarded:
+            discovered.append(f"{serializer_name}.{name}")
+            if (serializer_name, name) in EXEMPT:
                 continue
-            if (serializer_class.__name__, name) in EXEMPT:
-                continue
-            unguarded.append(f"{serializer_class.__name__}.{name}")
+            discovered_serializers.add(serializer_name)
+            if serializer_name not in SECRET_USE_CHECK_BY_SERIALIZER:
+                unchecked.append(f"{serializer_name}.{name}")
 
     if skipped:
         print(f"Skipped (could not bare-instantiate): {sorted(skipped)}")
@@ -183,11 +202,39 @@ def test_every_secret_field_is_guarded_or_exempt():
         "test can no longer prove what it claims to: " + ", ".join(sorted(discovered))
     )
 
-    assert not unguarded, (
-        "These serializer fields write a Secret reference but are not listed in any "
-        "secret_reference_fields tuple. Add them to the owning serializer's "
-        "secret_reference_fields, or add them to EXEMPT with a written reason: "
-        + ", ".join(sorted(unguarded))
+    assert not unchecked, (
+        "These serializer fields write a Secret reference, but their serializer is not "
+        "in SECRET_USE_CHECK_BY_SERIALIZER, so nothing shows that changing them needs "
+        "secrets:USE. Add a check_<entity>_write to "
+        "tables/services/secrets/secret_use_checks.py (or extend the entity's existing "
+        "one), call it at every write point that saves through this serializer "
+        "(SecretUseCheckedViewSetMixin.secret_use_check, run_secret_use_check, the "
+        "bulk-save NodeTypeConfig.secret_use_check, or the service doing the write), "
+        "then map the serializer here -- or add the field to EXEMPT with a written "
+        "reason: " + ", ".join(sorted(unchecked))
+    )
+
+    stale = set(SECRET_USE_CHECK_BY_SERIALIZER) - discovered_serializers
+    assert not stale, (
+        "These SECRET_USE_CHECK_BY_SERIALIZER entries name a serializer that no longer "
+        "has a writable Secret-targeting field (or was renamed); remove or rename "
+        "them: " + ", ".join(sorted(stale))
+    )
+
+
+def test_every_mapped_secret_use_check_exists():
+    missing = sorted(
+        {
+            check_name
+            for check_name in SECRET_USE_CHECK_BY_SERIALIZER.values()
+            if not callable(getattr(secret_use_checks, check_name, None))
+        }
+    )
+
+    assert not missing, (
+        "SECRET_USE_CHECK_BY_SERIALIZER maps serializers to checks that "
+        "tables/services/secrets/secret_use_checks.py does not define: "
+        + ", ".join(missing)
     )
 
 
@@ -285,93 +332,3 @@ class TestUngatedPathsStayUngated:
 
         assert response.status_code == 200, response.json()
         assert not PythonNode.objects.filter(pk=python_node.pk).exists()
-
-
-# ---------------------------------------------------------------------------
-# Check 3 -- the guard is actually reachable on every guarded serializer
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_guard_is_reached_through_every_guarded_serializers_validate(mocker):
-    """Every serializer that declares or inherits a non-empty secret_reference_fields must genuinely invoke the guard through its validate() chain."""
-    # Not merely listing the fields: a serializer whose own validate() overrides the
-    # mixin's without calling super().validate() would pass Check 1 and look fully
-    # guarded in every static inspection while the guard never runs -- that happened
-    # four times in this feature (TwilioChannelSerializer, TelegramTriggerNodeSerializer,
-    # QuickstartSerializer, WebhookTriggerNestedSerializer) and was found by hand. This
-    # spies on the guard itself so a repeat is caught functionally.
-    #
-    # Uses `getattr` rather than `cls.__dict__.get(...)` so a subclass that *inherits*
-    # secret_reference_fields and overrides validate() without super() is covered too --
-    # `__dict__` would miss it, since it never redeclares the tuple itself.
-    spy = mocker.patch.object(
-        secret_reference_guard,
-        "assert_unchanged_or_permitted",
-        wraps=secret_reference_guard.assert_unchanged_or_permitted,
-    )
-
-    # Candidates are pre-filtered by class only to avoid instantiating every serializer
-    # in the project; whether each one is actually guarded is then asked of the INSTANCE,
-    # because get_secret_reference_fields() may differ from the class attribute per path.
-    # Carrying the mixin is enough to be a candidate even with an empty class attribute --
-    # otherwise a subclass that guards a field only via the override would never be checked.
-    candidates = [
-        cls
-        for cls in _all_serializer_classes()
-        if issubclass(cls, SecretReferenceGuardMixin)
-        or getattr(cls, "secret_reference_fields", ())
-    ]
-
-    unreached = []
-    guarded_names = []
-
-    for serializer_class in sorted(candidates, key=lambda c: c.__name__):
-        instance, error = _try_instantiate(serializer_class)
-        if instance is None and serializer_class.__name__ in KNOWN_SKIPS:
-            continue
-        if instance is None:
-            # A guarded serializer that cannot even be bare-instantiated is itself a
-            # failure here -- there is no way to prove its guard is reachable, and
-            # silently skipping it would be exactly the kind of coverage gap this test
-            # exists to prevent.
-            unreached.append(
-                f"{serializer_class.__name__} (could not instantiate: {error})"
-            )
-            continue
-
-        if not _guarded_fields_of(instance):
-            continue
-        guarded_names.append(serializer_class.__name__)
-
-        spy.reset_mock()
-        try:
-            instance.validate({})
-        except ValidationError:
-            # Unrelated validation errors raised from an empty attrs dict (e.g.
-            # QuickstartSerializer's "provide either api_key or
-            # api_key_secret_id") are expected and irrelevant here -- only
-            # whether the guard itself was reached matters. Anything else --
-            # e.g. the KeyError this guard used to raise for a field a
-            # narrowed subclass no longer exposes -- is a real defect and
-            # must fail the test rather than be swallowed.
-            pass
-
-        if not spy.called:
-            unreached.append(serializer_class.__name__)
-
-    print(
-        f"Guarded serializers checked ({len(guarded_names)}): {sorted(guarded_names)}"
-    )
-
-    assert guarded_names, (
-        "No serializer reported any guarded field -- discovery is broken, and every "
-        "assertion below would pass vacuously."
-    )
-
-    assert not unreached, (
-        "These serializers declare or inherit secret_reference_fields but never "
-        "actually invoke the guard through their validate() chain -- almost certainly "
-        "because they override validate() without calling super().validate(): "
-        + ", ".join(sorted(unreached))
-    )

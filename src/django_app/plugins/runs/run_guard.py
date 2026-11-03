@@ -10,7 +10,7 @@ from django.db.models import Exists, OuterRef, Q, QuerySet
 from rbac.models import Organization
 from tables.services.run_admission import RunSubject
 from tables.services.run_resources import RunResourceCollector, RunResources
-from tables.services.secrets.reference_guard import secret_reference_guard
+from tables.services.secrets.pinned_principal_rules import assert_may_resolve_markers
 
 from plugins.exceptions import PluginSuspendedError
 from plugins.identity.principals import PluginServiceAccountPrincipal
@@ -104,9 +104,7 @@ def _refuse_unreferenceable_markers(
     own purged and a person's created under the name) and the run would send that one.
     """
     if principal is not None:
-        secret_reference_guard.assert_may_resolve_markers(
-            principal=principal, names=resources.secret_marker_names
-        )
+        assert_may_resolve_markers(principal=principal, names=resources.secret_marker_names)
 
 
 def _refuse_if_owned(subject: RunSubject, resources: RunResources) -> None:

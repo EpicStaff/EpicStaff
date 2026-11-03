@@ -24,6 +24,7 @@ from app.tools.system_tools.structured_output import ANSWER_TOOL
 from shared.models.agent_service import AgentSpec, LoopResult, TokenUsage, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
+from tests.log_capture import log_line_starting_with, capture_logs_at
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -167,6 +168,30 @@ async def test_invalid_then_valid_uses_second_attempt():
     assert result.token_usage.total_tokens == 15
     assert result.iterations == 2
     assert result.tool_invocations == 2
+
+
+async def test_schema_enforce_debug_log_redacts_the_validation_error():
+    secret_marker = "SENSITIVE_ANSWER_VALUE_24680"
+    schema = {
+        "type": "object",
+        "properties": {"answer": {"type": "integer"}},
+        "required": ["answer"],
+    }
+    loop = ScriptedLoop(
+        [
+            ({"answer": secret_marker}, TokenUsage()),
+            ({"answer": 1}, TokenUsage()),
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(loop, max_retries=2)
+    context = _make_context()
+
+    with capture_logs_at("DEBUG") as logs:
+        await enforcer.enforce(context, schema, FakeEmitter())
+
+    log_line = log_line_starting_with(logs, "schema_enforce attempt=0")
+    assert secret_marker not in log_line
+    assert "<redacted" in log_line
 
 
 async def test_usage_is_summed_across_attempts():

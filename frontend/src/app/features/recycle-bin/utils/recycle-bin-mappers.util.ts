@@ -5,6 +5,7 @@ import {
     GetRecycleBinContentResponse,
     GetRecycleBinDetailResponse,
     GetRecycleBinEntryResponse,
+    GetRecycleBinHiddenContentsResponse,
     GetStorageRecycleBinEntryResponse,
     RecycleBinDetail,
     RecycleBinItem,
@@ -73,6 +74,11 @@ export function storageOwnName(path: string): string {
     return isFolder ? `${ownName}/` : ownName;
 }
 
+/** How many contents the user may not read, all kinds together. */
+export function hiddenContentsCount(hiddenContents: readonly GetRecycleBinHiddenContentsResponse[]): number {
+    return hiddenContents.reduce((sum, hidden) => sum + hidden.count, 0);
+}
+
 export function toRestoreOutcome(
     source: RecycleBinSourceKey,
     response: RestoreRecycleBinItemResponse
@@ -119,6 +125,7 @@ function baseItem(source: RecycleBinSourceKey, kind: string, entry: GetRecycleBi
         daysLeft: entry.days_left,
         details: entry.details.map(toRecycleBinDetail),
         contents: toContents(source, entry.contents),
+        hiddenContentsCount: hiddenContentsCount(entry.hidden_contents),
         contentsTotal: entry.contents_total,
     };
 }

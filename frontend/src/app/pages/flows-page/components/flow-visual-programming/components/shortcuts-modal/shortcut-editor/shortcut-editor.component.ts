@@ -43,7 +43,7 @@ interface Feedback {
     readonly text: string;
 }
 
-const PICKER_SECTIONS: readonly EditorActionSection[] = ['Nodes', 'Editing', 'Navigating'];
+const PICKER_SECTIONS: readonly EditorActionSection[] = ['Flow actions', 'Nodes', 'Editing', 'Navigating'];
 
 const CUSTOMIZABLE_ACTION_IDS: ReadonlyMap<string, EditorActionId> = new Map(
     EDITOR_ACTIONS.filter((action) => action.customizable).map((action) => [action.id, action.id])
@@ -62,7 +62,7 @@ export class ShortcutEditorComponent implements OnInit {
     readonly shortcut = input<CustomShortcut | null>(null);
     readonly flows = input<readonly GetGraphLightRequest[]>([]);
     readonly currentFlowId = input<number | null>(null);
-    readonly nodeAction = input<EditorActionId | null>(null);
+    readonly keyAction = input<EditorActionId | null>(null);
 
     readonly closed = output<void>();
 
@@ -90,12 +90,14 @@ export class ShortcutEditorComponent implements OnInit {
     protected readonly actionGroups = computed<readonly PickerGroup[]>(() => {
         const hasOtherFlows = subgraphFlowOptions(this.flows(), this.currentFlowId()).length > 0;
         const editedAction = this.shortcut()?.action;
+        const unavailableIds = this.keymap.unavailableActionIds();
         return PICKER_SECTIONS.map((title) => ({
             title,
             options: EDITOR_ACTIONS.filter(
                 (action) =>
                     action.customizable &&
                     action.section === title &&
+                    !unavailableIds.has(action.id) &&
                     (ACTION_PARAMS.get(action.id) !== 'flow' || hasOtherFlows || action.id === editedAction)
             ).map((action) => ({ id: action.id, label: action.label })),
         }));
@@ -137,8 +139,8 @@ export class ShortcutEditorComponent implements OnInit {
         if (action === null || chord === null) {
             return null;
         }
-        if (this.nodeAction() !== null) {
-            return this.keymap.checkNodeKey(action, chord);
+        if (this.keyAction() !== null) {
+            return this.keymap.checkKeyOverride(action, chord);
         }
         return this.keymap.checkChord(chord, { action, customShortcutId: this.shortcut()?.id, params: this.params() });
     });
@@ -179,10 +181,10 @@ export class ShortcutEditorComponent implements OnInit {
     }
 
     ngOnInit(): void {
-        const nodeAction = this.nodeAction();
-        if (nodeAction !== null) {
-            this.action.set(nodeAction);
-            this.chord.set(this.keymap.builtInBindings().get(nodeAction)?.[0] ?? null);
+        const keyAction = this.keyAction();
+        if (keyAction !== null) {
+            this.action.set(keyAction);
+            this.chord.set(this.keymap.builtInBindings().get(keyAction)?.[0] ?? null);
             return;
         }
         const shortcut = this.shortcut();
@@ -320,8 +322,8 @@ export class ShortcutEditorComponent implements OnInit {
         const shortcut = this.shortcut();
         const params = this.params();
         const result =
-            this.nodeAction() !== null
-                ? this.keymap.setNodeKey(action, this.chord())
+            this.keyAction() !== null
+                ? this.keymap.setKeyOverride(action, this.chord())
                 : shortcut
                   ? this.keymap.updateCustom(shortcut.id, { action, chord: this.chord(), params })
                   : this.keymap.addCustom(action, this.chord(), params);
@@ -335,7 +337,8 @@ export class ShortcutEditorComponent implements OnInit {
     private describe(check: ShortcutCheck): Feedback | null {
         const keys = this.chordText() ?? '';
         if (check.accepted) {
-            if (check.displaces === null) {
+            // A key of an action this user cannot see counts as free: saving still takes it, without naming it.
+            if (check.displaces === null || this.keymap.unavailableActionIds().has(check.displaces)) {
                 return null;
             }
             const owner = actionLabel(check.displaces);
@@ -354,7 +357,9 @@ export class ShortcutEditorComponent implements OnInit {
                 if (check.takenBy === null) {
                     return error("This key can't be used");
                 }
-                return error(takenByMessage(check.takenBy, keys, this.flowLookup()));
+                return error(
+                    takenByMessage(check.takenBy, keys, this.flowLookup(), this.keymap.unavailableActionIds())
+                );
             }
             case 'invalid':
                 return error("This key can't be used");

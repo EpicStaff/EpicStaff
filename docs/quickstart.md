@@ -119,7 +119,18 @@ Creates configs for the given provider and API key. Does **not** apply them to t
 }
 ```
 
+**Response `400 Bad Request`** — if quickstart refuses to attach the key to an existing model. Nothing is created:
+
+```json
+{
+  "detail": "Error quickstart",
+  "error": "The organization's custom model \"gpt-4o-mini\" sends requests to a custom URL, so quickstart will not attach a key to it."
+}
+```
+
 **Notes:**
+- Quickstart attaches the key to the built-in catalog model of the provider when one exists. It only falls back to an organization's own model of the same name when that model has no `base_url` of its own; with one, the request is refused as above, so a key is never sent to a URL somebody else chose.
+- Instead of `api_key`, the body may carry `api_key_secret_id` to reuse an existing secret. Referencing a secret this way needs the `Use` permission on Secrets (a plain `api_key` does not); without it the response is a `400` whose `message` names `api_key_secret_id`.
 - After this call, `GET /api/quickstart/` will show `is_synced: false` until apply is called.
 - Each call creates a new set of configs with a unique name (see [Running Quickstart Multiple Times](#running-quickstart-multiple-times)).
 

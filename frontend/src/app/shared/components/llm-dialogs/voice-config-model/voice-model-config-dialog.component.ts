@@ -1,16 +1,18 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { EnterSubmitDirective } from '@shared/directives';
 import { ModelTypes } from '@shared/models';
 import { RealtimeConfigStorageService, SecretsStorageService } from '@shared/services';
-import { trackPickedSecrets } from '@shared/utils';
+import { extractHttpErrorMessage, isClientError, trackPickedSecrets } from '@shared/utils';
 
 import { ToastService } from '../../../../services/notifications';
 import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
 import { BinnedSecretNoteComponent } from '../../binned-secret-note/binned-secret-note.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
+import { ErrorBannerComponent } from '../../error-banner/error-banner.component';
 import { CustomInputComponent } from '../../form-input/form-input.component';
 import { HintMessageComponent } from '../../hint-message/hint-message.component';
 import { SelectComponent, SelectItem } from '../../select/select.component';
@@ -25,6 +27,7 @@ import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selec
         BinnedSecretNoteComponent,
         ButtonComponent,
         CustomInputComponent,
+        ErrorBannerComponent,
         IconButtonComponent,
         LlmModelSelectorComponent,
         ReactiveFormsModule,
@@ -46,6 +49,7 @@ export class VoiceModelConfigDialogComponent {
 
     isSaving = signal<boolean>(false);
     isLoading = signal<boolean>(false);
+    errorMessage = signal<string | null>(null);
 
     isEditMode = computed(() => !!this.data?.configId);
     title = computed(() => (this.isEditMode() ? 'Edit Voice Configuration' : 'Add Voice Configuration'));
@@ -112,6 +116,7 @@ export class VoiceModelConfigDialogComponent {
         }
 
         this.isSaving.set(true);
+        this.errorMessage.set(null);
         const formValue = this.form.value;
 
         const request$ = this.isEditMode()
@@ -126,9 +131,14 @@ export class VoiceModelConfigDialogComponent {
                 );
                 this.dialogRef.close();
             },
-            error: (err) => {
+            error: (err: HttpErrorResponse) => {
                 this.isSaving.set(false);
-                this.toast.error(this.isEditMode() ? 'Configuration update failed.' : 'Configuration creation failed.');
+                const fallback = this.isEditMode() ? 'Configuration update failed.' : 'Configuration creation failed.';
+                if (isClientError(err)) {
+                    this.errorMessage.set(extractHttpErrorMessage(err, fallback));
+                    return;
+                }
+                this.toast.error(fallback);
                 console.error(err);
             },
         });

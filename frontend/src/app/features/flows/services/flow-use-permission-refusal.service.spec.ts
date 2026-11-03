@@ -3,7 +3,11 @@ import { TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
 import { Observable, of, throwError } from 'rxjs';
 
-import { FlowUsePermissionRefusalService, UsePermissionRefusalOperation } from './flow-use-permission-refusal.service';
+import {
+    FlowUsePermissionRefusalService,
+    UsePermissionAction,
+    UsePermissionRefusalOperation,
+} from './flow-use-permission-refusal.service';
 
 const REFUSAL = new HttpErrorResponse({
     status: 403,
@@ -89,6 +93,28 @@ describe('FlowUsePermissionRefusalService', () => {
             });
         }
     );
+
+    it.each<[UsePermissionAction, string]>([
+        ['run', '<strong>Running</strong> this flow requires the <strong>Use</strong> permission on flows.'],
+        [
+            'getCurl',
+            '<strong>Getting the cURL command</strong> for this flow requires the <strong>Use</strong> permission on flows.',
+        ],
+        [
+            'stopSession',
+            '<strong>Stopping</strong> a session of this flow requires the <strong>Use</strong> permission on flows.',
+        ],
+    ])('says in an OK-only warning that %s needs the Use permission', (action, message) => {
+        service.showActionRefusal(action);
+
+        expect(confirm).toHaveBeenCalledExactlyOnceWith({
+            title: 'Use permission required',
+            message,
+            type: 'warning',
+            hideConfirm: true,
+            cancelText: 'OK',
+        });
+    });
 
     it("explains the backend's refusal for the given operation and completes without emitting or erroring", () => {
         const outcome = run(throwError(() => REFUSAL));

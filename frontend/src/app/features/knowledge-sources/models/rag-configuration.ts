@@ -1,7 +1,12 @@
 import { ApiErrorItem } from '@shared/models';
 import { Observable } from 'rxjs';
 
-import { IndexingDocumentInfo } from '../helpers/get-indexing-confirmation-data.util';
+/** A file the user is about to index; `wasIndexed` puts it under "Re-index files". */
+export interface IndexingDocumentInfo {
+    configId: number;
+    fileName: string;
+    wasIndexed: boolean;
+}
 
 export interface RagConfiguration {
     getConfigurationData(): unknown;

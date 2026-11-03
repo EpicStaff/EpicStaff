@@ -1,48 +1,69 @@
 import asyncio
 import json
+from dataclasses import dataclass
 from functools import lru_cache
 
-from cachetools import TTLCache
 from loguru import logger
 from settings import AUDIT_TRAIL_ENABLED, AUDITOR_INGEST_API_KEY, AUDITOR_URL
 from src.shared.audit.client import AuditClient
 from src.shared.audit.writers.session_writer import SessionAuditWriter
-from src.shared.models import SessionAuditEvent
-
-# session_id -> org_id. Crew-only plumbing: SessionData carries org_id once,
-# at the top of run_session, but individual node handlers deep in the call
-# graph only have session_id. Not part of the shared SessionAuditWriter -
-# that class owns no per-caller state (see shared/audit/writers/session_writer.py).
-# TTLCache, not a plain dict, as defensive insurance against a future
-# refactor accidentally skipping clear_session_org on some exit path - every
-# current exit path already clears it correctly, this is a backstop, not
-# the primary mechanism.
-_org_id_by_session: TTLCache = TTLCache(maxsize=10_000, ttl=3600)
-_flow_name_by_session: TTLCache = TTLCache(maxsize=10_000, ttl=3600)
+from src.shared.models import SessionAuditEvent, SessionData
 
 
-def register_session_org(session_id: int, org_id: int) -> None:
-    _org_id_by_session[session_id] = org_id
+@dataclass(frozen=True)
+class SessionAuditContext:
+    """What every audit event of one session needs besides the message itself.
+
+    Attributes:
+        audit_retention_days: Days auditor keeps the session's events; 0 keeps forever.
+    """
+
+    org_id: int
+    flow_name: str
+    audit_retention_days: int
+
+    @classmethod
+    def from_session_data(cls, session_data: SessionData) -> "SessionAuditContext":
+        return cls(
+            org_id=session_data.org_id,
+            flow_name=session_data.graph.name,
+            audit_retention_days=session_data.audit_retention_days,
+        )
 
 
-def register_session_flow_name(session_id: int, flow_name: str) -> None:
-    _flow_name_by_session[session_id] = flow_name
+# session_id -> SessionAuditContext. Crew-only plumbing: SessionData carries
+# the context once, at the top of run_session, but individual node handlers
+# deep in the call graph only have session_id. Not part of the shared
+# SessionAuditWriter - that class owns no per-caller state (see
+# shared/audit/writers/session_writer.py).
+# A plain dict with no expiry or size bound: an entry must live exactly as long
+# as its session, however long that runs. run_session clears it in a `finally`,
+# so no exit path leaks one. Crew runs every session in one asyncio event loop,
+# so the dict is only ever touched from one thread.
+_context_by_session: dict[int, SessionAuditContext] = {}
 
 
-def get_session_org(session_id: int) -> int | None:
-    return _org_id_by_session.get(session_id)
+def register_session_audit_context(session_id: int, context: SessionAuditContext) -> None:
+    _context_by_session[session_id] = context
 
 
-def get_session_flow_name(session_id: int) -> str | None:
-    return _flow_name_by_session.get(session_id)
+def get_session_audit_context(session_id: int) -> SessionAuditContext | None:
+    """Return the session's audit context, or None after logging that its events are dropped.
+
+    None means the session is not running: it ended, or was never registered.
+    """
+    context = _context_by_session.get(session_id)
+    if context is None:
+        logger.warning(
+            "No audit context for session {} (not running: ended or never registered); "
+            "dropping its audit event.",
+            session_id,
+        )
+    return context
 
 
-def clear_session_org(session_id: int) -> None:
-    _org_id_by_session.pop(session_id, None)
-
-
-def clear_session_flow_name(session_id: int) -> None:
-    _flow_name_by_session.pop(session_id, None)
+def clear_session_audit_context(session_id: int) -> None:
+    _context_by_session.pop(session_id, None)
 
 
 @lru_cache(maxsize=1)
@@ -118,13 +139,14 @@ def emit_session_audit_event(encoded_message: str) -> None:
         return
     data = json.loads(encoded_message)
     session_id = data.get("session_id")
-    org_id, flow_name = None, None
-    if session_id is not None:
-        org_id = get_session_org(session_id)
-        flow_name = get_session_flow_name(session_id) or ""
-
-    if org_id is None:
+    if session_id is None:
         return
+    context = get_session_audit_context(session_id)
+    if context is None:
+        return
+    org_id = context.org_id
+    flow_name = context.flow_name
+    retention_days = context.audit_retention_days
 
     message_data = data.get("message_data") or {}
     message_type = message_data.get("message_type")
@@ -145,6 +167,7 @@ def emit_session_audit_event(encoded_message: str) -> None:
                 execution_order=execution_order,
                 input_=_value_or_empty_dict(message_data.get("input")),
                 event_id=event_id,
+                retention_days=retention_days,
             )
         )
     elif message_type == "finish":
@@ -158,6 +181,7 @@ def emit_session_audit_event(encoded_message: str) -> None:
                 execution_order=execution_order,
                 output=_value_or_empty_dict(message_data.get("output")),
                 event_id=event_id,
+                retention_days=retention_days,
                 additional_data=message_data.get("additional_data"),
             )
         )
@@ -173,6 +197,7 @@ def emit_session_audit_event(encoded_message: str) -> None:
                 execution_order=execution_order,
                 error=error_detail,
                 event_id=event_id,
+                retention_days=retention_days,
             )
         )
     else:
@@ -185,5 +210,6 @@ def emit_session_audit_event(encoded_message: str) -> None:
                 execution_order=execution_order,
                 details=message_data,
                 event_id=event_id,
+                retention_days=retention_days,
             )
         )

@@ -1,4 +1,5 @@
 @use '@angular/material' as mat;
+@use 'tooltip';
 @include mat.elevation-classes();
 @include mat.app-background();
 
@@ -15,9 +16,6 @@ $compact-theme: mat.define-theme(
 
 // Material's --mat-sys-*-font tokens default to Roboto; point them at --font-family.
 :root {
-    --mat-tooltip-container-color: rgba(33, 35, 37, 1);
-    --mat-tooltip-supporting-text-color: #d9d9de;
-
     --mat-sys-body-large-font: var(--font-family);
     --mat-sys-body-medium-font: var(--font-family);
     --mat-sys-body-small-font: var(--font-family);
@@ -41,10 +39,21 @@ $compact-theme: mat.define-theme(
     color: var(--color-required-asterisk, var(--accent-color));
 }
 
-.mat-mdc-tooltip .mdc-tooltip__surface {
-    box-shadow: var(--shadow-raised);
+// Every matTooltip. The shadow is a filter on the tooltip element rather than a box-shadow on the surface, so it
+// also follows the arrow below.
+.mat-mdc-tooltip {
+    filter: var(--tooltip-shadow);
 }
 
+.mat-mdc-tooltip .mdc-tooltip__surface {
+    @include tooltip.tooltip-surface;
+    padding: var(--tooltip-padding);
+    // Material's own 200px is too narrow for a one-line hint.
+    max-width: 360px;
+}
+
+// The classes below change how a tooltip lays out its text. They come after the rule above with the same
+// specificity, so their padding, width and wrapping win. `matTooltipClass` lands on .mat-mdc-tooltip.
 .allow-scroll-tooltip .mdc-tooltip__surface {
     max-height: 225px;
     overflow-y: auto;
@@ -53,9 +62,6 @@ $compact-theme: mat.define-theme(
 .builtin-copy-tooltip .mdc-tooltip__surface {
     max-width: 320px;
     text-align: left;
-}
-.surface-tool-tooltip {
-    --mat-tooltip-container-max-width: 60vw;
 }
 
 .surface-tool-tooltip .mdc-tooltip__surface {
@@ -69,19 +75,11 @@ $compact-theme: mat.define-theme(
 }
 
 // Venv library specifier reference: one operator per line, so the breaks have to survive.
-.venv-specifier-tooltip {
-    --mat-tooltip-container-max-width: 480px;
-}
-
 .venv-specifier-tooltip .mdc-tooltip__surface {
     max-width: 480px;
     text-align: left;
     white-space: pre-line;
     line-height: 1.6;
-}
-
-.tree-name-tooltip {
-    --mat-tooltip-container-max-width: 60vw;
 }
 
 .tree-name-tooltip .mdc-tooltip__surface {
@@ -90,10 +88,6 @@ $compact-theme: mat.define-theme(
 }
 
 // Recycle bin row names: long ones, often without spaces, break onto more lines.
-.bin-name-tooltip {
-    --mat-tooltip-container-max-width: 480px;
-}
-
 .bin-name-tooltip .mdc-tooltip__surface {
     max-width: 480px;
     text-align: left;
@@ -101,3 +95,64 @@ $compact-theme: mat.define-theme(
     // Keeps the line breaks of a long text (instructions).
     white-space: pre-line;
 }
+
+// A tooltip listing several details, one per line: the message joins them with "\n". Wider than the default, so a
+// line rarely wraps on its own and the breaks stay readable.
+.multiline-tooltip .mdc-tooltip__surface {
+    max-width: 400px;
+    text-align: left;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+}
+
+// ---- Tooltip arrow: begin ----------------------------------------------------------------------------------------
+// A 16x5 triangle centred on the side that faces the anchor. Delete this block as a unit to ship tooltips without it.
+// It hangs off the tooltip element, not the surface: the surface clips (overflow: hidden), Material's ::before is the
+// hover bridge across the 8px gap, and Material's scale animation runs on this element, so the arrow animates with
+// it and sits inside its shadow filter. Material names the side on the overlay pane (mat-mdc-tooltip-panel-above /
+// -below / -left / -right, already resolved for RTL) and centres the tooltip on its anchor.
+.mat-mdc-tooltip::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    border: 0 solid transparent;
+    pointer-events: none;
+}
+
+.mat-mdc-tooltip-panel-above .mat-mdc-tooltip::after,
+.mat-mdc-tooltip-panel-below .mat-mdc-tooltip::after {
+    left: 50%;
+    border-left-width: 8px;
+    border-right-width: 8px;
+    transform: translateX(-50%);
+}
+
+.mat-mdc-tooltip-panel-left .mat-mdc-tooltip::after,
+.mat-mdc-tooltip-panel-right .mat-mdc-tooltip::after {
+    top: 50%;
+    border-top-width: 8px;
+    border-bottom-width: 8px;
+    transform: translateY(-50%);
+}
+
+.mat-mdc-tooltip-panel-above .mat-mdc-tooltip::after {
+    top: 100%;
+    border-top: 5px solid var(--tooltip-bg);
+}
+
+.mat-mdc-tooltip-panel-below .mat-mdc-tooltip::after {
+    bottom: 100%;
+    border-bottom: 5px solid var(--tooltip-bg);
+}
+
+.mat-mdc-tooltip-panel-left .mat-mdc-tooltip::after {
+    left: 100%;
+    border-left: 5px solid var(--tooltip-bg);
+}
+
+.mat-mdc-tooltip-panel-right .mat-mdc-tooltip::after {
+    right: 100%;
+    border-right: 5px solid var(--tooltip-bg);
+}
+// ---- Tooltip arrow: end ------------------------------------------------------------------------------------------

@@ -39,6 +39,9 @@ def test_path_traversal_rejected_when_allowlist_set(monkeypatch, storage, fake_c
     with pytest.raises(StoragePermissionError):
         storage.read("allowed/../../etc/passwd")
 
+    # Verify the traversal key never reached the S3 client
+    assert fake_client.objects == {}
+
 
 def test_denied_root_op_lists_allowed_paths_in_message(
     monkeypatch, storage, fake_client

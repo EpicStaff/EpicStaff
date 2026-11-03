@@ -43,6 +43,16 @@ function optionNames(overlay: HTMLElement): string[] {
     return Array.from(overlay.querySelectorAll('.models-list .model-name')).map((el) => el.textContent?.trim() ?? '');
 }
 
+// jsdom has no ResizeObserver; the options' overflow tooltips only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('LlmModelSelectorComponent excludedConfigId', () => {
     it('offers every config when nothing is excluded', () => {
         const { fixture, overlay } = render();

@@ -18,7 +18,7 @@ RUNNER_ROLE_PERMISSIONS = [
     {"resource_type": "agents", "actions": FULL_CRUD},
     {"resource_type": "surfaces", "actions": FULL_CRUD},
     {"resource_type": "knowledge_sources", "actions": FULL_CRUD},
-    {"resource_type": "files", "actions": FULL_CRUD},
+    {"resource_type": "files", "actions": [*FULL_CRUD, "export"]},
     {"resource_type": "llm_configs", "actions": ["create", "read", "update"]},
     {"resource_type": "secrets", "actions": ["create", "read", "use"]},
 ]

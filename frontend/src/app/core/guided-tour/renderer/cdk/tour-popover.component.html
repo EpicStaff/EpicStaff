@@ -1,0 +1,122 @@
+<div
+    #card
+    class="tour-popover"
+    role="dialog"
+    tabindex="-1"
+    [attr.aria-labelledby]="titleId"
+    [attr.aria-describedby]="bodyId"
+    [style.max-width.px]="maxSize()?.width"
+    [style.max-height.px]="maxSize()?.height"
+>
+    @if (progressBar(); as bar) {
+        <div
+            class="tour-popover__progress"
+            role="progressbar"
+            aria-valuemin="1"
+            [attr.aria-valuemax]="bar.total"
+            [attr.aria-valuenow]="bar.current"
+            [attr.aria-valuetext]="bar.label"
+        >
+            <div
+                class="tour-popover__progress-fill"
+                [style.width.%]="bar.percent"
+            ></div>
+        </div>
+    }
+
+    @if (buttons().close) {
+        <app-icon-button
+            class="tour-popover__close"
+            icon="x"
+            size="1.5rem"
+            ariaLabel="Close tour"
+            (onClick)="intent.emit('close')"
+        />
+    }
+
+    <!-- Everything but the buttons: it scrolls when the card is capped, so the buttons stay in view. -->
+    <div
+        #contentRegion
+        class="tour-popover__content"
+        [attr.tabindex]="contentScrolls() ? 0 : null"
+    >
+        @if (content().media; as media) {
+            <img
+                class="tour-popover__media"
+                alt=""
+                draggable="false"
+                [src]="media.src"
+                [width]="media.width"
+                [height]="media.height"
+            />
+        }
+
+        <h2
+            class="tour-popover__title"
+            [id]="titleId"
+        >
+            @if (content().titleIcon; as titleIcon) {
+                <app-svg-icon
+                    [icon]="titleIcon"
+                    size="1.25rem"
+                />
+            }
+            <!-- Decorative: the heading names the dialog, and its name is the title alone. -->
+            @if (content().titleEmoji; as titleEmoji) {
+                <span aria-hidden="true">{{ titleEmoji }}</span>
+            }
+            <span>{{ content().title }}</span>
+        </h2>
+
+        <div
+            class="tour-popover__body"
+            [id]="bodyId"
+        >
+            @for (paragraph of paragraphs(); track $index) {
+                <p>
+                    @for (run of paragraph; track $index) {
+                        <!-- Elements, not bare text: the template's own line breaks would add spaces between runs. -->
+                        @if (run.strong) {
+                            <strong>{{ run.text }}</strong>
+                        } @else {
+                            <span>{{ run.text }}</span>
+                        }
+                    }
+                </p>
+            }
+        </div>
+    </div>
+
+    @if (hasFooter()) {
+        <div class="tour-popover__footer">
+            <div class="tour-popover__secondary-actions">
+                @if (buttons().back; as backLabel) {
+                    <app-button
+                        type="outline-primary"
+                        [ariaDisabled]="pending()"
+                        (click)="intent.emit('back')"
+                    >
+                        {{ backLabel }}
+                    </app-button>
+                }
+                @if (buttons().skip; as skipLabel) {
+                    <app-button
+                        type="ghost"
+                        (click)="intent.emit('skip')"
+                    >
+                        {{ skipLabel }}
+                    </app-button>
+                }
+            </div>
+            @if (buttons().next; as nextLabel) {
+                <app-button
+                    type="primary"
+                    [ariaDisabled]="pending()"
+                    (click)="intent.emit('next')"
+                >
+                    {{ nextLabel }}
+                </app-button>
+            }
+        </div>
+    }
+</div>

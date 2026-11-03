@@ -1,16 +1,19 @@
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, input, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ReactiveFormsModule } from '@angular/forms';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, LlmModelSelectorComponent } from '@shared/components';
-import { HelpTooltipComponent } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { AppSvgIconComponent, HelpTooltipComponent, LlmModelSelectorComponent } from '@shared/components';
+import { EnterBlurDirective, HasPermissionDirective } from '@shared/directives';
 import { FullLLMConfig, FullLLMConfigService, FullRealtimeConfigService } from '@shared/services';
 import { of } from 'rxjs';
 
+import { tourAnchorSelector } from '../../../../../../core/guided-tour';
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../../../create-agent-tour/create-agent-tour-anchors';
 import { AgentDefinition } from '../../../../models/agent-definition.model';
 import { RealtimeAgentDefinitionsApiService } from '../../../../services/realtime-agent-definitions-api.service';
 import { AgentDetailComponent, AgentSavePayload } from './agent-detail.component';
@@ -25,6 +28,7 @@ const AGENT: AgentDefinition = {
     id: 3,
     org: 1,
     name: 'CV Processor',
+    group: null,
     description: '',
     instructions: '',
     instruction_list: [],
@@ -58,6 +62,8 @@ function render(agent: AgentDefinition): {
 } {
     TestBed.configureTestingModule({
         providers: [
+            provideHttpClient(),
+            provideHttpClientTesting(),
             {
                 provide: FullLLMConfigService,
                 useValue: { fullLLMConfigs: signal(CONFIGS), getFullLLMConfigs: () => of(CONFIGS) },
@@ -72,6 +78,7 @@ function render(agent: AgentDefinition): {
         set: {
             imports: [
                 ReactiveFormsModule,
+                EnterBlurDirective,
                 AppSvgIconComponent,
                 LlmModelSelectorComponent,
                 HelpTooltipComponent,
@@ -118,7 +125,17 @@ function clearSelection(fixture: ComponentFixture<AgentDetailComponent>, overlay
     fixture.detectChanges();
 }
 
+// jsdom has no ResizeObserver; the selector's overflow tooltips only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
 describe('AgentDetailComponent fallback LLM', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
     it('shows the saved fallback in its own selector', () => {
         const { fixture } = render(AGENT);
 
@@ -191,5 +208,79 @@ describe('AgentDetailComponent fallback LLM', () => {
 
         expect(selectorTrigger(fixture, FALLBACK).classList).toContain('readonly');
         expect(TestBed.inject(OverlayContainer).getContainerElement().querySelector('.dropdown-menu')).toBeNull();
+    });
+});
+
+/** Stands in for the LLM model selector, which loads every LLM configuration of the organization. */
+@Component({
+    selector: 'app-llm-model-selector',
+    template: '',
+    providers: [
+        { provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => LlmModelSelectorStubComponent), multi: true },
+    ],
+})
+class LlmModelSelectorStubComponent implements ControlValueAccessor {
+    readonly excludedConfigId = input<number | null>(null);
+    readonly readonly = input(false);
+
+    writeValue(): void {}
+
+    registerOnChange(): void {}
+
+    registerOnTouched(): void {}
+}
+
+describe('AgentDetailComponent Create Agent tour anchors', () => {
+    function render(inputs: { agent: AgentDefinition | null; isCreating: boolean }): HTMLElement {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
+            ],
+        });
+        // The form is under test; the instructions list and the Surfaces panel stay unrendered custom elements.
+        TestBed.overrideComponent(AgentDetailComponent, {
+            set: {
+                imports: [
+                    ReactiveFormsModule,
+                    EnterBlurDirective,
+                    HasPermissionDirective,
+                    LlmModelSelectorStubComponent,
+                ],
+                schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            },
+        });
+        const fixture = TestBed.createComponent(AgentDetailComponent);
+        fixture.componentRef.setInput('agent', inputs.agent);
+        fixture.componentRef.setInput('isCreating', inputs.isCreating);
+        fixture.detectChanges();
+        return fixture.nativeElement as HTMLElement;
+    }
+
+    function labelOf(host: HTMLElement, anchor: string): string | undefined {
+        return host.querySelector(tourAnchorSelector(anchor))?.querySelector('label')?.textContent?.trim();
+    }
+
+    it('marks the name field of a draft', () => {
+        const host = render({ agent: null, isCreating: true });
+
+        expect(labelOf(host, CREATE_AGENT_TOUR_ANCHORS.agentName)).toContain('Agent Name');
+    });
+
+    it("leaves a saved agent's name field unmarked: the tour must not take it for the draft's", () => {
+        const host = render({ agent: AGENT, isCreating: false });
+
+        expect(host.querySelector(tourAnchorSelector(CREATE_AGENT_TOUR_ANCHORS.agentName))).toBeNull();
+    });
+
+    it("marks a saved agent's model, instructions and Surfaces", () => {
+        const host = render({ agent: AGENT, isCreating: false });
+
+        expect(labelOf(host, CREATE_AGENT_TOUR_ANCHORS.llmConfig)).toContain('LLM Configuration');
+        expect(labelOf(host, CREATE_AGENT_TOUR_ANCHORS.instructions)).toContain('Instructions');
+        expect(host.querySelector(tourAnchorSelector(CREATE_AGENT_TOUR_ANCHORS.surfaces))?.textContent).toContain(
+            'Surfaces'
+        );
     });
 });

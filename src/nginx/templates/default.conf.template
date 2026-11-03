@@ -3,6 +3,30 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# The scheme every upstream is told in X-Forwarded-Proto, and Django builds its absolute URLs from
+# (avatars, the flow assistant's stream). nginx's own, unless the connection comes from a proxy in
+# NGINX_TRUSTED_PROXIES (18-check-trusted-proxies.envsh renders the entries), such as a load
+# balancer that ends TLS in front of nginx, and that proxy says http or https (in any case; two
+# values, or anything else, count as not said). A client that reaches nginx directly cannot change
+# it. A client that comes through a trusted proxy can, unless the proxy sets X-Forwarded-Proto on
+# every request: $http_x_forwarded_proto also matches the underscore spellings (X_Forwarded_Proto,
+# underscores_in_headers is on), so a proxy that only deletes the dash spelling lets a client's
+# X_Forwarded_Proto through as the value (docs/setup/ssl.md). Keyed on $realip_remote_addr, the
+# address the connection comes from: an operator's set_real_ip_from
+# (docs/plugins/operator/enable-plugins.md) turns $remote_addr into the client's, which would stop
+# the load balancer being recognised. Every location sends $forwarded_proto, never $scheme, except
+# the plugin listeners' (plugins-api-listener.snippet), which no proxy is ever in front of
+# (tests/check_templates.sh checks it).
+geo $realip_remote_addr $trusted_proxy {
+    default 0;
+${NGINX_TRUSTED_PROXY_GEO_ENTRIES}}
+
+map "$trusted_proxy:$http_x_forwarded_proto" $forwarded_proto {
+    "1:http"  http;
+    "1:https" https;
+    default   $scheme;
+}
+
 upstream backend_server {
     zone backend_server 64k;
     server ${DJANGO_HOST}:${DJANGO_PORT} resolve;
@@ -45,20 +69,9 @@ server {
     client_max_body_size 50M;
 
     # ---- Security response headers --------------------------------------
-    # WARNING: nginx inherits add_header into a location only if that location
-    # declares no add_header of its own. Adding one to any location below
-    # silently drops every header here for that route -- repeat them there if
-    # a route ever needs its own.
-    #
-    # Django's XFrameOptionsMiddleware already sends X-Frame-Options: DENY on
-    # proxied responses. Hide it so nginx is the single source of truth and
-    # browsers never receive two conflicting values.
-    proxy_hide_header X-Frame-Options;
-
-    add_header X-Frame-Options SAMEORIGIN always;
-    add_header X-Content-Type-Options nosniff always;
-    add_header Referrer-Policy strict-origin-when-cross-origin always;
-    add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
+    # The add_header inheritance warning in security-headers.snippet applies to every add_header
+    # here too: a location with an add_header of its own gets none of these.
+    include /etc/nginx/conf.d/security-headers.snippet;
 
     # Strict-Transport-Security is decided separately from NGINX_SSL_MODE: a load
     # balancer in front of nginx can terminate TLS while nginx serves plain HTTP.
@@ -89,7 +102,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
     location ^~ /api/run-session/subscribe/ {
         proxy_pass http://backend_server;
@@ -109,7 +122,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location ~ ^/ws/ {
@@ -122,7 +135,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_read_timeout 86400;
     }
 
@@ -146,7 +159,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location ~ ^/(api|admin|ht|swagger)(/|$) {
@@ -158,52 +171,11 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
-    location ^~ /webhooks/ {
-        proxy_pass http://webhook_server;
-        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
-        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-    }
-
-    location ^~ /voice/ {
-        proxy_pass http://realtime_server;
-        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
-        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-
-    location /voice/stream {
-        proxy_pass http://realtime_server;
-        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
-        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
+    # /webhooks/ and /voice/: also served by the tunnel listener below.
+    include /etc/nginx/conf.d/tunnel-routes.snippet;
 
     location /realtime/ {
         proxy_pass http://realtime_server;
@@ -215,7 +187,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     include /etc/nginx/conf.d/chat-${CHAT_ENABLED}.snippet;
@@ -242,7 +214,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location /static/ {
@@ -250,7 +222,7 @@ server {
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     # Only a URL signed by django_app (AvatarStorage.url) gets through: no or a wrong
@@ -272,6 +244,7 @@ server {
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_set_header Authorization "";
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location /media/ {
@@ -279,7 +252,7 @@ server {
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 }
 
@@ -302,6 +275,40 @@ server {
         access_log off;
         return 204;
     }
+
+    location / {
+        return 404;
+    }
+}
+
+# The webhook tunnel listener: what an organization's ngrok tunnel forwards to (the webhook
+# service's NGROK_TARGET_HOST:NGROK_TARGET_PORT, epicstaff-nginx:8083). A tunnel publishes its
+# target on a public URL, so it must never be EpicStaff's own server: that would put every
+# organization's login, API, admin and media behind it. This server serves only the tunnel routes
+# (tunnel-routes.snippet) and 404s everything else. Not published in src/docker-compose.yaml: only
+# containers on nginx's networks reach it.
+#
+# Always plain http, whatever NGINX_SSL_MODE: ngrok ends TLS at its edge and connects here over
+# http, so the TLS server's http->https redirect would send every request back out in a loop.
+server {
+    listen 8083;
+    server_name _;
+
+    include /etc/nginx/conf.d/plugins-tunnel-${PLUGINS_ENABLED}.snippet;
+
+    client_max_body_size 50M;
+
+    # nginx's own redirects (/webhooks to /webhooks/) keep the caller's scheme, host and port: an
+    # absolute one would name this listener's http and port 8083, which the tunnel's public URL
+    # does not have.
+    absolute_redirect off;
+
+    # No Strict-Transport-Security and no Content-Security-Policy: the tunnel's host is the
+    # organization's ngrok domain, not EpicStaff's, and its callers are services, not EpicStaff's
+    # pages.
+    include /etc/nginx/conf.d/security-headers.snippet;
+
+    include /etc/nginx/conf.d/tunnel-routes.snippet;
 
     location / {
         return 404;

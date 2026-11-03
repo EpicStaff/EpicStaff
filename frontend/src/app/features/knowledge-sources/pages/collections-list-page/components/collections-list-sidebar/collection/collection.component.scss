@@ -13,6 +13,13 @@
         border: 1px solid var(--accent-color);
     }
 
+    // The name button opens the collection, so the card shows its keyboard focus; drawn inside, as the scrolling
+    // list clips the full-width cards.
+    &:has(.name:focus-visible) {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+
     .header {
         display: flex;
         justify-content: space-between;
@@ -28,6 +35,18 @@
         text-overflow: ellipsis;
         font-size: 1.125rem;
         color: var(--color-text-primary);
+        // A button that opens its card, drawn as the plain title it was.
+        padding: 0;
+        border: none;
+        background: none;
+        font-family: inherit;
+        text-align: left;
+        cursor: inherit;
+
+        // The card draws it.
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     .files-count {
@@ -52,7 +71,7 @@
         gap: 4px;
         padding: 2px 8px;
         border-radius: 4px;
-        background-color: var(--color-ks-card-tag-background, rgba(255, 255, 255, 0.06));
+        background-color: color-mix(in srgb, currentColor 10%, transparent);
         font-size: 0.75rem;
         white-space: nowrap;
 

@@ -1,3 +1,4 @@
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -8,6 +9,7 @@ from tables.models.user import (
     SHORTCUTS_MAX_PARAM_INTEGER,
     SHORTCUTS_MAX_PARAMS,
     SHORTCUTS_MAX_TEXT_LENGTH,
+    TOUR_KEY_MAX_LENGTH,
 )
 
 from rbac.validation.base import BaseRBACValidator, FieldError
@@ -16,6 +18,9 @@ _CUSTOM_ENTRY_SHAPE_REASON = (
     '"custom" must be a list of objects with exactly the keys "action" and "keys", '
     'plus an optional "params".'
 )
+
+# Kebab case: "quick-start", "flows-v2". Used with fullmatch, so a trailing newline fails too.
+_TOUR_KEY = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
 class UserValidationService(BaseRBACValidator):
@@ -298,6 +303,32 @@ class UserValidationService(BaseRBACValidator):
             errors.append(FieldError("avatar", "<non-file>", "Must be a file upload."))
         self._raise_if_any(errors)
         return file
+
+    def validate_tour_key(self, tour_key: str) -> str:
+        """`POST /api/profile/tours/{tour_key}/complete/`.
+
+        Grammar only: lowercase ASCII letters and digits in words joined by
+        single hyphens, at most TOUR_KEY_MAX_LENGTH characters. Keys are not
+        checked against a list of tours, so the frontend can add a tour without
+        a backend change; the per-user limit is enforced by UserProfileService.
+        """
+        errors: list[FieldError] = []
+        if len(tour_key) > TOUR_KEY_MAX_LENGTH:
+            errors.append(
+                FieldError(
+                    "tour_key", tour_key, f"Must be {TOUR_KEY_MAX_LENGTH} characters or fewer."
+                )
+            )
+        elif not _TOUR_KEY.fullmatch(tour_key):
+            errors.append(
+                FieldError(
+                    "tour_key",
+                    tour_key,
+                    "Use lowercase letters and digits, in words joined by single hyphens.",
+                )
+            )
+        self._raise_if_any(errors)
+        return tour_key
 
     def validate_password_change_request(self, data: dict) -> dict:
         """`POST /api/profile/password-change/request/`. Body: current_password."""

@@ -9,6 +9,7 @@ const SOURCE: AgentDefinition = {
     id: 3,
     org: 1,
     name: 'CV Processor',
+    group: null,
     description: '',
     instructions: '',
     instruction_list: [],

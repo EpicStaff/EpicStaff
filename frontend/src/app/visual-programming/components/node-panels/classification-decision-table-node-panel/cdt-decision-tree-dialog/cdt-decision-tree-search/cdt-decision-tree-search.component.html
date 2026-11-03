@@ -1,3 +1,4 @@
+<!-- Tab moves through the entries and the footer; off either end the dialog takes it back to the search box. -->
 <div
     class="cdt-tree-search__list"
     role="group"
@@ -8,8 +9,11 @@
 
         @for (block of group.blocks; track block.id) {
             <button
+                #item
                 class="cdt-tree-search__item"
                 type="button"
+                appTooltipOnOverflow=".cdt-tree-search__item-title"
+                [matTooltip]="block.title"
                 (click)="picked.emit(block.id)"
             >
                 @if (iconByShape[block.shape]; as glyph) {
@@ -31,6 +35,7 @@
 
 <footer class="cdt-tree-search__footer">
     <app-button
+        #clearButton
         type="outline-primary"
         mod="default"
         (click)="cleared.emit()"
@@ -45,6 +50,7 @@
             >Cancel</app-button
         >
         <app-button
+            #saveButton
             type="primary"
             mod="default"
             (click)="applied.emit()"

@@ -1,3 +1,15 @@
+@use '../../../../../styles/tooltip';
+
+.venv-card--clickable {
+    cursor: pointer;
+}
+
+// The name button opens the venv, so the card shows its keyboard focus.
+.venv-card:has(.venv-card__name-button:focus-visible) {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
 .venv-card {
     display: flex;
     flex-direction: column;
@@ -31,6 +43,21 @@
         color: var(--color-text-primary);
     }
 
+    // A button that opens its card, drawn as the plain title it was.
+    &__name-button {
+        padding: 0;
+        border: none;
+        background: none;
+        font-family: inherit;
+        text-align: left;
+        cursor: inherit;
+
+        // The card draws it.
+        &:focus-visible {
+            outline: none;
+        }
+    }
+
     &__actions {
         display: flex;
         align-items: center;
@@ -51,13 +78,13 @@
         color: var(--color-ks-transparent-text-60);
         cursor: pointer;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
             background-color: var(--color-ghost-btn-hover);
         }
 
         &--accent,
-        &--accent:hover {
+        &--accent:is(:hover, :focus-visible) {
             color: var(--accent-color);
         }
     }
@@ -117,12 +144,11 @@
         grid-template-columns: auto auto;
         column-gap: 16px;
         row-gap: 4px;
+        @include tooltip.tooltip-surface;
         max-width: 360px;
-        padding: 8px 12px;
-        border-radius: 4px;
-        background-color: var(--mat-tooltip-container-color);
-        color: var(--mat-tooltip-supporting-text-color);
+        padding: var(--tooltip-padding);
         overflow-wrap: anywhere;
+        filter: var(--tooltip-shadow);
         // Never under the pointer, so it cannot steal the chip's hover.
         pointer-events: none;
     }

@@ -106,10 +106,9 @@ def _log_unhandled_exception(exc: Exception, request, response) -> None:
     Returning a response stops DRF from re-raising, so Django would log only
     the status line. Django's own request logger records it with the
     traceback, and marks the response as logged so that line is not repeated.
-    It goes through stdlib logging rather than the loguru sink on purpose: the
-    sink keeps loguru's `diagnose` on, which prints every local variable of
-    every frame -- secrets and request payloads included -- and an unhandled
-    exception can come from any code path.
+    It goes through stdlib `log_response` rather than loguru on purpose: only
+    that call marks the response as logged, so a loguru call would leave
+    Django to repeat the line.
     """
     path = request.path if request is not None else "unknown path"
     log_response(
@@ -124,6 +123,13 @@ def _log_unhandled_exception(exc: Exception, request, response) -> None:
 def custom_exception_handler(exc, context):
     """Render every exception as the project's `{status_code, code, message}` envelope."""
 
+    # Imported here, not at module level: the secrets package imports the models,
+    # and this util must stay importable without the app registry or a cycle via tables.
+    from tables.services.secrets.exceptions import (
+        ModelEndpointNotSettableError,
+        SecretUseDeniedError,
+    )
+
     # DRF's own `exception_handler()` converts Django's `Http404`/
     # `PermissionDenied` into `NotFound`/`PermissionDenied` APIExceptions,
     # but only on its own local `exc` binding -- the caller's `exc` here is
@@ -135,6 +141,10 @@ def custom_exception_handler(exc, context):
         exc = NotFound(*exc.args)
     elif isinstance(exc, PermissionDenied):
         exc = DRFPermissionDenied(*exc.args)
+    elif isinstance(exc, (SecretUseDeniedError, ModelEndpointNotSettableError)):
+        # A domain error raised by a secret check. Rendered as the field error a
+        # serializer would report, so the 400 message names the field.
+        exc = ValidationError(exc.field_errors())
     elif isinstance(exc, ClientError):
         exc = _client_error_as_api_exception(exc)
     elif isinstance(exc, OutboundClientError):

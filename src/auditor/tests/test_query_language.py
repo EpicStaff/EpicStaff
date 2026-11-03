@@ -158,6 +158,10 @@ def test_in_accepts_both_paren_and_bracket_spelling():
         {"field": "status", "op": "equals", "value": "completed"},
         {"field": "status", "op": "not_equal", "value": "failed"},
         {"field": "status", "op": "in", "value": ["completed", "failed"]},
+        {"field": "session_id", "op": "gt", "value": 10},
+        {"field": "session_id", "op": "equals", "value": "66"},
+        {"field": "session_id", "op": "in", "value": [1, 2.5]},
+        {"field": "id", "op": "equals", "value": "node-1"},
     ],
 )
 def test_valid_filter_is_accepted(node):
@@ -174,8 +178,23 @@ def test_valid_filter_is_accepted(node):
         # deserialization on the read path instead of being a 400 here.
         {"field": "status", "op": "equals", "value": "error"},
         {"field": "status", "op": "in", "value": ["completed", "warning"]},
+        # A non-numeric id reached OpenSearch and came back as a 500, not a 400.
+        {"field": "session_id", "op": "gt", "value": "abc"},
+        {"field": "session_id", "op": "in", "value": [1, "x"]},
+        {"field": "session_id", "op": "in", "value": [None]},
+        {"field": "session_id", "op": "equals", "value": True},
     ],
-    ids=["org-id", "removed-field", "op-not-allowed-for-field", "unknown-status", "unknown-status-in-list"],
+    ids=[
+        "org-id",
+        "removed-field",
+        "op-not-allowed-for-field",
+        "unknown-status",
+        "unknown-status-in-list",
+        "non-numeric-session-id",
+        "non-numeric-session-id-in-list",
+        "null-session-id-in-list",
+        "boolean-session-id",
+    ],
 )
 def test_invalid_filter_is_rejected(node):
     with pytest.raises(FilterValidationError):

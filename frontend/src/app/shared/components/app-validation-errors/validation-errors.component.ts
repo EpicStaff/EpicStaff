@@ -1,15 +1,19 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl } from '@angular/forms';
+import { generateUuid } from '@shared/utils';
 
 @Component({
     selector: 'app-validation-errors',
     templateUrl: './validation-errors.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./validation-errors.component.scss'],
+    host: { '[attr.id]': 'id()' },
 })
 export class ValidationErrorsComponent {
     control = input.required<AbstractControl>();
+    /** The host's id, for the field to point its `aria-describedby` at, so the reason is read with the field. */
+    readonly id = input<string>(`validation-errors-${generateUuid()}`);
 
     private destroyRef = inject(DestroyRef);
     private statusTick = signal(0);
@@ -38,6 +42,7 @@ export class ValidationErrorsComponent {
             return `Max length is ${x.requiredLength}. Current length is ${x.actualLength}.`;
         },
         pattern: () => 'The value does not match the required pattern.',
+        venvName: () => 'Use only letters, digits, spaces, - and _.',
         email: () => 'Invalid email address.',
         emailWhitespace: () => 'Email must not contain whitespace.',
         emailLength: () => 'Must be at most 254 characters, with at most 64 before the @.',
@@ -68,10 +73,17 @@ export class ValidationErrorsComponent {
 
         for (const key of Object.keys(errs)) {
             if (key === 'server') continue;
-            const formatter = this.messages[key];
-            out.push(formatter ? formatter(errs[key]) : `${key} is invalid.`);
+            out.push(this.messageFor(key, errs[key]));
         }
 
         return out;
     });
+
+    // A validator that words its own error carries the message as the error's value.
+    private messageFor(key: string, error: unknown): string {
+        const formatter = this.messages[key];
+        if (formatter) return formatter(error);
+        if (typeof error === 'string' && error.trim()) return error;
+        return `${key} is invalid.`;
+    }
 }

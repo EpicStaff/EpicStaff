@@ -86,6 +86,11 @@ Skip this step for public or unauthenticated MCP servers.
    **Name** is checked for uniqueness as you type — if you see *"A tool with
    this name already exists"*, pick a different label.
 
+   Selecting an **Auth** secret needs the **Use** permission on Secrets. So does
+   changing the **Transport** of a tool that has an Auth secret, because the
+   secret is sent to that URL. Without Use the save is refused with a message
+   naming the field; ask an organization admin to grant it.
+
 5. Click **Create**.
 
 On success a confirmation appears and the tool shows up as a card in the MCP

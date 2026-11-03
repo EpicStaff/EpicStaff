@@ -1,4 +1,3 @@
-import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { ORG_SWITCH_URL_RULES, OrgSwitchUrlRule } from '@shared/services';
@@ -11,7 +10,6 @@ import { AuthService } from '../../../../services/auth/auth.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
-import { QuickStartTourService } from '../../../quick-start-tour/quick-start-tour.service';
 import { UserMenuComponent } from './user-menu.component';
 
 /** A feature's rule, as features register them: `/reports/<id>/…` keeps only the report. */
@@ -31,7 +29,6 @@ describe('UserMenuComponent organization switch', () => {
                 { provide: ProfileService, useValue: { switchOrg: () => of(undefined) } },
                 { provide: PermissionsService, useValue: { canAccessWorkspace: () => false } },
                 { provide: AuthService, useValue: {} },
-                { provide: QuickStartTourService, useValue: { isAvailable: signal(false), start: vi.fn() } },
                 ...rules.map((rule) => ({ provide: ORG_SWITCH_URL_RULES, useValue: rule, multi: true })),
             ],
         });

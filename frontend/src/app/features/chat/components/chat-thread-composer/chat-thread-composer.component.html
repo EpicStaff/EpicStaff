@@ -26,13 +26,15 @@
         </div>
     }
     <div class="composer__row">
-        <app-custom-input
-            class="composer__input"
-            [ariaLabel]="isVisitor() ? 'Message as the visitor' : 'Reply as operator'"
+        <textarea
+            #messageField
+            class="composer__input text-body"
+            rows="1"
+            [attr.aria-label]="isVisitor() ? 'Message as the visitor' : 'Reply as operator'"
             [formControl]="message"
             [placeholder]="placeholder()"
-            (keydown.enter)="send()"
-        />
+            (keydown.enter)="onEnter($event)"
+        ></textarea>
         <!-- An operator replies once they hold the conversation; claiming it is offered here, where they write. -->
         @if (!isVisitor() && !isClaimedByMe()) {
             <app-button

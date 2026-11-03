@@ -10,6 +10,22 @@ import httpx
 import pytest
 from fakeredis import FakeAsyncRedis
 
+# app.core.settings reads the process environment when it is imported and exits
+# when a required variable is missing, so these must be set before that import.
+# The service gets them from docker compose; setdefault leaves a developer's own
+# values (or an exported src/.env) in charge.
+for _variable, _value in {
+    "WEBHOOK_PORT": "8009",
+    "WEBHOOK_LOG_LEVEL": "DEBUG",
+    "REDIS_HOST": "redis",
+    "REDIS_PORT": "6379",
+    "REDIS_USER": "root_user",
+    "REDIS_PASSWORD": "root_password",
+    "DJANGO_CORS_ALLOWED_ORIGINS": "",
+    "WEBHOOK_EMPTY_JSON_PATHS": "none",
+}.items():
+    os.environ.setdefault(_variable, _value)
+
 from app.core.settings import settings
 from app.main import create_app
 from app.services.redis_service import RedisService, get_redis_service

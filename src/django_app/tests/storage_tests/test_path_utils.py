@@ -1,6 +1,6 @@
 import pytest
 
-from tables.services.storage_service.path_utils import sanitize_storage_path
+from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 
 
 class TestSanitizeStoragePath:

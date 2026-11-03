@@ -19,6 +19,7 @@ import pytest
 from app.emitters.base import Emitter
 from app.exceptions import RunCancelled
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
+from app.logging_utils import redact_value
 from app.loop.agent_loop import _UNTRUSTED_CONTENT_NOTE, DefaultAgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls
@@ -26,6 +27,7 @@ from app.tools.registry import ToolRegistry, ToolSpec
 from shared.models.agent_service import AgentSpec, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
+from tests.log_capture import assert_masked_exception, log_line_starting_with, capture_logs_at
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -747,6 +749,27 @@ async def test_llm_raises_returns_llm_error_no_on_error():
     assert len(error_events) == 0
 
 
+async def test_llm_error_logs_the_exception_class_without_its_message():
+    """The llm_error log line carries no raw exception text; LoopResult.error still does."""
+    secret_marker = "LLM_CRASH_SECRET_13579"
+    raw_error_text = f"provider rejected sk-live-{secret_marker}"
+    emitter = RecordingEmitter()
+    context = make_context()
+    tools = StubToolRegistry({})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient([], chat_raises=RuntimeError(raw_error_text))
+
+    with capture_logs_at("DEBUG") as messages:
+        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    error_line = log_line_starting_with(messages, "loop llm_error")
+    assert "correlation_id=test-corr" in error_line
+    assert "RuntimeError" in error_line
+    assert "<redacted" in error_line
+    assert secret_marker not in "\n".join(messages)
+    assert result.error == raw_error_text
+
+
 async def test_timeout_fires_mid_execution():
     """Wall-clock limit fires during tool execution → stop_reason='timeout', on_error NOT called."""
     emitter = RecordingEmitter()
@@ -1360,6 +1383,18 @@ async def test_request_errors_do_not_switch(error_type):
     assert emitter.llm_fallbacks == []
 
 
+async def test_switch_warning_names_the_error_class_without_provider_text():
+    llm = FakeLLMClient([_provider_error(litellm.AuthenticationError), text_chunks("fallback answer")])
+
+    with capture_logs_at("WARNING") as logs:
+        await _run(llm, _context_with_fallback(), RecordingEmitter())
+
+    warning_line = log_line_starting_with(logs, "primary llm failed, switching to fallback ")
+    assert "secret-ish" not in warning_line
+    assert "correlation_id=test-corr" in warning_line
+    assert_masked_exception(warning_line, "AuthenticationError")
+
+
 async def test_without_fallback_a_trigger_error_fails_the_run_as_before():
     emitter = RecordingEmitter()
     error = _provider_error(litellm.RateLimitError)
@@ -1475,4 +1510,100 @@ async def test_context_window_warning_uses_the_fallback_model_after_a_switch(mon
     assert emitter.warnings == [
         "input context >= 80% of model context window (1000 tokens) for "
         "'anthropic/claude-sonnet-4-5'; approaching limit"
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Tests: debug logging never carries raw payloads
+# ---------------------------------------------------------------------------
+
+
+# Sentinel carried through the whole turn: it is the tool-call argument, the tool
+# output, and — once both are appended to the conversation — part of the message list
+# the next iteration dumps. One marker therefore reaches all three debug log sites.
+_SENTINEL = "SENTINEL-LEAK-7f3a"
+_SENTINEL_ARGUMENTS = '{"query": "SENTINEL-LEAK-7f3a"}'
+_SENTINEL_OUTPUT = "SENTINEL-LEAK-7f3a in the result"
+
+
+async def test_no_debug_log_site_carries_the_payload_verbatim():
+    """A marker placed in tool arguments and tool output reaches no debug log site."""
+    user_prompt = f"look up {_SENTINEL} for me"
+
+    emitter = RecordingEmitter()
+    context = make_context(messages=[{"role": "user", "content": user_prompt}])
+    tools = StubToolRegistry({"lookup": lambda args: _SENTINEL_OUTPUT})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient(
+        [
+            tool_chunks("c1", "lookup", _SENTINEL_ARGUMENTS),
+            text_chunks("done"),
+        ]
+    )
+
+    with capture_logs_at("DEBUG") as messages:
+        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    assert result.final_text == "done"
+    assert _SENTINEL not in "\n".join(messages)
+
+    second_iteration = log_line_starting_with(messages, "loop iter=1 ")
+    assert redact_value(_SENTINEL_ARGUMENTS) in second_iteration
+    assert "'content': '<redacted len=" in second_iteration
+    assert user_prompt not in second_iteration
+
+    tool_call_line = log_line_starting_with(messages, "tool call ")
+    assert tool_call_line == (
+        f"tool call id=c1 name=lookup args={redact_value(_SENTINEL_ARGUMENTS)}"
+    )
+
+    tool_result_line = log_line_starting_with(messages, "tool result ")
+    assert tool_result_line == (
+        f"tool result id=c1 is_error=False content={redact_value(_SENTINEL_OUTPUT)}"
+    )
+
+
+async def test_debug_logs_still_carry_the_identifiers_needed_to_correlate_a_call():
+    """Redacting payloads must not cost the ids, names and flags used for debugging."""
+    emitter = RecordingEmitter()
+    context = make_context()
+    tools = StubToolRegistry({"lookup": lambda args: "ok"})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient(
+        [
+            tool_chunks("call-42", "lookup", "{}"),
+            text_chunks("done"),
+        ]
+    )
+
+    with capture_logs_at("DEBUG") as messages:
+        await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    log_text = "\n".join(messages)
+    assert "tool call id=call-42 name=lookup" in log_text
+    assert "tool result id=call-42 is_error=False" in log_text
+    assert "correlation_id=test-corr" in log_text
+
+
+async def test_no_payload_log_lines_are_emitted_below_debug_level():
+    """At INFO the three payload-carrying lines are not logged at all."""
+    emitter = RecordingEmitter()
+    context = make_context(messages=[{"role": "user", "content": "hello"}])
+    tools = StubToolRegistry({"lookup": lambda args: "ok"})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient(
+        [
+            tool_chunks("c1", "lookup", '{"query": "x"}'),
+            text_chunks("done"),
+        ]
+    )
+
+    with capture_logs_at("INFO") as messages:
+        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    assert result.final_text == "done"
+    assert not [
+        message
+        for message in messages
+        if message.startswith(("loop iter=", "tool call ", "tool result "))
     ]

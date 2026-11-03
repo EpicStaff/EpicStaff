@@ -1,4 +1,7 @@
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 
 import { ButtonComponent } from './button.component';
 
@@ -7,6 +10,28 @@ class ResizeObserverStub {
     observe(): void {}
     unobserve(): void {}
     disconnect(): void {}
+}
+
+/** Uses the button as its consumers do: a `(click)` on the host element. */
+@Component({
+    imports: [ButtonComponent],
+    template: `<app-button
+        [ariaDisabled]="isAriaDisabled()"
+        (click)="hostClicks.set(hostClicks() + 1)"
+        >Save</app-button
+    >`,
+})
+class ButtonHostComponent {
+    readonly isAriaDisabled = signal(false);
+    readonly hostClicks = signal(0);
+}
+
+@Component({
+    imports: [ButtonComponent],
+    template: `<app-button>{{ label() }}</app-button>`,
+})
+class LabelHostComponent {
+    readonly label = signal('Save');
 }
 
 describe('ButtonComponent', () => {
@@ -29,8 +54,51 @@ describe('ButtonComponent', () => {
         expect(render({ ariaDescribedby: 'save-warning' }).getAttribute('aria-describedby')).toBe('save-warning');
     });
 
+    it.each([
+        ['is not marked disabled by default', {}, null],
+        ['marks its button disabled for assistive technology', { ariaDisabled: true }, 'true'],
+    ])('%s, and keeps it focusable', (_case, inputs, ariaDisabled) => {
+        const button = render(inputs);
+
+        expect(button.getAttribute('aria-disabled')).toBe(ariaDisabled);
+        expect(button.disabled).toBe(false);
+    });
+
+    it.each<[description: string, isAriaDisabled: boolean, hostClicks: number, pageClicks: number]>([
+        ['reaches the host and the page while enabled', false, 1, 1],
+        ['reaches neither the host nor the page while aria-disabled, and the button keeps the focus', true, 0, 0],
+    ])('a click %s', (_description, isAriaDisabled, hostClicks, pageClicks) => {
+        const fixture = TestBed.createComponent(ButtonHostComponent);
+        fixture.componentInstance.isAriaDisabled.set(isAriaDisabled);
+        fixture.detectChanges();
+        const button = (fixture.nativeElement as HTMLElement).querySelector('button') as HTMLButtonElement;
+        let pageClickCount = 0;
+        const onPageClick = (): void => {
+            pageClickCount++;
+        };
+        document.addEventListener('click', onPageClick);
+
+        button.focus();
+        button.click();
+
+        document.removeEventListener('click', onPageClick);
+        expect(fixture.componentInstance.hostClicks()).toBe(hostClicks);
+        expect(pageClickCount).toBe(pageClicks);
+        expect(document.activeElement).toBe(button);
+    });
+
     it('renders the outline-danger type as its own class', () => {
         expect(render({ type: 'outline-danger' }).classList).toContain('btn-outline-danger');
+    });
+
+    it('renders the filled danger type as its own class', () => {
+        const fixture = TestBed.createComponent(ButtonComponent);
+        fixture.componentInstance.type = 'danger';
+        fixture.detectChanges();
+
+        const button = (fixture.nativeElement as HTMLElement).querySelector('button');
+        expect(button?.classList).toContain('btn-danger');
+        expect(button?.classList).not.toContain('btn-outline-danger');
     });
 
     // display: none would drop the label from the accessibility tree and leave the icon-only button nameless.
@@ -47,5 +115,22 @@ describe('ButtonComponent', () => {
         expect(button.classList).toContain('btn--only-icon');
         expect(getComputedStyle(label).display).not.toBe('none');
         expect(getComputedStyle(label).position).toBe('absolute');
+    });
+
+    // A visible label needs no tooltip repeating it; once the button collapses to its icon the label is the tooltip,
+    // and it follows a label that changes meanwhile (Save → Saving…).
+    it('shows its label as the tooltip only while collapsed to its icon', async () => {
+        const fixture = TestBed.createComponent(LabelHostComponent);
+        fixture.autoDetectChanges();
+        await fixture.whenStable();
+        const tooltip = (): MatTooltip => fixture.debugElement.query(By.css('button')).injector.get(MatTooltip);
+        expect(tooltip().disabled).toBe(true);
+
+        fixture.debugElement.query(By.directive(ButtonComponent)).componentInstance.onCollapseChange(true);
+        fixture.componentInstance.label.set('Saving…');
+        await fixture.whenStable();
+
+        expect(tooltip().disabled).toBe(false);
+        expect(tooltip().message).toBe('Saving…');
     });
 });

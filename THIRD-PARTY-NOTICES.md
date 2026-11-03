@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Thu, 22 Oct 2026 11:19:43 GMT -->
-<!-- commit: 991edb9ee5592e7dff3cc4242fae942be3a3815d -->
-<!-- package-lock.json sha256: 8ded58d34f90824f -->
+<!-- generated: Thu, 29 Oct 2026 13:21:16 GMT -->
+<!-- commit: 2dd4777b72ddf5d8dcd431514899a065930e6db8 -->
+<!-- package-lock.json sha256: c545f5ca8f1743fc -->
 
 ## Frontend license summary
 
@@ -22,16 +22,16 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 
 | License | Packages |
 |---|---|
-| MIT | 48 |
-| ISC | 3 |
+| MIT | 47 |
 | Apache-2.0 | 2 |
+| ISC | 2 |
 | OFL-1.1 | 1 |
 | (MPL-2.0 OR Apache-2.0) | 1 |
 | BSD-2-Clause | 1 |
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **59** |
+| **Total** | **57** |
 
 ## Package index
 
@@ -59,11 +59,9 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | `ag-grid-angular` | 36.1.0 | MIT |
 | `ag-grid-community` | 36.1.0 | MIT |
 | `ag-stack` | 36.1.0 | MIT |
-| `canvas-confetti` | 1.9.4 | ISC |
 | `core-util-is` | 1.0.3 | MIT |
 | `docx-preview` | 0.3.7 | Apache-2.0 |
 | `dompurify` | 3.4.17 | (MPL-2.0 OR Apache-2.0) |
-| `driver.js` | 1.8.0 | MIT |
 | `entities` | 8.0.0 | BSD-2-Clause |
 | `fflate` | 0.8.3 | MIT |
 | `graceful-fs` | 4.2.11 | ISC |
@@ -1313,34 +1311,6 @@ SOFTWARE.
 
 </details>
 
-### canvas-confetti@1.9.4
-
-- **License:** ISC
-- **Publisher:** Kiril Vatev <vatev.1@gmail.com>
-- **Repository:** https://github.com/catdad/canvas-confetti
-
-<details><summary>License text</summary>
-
-```
-ISC License
-
-Copyright (c) 2020, Kiril Vatev
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-```
-
-</details>
-
 ### core-util-is@1.0.3
 
 - **License:** MIT
@@ -1797,40 +1767,6 @@ Apache License
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-```
-
-</details>
-
-### driver.js@1.8.0
-
-- **License:** MIT
-- **Publisher:** Kamran Ahmed <kamranahmed.se@gmail.com>
-- **Repository:** https://github.com/nilbuild/driver.js
-
-<details><summary>License text</summary>
-
-```
-The MIT License
-
-Copyright (c) Kamran Ahmed
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
 ```
 
 </details>
@@ -3766,9 +3702,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-26T13:22:53Z UTC -->
-<!-- commit: 255eb09d88e7d4ef0832371f02eee4925572383d -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:b1ab4ff5012d5ac4, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:d1d991c84d05eedb, manager:b4bef382144a5a4a, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, sandbox_new:4438d1e7c09f00dc, webhook:6e6a68286cd96f18 -->
+<!-- generated: 2026-11-02T16:55:53Z UTC -->
+<!-- commit: 0e8c9c551f281de1e00390c7204f62dd6f628c7c -->
+<!-- lock-hashes: agent:83cefc2b59540d91, auditor:49bc6b4568ea6ce4, chat:0e40c6142ddd64d8, crew:52f4af39a42d68af, django_app:644a8311bbb3cf6f, es_plugins:cf58ae9355d4d516, foundation:da2ef7a6b1550191, knowledge_new:617a4fe991000c06, manager:263decd2407ab889, plugin_sdk:1d91f171502da724, plugins_egress:9a5691273399ac26, realtime:f3bdc1234519e379, sandbox:117c57af453053a0, sandbox_new:8077ff5467db9eb4, shared:c8f577231b56a363, webhook:b0fc119a3af1fcd1 -->
 
 ## Backend (Python)
 
@@ -4029,7 +3965,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pgvector` | 0.3.6 | MIT | Copyright (c) 2021-2024 Andrew Kane |
 | `pgvector` | 0.4.2 | MIT | Copyright (c) 2021-2025 Andrew Kane |
 | `piccolo` | 1.36.0 | MIT License | Copyright (c) 2018 Daniel Townsend |
-| `pillow` | 12.3.0 | MIT-CMU | Copyright © 1997-2011 by Secret Labs AB |
+| `pillow` | 13.0.0 | MIT-CMU | Copyright © 1997-2011 by Secret Labs AB |
 | `platformdirs` | 4.11.7 | MIT | Copyright (c) 2010-202x The platformdirs developers |
 | `platformdirs` | 4.13.5 | MIT | Copyright (c) 2010-202x The platformdirs developers |
 | `polyfactory` | 3.3.0 | MIT License | Copyright (c) 2021, 2022, 2023 Litestar Org. |
@@ -4053,7 +3989,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pydantic_core` | 2.46.4 | MIT | Copyright (c) 2022 Samuel Colvin |
 | `Pygments` | 2.20.0 | BSD-2-Clause | Copyright (c) 2006-2022 by the respective authors (see AUTHORS file). |
 | `Pygments` | 2.21.0 | BSD-2-Clause | Copyright (c) 2006-2022 by the respective authors (see AUTHORS file). |
-| `PyJWT` | 2.13.0 | MIT | Copyright (c) 2015-2022 José Padilla |
+| `PyJWT` | 2.15.1 | MIT | Copyright (c) 2015-2022 José Padilla |
 | `pyngrok` | 7.4.1 | MIT | Copyright (c) 2018-2025 Alex Laird |
 | `pypdfium2` | 5.12.1 | BSD-3-Clause, Apache-2.0, dependency licenses | Copyright (c) pypdfium2-team |
 | `pyperclip` | 1.11.0 | BSD License | Copyright (c) 2014, Al Sweigart |
@@ -23545,7 +23481,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 > No NOTICE file shipped by upstream.
 
-#### pillow@12.3.0
+#### pillow@13.0.0
 
 - **License:** MIT-CMU
 - **Author:** Jeffrey 'Alex' Clark <aclark@aclark.net>
@@ -29241,7 +29177,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 > No NOTICE file shipped by upstream.
 
-#### PyJWT@2.13.0
+#### PyJWT@2.15.1
 
 - **License:** MIT
 - **Author:** Jose Padilla <hello@jpadilla.com>

@@ -1,12 +1,22 @@
 import { Dialog as CdkDialog, DialogModule } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, input, Output, signal } from '@angular/core';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    EventEmitter,
+    inject,
+    Input,
+    input,
+    Output,
+    signal,
+} from '@angular/core';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 // import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
 // import { ToastService } from '../../../../../../services/notifications';
 import { AppSvgIconComponent, Spinner2Component, StatusBadgeComponent } from '@shared/components';
-import { CollapseOnOverflowDirective, HasPermissionDirective } from '@shared/directives';
+import { CollapseOnOverflowDirective, HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
 import { PresentEditor } from 'src/app/features/flows/services/graph-collaboration.ws.service';
@@ -14,12 +24,17 @@ import { PresentEditor } from 'src/app/features/flows/services/graph-collaborati
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
 import { GraphDto } from '../../../../../../features/flows/models/graph.model';
 import { LabelsStorageService } from '../../../../../../features/flows/services/labels-storage.service';
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
+import { FLOW_ACTION_PERMISSIONS } from '../../../../../../visual-programming/core/constants/flow-action-permissions';
+import { KeymapService } from '../../../../../../visual-programming/services/keymap.service';
+import { PREVIEW_BLOCKED_MESSAGES } from './flow-header.constants';
 import { GraphPresenceIndicatorsComponent } from './presence-indicator/graph-presence-indicators.component';
 import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
 
 @Component({
     selector: 'app-flow-header',
     imports: [
+        TooltipOnOverflowDirective,
         RouterModule,
         Spinner2Component,
         AppSvgIconComponent,
@@ -59,14 +74,37 @@ export class FlowHeaderComponent {
     @Output() viewVersionHistory = new EventEmitter<void>();
 
     public isSaveDropdownOpen = signal(false);
+    /** Shows Run and Get cURL; their shortcuts check the same requirement. */
+    protected readonly canUseFlow = computed(() => this.permissions.meets(FLOW_ACTION_PERMISSIONS.useFlow));
+    protected readonly previewBlockedMessages = PREVIEW_BLOCKED_MESSAGES;
 
     private readonly dialog = inject(CdkDialog);
+    private readonly permissions = inject(PermissionsService);
+    protected readonly keymap = inject(KeymapService);
 
     constructor(private router: Router) {}
 
     toggleSaveDropdown(event: Event): void {
         event.stopPropagation();
+        if (this.isSaving || this.isRunning) return;
         this.isSaveDropdownOpen.update((v) => !v);
+    }
+
+    /** Escape closes only the save menu; its focus trap gives the focus back to the chevron. */
+    protected onSaveDropdownEscape(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.closeSaveDropdown();
+    }
+
+    /**
+     * The tooltips sit on a wrapper, which a disabled button lets the pointer through to; a button reached with
+     * the keyboard shows its wrapper's tooltip too.
+     */
+    protected showTooltipOnKeyboardFocus(event: FocusEvent, tooltip: MatTooltip): void {
+        if (event.target instanceof HTMLElement && event.target.matches(':focus-visible')) {
+            tooltip.show();
+        }
     }
 
     closeSaveDropdown(): void {
@@ -74,6 +112,7 @@ export class FlowHeaderComponent {
     }
 
     onSave() {
+        if (this.isSaving || this.isRunning) return;
         this.save.emit();
     }
 
@@ -86,6 +125,7 @@ export class FlowHeaderComponent {
     }
 
     onRun() {
+        if (this.isSaving || this.isRunning) return;
         this.run.emit();
     }
 

@@ -523,7 +523,9 @@ class TestPythonToolDescriptionCleanedOnImport:
     ):
         built_in_tool = self._attach_built_in_tool(agent_flow, self.LONG_BUILT_IN_DESCRIPTION)
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
 
         id_mapper = import_file(export_file)
@@ -538,7 +540,9 @@ class TestPythonToolDescriptionCleanedOnImport:
     ):
         built_in_tool = self._attach_built_in_tool(agent_flow, self.LONG_BUILT_IN_DESCRIPTION)
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         # Same name and code, newer id, so it sorts before the built-in in the lookup;
         # its description equals the built-in's only after cleaning.

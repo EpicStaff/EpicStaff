@@ -17,6 +17,11 @@
         </app-icon-button>
     </div>
 
+    <app-error-banner
+        class="error-banner"
+        [message]="errorMessage()"
+    />
+
     <div
         class="form"
         [formGroup]="form"

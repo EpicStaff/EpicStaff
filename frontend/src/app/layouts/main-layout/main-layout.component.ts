@@ -20,11 +20,10 @@ import { SidebarWidthService } from '@shared/services';
 import { isPlainPrimaryClick, urlPath } from '@shared/utils';
 import { filter } from 'rxjs/operators';
 
+import { GuidedTourService } from '../../core/guided-tour';
 import { AppNavigationDrawerService, HIDE_SIDENAV_ON_PHONE } from '../../core/services/app-navigation-drawer.service';
 import { PhoneLayoutService } from '../../core/services/phone-layout.service';
 import { AppReturnUrlService } from '../../features/plugins/services/app-return-url.service';
-import { QuickStartTourService } from '../../features/quick-start-tour/quick-start-tour.service';
-import { ProfileService } from '../../services/auth/profile.service';
 import { LastVisitedTabService } from '../../services/last-visited-tab.service';
 import { MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS } from './main-sidenav-width';
 import { LeftSidebarComponent } from './sidenav/sidenav.component';
@@ -214,30 +213,19 @@ export class MainLayoutComponent implements OnInit {
     protected readonly sidenavWidthOptions = MAIN_SIDENAV_WIDTH_OPTIONS;
     protected readonly navigationDrawer = inject(AppNavigationDrawerService);
 
-    /**
-     * The app shell (and with it the sidenav the tour points at) exists only here, so the auto-start lives here too.
-     * Re-runs on user change and on permission change (org switch), so a newly permitted user still gets the tour.
-     */
-    private readonly quickStartTourAutoStart = effect(() => {
-        const user = this.profileService.currentUserSignal();
-        const isTourAvailable = this.quickStartTourService.isAvailable();
-        if (user && isTourAvailable) {
-            untracked(() => this.quickStartTourService.startIfNotCompleted());
-        }
-    });
-
     private router = inject(Router);
     private destroyRef = inject(DestroyRef);
     private lastVisitedTabService = inject(LastVisitedTabService);
-    private readonly profileService = inject(ProfileService);
-    private readonly quickStartTourService = inject(QuickStartTourService);
+    private readonly guidedTourService = inject(GuidedTourService);
     private readonly appReturnUrl = inject(AppReturnUrlService);
     private readonly injector = inject(Injector);
     // The page shown, without its query: a navigation that changes only the query (a page's own state) stays on it.
     private shownPath = urlPath(this.router.url);
 
     ngOnInit(): void {
-        this.destroyRef.onDestroy(() => this.quickStartTourService.stop());
+        // Tours point into this shell (its navigation, its pages), so they auto-start only while it lives and stop
+        // when it goes away (sign-out).
+        this.guidedTourService.connectAppShell(this.destroyRef);
         // The page this layout opened with: its navigation ended before the subscription below.
         this.recordReturnUrl(this.router.url);
 

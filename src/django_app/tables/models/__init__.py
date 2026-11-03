@@ -50,6 +50,7 @@ from .flow_assistant_models import (
     FlowAssistantConversation,
     FlowAssistantMessage,
 )
+from .flow_filter_preset_models import FlowFilterPreset
 from .graph_models import (
     AgentNode,
     AgentNodeTask,
@@ -146,7 +147,8 @@ from .tag_models import (
     RealtimeTranscriptionConfigTag,
     Tag,
 )
-from .user import User
+from .tool_filter_preset_models import ToolFilterPreset
+from .user import User, UserTourProgress
 from .webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     LocalhostWebhookConfig,
@@ -216,6 +218,7 @@ __all__ = [
     "FlowAssistant",
     "FlowAssistantConversation",
     "FlowAssistantMessage",
+    "FlowFilterPreset",
     "GeminiRealtimeConfig",
     "Graph",
     "GraphManager",
@@ -288,10 +291,12 @@ __all__ = [
     "TelegramTriggerNodeField",
     "TemplateAgent",
     "TimestampMixin",
+    "ToolFilterPreset",
     "TunnelConfig",
     "TwilioChannel",
     "User",
     "UserSessionMessage",
+    "UserTourProgress",
     "WebhookTrigger",
     "WebhookTriggerAuth",
     "WebhookTriggerAuthKind",

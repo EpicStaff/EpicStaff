@@ -10,6 +10,14 @@ export interface ToastMessage {
     message: string;
     type: ToastType;
     duration: number;
+    /** Show the whole message instead of clamping it to 3 lines. */
+    fullText: boolean;
+}
+
+/** Opt-in display options of one toast. */
+export interface ToastOptions {
+    /** Show the whole message, however long, instead of clamping it to 3 lines. For messages that must be read in full. */
+    fullText?: boolean;
 }
 
 @Injectable({
@@ -25,7 +33,13 @@ export class ToastService {
         return this.toasts.asObservable();
     }
 
-    show(message: string, type: ToastType = 'info', duration: number = 3000, position?: ToastPosition): void {
+    show(
+        message: string,
+        type: ToastType = 'info',
+        duration: number = 3000,
+        position?: ToastPosition,
+        options: ToastOptions = {}
+    ): void {
         const id = this.counter++;
 
         // Store the position for this toast
@@ -38,6 +52,7 @@ export class ToastService {
             message,
             type,
             duration,
+            fullText: options.fullText ?? false,
         };
 
         this.toasts.next([...currentToasts, newToast]);
@@ -54,20 +69,20 @@ export class ToastService {
         this.toastPositions.delete(id);
     }
 
-    success(message: string, duration: number = 5000, position?: ToastPosition): void {
-        this.show(message, 'success', duration, position);
+    success(message: string, duration: number = 5000, position?: ToastPosition, options?: ToastOptions): void {
+        this.show(message, 'success', duration, position, options);
     }
 
-    error(message: string, duration: number = 7000, position?: ToastPosition): void {
-        this.show(message, 'error', duration, position);
+    error(message: string, duration: number = 7000, position?: ToastPosition, options?: ToastOptions): void {
+        this.show(message, 'error', duration, position, options);
     }
 
-    warning(message: string, duration: number = 6000, position?: ToastPosition): void {
-        this.show(message, 'warning', duration, position);
+    warning(message: string, duration: number = 6000, position?: ToastPosition, options?: ToastOptions): void {
+        this.show(message, 'warning', duration, position, options);
     }
 
-    info(message: string, duration: number = 5000, position?: ToastPosition): void {
-        this.show(message, 'info', duration, position);
+    info(message: string, duration: number = 5000, position?: ToastPosition, options?: ToastOptions): void {
+        this.show(message, 'info', duration, position, options);
     }
 
     // Helper method to get the position for a specific toast

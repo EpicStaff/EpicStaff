@@ -1,16 +1,20 @@
 import { DatePipe, formatDate, NgTemplateOutlet } from '@angular/common';
 import {
+    afterNextRender,
     Component,
     computed,
     effect,
     ElementRef,
     inject,
+    Injector,
     input,
     linkedSignal,
     LOCALE_ID,
     model,
     output,
+    untracked,
     viewChild,
+    viewChildren,
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import {
@@ -57,7 +61,7 @@ import {
     INITIAL_COLUMN_DIRECTIONS,
     kindFilterNarrows,
 } from '../../utils/recycle-bin-query.util';
-import { isExpandableItem } from '../../utils/recycle-bin-rows.util';
+import { isExpandableItem, unlistedContentsCount } from '../../utils/recycle-bin-rows.util';
 import { purgeDate, timeLeftLabel } from '../../utils/recycle-bin-time.util';
 
 // Widths follow the Secrets list (name flexes, the rest 128px, actions 96px).
@@ -152,6 +156,8 @@ export class RecycleBinTableComponent {
 
     private readonly headerCheckbox = viewChild<CheckboxComponent>('headerCheckbox');
     private readonly tableWrapper = viewChild<ElementRef<HTMLElement>>('tableWrapper');
+    private readonly rowElements = viewChildren<ElementRef<HTMLElement>>('rowElement');
+    private readonly emptyState = viewChild<ElementRef<HTMLElement>>('emptyState');
 
     // Another page starts at its top: the rows scroll inside the table, which keeps its scroll
     // position when only its rows change.
@@ -159,6 +165,25 @@ export class RecycleBinTableComponent {
         this.page()?.current;
         const wrapper = this.tableWrapper()?.nativeElement;
         if (wrapper) wrapper.scrollTop = 0;
+    });
+
+    /** The row index `focusRowAfterReload` asked for, applied once the next list is shown. */
+    private focusIndexAfterReload: number | null = null;
+    private readonly focusRowOnReload = effect(() => {
+        this.items();
+        const index = this.focusIndexAfterReload;
+        if (index === null) return;
+        this.focusIndexAfterReload = null;
+        untracked(() =>
+            afterNextRender(
+                () => {
+                    const rows = this.rowElements();
+                    const target = rows.length ? rows[Math.min(index, rows.length - 1)] : this.emptyState();
+                    target?.nativeElement.focus();
+                },
+                { injector: this.injector }
+            )
+        );
     });
 
     protected readonly showActions = computed(() => this.canRestore() || this.canPurge());
@@ -244,9 +269,20 @@ export class RecycleBinTableComponent {
     protected readonly contentLabels = RECYCLE_BIN_CONTENT_LABELS;
     protected readonly contentVisuals = RECYCLE_BIN_CONTENT_VISUALS;
     protected readonly showAllLimit = RECYCLE_BIN_SHOW_ALL_LIMIT;
+    protected readonly moreCount = unlistedContentsCount;
     protected readonly unknownUser = UNKNOWN_USER;
 
     private readonly locale = inject(LOCALE_ID);
+    private readonly injector = inject(Injector);
+
+    /**
+     * A restore or delete reloads the list without the row whose button had the focus: once the next list
+     * shows, the focus goes to the row at `index` (the one now in its place, or the last), or to the empty
+     * message, rather than to the page.
+     */
+    focusRowAfterReload(index: number): void {
+        this.focusIndexAfterReload = Math.max(0, index);
+    }
 
     protected isExpandable(item: RecycleBinItem): boolean {
         return isExpandableItem(item);
@@ -286,11 +322,6 @@ export class RecycleBinTableComponent {
     /** "Show all" until the row holds the most it can load; past that the list just says how many more. */
     protected canShowAll(item: RecycleBinItem): boolean {
         return item.contents.length < RECYCLE_BIN_SHOW_ALL_LIMIT;
-    }
-
-    /** Contents the backend counted but didn't send (it lists at most 100). */
-    protected moreCount(item: RecycleBinItem): number {
-        return Math.max(0, item.contentsTotal - item.contents.length);
     }
 
     protected onFilterChange(key: 'kind' | 'count', value: unknown): void {
