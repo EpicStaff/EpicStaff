@@ -1,3 +1,5 @@
+import io
+
 import pytest
 
 from foundation.s3_file_storage import errors
@@ -153,3 +155,24 @@ class TestObject:
         assert await obj.aread() == b"async-data"
         await obj.adelete()
         assert await obj.aexist() is False
+
+    def test_upload_then_read_round_trips(self, storage, bucket_name):
+        storage.bucket(bucket_name).create()
+        obj = storage.bucket(bucket_name).object("k.txt")
+        obj.upload(io.BytesIO(b"uploaded"))
+        assert obj.read() == b"uploaded"
+
+    def test_upload_overwrites_existing(self, storage, bucket_name):
+        storage.bucket(bucket_name).create()
+        obj = storage.bucket(bucket_name).object("k.txt")
+        obj.write(b"first")
+        obj.upload(io.BytesIO(b"second"))
+        assert obj.read() == b"second"
+
+    def test_upload_handles_a_body_past_the_multipart_threshold(self, storage, bucket_name):
+        """Above boto3's 8MB threshold the transfer is really split into parts."""
+        storage.bucket(bucket_name).create()
+        obj = storage.bucket(bucket_name).object("large.bin")
+        body = b"z" * (9 * 1024 * 1024)
+        obj.upload(io.BytesIO(body))
+        assert obj.read() == body
