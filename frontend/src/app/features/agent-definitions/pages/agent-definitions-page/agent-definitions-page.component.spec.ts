@@ -32,6 +32,7 @@ const AGENT: AgentDefinition = {
     instructions: '',
     instruction_list: [],
     llm_config: null,
+    fallback_llm_config: null,
     fcm_llm_config: null,
     agent_definition_realtime_config_id: null,
     has_realtime_definition: false,
@@ -58,6 +59,8 @@ const AGENT: AgentDefinition = {
 function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
     return {
         load: () => undefined,
+        updateAgent: vi.fn(),
+        saveNewAgent: vi.fn(),
         loading: signal(false),
         selectedNode: signal({ kind: 'agent', id: AGENT.id }),
         showSidebar: signal(false),
@@ -323,5 +326,40 @@ describe('AgentDefinitionsPageComponent explorer row menu "View Details"', () =>
         });
 
         expect(open).not.toHaveBeenCalled();
+    });
+});
+
+describe('AgentDefinitionsPageComponent saving the agent', () => {
+    const payload = {
+        id: AGENT.id,
+        name: AGENT.name,
+        description: '',
+        llm_config: 1,
+        fallback_llm_config: 2,
+        fcm_llm_config: null,
+    };
+
+    it('sends the fallback LLM with an update', () => {
+        const { fixture } = render(true);
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+
+        fixture.componentInstance.onSaveAgent(payload);
+
+        expect(store.updateAgent).toHaveBeenCalledWith(
+            AGENT.id,
+            expect.objectContaining({ llm_config: 1, fallback_llm_config: 2 })
+        );
+    });
+
+    it('sends the fallback LLM when creating the agent', () => {
+        const { fixture } = render(true);
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+
+        fixture.componentInstance.onSaveAgent({ ...payload, id: null });
+
+        expect(store.saveNewAgent).toHaveBeenCalledWith(
+            expect.objectContaining({ llm_config: 1, fallback_llm_config: 2 }),
+            false
+        );
     });
 });

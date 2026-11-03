@@ -11,6 +11,7 @@ STREAM_EVENT_BY_ENVELOPE_TYPE = {
     "agent.tool_result": "tool_result",
     "agent.task_start": "task_start",
     "agent.task_finish": "task_finish",
+    "agent.llm_fallback": "llm_fallback",
 }
 
 
@@ -57,6 +58,13 @@ class AgentStreamEventForwarder:
         if event is None:
             return
 
+        self._write_event(event, envelope.payload)
+
+    def forward_fallback_skipped(self, warning: str) -> None:
+        """Tell the session the configured fallback LLM was dropped at session build."""
+        self._write_event("llm_fallback_skipped", {"message": warning})
+
+    def _write_event(self, event: str, data: dict[str, Any]) -> None:
         self._step_id += 1
         self._write_message(
             {
@@ -65,7 +73,7 @@ class AgentStreamEventForwarder:
                 "step_id": self._step_id,
                 "is_final": False,
                 "agent_id": self._agent_id,
-                "data": envelope.payload,
+                "data": data,
             }
         )
 

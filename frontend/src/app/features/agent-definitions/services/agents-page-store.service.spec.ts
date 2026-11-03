@@ -316,6 +316,7 @@ function agentOf(id: number, name: string): AgentDefinition {
         instructions: '',
         instruction_list: [],
         llm_config: null,
+        fallback_llm_config: null,
         fcm_llm_config: null,
         agent_definition_realtime_config_id: null,
         has_realtime_definition: false,

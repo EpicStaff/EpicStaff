@@ -188,6 +188,7 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     # Agents: an agent counts with everything it references, for every place it runs.
     FollowField("agents.AgentDefinition", "llm_config"),
     FollowField("agents.AgentDefinition", "fcm_llm_config"),
+    FollowField("agents.AgentDefinition", "fallback_llm_config"),
     FollowChildren("agents.AgentDefaultSurface", "agent_definition"),
     FollowField("agents.AgentDefaultSurface", "surface"),
     FollowChildren("agents.Surface", "owner_agent"),

@@ -536,6 +536,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 "agent_definition__fcm_llm_config",
                 "agent_definition__fcm_llm_config__model",
                 "agent_definition__fcm_llm_config__model__llm_provider",
+                "agent_definition__fallback_llm_config",
+                "agent_definition__fallback_llm_config__model",
+                "agent_definition__fallback_llm_config__model__llm_provider",
             )
             .prefetch_related(
                 "surface_list__python_tools",
@@ -567,6 +570,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 "agent_definition__fcm_llm_config",
                 "agent_definition__fcm_llm_config__model",
                 "agent_definition__fcm_llm_config__model__llm_provider",
+                "agent_definition__fallback_llm_config",
+                "agent_definition__fallback_llm_config__model",
+                "agent_definition__fallback_llm_config__model__llm_provider",
             )
             .prefetch_related(
                 "tasks",

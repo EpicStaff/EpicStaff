@@ -634,6 +634,7 @@ class ConverterService(metaclass=SingletonMeta):
         """
         return LLMConfigData(
             model=config.model.name,
+            custom_name=config.custom_name,
             timeout=config.timeout,
             temperature=config.temperature,
             top_p=config.top_p,

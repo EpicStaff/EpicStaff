@@ -140,6 +140,7 @@ class AgentDefinitionData(BaseModel):
     instructions: str = ""
     llm_config_id: int | None = None
     fcm_llm_config_id: int | None = None
+    fallback_llm_config_id: int | None = None
     max_iter: int | None = None
     max_rpm: int | None = None
     max_execution_time: int | None = None
@@ -152,6 +153,10 @@ class AgentDefinitionData(BaseModel):
     schema_max_retries: int | None = None
     llm: LLMData | None = None
     fcm_llm: LLMData | None = None
+    fallback_llm: LLMData | None = None
+    fallback_llm_warning: str | None = None
+    """Set when the configured fallback was dropped at session build, so the
+    run continues without one."""
 
     model_config = ConfigDict(from_attributes=True)
 
