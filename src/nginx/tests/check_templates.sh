@@ -13,7 +13,7 @@
 #     number in range;
 #   - that Django's upstreams are least_conn (requests) and round-robin (websockets, the session
 #     event stream) over django_app's servers, DJANGO_SGI_WORKERS of them on their own ports
-#     from DJANGO_PORT + 1 up;
+#     from DJANGO_PORT + 1 up, none of which nginx ever marks failed (max_fails=0);
 #   - that every X-Forwarded-Proto a template sets is $forwarded_proto, never the client's header,
 #     and never $scheme but on the plugin listeners, which no proxy is in front of; that every
 #     location that proxies and passes the client's headers on sends one, so none passes the
@@ -1170,7 +1170,8 @@ fi
 
 # DJANGO_SGI_WORKERS (19-render-django-upstream.envsh): django_app runs single-worker servers, each
 # on its own port from DJANGO_PORT + 1 up (DJANGO_PORT is the one they share for direct callers).
-# nginx balances requests across them with least_conn, and the long-lived connections in turn.
+# nginx balances requests across them with least_conn, and the long-lived connections in turn,
+# and never takes one out of the group after an error (max_fails=0).
 # $1 = upstream name; prints the directives of that upstream in the last render, one per line.
 django_upstream_directives() {
   directives | awk -v name="$1" '$0 == "upstream " name " {" { inside = 1; next }
@@ -1191,15 +1192,15 @@ expect_django_upstreams() {
 }
 if expect_valid "DJANGO_SGI_WORKERS=1 is accepted"; then
   expect_django_upstreams "DJANGO_SGI_WORKERS=1 sends Django's requests to the one server's own port, DJANGO_PORT + 1" \
-    "server django:8001 resolve;"
+    "server django:8001 max_fails=0 resolve;"
 fi
 if expect_valid "DJANGO_SGI_WORKERS=3 is accepted" DJANGO_SGI_WORKERS=3 DJANGO_PORT=8100; then
   expect_django_upstreams "DJANGO_SGI_WORKERS=3 balances Django's requests across the three servers' own ports" \
-    "server django:8101 resolve;|server django:8102 resolve;|server django:8103 resolve;"
+    "server django:8101 max_fails=0 resolve;|server django:8102 max_fails=0 resolve;|server django:8103 max_fails=0 resolve;"
 fi
 if expect_valid "the highest ports are accepted" DJANGO_PORT=65532 DJANGO_SGI_WORKERS=3; then
   expect_django_upstreams "DJANGO_PORT=65532 with three servers ends at 65535" \
-    "server django:65533 resolve;|server django:65534 resolve;|server django:65535 resolve;"
+    "server django:65533 max_fails=0 resolve;|server django:65534 max_fails=0 resolve;|server django:65535 max_fails=0 resolve;"
 fi
 # Only the websockets and the session event stream take the round-robin upstream; every other
 # location that reaches Django counts toward least_conn.

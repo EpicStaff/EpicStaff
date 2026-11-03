@@ -41,10 +41,15 @@ if [ "${#django_upstream_first_port}" -gt 5 ] \
   exit 64
 fi
 
+# max_fails=0: nginx never takes a server out of the group. Its default (max_fails=1
+# fail_timeout=10s) takes one out for 10 s after a single error, so a few scattered connection
+# resets under a burst take several servers out at once: requests get an instant 502 (no live
+# upstreams) or pile onto the rest. A connection refused by a server that is down still moves the
+# request on to the next server (proxy_next_upstream), so nothing is lost by keeping it listed.
 NGINX_DJANGO_UPSTREAM_SERVERS=
 django_upstream_port=$((django_upstream_first_port + 1))
 while [ "$django_upstream_port" -le $((django_upstream_first_port + django_upstream_workers)) ]; do
-  NGINX_DJANGO_UPSTREAM_SERVERS="$NGINX_DJANGO_UPSTREAM_SERVERS    server $DJANGO_HOST:$django_upstream_port resolve;
+  NGINX_DJANGO_UPSTREAM_SERVERS="$NGINX_DJANGO_UPSTREAM_SERVERS    server $DJANGO_HOST:$django_upstream_port max_fails=0 resolve;
 "
   django_upstream_port=$((django_upstream_port + 1))
 done

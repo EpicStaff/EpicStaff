@@ -108,6 +108,14 @@ case "$web_server_count" in
     ;;
 esac
 
+# No defaults either: compose always passes both, and their defaults live in env.yaml.
+for recycle_variable in DJANGO_SGI_MAX_REQUESTS DJANGO_SGI_MAX_REQUESTS_JITTER; do
+  if [ -z "${!recycle_variable-}" ]; then
+    echo "ERROR: environment variable $recycle_variable is not set or empty." >&2
+    exit 64
+  fi
+done
+
 # Local-run-only switch for auto-reload; deliberately not declared in env.yaml or compose.
 echo "DJANGO_SGI_RELOAD=$DJANGO_SGI_RELOAD"
 RELOAD_ARGS=""
@@ -150,8 +158,8 @@ for ((web_server_index = 0; web_server_index < web_server_count; web_server_inde
     $RELOAD_ARGS \
     --workers 1 \
     --threads "${DJANGO_SGI_THREADS:-4}" \
-    --max-requests "${DJANGO_SGI_MAX_REQUESTS:-1000}" \
-    --max-requests-jitter "${DJANGO_SGI_MAX_REQUESTS_JITTER:-100}" &
+    --max-requests "$DJANGO_SGI_MAX_REQUESTS" \
+    --max-requests-jitter "$DJANGO_SGI_MAX_REQUESTS_JITTER" &
   web_server_pids+=("$!")
 done
 

@@ -187,16 +187,20 @@ SETUP_ACTIONS = {
     "quit": "Quit",
 }
 SERVER_SIZES = {
-    "small": "Small: 1-3 CPU cores (the defaults)",
+    "small": "Small: 1-3 CPU cores",
     "medium": "Medium: 4-7 CPU cores",
-    "large": "Large: 8 or more CPU cores",
+    "large": "Large: 8 or more CPU cores (Django as in the defaults)",
 }
-# Postgres has ~97 usable connections and the other services take ~40; django_app holds up to
-# DJANGO_SGI_WORKERS x DJANGO_DB_POOL_MAX_SIZE + 4. chatdb is a separate Postgres (6 workers max).
+# crewdb has ~197 usable connections (max_connections=200 in docker-compose.yaml, less 3 for
+# superusers) and the other services take ~50; django_app holds up to DJANGO_SGI_WORKERS x
+# DJANGO_DB_POOL_MAX_SIZE + 8, so at pool 15 it fits 9 workers (test_envtool.py checks every size).
+# chatdb is a separate Postgres with the default max_connections of 100 (6 workers max).
+# Under a burst each session costs Django ~0.11 CPU-seconds and the sandbox ~0.13, so Django
+# needs about 40% of the cores: 3 servers on 4-7 cores leave the sandbox, Postgres and crew room.
 SERVER_SIZE_VALUES = {
     "small": {"DJANGO_SGI_WORKERS": "1", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "1"},
-    "medium": {"DJANGO_SGI_WORKERS": "2", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "2"},
-    "large": {"DJANGO_SGI_WORKERS": "3", "DJANGO_DB_POOL_MAX_SIZE": "12", "CHAT_WORKERS": "4"},
+    "medium": {"DJANGO_SGI_WORKERS": "3", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "2"},
+    "large": {"DJANGO_SGI_WORKERS": "6", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "4"},
 }
 # Sandbox limit -> (description, how long crew waits for the result). Crew must wait longer than
 # the sandbox may run, with room for library installation.

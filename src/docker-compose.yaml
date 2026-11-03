@@ -315,7 +315,12 @@ services:
       context: ./crewdb
       dockerfile: Dockerfile.crewdb
     container_name: crewdb
-    command: ["postgres", "-c", "port=${DB_PORT:?}"]
+    # max_connections: Postgres's default of 100 is too few for django_app, which holds up to
+    # DJANGO_SGI_WORKERS x DJANGO_DB_POOL_MAX_SIZE + 8 next to the ~50 of the other services:
+    # 6 x 15 + 8 + 50 = 148 with the production defaults, of the 197 left after Postgres's 3
+    # superuser slots (see DJANGO_DB_POOL_MAX_SIZE in env.yaml). scripts/test_envtool.py reads
+    # this value.
+    command: ["postgres", "-c", "port=${DB_PORT:?}", "-c", "max_connections=200"]
     environment:
       POSTGRES_USER: ${DB_USER:?}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?}
