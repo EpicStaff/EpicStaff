@@ -191,21 +191,30 @@
             }
 
             @if (!hasVisibleItems() && !(allowCustomValue() && search().trim())) {
-                <div class="selector__search-not-found">
-                    <app-svg-icon
-                        icon="not-allowed"
-                        size="16px"
-                    />
-                    <span class="selector__search-not-found--primary">
-                        {{ searchNotFoundText() }}
-                    </span>
-                    <span class="selector__search-not-found--secondary">
-                        Try another name
-                        @if (showCreate()) {
-                            <span>or click + to create</span>
-                        }
-                    </span>
-                </div>
+                @if (showSearch()) {
+                    <div class="selector__search-not-found">
+                        <app-svg-icon
+                            icon="not-allowed"
+                            size="16px"
+                        />
+                        <span class="selector__search-not-found--primary">
+                            {{ searchNotFoundText() }}
+                        </span>
+                        <span class="selector__search-not-found--secondary">
+                            Try another name
+                            @if (showCreate()) {
+                                <span>or click + to create</span>
+                            }
+                        </span>
+                    </div>
+                } @else {
+                    <div
+                        class="selector__option selector__option--empty"
+                        [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
+                    >
+                        No items available
+                    </div>
+                }
             }
         </div>
     </div>

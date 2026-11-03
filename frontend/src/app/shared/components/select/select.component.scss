@@ -376,6 +376,11 @@
                 background: transparent;
             }
         }
+
+        &--empty {
+            padding: 0.5rem 0.75rem;
+            color: var(--color-input-text-placeholder);
+        }
     }
 }
 
