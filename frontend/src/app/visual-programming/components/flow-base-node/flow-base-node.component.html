@@ -238,7 +238,10 @@
 </ng-template>
 @switch (node.type) {
     @case (NodeType.NOTE) {
-        <app-graph-note [node]="noteNode!"></app-graph-note>
+        <app-graph-note
+            [node]="noteNode!"
+            [contentChange]="noteContentChange"
+        ></app-graph-note>
     }
     @case (NodeType.TABLE) {
         <app-decision-table-node

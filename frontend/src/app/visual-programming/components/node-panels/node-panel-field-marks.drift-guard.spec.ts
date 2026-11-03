@@ -48,7 +48,8 @@ const NO_MARK_ON_PURPOSE: Partial<Record<NodeType, Partial<Record<FieldName, str
 /** Node types with no panel, each with the reason and where their diff shows instead. */
 const WITHOUT_PANEL: Partial<Record<NodeType, string>> = {
     [NodeType.START]: 'opens the Domain window, which shows changed variables as a diff (domain-dialog spec)',
-    [NodeType.NOTE]: 'the note window does not open in a version preview: the canvas badge only (known limit)',
+    [NodeType.NOTE]:
+        'the note window does not open in a version preview: the canvas note shows a "Current canvas" tooltip instead (graph-note spec)',
     [NodeType.TOOL]: 'never loaded from or saved to the backend',
 };
 

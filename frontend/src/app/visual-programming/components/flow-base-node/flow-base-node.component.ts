@@ -49,7 +49,7 @@ import { FlowService } from '../../services/flow.service';
 import { FlowDiffStateService } from '../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
-import { NodeDiffStatus } from '../../utils/diff';
+import { FieldChange, fieldChangeFor, NodeDiffStatus, showsFieldMarks } from '../../utils/diff';
 import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
@@ -174,6 +174,15 @@ export class FlowBaseNodeComponent implements OnInit {
     protected get diffBadge(): { status: NodeDiffStatus; icon: string; label: string } | null {
         const status = this.diffStatus;
         return status && status !== 'unchanged' ? { status, ...NODE_DIFF_BADGES[status] } : null;
+    }
+
+    /**
+     * What a restore does to a note's text, for its "Current canvas" tooltip: only on the Changes tab, on a note a
+     * restore changes (an added or removed note is marked as a whole by the badge); `null` anywhere else.
+     */
+    protected get noteContentChange(): FieldChange | null {
+        const diff = this.flowDiffState.nodeDiff(this.node.id);
+        return showsFieldMarks(diff) ? fieldChangeFor(diff, 'content') : null;
     }
 
     protected get hasMissingReferences(): boolean {
