@@ -1162,6 +1162,7 @@ services:
       start_period: 30s
     environment:
       <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
+      SANDBOX_CUSTOM_LIBRARY_BUCKET: ${SANDBOX_CUSTOM_LIBRARY_BUCKET:?}
       SANDBOX_HOST: ${SANDBOX_HOST:?}
       SANDBOX_PORT: ${SANDBOX_PORT:?}
       SANDBOX_DEBUG: ${SANDBOX_DEBUG:?}
