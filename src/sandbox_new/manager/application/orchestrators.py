@@ -1,30 +1,67 @@
 import asyncio
 import hashlib
+import io
 import os
 import shutil
-from pathlib import Path
+import tarfile
+import tempfile
+import zipfile
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import settings
+from litestar.datastructures import UploadFile
 from loguru import logger
+from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 from src.shared.bench_log import BENCH_LEVEL
 
 from manager.application.holding import JobHoldingRegistry
 from manager.application.ports import (
+    AbstractFileStorage,
     AbstractJobDispatcher,
     AbstractJobFailureSink,
     AbstractUnitOfWork,
     AbstractUVProvider,
 )
-from manager.domain.enums import VenvOrder, VenvStatus
-from manager.domain.errors import VenvNotFoundError
-from manager.domain.models import Job, Library, StorageCredentials, Venv
+from manager.domain.enums import VenvOrder, VenvStatus, WheelStatus
+from manager.domain.errors import (
+    CustomLibraryNameTakenError,
+    CustomLibraryNotFoundError,
+    UnsupportedUploadError,
+    UVBuildError,
+    VenvNotFoundError,
+    WheelNameMismatchError,
+    WheelNotBuiltError,
+    WheelNotFoundError,
+    WheelSourceAlreadyUploadedError,
+    WheelVersionTakenError,
+)
+from manager.domain.models import (
+    SOURCE_ARCHIVE_SUFFIXES,
+    WHEEL_SUFFIX,
+    CustomLibrary,
+    Job,
+    Library,
+    StorageCredentials,
+    Venv,
+    Wheel,
+)
 from manager.domain.types import NotRunReason
 
 _VENV_BUILD_FAILED_MESSAGE = "Execution environment failed to build; the job was not run."
 _DISPATCH_FAILED_MESSAGE = "The job could not be handed to the worker and was not run."
+# Read in pieces so that an upload is never held in memory whole.
+_UPLOAD_CHUNK_SIZE = 1024 * 1024
 
-__all__ = ["JobOrchestrator", "VenvBuildOrchestrator", "VenvCRUDOrchestrator"]
+__all__ = [
+    "CustomLibraryCRUDOrchestrator",
+    "CustomLibraryReapOrchestrator",
+    "JobOrchestrator",
+    "VenvBuildOrchestrator",
+    "VenvCRUDOrchestrator",
+    "WheelBuildOrchestrator",
+    "WheelCRUDOrchestrator",
+]
 
 type List[T] = list[T]
 
@@ -304,3 +341,501 @@ class JobOrchestrator:
         if venv is None:
             raise VenvNotFoundError(venv_id=venv_id)
         return venv
+
+
+class CustomLibraryCRUDOrchestrator:
+    # No file storage: a library holds no files of its own, and deleting the files its
+    # wheels hold is the reaper's job, not this one's.
+    def __init__(self, uow: AbstractUnitOfWork):
+        self.uow = uow
+
+    async def list(
+        self,
+        ids: list[int] | None,
+        limit: int | None,
+        offset: int | None,
+    ) -> tuple[list[CustomLibrary], int]:
+        async with self.uow:
+            return await self.uow.custom_library_repo.list(ids=ids, limit=limit, offset=offset)
+
+    async def retrieve(self, id: int) -> CustomLibrary:
+        async with self.uow:
+            return await self._retrieve(id)
+
+    async def create(self, name: str) -> CustomLibrary:
+        obj = CustomLibrary(name=name)
+        async with self.uow:
+            # Against `obj.name`, not `name`: the domain canonicalizes on construction,
+            # and it is the canonical spelling that has to be unique.
+            await self._reject_taken_name(obj.name)
+            obj = await self.uow.custom_library_repo.create(obj)
+            await self.uow.commit()
+        logger.info("Created custom library {} ({})", obj.id, obj.name)
+        return obj
+
+    async def update(self, id: int, name: str | None) -> CustomLibrary:
+        """Apply a partial change. An absent `name` leaves the library as it is."""
+        async with self.uow:
+            obj = await self._retrieve(id)
+            if name is not None:
+                previous_name = obj.name
+                obj.rename(name)
+                # A rename onto the spelling it already had is not a clash with itself.
+                if obj.name != previous_name:
+                    await self._reject_taken_name(obj.name)
+            obj = await self.uow.custom_library_repo.update(obj)
+            await self.uow.commit()
+        logger.info("Updated custom library {} ({})", obj.id, obj.name)
+        return obj
+
+    async def remove(self, id: int):
+        """Mark the library and every wheel of it deleted.
+
+        Nothing is removed here: the artifacts are in the object store, which this
+        transaction cannot roll back, so a background task deletes them and the rows
+        afterwards. Until it does, the library answers no read.
+        """
+        async with self.uow:
+            obj = await self._retrieve(id)
+            obj.mark_as_deleted()
+            await self.uow.custom_library_repo.update(obj)
+
+            # Marked now rather than left to the reaper to work out: reads are scoped
+            # to live rows, so the wheels have to stop answering the moment the library
+            # does, and the reaper deletes what is marked, nothing else.
+            wheels = await self.uow.wheel_repo.list(id)
+            for wheel in wheels:
+                wheel.mark_as_deleted()
+                await self.uow.wheel_repo.update(wheel)
+
+            await self.uow.commit()
+        logger.info("Marked custom library {} and its {} wheels as deleted", id, len(wheels))
+
+    async def _retrieve(self, id: int) -> CustomLibrary:
+        obj = await self.uow.custom_library_repo.retrieve(id)
+        if obj is None:
+            raise CustomLibraryNotFoundError(custom_library_id=id)
+        return obj
+
+    async def _reject_taken_name(self, name: str):
+        """Refuse a canonical name another library already answers to.
+
+        The partial unique index is what actually enforces this; the lookup is here so
+        that the ordinary case is a 409 naming the library rather than a failed write.
+
+        Raises:
+            CustomLibraryNameTakenError: Some other library already has this name.
+        """
+        if await self.uow.custom_library_repo.retrieve_by_name(name) is not None:
+            raise CustomLibraryNameTakenError(name=name)
+
+
+class WheelCRUDOrchestrator:
+    def __init__(self, uow: AbstractUnitOfWork, file_storage: AbstractFileStorage):
+        self.uow = uow
+        self.file_storage = file_storage
+
+    async def list(self, library_id: int) -> list[Wheel]:
+        async with self.uow:
+            return await self.uow.wheel_repo.list(library_id)
+
+    async def retrieve(self, library_id: int, id: int) -> Wheel:
+        async with self.uow:
+            return await self._retrieve(library_id, id)
+
+    async def download_wheel(self, library_id: int, id: int) -> tuple[bytes, str]:
+        """Return the wheel's bytes and the name it was stored under.
+
+        Only a `completed` wheel has a file to hand out. Every other status either has
+        no wheel yet or never will, and an upload still in flight has a name on the row
+        before it has bytes in the object store, so the status is what is checked here.
+
+        Note:
+            Reads the whole wheel into memory. An upload cannot exceed the request body
+            limit, so neither can what comes back.
+
+        Raises:
+            WheelNotFoundError: No wheel with this id in this library. Rendered as 404.
+            WheelNotBuiltError: There is no wheel file to return. Rendered as 409.
+        """
+        async with self.uow:
+            obj = await self._retrieve(library_id, id)
+
+        if obj.status is not WheelStatus.COMPLETED or obj.wheel_key is None:
+            raise WheelNotBuiltError(wheel_id=id, status=obj.status.value)
+        return await self.file_storage.get(obj.wheel_key), obj.wheel_filename
+
+    async def upload(self, library_id: int, file: UploadFile) -> Wheel:
+        """Store an uploaded wheel or source archive as a new version of this library.
+
+        A wheel is complete on arrival and ends up `completed`; a source archive ends up
+        `declared`, which is what has the background builder pick it up.
+
+        The row is written before the file, in `processing`, because the key it is stored
+        under is derived from its id. Only once the file is in the object store does the
+        row take its real status, so nothing ever claims to be usable before its bytes
+        are there.
+
+        Raises:
+            CustomLibraryNotFoundError: No library with this id. Rendered as 404.
+            UnsupportedUploadError: Not a wheel or a source archive, or a wheel whose
+                name does not parse. Rendered as 400.
+            WheelNameMismatchError: An uploaded wheel built for another distribution.
+                Rendered as 400.
+            WheelSourceAlreadyUploadedError: This library already holds this exact file.
+                Rendered as 409.
+            WheelVersionTakenError: This library already holds that version.
+                Rendered as 409.
+        """
+        filename = PurePosixPath(file.filename or "").name
+        checksum = await self._checksum(file)
+
+        async with self.uow:
+            library = await self._retrieve_library(library_id)
+            duplicate = await self.uow.wheel_repo.retrieve_by_sha256(library_id, checksum)
+            if duplicate is not None:
+                raise WheelSourceAlreadyUploadedError(
+                    custom_library_id=library_id, wheel_id=duplicate.id
+                )
+
+            obj, version = self._declare(library, filename, checksum)
+            if version is not None:
+                await self._reject_taken_version(library_id, version)
+            obj = await self.uow.wheel_repo.create(obj)
+            await self.uow.commit()
+
+        # shortcut: a crash between the commit above and the status below strands the row
+        # in `processing`, where nothing picks it up again. Upgrade when the build moves
+        # to its own worker, which needs a sweep for stale `processing` rows anyway.
+        key = obj.wheel_key if version is not None else obj.source_key
+        try:
+            await self.file_storage.put(key, file.file)
+        except Exception as error:
+            logger.exception("Failed to store the upload for wheel {}", obj.id)
+            obj.mark_as_failed(error)
+            await self._update(obj)
+            raise
+
+        if version is not None:
+            obj.mark_as_completed(version, obj.wheel_filename)
+        else:
+            obj.mark_as_declared()
+        obj = await self._update(obj)
+        logger.info(
+            "Stored {} as wheel {} of custom library {}, status {}",
+            filename,
+            obj.id,
+            library_id,
+            obj.status.value,
+        )
+        return obj
+
+    def _declare(
+        self, library: CustomLibrary, filename: str, checksum: str
+    ) -> tuple[Wheel, str | None]:
+        """Build the row for an upload, and the version it carries when it is a wheel.
+
+        The version is handed back rather than stored: a wheel reaches a version only by
+        completing, and the source archive below has none to give until it is built.
+
+        Raises:
+            UnsupportedUploadError: The name is neither a wheel nor a source archive, or
+                is a wheel the packaging rules cannot read.
+            WheelNameMismatchError: The wheel was built for another distribution.
+        """
+        lowered = filename.lower()
+        if lowered.endswith(WHEEL_SUFFIX):
+            try:
+                name, version, _, _ = parse_wheel_filename(filename)
+            except InvalidWheelFilename as error:
+                raise UnsupportedUploadError(str(error)) from error
+            # Both sides are canonical: `parse_wheel_filename` normalizes, and so does
+            # the library on construction.
+            if name != library.name:
+                raise WheelNameMismatchError(
+                    wheel_name=name,
+                    custom_library_id=library.id,
+                    library_name=library.name,
+                )
+            obj = Wheel(
+                library_id=library.id,
+                wheel_filename=filename,
+                upload_sha256=checksum,
+                status=WheelStatus.PROCESSING,
+            )
+            return obj, str(version)
+
+        if lowered.endswith(SOURCE_ARCHIVE_SUFFIXES):
+            obj = Wheel(
+                library_id=library.id,
+                source_filename=filename,
+                upload_sha256=checksum,
+                status=WheelStatus.PROCESSING,
+            )
+            return obj, None
+
+        raise UnsupportedUploadError(filename=filename)
+
+    @staticmethod
+    async def _checksum(file: UploadFile) -> str:
+        """Return the hex sha256 of the upload, leaving it rewound for the caller."""
+        digest = hashlib.sha256()
+        await file.seek(0)
+        while chunk := await file.read(_UPLOAD_CHUNK_SIZE):
+            digest.update(chunk)
+        await file.seek(0)
+        return digest.hexdigest()
+
+    async def _retrieve_library(self, library_id: int) -> CustomLibrary:
+        library = await self.uow.custom_library_repo.retrieve(library_id)
+        if library is None:
+            raise CustomLibraryNotFoundError(custom_library_id=library_id)
+        return library
+
+    async def _reject_taken_version(self, library_id: int, version: str):
+        """Refuse a version this library already published.
+
+        Raises:
+            WheelVersionTakenError: Some wheel of this library already has it.
+        """
+        if await self.uow.wheel_repo.retrieve_by_version(library_id, version) is not None:
+            raise WheelVersionTakenError(custom_library_id=library_id, version=version)
+
+    async def _update(self, obj: Wheel) -> Wheel:
+        async with self.uow:
+            obj = await self.uow.wheel_repo.update(obj)
+            await self.uow.commit()
+        return obj
+
+    async def remove(self, library_id: int, id: int):
+        """Mark the wheel deleted.
+
+        Nothing is removed here: the files are in the object store, which this
+        transaction cannot roll back, so a background task deletes them and the row
+        afterwards. The version and the upload it occupied are free again at once,
+        which is what makes replacing a published version a delete and a re-upload.
+        """
+        async with self.uow:
+            obj = await self._retrieve(library_id, id)
+            obj.mark_as_deleted()
+            await self.uow.wheel_repo.update(obj)
+            await self.uow.commit()
+        logger.info("Marked wheel {} of custom library {} as deleted", id, library_id)
+
+    async def _retrieve(self, library_id: int, id: int) -> Wheel:
+        obj = await self.uow.wheel_repo.retrieve(library_id, id)
+        if obj is None:
+            raise WheelNotFoundError(wheel_id=id)
+        return obj
+
+
+class WheelBuildOrchestrator:
+    """Turns a declared wheel's source archive into a wheel in the object store.
+
+    The build runs `uv` on a client's source, which executes that source's build
+    backend. It is not isolated yet; see `UVProvider._build_env` for what it is kept
+    away from in the meantime.
+    """
+
+    def __init__(
+        self,
+        uow: AbstractUnitOfWork,
+        file_storage: AbstractFileStorage,
+        uv_provider: AbstractUVProvider,
+    ):
+        self.uow = uow
+        self.file_storage = file_storage
+        self.uv_provider = uv_provider
+
+    async def build(self, wheel: Wheel):
+        """Build `wheel` and record the outcome on its row.
+
+        Never raises: a build fails for reasons that belong to the uploaded source, so
+        the failure is the result, reported through the row's status and `error`.
+        """
+        wheel.mark_as_processing()
+        wheel = await self._update(wheel)
+        logger.info("Building wheel {} of custom library {}", wheel.id, wheel.library_id)
+
+        try:
+            version = await self._build(wheel)
+        except Exception as error:
+            wheel.mark_as_failed(error)
+            logger.exception("Wheel {} failed to build", wheel.id)
+        else:
+            wheel.mark_as_completed(version, wheel.wheel_filename)
+            logger.info("Wheel {} built as {} {}", wheel.id, wheel.wheel_filename, version)
+
+        await self._update(wheel)
+
+    async def _build(self, wheel: Wheel) -> str:
+        """Build the source archive and store the wheel it produces.
+
+        Sets `wheel_filename` before the upload, because the key the wheel is stored
+        under is derived from it. The version is returned rather than recorded, so that
+        a build which fails after this point leaves it unclaimed and the next attempt
+        can still take it.
+
+        Raises:
+            UVBuildError: There is no source archive, or the build produced nothing.
+            WheelNameMismatchError: The source builds a different distribution.
+            WheelVersionTakenError: This library already holds that version.
+        """
+        if wheel.source_key is None or wheel.source_filename is None:
+            raise UVBuildError("This wheel has no source archive to build.")
+
+        archive = await self.file_storage.get(wheel.source_key)
+        with tempfile.TemporaryDirectory() as workspace:
+            root = Path(workspace)
+            source_dir = root / "source"
+            output_dir = root / "wheel"
+            await asyncio.to_thread(self._unpack, archive, wheel.source_filename, source_dir)
+
+            built = await self.uv_provider.build_wheel(self._project_root(source_dir), output_dir)
+            name, version, _, _ = parse_wheel_filename(built.name)
+            await self._check(wheel, name, str(version))
+
+            wheel.wheel_filename = built.name
+            with built.open("rb") as handle:
+                await self.file_storage.put(wheel.wheel_key, handle)
+
+        return str(version)
+
+    async def _check(self, wheel: Wheel, name: str, version: str):
+        """Hold what the build produced to what the upload promised.
+
+        The archive's own metadata decides the name and the version, and nothing checked
+        either before the build: a source may declare any distribution, and the version
+        it carries only becomes known here.
+
+        Raises:
+            WheelNameMismatchError: The source builds a different distribution.
+            WheelVersionTakenError: This library already holds that version.
+        """
+        async with self.uow:
+            library = await self.uow.custom_library_repo.retrieve(wheel.library_id)
+            if library is not None and name != library.name:
+                raise WheelNameMismatchError(
+                    wheel_name=name,
+                    custom_library_id=wheel.library_id,
+                    library_name=library.name,
+                )
+            taken = await self.uow.wheel_repo.retrieve_by_version(wheel.library_id, version)
+            if taken is not None and taken.id != wheel.id:
+                raise WheelVersionTakenError(custom_library_id=wheel.library_id, version=version)
+
+    @staticmethod
+    def _unpack(archive: bytes, filename: str, destination: Path):
+        """Extract the uploaded archive into `destination`.
+
+        Members that would land outside it are refused: the archive is a client's file,
+        and both formats can name paths that escape the directory they unpack into.
+
+        shortcut: the extracted size is not bounded, so a crafted archive can still fill
+        the disk. Upgrade when the build moves into its own isolated worker.
+        """
+        destination.mkdir(parents=True, exist_ok=True)
+        buffer = io.BytesIO(archive)
+        if filename.lower().endswith(".zip"):
+            with zipfile.ZipFile(buffer) as bundle:
+                bundle.extractall(destination)
+            return
+        with tarfile.open(fileobj=buffer, mode="r:*") as bundle:
+            bundle.extractall(destination, filter="data")
+
+    @staticmethod
+    def _project_root(path: Path) -> Path:
+        """Return the directory the build should run in.
+
+        A source distribution unpacks into one directory named after itself, so the
+        project is a level down unless the archive was packed without that wrapper.
+        """
+        if (path / "pyproject.toml").exists() or (path / "setup.py").exists():
+            return path
+        entries = [entry for entry in path.iterdir() if entry.is_dir()]
+        return entries[0] if len(entries) == 1 else path
+
+    async def _update(self, wheel: Wheel) -> Wheel:
+        async with self.uow:
+            wheel = await self.uow.wheel_repo.update(wheel)
+            await self.uow.commit()
+        return wheel
+
+
+class CustomLibraryReapOrchestrator:
+    """Removes what a delete only marked: the artifacts first, then the rows.
+
+    The object store and the database cannot be committed together, so a delete marks
+    and this takes the two steps apart. Both are idempotent, which is what makes a run
+    that stopped halfway harmless: deleting an object that is not there is not an
+    error, and a row that outlived its files is simply dropped on the next pass.
+    """
+
+    def __init__(self, uow: AbstractUnitOfWork, file_storage: AbstractFileStorage):
+        self.uow = uow
+        self.file_storage = file_storage
+
+    async def reap(self):
+        """Delete the files and rows of everything currently marked deleted.
+
+        Wheels go first and libraries second: the foreign key cascades, so dropping a
+        library while a wheel it could not reap is still stored would take that row
+        with it and strand the wheel's files for good.
+
+        One failure does not stop the pass. What could not be reaped stays marked, so
+        the next run picks it up again.
+        """
+        async with self.uow:
+            wheels = await self.uow.wheel_repo.list_deleted()
+            libraries = await self.uow.custom_library_repo.list_deleted()
+
+        reaped_wheels = sum([await self._reap_wheel(wheel) for wheel in wheels])
+        reaped_libraries = sum([await self._reap_library(library) for library in libraries])
+
+        if reaped_wheels or reaped_libraries:
+            logger.info(
+                "Reaped {} of {} marked wheels and {} of {} marked custom libraries",
+                reaped_wheels,
+                len(wheels),
+                reaped_libraries,
+                len(libraries),
+            )
+
+    async def _reap_wheel(self, wheel: Wheel) -> bool:
+        """Delete this wheel's files and then its row. Returns whether it is gone.
+
+        The files go first: a row deleted before them is the one order that loses
+        track of what is left in the object store.
+        """
+        try:
+            for key in (wheel.source_key, wheel.wheel_key):
+                if key is not None:
+                    await self.file_storage.delete(key)
+            async with self.uow:
+                await self.uow.wheel_repo.remove(wheel)
+                await self.uow.commit()
+        except Exception:
+            logger.exception("Could not reap wheel {}; it stays marked for the next pass", wheel.id)
+            return False
+        return True
+
+    async def _reap_library(self, library: CustomLibrary) -> bool:
+        """Delete this library's row once no wheel of it is left. Returns whether it is gone."""
+        try:
+            async with self.uow:
+                remaining = await self.uow.wheel_repo.count_by_library(library.id)
+                if remaining:
+                    logger.debug(
+                        "Custom library {} still has {} wheels to reap first",
+                        library.id,
+                        remaining,
+                    )
+                    return False
+                await self.uow.custom_library_repo.remove(library)
+                await self.uow.commit()
+        except Exception:
+            logger.exception(
+                "Could not reap custom library {}; it stays marked for the next pass", library.id
+            )
+            return False
+        return True
