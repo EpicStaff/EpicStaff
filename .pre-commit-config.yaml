@@ -24,9 +24,13 @@ repos:
         args: [--unsafe]
         files: ^src/docker-compose\.plugins-dev\.yaml$
 
-  # Blocks a commit whose staged changes contain a secret. The pull request workflow
-  # runs the same scanner over every commit of a pull request (secret-scan in pr.yml),
-  # so a commit made without this hook is still checked before it merges.
+  # Blocks a commit whose staged changes contain a secret. Where husky manages the
+  # git hooks (anyone who ran npm install in frontend/), frontend/.husky/pre-commit
+  # calls this hook, because pre-commit cannot install its own. The first run builds
+  # gitleaks with Go: pre-commit uses the installed go (1.21 or newer) or downloads
+  # one. The pull request workflow runs the same scanner over every commit of a pull
+  # request (secret-scan in pr.yml), so a commit made without this hook is still
+  # checked before it merges.
   - repo: https://github.com/gitleaks/gitleaks
     rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e  # frozen: v8.30.1
     hooks:

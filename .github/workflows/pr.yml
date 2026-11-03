@@ -262,9 +262,9 @@ jobs:
             exit 1
           fi
 
-  # The hooks in .pre-commit-config.yaml (check-yaml, ruff, ruff-format) only run
-  # on a machine whose developer installed them, so this job runs the same hooks
-  # in CI. Over the files the pull request changes, like the local hook does over
+  # The hooks in .pre-commit-config.yaml (check-yaml, ruff, ruff-format, gitleaks)
+  # only run on a machine whose developer installed them, so this job runs the
+  # same hooks in CI, except gitleaks, which the secret-scan job covers. Over the files the pull request changes, like the local hook does over
   # staged files: several files on the base branch predate the rules and fail
   # them, and a pull request that does not touch them is not held to them. A
   # pull request that does touch one fixes it. Runs on every pull request because
@@ -300,15 +300,19 @@ jobs:
             --to-ref "${{ github.event.pull_request.head.sha }}"
 
   # Fails when a commit in the pull request adds a secret (API key, token, private
-  # key, password in a connection string, ...). Scans every commit between the base
-  # and the head, so a secret added in one commit and removed in a later one is
-  # still caught: it stays in history once merged. Files inside committed archives
-  # (zip, tar, ...) are scanned too, up to three levels deep. Commits already on the base
-  # branch are not rescanned.
+  # key, password in a connection string, ...). Scans the diff of every non-merge
+  # commit between the base and the head, so a secret added in one commit and
+  # removed in a later one is still caught: it stays in history once merged. Files
+  # inside committed archives (zip, tar, ...) are scanned too, up to three levels
+  # deep. Commits already on the base branch are not rescanned. Not covered: a
+  # secret typed into a merge commit while resolving a conflict, because git log
+  # shows no diff for merge commits.
   #
-  # A false positive: add the line's fingerprint, printed in the job log, to
-  # .gitleaksignore in the same pull request, with a comment saying why it is not
-  # a secret.
+  # A false positive: mark the line with an inline `gitleaks:allow` comment, or add
+  # its fingerprint to .gitleaksignore with a comment saying why it is not a secret.
+  # Use the fingerprint WITHOUT the leading commit sha (`<file>:<rule>:<line>`): the
+  # sha changes when the pull request is rebased or squash-merged, and an entry that
+  # names it stops matching. .gitleaksignore has code owners (.github/CODEOWNERS).
   secret-scan:
     runs-on: ubuntu-latest
     steps:
