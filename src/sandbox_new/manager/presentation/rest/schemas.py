@@ -45,6 +45,7 @@ class LibraryWriteSchema(Schema):
     description: str | None = None
     specification: str = ""
     version: str | None = None
+    is_custom: bool = False
 
     def to_domain(self) -> Library:
         return Library(
@@ -52,6 +53,7 @@ class LibraryWriteSchema(Schema):
             description=self.description,
             specification=self.specification,
             version=self.version,
+            is_custom=self.is_custom,
         )
 
 
@@ -60,6 +62,7 @@ class LibraryRetrieveSchema(Schema):
     description: str | None = None
     specification: str
     version: str | None = None
+    is_custom: bool = False
 
     @classmethod
     def from_domain(cls, library: Library) -> Self:
@@ -68,6 +71,7 @@ class LibraryRetrieveSchema(Schema):
             description=library.description,
             specification=library.specification,
             version=library.version,
+            is_custom=library.is_custom,
         )
 
 

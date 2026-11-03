@@ -35,6 +35,7 @@ class Library(ValueObject):
     description: str | None = None
     specification: str = ""
     version: str | None = Field(default=None, pattern=VERSION_PATTERN)
+    is_custom: bool = False
 
     @field_validator("name")
     @classmethod
@@ -129,9 +130,42 @@ class Venv(Entity):
             for library in self.libs
         ]
 
+    def uses_custom_library(self, name: str, /) -> bool:
+        """Whether this venv names that stored library at all.
+
+        What keeps the library itself from being deleted: the venv would otherwise
+        name a library that is gone, and fail on its next build over a change its
+        author never made. An entry carrying the same name without the marking is a
+        package index lookup and says nothing about the stored library.
+
+        Args:
+            name: The library's name as stored, which is already canonical.
+        """
+        return any(library.is_custom and library.name == name for library in self.libs)
+
+    def pins_custom_library(self, name: str, version: str, /) -> bool:
+        """Whether this venv holds that exact version of that stored library.
+
+        Only a built venv pins anything: the version is written onto the entry by the
+        build. Until then the entry carries a specification, which is a range the build
+        has not yet chosen from, and so claims no single version.
+
+        Args:
+            name: The library's name as stored, which is already canonical.
+            version: The exact version to ask about.
+        """
+        return any(
+            library.is_custom and library.name == name and library.version == version
+            for library in self.libs
+        )
+
     def mark_as_declared(self):
         self.error = None
         self.status = VenvStatus.DECLARED
+
+    def mark_as_waiting(self):
+        self.error = None
+        self.status = VenvStatus.WAITING
 
     def mark_as_processing(self):
         self.status = VenvStatus.PROCESSING
