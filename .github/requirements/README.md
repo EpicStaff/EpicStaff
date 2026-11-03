@@ -6,6 +6,12 @@ the last transitive dependency. Several of these jobs hold write tokens, the
 image-signing identity or a Drive service-account key. A bare `pip install <name>`
 there would run whatever release PyPI serves that day.
 
+One exception: the `pre-commit` job in `pr.yml`. pre-commit itself installs from
+`pre-commit.txt`, but it then builds each hook's environment on its own, and those
+installs are not hash-checked: ruff is pinned to the version in
+`.pre-commit-config.yaml`, and pre-commit-hooks pulls its own dependencies. That job
+runs with a read-only token and no secrets.
+
 - `<name>.in` lists what a job needs directly.
 - `<name>.txt` is the locked set, generated from it. Do not edit it by hand.
 
