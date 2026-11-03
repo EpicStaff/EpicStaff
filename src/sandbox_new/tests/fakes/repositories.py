@@ -92,8 +92,16 @@ class FakeVenvRepository(AbstractVenvRepository):
             rows = rows[:limit]
         return [row.model_copy(deep=True) for row in rows], total
 
-    async def list_by_status(self, status: VenvStatus) -> list[Venv]:
-        return [row.model_copy(deep=True) for row in self.rows.values() if row.status is status]
+    async def list_by_status(self, *statuses: VenvStatus) -> list[Venv]:
+        wanted = set(statuses)
+        return [
+            row.model_copy(deep=True) for row in self.rows.values() if row.status in wanted
+        ]
+
+    async def list_using_custom_library(self, name: str) -> list[Venv]:
+        rows = [row for row in self.rows.values() if row.uses_custom_library(name)]
+        rows.sort(key=lambda row: row.id)
+        return [row.model_copy(deep=True) for row in rows]
 
     async def list_by_hashes(self, hashes: set[str]) -> list[Venv]:
         if not hashes:
@@ -178,6 +186,14 @@ class FakeCustomLibraryRepository(AbstractCustomLibraryRepository):
             return None
         return row.model_copy(deep=True)
 
+    async def list_by_names(self, names: list[str]) -> list[CustomLibrary]:
+        wanted = set(names)
+        rows = [
+            row for row in self.rows.values() if row.name in wanted and not row.is_deleted
+        ]
+        rows.sort(key=lambda row: row.id)
+        return [row.model_copy(deep=True) for row in rows]
+
     async def retrieve_by_name(self, name: str) -> CustomLibrary | None:
         row = next((row for row in self._live() if row.name == name), None)
         return row.model_copy(deep=True) if row is not None else None
@@ -261,6 +277,16 @@ class FakeWheelRepository(AbstractWheelRepository):
 
     async def remove(self, obj: Wheel) -> None:
         self.rows.pop(obj.id, None)
+
+    async def list_by_library_ids(self, ids: list[int]) -> list[Wheel]:
+        wanted = set(ids)
+        rows = [
+            row
+            for row in self.rows.values()
+            if row.library_id in wanted and not row.is_deleted
+        ]
+        rows.sort(key=lambda row: row.id)
+        return [row.model_copy(deep=True) for row in rows]
 
     async def list_by_status(self, status: WheelStatus) -> list[Wheel]:
         rows = [

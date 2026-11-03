@@ -29,12 +29,21 @@ class AbstractVenvRepository(abc.ABC):
         """
 
     @abc.abstractmethod
-    async def list_by_status(self, status: VenvStatus) -> builtins.list[Venv]:
-        pass
+    async def list_by_status(self, *statuses: VenvStatus) -> builtins.list[Venv]:
+        """Return the venvs in any of these statuses."""
 
     @abc.abstractmethod
     async def list_by_hashes(self, hashes: set[str]) -> builtins.list[Venv]:
         pass
+
+    @abc.abstractmethod
+    async def list_using_custom_library(self, name: str) -> builtins.list[Venv]:
+        """Return every venv that names this custom library, whatever its build state.
+
+        Not narrowed to one version: what counts as use differs between deleting a
+        library and deleting one of its wheels, so the caller decides and this hands
+        over the whole entry either way.
+        """
 
     @abc.abstractmethod
     async def retrieve(self, id: int) -> Venv | None:
@@ -92,6 +101,16 @@ class AbstractCustomLibraryRepository(abc.ABC):
         """Return the library with this canonical name, for the uniqueness check."""
 
     @abc.abstractmethod
+    async def list_by_names(self, names: builtins.list[str]) -> builtins.list[CustomLibrary]:
+        """Return the libraries among these names, in one call.
+
+        A venv may name several, and resolving them one at a time would be one query
+        per entry on a tick that runs every five seconds. A name nobody stored is
+        simply absent from the result: raising here would lose the venv's other
+        libraries, and naming what is missing is the caller's job.
+        """
+
+    @abc.abstractmethod
     async def create(self, obj: CustomLibrary) -> CustomLibrary:
         pass
 
@@ -143,6 +162,14 @@ class AbstractWheelRepository(abc.ABC):
     @abc.abstractmethod
     async def remove(self, obj: Wheel):
         """Delete the row outright. The reaper calls this once the artifacts are gone."""
+
+    @abc.abstractmethod
+    async def list_by_library_ids(self, ids: builtins.list[int]) -> builtins.list[Wheel]:
+        """Return the wheels of these libraries, in one call.
+
+        The counterpart of `list_by_names`: a venv build reads every candidate version
+        of every custom library it names at once, rather than a query per library.
+        """
 
     @abc.abstractmethod
     async def list_by_status(self, status: WheelStatus) -> builtins.list[Wheel]:

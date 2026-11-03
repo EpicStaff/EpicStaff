@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import json
 
 from piccolo.querystring import QueryString
 
@@ -67,8 +68,12 @@ class PiccoloVenvRepository(AbstractVenvRepository):
         rows = await rows_query
         return [VenvMapper.to_domain(row) for row in rows], total
 
-    async def list_by_status(self, status: VenvStatus) -> builtins.list[Venv]:
-        rows: list[VenvTable] = await VenvTable.objects().where(VenvTable.status == status)
+    async def list_by_status(self, *statuses: VenvStatus) -> builtins.list[Venv]:
+        if not statuses:
+            return []
+        rows: list[VenvTable] = await VenvTable.objects().where(
+            VenvTable.status.is_in(list(statuses))
+        )
         return [VenvMapper.to_domain(row) for row in rows]
 
     async def list_by_hashes(self, hashes: set[str]) -> builtins.list[Venv]:
@@ -76,6 +81,19 @@ class PiccoloVenvRepository(AbstractVenvRepository):
             return []
         rows = await VenvTable.objects().where(VenvTable.hash.is_in(list(hashes)))
         return [VenvMapper.to_domain(row) for row in rows]
+
+    async def list_using_custom_library(self, name: str) -> builtins.list[Venv]:
+        """Every venv whose `libs` holds an entry with this name marked custom.
+
+        `@>` asks Postgres whether the JSONB array contains an element with these
+        fields, so the whole venv table never crosses the wire. Raw SQL because
+        Piccolo has no containment operator of its own.
+        """
+        rows = await VenvTable.raw(
+            "SELECT * FROM venv WHERE libs @> {}",
+            json.dumps([{"name": name, "is_custom": True}]),
+        )
+        return [VenvMapper.to_domain(VenvTable(**row)) for row in rows]
 
     async def retrieve(self, id: int) -> Venv | None:
         row = await VenvTable.objects().get(VenvTable.id == id)
@@ -160,6 +178,16 @@ class PiccoloCustomLibraryRepository(AbstractCustomLibraryRepository):
             (CustomLibraryTable.name == name) & (CustomLibraryTable.is_deleted.eq(False))
         )
         return CustomLibraryMapper.to_domain(row) if row is not None else None
+
+    async def list_by_names(self, names: builtins.list[str]) -> builtins.list[CustomLibrary]:
+        # Guarded: an empty `IN ()` would be dropped and the query would answer with
+        # every library rather than none.
+        if not names:
+            return []
+        rows = await CustomLibraryTable.objects().where(
+            CustomLibraryTable.name.is_in(names) & CustomLibraryTable.is_deleted.eq(False)
+        )
+        return [CustomLibraryMapper.to_domain(row) for row in rows]
 
     async def create(self, obj: CustomLibrary) -> CustomLibrary:
         row = CustomLibraryTable(name=obj.name, is_deleted=obj.is_deleted)
@@ -256,6 +284,14 @@ class PiccoloWheelRepository(AbstractWheelRepository):
 
     async def remove(self, obj: Wheel) -> None:
         await WheelTable.delete().where(WheelTable.id == obj.id)
+
+    async def list_by_library_ids(self, ids: builtins.list[int]) -> builtins.list[Wheel]:
+        if not ids:
+            return []
+        rows = await WheelTable.objects().where(
+            WheelTable.library.is_in(ids) & WheelTable.is_deleted.eq(False)
+        )
+        return [WheelMapper.to_domain(row) for row in rows]
 
     async def list_by_status(self, status: WheelStatus) -> builtins.list[Wheel]:
         rows = await WheelTable.objects().where(
