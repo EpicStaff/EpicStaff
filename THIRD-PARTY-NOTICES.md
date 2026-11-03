@@ -12,8 +12,8 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Thu, 29 Oct 2026 13:21:16 GMT -->
-<!-- commit: 2dd4777b72ddf5d8dcd431514899a065930e6db8 -->
+<!-- generated: Tue, 03 Nov 2026 11:31:15 GMT -->
+<!-- commit: 94206ddd98fade1a198796bd6e1627d0d9dfd1ac -->
 <!-- package-lock.json sha256: c545f5ca8f1743fc -->
 
 ## Frontend license summary
@@ -3665,7 +3665,7 @@ THE SOFTWARE.
 
 ## Vendored code
 
-Third-party code copied into this repository rather than installed as a dependency. `license-checker` cannot see it, so these entries are maintained by hand in the generator.
+Third-party code copied into this repository rather than installed as a dependency. It is not in `package-lock.json`, so these entries are maintained by hand in the generator.
 
 ### ngx-json-viewer
 
@@ -33835,7 +33835,7 @@ npm install
 node scripts/generate-third-party-notices.mjs
 ```
 
-The generator invokes `npx --yes license-checker --production --json` internally — no extra devDependency is needed. It rewrites ONLY the `frontend` region of this file.
+The generator reads the production tree from `package-lock.json` and each installed package's own `package.json`; it downloads and runs no third-party tool. It stops, naming the package, when a licence is missing, not an SPDX expression, or uses an identifier outside its reviewed list. It rewrites ONLY the `frontend` region of this file.
 
 ### What the frontend refresh covers
 

@@ -419,7 +419,7 @@ jobs:
 
       # Licence attribution has to follow the production dependency set. Compares the
       # lockfile hash stamped in the notices header, so it needs neither network nor
-      # a license-checker run.
+      # a generator run.
       # Only the lockfile feeds that hash, so nothing but a dependency change can
       # alter the outcome.
       - name: Check third-party notices are in sync
