@@ -308,11 +308,17 @@ jobs:
   # secret typed into a merge commit while resolving a conflict, because git log
   # shows no diff for merge commits.
   #
-  # A false positive: mark the line with an inline `gitleaks:allow` comment, or add
-  # its fingerprint to .gitleaksignore with a comment saying why it is not a secret.
-  # Use the fingerprint WITHOUT the leading commit sha (`<file>:<rule>:<line>`): the
-  # sha changes when the pull request is rebased or squash-merged, and an entry that
-  # names it stops matching. .gitleaksignore has code owners (.github/CODEOWNERS).
+  # The scan never takes its settings from the pull request: .gitleaks.toml and
+  # .gitleaksignore are replaced with the base branch's copies before it runs, and
+  # inline `gitleaks:allow` comments are ignored, so a pull request cannot switch
+  # off the check that is checking it.
+  #
+  # A false positive: add its fingerprint WITHOUT the leading commit sha
+  # (`<file>:<rule>:<line>`, printed in the job log) to .gitleaksignore, with a
+  # comment saying why it is not a secret, in a SEPARATE pull request that touches
+  # nothing else. Once that is merged, re-run this job on the original pull request.
+  # The sha is left out because it changes when a pull request is rebased or
+  # squash-merged, and an entry that names it stops matching.
   secret-scan:
     runs-on: ubuntu-latest
     steps:
@@ -340,8 +346,17 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          # gitleaks reads both files from the directory it scans, so the pull
+          # request's copies are replaced in place, or removed when the base has none.
+          for file in .gitleaks.toml .gitleaksignore; do
+            rm -f "$file"
+            if git cat-file -e "${BASE_SHA}:${file}" 2>/dev/null; then
+              git show "${BASE_SHA}:${file}" > "$file"
+            fi
+          done
           "$RUNNER_TEMP/gitleaks" git --log-opts="${BASE_SHA}..${HEAD_SHA}" \
-            --max-archive-depth 3 --redact --verbose --no-banner --exit-code 1 .
+            --ignore-gitleaks-allow --max-archive-depth 3 \
+            --redact --verbose --no-banner --exit-code 1 .
 
   # Compose variables must be required (`${VAR:?}`) and boolean flags parsed
   # strictly (Env.bool in Python, env_bool in shell). The rules and what to do
