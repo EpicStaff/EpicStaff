@@ -75,6 +75,7 @@ def test_session_messages_page_is_capped(acme_member_client, session_with_messag
 
 def test_session_messages_next_link_returns_the_rest(acme_member_client, session_with_messages):
     first = acme_member_client.get(SESSION_MESSAGES_URL, {"session_id": session_with_messages.id, "limit": 5000})
+    assert first.status_code == 200, first.content
     rest = acme_member_client.get(first.json()["next"])
 
     assert rest.status_code == 200, rest.content
@@ -86,6 +87,16 @@ def test_flow_assistant_conversations_page_is_capped(acme_member_client, graph_w
     response = acme_member_client.get(
         f"/api/flow-assistants/{graph_with_conversations.id}/conversations/", {"limit": 5000}
     )
+
+    assert response.status_code == 200, response.content
+    page = response.json()
+    assert page["count"] == ROW_COUNT
+    assert len(page["results"]) == 1000
+    assert page["next"] is not None
+
+
+def test_flow_assistant_audit_page_is_capped(superadmin_in_acme, graph_with_conversations):
+    response = superadmin_in_acme.get("/api/flow-assistants/audit/conversations/", {"limit": 5000})
 
     assert response.status_code == 200, response.content
     page = response.json()
