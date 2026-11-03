@@ -1,4 +1,8 @@
-from rbac.access.principals import PinnedOrgPrincipal, is_pinned_org_principal
+from rbac.access.principals import (
+    PinnedOrgPrincipal,
+    is_pinned_org_principal,
+    user_api_key_org_id,
+)
 from rbac.exceptions import (
     OrganizationNotFoundError,
     OrgContextRequiredError,
@@ -11,6 +15,8 @@ class OrgContextService:
     """OrgContextService — resolves the active org for a request.
 
     Resolution order:
+    0. USER API key: the key's own org. Neither the URL kwarg nor the header is
+       read, so a request naming another org silently acts in the key's org.
     1. URL kwarg `org_id` (target-context wins on nested admin endpoints).
     2. `X-Organization-Id` header (active-context).
 
@@ -24,6 +30,7 @@ class OrgContextService:
     Errors:
     - Missing or malformed source: OrgContextRequiredError (400).
     - Caller not a member and not superadmin: OrgMembershipRequiredError (403).
+      For a USER key this is the owner who has left the key's org.
     - Caller is non-superadmin and the org is inactive: OrgMembershipRequiredError.
     - Caller is superadmin and the org id does not exist: OrganizationNotFoundError (404).
     - Pinned principal naming another org: OrganizationNotFoundError (404).
@@ -31,13 +38,15 @@ class OrgContextService:
     """
 
     def resolve(self, request, view_kwargs: dict | None = None) -> int:
-        requested_org_id = self._extract_org_id(request=request, view_kwargs=view_kwargs)
+        requested_org_id = user_api_key_org_id(request)
+        if requested_org_id is None:
+            requested_org_id = self._extract_org_id(request=request, view_kwargs=view_kwargs)
         user = request.user
         if is_pinned_org_principal(user):
             return self._resolve_pinned(principal=user, requested_org_id=requested_org_id)
         if requested_org_id is None:
             raise OrgContextRequiredError()
-        self._assert_membership(user=user, org_id=requested_org_id)
+        self.assert_membership(user=user, org_id=requested_org_id)
         return requested_org_id
 
     def _extract_org_id(self, request, view_kwargs) -> int | None:
@@ -64,7 +73,18 @@ class OrgContextService:
             raise OrgMembershipRequiredError()
         return org_id
 
-    def _assert_membership(self, user, org_id: int) -> None:
+    def assert_membership(self, user, org_id: int, *, lock: bool = False) -> None:
+        """Require `user` to act in `org_id`: a member of it while it is active, or a superadmin.
+
+        Args:
+            lock: Hold the membership row `FOR UPDATE` until the caller's transaction
+                ends, so a concurrent removal of the membership waits for it. Needs an
+                open transaction. A superadmin has no membership row to lock.
+
+        Raises:
+            OrgMembershipRequiredError: Not a member, or the org is inactive.
+            OrganizationNotFoundError: A superadmin named an org that does not exist.
+        """
         if getattr(user, "is_superadmin", False):
             org = Organization.objects.filter(id=org_id).values("is_active").first()
 
@@ -73,8 +93,8 @@ class OrgContextService:
             if not org["is_active"]:
                 raise OrgMembershipRequiredError()
             return
-        exists = OrganizationUser.objects.filter(
-            user=user, org_id=org_id, org__is_active=True
-        ).exists()
-        if not exists:
+        memberships = OrganizationUser.objects.filter(user=user, org_id=org_id, org__is_active=True)
+        if lock:
+            memberships = memberships.select_for_update(of=("self",))
+        if memberships.values_list("pk", flat=True).first() is None:
             raise OrgMembershipRequiredError()

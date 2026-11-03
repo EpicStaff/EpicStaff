@@ -76,6 +76,7 @@
                                 class="org-role"
                                 type="button"
                                 [attr.aria-label]="rolePermissionsLabel(item)"
+                                [matTooltip]="rolePermissionsLabel(item)"
                                 (click)="openRolePermissions(item)"
                             >
                                 {{ roleLabel(item.role) }}

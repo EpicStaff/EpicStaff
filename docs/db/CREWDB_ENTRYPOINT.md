@@ -9,7 +9,7 @@ roles of their own:
 | Service   | Role (env var)       | Access                                                      |
 |-----------|----------------------|-------------------------------------------------------------|
 | manager   | `MANAGER_DB_USER`    | The tables its retention, schedule and cleanup jobs touch   |
-| knowledge | `KNOWLEDGE_DB_USER`  | RAG configuration (read), chunks and embeddings (read/write) |
+| knowledge | `KNOWLEDGE_DB_USER`  | RAG configuration (read), indexing status (update), chunks and embeddings (read/write); also `CREATEDB` and `CREATE` on `public` and the database |
 | realtime  | `REALTIME_DB_USER`   | Realtime session items                                      |
 | sandbox   | `SANDBOX_DB_USER`    | Its own schema (`SANDBOX_DB_SCHEMA`), nothing in `public`   |
 

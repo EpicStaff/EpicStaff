@@ -9,7 +9,10 @@
             <h2 class="dialog-title">Missing Dependencies</h2>
         </div>
         <button
+            type="button"
             class="close-button"
+            aria-label="Close"
+            matTooltip="Close"
             (click)="dialogRef.close()"
         >
             <app-svg-icon
@@ -25,28 +28,47 @@
 
     <div class="warnings-list">
         @for (warning of data.warnings; track $index) {
-            <div
-                class="warning-item"
-                [class.warning-item--clickable]="warning.node_id != null"
-                (click)="selectWarning(warning)"
-            >
-                <span>
-                    @if (warning.node_name) {
-                        In node <strong>{{ warning.node_name }}</strong
-                        >,&nbsp;
-                    }
-                    {{ warning.reason }}
-                </span>
-                @if (warning.node_id != null) {
+            <!-- A warning about a node opens that node: a button; any other is plain text. -->
+            @if (warning.node_id != null) {
+                <button
+                    type="button"
+                    class="warning-item warning-item--clickable"
+                    matTooltip="Go to node"
+                    (click)="selectWarning(warning)"
+                >
+                    <ng-container
+                        [ngTemplateOutlet]="warningText"
+                        [ngTemplateOutletContext]="{ $implicit: warning }"
+                    />
                     <app-svg-icon
                         icon="chevron-right"
                         size="1rem"
                         class="warning-item-arrow"
                     />
-                }
-            </div>
+                </button>
+            } @else {
+                <div class="warning-item">
+                    <ng-container
+                        [ngTemplateOutlet]="warningText"
+                        [ngTemplateOutletContext]="{ $implicit: warning }"
+                    />
+                </div>
+            }
         }
     </div>
+
+    <ng-template
+        #warningText
+        let-warning
+    >
+        <span>
+            @if (warning.node_name) {
+                In node <strong>{{ warning.node_name }}</strong
+                >,&nbsp;
+            }
+            {{ warning.reason }}
+        </span>
+    </ng-template>
 
     <div class="dialog-divider"></div>
 

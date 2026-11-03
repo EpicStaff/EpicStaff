@@ -1,8 +1,10 @@
 import { ChangeDetectionStrategy, Component, forwardRef, input, model, output } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 @Component({
     selector: 'app-checkbox',
+    imports: [MatTooltip],
     templateUrl: './checkbox.component.html',
     styleUrls: ['./checkbox.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -19,7 +21,7 @@ export class CheckboxComponent implements ControlValueAccessor {
     checked = model<boolean>(false);
     color = input<'primary' | 'secondary'>('secondary');
     disabled = input<boolean>(false);
-    /** The box's accessible name, where no visible label sits next to it (a table's row checkbox). */
+    /** The box's accessible name, where no visible label sits next to it (a table's row checkbox); also its tooltip. */
     ariaLabel = input<string | null>(null);
 
     changed = output<boolean>();

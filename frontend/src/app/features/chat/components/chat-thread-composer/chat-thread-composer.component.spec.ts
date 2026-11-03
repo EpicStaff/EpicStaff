@@ -57,7 +57,7 @@ describe('ChatThreadComposerComponent', () => {
     const conversationActions = { refresh: vi.fn() };
 
     const host = (): HTMLElement => fixture.nativeElement;
-    const input = (): HTMLInputElement => host().querySelector('input') as HTMLInputElement;
+    const input = (): HTMLTextAreaElement => host().querySelector('textarea') as HTMLTextAreaElement;
     const roleButtons = () => Array.from(host().querySelectorAll<HTMLButtonElement>('app-tab-button button'));
     const notice = (): string =>
         host().querySelector('[role="status"]')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
@@ -96,7 +96,7 @@ describe('ChatThreadComposerComponent', () => {
 
     function pressEnter(): void {
         host()
-            .querySelector('app-custom-input')
+            .querySelector('textarea')
             ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
         fixture.detectChanges();
     }

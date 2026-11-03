@@ -37,7 +37,8 @@
                 <app-org-card [organization]="org" />
             }
             @if (isSuperadmin) {
-                <div
+                <button
+                    type="button"
                     class="org-card-create"
                     (click)="onCreateOrganization()"
                 >
@@ -47,7 +48,7 @@
                         size="30px"
                     />
                     <span class="label">Create New Organization</span>
-                </div>
+                </button>
             }
         </div>
     }

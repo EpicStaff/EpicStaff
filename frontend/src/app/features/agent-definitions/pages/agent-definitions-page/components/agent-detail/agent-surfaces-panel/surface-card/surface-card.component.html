@@ -28,7 +28,10 @@
                 <button
                     type="button"
                     class="surface-card__chevron-btn"
-                    aria-label="Toggle"
+                    [attr.aria-label]="expanded() ? 'Collapse' : 'Expand'"
+                    [attr.aria-expanded]="expanded()"
+                    [attr.tabindex]="nameIsEditable() ? null : -1"
+                    [matTooltip]="expanded() ? 'Collapse' : 'Expand'"
                     (click)="toggleExpand()"
                 >
                     <app-svg-icon
@@ -40,11 +43,13 @@
                 </button>
             }
 
-            @if (expanded() && !readOnly()) {
+            @if (nameIsEditable()) {
                 <input
                     type="text"
                     class="surface-card__name-input"
                     maxlength="255"
+                    aria-label="Surface name"
+                    matTooltip="Surface name"
                     [ngModel]="name()"
                     (ngModelChange)="onNameInput($event)"
                     appEnterBlur
@@ -55,6 +60,9 @@
                 <button
                     type="button"
                     class="surface-card__name-btn"
+                    appTooltipOnOverflow=".surface-card__name"
+                    [matTooltip]="surface()?.name ?? ''"
+                    [attr.aria-expanded]="expanded()"
                     (click)="toggleExpand()"
                 >
                     <span class="surface-card__name">{{ surface()?.name }}</span>
@@ -71,9 +79,9 @@
                             *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
                             type="button"
                             class="surface-card__action surface-card__action--accent"
+                            aria-label="Open in Shared Surfaces"
                             matTooltip="Open in Shared Surfaces"
                             matTooltipPosition="above"
-                            matTooltipClass="custom-tooltip"
                             (click)="onHeaderAction('openSource', $event)"
                         >
                             <app-svg-icon
@@ -85,9 +93,9 @@
                             *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
                             type="button"
                             class="surface-card__action surface-card__action--accent"
+                            aria-label="Detach from this place"
                             matTooltip="Detach from this place"
                             matTooltipPosition="above"
-                            matTooltipClass="custom-tooltip"
                             (click)="onDetachPlace($event)"
                         >
                             <app-svg-icon
@@ -102,9 +110,9 @@
                             *appHasPermission="[ResourceCode.Surfaces, ActionCode.Delete]"
                             type="button"
                             class="surface-card__action surface-card__action--accent"
+                            aria-label="Delete surface"
                             matTooltip="Delete surface"
                             matTooltipPosition="above"
-                            matTooltipClass="custom-tooltip"
                             (click)="onHeaderAction('delete', $event)"
                         >
                             <app-svg-icon
@@ -122,6 +130,9 @@
                                 type="button"
                                 class="surface-card__action surface-card__action--accent"
                                 aria-label="More actions"
+                                aria-haspopup="menu"
+                                matTooltip="More actions"
+                                [attr.aria-expanded]="menuOpen()"
                                 (click)="toggleMenu($event)"
                             >
                                 <app-svg-icon
@@ -138,7 +149,12 @@
                                 (overlayOutsideClick)="closeMenu()"
                                 (detach)="closeMenu()"
                             >
-                                <div class="surface-card__menu">
+                                <!-- Takes the focus on opening and hands it back to the ⋮ button when it closes (Escape closes the overlay). -->
+                                <div
+                                    class="surface-card__menu"
+                                    cdkTrapFocus
+                                    [cdkTrapFocusAutoCapture]="true"
+                                >
                                     @if (showAgentSpecificMenu()) {
                                         <button
                                             *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
@@ -194,6 +210,7 @@
                                         >
                                             <label class="surface-card__place">
                                                 <app-checkbox
+                                                    ariaLabel="Everywhere"
                                                     [checked]="everywhereChecked()"
                                                     [disabled]="placesBusy()"
                                                     (changed)="onToggleEverywhere($event)"
@@ -202,6 +219,7 @@
                                             </label>
                                             <label class="surface-card__place">
                                                 <app-checkbox
+                                                    ariaLabel="Flow"
                                                     [checked]="flowChecked()"
                                                     [disabled]="placesBusy() || everywhereChecked()"
                                                     (changed)="onTogglePlace('flow', $event)"
@@ -210,6 +228,7 @@
                                             </label>
                                             <label class="surface-card__place">
                                                 <app-checkbox
+                                                    ariaLabel="Chat"
                                                     [checked]="chatChecked()"
                                                     [disabled]="placesBusy() || everywhereChecked()"
                                                     (changed)="onTogglePlace('chat', $event)"
@@ -218,6 +237,7 @@
                                             </label>
                                             <label class="surface-card__place">
                                                 <app-checkbox
+                                                    ariaLabel="Realtime"
                                                     [checked]="realtimeChecked()"
                                                     [disabled]="placesBusy() || everywhereChecked()"
                                                     (changed)="onTogglePlace('realtime', $event)"
@@ -247,6 +267,7 @@
                             #instrTa
                             class="field__textarea"
                             placeholder="Add instructions on how the agent should use this Surface..."
+                            aria-label="Instructions"
                             rows="3"
                             [ngModel]="instructions()"
                             (ngModelChange)="instructions.set($event)"
@@ -264,6 +285,7 @@
                     type="button"
                     class="tabs__tab"
                     [class.tabs__tab--active]="activeTab() === 'tools'"
+                    [attr.aria-pressed]="activeTab() === 'tools'"
                     (click)="selectTab(ResourceCode.Tools)"
                 >
                     <app-svg-icon
@@ -278,6 +300,7 @@
                     type="button"
                     class="tabs__tab"
                     [class.tabs__tab--active]="activeTab() === 'files'"
+                    [attr.aria-pressed]="activeTab() === 'files'"
                     (click)="selectTab(ResourceCode.Files)"
                 >
                     <app-svg-icon
@@ -292,6 +315,7 @@
                     type="button"
                     class="tabs__tab"
                     [class.tabs__tab--active]="activeTab() === 'knowledge_sources'"
+                    [attr.aria-pressed]="activeTab() === 'knowledge_sources'"
                     (click)="selectTab(ResourceCode.KnowledgeSources)"
                 >
                     <app-svg-icon
@@ -305,6 +329,7 @@
             @if (activeTab() === 'tools' && canViewTools()) {
                 @if (!readOnly()) {
                     <app-select-dropdown
+                        #toolsDropdown
                         mode="list"
                         selectionMode="multiple"
                         [selectedOnTop]="true"
@@ -325,6 +350,8 @@
                             appSelectDropdownTrigger
                             type="button"
                             class="picker__toggle"
+                            aria-haspopup="listbox"
+                            [attr.aria-expanded]="toolsDropdown.isOpen()"
                         >
                             <span class="picker__toggle-label">
                                 @if (selectedTools().length === 0) {
@@ -353,6 +380,7 @@
                                         type="button"
                                         class="res-table__clear"
                                         aria-label="Remove all tools"
+                                        matTooltip="Remove all tools"
                                         (click)="clearTools($event)"
                                     >
                                         <app-svg-icon
@@ -380,7 +408,8 @@
                                     <button
                                         type="button"
                                         class="res-row__remove"
-                                        aria-label="Remove tool"
+                                        [attr.aria-label]="'Remove ' + tool.name"
+                                        [matTooltip]="'Remove ' + tool.name"
                                         (click)="removeTool(toolKey(tool), $event)"
                                     >
                                         <app-svg-icon
@@ -398,6 +427,7 @@
             @if (activeTab() === 'files' && canViewFiles()) {
                 @if (!readOnly()) {
                     <app-select-dropdown
+                        #filesDropdown
                         mode="tree"
                         selectionMode="multiple"
                         [maxPanelHeight]="500"
@@ -414,6 +444,8 @@
                             appSelectDropdownTrigger
                             type="button"
                             class="picker__toggle"
+                            aria-haspopup="listbox"
+                            [attr.aria-expanded]="filesDropdown.isOpen()"
                         >
                             <span class="picker__toggle-label">
                                 @if (fileStats().files === 0) {
@@ -469,20 +501,26 @@
                     <div class="file-table__head">
                         <span class="file-table__col-resource">Resource</span>
                         @for (col of visiblePermColumns(); track col.key) {
-                            <button
-                                type="button"
-                                class="file-table__col-perm file-table__col-perm--btn"
-                                [class.file-table__col-perm--allow]="columnPermState(col.key) === 'allow'"
-                                [class.file-table__col-perm--deny]="columnPermState(col.key) === 'deny'"
-                                [title]="col.label"
-                                [disabled]="readOnly()"
-                                (click)="toggleColumnPerm(col.key)"
+                            <!-- The label lives only in the tooltip, and a disabled (read-only) button gets no mouse events. -->
+                            <span
+                                class="file-table__col-perm-host"
+                                [matTooltip]="col.label + ' for all files: ' + columnPermState(col.key)"
                             >
-                                <app-svg-icon
-                                    [icon]="col.icon"
-                                    size="14px"
-                                />
-                            </button>
+                                <button
+                                    type="button"
+                                    class="file-table__col-perm file-table__col-perm--btn"
+                                    [class.file-table__col-perm--allow]="columnPermState(col.key) === 'allow'"
+                                    [class.file-table__col-perm--deny]="columnPermState(col.key) === 'deny'"
+                                    [attr.aria-label]="col.label + ' for all files: ' + columnPermState(col.key)"
+                                    [disabled]="readOnly()"
+                                    (click)="toggleColumnPerm(col.key)"
+                                >
+                                    <app-svg-icon
+                                        [icon]="col.icon"
+                                        size="14px"
+                                    />
+                                </button>
+                            </span>
                         }
                         @if (!readOnly()) {
                             <span class="file-table__col-remove">
@@ -490,6 +528,7 @@
                                     type="button"
                                     class="file-table__clear"
                                     aria-label="Remove all files"
+                                    matTooltip="Remove all files"
                                     (click)="clearAllFiles($event)"
                                 >
                                     <app-svg-icon
@@ -516,7 +555,9 @@
                                             type="button"
                                             class="file-row__chevron"
                                             [class.file-row__chevron--open]="row.expanded"
-                                            aria-label="Toggle folder"
+                                            [attr.aria-label]="(row.expanded ? 'Collapse ' : 'Expand ') + row.name"
+                                            [attr.aria-expanded]="row.expanded"
+                                            [matTooltip]="(row.expanded ? 'Collapse ' : 'Expand ') + row.name"
                                             (click)="toggleFolder(row.path, $event)"
                                         >
                                             <app-svg-icon
@@ -529,7 +570,7 @@
                                     }
                                     <span
                                         class="file-row__name"
-                                        [title]="row.path"
+                                        [matTooltip]="row.path"
                                         >{{ row.name }}</span
                                     >
                                 </span>
@@ -542,7 +583,8 @@
                                                 class="perm-cell"
                                                 [class.perm-cell--allow]="frow.perms[col.key] === 'allow'"
                                                 [class.perm-cell--deny]="frow.perms[col.key] === 'deny'"
-                                                [title]="frow.perms[col.key]"
+                                                [attr.aria-label]="permCellLabel(frow, col)"
+                                                [matTooltip]="permCellLabel(frow, col)"
                                                 [disabled]="readOnly()"
                                                 (click)="togglePerm(frow, col.key)"
                                             >
@@ -570,7 +612,8 @@
                                             <button
                                                 type="button"
                                                 class="file-row__remove-btn"
-                                                aria-label="Remove"
+                                                [attr.aria-label]="'Remove ' + row.name"
+                                                [matTooltip]="'Remove ' + row.name"
                                                 (click)="removeFileRow(frow, $event)"
                                             >
                                                 <app-svg-icon
@@ -593,7 +636,7 @@
                                     <span class="file-row__chevron-spacer"></span>
                                     <span
                                         class="file-row__name"
-                                        [title]="row.row.path || row.row.name"
+                                        [matTooltip]="row.row.path || row.row.name"
                                         >{{ row.row.name }}</span
                                     >
                                 </span>
@@ -605,7 +648,8 @@
                                             class="perm-cell"
                                             [class.perm-cell--allow]="row.row.perms[col.key] === 'allow'"
                                             [class.perm-cell--deny]="row.row.perms[col.key] === 'deny'"
-                                            [title]="row.row.perms[col.key]"
+                                            [attr.aria-label]="permCellLabel(row.row, col)"
+                                            [matTooltip]="permCellLabel(row.row, col)"
                                             [disabled]="readOnly()"
                                             (click)="togglePerm(row.row, col.key)"
                                         >
@@ -629,7 +673,8 @@
                                         <button
                                             type="button"
                                             class="file-row__remove-btn"
-                                            aria-label="Remove"
+                                            [attr.aria-label]="'Remove ' + row.row.name"
+                                            [matTooltip]="'Remove ' + row.row.name"
                                             (click)="removeFileRow(row.row, $event)"
                                         >
                                             <app-svg-icon
@@ -650,6 +695,7 @@
             @if (activeTab() === ResourceCode.KnowledgeSources && canViewKnowledge()) {
                 @if (!readOnly()) {
                     <app-select-dropdown
+                        #collectionsDropdown
                         mode="list"
                         selectionMode="multiple"
                         [selectedOnTop]="true"
@@ -666,6 +712,8 @@
                             appSelectDropdownTrigger
                             type="button"
                             class="picker__toggle"
+                            aria-haspopup="listbox"
+                            [attr.aria-expanded]="collectionsDropdown.isOpen()"
                         >
                             <span class="picker__toggle-label">
                                 @if (selectedCollections().length === 0) {
@@ -694,6 +742,7 @@
                                         type="button"
                                         class="res-table__clear"
                                         aria-label="Remove all collections"
+                                        matTooltip="Remove all collections"
                                         (click)="clearCollections($event)"
                                     >
                                         <app-svg-icon
@@ -714,7 +763,6 @@
                                     appTooltipOnOverflow
                                     [matTooltip]="col.name"
                                     matTooltipPosition="above"
-                                    matTooltipClass="custom-tooltip"
                                     >{{ col.name }}</span
                                 >
                                 @if (collectionsWithoutRag().has(col.id)) {
@@ -724,7 +772,8 @@
                                     <button
                                         type="button"
                                         class="res-row__remove"
-                                        aria-label="Remove collection"
+                                        [attr.aria-label]="'Remove ' + col.name"
+                                        [matTooltip]="'Remove ' + col.name"
                                         (click)="removeCollection(col.id, $event)"
                                     >
                                         <app-svg-icon
@@ -742,6 +791,7 @@
                     <button
                         type="button"
                         class="advanced-toggle"
+                        [attr.aria-expanded]="collectionAdvancedOpen()"
                         (click)="toggleCollectionAdvanced()"
                     >
                         <app-svg-icon

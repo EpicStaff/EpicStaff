@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import {
@@ -13,6 +14,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
     AppSvgIconComponent,
@@ -30,6 +32,7 @@ import { map } from 'rxjs/operators';
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
@@ -79,6 +82,8 @@ import {
         DetailHeaderComponent,
         AppSvgIconComponent,
         OverlayModule,
+        CdkTrapFocus,
+        MatTooltip,
         HasPermissionDirective,
     ],
     templateUrl: './agent-definitions-page.component.html',
@@ -101,6 +106,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+    protected readonly tourAnchors = CREATE_AGENT_TOUR_ANCHORS;
 
     /** Read-only mode when the active org can't mutate agents/surfaces. */
     protected readonly agentsReadOnly = computed<boolean>(() => {
@@ -450,7 +456,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     onHeaderDuplicate(): void {
-        this.closeHeaderMenu();
+        this.closeHeaderMenuToTrigger();
         const a = this.store.selectedAgent();
         if (a) {
             this.store.duplicateAgent(a.id);
@@ -469,8 +475,14 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     onHeaderDelete(): void {
-        this.closeHeaderMenu();
+        this.closeHeaderMenuToTrigger();
         this.onDeleteSelected();
+    }
+
+    /** Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away. */
+    private closeHeaderMenuToTrigger(): void {
+        this.headerMenuTrigger()?.nativeElement.focus();
+        this.closeHeaderMenu();
     }
 
     onExplorerTreeMenu(event: ExplorerTreeMenuEvent): void {

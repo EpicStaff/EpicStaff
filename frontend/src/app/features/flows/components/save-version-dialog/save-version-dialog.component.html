@@ -6,7 +6,10 @@
     <div class="dialog-header">
         <h2 class="dialog-title">Create Version</h2>
         <button
+            type="button"
             class="close-button"
+            aria-label="Close"
+            matTooltip="Close"
             (click)="onCancel()"
         >
             <app-svg-icon
@@ -25,6 +28,7 @@
                 <input
                     type="text"
                     id="versionName"
+                    cdkFocusInitial
                     formControlName="name"
                     class="form-control"
                     [class.form-control--error]="form.get('name')?.invalid && form.get('name')?.touched"

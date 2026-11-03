@@ -3,6 +3,9 @@
         <button
             type="button"
             class="explorer__title-btn"
+            matTooltip="Filter branches"
+            aria-haspopup="dialog"
+            [attr.aria-expanded]="filterOpen()"
             (click)="toggleFilter()"
         >
             <span class="explorer__title">Branches</span>
@@ -18,6 +21,7 @@
             type="button"
             class="explorer__close"
             aria-label="Close branches"
+            matTooltip="Close branches"
             (click)="onClose()"
         >
             <app-svg-icon
@@ -32,7 +36,15 @@
             class="explorer__filter-overlay"
             (click)="onFilterCancel()"
         ></div>
-        <div class="explorer__filter">
+        <!-- Takes the focus on opening and hands it back to the Branches button when it closes. -->
+        <div
+            class="explorer__filter"
+            role="dialog"
+            aria-label="Filter branches"
+            cdkTrapFocus
+            [cdkTrapFocusAutoCapture]="true"
+            (keydown.escape)="onFilterEscape($event)"
+        >
             <app-branches-filter
                 [selected]="store.visibleSections()"
                 (save)="onFilterSave($event)"

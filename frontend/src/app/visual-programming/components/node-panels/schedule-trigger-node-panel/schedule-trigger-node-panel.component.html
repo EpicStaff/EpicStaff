@@ -268,7 +268,10 @@
                             />
                         </div>
                         <div [class.toggle-inactive]="!hasStartDateTime()">
-                            <app-toggle-switch formControlName="is_active" />
+                            <app-toggle-switch
+                                formControlName="is_active"
+                                ariaLabel="Is active"
+                            />
                         </div>
                         @if (!hasStartDateTime()) {
                             <div class="toggle-hint">Set a start date and time before activating this schedule.</div>

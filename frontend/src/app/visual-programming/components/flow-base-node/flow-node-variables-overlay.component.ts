@@ -15,16 +15,9 @@ import { BaseNodeModel, NodeModel } from '../../core/models/node.model';
                 <div class="inputs-list">
                     @for (key of inputKeys; track key) {
                         <div class="input-item">
-                            <span
-                                class="input-key"
-                                [title]="key"
-                                >{{ key }}</span
-                            >
+                            <span class="input-key">{{ key }}</span>
                             <span class="equals-sign">=</span>
-                            <span
-                                class="input-value"
-                                [title]="baseNode?.input_map?.[key] ?? ''"
-                            >
+                            <span class="input-value">
                                 {{ baseNode?.input_map?.[key] }}
                             </span>
                         </div>

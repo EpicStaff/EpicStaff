@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, effect, input, output, viewChild } from '@angular/core';
 import { LabelDropdownComponent } from '@shared/components';
@@ -8,7 +9,7 @@ import { ToolCardMenuAction } from './tool-card.model';
 
 @Component({
     selector: 'app-tool-card-menu',
-    imports: [LabelDropdownComponent, HasPermissionDirective],
+    imports: [CdkTrapFocus, LabelDropdownComponent, HasPermissionDirective],
     templateUrl: './tool-card-menu.component.html',
     styleUrls: ['./tool-card-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

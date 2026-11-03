@@ -1,4 +1,6 @@
+import { getDebugNode } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { CopyButtonComponent } from '@shared/components';
 
@@ -48,6 +50,11 @@ function text(element: HTMLElement, selector: string): string {
     return element.querySelector(selector)?.textContent?.trim() ?? '';
 }
 
+/** The text of the tooltip `element` shows on hover and keyboard focus. */
+function tooltipOf(element: Element | null): string | undefined {
+    return element ? getDebugNode(element)?.injector.get(MatTooltip).message : undefined;
+}
+
 function chips(element: HTMLElement): { label: string; neutral: boolean }[] {
     return Array.from(element.querySelectorAll('.chip')).map((chip) => ({
         label: chip.textContent?.trim() ?? '',
@@ -72,6 +79,19 @@ function mappings(element: HTMLElement): string[] {
 }
 
 describe('KeyValueMessageComponent', () => {
+    // jsdom has no ResizeObserver; the title's overflow tooltip needs one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => vi.unstubAllGlobals());
+
     it('summarises a read with found and not-found counts', () => {
         const element = render({
             mode: 'read',
@@ -498,6 +518,28 @@ describe('KeyValueMessageComponent', () => {
         expect(element.querySelector('.key-value-content > .muted-note')).not.toBeNull();
         expect(card?.querySelectorAll('.collapsible-content, .grid-collapsible, [aria-expanded]').length).toBe(0);
     });
+
+    it('keeps the collapsed content, copy buttons included, out of the Tab order until the header is expanded', () => {
+        const fixture = createFixture({
+            mode: 'read',
+            deleted_count: null,
+            entries: [entry({ key: 'a', path: 'variables.a', found: true, value: { b: 1 } })],
+        });
+        const element = fixture.nativeElement as HTMLElement;
+        const content = element.querySelector<HTMLElement>('.key-value-container > .collapsible-content')!;
+        expect(content.querySelector('app-copy-button')).not.toBeNull();
+
+        expect(content.inert).toBe(true);
+
+        element.querySelector<HTMLButtonElement>('.key-value-header')!.click();
+        fixture.detectChanges();
+        expect(content.inert).toBe(false);
+
+        element.querySelector<HTMLButtonElement>('.key-value-header')!.click();
+        fixture.detectChanges();
+        expect(content.inert).toBe(true);
+    });
+
     it('shows only the key for a read row without a target path', () => {
         const element = render({
             mode: 'read',
@@ -521,7 +563,7 @@ describe('KeyValueMessageComponent', () => {
         const title = element.querySelector('.title') as HTMLElement;
         const style = getComputedStyle(title);
 
-        expect(title.getAttribute('title')).toBe(longName);
+        expect(tooltipOf(element.querySelector('.key-value-header'))).toBe(longName);
         expect(text(element, '.title .table-name')).toBe(longName);
         expect(chips(element)).toEqual([{ label: '0 found', neutral: false }]);
         expect([style.whiteSpace, style.overflow, style.textOverflow]).toEqual(['nowrap', 'hidden', 'ellipsis']);

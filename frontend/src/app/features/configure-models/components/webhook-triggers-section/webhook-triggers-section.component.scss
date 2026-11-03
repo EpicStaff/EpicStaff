@@ -129,13 +129,14 @@
             line-height: 1;
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--purple-alpha-12);
             border-color: var(--purple-alpha-70);
         }
 
-        // After :hover with the same specificity, so a disabled button shows no hover highlight.
-        &:disabled {
+        // After :hover with the same specificity, so a disabled button shows no hover highlight. Edit is only
+        // aria-disabled while its check runs, so it keeps the focus.
+        &:is(:disabled, [aria-disabled='true']) {
             cursor: default;
             opacity: 0.5;
             background: transparent;
@@ -143,14 +144,14 @@
         }
 
         &--active,
-        &--active:hover {
+        &--active:is(:hover, :focus-visible) {
             background: var(--accent-color);
             border-color: var(--accent-color);
             color: var(--color-text-primary);
         }
 
         &--delete {
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: var(--red-440-alpha-12);
                 border-color: var(--red-440-alpha-50);
                 color: var(--red-440);
@@ -218,8 +219,7 @@
 
         // Inset, so the menu's overflow clipping cannot cut the ring off.
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -1px;
+            outline-offset: -2px;
         }
 
         & + & {

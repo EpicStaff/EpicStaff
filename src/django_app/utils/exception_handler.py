@@ -120,10 +120,9 @@ def _log_unhandled_exception(exc: Exception, request, response) -> None:
     Returning a response stops DRF from re-raising, so Django would log only
     the status line. Django's own request logger records it with the
     traceback, and marks the response as logged so that line is not repeated.
-    It goes through stdlib logging rather than the loguru sink on purpose: the
-    sink keeps loguru's `diagnose` on, which prints every local variable of
-    every frame -- secrets and request payloads included -- and an unhandled
-    exception can come from any code path.
+    It goes through stdlib `log_response` rather than loguru on purpose: only
+    that call marks the response as logged, so a loguru call would leave
+    Django to repeat the line.
     """
     path = request.path if request is not None else "unknown path"
     log_response(

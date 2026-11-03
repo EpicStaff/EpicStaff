@@ -369,14 +369,20 @@ services:
       REDIS_USER: ${REDIS_USER:?}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?}
     # The config file must stay the first argument: it carries the pub/sub output buffer
-    # limit. The flags after it override same-named directives in the file.
-    command: >
-      sh -c "redis-server /usr/local/etc/redis/redis.conf --port $${REDIS_PORT}
-      $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}
-      $${REDIS_USER:+--user \"$${REDIS_USER}\" on \">$${REDIS_PASSWORD}\" ~* &* +@all}"
+    # limit. The password reaches redis-server as config on stdin (the trailing "-"), never as
+    # an argument: every user on the host can read process arguments, and redis-server only
+    # hides its own once it has started. sed escapes \ and " for the quoted config values.
+    command:
+      - sh
+      - -c
+      - |
+        password=$$(printf '%s' "$$REDIS_PASSWORD" | sed 's/[\\"]/\\&/g')
+        printf 'requirepass "%s"\nuser "%s" on ">%s" ~* &* +@all\n' "$$password" "$$REDIS_USER" "$$password" |
+          redis-server /usr/local/etc/redis/redis.conf --port "$$REDIS_PORT" -
     healthcheck:
-      test: >
-        sh -c "redis-cli -p $${REDIS_PORT} $${REDIS_PASSWORD:+-a \"$${REDIS_PASSWORD}\"} ping || exit 1"
+      # redis-cli reads the password from REDISCLI_AUTH: on a command line (-a) every user on the
+      # host could read it in the process list.
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli -p \"$${REDIS_PORT}\" ping || exit 1"]
       interval: 5s
       timeout: 2s
       retries: 50
@@ -522,14 +528,21 @@ services:
     # The policy PUT replaces the bucket's whole policy: anonymous read of system/avatars/ only.
     # storage publishes no port, so this only lets nginx read avatars without credentials
     # inside the docker network; the gate for clients is nginx's avatar URL signature check.
+    # curl takes the credentials from the environment (--variable %NAME): on a command line every
+    # user on the host could read them in the process list.
+    environment:
+      STORAGE_USER: ${STORAGE_USER:?}
+      STORAGE_PASSWORD: ${STORAGE_PASSWORD:?}
     entrypoint: >
       /bin/sh -c "
       status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
-      --aws-sigv4 'aws:amz:us-east-1:s3' --user '${STORAGE_USER:?}:${STORAGE_PASSWORD:?}'
+      --aws-sigv4 'aws:amz:us-east-1:s3'
+      --variable %STORAGE_USER --variable %STORAGE_PASSWORD --expand-user '{{STORAGE_USER}}:{{STORAGE_PASSWORD}}'
       http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}) &&
       case $$status in 200|409) echo 'Bucket ready.' ;; *) echo \"Bucket creation failed: HTTP $$status\" && exit 1 ;; esac &&
       status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
-      --aws-sigv4 'aws:amz:us-east-1:s3' --user '${STORAGE_USER:?}:${STORAGE_PASSWORD:?}'
+      --aws-sigv4 'aws:amz:us-east-1:s3'
+      --variable %STORAGE_USER --variable %STORAGE_PASSWORD --expand-user '{{STORAGE_USER}}:{{STORAGE_PASSWORD}}'
       -H 'Content-Type: application/json'
       --data-binary '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::${STORAGE_BUCKET:?}/system/avatars/*\"]}]}'
       'http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}?policy') &&
@@ -625,7 +638,8 @@ services:
       PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
       PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
       PLUGINS_MAX_REQUEST_BODY_MB: ${PLUGINS_MAX_REQUEST_BODY_MB:?}
-      # The plugins network's subnet: nginx denies it on 80/443 and allows only it on 8081.
+      # The plugins network's subnet: nginx denies it on 80/443 and on the webhook tunnel listener
+      # (8083), and allows only it on 8081.
       PLUGINS_NETWORK_SUBNET: ${PLUGINS_NETWORK_SUBNET:?}
       # Sent with every plugin gateway check (django_app answers a check without it with 404), and
       # with every request of the internal API listener (plugin and node keys work only with it).
@@ -801,7 +815,9 @@ services:
       - opensearch_data:/usr/share/opensearch/data
       - ./auditor/opensearch-entrypoint.sh:/opensearch-entrypoint.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sk -u admin:${OPENSEARCH_PASSWORD:?} https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      # The password comes from the environment (--variable %NAME), not the command line, which every
+      # user on the host can read in the process list.
+      test: ["CMD-SHELL", "curl -sk --variable %OPENSEARCH_INITIAL_ADMIN_PASSWORD --expand-user 'admin:{{OPENSEARCH_INITIAL_ADMIN_PASSWORD}}' https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -1230,10 +1246,14 @@ services:
       - KILL  # signal the dropped-privilege child's process group on timeout.
 
 volumes:
-  sandbox_venvs: {}
-  crew_pgdata: {}
-  media_data: {}
-  opensearch_data: {}
+  sandbox_venvs:
+    external: true
+  crew_pgdata:
+    external: true
+  media_data:
+    external: true
+  opensearch_data:
+    external: true
   redis_data: {}
   code_instances: {}
   rustfs_data: {}

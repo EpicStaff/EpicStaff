@@ -12,6 +12,7 @@
         [cdkMenuTriggerFor]="menu"
         [cdkMenuPosition]="menuPositions"
         [disabled]="disabled()"
+        [matTooltip]="mainTooltip()"
         (cdkMenuOpened)="onMenuOpened()"
         (cdkMenuClosed)="onMenuClosed()"
     >

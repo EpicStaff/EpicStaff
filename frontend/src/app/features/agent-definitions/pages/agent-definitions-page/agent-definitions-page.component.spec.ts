@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer, OverlayModule } from '@angular/cdk/overlay';
 import { CUSTOM_ELEMENTS_SCHEMA, signal, WritableSignal } from '@angular/core';
@@ -11,7 +12,9 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 
+import { tourAnchorSelector } from '../../../../core/guided-tour';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
 import { AgentDefinition } from '../../models/agent-definition.model';
 import { AgentsPageStore } from '../../services/agents-page-store.service';
@@ -64,6 +67,7 @@ function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
         selectedAgentInstructionListError: signal(null),
         isDraftingAgent: signal(false),
         isDraftingSurface: signal(false),
+        isSelectedAgentFromLatestDraft: signal(false),
         saving: signal(false),
         agents: signal([AGENT]),
         surfaces: signal([]),
@@ -94,7 +98,7 @@ function render(canWrite: boolean): {
     // Only the editor header is under test: the explorer and editor panes stay unrendered custom elements.
     TestBed.overrideComponent(AgentDefinitionsPageComponent, {
         set: {
-            imports: [DetailHeaderComponent, AppSvgIconComponent, OverlayModule, HasPermissionDirective],
+            imports: [DetailHeaderComponent, AppSvgIconComponent, OverlayModule, CdkTrapFocus, HasPermissionDirective],
             providers: [
                 { provide: AgentsPageStore, useValue: agentSelectedStore() },
                 {
@@ -121,7 +125,10 @@ function savingSignal(fixture: ComponentFixture<AgentDefinitionsPageComponent>):
     return fixture.debugElement.injector.get(AgentsPageStore).saving as WritableSignal<boolean>;
 }
 
+// Focused first, as a real click or Enter leaves it: the menu's focus trap hands the focus back to whatever had it
+// when the menu opened, and a test must not depend on what an earlier spec left focused.
 function openMenu(fixture: ComponentFixture<AgentDefinitionsPageComponent>): void {
+    moreButton(fixture.nativeElement)!.focus();
     moreButton(fixture.nativeElement)!.click();
     fixture.detectChanges();
 }
@@ -226,6 +233,29 @@ describe('AgentDefinitionsPageComponent agent header menu "View Details"', () =>
         fixture.detectChanges();
 
         expect(document.activeElement).toBe(document.body);
+    });
+});
+
+describe('AgentDefinitionsPageComponent Create Agent tour anchors', () => {
+    function markedWith(host: HTMLElement, anchor: string): Element | null {
+        return host.querySelector(tourAnchorSelector(anchor));
+    }
+
+    it('marks the Add Agent button', () => {
+        const { host } = render(true);
+
+        expect(markedWith(host, CREATE_AGENT_TOUR_ANCHORS.addAgent)?.textContent?.trim()).toBe('Add Agent');
+    });
+
+    it('marks the agent editor as created only while it shows the agent the latest draft was saved as', () => {
+        const { fixture, host } = render(true);
+        expect(markedWith(host, CREATE_AGENT_TOUR_ANCHORS.createdAgent)).toBeNull();
+
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+        (store.isSelectedAgentFromLatestDraft as WritableSignal<boolean>).set(true);
+        fixture.detectChanges();
+
+        expect(markedWith(host, CREATE_AGENT_TOUR_ANCHORS.createdAgent)?.tagName).toBe('APP-AGENT-DETAIL');
     });
 });
 

@@ -80,20 +80,9 @@ server {
     client_max_body_size 50M;
 
     # ---- Security response headers --------------------------------------
-    # WARNING: nginx inherits add_header into a location only if that location
-    # declares no add_header of its own. Adding one to any location below
-    # silently drops every header here for that route -- repeat them there if
-    # a route ever needs its own.
-    #
-    # Django's XFrameOptionsMiddleware already sends X-Frame-Options: DENY on
-    # proxied responses. Hide it so nginx is the single source of truth and
-    # browsers never receive two conflicting values.
-    proxy_hide_header X-Frame-Options;
-
-    add_header X-Frame-Options SAMEORIGIN always;
-    add_header X-Content-Type-Options nosniff always;
-    add_header Referrer-Policy strict-origin-when-cross-origin always;
-    add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
+    # The add_header inheritance warning in security-headers.snippet applies to every add_header
+    # here too: a location with an add_header of its own gets none of these.
+    include /etc/nginx/conf.d/security-headers.snippet;
 
     # Strict-Transport-Security is decided separately from NGINX_SSL_MODE: a load
     # balancer in front of nginx can terminate TLS while nginx serves plain HTTP.
@@ -199,49 +188,8 @@ server {
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
-    location ^~ /webhooks/ {
-        proxy_pass http://webhook_server;
-        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
-        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $forwarded_proto;
-        proxy_set_header X-Forwarded-Host $host;
-    }
-
-    location ^~ /voice/ {
-        proxy_pass http://realtime_server;
-        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
-        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $forwarded_proto;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-
-    location /voice/stream {
-        proxy_pass http://realtime_server;
-        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
-        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $forwarded_proto;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
+    # /webhooks/ and /voice/: also served by the tunnel listener below.
+    include /etc/nginx/conf.d/tunnel-routes.snippet;
 
     location /realtime/ {
         proxy_pass http://realtime_server;
@@ -341,6 +289,40 @@ server {
         access_log off;
         return 204;
     }
+
+    location / {
+        return 404;
+    }
+}
+
+# The webhook tunnel listener: what an organization's ngrok tunnel forwards to (the webhook
+# service's NGROK_TARGET_HOST:NGROK_TARGET_PORT, epicstaff-nginx:8083). A tunnel publishes its
+# target on a public URL, so it must never be EpicStaff's own server: that would put every
+# organization's login, API, admin and media behind it. This server serves only the tunnel routes
+# (tunnel-routes.snippet) and 404s everything else. Not published in src/docker-compose.yaml: only
+# containers on nginx's networks reach it.
+#
+# Always plain http, whatever NGINX_SSL_MODE: ngrok ends TLS at its edge and connects here over
+# http, so the TLS server's http->https redirect would send every request back out in a loop.
+server {
+    listen 8083;
+    server_name _;
+
+    include /etc/nginx/conf.d/plugins-tunnel-${PLUGINS_ENABLED}.snippet;
+
+    client_max_body_size 50M;
+
+    # nginx's own redirects (/webhooks to /webhooks/) keep the caller's scheme, host and port: an
+    # absolute one would name this listener's http and port 8083, which the tunnel's public URL
+    # does not have.
+    absolute_redirect off;
+
+    # No Strict-Transport-Security and no Content-Security-Policy: the tunnel's host is the
+    # organization's ngrok domain, not EpicStaff's, and its callers are services, not EpicStaff's
+    # pages.
+    include /etc/nginx/conf.d/security-headers.snippet;
+
+    include /etc/nginx/conf.d/tunnel-routes.snippet;
 
     location / {
         return 404;

@@ -8,6 +8,7 @@
     <div class="toolbar-actions">
         @if (canCreateOrCopyAnywhere()) {
             <app-button
+                #mainAction
                 type="primary"
                 leftIcon="plus"
                 (click)="onCreateRole()"

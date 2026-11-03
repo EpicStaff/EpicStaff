@@ -1,14 +1,15 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input, model, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { NavigationEnd, Router } from '@angular/router';
 import { AppSvgIconComponent, UserAvatarComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { FullMembership, GetMeResponse } from '@shared/models';
 import { ORG_SWITCH_URL_RULES } from '@shared/services';
 import { EMPTY } from 'rxjs';
 import { catchError, filter, finalize, map, switchMap } from 'rxjs/operators';
 
-import { GuidedTourService } from '../../../../core/guided-tour';
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { AuthService } from '../../../../services/auth/auth.service';
@@ -22,7 +23,7 @@ const ORG_SWITCH_FAILED_MESSAGE = 'Could not switch organization. Please try aga
 /** The sidebar's account menu: the signed-in user, their organizations, navigation and sign out. */
 @Component({
     selector: 'app-user-menu',
-    imports: [AppSvgIconComponent, UserAvatarComponent, OrgAvatarComponent],
+    imports: [AppSvgIconComponent, UserAvatarComponent, OrgAvatarComponent, MatTooltip, TooltipOnOverflowDirective],
     templateUrl: './user-menu.component.html',
     styleUrls: ['./user-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -50,12 +51,8 @@ export class UserMenuComponent {
     private unsavedChangesRegistry = inject(UnsavedChangesRegistry);
     private currentUserService = inject(ProfileService);
     private permissionService = inject(PermissionsService);
-    private readonly guidedTourService = inject(GuidedTourService);
     /** Features' own rules for their addresses (a plugin page keeps the plugin, not its path). */
     private readonly orgSwitchUrlRules = inject(ORG_SWITCH_URL_RULES, { optional: true }) ?? [];
-
-    /** The tours the user can take now, each replayable from its own entry. */
-    protected readonly tours = this.guidedTourService.replayableTours;
 
     // Declared after the router it reads: field initializers run in order.
     private currentUrl = toSignal(
@@ -106,11 +103,6 @@ export class UserMenuComponent {
     onProfileClick(): void {
         this.isUserMenuOpen.set(false);
         void this.router.navigate(['/profile']);
-    }
-
-    onTourClick(tourKey: string): void {
-        this.isUserMenuOpen.set(false);
-        void this.guidedTourService.start(tourKey);
     }
 
     onSignOutClick(): void {

@@ -19,11 +19,16 @@
         }
 
         .close-btn {
+            display: inline-flex;
+            padding: 0;
+            border: none;
+            background: none;
+            border-radius: 4px;
             cursor: pointer;
             color: var(--text-secondary-60);
             transition: color 0.2s ease;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 color: var(--text);
             }
         }

@@ -126,6 +126,46 @@ describe('ChatBindingsDialogComponent', () => {
         );
     }
 
+    /**
+     * What is said about the field bound to `controlName`: the dialog's text its control points at with
+     * aria-describedby. A help icon's tooltip describes the icon from outside the dialog, so it adds nothing.
+     */
+    function errorUnder(controlName: string): string {
+        const host: HTMLElement = fixture.nativeElement;
+        const described = Array.from(host.querySelectorAll(`[formControlName="${controlName}"] [aria-describedby]`));
+        if (!described.length) throw new Error(`Nothing describes ${controlName}`);
+        return described
+            .flatMap((element) => (element.getAttribute('aria-describedby') ?? '').split(' '))
+            .map((id) => host.querySelector(`[id="${id}"]`)?.textContent ?? '')
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function isMarkedInvalid(controlName: string): boolean {
+        const host: HTMLElement = fixture.nativeElement;
+        return host.querySelector(`[formControlName="${controlName}"] input[aria-invalid="true"]`) !== null;
+    }
+
+    /** Types `value` into the number field bound to `controlName`, as the user does. */
+    function typeNumber(controlName: string, value: number): void {
+        const host: HTMLElement = fixture.nativeElement;
+        const input = host.querySelector<HTMLInputElement>(`[formControlName="${controlName}"] input`);
+        if (!input) throw new Error(`No input for ${controlName}`);
+        input.value = String(value);
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    function clickSave(): void {
+        const host: HTMLElement = fixture.nativeElement;
+        const save = Array.from(host.querySelectorAll<HTMLButtonElement>('.bindings-dialog__actions button')).find(
+            (button) => button.textContent?.trim() === 'Save'
+        ) as HTMLButtonElement;
+        save.click();
+        fixture.detectChanges();
+    }
+
     beforeEach(() => {
         vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         vi.clearAllMocks();
@@ -224,14 +264,27 @@ describe('ChatBindingsDialogComponent', () => {
         expect(text('app-chat-contract-fix')).toEqual([]);
     });
 
-    it('refuses a whitespace-only binding name and says so under Name', () => {
+    it('refuses a whitespace-only binding name and says so under Name, once', () => {
         const component = open(null);
         component.form.patchValue({ name: '   ', graph_id: 5 });
-        component.submit();
-        fixture.detectChanges();
+        clickSave();
         expect(chatApi.createBinding).not.toHaveBeenCalled();
-        expect(component.form.controls.name.valid).toBe(false);
-        expect(component.textFieldError('name')).toBe('Required');
+        expect(errorUnder('name')).toBe('Value cannot be blank string.');
+        expect(isMarkedInvalid('name')).toBe(true);
+        expect(component.activeTab()).toBe('general');
+    });
+
+    it('says the flow is required under Flow when Save is pressed without one, and saves nothing', () => {
+        const component = open(null);
+        component.form.controls.name.setValue('Portal');
+        fixture.detectChanges();
+        expect(errorUnder('graph_id')).toBe('');
+
+        clickSave();
+
+        expect(chatApi.createBinding).not.toHaveBeenCalled();
+        expect(errorUnder('graph_id')).toBe('This field is required.');
+        expect(errorUnder('name')).toBe('');
         expect(component.activeTab()).toBe('general');
     });
 
@@ -289,9 +342,12 @@ describe('ChatBindingsDialogComponent', () => {
             // Blank to the service's strip too, which trim() would not strip.
             control.setValue(String.fromCodePoint(0x1c, 0x85));
             expect(control.valid).toBe(false);
-            control.setValue('x'.repeat(65));
             control.markAsTouched();
-            expect(component.textFieldError(field)).toBe('Use at most 64 characters.');
+            fixture.detectChanges();
+            expect(errorUnder(field)).toBe('This field is required.');
+            control.setValue('x'.repeat(65));
+            fixture.detectChanges();
+            expect(errorUnder(field)).toBe('Use at most 64 characters.');
             control.setValue('x'.repeat(64));
             expect(control.valid).toBe(true);
             // Characters, not UTF-16 units.
@@ -319,7 +375,8 @@ describe('ChatBindingsDialogComponent', () => {
                     [0xe0041, 'E0041'],
                 ] as const) {
                     control.setValue(around(codePoint));
-                    expect(component.textFieldError(field)).toBe(reason(name));
+                    fixture.detectChanges();
+                    expect(errorUnder(field)).toBe(reason(name));
                 }
             }
             component.submit();
@@ -825,14 +882,11 @@ describe('ChatBindingsDialogComponent', () => {
         it('blocks a typed duration above the deployment cap locally, in its unit', () => {
             const component = open(binding({}));
             showInactivity(component);
-            component.form.controls.response_time_minutes.markAsDirty();
-            component.form.controls.response_time_minutes.setValue(1441);
-            fixture.detectChanges();
-            expect(component.durationCapMessage('response_time_seconds')).toBe(
-                'At most 1,440 minutes on this deployment'
-            );
-            expect(text('.input__message--error')).toEqual(['At most 1,440 minutes on this deployment']);
-            component.submit();
+            typeNumber('response_time_minutes', 1441);
+            // Said while typing, as the field turns red, not only once it is left.
+            expect(errorUnder('response_time_minutes')).toBe('At most 1,440 minutes on this deployment.');
+            expect(isMarkedInvalid('response_time_minutes')).toBe(true);
+            clickSave();
             expect(chatApi.updateBinding).not.toHaveBeenCalled();
         });
 
@@ -857,7 +911,7 @@ describe('ChatBindingsDialogComponent', () => {
             component.form.controls.close_after_hours.setValue(72);
             component.submit();
             fixture.detectChanges();
-            expect(component.durationCapMessage('close_after_seconds')).toBe('At most 48 hours on this deployment');
+            expect(errorUnder('close_after_hours')).toBe('At most 48 hours on this deployment.');
             expect(component.errorMessage()).toBeNull();
             expect(component.activeTab()).toBe('inactivity');
         });
@@ -879,15 +933,14 @@ describe('ChatBindingsDialogComponent', () => {
     it('blocks a budget above the deployment cap locally with the cap message', () => {
         const component = open(binding({}));
         fixture.detectChanges();
-        component.form.controls.daily_token_budget.markAsDirty();
-        component.form.controls.daily_token_budget.setValue(5_000_001);
-        fixture.detectChanges();
-        expect(component.budgetCapMessage('daily_token_budget')).toBe('At most 5,000,000 on this deployment');
-        expect(text('.input__message--error')).toEqual(['At most 5,000,000 on this deployment']);
-        component.submit();
+        typeNumber('daily_token_budget', 5_000_001);
+        expect(errorUnder('daily_token_budget')).toBe('At most 5,000,000 on this deployment.');
+        clickSave();
         expect(chatApi.updateBinding).not.toHaveBeenCalled();
 
-        component.form.controls.daily_token_budget.setValue(5_000_000);
+        typeNumber('daily_token_budget', 5_000_000);
+        expect(errorUnder('daily_token_budget')).toBe('');
+        expect(isMarkedInvalid('daily_token_budget')).toBe(false);
         expect(component.form.valid).toBe(true);
     });
 
@@ -896,7 +949,7 @@ describe('ChatBindingsDialogComponent', () => {
         const component = open(binding({ daily_token_budget: 9_000_000 }));
         fixture.detectChanges();
         component.form.controls.name.setValue('Sales');
-        expect(component.budgetCapMessage('daily_token_budget')).toBe('');
+        expect(component.form.controls.daily_token_budget.errors).toBeNull();
         component.submit();
         expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { name: 'Sales' });
 
@@ -904,8 +957,8 @@ describe('ChatBindingsDialogComponent', () => {
         const again = open(binding({ daily_token_budget: 9_000_000 }));
         again.form.controls.daily_token_budget.markAsDirty();
         again.form.controls.daily_token_budget.setValue(8_000_000);
-        expect(again.budgetCapMessage('daily_token_budget')).toBe('At most 5,000,000 on this deployment');
-        again.submit();
+        clickSave();
+        expect(errorUnder('daily_token_budget')).toBe('At most 5,000,000 on this deployment.');
         expect(chatApi.updateBinding).not.toHaveBeenCalled();
     });
 
@@ -915,8 +968,21 @@ describe('ChatBindingsDialogComponent', () => {
         expect(TestBed.inject(ToastService).error).toHaveBeenCalled();
         component.form.patchValue({ name: 'Portal', graph_id: 5 });
         expect(component.form.controls.token_budget_per_conversation.value).toBeNull();
-        expect(component.form.controls.token_budget_per_conversation.hasError('required')).toBe(true);
-        expect(component.form.valid).toBe(false);
+
+        clickSave();
+
+        expect(chatApi.createBinding).not.toHaveBeenCalled();
+        expect(component.activeTab()).toBe('limits');
+        for (const field of [
+            'token_budget_per_conversation',
+            'daily_token_budget',
+            'response_time_minutes',
+            'close_after_hours',
+        ]) {
+            expect(errorUnder(field)).toBe('This field is required.');
+            expect(isMarkedInvalid(field)).toBe(true);
+        }
+        expect(errorUnder('on_response_timeout')).toBe('This field is required.');
     });
 
     it.each([
@@ -965,27 +1031,18 @@ describe('ChatBindingsDialogComponent', () => {
         component.form.controls.daily_token_budget.setValue(4_000_000);
         component.submit();
         fixture.detectChanges();
-        expect(component.budgetCapMessage('daily_token_budget')).toBe('At most 3,000,000 on this deployment');
-        expect(component.budgetCapMessage('token_budget_per_conversation')).toBe('');
+        expect(errorUnder('daily_token_budget')).toBe('At most 3,000,000 on this deployment.');
+        expect(errorUnder('token_budget_per_conversation')).toBe('');
         expect(component.errorMessage()).toBeNull();
         expect(component.activeTab()).toBe('limits');
-        expect(text('.input__message--error')).toEqual(['At most 3,000,000 on this deployment']);
 
         component.form.controls.daily_token_budget.setValue(2_000_000);
-        expect(component.budgetCapMessage('daily_token_budget')).toBe('');
+        fixture.detectChanges();
+        expect(errorUnder('daily_token_budget')).toBe('');
     });
     describe("the server's refusals of a name field", () => {
         const refused = (error: unknown) =>
             throwError(() => new HttpErrorResponse({ status: (error as { status: number }).status, error }));
-
-        /** The error shown under the custom input labelled `label`, as the user sees it. */
-        function fieldError(label: string): string | null {
-            const host: HTMLElement = fixture.nativeElement;
-            const input = Array.from(host.querySelectorAll('app-custom-input')).find(
-                (candidate) => candidate.querySelector('label')?.textContent?.trim() === label
-            );
-            return input?.querySelector('.error-message')?.textContent?.trim() ?? null;
-        }
 
         const announcement = (): string | undefined =>
             text('.bindings-dialog__form > [role="alert"]').find((message) => message !== '');
@@ -1006,7 +1063,7 @@ describe('ChatBindingsDialogComponent', () => {
                 'An operator on this desk already uses this name; visitors could not tell the bot from them. Choose another bot name.';
             const component = saveRefused({ status: 409, code: 'bot_name_taken', message, field: 'bot_display_name' });
 
-            expect(fieldError('Displayed bot name')).toBe(message);
+            expect(errorUnder('bot_display_name')).toBe(message);
             expect(announcement()).toBe(`Displayed bot name: ${message}`);
             expect(component.errorMessage()).toBeNull();
             expect(component.activeTab()).toBe('general');
@@ -1016,7 +1073,7 @@ describe('ChatBindingsDialogComponent', () => {
             // Gone with the next edit of the field, and the save goes out again.
             component.form.controls.bot_display_name.setValue('Ava');
             fixture.detectChanges();
-            expect(fieldError('Displayed bot name')).toBeNull();
+            expect(errorUnder('bot_display_name')).toBe('');
             expect(component.form.valid).toBe(true);
         });
 
@@ -1035,8 +1092,7 @@ describe('ChatBindingsDialogComponent', () => {
                 ],
             });
 
-            expect(fieldError('Displayed bot name')).toBe('Must be plain text: U+202E is not allowed.');
-            expect(component.textFieldError('operator_display_name')).toBe('Must be at most 64 characters.');
+            expect(errorUnder('bot_display_name')).toBe('Must be plain text: U+202E is not allowed.');
             expect(announcement()).toBe(
                 'Displayed bot name: Must be plain text: U+202E is not allowed. ' +
                     'Displayed operator name: Must be at most 64 characters.'
@@ -1045,7 +1101,7 @@ describe('ChatBindingsDialogComponent', () => {
             expect(component.activeTab()).toBe('general');
             component.activeTab.set('handoff');
             fixture.detectChanges();
-            expect(fieldError('Displayed operator name')).toBe('Must be at most 64 characters.');
+            expect(errorUnder('operator_display_name')).toBe('Must be at most 64 characters.');
             expect(component.errorMessage()).toBeNull();
             expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
         });
@@ -1060,7 +1116,7 @@ describe('ChatBindingsDialogComponent', () => {
                     { message: 'Input should be a valid list', key: 'allowed_origins' },
                 ],
             });
-            expect(component.textFieldError('bot_display_name')).toBe('Must be plain text: U+0007 is not allowed.');
+            expect(errorUnder('bot_display_name')).toBe('Must be plain text: U+0007 is not allowed.');
             expect(component.errorMessage()).toBe('Input should be a valid list');
         });
 
@@ -1071,7 +1127,7 @@ describe('ChatBindingsDialogComponent', () => {
                 message: 'The body is nested too deeply.',
             });
             expect(component.errorMessage()).toBe('The body is nested too deeply.');
-            expect(component.textFieldError('bot_display_name')).toBe('');
+            expect(errorUnder('bot_display_name')).toBe('');
             expect(announcement()).toBeUndefined();
         });
     });

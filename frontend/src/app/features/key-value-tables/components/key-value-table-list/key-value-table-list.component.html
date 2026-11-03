@@ -6,7 +6,9 @@
     </span>
     @if (canCreate()) {
         <app-button
+            #addButton
             [type]="tables().length ? 'primary' : 'outline-primary'"
+            ariaLabel="Add table"
             [leftIcon]="'plus'"
             (click)="createRequested.emit()"
         >
@@ -31,8 +33,10 @@
             [class.table-list__row--menu-open]="table.id === menuOpenTableId()"
         >
             <button
+                #selectButton
                 type="button"
                 class="table-list__select"
+                [attr.aria-pressed]="table.id === selectedId()"
                 (click)="selected.emit(table)"
                 (mouseenter)="showFullName(nameElement, table.name)"
                 (mouseleave)="hideFullName()"
@@ -62,6 +66,7 @@
                     type="button"
                     class="table-list__hover-btn"
                     attr.aria-label="More actions for {{ table.name }}"
+                    matTooltip="More actions"
                     [cdkMenuTriggerFor]="menu"
                     [cdkMenuPosition]="menuPositions"
                     (cdkMenuOpened)="menuOpenTableId.set(table.id)"
@@ -76,6 +81,7 @@
             <ng-template #menu>
                 <div
                     cdkMenu
+                    appTabThroughMenu
                     class="table-list-menu"
                 >
                     @if (canRename()) {
