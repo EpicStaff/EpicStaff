@@ -6,9 +6,14 @@ from loguru import logger
 from models.state import State
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
-from services.graph.exceptions import ReturnCodeError, StopSession
+from services.graph.exceptions import InvalidStatePathError, ReturnCodeError, StopSession
 from src.shared.bench_log import BENCH_LEVEL
 from utils import map_variables_to_input, set_output_variables
+from utils.state_path import split_state_path
+
+# Errors whose text is written for the user and carries nothing internal, so it is streamed
+# as-is instead of the generic message with a correlation id.
+_PUBLIC_ERROR_TYPES = (ReturnCodeError, StopSession, InvalidStatePathError)
 
 
 class BaseNode(ABC):
@@ -118,7 +123,8 @@ class BaseNode(ABC):
 
         The raw error text is logged, not streamed: the client receives a
         generic message carrying a correlation id, unless the caller supplies
-        already-safe text in `public_details`.
+        already-safe text in `public_details` or the error is one of
+        _PUBLIC_ERROR_TYPES, whose own text is streamed.
 
         Args:
             writer (StreamWriter): A stream writer to write the message to.
@@ -127,6 +133,8 @@ class BaseNode(ABC):
             public_details (str | None): Safe text to stream instead of the
                 generic message.
         """
+        if public_details is None and isinstance(error, _PUBLIC_ERROR_TYPES):
+            public_details = str(error)
         self.custom_session_message_writer.add_error_message(
             session_id=self.session_id,
             node_name=self.node_name,
@@ -179,6 +187,9 @@ class BaseNode(ABC):
             sysvars["execution_order"] = execution_order + 1
             state["system_variables"] = sysvars
             input_ = self.get_input(state=state)
+            # Rejected before execute() so a bad path costs no LLM or sandbox call.
+            if self.output_variable_path is not None:
+                split_state_path(self.output_variable_path)
             self.add_start_message(writer=writer, input_=input_, execution_order=execution_order)
             output = await self.execute(
                 state=state,
@@ -228,15 +239,7 @@ class BaseNode(ABC):
                 node_type=type(self).__name__,
                 ok=False,
             )
-            # ReturnCodeError and StopSession carry text
-            # that's already safe to show as-is.
-            public_details = str(e) if isinstance(e, (ReturnCodeError, StopSession)) else None
-            self.add_error_message(
-                writer=writer,
-                error=e,
-                execution_order=execution_order,
-                public_details=public_details,
-            )
+            self.add_error_message(writer=writer, error=e, execution_order=execution_order)
             raise
 
     def get_input(self, state: State):

@@ -1267,3 +1267,38 @@ async def test_llm_entries_are_unchanged(sandbox):
     assert message["provider"] is None
     assert message["model_version"] is None
     assert message["prompt_text"] == "Classify hello"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "node_data_overrides",
+    [
+        pytest.param(
+            {"pre_python_code": _FAILING_CODE, "pre_output_variable_path": "variables.__class__.status"},
+            id="pre-computation",
+        ),
+        pytest.param(
+            {"post_python_code": _FAILING_CODE, "post_output_variable_path": "variables.__class__.status"},
+            id="post-computation",
+        ),
+    ],
+)
+async def test_underscore_computation_output_path_routes_to_error_without_a_sandbox_call(
+    monkeypatch, node_data_overrides
+):
+    calls = record_run_code(monkeypatch)
+    node_data = make_node_data(next_error_node="error_node").model_copy(update=node_data_overrides)
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert calls == []
+    error_details = [
+        message["details"]
+        for message in published_messages(redis_service)
+        if message["message_type"] == "error"
+    ]
+    assert error_details == [
+        "Variable path 'variables.__class__.status' is not allowed: path segments cannot start with '_'."
+    ]
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"

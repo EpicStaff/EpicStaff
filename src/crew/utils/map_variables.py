@@ -1,7 +1,7 @@
-import re
-
 from dotdict import DotDict
 from loguru import logger
+
+from utils.state_path import split_state_path
 
 
 def _clean_value(v):
@@ -41,6 +41,9 @@ def map_variables_to_input(
     Returns:
         dict: A dictionary with mapped keys and corresponding values from `variables`.
 
+    Raises:
+        InvalidStatePathError: A path segment starts with `_`.
+
     Example:
         Given the following `variables`:
         ```
@@ -69,7 +72,6 @@ def map_variables_to_input(
         ```
     """
     output_dict = {}
-    pattern = re.compile(r"\w+|\[\d+\]")
 
     for output_key, input_key in map.items():
         # Check for default value using pipe syntax: path|default
@@ -89,8 +91,7 @@ def map_variables_to_input(
             elif default_value.isdigit():
                 default_value = int(default_value)
 
-        # Normal variable path handling
-        keys: list[str] = pattern.findall(input_key)
+        keys = split_state_path(input_key)
         if keys[0] != "variables":
             raise ValueError(f"`{input_key}` does not contain name `variables` for {output_key}")
         keys = keys[1:]

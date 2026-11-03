@@ -8,6 +8,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 from loguru import logger
 from pydantic import ValidationError
+from services.graph.exceptions import InvalidStatePathError
 from services.run_python_code_service import RunPythonCodeService
 from src.crew.models.graph_models import (
     GraphMessage,
@@ -26,6 +27,8 @@ from src.shared.models.storage_scope import StorageCredentials
 from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND, SYSTEM_ONE_QUESTIONS_ADAPTER
 from src.shared.system_one.adapter import SystemOneError, evaluate
 from src.shared.system_one.json_llm import run_json_llm
+from utils.set_output_variables import set_output_variables
+from utils.state_path import split_state_path
 
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
@@ -205,6 +208,10 @@ class ClassificationDecisionTableNodeSubgraph:
         if python_code is None or not python_code.code.strip():
             return
 
+        # Rejected before the sandbox call, which would otherwise run for nothing.
+        if output_variable_path:
+            split_state_path(output_variable_path)
+
         inputs = self._resolve_input_map(input_map, state)
 
         result = await RunPythonCodeService(redis_service=self.redis_service).run_code(
@@ -220,8 +227,6 @@ class ClassificationDecisionTableNodeSubgraph:
             )
 
         if output_variable_path:
-            from utils.set_output_variables import set_output_variables
-
             output = json.loads(result["result_data"])
             set_output_variables(
                 state=state,
@@ -607,7 +612,7 @@ def main(**kwargs) -> dict:
             # Execute pre-computation
             try:
                 await self._execute_pre_computation(state)
-            except ClassificationDecisionTableNodeError as e:
+            except (ClassificationDecisionTableNodeError, InvalidStatePathError) as e:
                 logger.error(f"Pre-computation error: {e}")
                 state["system_variables"]["nodes"][self.node_name]["result_node"] = (
                     self.node_data.next_error_node or END
@@ -814,7 +819,7 @@ def main(**kwargs) -> dict:
             # Execute post-computation (sandboxed via RunPythonCodeService)
             try:
                 await self._execute_post_computation(state)
-            except ClassificationDecisionTableNodeError as e:
+            except (ClassificationDecisionTableNodeError, InvalidStatePathError) as e:
                 logger.error(f"Post-computation error: {e}")
                 return await route_to_error_node(state, writer, public_details=str(e))
 
