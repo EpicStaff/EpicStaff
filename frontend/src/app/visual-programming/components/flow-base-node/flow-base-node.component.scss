@@ -56,6 +56,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        padding: 0;
+        border: none;
         cursor: pointer;
         background-color: var(--graphite-780);
         transition: all 0.15s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -65,7 +67,7 @@
             background-color: var(--gray-440);
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--graphite-600);
         }
 
@@ -103,7 +105,7 @@
             opacity: 0.4;
             cursor: not-allowed;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--graphite-780);
             }
         }
@@ -113,7 +115,7 @@
             font-size: 1rem;
         }
 
-        &.delete-button:hover i {
+        &.delete-button:is(:hover, :focus-visible) i {
             color: var(--red-400);
         }
     }
@@ -284,7 +286,8 @@
         }
     }
 
-    &:hover {
+    // A focused action button (reached with Tab while the node shows it) keeps its bar shown.
+    &:is(:hover, :focus-within) {
         .interactive-node-body {
             border-color: var(--color-divider-regular);
         }
@@ -372,7 +375,7 @@
         }
     }
 
-    .interactive-node-body:hover .go-to-flow {
+    .interactive-node-body:is(:hover, :focus-within) .go-to-flow {
         opacity: 1;
         pointer-events: auto;
     }
@@ -385,7 +388,7 @@
         transition: opacity 0.2s ease;
     }
 
-    :host:hover .go-to-flow {
+    :host:is(:hover, :focus-within) .go-to-flow {
         opacity: 1;
         pointer-events: auto;
     }
@@ -464,8 +467,8 @@
         min-width: 100px;
     }
 
-    // Make sure edit button is visible on hover
-    &:hover {
+    // Make sure edit button is visible on hover, and while one of its buttons has the focus
+    &:is(:hover, :focus-within) {
         .actions {
             @include mixins.node-actions-shown;
         }

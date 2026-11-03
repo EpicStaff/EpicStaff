@@ -102,7 +102,21 @@ describe('SubGraphNodePanelComponent', () => {
         fixture.detectChanges();
     }
 
-    afterEach(() => document.querySelectorAll('.cdk-overlay-container').forEach((overlay) => overlay.remove()));
+    // jsdom has no ResizeObserver; the tooltips that show only for cut-short text need one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        document.querySelectorAll('.cdk-overlay-container').forEach((overlay) => overlay.remove());
+    });
 
     describe('on a node whose flow was deleted', () => {
         it('says the flow was deleted and asks for another one, with no flow selected', () => {

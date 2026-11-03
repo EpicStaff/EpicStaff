@@ -11,48 +11,57 @@ import time
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import connection
+from django.db import connection, transaction
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from rbac.exceptions import SessionPasswordChangedError
+from rbac.governance.memberships import MembershipManagementService
 from rbac.identity.api_keys.service import ApiKeyService
 from rbac.identity.credential_revocation import CredentialRevocationService
 from rbac.identity.passwords.recovery import PasswordRecoveryService
-from rbac.models import ApiKey
+from rbac.models import ApiKey, Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 ORIGINAL_PASSWORD = "UserStrongPass123!"
 NEW_PASSWORD = "BrandNewPass456!"
 LOCK_WAIT_TIMEOUT_SECONDS = 10
 
 
-def _create_user(email: str, **extra):
-    return get_user_model().objects.create_user(
-        email=email, password=ORIGINAL_PASSWORD, **extra
-    )
+@pytest.fixture
+def org(db):
+    return Organization.objects.create(name="Key Org")
+
+
+def _create_user(email: str, org=None, **extra):
+    user = get_user_model().objects.create_user(email=email, password=ORIGINAL_PASSWORD, **extra)
+    if org is not None:
+        member_role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+        OrganizationUser.objects.create(user=user, org=org, role=member_role)
+    return user
 
 
 @pytest.mark.django_db
-def test_create_key_with_a_bound_session_succeeds():
-    owner = _create_user("owner@example.com")
+def test_create_key_with_a_bound_session_succeeds(org):
+    owner = _create_user("owner@example.com", org=org)
     access = RefreshToken.for_user(owner).access_token
 
     issued = ApiKeyService().create_key(
-        user=owner, name="cli", expires_in_days=None, session_token=access
+        user=owner, org_id=org.id, name="cli", expires_in_days=None, session_token=access
     )
 
-    assert issued.api_key.created_by_id == owner.pk
+    assert (issued.api_key.created_by_id, issued.api_key.org_id) == (owner.pk, org.id)
 
 
 @pytest.mark.django_db
-def test_create_key_with_a_token_from_a_previous_password_is_rejected():
+def test_create_key_with_a_token_from_a_previous_password_is_rejected(org):
     """Simulates a request that passed authentication before the password set."""
-    owner = _create_user("owner@example.com")
+    owner = _create_user("owner@example.com", org=org)
     stale_access = RefreshToken.for_user(owner).access_token
     PasswordRecoveryService().cli_reset(owner.email, NEW_PASSWORD)
 
     with pytest.raises(SessionPasswordChangedError) as exc_info:
         ApiKeyService().create_key(
-            user=owner, name="late", expires_in_days=None, session_token=stale_access
+            user=owner, org_id=org.id, name="late", expires_in_days=None, session_token=stale_access
         )
 
     assert exc_info.value.status_code == 401
@@ -61,12 +70,12 @@ def test_create_key_with_a_token_from_a_previous_password_is_rejected():
 
 
 @pytest.mark.django_db
-def test_create_key_without_a_session_token_is_rejected():
-    owner = _create_user("owner@example.com")
+def test_create_key_without_a_session_token_is_rejected(org):
+    owner = _create_user("owner@example.com", org=org)
 
     with pytest.raises(SessionPasswordChangedError):
         ApiKeyService().create_key(
-            user=owner, name="no-token", expires_in_days=None, session_token=None
+            user=owner, org_id=org.id, name="no-token", expires_in_days=None, session_token=None
         )
 
     assert not ApiKey.objects.filter(created_by=owner).exists()
@@ -95,8 +104,8 @@ def _waiting_on_a_row_lock() -> bool:
 
 
 @pytest.mark.django_db(transaction=True)
-def test_create_key_blocks_on_an_uncommitted_password_set_and_is_then_rejected():
-    owner = _create_user("owner@example.com")
+def test_create_key_blocks_on_an_uncommitted_password_set_and_is_then_rejected(org):
+    owner = _create_user("owner@example.com", org=org)
     superadmin = _create_user("admin@example.com", is_superadmin=True)
     stale_access = RefreshToken.for_user(owner).access_token
     revoked, release = threading.Event(), threading.Event()
@@ -113,7 +122,7 @@ def test_create_key_blocks_on_an_uncommitted_password_set_and_is_then_rejected()
     def create_key():
         try:
             ApiKeyService().create_key(
-                user=owner, name="racer", expires_in_days=None, session_token=stale_access
+                user=owner, org_id=org.id, name="racer", expires_in_days=None, session_token=stale_access
             )
             outcomes["create"] = "created"
         except Exception as exc:  # noqa: BLE001 - the outcome is the assertion.
@@ -143,3 +152,57 @@ def test_create_key_blocks_on_an_uncommitted_password_set_and_is_then_rejected()
     create_thread.join(LOCK_WAIT_TIMEOUT_SECONDS)
     assert isinstance(outcomes["create"], SessionPasswordChangedError)
     assert not ApiKey.objects.filter(created_by=owner).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_member_removal_racing_an_uncommitted_key_creation_leaves_no_key(org):
+    owner = _create_user("owner@example.com", org=org)
+    superadmin = _create_user("admin@example.com", is_superadmin=True)
+    membership = OrganizationUser.objects.get(user=owner, org=org)
+    access = RefreshToken.for_user(owner).access_token
+    created, release = threading.Event(), threading.Event()
+    outcomes: dict[str, object] = {}
+
+    def create_key_and_hold_the_commit():
+        try:
+            with transaction.atomic():
+                ApiKeyService().create_key(
+                    user=owner, org_id=org.id, name="racer", expires_in_days=None, session_token=access
+                )
+                created.set()
+                assert release.wait(LOCK_WAIT_TIMEOUT_SECONDS)
+            outcomes["create"] = "created"
+        except Exception as exc:  # noqa: BLE001 - the outcome is the assertion.
+            outcomes["create"] = exc
+        finally:
+            connection.close()
+
+    def remove_member():
+        try:
+            MembershipManagementService().remove_member(superadmin, membership.pk)
+            outcomes["remove"] = "removed"
+        except Exception as exc:  # noqa: BLE001 - the outcome is the assertion.
+            outcomes["remove"] = exc
+        finally:
+            connection.close()
+
+    create_thread = threading.Thread(target=create_key_and_hold_the_commit)
+    create_thread.start()
+    remove_thread = threading.Thread(target=remove_member)
+    try:
+        # The key row exists but is not committed: a removal that does not wait
+        # would delete the owner's keys without seeing it.
+        assert created.wait(LOCK_WAIT_TIMEOUT_SECONDS)
+        remove_thread.start()
+        deadline = time.monotonic() + LOCK_WAIT_TIMEOUT_SECONDS
+        while remove_thread.is_alive() and not _waiting_on_a_row_lock():
+            assert time.monotonic() < deadline, "remove_member neither finished nor waited"
+            time.sleep(0.05)
+    finally:
+        release.set()
+        create_thread.join(LOCK_WAIT_TIMEOUT_SECONDS)
+    remove_thread.join(LOCK_WAIT_TIMEOUT_SECONDS)
+
+    assert outcomes == {"create": "created", "remove": "removed"}
+    assert not OrganizationUser.objects.filter(pk=membership.pk).exists()
+    assert not ApiKey.objects.filter(created_by=owner, org=org).exists()

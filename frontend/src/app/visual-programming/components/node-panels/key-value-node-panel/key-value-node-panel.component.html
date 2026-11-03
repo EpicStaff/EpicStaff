@@ -60,7 +60,8 @@
                                 <span
                                     class="dropdown-trigger__label"
                                     [class.dropdown-trigger__label--placeholder]="!selectedTableName()"
-                                    [attr.title]="selectedTableName()"
+                                    appTooltipOnOverflow
+                                    [matTooltip]="selectedTableName() ?? ''"
                                 >
                                     {{ tableTriggerLabel() }}
                                 </span>
@@ -117,6 +118,7 @@
                                             class="entry-input key-input"
                                             formControlName="key"
                                             aria-label="Key"
+                                            matTooltip="Key"
                                             autocomplete="off"
                                             role="combobox"
                                             aria-autocomplete="list"
@@ -156,6 +158,7 @@
                                         formControlName="value"
                                         placeholder="variables.user.name"
                                         aria-label="Variable path"
+                                        matTooltip="Variable path"
                                         autocomplete="off"
                                         role="combobox"
                                         aria-autocomplete="list"
@@ -193,7 +196,8 @@
                                 <button
                                     type="button"
                                     class="remove-entry"
-                                    title="Remove"
+                                    aria-label="Remove"
+                                    matTooltip="Remove"
                                     [disabled]="configurationLocked()"
                                     (click)="removeEntry(i)"
                                 >

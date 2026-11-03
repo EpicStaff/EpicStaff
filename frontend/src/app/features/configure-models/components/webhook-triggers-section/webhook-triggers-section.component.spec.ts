@@ -102,7 +102,22 @@ describe('WebhookTriggersSectionComponent "View Details"', () => {
         const { fixture } = render(true);
         const actions = (fixture.nativeElement as HTMLElement).querySelectorAll('.trigger-card__action');
 
-        expect(Array.from(actions, (action) => action.getAttribute('title'))).toEqual(['More', 'Edit', 'Delete']);
+        expect(Array.from(actions, (action) => action.getAttribute('aria-label'))).toEqual([
+            'More actions',
+            'Edit Orders tunnel',
+            'Delete Orders tunnel',
+        ]);
+    });
+
+    it('names Edit and Delete after the path shown on the card when the trigger has no tunnel name', () => {
+        const { fixture } = render(true, [TRIGGER_WITHOUT_AUTHORSHIP]);
+        const actions = (fixture.nativeElement as HTMLElement).querySelectorAll('.trigger-card__action');
+
+        expect(Array.from(actions, (action) => action.getAttribute('aria-label'))).toEqual([
+            'More actions',
+            'Edit legacy',
+            'Delete legacy',
+        ]);
     });
 
     it('offers "View Details" to a user who can only read webhook triggers', () => {
@@ -214,7 +229,9 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
     afterEach(() => TestBed.inject(HttpTestingController).verify());
 
     function editButton(fixture: ComponentFixture<WebhookTriggersSectionComponent>): HTMLButtonElement {
-        return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[title="Edit"]')!;
+        return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+            '[aria-label="Edit Orders tunnel"]'
+        )!;
     }
 
     function pressEdit(fixture: ComponentFixture<WebhookTriggersSectionComponent>): void {
@@ -286,7 +303,7 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
         answerUsageCheck(setup, IN_USE);
 
         expectDialogOpened(setup.open, true);
-        expect(editButton(setup.fixture).disabled).toBe(false);
+        expect(editButton(setup.fixture).getAttribute('aria-disabled')).toBeNull();
     });
 
     it('opens no dialog on a 403, which the forbidden interceptor already explained', () => {
@@ -297,7 +314,7 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
 
         expect(setup.open).not.toHaveBeenCalled();
         setup.httpMock.expectNone(LIST_URL);
-        expect(editButton(setup.fixture).disabled).toBe(false);
+        expect(editButton(setup.fixture).getAttribute('aria-disabled')).toBeNull();
     });
 
     it('reloads the list instead of opening the edit dialog when the trigger is gone (404)', () => {
@@ -321,7 +338,7 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
             failUsageCheck(setup, status);
 
             expectEditDialogOpened(setup.open);
-            expect(editButton(setup.fixture).disabled).toBe(false);
+            expect(editButton(setup.fixture).getAttribute('aria-disabled')).toBeNull();
         }
     );
 
@@ -333,12 +350,12 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
         button.click();
         setup.fixture.detectChanges();
 
-        expect(button.disabled).toBe(true);
+        expect(button.getAttribute('aria-disabled')).toBe('true');
         // expectOne fails if the second press sent a second request.
         answerUsageCheck(setup, NOT_IN_USE);
 
         expectEditDialogOpened(setup.open);
-        expect(button.disabled).toBe(false);
+        expect(button.getAttribute('aria-disabled')).toBeNull();
     });
 
     it('checks again on the next press, reading the permission at that moment', () => {

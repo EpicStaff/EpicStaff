@@ -44,6 +44,7 @@
                                     class="flow-node-list__branch-toggle"
                                     [attr.aria-expanded]="isOpen(node)"
                                     [attr.aria-label]="branchLabel(node)"
+                                    [matTooltip]="branchLabel(node)"
                                     (click)="toggleBranch(node, $event)"
                                 >
                                     <app-svg-icon
@@ -74,7 +75,19 @@
                                 aria-hidden="true"
                             ></i>
                         }
-                        <span class="flow-node-list__node-name">{{ node.name }}</span>
+                        @if (activatableRows()) {
+                            <!-- The row's action for the keyboard; its click reaches the row's handler. -->
+                            <button
+                                type="button"
+                                class="flow-node-list__node-name"
+                                appTooltipOnOverflow
+                                [matTooltip]="node.name"
+                            >
+                                {{ node.name }}
+                            </button>
+                        } @else {
+                            <span class="flow-node-list__node-name">{{ node.name }}</span>
+                        }
                         <span class="flow-node-list__node-type">{{ itemLabel(node) }}</span>
                         @if (trailingTemplate(); as tpl) {
                             <ng-container *ngTemplateOutlet="tpl; context: { $implicit: node }"></ng-container>

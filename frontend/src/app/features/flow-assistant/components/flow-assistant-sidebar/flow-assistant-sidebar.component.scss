@@ -51,7 +51,7 @@
         color 0.15s ease,
         background-color 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
         background-color: var(--color-secondary-btn-background-hover);
     }
@@ -76,8 +76,15 @@
         border-top: 1px solid var(--ep-color-border-subtle);
     }
 
-    &:hover {
+    &:is(:hover, :has(.session-row__title:focus-visible)) {
         background-color: var(--white-alpha-6);
+    }
+
+    // The title button does the row's action, so the row shows its keyboard focus;
+    // drawn inside, as the list scrolls and clips its rows.
+    &:has(.session-row__title:focus-visible) {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
     }
 
     &--active {
@@ -95,13 +102,25 @@
         min-width: 0;
     }
 
+    // A button that looks like the text it replaced.
     &__title {
+        padding: 0;
+        border: none;
+        background: none;
+        font: inherit;
+        text-align: left;
+        cursor: inherit;
         font-size: 0.75rem;
         line-height: 14px;
         color: var(--ep-color-text);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+
+        // The row draws it.
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     &__meta {
@@ -149,7 +168,7 @@
             color 0.15s ease,
             background-color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--ep-color-text);
             background-color: var(--ep-button-ghost-hover-bg);
         }

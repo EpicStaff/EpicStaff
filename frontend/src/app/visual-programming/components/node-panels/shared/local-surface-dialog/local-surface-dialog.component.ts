@@ -1,5 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, inject, viewChild } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { EnterSubmitDirective } from '@shared/directives';
 
@@ -25,7 +26,7 @@ const EMPTY_INLINE_SURFACE: InlineSurface = {
 
 @Component({
     selector: 'app-local-surface-dialog',
-    imports: [AppSvgIconComponent, EnterSubmitDirective, SurfaceCardComponent],
+    imports: [MatTooltip, AppSvgIconComponent, EnterSubmitDirective, SurfaceCardComponent],
     templateUrl: './local-surface-dialog.component.html',
     styleUrls: ['./local-surface-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

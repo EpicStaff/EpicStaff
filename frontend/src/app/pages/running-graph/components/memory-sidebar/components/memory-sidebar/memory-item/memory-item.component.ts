@@ -20,7 +20,9 @@ import {
                 <div class="memory-header-right">
                     <span class="memory-date">{{ memory.payload.created_at | date: 'M/d/yy, HH:mm' }}</span>
                     <button
+                        type="button"
                         class="delete-button"
+                        aria-label="Delete memory"
                         matTooltip="Delete memory"
                         (click)="onDelete()"
                     >
@@ -43,7 +45,10 @@ import {
 
             @if (memory.payload.type !== 'user') {
                 <button
+                    type="button"
                     class="details-toggle"
+                    [attr.aria-expanded]="isExpanded(memory.id)"
+                    [matTooltip]="isExpanded(memory.id) ? 'Hide details' : 'Show details'"
                     (click)="toggleDetails(memory.id)"
                 >
                     <div class="toggle-left">
@@ -145,7 +150,7 @@ import {
                 padding: 0;
             }
 
-            .delete-button:hover {
+            .delete-button:is(:hover, :focus-visible) {
                 color: var(--white);
             }
 
@@ -171,7 +176,7 @@ import {
                 margin-top: 10px;
             }
 
-            .details-toggle:hover {
+            .details-toggle:is(:hover, :focus-visible) {
                 background-color: var(--gray-700);
             }
 

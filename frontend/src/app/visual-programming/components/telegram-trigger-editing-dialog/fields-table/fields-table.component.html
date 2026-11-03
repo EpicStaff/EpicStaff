@@ -9,6 +9,7 @@
                 (click)="toggleAll()"
             >
                 <app-checkbox
+                    ariaLabel="Select all fields"
                     [checked]="allChecked()"
                     [indeterminate]="indeterminate()"
                 />
@@ -38,6 +39,7 @@
                         <!-- checkbox -->
                         <div class="table__col table__col--small">
                             <app-checkbox
+                                [ariaLabel]="item.field_name"
                                 [checked]="item.checked"
                                 (changed)="toggleItem(item)"
                             />
@@ -83,6 +85,7 @@
                         <!-- checkbox -->
                         <div class="table__col table__col--small">
                             <app-checkbox
+                                [ariaLabel]="item.field_name"
                                 [checked]="item.checked"
                                 (changed)="toggleItem(item)"
                             />

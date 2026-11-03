@@ -11,6 +11,11 @@
     flex-wrap: wrap;
     gap: 0.25rem;
 
+    // The input draws no focus of its own.
+    &:focus-within {
+        border-color: var(--accent-color);
+    }
+
     input {
         flex: 1 1 auto;
         border: none;
@@ -39,8 +44,11 @@
     }
 
     &__item-remove {
+        display: inline-flex;
+        padding: 0;
         background: transparent;
         border: none;
+        border-radius: 4px;
         color: var(--color-ks-text);
         cursor: pointer;
     }

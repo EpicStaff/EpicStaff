@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
@@ -13,28 +14,38 @@ export interface IconHeaderParams extends IHeaderParams {
 
 @Component({
     selector: 'app-icon-header',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     template: `
         <div
             class="icon-header"
-            [title]="tooltip"
+            [matTooltip]="tooltip"
         >
             @if (label) {
                 <span class="icon-header-label">{{ label }}</span>
             }
-            @if (variant === 'delete') {
+            <!-- A button only where the header acts on a click; otherwise the icon is a label. -->
+            @if (onIconClick) {
+                <button
+                    type="button"
+                    [class]="variant === 'delete' ? 'icon-header-delete-svg' : iconClass + ' icon-header-clickable'"
+                    [attr.aria-label]="tooltip || label"
+                    (click)="onIconClick($event)"
+                >
+                    @if (variant === 'delete') {
+                        <app-svg-icon
+                            icon="trash"
+                            size="14px"
+                        ></app-svg-icon>
+                    }
+                </button>
+            } @else if (variant === 'delete') {
                 <app-svg-icon
                     class="icon-header-delete-svg"
                     icon="trash"
                     size="14px"
-                    (click)="onIconClick ? onIconClick($event) : null"
                 ></app-svg-icon>
             } @else {
-                <i
-                    [class]="iconClass"
-                    [class.icon-header-clickable]="!!onIconClick"
-                    (click)="onIconClick ? onIconClick($event) : null"
-                ></i>
+                <i [class]="iconClass"></i>
             }
         </div>
     `,
@@ -83,7 +94,7 @@ export interface IconHeaderParams extends IHeaderParams {
                     color 0.15s ease;
                 flex-shrink: 0;
             }
-            .icon-header-clickable:hover {
+            .icon-header-clickable:is(:hover, :focus-visible) {
                 background: rgba(104, 95, 255, 0.5) !important;
                 color: #fff !important;
                 border-color: var(--accent-color);
@@ -100,6 +111,10 @@ export interface IconHeaderParams extends IHeaderParams {
                 color: rgba(255, 100, 100, 0.85) !important;
             }
             .icon-header-delete-svg {
+                display: flex;
+                padding: 0;
+                border: none;
+                background: none;
                 cursor: pointer;
                 color: var(--purple-primary);
             }

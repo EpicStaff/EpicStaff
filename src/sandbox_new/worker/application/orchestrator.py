@@ -17,7 +17,7 @@ from worker.application.context import ExecutionContext
 from worker.application.pipeline import Pipeline
 from worker.application.ports.result_sink import AbstractResultSink
 from worker.application.secret_scrubber import scrub
-from worker.domain.models import ExecutionResult, Job
+from worker.domain.models import ExecutionResult, Job, NotRunReason
 
 __all__ = ["ExecutionOrchestrator"]
 
@@ -52,6 +52,43 @@ class ExecutionOrchestrator:
         )
         await self._result_sink.send(result, mutations=context.storage_mutations)
 
+    async def fail(
+        self,
+        execution_id: str,
+        message: str,
+        *,
+        session_id: int | None,
+        reply_to_crew_channel: bool,
+        not_run_reason: NotRunReason | None = None,
+    ) -> None:
+        """Send a failed result for a job without running it.
+
+        Used when the job cannot or must not run -- it expired in the queue, or the
+        worker failed around it -- so its producer still gets an outcome. The result is
+        marked as not run, so it does not count as a completed execution.
+
+        Args:
+            message: Shown to the user as the run's stderr. A fixed text, never one
+                built from an exception, which could quote the job's secrets.
+            session_id: The job's session, when known; names it in the manager's BENCH
+                checkpoint.
+            reply_to_crew_channel: Echoed from the job, so the result goes to the
+                channel its producer listens on.
+            not_run_reason: Reported as the outcome of the manager's BENCH checkpoint;
+                None reports the result as an ordinary failed run.
+        """
+        await self._result_sink.send(
+            ExecutionResult(
+                execution_id=execution_id,
+                stderr=message,
+                returncode=1,
+                reply_to_crew_channel=reply_to_crew_channel,
+                ran=False,
+                session_id=session_id,
+                not_run_reason=not_run_reason,
+            )
+        )
+
     def _build_result(self, context: ExecutionContext) -> ExecutionResult:
         # The scrub runs here, not in a pipeline step, so it covers every outcome --
         # including a step that failed after the child's output was captured, where
@@ -71,6 +108,7 @@ class ExecutionOrchestrator:
             stderr=stderr,
             returncode=context.returncode if context.returncode is not None else 1,
             reply_to_crew_channel=context.job.reply_to_crew_channel,
+            ran=True,
             session_id=context.job.session_id,
         )
 

@@ -1,5 +1,7 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
@@ -7,8 +9,9 @@ import {
     ElementRef,
     HostListener,
     inject,
+    Injector,
     signal,
-    ViewChild,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -30,7 +33,7 @@ export interface CopyToDialogResult {
 
 @Component({
     selector: 'app-copy-to-dialog',
-    imports: [FormsModule, AppSvgIconComponent, MatTooltipModule, EnterSubmitDirective],
+    imports: [FormsModule, CdkTrapFocus, AppSvgIconComponent, MatTooltipModule, EnterSubmitDirective],
     templateUrl: './copy-to-dialog.component.html',
     styleUrls: ['./copy-to-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -40,8 +43,10 @@ export class CopyToDialogComponent {
     readonly data: CopyToDialogData = inject(DIALOG_DATA);
     private storageApiService = inject(StorageApiService);
     private destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
-    @ViewChild('selectorEl') selectorElRef?: ElementRef<HTMLElement>;
+    private readonly selectorElRef = viewChild<ElementRef<HTMLButtonElement>>('selectorEl');
+    private readonly folderSearchInput = viewChild<ElementRef<HTMLInputElement>>('folderSearchInput');
 
     readonly searchQuery = signal('');
     readonly selectedPath = signal<string | null>(null);
@@ -83,11 +88,40 @@ export class CopyToDialogComponent {
     toggleDropdown(event: MouseEvent): void {
         event.stopPropagation();
         const opening = !this.dropdownOpen();
-        if (opening && this.selectorElRef) {
-            const rect = this.selectorElRef.nativeElement.getBoundingClientRect();
+        const selector = this.selectorElRef()?.nativeElement;
+        if (opening && selector) {
+            const rect = selector.getBoundingClientRect();
             this.dropdownMaxHeight.set(Math.max(120, window.innerHeight - rect.bottom - 12));
         }
         this.dropdownOpen.update((v) => !v);
+        if (opening) {
+            afterNextRender(() => this.folderSearchInput()?.nativeElement.focus(), { injector: this.injector });
+        }
+    }
+
+    /** Closes only the folder list: the dialog's own Escape handling never sees the key. */
+    onFolderListEscape(event: Event): void {
+        if (!this.dropdownOpen()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.dropdownOpen.set(false);
+        this.selectorElRef()?.nativeElement.focus();
+    }
+
+    /** Right and Left arrows on a folder's name expand and collapse it, as in a tree. */
+    onFolderKeydown(event: KeyboardEvent, node: StorageFolderNode): void {
+        if (!this.canExpand(node)) return;
+        const expand = event.key === 'ArrowRight' && !node.isExpanded;
+        const collapse = event.key === 'ArrowLeft' && node.isExpanded;
+        if (expand || collapse) {
+            event.preventDefault();
+            this.toggleExpand(event, node);
+        }
+    }
+
+    /** Search shows a flat list of matches, so nothing expands while it is on. */
+    canExpand(node: StorageFolderNode): boolean {
+        return node.hasChildren && !this.searchQuery().trim();
     }
 
     stopPropagation(event: MouseEvent): void {
@@ -103,6 +137,8 @@ export class CopyToDialogComponent {
     selectFolder(path: string): void {
         this.selectedPath.set(path);
         this.dropdownOpen.set(false);
+        // The picked row leaves with the list; the selector keeps the focus inside the dialog.
+        this.selectorElRef()?.nativeElement.focus();
     }
 
     isSelected(path: string): boolean {

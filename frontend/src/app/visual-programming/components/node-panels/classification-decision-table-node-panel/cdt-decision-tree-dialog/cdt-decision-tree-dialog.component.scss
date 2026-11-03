@@ -74,7 +74,7 @@
     border: 1px solid var(--accent-color);
     border-radius: 20px;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: color-mix(in srgb, var(--accent-color) 12%, transparent);
     }
 }
@@ -135,7 +135,7 @@
     background: transparent;
     border: none;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
         background: var(--color-secondary-btn-background-hover);
     }
 
@@ -187,7 +187,7 @@
     border: 1px solid var(--color-divider-regular);
     border-radius: 4px;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 
@@ -300,11 +300,11 @@
     background: transparent;
     border: none;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
         background: var(--color-secondary-btn-background-hover);
     }
 
-    &:disabled {
+    &:is(:disabled, [aria-disabled='true']) {
         cursor: default;
         opacity: 0.6;
     }
@@ -353,7 +353,7 @@
     border: 1px solid var(--color-divider-regular);
     border-radius: 6px;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 }
@@ -515,7 +515,7 @@
     background: transparent;
     border: none;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
         background: var(--color-secondary-btn-background-hover);
     }
 
@@ -525,7 +525,7 @@
     }
 
     // Not greyed out fully: the row is the only place saying why it cannot be picked.
-    &:disabled {
+    &:is(:disabled, [aria-disabled='true']) {
         cursor: default;
         opacity: 0.6;
     }
