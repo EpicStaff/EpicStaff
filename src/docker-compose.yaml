@@ -1200,10 +1200,14 @@ services:
       - KILL  # signal the dropped-privilege child's process group on timeout.
 
 volumes:
-  sandbox_venvs: {}
-  crew_pgdata: {}
-  media_data: {}
-  opensearch_data: {}
+  sandbox_venvs:
+    external: true
+  crew_pgdata:
+    external: true
+  media_data:
+    external: true
+  opensearch_data:
+    external: true
   redis_data: {}
   code_instances: {}
   rustfs_data: {}
