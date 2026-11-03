@@ -188,9 +188,9 @@ SETUP_ACTIONS = {
     "quit": "Quit",
 }
 SERVER_SIZES = {
-    "small": "Small: 1-3 CPU cores",
-    "medium": "Medium: 4-7 CPU cores",
-    "large": "Large: 8 or more CPU cores (Django as in the defaults)",
+    "small": "Small: 1-3 CPUs",
+    "medium": "Medium: 4-7 CPUs",
+    "large": "Large: 8 or more CPUs (Django as in the defaults)",
 }
 # crewdb has ~197 usable connections (max_connections=200 in docker-compose.yaml, less 3 for
 # superusers) and the other services take ~50; django_app holds up to DJANGO_SGI_WORKERS x
@@ -609,17 +609,22 @@ class Screen:
         question: str,
         choices: dict[str, str] | None = None,
         validate: Callable[[str], str] | None = None,
+        default: str | None = None,
     ) -> str:
         """Prompt until the answer is usable. `choices` maps each answer to its description and
-        accepts the answer itself or its number."""
+        accepts the answer itself or its number; an empty answer takes `default`, if any."""
         error = None
         while True:
             self.draw(error)
-            print(style(question, BOLD))
+            if default is None:
+                print(style(question, BOLD))
+            else:
+                shown = list(choices).index(default) + 1
+                print(f"{style(question, BOLD)} {style(f'Enter for {shown}', DIM)}")
             if choices:
                 for number, description in enumerate(choices.values(), start=1):
                     print(f"  {style(str(number), CYAN)}  {description}")
-            answer = input(style("> ", CYAN)).strip()
+            answer = input(style("> ", CYAN)).strip() or (default or "")
             if not answer:
                 error = None
                 continue
@@ -720,11 +725,50 @@ def ask_production_values(
         choices=RETENTION_CHOICES,
     )
     values |= dict.fromkeys(RETENTION_DAYS, retention)
+    cpu_count = detect_cpu_count()
+    size = server_size_for(cpu_count)
+    detected = (
+        f"Detected {cpu_count} CPU{'' if cpu_count == 1 else 's'}"
+        if cpu_count
+        else "Could not detect the CPUs"
+    )
+    size_note = (
+        f"{detected}: using the {size.capitalize()} server size "
+        "(change it under advanced settings)."
+    )
+    screen.notes.append(size_note)
     if screen.ask_yes_no(
         "Advanced", "Adjust advanced settings (server size, code time limit, logging)?", False
     ):
-        values |= ask_advanced(screen, schema, enabled)
+        # The operator picks the size now: keep only the part that stays true whatever they pick.
+        screen.notes[screen.notes.index(size_note)] = f"{detected}."
+        values |= ask_advanced(screen, schema, enabled, detected_size=size)
+    else:
+        values |= advanced_values(size, None, None, enabled, schema)
     return values, enabled, serving_mode
+
+
+def detect_cpu_count() -> int | None:
+    """Return the CPUs this process may run on, or None when unknown.
+
+    Counts logical CPUs (hyperthreads included). Uses the affinity mask where the OS has one
+    (Linux, where it also reflects a container's cpuset), else every CPU. A CPU quota
+    (`docker run --cpus`) is not visible this way.
+    """
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            return len(os.sched_getaffinity(0))
+        except OSError:
+            # Some sandboxes refuse the call; the wizard must not fail after all its questions.
+            pass
+    return os.cpu_count()
+
+
+def server_size_for(cpu_count: int | None) -> str:
+    """Return the SERVER_SIZES preset for `cpu_count` CPUs, small when the count is unknown."""
+    if cpu_count is None or cpu_count < 4:
+        return "small"
+    return "medium" if cpu_count < 8 else "large"
 
 
 def advanced_values(
@@ -766,9 +810,16 @@ def advanced_values(
 
 
 def ask_advanced(
-    screen: Screen, schema: dict, enabled: dict[str, bool], current: dict[str, str] | None = None
+    screen: Screen,
+    schema: dict,
+    enabled: dict[str, bool],
+    current: dict[str, str] | None = None,
+    detected_size: str | None = None,
 ) -> dict[str, str]:
-    """Ask the three advanced questions; with `current` (an existing file) each can keep its value."""
+    """Ask the three advanced questions; with `current` (an existing file) each can keep its value.
+
+    `detected_size` is the server size an empty answer keeps.
+    """
     keep = {}
     if current is not None:
         workers = f"{current.get('DJANGO_SGI_WORKERS')} Django workers"
@@ -779,7 +830,10 @@ def ask_advanced(
             "log": {"keep": f"Keep current (Django logs at {current.get('DJANGO_LOG_LEVEL')})"},
         }
     size = screen.ask(
-        "Server size", "How big is the server?", choices=keep.get("size", {}) | SERVER_SIZES
+        "Server size",
+        "How big is the server?",
+        choices=keep.get("size", {}) | SERVER_SIZES,
+        default=detected_size,
     )
     code_limit = screen.ask(
         "Code time limit",

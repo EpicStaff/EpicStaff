@@ -403,6 +403,10 @@ class SetupWizardTest(unittest.TestCase):
     def setUp(self):
         self.env_file = Path(tempfile.mkdtemp()) / ".env"
         self.schema = real_schema()
+        # Production sizes the server from the CPU count; the test machine's must not matter.
+        cpu_count_patch = mock.patch.object(envtool, "detect_cpu_count", return_value=2)
+        self.cpu_count = cpu_count_patch.start()
+        self.addCleanup(cpu_count_patch.stop)
 
     def run_setup(self, target: str, answers: list) -> tuple[dict[str, str], str]:
         output = io.StringIO()
@@ -538,6 +542,49 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(values["SANDBOX_MAX_EXECUTION_TIMEOUT"], "2h")
         self.assertEqual(values["CREW_CODE_RESULT_TIMEOUT"], "130m")
         self.assertEqual(values["DJANGO_LOG_LEVEL"], "DEBUG")
+
+    def test_production_sizes_the_server_from_its_cpus(self):
+        # Chat on, advanced settings declined.
+        answers = ["https://es.example.com", "1", "y", "n", "n", "v1", "1", "n"]
+        expected = {
+            2: ("1", "1", "Detected 2 CPUs: using the Small server size"),
+            4: ("3", "2", "Detected 4 CPUs: using the Medium server size"),
+            7: ("3", "2", "Detected 7 CPUs: using the Medium server size"),
+            8: ("6", "4", "Detected 8 CPUs: using the Large server size"),
+            16: ("6", "4", "Detected 16 CPUs: using the Large server size"),
+            None: ("1", "1", "Could not detect the CPUs: using the Small server size"),
+        }
+        for cpu_count, (workers, chat_workers, note) in expected.items():
+            with self.subTest(cpu_count=cpu_count):
+                self.env_file.unlink(missing_ok=True)
+                self.cpu_count.return_value = cpu_count
+                values, output = self.run_setup("prod", answers)
+                self.assertEqual(values["DJANGO_SGI_WORKERS"], workers)
+                self.assertEqual(values["CHAT_WORKERS"], chat_workers)
+                self.assertIn(note, output)
+
+    def test_advanced_settings_keep_the_detected_size_on_enter_and_take_another_choice(self):
+        self.cpu_count.return_value = 4
+        # Advanced settings opened: server size, then code time limit 30 minutes, logging INFO.
+        opened = ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "y"]
+        kept, _ = self.run_setup("prod", [*opened, "", "2", "2"])
+        self.assertEqual(kept["DJANGO_SGI_WORKERS"], "3")
+        self.env_file.unlink()
+        overridden, output = self.run_setup("prod", [*opened, "1", "2", "2"])
+        self.assertEqual(overridden["DJANGO_SGI_WORKERS"], "1")
+        # Every screen after the size question shows the chosen size and no other one.
+        screens = output.split("EpicStaff setup")
+        after_size = [screen for screen in screens if "Server size: Small" in screen]
+        self.assertEqual(len(after_size), 3)  # code time limit, logging, the final screen
+        for screen in after_size:
+            self.assertIn("Detected 4 CPUs.", screen)
+            self.assertNotIn("Medium server size", screen)
+
+    def test_local_setup_ignores_the_cpu_count(self):
+        self.cpu_count.return_value = 16
+        values, output = self.run_setup("dev", ["n", "y", ""])
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "1")
+        self.assertNotIn("CPUs", output)
 
     def test_tune_rewrites_only_its_lines_and_skips_chat_when_off(self):
         envtool.main(["--env-file", str(self.env_file)])
@@ -780,6 +827,20 @@ class AdvancedSettingsTest(unittest.TestCase):
         uvicorn = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE"}
         accepted = django & uvicorn & set(envtool.Env.LOG_LEVELS)
         self.assertEqual({level.upper() for level in envtool.LOG_CHOICES}, accepted)
+
+    def test_cpu_count_falls_back_to_every_cpu_when_the_affinity_mask_is_refused(self):
+        with (
+            mock.patch.object(envtool.os, "sched_getaffinity", side_effect=OSError, create=True),
+            mock.patch.object(envtool.os, "cpu_count", return_value=5),
+        ):
+            self.assertEqual(envtool.detect_cpu_count(), 5)
+
+    def test_server_size_follows_the_cpu_bands_of_the_labels(self):
+        expected = {
+            None: "small", 0: "small", 1: "small", 3: "small", 4: "medium", 7: "medium", 8: "large"
+        }  # fmt: skip
+        for cpu_count, size in expected.items():
+            self.assertEqual(envtool.server_size_for(cpu_count), size, cpu_count)
 
     def test_nothing_chosen_changes_nothing(self):
         self.assertEqual(envtool.advanced_values(None, None, None, ALL_ON, real_schema()), {})
