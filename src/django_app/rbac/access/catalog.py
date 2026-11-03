@@ -142,7 +142,7 @@ RESOURCE_TYPE_METADATA = [
     },
     {
         "code": ResourceType.AUDIT.value,
-        "label": "Audit",
+        "label": "Flow Session Audit",
         "group": "admin",
         "description": "Org-wide session execution trace: browse and export",
         "applicable_actions": ["read", "export"],
@@ -150,7 +150,7 @@ RESOURCE_TYPE_METADATA = [
     },
     {
         "code": ResourceType.USER_AUDIT.value,
-        "label": "User audit",
+        "label": "User Actions Audit",
         "group": "admin",
         "description": "Org-wide log of who changed what: browse and export",
         "applicable_actions": ["read", "export"],
