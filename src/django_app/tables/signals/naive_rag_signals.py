@@ -1,6 +1,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from loguru import logger
+
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 
 

@@ -11,12 +11,14 @@ import {
     UnsavedChangesDialogService,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
+import { of } from 'rxjs';
 
 import { tourAnchorSelector } from '../../../../core/guided-tour';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
 import { AgentDefinition } from '../../models/agent-definition.model';
+import { AgentGroupsStorageService } from '../../services/agent-groups-storage.service';
 import { AgentsPageStore } from '../../services/agents-page-store.service';
 import { SurfaceCatalogsStore } from '../../services/surface-catalogs-store.service';
 import { AgentDefinitionsPageComponent } from './agent-definitions-page.component';
@@ -30,10 +32,12 @@ const AGENT: AgentDefinition = {
     instructions: '',
     instruction_list: [],
     llm_config: null,
+    fallback_llm_config: null,
     fcm_llm_config: null,
     agent_definition_realtime_config_id: null,
     has_realtime_definition: false,
     default_surfaces: [],
+    group: null,
     metadata: {},
     max_iter: 20,
     max_rpm: 10,
@@ -55,6 +59,8 @@ const AGENT: AgentDefinition = {
 function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
     return {
         load: () => undefined,
+        updateAgent: vi.fn(),
+        saveNewAgent: vi.fn(),
         loading: signal(false),
         selectedNode: signal({ kind: 'agent', id: AGENT.id }),
         showSidebar: signal(false),
@@ -75,6 +81,7 @@ function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
         surfaceSaveError: signal(null),
         surfaceCreateErrorTick: signal(0),
         sharedSurfaceIdSet: signal(new Set<number>()),
+        groups: signal([]),
     };
 }
 
@@ -93,6 +100,8 @@ function render(canWrite: boolean): {
             { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
             { provide: UnsavedChangesDialogService, useValue: {} },
             { provide: ConfirmationDialogService, useValue: {} },
+            // The breadcrumb group picker reads the org's groups.
+            { provide: AgentGroupsStorageService, useValue: { labelTree: signal([]), loadLabels: () => of([]) } },
         ],
     });
     // Only the editor header is under test: the explorer and editor panes stay unrendered custom elements.
@@ -317,5 +326,40 @@ describe('AgentDefinitionsPageComponent explorer row menu "View Details"', () =>
         });
 
         expect(open).not.toHaveBeenCalled();
+    });
+});
+
+describe('AgentDefinitionsPageComponent saving the agent', () => {
+    const payload = {
+        id: AGENT.id,
+        name: AGENT.name,
+        description: '',
+        llm_config: 1,
+        fallback_llm_config: 2,
+        fcm_llm_config: null,
+    };
+
+    it('sends the fallback LLM with an update', () => {
+        const { fixture } = render(true);
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+
+        fixture.componentInstance.onSaveAgent(payload);
+
+        expect(store.updateAgent).toHaveBeenCalledWith(
+            AGENT.id,
+            expect.objectContaining({ llm_config: 1, fallback_llm_config: 2 })
+        );
+    });
+
+    it('sends the fallback LLM when creating the agent', () => {
+        const { fixture } = render(true);
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+
+        fixture.componentInstance.onSaveAgent({ ...payload, id: null });
+
+        expect(store.saveNewAgent).toHaveBeenCalledWith(
+            expect.objectContaining({ llm_config: 1, fallback_llm_config: 2 }),
+            false
+        );
     });
 });

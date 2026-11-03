@@ -41,11 +41,6 @@
 }
 
 .color-options-panel {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 300;
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -56,11 +51,6 @@
     box-shadow:
         0px 6px 10px var(--black-alpha-20),
         0px 2px 3px var(--black-alpha-30);
-
-    &.open-upward {
-        top: auto;
-        bottom: calc(100% + 4px);
-    }
 }
 
 .color-option-btn {

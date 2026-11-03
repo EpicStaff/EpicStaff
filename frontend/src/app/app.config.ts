@@ -21,6 +21,7 @@ import { preflightPermissionInterceptor } from './core/interceptors/preflight-pe
 import { validationErrorsInterceptor } from './core/interceptors/validation-errors.interceptor';
 import { TooltipAriaDescriber } from './core/services/tooltip-aria-describer';
 import { TooltipLastKeyboardDispatcher } from './core/services/tooltip-last-keyboard-dispatcher';
+import { provideAgentDefinitionsStorages } from './features/agent-definitions/agent-definitions.providers';
 import { provideAuditStorages } from './features/audit/audit.providers';
 import { provideChatStorages } from './features/chat/chat.providers';
 import { provideConfigureModelsStorages } from './features/configure-models/configure-models.providers';
@@ -92,6 +93,7 @@ export const appConfig: ApplicationConfig = {
         ...provideConfigureModelsStorages(),
         ...provideFlowsStorages(),
         ...provideToolsStorages(),
+        ...provideAgentDefinitionsStorages(),
         ...provideKnowledgeSourcesStorages(),
         ...provideKeyValueTablesStorages(),
         ...provideChatStorages(),
