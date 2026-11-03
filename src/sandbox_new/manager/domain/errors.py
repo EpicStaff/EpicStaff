@@ -1,8 +1,12 @@
 __all__ = [
     "BadRequestError",
     "ConflictError",
+    "CustomLibraryInUseError",
+    "CustomLibraryNameNotFoundError",
     "CustomLibraryNameTakenError",
     "CustomLibraryNotFoundError",
+    "CustomLibraryNotPublishedError",
+    "CustomLibraryStillBuildingError",
     "NotFoundError",
     "UVBuildError",
     "UVDependencyResolutionError",
@@ -10,6 +14,7 @@ __all__ = [
     "UVVersionNotFoundError",
     "UnsupportedUploadError",
     "VenvNotFoundError",
+    "WheelInUseError",
     "WheelNameMismatchError",
     "WheelNotBuiltError",
     "WheelNotFoundError",
@@ -53,6 +58,30 @@ class CustomLibraryNotFoundError(NotFoundError):
     default_message: str = "CustomLibrary(id={custom_library_id}) not found."
 
 
+class CustomLibraryNameNotFoundError(NotFoundError):
+    """Addressed by name rather than by id: a venv names its libraries, it does not
+    hold their ids."""
+
+    default_message: str = "Custom library '{name}' is not stored here."
+
+
+class CustomLibraryNotPublishedError(BaseError):
+    default_message: str = (
+        "Custom library '{name}' has no built version yet. Upload a wheel, or a source "
+        "archive that builds into one, before a virtual environment can install it."
+    )
+
+
+class CustomLibraryStillBuildingError(BaseError):
+    """A version the venv needs is on its way.
+
+    Never reaches a client: the build catches it and leaves the venv waiting rather
+    than failing it, because nothing is wrong and the next tick may succeed.
+    """
+
+    default_message: str = "Custom library '{name}' is still being built."
+
+
 class WheelNotFoundError(NotFoundError):
     default_message: str = "Wheel(id={wheel_id}) not found."
 
@@ -64,7 +93,8 @@ class CustomLibraryNameTakenError(ConflictError):
 class WheelVersionTakenError(ConflictError):
     default_message: str = (
         "CustomLibrary(id={custom_library_id}) already has version '{version}'. "
-        "A version is published once; delete the existing wheel to replace it."
+        "A version is published once; delete the existing wheel to replace it, which "
+        "is only possible while no virtual environment has that version installed."
     )
 
 
@@ -72,6 +102,20 @@ class WheelSourceAlreadyUploadedError(ConflictError):
     default_message: str = (
         "This exact file was already uploaded to CustomLibrary(id={custom_library_id}) "
         "as Wheel(id={wheel_id})."
+    )
+
+
+class CustomLibraryInUseError(ConflictError):
+    default_message: str = (
+        "CustomLibrary(id={custom_library_id}) is used by {venv_count} virtual "
+        "environment(s). Remove it from them before deleting it."
+    )
+
+
+class WheelInUseError(ConflictError):
+    default_message: str = (
+        "Version '{version}' of CustomLibrary(id={custom_library_id}) is installed in "
+        "{venv_count} virtual environment(s). Remove it from them before deleting it."
     )
 
 

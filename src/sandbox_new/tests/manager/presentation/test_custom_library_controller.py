@@ -132,3 +132,17 @@ def test_remove_answers_404_for_a_library_that_is_not_there(client):
     assert (
         client.delete("/custom-libraries/404").status_code == status_codes.HTTP_404_NOT_FOUND
     )
+
+
+def test_remove_answers_409_for_a_library_a_venv_uses(client, uow):
+    from manager.domain.models import Library, Venv
+
+    stored = uow.custom_library_repo.seed(CustomLibrary(name="acme-core"))[0]
+    uow.venv_repo.seed(
+        Venv(name="data", libs=[Library(name="acme-core", specification=">=1", is_custom=True)])
+    )
+
+    response = client.delete(f"/custom-libraries/{stored.id}")
+
+    assert response.status_code == status_codes.HTTP_409_CONFLICT
+    assert response.json()["errors"][0]["code"] == "conflict"

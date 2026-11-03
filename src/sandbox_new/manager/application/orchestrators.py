@@ -6,6 +6,7 @@ import shutil
 import tarfile
 import tempfile
 import zipfile
+from collections import defaultdict
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -23,13 +24,19 @@ from manager.application.ports import (
     AbstractUnitOfWork,
     AbstractUVProvider,
 )
-from manager.domain.enums import VenvOrder, VenvStatus, WheelStatus
+from manager.domain.enums import VenvOrder, VenvStatus, WheelOffer, WheelStatus
 from manager.domain.errors import (
+    BaseError,
+    CustomLibraryInUseError,
+    CustomLibraryNameNotFoundError,
     CustomLibraryNameTakenError,
     CustomLibraryNotFoundError,
+    CustomLibraryNotPublishedError,
+    CustomLibraryStillBuildingError,
     UnsupportedUploadError,
     UVBuildError,
     VenvNotFoundError,
+    WheelInUseError,
     WheelNameMismatchError,
     WheelNotBuiltError,
     WheelNotFoundError,
@@ -46,6 +53,7 @@ from manager.domain.models import (
     Venv,
     Wheel,
 )
+from manager.domain.services import offer_wheels
 from manager.domain.types import NotRunReason
 
 _VENV_BUILD_FAILED_MESSAGE = "Execution environment failed to build; the job was not run."
@@ -136,9 +144,15 @@ class VenvCRUDOrchestrator:
 
 
 class VenvBuildOrchestrator:
-    def __init__(self, uow: AbstractUnitOfWork, uv_provider: AbstractUVProvider):
+    def __init__(
+        self,
+        uow: AbstractUnitOfWork,
+        uv_provider: AbstractUVProvider,
+        file_storage: AbstractFileStorage,
+    ):
         self.uow = uow
         self.uv_provider = uv_provider
+        self.file_storage = file_storage
 
     async def build(self, target: int | Venv):
         if isinstance(target, int):
@@ -146,12 +160,27 @@ class VenvBuildOrchestrator:
         else:
             venv = target
 
+        # Before anything is started: a venv refused here has had nothing done to it,
+        # and one that is only waiting must not look like one that is being built.
+        try:
+            custom_wheels = await self._offered_wheels(venv)
+        except CustomLibraryStillBuildingError as waiting:
+            venv.mark_as_waiting()
+            await self._update(venv)
+            logger.info("Venv {} waits: {}", venv.id, waiting)
+            return
+        except BaseError as error:
+            venv.mark_as_failed(error)
+            await self._update(venv)
+            logger.warning("Venv {} cannot be built: {}", venv.id, error)
+            return
+
         venv.mark_as_processing()
         venv = await self._update(venv)
         logger.info("Building venv {} with {} libraries", venv.id, len(venv.libs))
 
         try:
-            await self._build(venv)
+            await self._build(venv, custom_wheels)
         except Exception as e:
             venv.mark_as_failed(e)
             logger.exception("Venv {} failed to build", venv.id)
@@ -161,17 +190,78 @@ class VenvBuildOrchestrator:
 
         await self._update(venv)
 
-    async def _build(self, venv: Venv) -> Venv:
+    async def _offered_wheels(self, venv: Venv) -> list[Wheel]:
+        """The wheels this venv's custom libraries offer, in two queries for them all.
+
+        One query per entry would be a query per library on a tick that runs every
+        five seconds, so the libraries and their wheels are read in bulk and matched
+        up here.
+
+        Raises:
+            CustomLibraryNameNotFoundError: An entry names no stored library.
+            CustomLibraryNotPublishedError: A library has no built version and none
+                on its way.
+            CustomLibraryStillBuildingError: A version the venv needs is being built.
+        """
+        entries = [library for library in venv.libs if library.is_custom]
+        if not entries:
+            return []
+
+        async with self.uow:
+            libraries = await self.uow.custom_library_repo.list_by_names(
+                [entry.name for entry in entries]
+            )
+            wheels = await self.uow.wheel_repo.list_by_library_ids(
+                [library.id for library in libraries]
+            )
+
+        stored = {library.name: library for library in libraries}
+        by_library: dict[int, list[Wheel]] = defaultdict(list)
+        for wheel in wheels:
+            by_library[wheel.library_id].append(wheel)
+
+        offered: list[Wheel] = []
+        for entry in entries:
+            library = stored.get(entry.name)
+            if library is None:
+                raise CustomLibraryNameNotFoundError(name=entry.name)
+
+            offer = offer_wheels(by_library[library.id], specification=entry.specification)
+            if offer.outcome is WheelOffer.WAIT:
+                raise CustomLibraryStillBuildingError(name=entry.name)
+            if offer.outcome is WheelOffer.NOTHING_BUILT:
+                raise CustomLibraryNotPublishedError(name=entry.name)
+            offered.extend(offer.wheels)
+        return offered
+
+    async def _fill_wheelhouse(self, wheels: list[Wheel], directory: Path) -> Path | None:
+        """Download the offered wheels into `directory`, or answer None for none.
+
+        None rather than an empty directory: a venv of ordinary packages should not
+        have the resolver pointed at a source that holds nothing.
+        """
+        if not wheels:
+            return None
+        for wheel in wheels:
+            content = await self.file_storage.get(wheel.wheel_key)
+            (directory / wheel.wheel_filename).write_bytes(content)
+        return directory
+
+    async def _build(self, venv: Venv, custom_wheels: list[Wheel]) -> Venv:
         staging_path = settings.VENV_STAGING_DIR / f"venv-{venv.id}"
         if staging_path.exists():
             await self._rmtree(staging_path)
         await self.uv_provider.init_venv(staging_path)
 
         libs = [library.requirement for library in venv.libs]
-        await self.uv_provider.apply(staging_path, *libs)
-        # Held, not applied yet: stamping the libraries is what the user sees as the
-        # outcome of the build, so it must not survive a step below that fails.
-        resolved_versions = self.uv_provider.read_resolved_versions(staging_path)
+        # The wheelhouse lives only for this build, and is deliberately not cached: a
+        # cache would be another place a deleted wheel could still be installed from.
+        with tempfile.TemporaryDirectory() as workspace:
+            wheelhouse = await self._fill_wheelhouse(custom_wheels, Path(workspace))
+            await self.uv_provider.apply(staging_path, *libs, wheelhouse=wheelhouse)
+            # Held, not applied yet: stamping the libraries is what the user sees as the
+            # outcome of the build, so it must not survive a step below that fails.
+            resolved_versions = self.uv_provider.read_resolved_versions(staging_path)
 
         lock_file = self.uv_provider.get_lock_file(staging_path)
         lock_hash = hashlib.sha256(lock_file.read_bytes()).hexdigest()
@@ -397,6 +487,13 @@ class CustomLibraryCRUDOrchestrator:
         """
         async with self.uow:
             obj = await self._retrieve(id)
+
+            # Refused rather than cascaded: a venv naming a library that is gone would
+            # fail on its next build, and its author never asked for that.
+            users = await self.uow.venv_repo.list_using_custom_library(obj.name)
+            if users:
+                raise CustomLibraryInUseError(custom_library_id=id, venv_count=len(users))
+
             obj.mark_as_deleted()
             await self.uow.custom_library_repo.update(obj)
 
@@ -617,10 +714,35 @@ class WheelCRUDOrchestrator:
         """
         async with self.uow:
             obj = await self._retrieve(library_id, id)
+            await self._reject_installed_version(library_id, obj)
             obj.mark_as_deleted()
             await self.uow.wheel_repo.update(obj)
             await self.uow.commit()
         logger.info("Marked wheel {} of custom library {} as deleted", id, library_id)
+
+    async def _reject_installed_version(self, library_id: int, obj: Wheel):
+        """Refuse a version some venv already has installed.
+
+        An unbuilt version carries no number, so nothing can be holding it. A venv
+        that names the library with only a specification is not holding it either: a
+        specification is a range the build has not chosen from.
+
+        Raises:
+            WheelInUseError: Some venv has resolved to exactly this version.
+        """
+        if obj.version is None:
+            return
+
+        library = await self._retrieve_library(library_id)
+        users = [
+            venv
+            for venv in await self.uow.venv_repo.list_using_custom_library(library.name)
+            if venv.pins_custom_library(library.name, obj.version)
+        ]
+        if users:
+            raise WheelInUseError(
+                custom_library_id=library_id, version=obj.version, venv_count=len(users)
+            )
 
     async def _retrieve(self, library_id: int, id: int) -> Wheel:
         obj = await self.uow.wheel_repo.retrieve(library_id, id)

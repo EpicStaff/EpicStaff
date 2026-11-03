@@ -12,8 +12,12 @@ must leave the unit of work uncommitted.
 import pytest
 
 from manager.application.orchestrators import CustomLibraryCRUDOrchestrator
-from manager.domain.errors import CustomLibraryNameTakenError, CustomLibraryNotFoundError
-from manager.domain.models import CustomLibrary, Wheel
+from manager.domain.errors import (
+    CustomLibraryInUseError,
+    CustomLibraryNameTakenError,
+    CustomLibraryNotFoundError,
+)
+from manager.domain.models import CustomLibrary, Library, Venv, Wheel
 
 SHA256 = "a" * 64
 
@@ -149,3 +153,62 @@ async def test_the_name_of_a_removed_library_can_be_taken_again_at_once(uow):
 
     assert second.id != first.id
     assert isinstance(second, CustomLibrary)
+
+
+def declare(uow, name: str, *, custom: bool = True, version: str | None = None):
+    """A venv naming `name`, as a stored library or as an ordinary package."""
+    return uow.venv_repo.seed(
+        Venv(
+            name=f"uses {name}",
+            libs=[
+                Library(
+                    name=name, specification=">=1", version=version, is_custom=custom
+                )
+            ],
+        )
+    )[0]
+
+
+async def test_a_library_a_venv_uses_cannot_be_removed(uow):
+    """Removing it would leave the venv naming a library that is gone, and its next
+    build would fail over a change its author never made."""
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    library = await orchestrator.create("acme-core")
+    declare(uow, "acme-core")
+
+    with pytest.raises(CustomLibraryInUseError):
+        await orchestrator.remove(library.id)
+
+    assert (await orchestrator.retrieve(library.id)).name == "acme-core"
+
+
+async def test_the_refusal_says_how_many_environments_are_in_the_way(uow):
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    library = await orchestrator.create("acme-core")
+    declare(uow, "acme-core")
+    declare(uow, "acme-core")
+
+    with pytest.raises(CustomLibraryInUseError, match="2"):
+        await orchestrator.remove(library.id)
+
+
+async def test_an_ordinary_package_of_the_same_name_does_not_block_removal(uow):
+    """A venv asking the package index for `acme-core` has nothing to do with the
+    library stored here, however the two names happen to coincide."""
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    library = await orchestrator.create("acme-core")
+    declare(uow, "acme-core", custom=False)
+
+    await orchestrator.remove(library.id)
+
+    assert [row.name for row in await uow.custom_library_repo.list_deleted()] == ["acme-core"]
+
+
+async def test_a_library_nothing_uses_is_still_removed_with_its_wheels(uow):
+    orchestrator = CustomLibraryCRUDOrchestrator(uow)
+    library = await orchestrator.create("acme-core")
+    uow.wheel_repo.seed(make_wheel(library.id, "a"))
+
+    await orchestrator.remove(library.id)
+
+    assert await uow.wheel_repo.list(library.id) == []

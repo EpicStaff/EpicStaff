@@ -1,7 +1,7 @@
 from typing import cast
 
 import settings
-from foundation.s3_file_storage import S3BucketAlreadyExistsError, S3FileStorage
+from foundation.s3_file_storage import S3FileStorage
 from foundation.utils import task_scheduler
 from foundation.utils.litestar import lifespan
 from litestar import Litestar
@@ -52,7 +52,9 @@ async def stop_database_pool():
 
 
 @lifespan.on_startup
-async def create_default_venv_if_not_exist():
+async def create_default_venv_if_not_exist(app: Litestar):
+    """Build the shared fallback venv. Registered after the hook that opens the object
+    store, because building a venv may now install a library kept there."""
     uow = PiccoloUnitOfWork()
 
     venv_crud_orchestrator = VenvCRUDOrchestrator(uow)
@@ -61,7 +63,9 @@ async def create_default_venv_if_not_exist():
         venv = await venv_crud_orchestrator.create(name=DEFAULT_VENV_NAME, libs=[])
 
     uv_provider = UVProvider()
-    venv_build_orchestrator = VenvBuildOrchestrator(uow, uv_provider)
+    venv_build_orchestrator = VenvBuildOrchestrator(
+        uow, uv_provider, app.state.custom_library_storage
+    )
     await venv_build_orchestrator.build(venv)
 
 
@@ -69,8 +73,8 @@ async def create_default_venv_if_not_exist():
 async def start_scheduled_tasks(app: Litestar):
     """Start the background work, registering what the decorators could not.
 
-    The wheel tasks need the object store, which is opened by the hook above and has
-    no business being opened a second time here, so they are handed it rather than
+    These tasks need the object store, which is opened by the hook above and has no
+    business being opened a second time here, so they are handed it rather than
     reaching for it. Registration has to happen before `start`, which is why it is in
     this hook and not at import time.
     """
@@ -87,8 +91,12 @@ async def start_scheduled_tasks(app: Litestar):
     async def reap_deleted_custom_libraries():
         await tasks.reap_deleted_custom_libraries(file_storage)
 
+    async def build_declared_venv():
+        await tasks.build_declared_venv(file_storage)
+
     task_scheduler.schedule(build_declared_wheel, interval=5)
     task_scheduler.schedule(reap_deleted_custom_libraries, interval=60)
+    task_scheduler.schedule(build_declared_venv, interval=5)
 
     await task_scheduler.start()
 

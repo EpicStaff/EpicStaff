@@ -18,12 +18,13 @@ from manager.domain.errors import (
     CustomLibraryNotFoundError,
     UnsupportedUploadError,
     WheelNameMismatchError,
+    WheelInUseError,
     WheelNotBuiltError,
     WheelNotFoundError,
     WheelSourceAlreadyUploadedError,
     WheelVersionTakenError,
 )
-from manager.domain.models import CustomLibrary, Wheel
+from manager.domain.models import CustomLibrary, Library, Venv, Wheel
 
 WHEEL_NAME = "my_library-1.0.0-py3-none-any.whl"
 ARCHIVE_NAME = "my-library-2.0.0.tar.gz"
@@ -231,3 +232,71 @@ async def test_removing_a_version_frees_its_number_and_its_file(orchestrator, li
 async def test_removing_a_version_that_is_not_there_is_refused(orchestrator, library):
     with pytest.raises(WheelNotFoundError):
         await orchestrator.remove(library.id, 404)
+
+
+async def test_a_version_a_venv_installed_cannot_be_removed(orchestrator, uow, library):
+    """The library is already unpacked inside that venv's directory. Letting the wheel
+    go would leave the venv holding a version nothing can account for."""
+    wheel = await orchestrator.upload(library.id, upload(WHEEL_NAME))
+    uow.venv_repo.seed(
+        Venv(
+            name="data",
+            libs=[Library(name="my-library", specification=">=1", version="1.0.0", is_custom=True)],
+        )
+    )
+
+    with pytest.raises(WheelInUseError):
+        await orchestrator.remove(library.id, wheel.id)
+
+    assert [stored.id for stored in await orchestrator.list(library.id)] == [wheel.id]
+
+
+async def test_a_version_only_a_specification_points_at_can_be_removed(orchestrator, uow, library):
+    """A specification is a range the build has not chosen from, so it claims nothing.
+    This is the hole the version-level guard deliberately leaves open."""
+    wheel = await orchestrator.upload(library.id, upload(WHEEL_NAME))
+    uow.venv_repo.seed(
+        Venv(
+            name="data",
+            libs=[Library(name="my-library", specification=">=1", is_custom=True)],
+        )
+    )
+
+    await orchestrator.remove(library.id, wheel.id)
+
+    assert await orchestrator.list(library.id) == []
+
+
+async def test_another_version_of_the_same_library_does_not_block_removal(
+    orchestrator, uow, library
+):
+    wheel = await orchestrator.upload(library.id, upload(WHEEL_NAME))
+    uow.venv_repo.seed(
+        Venv(
+            name="data",
+            libs=[Library(name="my-library", specification=">=1", version="9.9.9", is_custom=True)],
+        )
+    )
+
+    await orchestrator.remove(library.id, wheel.id)
+
+    assert await orchestrator.list(library.id) == []
+
+
+async def test_an_unbuilt_version_is_removed_even_while_a_venv_names_the_library(
+    orchestrator, uow, library
+):
+    """It carries no version yet, so nothing can be holding it. Checked with a venv
+    that also carries no version, because comparing one absent version with another
+    would match and refuse a deletion nobody has a claim on."""
+    wheel = await orchestrator.upload(library.id, upload(ARCHIVE_NAME))
+    uow.venv_repo.seed(
+        Venv(
+            name="data",
+            libs=[Library(name="my-library", specification=">=1", is_custom=True)],
+        )
+    )
+
+    await orchestrator.remove(library.id, wheel.id)
+
+    assert await orchestrator.list(library.id) == []

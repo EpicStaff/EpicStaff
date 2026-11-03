@@ -17,16 +17,15 @@ from manager.infrastructure.database.unit_of_work import PiccoloUnitOfWork
 from manager.infrastructure.providers import UVProvider
 
 
-@task_scheduler.schedule(interval=5)
-async def build_declared_venv():
+async def build_declared_venv(file_storage: AbstractFileStorage):
     uow = PiccoloUnitOfWork()
-    uv_provider = UVProvider()
+    orchestrator = VenvBuildOrchestrator(uow, UVProvider(), file_storage)
 
     async with uow:
-        venvs = await uow.venv_repo.list_by_status(status=VenvStatus.DECLARED)
+        venvs = await uow.venv_repo.list_by_status(VenvStatus.DECLARED, VenvStatus.WAITING)
 
     for venv in venvs:
-        await VenvBuildOrchestrator(uow, uv_provider).build(venv)
+        await orchestrator.build(venv)
 
 
 # TODO: don't delete venvs that are at working.

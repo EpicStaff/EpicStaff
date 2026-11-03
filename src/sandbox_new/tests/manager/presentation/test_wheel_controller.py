@@ -219,3 +219,20 @@ def test_a_version_removed_through_the_api_is_only_marked(client, path, uow, lib
 
     assert len(uow.wheel_repo.rows) == 1
     assert len(file_storage.objects) == 1
+
+
+def test_remove_answers_409_for_a_version_a_venv_installed(client, uow, path, library):
+    from manager.domain.models import Library, Venv
+
+    created = client.post(path, files=upload(WHEEL_NAME, wheel_bytes())).json()
+    uow.venv_repo.seed(
+        Venv(
+            name="data",
+            libs=[Library(name="my-library", specification=">=1", version="1.0.0", is_custom=True)],
+        )
+    )
+
+    response = client.delete(f"{path}/{created['id']}")
+
+    assert response.status_code == status_codes.HTTP_409_CONFLICT
+    assert response.json()["errors"][0]["code"] == "conflict"
