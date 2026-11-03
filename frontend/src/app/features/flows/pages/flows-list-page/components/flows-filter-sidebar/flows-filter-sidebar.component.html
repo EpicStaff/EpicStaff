@@ -99,14 +99,19 @@
             <button
                 class="filter-sidebar__btn"
                 type="button"
+                matTooltip="Clear Filters"
+                appTooltipOnOverflow
                 (click)="clearAllFilters()"
             >
-                Clear Filters
+                <span class="filter-sidebar__btn-label-full">Clear Filters</span>
+                <span class="filter-sidebar__btn-label-short">Clear</span>
             </button>
             <span class="filter-sidebar__footer-spacer"></span>
             <button
                 class="filter-sidebar__btn"
                 type="button"
+                matTooltip="Cancel"
+                appTooltipOnOverflow
                 (click)="cancel()"
             >
                 Cancel
@@ -114,16 +119,21 @@
             <button
                 class="filter-sidebar__btn filter-sidebar__btn--accent"
                 type="button"
+                matTooltip="Create & Apply Preset"
+                appTooltipOnOverflow
                 (click)="createPreset()"
             >
-                Create & Apply Preset
+                <span class="filter-sidebar__btn-label-full">Create & Apply Preset</span>
+                <span class="filter-sidebar__btn-label-two-words">Save Preset</span>
+                <span class="filter-sidebar__btn-label-one-word">Preset</span>
             </button>
             <button
                 class="filter-sidebar__btn filter-sidebar__btn--primary"
                 type="button"
                 (click)="applyFilters()"
             >
-                Apply Filters
+                <span class="filter-sidebar__btn-label-full">Apply Filters</span>
+                <span class="filter-sidebar__btn-label-short">Apply</span>
             </button>
         </div>
     }

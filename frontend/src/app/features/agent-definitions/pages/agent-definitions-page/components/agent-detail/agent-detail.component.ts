@@ -22,6 +22,7 @@ import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageDragService } from '../../../../../files/services/storage-drag.service';
 import { AgentDefinition, AgentInstruction, AgentSurfacePlace } from '../../../../models/agent-definition.model';
 import { AgentFocus, AgentSelection } from '../../../../models/explorer.model';
@@ -499,4 +500,5 @@ export class AgentDetailComponent implements OnInit {
 
     protected readonly ActionCode = ActionCode;
     protected readonly ResourceCode = ResourceCode;
+    protected readonly tourAnchors = CREATE_AGENT_TOUR_ANCHORS;
 }
