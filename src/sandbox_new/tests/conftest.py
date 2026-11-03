@@ -26,6 +26,9 @@ _TEST_ENVIRONMENT = {
     "STORAGE_HOST": "localhost",
     "STORAGE_SSL": "false",
     "STORAGE_BUCKET": "sandbox",
+    "STORAGE_USER": "sandbox",
+    "STORAGE_PASSWORD": "sandbox",
+    "SANDBOX_CUSTOM_LIBRARY_BUCKET": "sandbox-custom-libraries",
 }
 
 for _name, _value in _TEST_ENVIRONMENT.items():
@@ -37,6 +40,7 @@ from src.shared.bench_log import BENCH_LEVEL  # noqa: E402
 
 from tests.builders import make_venv  # noqa: E402
 from tests.fakes import (  # noqa: E402
+    FakeFileStorage,
     FakeIsolationProbe,
     FakeJobDispatcher,
     FakeJobFailureSink,
@@ -68,6 +72,11 @@ def venv_repository() -> FakeVenvRepository:
 @pytest.fixture
 def uow(venv_repository: FakeVenvRepository) -> FakeUnitOfWork:
     return FakeUnitOfWork(venv_repository)
+
+
+@pytest.fixture
+def file_storage() -> FakeFileStorage:
+    return FakeFileStorage()
 
 
 @pytest.fixture
