@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-__all__ = ["JobStatus", "VenvOrder", "VenvStatus"]
+__all__ = ["JobStatus", "VenvOrder", "VenvStatus", "WheelStatus"]
 
 
 class VenvStatus(StrEnum):
@@ -18,6 +18,13 @@ class VenvOrder(StrEnum):
 
 class JobStatus(StrEnum):
     ACCEPTED = "accepted"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class WheelStatus(StrEnum):
+    DECLARED = "declared"
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"

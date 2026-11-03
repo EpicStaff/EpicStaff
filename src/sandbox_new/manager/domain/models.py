@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import PurePosixPath
 from typing import Any
 from uuid import UUID
 
@@ -7,13 +8,25 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 from pydantic import Field, field_validator, model_validator
 
-from manager.domain.enums import JobStatus, VenvStatus
+from manager.domain.enums import JobStatus, VenvStatus, WheelStatus
 from manager.domain.types import LibraryString
 
-__all__ = ["DEFAULT_VENV_NAME", "Job", "Library", "StorageCredentials", "Venv"]
+__all__ = [
+    "DEFAULT_VENV_NAME",
+    "SOURCE_ARCHIVE_SUFFIXES",
+    "WHEEL_SUFFIX",
+    "CustomLibrary",
+    "Job",
+    "Library",
+    "StorageCredentials",
+    "Venv",
+    "Wheel",
+]
 
 DEFAULT_VENV_NAME = "default"
-
+WHEEL_SUFFIX = ".whl"
+SOURCE_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".zip")
+DISTRIBUTION_NAME_PATTERN = r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$"
 VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_\.][a-z0-9]+)*)?$"
 
 
@@ -167,3 +180,116 @@ class Job(Entity):
     # instead of the shared one. The channel name is the sandbox's, not the caller's.
     reply_to_crew_channel: bool = False
     error: str | None = None
+
+
+class CustomLibrary(Entity):
+    """A library whose distributions this service stores itself, rather than
+    resolving them from a package index.
+
+    Its versions are the `Wheel` rows pointing at it.
+    """
+
+    id: int | None = Field(default=None, frozen=True)
+    # Checked before `normalize_name` runs, so the refusal names what was sent.
+    name: str = Field(min_length=1, pattern=DISTRIBUTION_NAME_PATTERN)
+    # Deletion is a mark, not a statement: the artifacts in the object store outlive
+    # the call, and a background task removes them and the row afterwards.
+    is_deleted: bool = False
+    # Assigned by the database, never by the domain: unset until the library is stored.
+    created_at: datetime | None = Field(default=None, frozen=True)
+    updated_at: datetime | None = Field(default=None, frozen=True)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        """Hold the name to the spelling a package index would use, so that `Pydantic`
+        and `pydantic` cannot both be stored as separate libraries."""
+        return canonicalize_name(value)
+
+    def rename(self, value: str, /):
+        self.name = value
+
+    def mark_as_deleted(self):
+        self.is_deleted = True
+
+
+class Wheel(Entity):
+    """One version of a `CustomLibrary`, and the files it is built from and into.
+
+    A client uploads either a built wheel, which is complete on arrival, or a source
+    archive, which a build turns into one. `source_filename` and `wheel_filename` are
+    what the upload and the build were called; the keys they are stored under are
+    derived from the ids, never from those names.
+    """
+
+    id: int | None = Field(default=None, frozen=True)
+    library_id: int
+    # The archive a build turns into a wheel. Unset when a built wheel was uploaded.
+    source_filename: str | None = None
+    # The wheel itself, uploaded or built. Unset until a build produces one.
+    wheel_filename: str | None = None
+    # Of the uploaded file, whichever of the two it was. The same source must not be
+    # uploaded to one library twice, and this is what says two uploads are the same.
+    upload_sha256: str
+    version: str | None = None
+    status: WheelStatus = WheelStatus.DECLARED
+    error: str | None = None
+    is_deleted: bool = False
+    # Assigned by the database, never by the domain: unset until the wheel is stored.
+    created_at: datetime | None = Field(default=None, frozen=True)
+
+    @model_validator(mode="after")
+    def require_a_file(self) -> "Wheel":
+        """Reject a wheel that stands for no file at all.
+
+        Every row exists because something was uploaded, so one of the two names is
+        always set; neither being set means the row describes nothing.
+
+        Raises:
+            ValueError: Neither a source archive nor a wheel is named.
+        """
+        if self.source_filename is None and self.wheel_filename is None:
+            raise ValueError("A wheel must name a source archive, a wheel file, or both.")
+        return self
+
+    @property
+    def source_key(self) -> str | None:
+        """Where the source archive is stored, or `None` when there is none."""
+        return self._key("source", self.source_filename)
+
+    @property
+    def wheel_key(self) -> str | None:
+        """Where the wheel is stored, or `None` when none has been produced yet."""
+        return self._key("wheel", self.wheel_filename)
+
+    def _key(self, kind: str, filename: str | None) -> str | None:
+        """Build the object-store key for one of this wheel's files.
+
+        The name a client uploaded is reduced to its last component: it reaches here
+        unchecked, and a key is a path, so `../` in it would otherwise address an
+        object belonging to another library.
+        """
+        if filename is None:
+            return None
+        return f"{self.library_id}/{self.id}/{kind}/{PurePosixPath(filename).name}"
+
+    def mark_as_declared(self):
+        self.error = None
+        self.status = WheelStatus.DECLARED
+
+    def mark_as_processing(self):
+        self.error = None
+        self.status = WheelStatus.PROCESSING
+
+    def mark_as_completed(self, version: str, wheel_filename: str):
+        self.error = None
+        self.wheel_filename = wheel_filename
+        self.version = version
+        self.status = WheelStatus.COMPLETED
+
+    def mark_as_failed(self, error: Exception):
+        self.error = str(error)
+        self.status = WheelStatus.FAILED
+
+    def mark_as_deleted(self):
+        self.is_deleted = True
