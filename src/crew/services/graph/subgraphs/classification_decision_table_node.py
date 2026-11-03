@@ -29,6 +29,7 @@ from src.shared.system_one.adapter import SystemOneError, evaluate
 from src.shared.system_one.json_llm import run_json_llm
 from utils.set_output_variables import set_output_variables
 from utils.state_path import split_state_path
+from utils.template_render import render_template
 
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
@@ -413,12 +414,17 @@ def main(**kwargs) -> dict:
         state["variables"].update(variables)
 
     def _render_prompt(self, prompt_text: str, variables: dict) -> str:
-        """Render prompt template with variable interpolation using {var_name} syntax."""
-        try:
-            return prompt_text.format(**variables)
-        except (KeyError, IndexError):
-            # If template vars don't match, return as-is
+        """Render `{var_name}` placeholders; a prompt naming a missing variable is sent as written."""
+        rendered = render_template(prompt_text, variables)
+        if rendered.unrendered_reason:
+            logger.warning(
+                "Classification node '{}' prompt sent as written, no placeholder filled: {}",
+                self.node_name,
+                rendered.unrendered_reason,
+            )
+        if rendered.missing:
             return prompt_text
+        return rendered.text
 
     def _store_prompt_result(
         self, prompt_config: PromptConfigData, result: Any, state: State
@@ -507,7 +513,8 @@ def main(**kwargs) -> dict:
             )
 
         # Render prompt with current variables
-        variables_dict = state["variables"].model_dump()
+        # Plain data: the prompt is the flow author's text and must not reach live DotDict objects.
+        variables_dict = state["variables"].deep_dump()
         rendered_prompt = self._render_prompt(prompt_config.prompt_text, variables_dict)
 
         logger.debug(

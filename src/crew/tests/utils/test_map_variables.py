@@ -83,3 +83,32 @@ def test_map_variables_to_input_reads_segment_with_underscore_inside_its_name():
     mapped = map_variables_to_input(variables, {"name": "variables.user_profile.first_name"})
 
     assert mapped == {"name": "Ann"}
+
+
+@pytest.mark.parametrize(
+    "input_key",
+    [
+        "variables.update",
+        "variables.user.items",
+        "variables.user.name.upper",
+        "variables.orders[0].get",
+        # A default applies to a missing value, not to one that is not data.
+        "variables.update|fallback",
+    ],
+)
+def test_map_variables_to_input_rejects_path_resolving_to_a_method(input_key):
+    variables = DotDict({"user": {"name": "Ann"}, "orders": [{"id": 1}]})
+
+    with pytest.raises(InvalidStatePathError, match=re.escape(f"'{input_key.split('|')[0]}'")):
+        map_variables_to_input(variables, {"output_key": input_key})
+
+
+def test_map_variables_to_input_returns_nested_values_as_plain_data():
+    variables = DotDict({"user": {"name": "Ann", "tags": ["a", {"b": 1.5}], "active": True}})
+
+    mapped = map_variables_to_input(variables, {"user": "variables.user"})
+
+    assert mapped == {"user": {"name": "Ann", "tags": ["a", {"b": 1.5}], "active": True}}
+    assert type(mapped["user"]) is dict
+    assert type(mapped["user"]["tags"]) is list
+    assert type(mapped["user"]["tags"][1]) is dict
