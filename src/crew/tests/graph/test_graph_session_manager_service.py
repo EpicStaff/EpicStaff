@@ -22,19 +22,30 @@ import pytest
 import redis
 from dotdict import DotDict
 from fakeredis import FakeAsyncRedis
+from langgraph.graph import StateGraph
 from loguru import logger
 from pydantic import ValidationError
 
 from models.graph_models import FinishMessageData, GraphMessage
+from models.state import State
 from services.graph.events import StopEvent
-from services.graph.exceptions import StopSession
+from services.graph.exceptions import KeyValueNodeError, KnowledgeSearchError, StopSession
 from services.graph.graph_session_manager_service import GraphSessionManagerService
+from services.graph.nodes.base_node import BaseNode
+from services.graph.subgraphs.subgraph_node import SubGraphNode
 from services.redis_service import RedisService
 from src.crew.services.graph import session_audit_provider
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
 from src.shared.audit.writers.session_writer import SessionAuditWriter
-from src.shared.models import SessionData
-from src.shared.models.graph_nodes import GraphData
+from src.shared.models import (
+    EdgeData,
+    KeyValueNodeData,
+    PythonCodeData,
+    PythonNodeData,
+    SessionData,
+    SubGraphData,
+)
+from src.shared.models.graph_nodes import GraphData, SubGraphNodeData
 from src.shared.public_error import PublicErrorMessage
 from tests.graph.rebuild_counting_dict import RebuildCountingDict
 from tests.graph.recording_audit_client import RecordingAuditClient
@@ -495,6 +506,223 @@ async def test_failed_session_reports_public_error_to_redis_and_audit(
     end_call = audit_calls[-1][1]
     assert end_call["name"] == "Session Failed"
     assert end_call["details"] == {"error": public_error}
+
+
+class RaisingNode(BaseNode):
+    TYPE = "PYTHON"
+
+    def __init__(self, error: Exception):
+        super().__init__(session_id=48, node_name="failing #1 #900", stop_event=StopEvent())
+        self.error = error
+
+    async def execute(self, state, writer, execution_order, input_):
+        raise self.error
+
+
+def _one_node_graph(node: BaseNode):
+    """A real LangGraph graph running `node`, so its error reaches the session the real way."""
+    builder = StateGraph(State)
+
+    async def run_node(state: State, writer):
+        return await node.run(state, writer)
+
+    builder.add_node(node.node_name, run_node)
+    builder.set_entry_point(node.node_name)
+    builder.set_finish_point(node.node_name)
+    return builder.compile()
+
+
+def _streamed_error_details(service) -> list[str]:
+    payloads = [
+        json.loads(call.args[1]) for call in service.redis_service.aadd_graph_message.call_args_list
+    ]
+    return [
+        payload["message_data"]["details"]
+        for payload in payloads
+        if payload["message_data"].get("message_type") == "error"
+    ]
+
+
+KNOWLEDGE_SEARCH_FAILED_TEXT = (
+    "Knowledge Retriever node \"Search docs #1\" couldn't search its collection. "
+    "Try again or contact your administrator (reference: 509c403ac7ac)."
+)
+
+
+FIXED_REFERENCE = "0a1b2c3d4e5f"
+
+
+@pytest.fixture
+def fixed_correlation_id(monkeypatch):
+    """Give every new reference a node or the sandbox call cites the value FIXED_REFERENCE."""
+    monkeypatch.setattr(
+        "services.graph.nodes.base_node.new_error_correlation_id", lambda: FIXED_REFERENCE
+    )
+    monkeypatch.setattr(
+        "services.run_python_code_service.new_error_correlation_id", lambda: FIXED_REFERENCE
+    )
+
+
+class SandboxDownExecutor:
+    """Answers every execution the way RunPythonCodeService does when the sandbox can't run it."""
+
+    async def run_code(self, python_code_data, inputs=None, **kwargs) -> dict:
+        return {
+            "execution_id": "execution-1",
+            "returncode": 1,
+            "stdout": "",
+            "stderr": f"Node execution failed (reference: {FIXED_REFERENCE})",
+            "result_data": None,
+            "correlation_id": FIXED_REFERENCE,
+        }
+
+
+def _subgraph_graph(child: GraphData, **services):
+    """A real LangGraph graph whose only node is a real SubGraphNode running `child`."""
+    parent_builder = SimpleNamespace(
+        **{
+            "redis_service": None,
+            "python_code_executor_service": None,
+            "knowledge_search_service": None,
+            "agent_task_service": None,
+            "key_value_client": None,
+            **services,
+        }
+    )
+    subgraph_node = SubGraphNode(
+        session_id=48,
+        subgraph_node_data=SubGraphNodeData(
+            node_name="child flow #1 #901", subgraph_id=7, input_map={}, output_variable_path=None
+        ),
+        unique_subgraph_list=[SubGraphData(id=7, data=child)],
+        graph_builder=StateGraph(State),
+        org_id=1,
+        audit_retention_days=0,
+        session_graph_builder=parent_builder,
+        stop_event=StopEvent(),
+    )
+    builder = StateGraph(State)
+
+    async def run_subgraph(state: State, writer):
+        return await subgraph_node.run(state, writer)
+
+    builder.add_node(subgraph_node.node_name, run_subgraph)
+    builder.set_entry_point(subgraph_node.node_name)
+    builder.set_finish_point(subgraph_node.node_name)
+    return builder.compile()
+
+
+def _child_graph(**node_lists) -> GraphData:
+    [node] = [node for nodes in node_lists.values() for node in nodes]
+    return GraphData(
+        name="child",
+        entrypoint=node.node_name,
+        end_node=None,
+        edge_list=[EdgeData(start_key=node.node_name, end_key="__end__")],
+        **node_lists,
+    )
+
+
+KEY_VALUE_NO_TABLE_TEXT = "Key-Value node 'persist #2' has no table selected."
+PYTHON_SANDBOX_DOWN_TEXT = (
+    "Python node \"Clean data #2\" couldn't run its code. "
+    f"Try again or contact your administrator (reference: {FIXED_REFERENCE})."
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("build_graph", "expected_card", "expected_session_error"),
+    [
+        pytest.param(
+            lambda: _one_node_graph(RaisingNode(KeyValueNodeError(KEY_VALUE_NO_TABLE_TEXT))),
+            KEY_VALUE_NO_TABLE_TEXT,
+            KEY_VALUE_NO_TABLE_TEXT,
+            id="public-text-is-repeated",
+        ),
+        pytest.param(
+            lambda: _one_node_graph(
+                RaisingNode(
+                    KnowledgeSearchError(KNOWLEDGE_SEARCH_FAILED_TEXT, correlation_id="509c403ac7ac")
+                )
+            ),
+            KNOWLEDGE_SEARCH_FAILED_TEXT,
+            "Session execution failed (reference: 509c403ac7ac)",
+            id="public-text-with-reference-keeps-the-reference",
+        ),
+        pytest.param(
+            lambda: _one_node_graph(
+                RaisingNode(RuntimeError("could not connect to postgresql://flow:s3cret@db-internal:5432"))
+            ),
+            f"Node execution failed (reference: {FIXED_REFERENCE})",
+            f"Session execution failed (reference: {FIXED_REFERENCE})",
+            id="generic-message-keeps-the-reference",
+        ),
+        pytest.param(
+            lambda: _subgraph_graph(
+                _child_graph(
+                    key_value_node_list=[
+                        KeyValueNodeData(
+                            node_name="persist #2 #31", key_value_table_id=None, mode="read",
+                            entries=[{"key": "k", "value": "variables.out"}], input_map={},
+                        )
+                    ]
+                ),
+                # Never called: the node fails on its configuration first.
+                key_value_client=AsyncMock(),
+            ),
+            KEY_VALUE_NO_TABLE_TEXT,
+            KEY_VALUE_NO_TABLE_TEXT,
+            id="public-text-from-a-node-inside-a-subflow-is-repeated",
+        ),
+        pytest.param(
+            lambda: _subgraph_graph(
+                _child_graph(
+                    python_node_list=[
+                        PythonNodeData(
+                            node_name="Clean data #2 #44",
+                            python_code=PythonCodeData(code="def main(): return 1", entrypoint="main"),
+                            input_map={},
+                            output_variable_path="variables",
+                        )
+                    ]
+                ),
+                python_code_executor_service=SandboxDownExecutor(),
+            ),
+            PYTHON_SANDBOX_DOWN_TEXT,
+            f"Session execution failed (reference: {FIXED_REFERENCE})",
+            id="reference-from-a-node-inside-a-subflow-is-kept",
+        ),
+    ],
+)
+async def test_session_failed_in_a_node_reports_what_the_node_showed(
+    service, monkeypatch, fixed_correlation_id, build_graph, expected_card, expected_session_error
+):
+    audit_calls: list[tuple[str, dict]] = []
+
+    class RecordingAuditWriter:
+        async def add_session_start(self, **kwargs):
+            audit_calls.append(("start", kwargs))
+
+        async def add_session_end(self, **kwargs):
+            audit_calls.append(("end", kwargs))
+
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.get_session_audit_writer",
+        RecordingAuditWriter,
+    )
+    _patch_builder(monkeypatch, build_graph())
+
+    await service.run_session(_session_data(48), StopEvent())
+    async with asyncio.timeout(1):
+        while len(audit_calls) < 2:
+            await asyncio.sleep(0)
+
+    assert _streamed_error_details(service) == [expected_card]
+    status_call = service.redis_service.aupdate_session_status.call_args_list[-1]
+    assert status_call.kwargs["status"] == "error"
+    assert status_call.kwargs["error"] == expected_session_error
+    assert audit_calls[-1][1]["details"] == {"error": expected_session_error}
 
 
 class _ReprCountingStr(str):

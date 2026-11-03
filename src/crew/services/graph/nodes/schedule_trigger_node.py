@@ -27,6 +27,7 @@ class ScheduleTriggerNode(BaseNode):
         return None
 
     async def run(self, state: State, writer: StreamWriter) -> State:
+        execution_order = 0
         try:
             execution_order = self._calc_execution_order(state=state, name=self.node_name)
             input_ = self.get_input(state=state)
@@ -55,5 +56,4 @@ class ScheduleTriggerNode(BaseNode):
             return state
 
         except Exception as e:
-            self.add_error_message(writer=writer, error=e, execution_order=execution_order)
-            raise
+            self._raise_failure(writer=writer, error=e, execution_order=execution_order)

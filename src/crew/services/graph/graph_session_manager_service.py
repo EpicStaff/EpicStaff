@@ -13,7 +13,7 @@ from loguru import logger
 from models.graph_models import GraphMessage
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
-from services.graph.exceptions import StopSession
+from services.graph.exceptions import NodeExecutionError, StopSession
 from services.graph.graph_builder import SessionGraphBuilder
 from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import AsyncPubsubSubscriber, RedisService
@@ -359,25 +359,18 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 )
 
         except Exception as e:
-            correlation_id = new_error_correlation_id()
-            logger.opt(exception=e).error(
-                "Failed to start session {session_id}: {error} (correlation_id={correlation_id})",
-                session_id=session_id,
-                error=str(e),
-                correlation_id=correlation_id,
-            )
+            public_error = self._public_session_error(session_id, e)
+            # Name the node's own error, not the wrapper every node failure arrives in.
+            original_error = e.__cause__ if isinstance(e, NodeExecutionError) else e
             logger.log(
                 BENCH_LEVEL,
                 "bench {checkpoint}",
                 checkpoint="session_end",
                 session_id=session_data.id,
                 status="error",
-                reason=type(e).__name__,
+                reason=type(original_error).__name__,
             )
 
-            public_error = build_public_error_message(
-                PublicErrorMessage.SESSION_EXECUTION_FAILED, correlation_id
-            )
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status="error", error=public_error
             )
@@ -401,6 +394,38 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             # The end paths above read the context first. Clearing here, and only
             # here, also covers an error raised inside one of those handlers.
             clear_session_audit_context(session_id)
+
+    @staticmethod
+    def _public_session_error(session_id: int, error: Exception) -> str:
+        """Return the error a failed session reports to the user, and log the failure.
+
+        A node that failed has already shown its own message, so the session repeats it:
+        the same text, or, when that text cites a reference, the generic session message
+        under that same reference. An error raised outside any node gets a new reference.
+        """
+        if isinstance(error, NodeExecutionError):
+            # Not logged again: a node that cites a reference logged the raw error under
+            # it, and a message without one is the node's error itself.
+            logger.warning(
+                "Session {session_id} failed in a node: {error}",
+                session_id=session_id,
+                error=error.public_message,
+            )
+            if error.correlation_id is None:
+                return error.public_message
+            return build_public_error_message(
+                PublicErrorMessage.SESSION_EXECUTION_FAILED, error.correlation_id
+            )
+        correlation_id = new_error_correlation_id()
+        logger.opt(exception=error).error(
+            "Failed to start session {session_id}: {error} (correlation_id={correlation_id})",
+            session_id=session_id,
+            error=str(error),
+            correlation_id=correlation_id,
+        )
+        return build_public_error_message(
+            PublicErrorMessage.SESSION_EXECUTION_FAILED, correlation_id
+        )
 
     async def _store_final_variables(self, session_id: int, variables: dict) -> None:
         # A Redis outage must not lose the `end` status: the session still finished,

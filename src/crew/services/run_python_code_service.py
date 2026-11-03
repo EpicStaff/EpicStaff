@@ -15,6 +15,11 @@ from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import CodeResultData, ExecutionRequest, PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
+from src.shared.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 from src.shared.redis_keys import crew_code_result_channel
 from src.shared.sandbox_errors import (
     SandboxError,
@@ -26,6 +31,8 @@ from utils.singleton_meta import SingletonMeta
 # Matches the sandbox's own timeout exit code, so callers need no new branch.
 TIMEOUT_RETURNCODE = 124
 TIMEOUT_STDERR_MESSAGE = "Timed out waiting for the result"
+# Key set only on results crew makes up when the sandbox service itself fails.
+CORRELATION_ID_KEY = "correlation_id"
 # The session's StopEvent is a threading.Event and cannot be awaited, so the submit
 # and the result wait wake up this often to check it.
 STOP_CHECK_INTERVAL_S = 0.5
@@ -76,8 +83,11 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         `crew_code_result_channel`, which only crew reads, and the one subscription made
         by `subscribe_to_results` hands each result to the execution waiting for it.
         Every way the execution can fail without a result -- the sandbox stayed full,
-        refused it, lost it, or became unreachable -- returns a synthesized
-        CodeResultData with returncode 1 and the reason as stderr. No result within
+        refused it, lost it, or became unreachable -- logs the raw reason under a new
+        correlation id and returns a synthesized CodeResultData with returncode 1, a
+        generic stderr citing that id, and the id under `correlation_id`, which only these
+        results carry. The reason never reaches stderr: it can be the sandbox's raw error
+        body. No result within
         settings.CODE_RESULT_TIMEOUT (None waits as long as the sandbox still has the
         execution) returns returncode TIMEOUT_RETURNCODE. Callers branch on returncode
         like they already do for every other non-zero outcome.
@@ -156,9 +166,25 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                     session_id=python_code_data.session_id,
                     execution_id=execution_id,
                 )
-            # The class name only: the message is for the user, who gets it as stderr.
-            logger.error("Code execution {} failed ({})", execution_id, type(error).__name__)
-            return _failed_result(execution_id, 1, str(error))
+            correlation_id = new_error_correlation_id()
+            logger.error(
+                "Code execution {execution_id} failed: {error_type}: {error} "
+                "(correlation_id={correlation_id}, session_id={session_id})",
+                execution_id=execution_id,
+                error_type=type(error).__name__,
+                error=str(error),
+                correlation_id=correlation_id,
+                session_id=python_code_data.session_id,
+            )
+            failed_result = _failed_result(
+                execution_id,
+                1,
+                build_public_error_message(
+                    PublicErrorMessage.NODE_EXECUTION_FAILED, correlation_id
+                ),
+            )
+            failed_result[CORRELATION_ID_KEY] = correlation_id
+            return failed_result
         finally:
             self._pending_results.pop(execution_id, None)
 

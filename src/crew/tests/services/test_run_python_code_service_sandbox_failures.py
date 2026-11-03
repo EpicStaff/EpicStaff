@@ -2,7 +2,8 @@
 
 The sandbox can stay full, be unreachable, or lose an execution it accepted (a
 restart, an undelivered result). Each ends the wait with a returncode-1 result whose
-stderr tells the user why; only the backstop keeps the timeout returncode. A session
+stderr only cites a reference, the reason being logged under it; only the backstop keeps
+the timeout returncode. A session
 stop ends a submit that is still retrying a full sandbox instead of waiting out its
 retry budget.
 """
@@ -16,6 +17,9 @@ import settings
 from clients import sandbox as sandbox_client_module
 from clients.sandbox import SandboxClient
 from services.graph.events import StopEvent
+from loguru import logger
+
+from services import run_python_code_service as run_python_code_service_module
 from services.graph.exceptions import StopSession
 from services.run_python_code_service import STOP_CHECK_INTERVAL_S, RunPythonCodeService
 from tests.services.conftest import REJECTED_RETRY_AFTER_S, SANDBOX_BASE_URL
@@ -23,35 +27,73 @@ from tests.services.conftest import REJECTED_RETRY_AFTER_S, SANDBOX_BASE_URL
 pytestmark = pytest.mark.asyncio
 
 
+REFERENCE = "0a1b2c3d4e5f"
+
+
 @pytest.fixture
 def fast_status_checks(monkeypatch):
     monkeypatch.setattr(sandbox_client_module, "STATUS_POLL_INTERVAL_SECONDS", 0.01)
 
 
+@pytest.fixture
+def fixed_reference(monkeypatch):
+    monkeypatch.setattr(
+        run_python_code_service_module, "new_error_correlation_id", lambda: REFERENCE
+    )
+
+
+@pytest.fixture
+def captured_error_logs():
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="ERROR")
+    yield records
+    logger.remove(sink_id)
+
+
+def assert_failed_under_the_reference(result: dict, logs: list[str], reason: str) -> None:
+    assert result["returncode"] == 1
+    assert result["stderr"] == f"Node execution failed (reference: {REFERENCE})"
+    assert result["correlation_id"] == REFERENCE
+    assert result["result_data"] is None
+    [logged] = [record for record in logs if REFERENCE in record]
+    assert reason in logged
+
+
 @pytest.mark.parametrize(
-    ("sandbox_state", "expected_stderr"),
+    ("sandbox_state", "reason"),
     [
         ("full", "Sandbox overloaded: no free capacity within 0 s."),
         ("unreachable", "The sandbox is unreachable."),
+        ("rejects_with", "<html>Bad Request: internal-host:8000</html>"),
     ],
 )
-async def test_submit_the_sandbox_does_not_take_fails_the_execution(
-    run_python_code_service, sandbox, make_python_code_data, sandbox_state, expected_stderr
+async def test_submit_the_sandbox_does_not_take_fails_the_execution_under_a_reference(
+    run_python_code_service,
+    sandbox,
+    make_python_code_data,
+    fixed_reference,
+    captured_error_logs,
+    sandbox_state,
+    reason,
 ):
-    setattr(sandbox, sandbox_state, True)
+    setattr(sandbox, sandbox_state, reason if sandbox_state == "rejects_with" else True)
 
     result = await asyncio.wait_for(
         run_python_code_service.run_code(python_code_data=make_python_code_data(), inputs={}),
         timeout=5,
     )
 
-    assert result["returncode"] == 1
-    assert result["stderr"] == expected_stderr
-    assert result["result_data"] is None
+    assert_failed_under_the_reference(result, captured_error_logs, reason)
 
 
 async def test_execution_the_sandbox_lost_fails_instead_of_waiting_for_the_backstop(
-    run_python_code_service, sandbox, make_python_code_data, fast_status_checks, monkeypatch
+    run_python_code_service,
+    sandbox,
+    make_python_code_data,
+    fast_status_checks,
+    fixed_reference,
+    captured_error_logs,
+    monkeypatch,
 ):
     monkeypatch.setattr(settings, "CODE_RESULT_TIMEOUT", None)
     sandbox.loses_executions = True
@@ -62,9 +104,10 @@ async def test_execution_the_sandbox_lost_fails_instead_of_waiting_for_the_backs
     )
 
     assert result["execution_id"] == sandbox.submitted["execution_id"]
-    assert result["returncode"] == 1
-    assert result["stderr"] == (
-        "The sandbox lost the execution (it restarted, or its result was not delivered)."
+    assert_failed_under_the_reference(
+        result,
+        captured_error_logs,
+        "The sandbox lost the execution (it restarted, or its result was not delivered).",
     )
 
 

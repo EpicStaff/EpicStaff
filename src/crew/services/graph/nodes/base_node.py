@@ -1,14 +1,20 @@
 from abc import ABC, abstractmethod
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 
 from langgraph.types import StreamWriter
 from loguru import logger
 from models.state import State
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
-from services.graph.exceptions import ReturnCodeError, StopSession
+from services.graph.exceptions import NodeExecutionError, PublicNodeError, StopSession
 from src.shared.bench_log import BENCH_LEVEL
+from src.shared.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 from utils import map_variables_to_input, set_output_variables
+from utils.node_label import node_label_from_runtime_name
 
 
 class BaseNode(ABC):
@@ -105,37 +111,57 @@ class BaseNode(ABC):
             **kwargs,
         )
 
-    def add_error_message(
-        self,
-        writer: StreamWriter,
-        error: Exception | str,
-        execution_order: int,
-        *,
-        public_details: str | None = None,
-    ):
-        """
-        Add an error message to the graph.
+    @property
+    def node_label(self) -> str:
+        """The node's label as the user sees it on the canvas, e.g. "Search docs #1"."""
+        return node_label_from_runtime_name(self.node_name)
 
-        The raw error text is logged, not streamed: the client receives a
-        generic message carrying a correlation id, unless the caller supplies
-        already-safe text in `public_details`.
-
-        Args:
-            writer (StreamWriter): A stream writer to write the message to.
-            error (Exception | str): The exception or error text that was raised.
-            execution_order (int): The order of execution of the node.
-            public_details (str | None): Safe text to stream instead of the
-                generic message.
-        """
+    def add_error_message(self, writer: StreamWriter, public_details: str, execution_order: int):
+        """Stream an error message showing `public_details`, which must be safe to show."""
         self.custom_session_message_writer.add_error_message(
             session_id=self.session_id,
             node_name=self.node_name,
             writer=writer,
-            error=error,
             execution_order=execution_order,
             node_type=self.TYPE,
             public_details=public_details,
         )
+
+    def _raise_failure(
+        self, writer: StreamWriter, error: Exception, execution_order: int
+    ) -> NoReturn:
+        """Stream the error message for `error`, then raise what the session reports.
+
+        A `PublicNodeError` is shown as it is. Any other error may carry internal text, so it
+        is logged and the user sees a generic message with a reference to the log line.
+        `StopSession` is re-raised unchanged, since the session ends a stop on its own path;
+        everything else is raised as a `NodeExecutionError` carrying what the user was shown.
+        """
+        if isinstance(error, StopSession):
+            self.add_error_message(
+                writer=writer, public_details=str(error), execution_order=execution_order
+            )
+            raise error
+        if isinstance(error, PublicNodeError):
+            public_message = str(error)
+            correlation_id = error.correlation_id
+        else:
+            correlation_id = new_error_correlation_id()
+            logger.opt(exception=error).error(
+                "Node execution failed: {error} (correlation_id={correlation_id}, "
+                "session_id={session_id}, node_name={node_name})",
+                error=str(error),
+                correlation_id=correlation_id,
+                session_id=self.session_id,
+                node_name=self.node_name,
+            )
+            public_message = build_public_error_message(
+                PublicErrorMessage.NODE_EXECUTION_FAILED, correlation_id
+            )
+        self.add_error_message(
+            writer=writer, public_details=public_message, execution_order=execution_order
+        )
+        raise NodeExecutionError(public_message, correlation_id=correlation_id) from error
 
     @abstractmethod
     async def execute(
@@ -162,7 +188,8 @@ class BaseNode(ABC):
             State: The updated state.
 
         Raises:
-            Exception: If there was an exception during the execution of the node.
+            NodeExecutionError: The node failed; its error message has been streamed.
+            StopSession: The session was stopped while the node ran.
         """
         execution_order = 0
         logger.log(
@@ -228,16 +255,7 @@ class BaseNode(ABC):
                 node_type=type(self).__name__,
                 ok=False,
             )
-            # ReturnCodeError and StopSession carry text
-            # that's already safe to show as-is.
-            public_details = str(e) if isinstance(e, (ReturnCodeError, StopSession)) else None
-            self.add_error_message(
-                writer=writer,
-                error=e,
-                execution_order=execution_order,
-                public_details=public_details,
-            )
-            raise
+            self._raise_failure(writer=writer, error=e, execution_order=execution_order)
 
     def get_input(self, state: State):
         """

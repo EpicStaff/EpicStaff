@@ -14,6 +14,7 @@ import pytest
 from dotdict import DotDict
 
 from services.graph.events import StopEvent
+from services.graph.exceptions import NodeExecutionError
 from services.graph.nodes.agent_node import AgentNode
 from services.graph.nodes.task_node import TaskNode
 from services.graph.remembered_outputs import RememberedOutputsStore
@@ -198,8 +199,11 @@ async def test_misconfigured_node_fails_without_calling_the_agent(
     service = FakeAgentService()
     node = build_node(service, remembered_outputs, agent_definition=agent_definition)
 
-    with pytest.raises(ValueError, match=error):
+    with pytest.raises(NodeExecutionError) as raised:
         await _run(node)
+
+    assert isinstance(raised.value.__cause__, ValueError)
+    assert error in str(raised.value.__cause__)
 
     assert service.dispatched is None
 
@@ -208,8 +212,11 @@ async def test_misconfigured_node_fails_without_calling_the_agent(
 async def test_agent_failure_propagates(build_node, stream_type, remembered_outputs):
     node = build_node(FakeAgentService(error=RuntimeError("agent unreachable")), remembered_outputs)
 
-    with pytest.raises(RuntimeError, match="agent unreachable"):
+    with pytest.raises(NodeExecutionError) as raised:
         await _run(node)
+
+    assert isinstance(raised.value.__cause__, RuntimeError)
+    assert str(raised.value.__cause__) == "agent unreachable"
 
 
 @NODE_KINDS
@@ -387,7 +394,10 @@ async def test_agent_node_renders_every_tasks_instructions(remembered_outputs):
 async def test_agent_node_without_tasks_fails_without_calling_the_agent(remembered_outputs):
     service = FakeAgentService()
 
-    with pytest.raises(ValueError, match="no tasks"):
+    with pytest.raises(NodeExecutionError) as raised:
         await _run(_agent_node(service, remembered_outputs, tasks=[]))
+
+    assert isinstance(raised.value.__cause__, ValueError)
+    assert "no tasks" in str(raised.value.__cause__)
 
     assert service.dispatched is None

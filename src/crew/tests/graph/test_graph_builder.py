@@ -5,6 +5,7 @@ from dotdict import DotDict
 from clients.key_value import KeyValueClient
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
+from services.graph.exceptions import NodeExecutionError
 from services.graph.graph_session_manager_service import (
     SessionGraphBuilder,
     RedisService,
@@ -587,8 +588,10 @@ def test_storage_node_inside_subgraph_without_session_credentials_gets_none(
 
     compiled_graph = builder.compile_from_schema(_storage_subgraph_session_data(None))
 
-    with pytest.raises(Exception, match="storage credentials missing or invalid"):
+    with pytest.raises(NodeExecutionError) as raised:
         _run_compiled_graph(compiled_graph, mock_services["redis_service"])
+
+    assert str(raised.value.__cause__) == "storage credentials missing or invalid"
 
     assert executor.received_storage_credentials == [None]
 
