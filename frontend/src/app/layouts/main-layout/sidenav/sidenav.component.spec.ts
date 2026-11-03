@@ -795,6 +795,10 @@ describe('LeftSidebarComponent page shortcuts', () => {
     afterEach(() => {
         TestBed.inject(Dialog).closeAll();
         document.body.querySelectorAll('[data-test-editable]').forEach((element) => element.remove());
+        // The real sidebar records the apps it has seen in localStorage; left behind, that entry leaks into
+        // later spec files sharing the worker.
+        localStorage.clear();
+        sessionStorage.clear();
     });
 
     async function startAt(url: string): Promise<void> {
