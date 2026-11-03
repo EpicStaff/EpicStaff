@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
@@ -9,7 +10,7 @@ const ON_ACCENT_ICON = 'var(--color-text-primary, #d9d9de)';
 
 @Component({
     selector: 'app-button-round',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
     template: `
         <button
             type="button"
@@ -22,6 +23,7 @@ const ON_ACCENT_ICON = 'var(--color-text-primary, #d9d9de)';
             [style.--br-hover]="hoverColor() ?? defaultHover()"
             [style.--br-disabled]="disabledColor() ?? defaultDisabled()"
             [attr.aria-label]="ariaLabel()"
+            [matTooltip]="ariaLabel() ?? ''"
             [disabled]="disabled()"
         >
             <app-svg-icon
@@ -43,6 +45,7 @@ export class ButtonRoundComponent {
     readonly hoverColor = input<string | null>(null);
     readonly disabledColor = input<string | null>(null);
     readonly disabled = input<boolean>(false);
+    /** Names the icon-only button and is shown as its tooltip. */
     readonly ariaLabel = input<string | null>(null);
 
     readonly resolvedIconColor = computed<string>(

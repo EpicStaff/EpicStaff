@@ -11,6 +11,7 @@
     @if (tooltipText()) {
         <app-help-tooltip
             [text]="tooltipText()"
+            [ariaLabel]="helpLabel()"
             position="right"
             size="18px"
         ></app-help-tooltip>

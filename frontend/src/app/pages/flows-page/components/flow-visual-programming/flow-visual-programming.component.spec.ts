@@ -234,6 +234,19 @@ class VersionHistoryStubComponent {
 }
 
 describe('FlowVisualProgrammingComponent', () => {
+    // jsdom has no ResizeObserver; the tooltip that shows only for a cut-short name needs one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => vi.unstubAllGlobals());
+
     let fixture: ComponentFixture<FlowVisualProgrammingComponent>;
     let component: FlowVisualProgrammingComponent;
     let flowService: FlowService;

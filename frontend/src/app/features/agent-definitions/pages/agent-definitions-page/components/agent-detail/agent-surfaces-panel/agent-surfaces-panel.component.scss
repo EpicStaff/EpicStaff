@@ -14,6 +14,11 @@
     border: 1px solid var(--color-divider-subtle);
     border-radius: 4px;
     min-width: 0;
+
+    // The input draws no border of its own, so the box shows its focus.
+    &:focus-within {
+        border-color: var(--accent-color);
+    }
 }
 
 .surfaces-panel__search-icon {
@@ -154,8 +159,13 @@
         cursor: default;
     }
 
-    &:not(:disabled):hover {
+    &:not(:disabled):is(:hover, :focus-visible) {
         border-color: var(--accent-color);
+    }
+
+    // Drawn inside: the actions row clips its buttons, and it is exactly as tall as they are.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 }
 
@@ -361,7 +371,7 @@
         border: 1px solid var(--color-divider-subtle);
         color: var(--color-text-secondary);
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
             border-color: var(--accent-color);
         }
@@ -376,7 +386,7 @@
             color: var(--white);
         }
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: color-mix(in srgb, var(--accent-color) 85%, var(--white));
         }
     }
@@ -425,7 +435,7 @@
         color: var(--accent-color);
     }
 
-    &:not(:disabled):hover {
+    &:not(:disabled):is(:hover, :focus-visible) {
         color: var(--color-text-primary);
         background-color: var(--color-ghost-btn-hover);
     }
@@ -467,8 +477,13 @@
     text-align: left;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
+    }
+
+    // Drawn inside: the items sit tight in the menu.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &--danger {

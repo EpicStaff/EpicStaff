@@ -11,6 +11,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { ButtonComponent, LabelDropdownComponent } from '@shared/components';
 import { EnterSubmitDirective } from '@shared/directives';
 import { Subscription } from 'rxjs';
@@ -26,7 +27,7 @@ interface FlowRenameData {
 
 @Component({
     selector: 'app-flow-rename-dialog',
-    imports: [FormsModule, ButtonComponent, LabelDropdownComponent, EnterSubmitDirective],
+    imports: [FormsModule, ButtonComponent, LabelDropdownComponent, EnterSubmitDirective, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -41,6 +42,7 @@ interface FlowRenameData {
                     <input
                         type="text"
                         id="flowName"
+                        matTooltip="Flow Name"
                         class="form-control"
                         [(ngModel)]="newName"
                         required
@@ -60,6 +62,7 @@ interface FlowRenameData {
                         <label for="flowDescription">Description</label>
                         <textarea
                             id="flowDescription"
+                            matTooltip="Description"
                             class="form-control"
                             [(ngModel)]="description"
                             placeholder="Enter flow description (optional)"

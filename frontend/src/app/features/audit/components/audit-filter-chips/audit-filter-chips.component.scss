@@ -55,7 +55,7 @@
     line-height: 1;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-secondary-btn-background-hover);
         color: var(--color-text-primary);
     }
@@ -74,7 +74,7 @@
     font-size: 12px;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         text-decoration: underline;
     }
 }

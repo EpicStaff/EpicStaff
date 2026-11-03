@@ -261,6 +261,88 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
         return request.blocks.map((block) => block.id);
     }
 
+    describe('keyboard in the overlays', () => {
+        // The search panel and the model menu are sibling overlays outside the dialog's focus trap.
+        function key(target: Element, keyName: string, init: KeyboardEventInit = {}): KeyboardEvent {
+            const event = new KeyboardEvent('keydown', { key: keyName, bubbles: true, cancelable: true, ...init });
+            target.dispatchEvent(event);
+            render();
+            return event;
+        }
+
+        function searchInput(): HTMLInputElement {
+            return host.querySelector<HTMLInputElement>('.cdt-tree__search-input')!;
+        }
+
+        function searchPanel(): HTMLElement | null {
+            return document.querySelector<HTMLElement>('app-cdt-decision-tree-search');
+        }
+
+        function openSearch(): void {
+            host.querySelector<HTMLButtonElement>('.cdt-tree__search-toggle')!.click();
+            render();
+            // The box renders first and opens its panel after that render; a click on it opens the panel at once.
+            searchInput().click();
+            render();
+        }
+
+        it('Tab from the search box moves into the panel, and Shift+Tab off its first entry comes back', () => {
+            mount(input());
+            openSearch();
+            expect(searchPanel()).not.toBeNull();
+
+            const tab = key(searchInput(), 'Tab');
+            const firstEntry = searchPanel()!.querySelector<HTMLButtonElement>('.cdt-tree-search__item')!;
+            expect(tab.defaultPrevented).toBe(true);
+            expect(document.activeElement).toBe(firstEntry);
+
+            key(firstEntry, 'Tab', { shiftKey: true });
+            expect(document.activeElement).toBe(searchInput());
+            expect(searchPanel()).not.toBeNull();
+        });
+
+        it('Tab off Save closes the panel, keeps what is typed and leaves the focus in the box', () => {
+            mount(input());
+            openSearch();
+            searchInput().value = 'Spam';
+            searchInput().dispatchEvent(new Event('input'));
+            render();
+
+            const save = searchPanel()!.querySelector<HTMLElement>(
+                '.cdt-tree-search__footer-actions app-button:last-child button'
+            )!;
+            key(save, 'Tab');
+
+            expect(searchPanel()).toBeNull();
+            expect(document.activeElement).toBe(searchInput());
+            expect(searchInput().value).toBe('Spam');
+        });
+
+        it('Escape on an entry closes the panel on the first press and hands the focus to the box', () => {
+            mount(input());
+            openSearch();
+            key(searchInput(), 'Tab');
+
+            const escape = key(document.activeElement!, 'Escape');
+
+            expect(escape.defaultPrevented).toBe(true);
+            expect(searchPanel()).toBeNull();
+            expect(document.activeElement).toBe(searchInput());
+        });
+
+        it('Escape inside the Explain model menu closes it', () => {
+            mount(input());
+            host.querySelector<HTMLElement>('.cdt-tree__explain-all-menu')!.click();
+            render();
+            const menu = document.querySelector<HTMLElement>('.cdt-tree-explain-menu')!;
+            expect(menu.hasAttribute('cdktrapfocus')).toBe(true);
+
+            key(menu, 'Escape');
+
+            expect(document.querySelector('.cdt-tree-explain-menu')).toBeNull();
+        });
+    });
+
     describe('a read-only editor', () => {
         it('shows stored explanations and offers nothing to generate one', () => {
             const data = input({ readOnly: true });

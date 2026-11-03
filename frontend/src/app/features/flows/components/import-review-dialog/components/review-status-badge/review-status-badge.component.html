@@ -3,13 +3,14 @@
         type="button"
         class="status-badge"
         [ngClass]="reviewed() ? 'status-reviewed' : 'status-needs-review'"
+        [attr.aria-pressed]="reviewed()"
         (click)="onToggle($event)"
     >
         <app-svg-icon
             [icon]="reviewed() ? 'review-checkmark' : 'review-circle'"
             size="10px"
         ></app-svg-icon>
-        {{ reviewed() ? 'Reviewed' : notReviewedLabel() }}
+        {{ label() }}
     </button>
 } @else {
     <span
@@ -20,6 +21,6 @@
             [icon]="reviewed() ? 'review-checkmark' : 'review-circle'"
             size="10px"
         ></app-svg-icon>
-        {{ reviewed() ? 'Reviewed' : notReviewedLabel() }}
+        {{ label() }}
     </span>
 }

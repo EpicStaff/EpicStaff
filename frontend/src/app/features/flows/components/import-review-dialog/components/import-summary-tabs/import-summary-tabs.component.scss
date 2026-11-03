@@ -48,7 +48,7 @@
         cursor: pointer;
         transition: background 0.2s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-secondary-btn-background-hover);
         }
 
@@ -79,6 +79,10 @@
     }
 
     .summary-item {
+        border: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
         display: flex;
         gap: 0.5rem;
         padding: 1rem;
@@ -90,8 +94,13 @@
         transition: background-color 0.2s ease;
         box-shadow: var(--shadow-raised);
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-ks-hover-row);
+        }
+
+        // The list scrolls sideways, so it would clip a ring drawn outside the item.
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         .summary-label {

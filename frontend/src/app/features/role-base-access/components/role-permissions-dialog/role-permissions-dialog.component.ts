@@ -1,7 +1,9 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, LoadingSpinnerComponent, UserAvatarComponent } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { CatalogAction, MyOrgPermissionsResponse, Organization } from '@shared/models';
 import { forkJoin, Observable, of } from 'rxjs';
 
@@ -28,7 +30,13 @@ type RolePermissionsStatus = 'loading' | 'failed' | 'not-found' | 'ready';
     selector: 'app-role-permissions-dialog',
     templateUrl: './role-permissions-dialog.component.html',
     styleUrls: ['./role-permissions-dialog.component.scss'],
-    imports: [AppSvgIconComponent, LoadingSpinnerComponent, UserAvatarComponent],
+    imports: [
+        AppSvgIconComponent,
+        LoadingSpinnerComponent,
+        UserAvatarComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
+    ],
 })
 export class RolePermissionsDialogComponent implements OnInit {
     private readonly hasLoadFailed = signal(false);

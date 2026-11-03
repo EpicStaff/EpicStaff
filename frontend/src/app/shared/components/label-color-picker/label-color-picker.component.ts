@@ -10,11 +10,12 @@ import {
     output,
     signal,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { getLabelColorOption, LABEL_COLOR_OPTIONS, LabelColor, LabelColorOption } from '@shared/models';
 
 @Component({
     selector: 'app-label-color-picker',
-    imports: [CommonModule],
+    imports: [CommonModule, MatTooltipModule],
     templateUrl: './label-color-picker.component.html',
     styleUrls: ['./label-color-picker.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

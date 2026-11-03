@@ -44,7 +44,7 @@
         color 0.15s ease,
         background-color 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
         background-color: var(--color-secondary-btn-background-hover);
     }
@@ -130,7 +130,7 @@
         color: var(--ep-color-accent-contrast);
         border-color: transparent;
 
-        &:not(:disabled):hover {
+        &:not(:disabled):is(:hover, :focus-visible) {
             background-color: var(--ep-button-primary-hover-bg);
         }
     }
@@ -140,7 +140,7 @@
         color: var(--ep-color-text);
         border: 1px solid var(--ep-color-border);
 
-        &:not(:disabled):hover {
+        &:not(:disabled):is(:hover, :focus-visible) {
             background-color: var(--ep-button-ghost-hover-bg);
         }
     }

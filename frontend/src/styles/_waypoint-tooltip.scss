@@ -2,8 +2,8 @@
     display: none;
     position: fixed;
     z-index: 9999;
-    background: #1e1e1e;
-    color: #c8c8cc;
+    background: var(--tooltip-bg);
+    color: var(--tooltip-text);
     font-size: 0.6875rem;
     line-height: 1;
     padding: 4px 8px;

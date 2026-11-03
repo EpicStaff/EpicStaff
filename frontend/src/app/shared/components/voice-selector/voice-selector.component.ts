@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, input, model, Output } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { ClickOutsideDirective } from '@shared/directives';
 import { RealtimeVoice } from '@shared/services';
 
@@ -7,7 +8,7 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-voice-selector',
-    imports: [FormsModule, ReactiveFormsModule, ClickOutsideDirective, TooltipComponent],
+    imports: [MatTooltip, FormsModule, ReactiveFormsModule, ClickOutsideDirective, TooltipComponent],
     templateUrl: './voice-selector.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./voice-selector.component.scss'],

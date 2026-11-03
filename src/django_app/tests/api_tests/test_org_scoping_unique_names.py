@@ -104,6 +104,17 @@ def test_keeping_a_tools_own_name_on_update_is_allowed(client_a, org_a):
     assert resp.status_code == 200, resp.data
 
 
+def test_a_custom_tool_keeps_its_name_after_a_built_in_tool_with_that_name_ships(client_a, org_a):
+    tool = _tool(org=org_a, name="SerperDevTool")
+    _tool(built_in=True, name="SerperDevTool")
+
+    resp = client_a.put(f"/api/python-code-tool/{tool.id}/", {**_py_payload("SerperDevTool"), "description": "new"}, format="json")
+
+    assert resp.status_code == 200, resp.data
+    tool.refresh_from_db()
+    assert tool.description == "new"
+
+
 def test_a_soft_deleted_tools_name_can_be_reused(client_a):
     tool_id = client_a.post("/api/python-code-tool/", _py_payload("dup"), format="json").data["id"]
 

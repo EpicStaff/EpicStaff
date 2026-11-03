@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { MenuNodeType, NODE_MENU_GROUPS, NODE_MENU_LABELS } from '../../../core/constants/node-menu-groups';
@@ -33,28 +35,46 @@ const MAC_KEY_GAP = '\u2009';
 
 @Component({
     selector: 'app-flow-graph-core-menu',
+    imports: [MatTooltip, TooltipOnOverflowDirective],
     template: `
         @for (group of filteredGroups(); track group.title) {
             <section class="menu-group">
                 <div class="menu-group__title">{{ group.title }}</div>
                 <ul>
                     @for (block of group.blocks; track block.type) {
-                        <li
-                            (click)="onBlockClicked(block.type)"
-                            [style.border-left-color]="block.color"
-                            [class.disabled]="isDisabled(block.type)"
-                        >
-                            <i
-                                class="node-icon"
-                                [class]="block.icon"
-                                [style.color]="block.color"
-                            ></i>
-                            <span class="menu-group__item-label">{{ block.label }}</span>
-                            @if (block.keyHint; as keyHint) {
-                                <span class="key-hint">{{ keyHint }}</span>
-                            } @else {
-                                <i class="ti ti-plus plus-icon"></i>
-                            }
+                        <li>
+                            <!-- aria-disabled, not disabled: a disabled End item would leave the Tab order. The name
+                                 has a tooltip only while it is cut short. -->
+                            <button
+                                type="button"
+                                class="menu-item"
+                                [class.disabled]="isDisabled(block.type)"
+                                [attr.aria-disabled]="isDisabled(block.type) || null"
+                                appTooltipOnOverflow=".menu-group__item-label"
+                                [matTooltip]="block.label"
+                                matTooltipPosition="right"
+                                (click)="onBlockClicked(block.type)"
+                            >
+                                <i
+                                    class="node-icon"
+                                    [class]="block.icon"
+                                    [style.color]="block.color"
+                                    aria-hidden="true"
+                                ></i>
+                                <span class="menu-group__item-label">{{ block.label }}</span>
+                                @if (block.keyHint; as keyHint) {
+                                    <span
+                                        class="key-hint"
+                                        aria-hidden="true"
+                                        >{{ keyHint }}</span
+                                    >
+                                } @else {
+                                    <i
+                                        class="ti ti-plus plus-icon"
+                                        aria-hidden="true"
+                                    ></i>
+                                }
+                            </button>
                         </li>
                     }
                 </ul>
@@ -79,16 +99,24 @@ const MAC_KEY_GAP = '\u2009';
                 margin: 0;
             }
 
-            li {
+            .menu-item {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
+                width: 100%;
                 padding: 12px 16px;
+                border: none;
                 border-radius: 8px;
                 gap: 14px;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
                 cursor: pointer;
                 transition: background 0.2s ease;
                 position: relative;
+                // The menu list scrolls and clips at its sides: the ring is drawn inside.
+                outline-offset: -2px;
             }
 
             .node-icon {
@@ -103,7 +131,7 @@ const MAC_KEY_GAP = '\u2009';
                 color: #fff;
             }
 
-            li:hover {
+            .menu-item:is(:hover, :focus-visible) {
                 background: #2a2a2a;
             }
 
@@ -116,7 +144,7 @@ const MAC_KEY_GAP = '\u2009';
                     color 0.2s ease;
             }
 
-            li:hover .plus-icon {
+            .menu-item:is(:hover, :focus-visible) .plus-icon {
                 opacity: 1;
                 color: inherit;
             }
@@ -139,11 +167,11 @@ const MAC_KEY_GAP = '\u2009';
                 transition: color 0.2s ease;
             }
 
-            li:hover .key-hint {
+            .menu-item:is(:hover, :focus-visible) .key-hint {
                 color: inherit;
             }
 
-            li.disabled {
+            .menu-item.disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
                 pointer-events: none;
@@ -185,6 +213,7 @@ export class FlowGraphCoreMenuComponent {
     private readonly flowReadOnly = inject(FlowReadOnlyService);
 
     protected onBlockClicked(type: NodeType): void {
+        if (this.isDisabled(type)) return;
         this.nodeSelected.emit({ type });
     }
 

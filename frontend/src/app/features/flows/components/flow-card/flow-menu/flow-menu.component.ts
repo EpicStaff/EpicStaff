@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { NgClass } from '@angular/common';
 import {
     ChangeDetectionStrategy,
@@ -32,7 +33,14 @@ export interface FlowMenuSelection {
 
 @Component({
     selector: 'app-flow-menu',
-    imports: [NgClass, FlowMenuItemComponent, AppSvgIconComponent, HasPermissionDirective, MatTooltipModule],
+    imports: [
+        NgClass,
+        CdkTrapFocus,
+        FlowMenuItemComponent,
+        AppSvgIconComponent,
+        HasPermissionDirective,
+        MatTooltipModule,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './flow-menu.component.html',
     styleUrls: ['./flow-menu.component.scss'],
@@ -133,6 +141,13 @@ export class FlowMenuComponent implements OnDestroy {
         this.isMouseOnMenu.set(false);
     }
 
+    /** Escape closes the open menu; its focus trap hands the focus back to the ⋮ button. */
+    public closeOnEscape(event: Event): void {
+        if (!this.isMenuOpen()) return;
+        event.stopPropagation();
+        this.close();
+    }
+
     @HostListener('document:click', ['$event'])
     public onDocumentClick(event: MouseEvent): void {
         if (!this.isMenuOpen()) return;
@@ -143,7 +158,10 @@ export class FlowMenuComponent implements OnDestroy {
     public onActionClick(event: MouseEvent, action: FlowMenuAction): void {
         event.stopPropagation();
         if (this.isMenuOpen()) {
-            this.actionSelected.emit({ action, trigger: this.menuTriggerButton().nativeElement });
+            const trigger = this.menuTriggerButton().nativeElement;
+            // Off the item first: a dialog the action opens returns the focus to what had it, and the item goes away.
+            trigger.focus();
+            this.actionSelected.emit({ action, trigger });
             this.close();
         }
     }

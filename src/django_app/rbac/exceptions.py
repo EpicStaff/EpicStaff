@@ -313,11 +313,12 @@ class SessionPasswordChangedError(AuthenticationFailed):
 
 class ApiKeyLimitExceededError(CustomAPIExeption):
     """Raised by ApiKeyService.create_key when the caller already has the
-    maximum number of active (non-revoked, non-expired) keys."""
+    maximum number of active (non-revoked, non-expired) keys in that organization."""
 
     status_code = 400
     default_detail = (
-        "Maximum number of active API keys reached (5). Revoke or delete an existing key first."
+        "Maximum number of active API keys in this organization reached (5). "
+        "Revoke or delete an existing key first."
     )
     default_code = "api_key_limit_exceeded"
 

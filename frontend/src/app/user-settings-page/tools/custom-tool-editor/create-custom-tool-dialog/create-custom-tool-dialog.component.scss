@@ -61,7 +61,7 @@
                 color: var(--color-text-primary);
             }
 
-            &:hover:not(:disabled) {
+            &:is(:hover, :focus-visible):not(:disabled) {
                 border-color: var(--accent-color-hover);
 
                 &.header-icon-btn--cancel {
@@ -192,7 +192,7 @@
                 border-color 0.2s ease,
                 color 0.2s ease;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--white-alpha-6);
                 color: var(--white);
             }
@@ -272,7 +272,7 @@
         color: var(--gray-213);
         cursor: pointer;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--white);
         }
 
@@ -336,7 +336,7 @@
             background-color 0.2s ease,
             color 0.2s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background: var(--accent-color);
             color: var(--white);
         }
@@ -431,7 +431,7 @@
                 border-color 0.2s ease,
                 color 0.2s ease;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background-color: var(--white-alpha-6);
                 color: var(--white);
             }

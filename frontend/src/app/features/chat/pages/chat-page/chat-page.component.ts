@@ -17,7 +17,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
-import { CollapseOnOverflowDirective, ResizableSidebarDirective } from '@shared/directives';
+import {
+    CollapseOnOverflowDirective,
+    ResizableSidebarDirective,
+    TooltipWhenCollapsedDirective,
+} from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SidebarWidthService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
@@ -72,6 +76,7 @@ type DeskAction = 'my-name' | 'settings' | 'snippet' | 'pause' | 'delete';
         ChatBindingStatusComponent,
         ChatThreadComponent,
         CollapseOnOverflowDirective,
+        TooltipWhenCollapsedDirective,
         ConversationListComponent,
         DeskAvatarComponent,
         ResizableSidebarDirective,

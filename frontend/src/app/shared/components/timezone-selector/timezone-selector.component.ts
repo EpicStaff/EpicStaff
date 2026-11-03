@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { nextListIndex } from '../../utils/list-navigation.util';
 
@@ -97,7 +98,7 @@ let nextSelectorId = 0;
 
 @Component({
     selector: 'app-timezone-selector',
-    imports: [OverlayModule, FormsModule],
+    imports: [MatTooltip, OverlayModule, FormsModule],
     templateUrl: './timezone-selector.component.html',
     styleUrls: ['./timezone-selector.component.scss'],
     providers: [{ provide: NG_VALUE_ACCESSOR, useExisting: TimezoneSelectorComponent, multi: true }],

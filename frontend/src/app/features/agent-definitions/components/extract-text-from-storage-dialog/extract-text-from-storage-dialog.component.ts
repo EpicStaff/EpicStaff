@@ -2,6 +2,7 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { StorageItem } from '../../../files/models/storage.models';
@@ -35,7 +36,7 @@ interface TreeNode {
  */
 @Component({
     selector: 'app-extract-text-from-storage-dialog',
-    imports: [FormsModule, AppSvgIconComponent],
+    imports: [FormsModule, MatTooltip, AppSvgIconComponent],
     templateUrl: './extract-text-from-storage-dialog.component.html',
     styleUrls: ['./extract-text-from-storage-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

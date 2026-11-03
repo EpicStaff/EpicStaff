@@ -87,7 +87,12 @@ form {
         border-right: none;
     }
 
-    &:hover:not(.active):not(:disabled) {
+    // The segments sit tight in a group that clips anything drawn outside it.
+    &:focus-visible {
+        outline-offset: -2px;
+    }
+
+    &:is(:hover, :focus-visible):not(.active):not(:disabled) {
         background: var(--graphite-745);
         color: var(--color-text-primary);
     }
