@@ -2,15 +2,26 @@
 
 import pytest
 
+from agents.models import AgentDefinition
 from tables.exceptions import (
+    AgentNodeRunValidationError,
     EndNodeValidationError,
     FileNodeValidationError,
+    KeyValueNodeRunValidationError,
     SubGraphValidationError,
 )
-from tables.models import AudioTranscriptionNode, FileExtractorNode, Graph
-from tables.models.graph_models import EndNode, SubGraphNode
+from tables.models import (
+    AudioTranscriptionNode,
+    FileExtractorNode,
+    Graph,
+    KeyValueNode,
+    KeyValueTable,
+)
+from tables.models.graph_models import AgentNode, AgentNodeTask, EndNode, SubGraphNode, TaskNode
+from tables.validators.agent_node_validator import AgentNodeValidator
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
+from tables.validators.key_value_node_validator import KeyValueNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
 from tests.fixtures import *
 
@@ -273,3 +284,314 @@ class TestSubGraphValidator:
         SubGraphNode.objects.create(graph=graph, node_name="Parse again", subgraph=child_flow)
 
         SubGraphValidator().validate(graph)
+
+
+def _agent(org, name: str, llm_config=None) -> AgentDefinition:
+    return AgentDefinition.objects.create(org=org, name=name, llm_config=llm_config)
+
+
+def _agent_node(graph, node_name: str, node_number: int, agent=None, task_count: int = 1):
+    agent_node = AgentNode.objects.create(
+        graph=graph, node_name=node_name, node_number=node_number, agent_definition=agent
+    )
+    for order in range(task_count):
+        AgentNodeTask.objects.create(agent_node=agent_node, name=f"Task {order}", order=order)
+    return agent_node
+
+
+def _task_node(graph, node_name: str, node_number: int, agent=None) -> TaskNode:
+    return TaskNode.objects.create(
+        graph=graph, node_name=node_name, node_number=node_number, agent_definition=agent
+    )
+
+
+def _validate_agent_nodes(graph, flow_name: str | None = None) -> None:
+    agent_nodes = (
+        AgentNode.objects.filter(graph=graph)
+        .select_related("agent_definition")
+        .prefetch_related("tasks")
+        .order_by("node_number", "id")
+    )
+    task_nodes = (
+        TaskNode.objects.filter(graph=graph)
+        .select_related("agent_definition")
+        .order_by("node_number", "id")
+    )
+    AgentNodeValidator().validate_runnable([*agent_nodes, *task_nodes], flow_name=flow_name)
+
+
+@pytest.mark.django_db
+class TestAgentNodeValidatorNoAgent:
+    def test_agent_node_without_an_agent_is_named(self, graph):
+        _agent_node(graph, "Writer", 2)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == 'Agent node "Writer #2" has no agent chosen.'
+
+    def test_task_node_without_an_agent_is_named(self, graph):
+        _task_node(graph, "Summarize", 4)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == 'Task node "Summarize #4" has no agent chosen.'
+
+    def test_several_task_nodes_without_an_agent_are_listed(self, graph):
+        _task_node(graph, "A", 1)
+        _task_node(graph, "B", 2)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == 'Task nodes "A #1" and "B #2" have no agent chosen.'
+
+    def test_both_node_kinds_get_a_sentence_each_agent_nodes_first(self, graph):
+        _task_node(graph, "Summarize", 1)
+        _agent_node(graph, "Writer", 2)
+        _agent_node(graph, "Editor", 3)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == (
+            'Agent nodes "Writer #2" and "Editor #3" have no agent chosen. '
+            'Task node "Summarize #1" has no agent chosen.'
+        )
+
+    def test_nodes_inside_a_subflow_name_that_subflow(self, graph):
+        _agent_node(graph, "Writer", 2)
+        _task_node(graph, "A", 3)
+        _task_node(graph, "B", 4)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph, flow_name="Invoice parser")
+
+        assert str(error.value.detail) == (
+            'Agent node "Writer #2" in flow "Invoice parser" has no agent chosen. '
+            'Task nodes "A #3" and "B #4" in flow "Invoice parser" have no agent chosen.'
+        )
+
+    def test_missing_agent_is_reported_before_a_missing_llm_or_tasks(self, graph, default_org):
+        _agent_node(graph, "Writer", 1, agent=_agent(default_org, "Copywriter"))
+        _agent_node(graph, "Planner", 2, agent=_agent(default_org, "Lead"), task_count=0)
+        _task_node(graph, "Summarize", 3)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == 'Task node "Summarize #3" has no agent chosen.'
+
+
+@pytest.mark.django_db
+class TestAgentNodeValidatorNoLlm:
+    def test_agent_node_whose_agent_has_no_llm_names_the_agent_and_the_node(
+        self, graph, default_org
+    ):
+        _agent_node(graph, "Writer", 2, agent=_agent(default_org, "Copywriter"))
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == (
+            'Agent "Copywriter" in Agent node "Writer #2" has no LLM. '
+            "Choose one for the agent on the Agents page."
+        )
+
+    def test_task_node_whose_agent_has_no_llm_names_the_agent_and_the_node(
+        self, graph, default_org
+    ):
+        _task_node(graph, "Summarize", 4, agent=_agent(default_org, "Copywriter"))
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == (
+            'Agent "Copywriter" in Task node "Summarize #4" has no LLM. '
+            "Choose one for the agent on the Agents page."
+        )
+
+    def test_nodes_sharing_the_agent_are_named_in_one_sentence_agent_nodes_first(
+        self, graph, default_org
+    ):
+        copywriter = _agent(default_org, "Copywriter")
+        _task_node(graph, "Summarize", 3, agent=copywriter)
+        _agent_node(graph, "Writer", 1, agent=copywriter)
+        _agent_node(graph, "Rewriter", 2, agent=copywriter)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == (
+            'Agent "Copywriter" in Agent nodes "Writer #1" and "Rewriter #2" and Task node '
+            '"Summarize #3" has no LLM. Choose one for the agent on the Agents page.'
+        )
+
+    def test_agents_are_listed_in_the_order_of_the_first_node_using_them(
+        self, graph, default_org
+    ):
+        reviewer = _agent(default_org, "Reviewer")
+        copywriter = _agent(default_org, "Copywriter")
+        _agent_node(graph, "Writer", 1, agent=copywriter)
+        _agent_node(graph, "Checker", 2, agent=reviewer)
+        _task_node(graph, "Summarize", 3, agent=copywriter)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == (
+            'Agent "Copywriter" in Agent node "Writer #1" and Task node "Summarize #3" has no '
+            'LLM. Agent "Reviewer" in Agent node "Checker #2" has no LLM. '
+            "Choose one for each agent on the Agents page."
+        )
+
+    def test_shared_agent_inside_a_subflow_names_that_subflow_once(self, graph, default_org):
+        copywriter = _agent(default_org, "Copywriter")
+        _agent_node(graph, "Writer", 1, agent=copywriter)
+        _task_node(graph, "Summarize", 2, agent=copywriter)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph, flow_name="Invoice parser")
+
+        assert str(error.value.detail) == (
+            'Agent "Copywriter" in Agent node "Writer #1" and Task node "Summarize #2" in flow '
+            '"Invoice parser" has no LLM. Choose one for the agent on the Agents page.'
+        )
+
+    def test_several_agents_without_an_llm_get_a_sentence_each(self, graph, default_org):
+        _agent_node(graph, "Writer", 1, agent=_agent(default_org, "Copywriter"))
+        _agent_node(graph, "Checker", 2, agent=_agent(default_org, "Reviewer"))
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == (
+            'Agent "Copywriter" in Agent node "Writer #1" has no LLM. '
+            'Agent "Reviewer" in Agent node "Checker #2" has no LLM. '
+            "Choose one for each agent on the Agents page."
+        )
+
+    def test_node_inside_a_subflow_names_that_subflow(self, graph, default_org):
+        _task_node(graph, "Summarize", 4, agent=_agent(default_org, "Copywriter"))
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph, flow_name="Invoice parser")
+
+        assert str(error.value.detail) == (
+            'Agent "Copywriter" in Task node "Summarize #4" in flow "Invoice parser" has no '
+            "LLM. Choose one for the agent on the Agents page."
+        )
+
+    def test_missing_llm_is_reported_before_missing_tasks(self, graph, default_org, llm_config):
+        lead = _agent(default_org, "Lead", llm_config)
+        _agent_node(graph, "Planner", 1, agent=lead, task_count=0)
+        _task_node(graph, "Summarize", 2, agent=_agent(default_org, "Copywriter"))
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == (
+            'Agent "Copywriter" in Task node "Summarize #2" has no LLM. '
+            "Choose one for the agent on the Agents page."
+        )
+
+
+@pytest.mark.django_db
+class TestAgentNodeValidatorNoTasks:
+    @pytest.fixture
+    def copywriter(self, default_org, llm_config) -> AgentDefinition:
+        return _agent(default_org, "Copywriter", llm_config)
+
+    def test_agent_node_without_tasks_is_named(self, graph, copywriter):
+        _agent_node(graph, "Writer", 2, agent=copywriter, task_count=0)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == (
+            'Agent node "Writer #2" has no tasks. Add at least one task.'
+        )
+
+    def test_several_agent_nodes_without_tasks_are_listed(self, graph, copywriter):
+        _agent_node(graph, "A", 1, agent=copywriter, task_count=0)
+        _agent_node(graph, "B", 2, agent=copywriter, task_count=0)
+        _agent_node(graph, "C", 3, agent=copywriter)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph)
+
+        assert str(error.value.detail) == (
+            'Agent nodes "A #1" and "B #2" have no tasks. Add at least one task to each.'
+        )
+
+    def test_node_inside_a_subflow_names_that_subflow(self, graph, copywriter):
+        _agent_node(graph, "Writer", 2, agent=copywriter, task_count=0)
+
+        with pytest.raises(AgentNodeRunValidationError) as error:
+            _validate_agent_nodes(graph, flow_name="Invoice parser")
+
+        assert str(error.value.detail) == (
+            'Agent node "Writer #2" in flow "Invoice parser" has no tasks. '
+            "Add at least one task."
+        )
+
+    def test_set_up_agent_and_task_nodes_pass(self, graph, copywriter):
+        _agent_node(graph, "Writer", 1, agent=copywriter)
+        _task_node(graph, "Summarize", 2, agent=copywriter)
+
+        _validate_agent_nodes(graph)
+
+
+@pytest.mark.django_db
+class TestKeyValueNodeValidator:
+    @staticmethod
+    def _validate(graph, flow_name: str | None = None) -> None:
+        KeyValueNodeValidator().validate_runnable(
+            KeyValueNode.objects.filter(graph=graph).order_by("node_number", "id"),
+            flow_name=flow_name,
+        )
+
+    def test_node_without_a_table_is_named(self, graph):
+        KeyValueNode.objects.create(graph=graph, node_name="Save lead", node_number=3)
+
+        with pytest.raises(KeyValueNodeRunValidationError) as error:
+            self._validate(graph)
+
+        assert str(error.value.detail) == 'Key-Value node "Save lead #3" has no table selected.'
+
+    def test_several_nodes_without_a_table_are_listed(self, graph, default_org):
+        KeyValueNode.objects.create(graph=graph, node_name="Save lead", node_number=1)
+        KeyValueNode.objects.create(graph=graph, node_name="Load lead", node_number=2)
+        KeyValueNode.objects.create(
+            graph=graph,
+            node_name="Kept",
+            node_number=3,
+            key_value_table=KeyValueTable.objects.create(org=default_org, name="Leads"),
+        )
+
+        with pytest.raises(KeyValueNodeRunValidationError) as error:
+            self._validate(graph)
+
+        assert str(error.value.detail) == (
+            'Key-Value nodes "Save lead #1" and "Load lead #2" have no table selected.'
+        )
+
+    def test_node_inside_a_subflow_names_that_subflow(self, graph):
+        KeyValueNode.objects.create(graph=graph, node_name="Save lead", node_number=3)
+
+        with pytest.raises(KeyValueNodeRunValidationError) as error:
+            self._validate(graph, flow_name="Invoice parser")
+
+        assert str(error.value.detail) == (
+            'Key-Value node "Save lead #3" in flow "Invoice parser" has no table selected.'
+        )
+
+    def test_node_with_a_table_passes(self, graph, default_org):
+        KeyValueNode.objects.create(
+            graph=graph,
+            node_name="Save lead",
+            key_value_table=KeyValueTable.objects.create(org=default_org, name="Leads"),
+        )
+
+        self._validate(graph)

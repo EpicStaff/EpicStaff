@@ -9,9 +9,11 @@ route between them.
 
 import pytest
 
+from agents.models import AgentDefinition
 from tables.models import Edge, EndNode, StartNode
 from tables.models.graph_models import (
     AgentNode,
+    AgentNodeTask,
     ConditionGroup,
     DecisionTableNode,
     Graph,
@@ -33,6 +35,20 @@ def _python_node(graph: Graph, node_name: str, node_number: int) -> PythonNode:
         node_number=node_number,
         python_code=PythonCode.objects.create(code="def main(): return 1"),
     )
+
+
+def _runnable_agent_node(graph: Graph, llm_config, node_name: str, node_number: int) -> AgentNode:
+    agent_definition = AgentDefinition.objects.create(
+        org=graph.org, name="Copywriter", llm_config=llm_config
+    )
+    agent_node = AgentNode.objects.create(
+        graph=graph,
+        node_name=node_name,
+        node_number=node_number,
+        agent_definition=agent_definition,
+    )
+    AgentNodeTask.objects.create(agent_node=agent_node, name="Draft", order=0)
+    return agent_node
 
 
 @pytest.mark.parametrize(
@@ -71,10 +87,10 @@ def test_unscoped_resolver_includes_the_node_number(graph):
 
 
 @pytest.mark.django_db
-def test_session_graph_data_uses_numbered_runtime_names_in_lockstep(graph):
+def test_session_graph_data_uses_numbered_runtime_names_in_lockstep(graph, llm_config):
     start_node = StartNode.objects.create(graph=graph, variables={})
     python_node = _python_node(graph, "Py", node_number=3)
-    agent_node = AgentNode.objects.create(graph=graph, node_name="Writer", node_number=5)
+    agent_node = _runnable_agent_node(graph, llm_config, "Writer", node_number=5)
     target_node = _python_node(graph, "Target", node_number=8)
     end_node = EndNode.objects.create(graph=graph, output_map={"context": "variables"})
     decision_table = DecisionTableNode.objects.create(

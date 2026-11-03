@@ -117,6 +117,23 @@ class KnowledgeNodeRunValidationError(CustomAPIExeption):
     default_detail = "A Knowledge Retriever node isn't set up."
 
 
+class AgentNodeRunValidationError(CustomAPIExeption):
+    """Raised on run when an Agent or Task node isn't set up.
+
+    The node has no agent, its agent has no LLM, or an Agent node has no tasks.
+    """
+
+    status_code = 400
+    default_detail = "An Agent or Task node isn't set up."
+
+
+class KeyValueNodeRunValidationError(CustomAPIExeption):
+    """Raised on run when a Key-Value node has no table selected."""
+
+    status_code = 400
+    default_detail = "A Key-Value node has no table selected."
+
+
 class InvalidTaskOrderError(CustomAPIExeption):
     status_code = 409
     default_detail = "A task cannot be placed before its context dependency. Please reorder the tasks or delete context."

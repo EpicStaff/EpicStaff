@@ -1,13 +1,30 @@
 """What a user is told when POST run-session can't start their flow."""
 
 import pytest
+from agents.models import AgentDefinition
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from storage_credentials.exceptions import TemporaryCredentialIssueError
 from storage_credentials.services.session_credential_service import session_credential_service
 
-from tables.models import FileExtractorNode, Graph, Session, SessionWarningMessage
-from tables.models.graph_models import Edge, EndNode, StartNode, SubGraphNode
+from tables.models import (
+    FileExtractorNode,
+    Graph,
+    KeyValueNode,
+    KeyValueTable,
+    Session,
+    SessionWarningMessage,
+)
+from tables.models.graph_models import (
+    AgentNode,
+    AgentNodeTask,
+    Edge,
+    EndNode,
+    StartNode,
+    SubGraphNode,
+    TaskNode,
+)
 from tables.services.session_manager_service import SessionManagerService
 from tests.fixtures import *
 from utils.logger import logger
@@ -94,6 +111,143 @@ def test_node_inside_a_subflow_is_named_with_its_flow(
         "error": 'File Extractor node "Extract PDF #1" in flow "Invoice parser" has no input '
         "file."
     }
+
+
+def _chain_from_start(graph: Graph, *nodes) -> None:
+    previous_id = StartNode.objects.get(graph=graph).id
+    for node in nodes:
+        Edge.objects.create(graph=graph, start_node_id=previous_id, end_node_id=node.id)
+        previous_id = node.id
+
+
+@pytest.mark.django_db
+def test_missing_agent_is_reported_before_a_key_value_node_without_a_table(
+    auth_client, redis_client_mock, session_data, graph
+):
+    key_value_node = KeyValueNode.objects.create(
+        graph=graph, node_name="Save lead", node_number=3
+    )
+    agent_node = AgentNode.objects.create(graph=graph, node_name="Writer", node_number=2)
+    AgentNodeTask.objects.create(agent_node=agent_node, name="Draft", order=0)
+    _chain_from_start(graph, key_value_node, agent_node)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {"error": 'Agent node "Writer #2" has no agent chosen.'}
+    redis_client_mock.publish.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_agent_node_whose_only_task_is_in_the_recycle_bin_has_no_tasks(
+    auth_client, redis_client_mock, session_data, graph, default_org, llm_config
+):
+    agent = AgentDefinition.objects.create(
+        org=default_org, name="Copywriter", llm_config=llm_config
+    )
+    agent_node = AgentNode.objects.create(
+        graph=graph, node_name="Writer", node_number=2, agent_definition=agent
+    )
+    AgentNodeTask.objects.create(
+        agent_node=agent_node,
+        name="Draft",
+        order=0,
+        active=False,
+        soft_deleted_at=timezone.now(),
+    )
+    _chain_from_start(graph, agent_node)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {
+        "error": 'Agent node "Writer #2" has no tasks. Add at least one task.'
+    }
+
+
+@pytest.mark.django_db
+def test_agent_node_whose_agent_is_in_the_recycle_bin_has_no_agent_chosen(
+    auth_client, redis_client_mock, session_data, graph, default_org, llm_config
+):
+    agent = AgentDefinition.objects.create(
+        org=default_org, name="Copywriter", llm_config=llm_config
+    )
+    agent_node = AgentNode.objects.create(
+        graph=graph, node_name="Writer", node_number=2, agent_definition=agent
+    )
+    AgentNodeTask.objects.create(agent_node=agent_node, name="Draft", order=0)
+    _chain_from_start(graph, agent_node)
+    delete_response = auth_client.delete(reverse("agentdefinition-detail", args=[agent.pk]))
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT, delete_response.content
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {"error": 'Agent node "Writer #2" has no agent chosen.'}
+
+
+@pytest.mark.django_db
+def test_key_value_node_whose_table_is_in_the_recycle_bin_has_no_table_selected(
+    auth_client, redis_client_mock, session_data, graph, default_org
+):
+    table = KeyValueTable.objects.create(org=default_org, name="Leads")
+    key_value_node = KeyValueNode.objects.create(
+        graph=graph, node_name="Save lead", node_number=3, key_value_table=table
+    )
+    _chain_from_start(graph, key_value_node)
+    delete_response = auth_client.delete(reverse("key-value-tables-detail", args=[table.pk]))
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT, delete_response.content
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {"error": 'Key-Value node "Save lead #3" has no table selected.'}
+
+
+@pytest.mark.django_db
+def test_key_value_node_inside_a_subflow_is_named_with_its_flow(
+    auth_client, redis_client_mock, session_data, graph, child_flow
+):
+    _run_subflow(graph, child_flow)
+    key_value_node = KeyValueNode.objects.create(
+        graph=child_flow, node_name="Save lead", node_number=3
+    )
+    _chain_from_start(child_flow, key_value_node)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {
+        "error": 'Key-Value node "Save lead #3" in flow "Invoice parser" has no table selected.'
+    }
+
+
+@pytest.mark.django_db
+def test_set_up_agent_task_and_key_value_nodes_run(
+    auth_client, redis_client_mock, session_data, graph, default_org, llm_config
+):
+    agent = AgentDefinition.objects.create(
+        org=default_org, name="Copywriter", llm_config=llm_config
+    )
+    agent_node = AgentNode.objects.create(
+        graph=graph, node_name="Writer", node_number=1, agent_definition=agent
+    )
+    AgentNodeTask.objects.create(agent_node=agent_node, name="Draft", order=0)
+    task_node = TaskNode.objects.create(
+        graph=graph, node_name="Summarize", node_number=2, agent_definition=agent
+    )
+    key_value_node = KeyValueNode.objects.create(
+        graph=graph,
+        node_name="Save lead",
+        node_number=3,
+        key_value_table=KeyValueTable.objects.create(org=default_org, name="Leads"),
+    )
+    _chain_from_start(graph, agent_node, task_node, key_value_node)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    redis_client_mock.publish.assert_called()
 
 
 @pytest.mark.django_db

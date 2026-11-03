@@ -42,6 +42,17 @@ def flow_location(flow_name: str | None) -> str:
     return f' in flow "{flow_name}"'
 
 
+def node_list_phrase(type_label: str, labels: list[str], flow_name: str | None) -> str:
+    """Name nodes of one kind for a message: 'Agent node "A #1"', 'Agent nodes "A #1" and "B #2"'.
+
+    Followed by the subflow's location when `flow_name` is set. The caller picks the verb
+    ("has" / "have") from `len(labels)`. `labels` must not be empty.
+    """
+    noun = "node" if len(labels) == 1 else "nodes"
+    quoted_labels = join_with_and([f'"{label}"' for label in labels])
+    return f"{type_label} {noun} {quoted_labels}{flow_location(flow_name)}"
+
+
 def runtime_node_name(*, node_name: str, node_number: int | None, node_id: int) -> str:
     """Return the name a node runs under: its label followed by " #<global id>".
 

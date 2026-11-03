@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 
-from utils.graph_utils import flow_location, join_with_and, node_label
+from utils.graph_utils import node_label, node_list_phrase
 
 from tables.exceptions import FileNodeValidationError
 from tables.models import AudioTranscriptionNode, FileExtractorNode
@@ -39,12 +39,10 @@ class FileNodeValidator:
         if not names_by_type:
             return
 
-        location = flow_location(flow_name)
         sentences = []
         for type_label, names in names_by_type.items():
-            quoted_names = join_with_and([f'"{name}"' for name in names])
-            if len(names) == 1:
-                sentences.append(f"{type_label} node {quoted_names}{location} has no input file.")
-            else:
-                sentences.append(f"{type_label} nodes {quoted_names}{location} have no input file.")
+            verb = "has" if len(names) == 1 else "have"
+            sentences.append(
+                f"{node_list_phrase(type_label, names, flow_name)} {verb} no input file."
+            )
         raise FileNodeValidationError(" ".join(sentences))

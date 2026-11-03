@@ -74,8 +74,10 @@ from tables.services.surface_knowledge_warning_service import (
 )
 from tables.services.task_node_payload_service import TaskNodePayloadService
 from tables.services.trigger_spec import TriggerSpec
+from tables.validators.agent_node_validator import AgentNodeValidator
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
+from tables.validators.key_value_node_validator import KeyValueNodeValidator
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
 from utils.graph_utils import (
@@ -99,6 +101,8 @@ class SessionManagerService(metaclass=SingletonMeta):
         self.converter_service = converter_service
         self.file_node_validator: FileNodeValidator = FileNodeValidator()
         self.knowledge_node_validator: KnowledgeNodeValidator = KnowledgeNodeValidator()
+        self.agent_node_validator: AgentNodeValidator = AgentNodeValidator()
+        self.key_value_node_validator: KeyValueNodeValidator = KeyValueNodeValidator()
         self.end_node_validator: EndNodeValidator = EndNodeValidator()
         self.subgraph_validator = SubGraphValidator()
         self.persistent_variables_service = PersistentVariablesService()
@@ -559,7 +563,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         file_extractor_node_list = FileExtractorNode.objects.filter(graph=graph.pk).order_by(
             "node_number", "id"
         )
-        key_value_node_list = KeyValueNode.objects.filter(graph=graph.pk)
+        key_value_node_list = KeyValueNode.objects.filter(graph=graph.pk).order_by(
+            "node_number", "id"
+        )
         audio_transcription_node_list = AudioTranscriptionNode.objects.filter(
             graph=graph.pk
         ).order_by("node_number", "id")
@@ -621,6 +627,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 "inline_surface__knowledge__graph_global_search_config",
                 "inline_surface__knowledge__graph_drift_search_config",
             )
+            .order_by("node_number", "id")
         )
         agent_node_list = (
             AgentNode.objects.filter(graph=graph.pk)
@@ -654,6 +661,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 "inline_surface__knowledge__graph_global_search_config",
                 "inline_surface__knowledge__graph_drift_search_config",
             )
+            .order_by("node_number", "id")
         )
 
         # Only a subflow is built without a session. Its name goes into every message
@@ -667,6 +675,10 @@ class SessionManagerService(metaclass=SingletonMeta):
             self.knowledge_node_validator.validate_runnable(
                 knowledge_node_list, flow_name=subflow_name
             )
+        self.agent_node_validator.validate_runnable(
+            [*agent_node_list, *task_node_list], flow_name=subflow_name
+        )
+        self.key_value_node_validator.validate_runnable(key_value_node_list, flow_name=subflow_name)
 
         condition_group_next_ids = list(
             ConditionGroup.objects.filter(

@@ -11,7 +11,7 @@ from tables.models import (
     Secret,
     Session,
 )
-from tables.models.graph_models import AgentNode, Edge, StartNode
+from tables.models.graph_models import AgentNode, AgentNodeTask, Edge, StartNode
 from rbac.models import Organization
 from src.shared.models.storage_scope import StorageCredentials
 from tables.services.secrets import secret_service
@@ -49,6 +49,7 @@ def graph_with_secret_backed_llm(org):
     agent_node = AgentNode.objects.create(
         graph=graph, agent_definition=agent_definition, node_name="agent_node"
     )
+    AgentNodeTask.objects.create(agent_node=agent_node, name="Answer", order=0)
     # Without an edge off the start node, conversion raises
     # GraphEntryPointException before any payload is built.
     Edge.objects.create(graph=graph, start_node_id=start.pk, end_node_id=agent_node.pk)

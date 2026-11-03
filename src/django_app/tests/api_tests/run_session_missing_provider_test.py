@@ -4,7 +4,7 @@ from rest_framework import status
 
 from agents.models import AgentDefinition
 from tables.models import Session
-from tables.models.graph_models import AgentNode, Edge
+from tables.models.graph_models import AgentNode, AgentNodeTask, Edge
 from tables.models.graph_models import StartNode
 from tables.models.llm_models import LLMConfig, LLMModel
 from tables.models.provider import Provider
@@ -26,6 +26,7 @@ def test_run_session_with_deleted_llm_provider_returns_400_naming_the_config(
     agent_node = AgentNode.objects.create(
         graph=graph, node_name="agent-node", agent_definition=agent_definition
     )
+    AgentNodeTask.objects.create(agent_node=agent_node, name="Answer", order=0)
     start_node = StartNode.objects.get(graph=graph)
     Edge.objects.create(graph=graph, start_node_id=start_node.id, end_node_id=agent_node.id)
     provider.delete()
