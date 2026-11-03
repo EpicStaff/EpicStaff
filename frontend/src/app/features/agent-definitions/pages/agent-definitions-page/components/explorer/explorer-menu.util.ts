@@ -17,6 +17,11 @@ export const GROUP_MENU_ACTION = {
     expandAll: 'expand-all',
 } as const;
 
+export const AGENTS_SECTION_MENU_ACTION = {
+    import: 'import-agents',
+    export: 'export-agents',
+} as const;
+
 /**
  * The group items of a menu (shown before the row's own items): "Move to group" and "New group…" on
  * an agent or a shared surface, the group actions on a group header, and the Agents section menu.
@@ -148,6 +153,23 @@ function itemGroupMenuItems(
         action: ActionCode.Create,
     });
     return items;
+}
+
+export function agentsSectionMenuItems(): ExplorerMenuItem[] {
+    return [
+        {
+            id: AGENTS_SECTION_MENU_ACTION.import,
+            label: 'Import',
+            resource: ResourceCode.Agents,
+            action: ActionCode.Create,
+        },
+        {
+            id: AGENTS_SECTION_MENU_ACTION.export,
+            label: 'Export…',
+            resource: ResourceCode.Agents,
+            action: ActionCode.Export,
+        },
+    ];
 }
 
 export function treeNodeMenuItems(node: BranchTreeNode): ExplorerMenuItem[] {

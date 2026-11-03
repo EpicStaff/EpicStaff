@@ -190,3 +190,109 @@ describe('AgentsSectionComponent new group input', () => {
         elsewhere.remove();
     });
 });
+
+describe('AgentsSectionComponent export bar', () => {
+    class ResizeObserverStub {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+    }
+
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    const AGENTS = [
+        { id: 1, name: 'Alpha', group: null, instruction_list: [], default_surfaces: [] },
+        { id: 2, name: 'Beta', group: null, instruction_list: [], default_surfaces: [] },
+    ];
+
+    function renderBar(): {
+        fixture: ComponentFixture<AgentsSectionComponent>;
+        store: AgentsPageStore;
+        buttons: () => string[];
+        click: (label: string) => void;
+    } {
+        TestBed.configureTestingModule({
+            providers: [
+                AgentsPageStore,
+                { provide: AgentGroupsApiService, useValue: new FakeGroupsApi() },
+                { provide: AgentDefinitionsApiService, useValue: { getAgentDefinitions: () => of(AGENTS) } },
+                { provide: SurfacesApiService, useValue: { getSurfaces: () => of([]) } },
+                { provide: PermissionsService, useValue: { can: () => true } },
+                { provide: ProfileService, useValue: { currentUserSignal: signal({ id: 7 }) } },
+                { provide: ToastService, useValue: {} },
+                { provide: SurfaceCatalogsStore, useValue: {} },
+            ],
+        });
+        const store = TestBed.inject(AgentsPageStore);
+        store.load();
+        const fixture = TestBed.createComponent(AgentsSectionComponent);
+        fixture.detectChanges();
+        const host = fixture.nativeElement as HTMLElement;
+        const barButtons = (): HTMLButtonElement[] => [
+            ...host.querySelectorAll<HTMLButtonElement>('.export-bar button'),
+        ];
+        return {
+            fixture,
+            store,
+            buttons: () =>
+                barButtons().map((button) => `${button.textContent.trim()}${button.disabled ? ' (disabled)' : ''}`),
+            click: (label) => {
+                barButtons()
+                    .find((button) => button.textContent.trim() === label)!
+                    .click();
+                fixture.detectChanges();
+            },
+        };
+    }
+
+    it('shows no bar outside export mode', () => {
+        const { buttons } = renderBar();
+
+        expect(buttons()).toEqual([]);
+    });
+
+    it('offers Cancel, Select all and a disabled Export 0 once the export starts', () => {
+        const { fixture, store, buttons } = renderBar();
+
+        store.startAgentExport();
+        fixture.detectChanges();
+
+        expect(buttons()).toEqual(['Cancel', 'Select all', 'Export 0 (disabled)']);
+    });
+
+    it('counts the ticked agents on the Export button', () => {
+        const { fixture, store, buttons } = renderBar();
+        store.startAgentExport();
+        store.toggleAgentSelection(2);
+        fixture.detectChanges();
+
+        expect(buttons()).toEqual(['Cancel', 'Select all', 'Export 1']);
+    });
+
+    it('ticks every agent on Select all and clears them on Deselect all', () => {
+        const { fixture, store, buttons, click } = renderBar();
+        store.startAgentExport();
+        fixture.detectChanges();
+
+        click('Select all');
+        expect([...store.selectedAgentIds()]).toEqual([1, 2]);
+        expect(buttons()).toEqual(['Cancel', 'Deselect all', 'Export 2']);
+
+        click('Deselect all');
+        expect(store.selectedAgentIds().size).toBe(0);
+    });
+
+    it('leaves export mode with nothing ticked on Cancel', () => {
+        const { fixture, store, buttons, click } = renderBar();
+        store.startAgentExport();
+        store.toggleAgentSelection(1);
+        fixture.detectChanges();
+
+        click('Cancel');
+
+        expect(store.agentExportMode()).toBe(false);
+        expect(store.selectedAgentIds().size).toBe(0);
+        expect(buttons()).toEqual([]);
+    });
+});

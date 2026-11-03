@@ -10,7 +10,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
-import { FetchErrorStateComponent, LabelColorPickerComponent } from '@shared/components';
+import { ButtonComponent,FetchErrorStateComponent, LabelColorPickerComponent } from '@shared/components';
 import { LabelColor, labelColorInTurn } from '@shared/models';
 import { extractHttpErrorMessage } from '@shared/utils';
 
@@ -26,7 +26,13 @@ import {
 
 @Component({
     selector: 'app-agents-section',
-    imports: [TreeNodeComponent, FetchErrorStateComponent, ExplorerGroupBlockComponent, LabelColorPickerComponent],
+    imports: [
+        TreeNodeComponent,
+        FetchErrorStateComponent,
+        ExplorerGroupBlockComponent,
+        ButtonComponent,
+        LabelColorPickerComponent,
+    ],
     templateUrl: './agents-section.component.html',
     styleUrls: ['./agents-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

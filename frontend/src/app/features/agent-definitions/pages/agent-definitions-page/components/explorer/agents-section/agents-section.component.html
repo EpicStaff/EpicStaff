@@ -1,3 +1,30 @@
+@if (store.agentExportMode()) {
+    <div class="export-bar">
+        <app-button
+            type="ghost"
+            mod="small"
+            (click)="store.cancelAgentExport()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="ghost"
+            mod="small"
+            (click)="store.toggleSelectAllAgents()"
+        >
+            {{ store.allAgentsSelected() ? 'Deselect all' : 'Select all' }}
+        </app-button>
+        <app-button
+            type="primary"
+            mod="small"
+            [disabled]="store.selectedAgentCount() === 0"
+            (click)="store.confirmAgentExport()"
+        >
+            Export {{ store.selectedAgentCount() }}
+        </app-button>
+    </div>
+}
+
 @if (store.newGroupDraft()) {
     <div class="new-group">
         <div

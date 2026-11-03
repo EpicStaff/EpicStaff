@@ -54,7 +54,7 @@ import { DetailCrumb, DetailHeaderComponent } from './components/detail-header/d
 import { EmptyDetailComponent } from './components/empty-detail/empty-detail.component';
 import { ExplorerComponent } from './components/explorer/explorer.component';
 import { ExplorerMenuSubject } from './components/explorer/explorer-context-menu/explorer-menu.model';
-import { GROUP_MENU_ACTION } from './components/explorer/explorer-menu.util';
+import { AGENTS_SECTION_MENU_ACTION, GROUP_MENU_ACTION } from './components/explorer/explorer-menu.util';
 import {
     ExplorerTreeAttachSurfaceEvent,
     ExplorerTreeMenuEvent,
@@ -633,6 +633,12 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     private applyExplorerTreeMenu({ node, action }: ExplorerTreeMenuEvent): void {
+        if (node.kind === 'section-header') {
+            if (action === AGENTS_SECTION_MENU_ACTION.import) this.store.importAgents();
+            else if (action === AGENTS_SECTION_MENU_ACTION.export) this.store.startAgentExport();
+            return;
+        }
+
         if (node.kind === 'agent') {
             if (action === 'delete') this.onDeleteAgentById(node.agentId);
             else if (action === 'duplicate') this.store.duplicateAgent(node.agentId);

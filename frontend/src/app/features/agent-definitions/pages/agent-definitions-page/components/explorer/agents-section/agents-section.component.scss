@@ -8,6 +8,13 @@
     font-size: 0.85rem;
 }
 
+.export-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px 6px 12px;
+}
+
 .new-group {
     padding: 4px 8px 6px 12px;
 
