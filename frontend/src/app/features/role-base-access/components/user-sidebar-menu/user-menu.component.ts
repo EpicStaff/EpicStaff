@@ -10,7 +10,6 @@ import { ORG_SWITCH_URL_RULES } from '@shared/services';
 import { EMPTY } from 'rxjs';
 import { catchError, filter, finalize, map, switchMap } from 'rxjs/operators';
 
-import { GuidedTourService } from '../../../../core/guided-tour';
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { AuthService } from '../../../../services/auth/auth.service';
@@ -52,12 +51,8 @@ export class UserMenuComponent {
     private unsavedChangesRegistry = inject(UnsavedChangesRegistry);
     private currentUserService = inject(ProfileService);
     private permissionService = inject(PermissionsService);
-    private readonly guidedTourService = inject(GuidedTourService);
     /** Features' own rules for their addresses (a plugin page keeps the plugin, not its path). */
     private readonly orgSwitchUrlRules = inject(ORG_SWITCH_URL_RULES, { optional: true }) ?? [];
-
-    /** The tours the user can take now, each replayable from its own entry. */
-    protected readonly tours = this.guidedTourService.replayableTours;
 
     // Declared after the router it reads: field initializers run in order.
     private currentUrl = toSignal(
@@ -108,11 +103,6 @@ export class UserMenuComponent {
     onProfileClick(): void {
         this.isUserMenuOpen.set(false);
         void this.router.navigate(['/profile']);
-    }
-
-    onTourClick(tourKey: string): void {
-        this.isUserMenuOpen.set(false);
-        void this.guidedTourService.start(tourKey);
     }
 
     onSignOutClick(): void {
