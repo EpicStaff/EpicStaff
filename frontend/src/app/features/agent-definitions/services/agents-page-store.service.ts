@@ -1,12 +1,19 @@
 ﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { computeUniqueCopyName, computeUniqueName, movedToRecycleBinMessage } from '@shared/utils';
+import {
+    computeUniqueCopyName,
+    computeUniqueName,
+    downloadBlob,
+    movedToRecycleBinMessage,
+    showExportExclusionWarning,
+} from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ToastService } from '../../../services/notifications';
+import { ImportWithReviewService } from '../../flows/components/import-review-dialog/import-with-review.service';
 import {
     AgentDefaultSurface,
     AgentDefinition,
@@ -90,6 +97,7 @@ export class AgentsPageStore {
     private readonly catalogs: SurfaceCatalogsStore = inject(SurfaceCatalogsStore);
     private readonly destroyRef = inject(DestroyRef);
     private readonly permissionService = inject(PermissionsService);
+    private readonly importWithReview = inject(ImportWithReviewService);
 
     private readonly pendingSurfacePatch = new Map<number, PartialUpdateSurfaceRequest>();
     private readonly surfacePatch$ = new Subject<number>();
@@ -128,6 +136,14 @@ export class AgentsPageStore {
     readonly visibleSections = signal<Set<ExplorerSectionId>>(loadVisibleSections());
 
     readonly storageActivated = signal<boolean>(false);
+    readonly agentExportMode = signal<boolean>(false);
+    readonly selectedAgentIds = signal<Set<number>>(new Set());
+    readonly selectedAgentCount = computed<number>(() => this.selectedAgentIds().size);
+    readonly allAgentsSelected = computed<boolean>(() => {
+        const agents = this.agents();
+        const selected = this.selectedAgentIds();
+        return agents.length > 0 && agents.every((a) => selected.has(a.id));
+    });
 
     readonly visibleSectionsCount = computed<number>(() => this.visibleSections().size);
 
@@ -968,6 +984,74 @@ export class AgentsPageStore {
                 this.toast.error(this.extractError(err, 'Failed to delete agent'));
             },
         });
+    }
+
+    startAgentExport(): void {
+        this.selectedAgentIds.set(new Set());
+        this.agentExportMode.set(true);
+    }
+
+    cancelAgentExport(): void {
+        this.agentExportMode.set(false);
+        this.selectedAgentIds.set(new Set());
+    }
+
+    toggleAgentSelection(id: number): void {
+        this.selectedAgentIds.update((ids) => {
+            const next = new Set(ids);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }
+
+    toggleSelectAllAgents(): void {
+        this.selectedAgentIds.set(this.allAgentsSelected() ? new Set() : new Set(this.agents().map((a) => a.id)));
+    }
+
+    confirmAgentExport(): void {
+        const existing = new Set(this.agents().map((a) => a.id));
+        const ids = [...this.selectedAgentIds()].filter((id) => existing.has(id));
+        if (ids.length === 0) {
+            this.toast.info('Select at least one agent to export.');
+            return;
+        }
+        this.agentsApi.bulkExportAgents(ids).subscribe({
+            next: ({ blob, excluded }) => {
+                downloadBlob(blob, `agents_export_${Date.now()}.json`);
+                this.cancelAgentExport();
+                showExportExclusionWarning(this.toast, excluded);
+            },
+            error: (err) => this.toast.error(this.extractError(err, 'Failed to export agents')),
+        });
+    }
+
+    exportAgent(id: number): void {
+        const agent = this.agents().find((a) => a.id === id);
+        if (!agent) return;
+        this.agentsApi.exportAgent(id).subscribe({
+            next: ({ blob, excluded }) => {
+                downloadBlob(blob, `agent_${agent.name}.json`);
+                showExportExclusionWarning(this.toast, excluded);
+            },
+            error: (err) => this.toast.error(this.extractError(err, `Failed to export agent "${agent.name}"`)),
+        });
+    }
+
+    importAgents(): void {
+        this.importWithReview
+            .pickAndImport({
+                entityLabel: 'agent',
+                entityLabelPlural: 'agents',
+                inspect: (file) => this.agentsApi.inspectImport(file),
+                importFile: (file) => this.agentsApi.importAgents(file),
+            })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => {
+                this.toast.success('Agents imported successfully.');
+                this.load();
+                this.catalogs.reloadLoadedCatalogs();
+            });
     }
 
     deleteSurface(id: number): void {
