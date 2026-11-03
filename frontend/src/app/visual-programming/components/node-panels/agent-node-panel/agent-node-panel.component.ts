@@ -193,6 +193,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
                 value: LOCAL_SURFACE_VALUE,
                 group: 'Local surface',
                 trailingActionIcon: 'edit-label',
+                trailingActionLabel: 'Edit local surface',
             });
         }
 

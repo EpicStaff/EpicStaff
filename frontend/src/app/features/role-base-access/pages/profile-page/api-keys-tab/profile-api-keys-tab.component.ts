@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import {
@@ -53,6 +53,9 @@ import {
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProfileApiKeysTabComponent implements OnInit {
+    // Takes the focus when a row action removes the button that had it.
+    private readonly createButton = viewChild.required<ButtonComponent>('createButton');
+
     private currentUserService = inject(ProfileService);
     private apiKeysStorage = inject(ProfileApiKeysStorageService);
     private destroyRef = inject(DestroyRef);
@@ -150,7 +153,10 @@ export class ProfileApiKeysTabComponent implements OnInit {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => this.toast.success(`"${name}" was revoked`),
+                next: () => {
+                    this.toast.success(`"${name}" was revoked`);
+                    this.createButton().focus();
+                },
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to revoke API key'),
             });
     }
@@ -167,7 +173,10 @@ export class ProfileApiKeysTabComponent implements OnInit {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => this.toast.success(`"${name}" was deleted`),
+                next: () => {
+                    this.toast.success(`"${name}" was deleted`);
+                    this.createButton().focus();
+                },
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to delete API key'),
             });
     }

@@ -1,17 +1,21 @@
 import { Dialog, DialogModule } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
     effect,
     inject,
+    Injector,
     OnInit,
     signal,
+    viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppIncludeExcludeDialogComponent,
     AppIncludeExcludeDialogData,
@@ -23,8 +27,9 @@ import {
     IncludeExcludeTab,
     LoadingSpinnerComponent,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
-import { downloadBlob, movedToRecycleBinMessage } from '@shared/utils';
+import { downloadBlob, isFocusLost, movedToRecycleBinMessage } from '@shared/utils';
 import { map, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../services/notifications';
@@ -64,10 +69,21 @@ const RECENT_TOOLS_MAX = 8;
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './tools-list.component.html',
     styleUrls: ['./tools-list.component.scss'],
-    imports: [LoadingSpinnerComponent, ToolCardComponent, DialogModule, CommonModule, FetchErrorStateComponent],
+    imports: [
+        LoadingSpinnerComponent,
+        ToolCardComponent,
+        DialogModule,
+        CommonModule,
+        FetchErrorStateComponent,
+        MatTooltip,
+        TooltipOnOverflowDirective,
+    ],
 })
 export class ToolsListComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
+    private readonly document = inject(DOCUMENT);
+    private readonly toolCards = viewChildren(ToolCardComponent);
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
@@ -542,7 +558,9 @@ export class ToolsListComponent implements OnInit {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => {
+                    const index = this.cards().findIndex((card) => card.id === tool.id);
                     this.allTools.update((list) => list.filter((t) => t.id !== tool.id));
+                    this.keepFocusAfterRemoval(index);
                     this.toastService.success(
                         movedToRecycleBinMessage(1, this.port.entityLabel, this.port.entityLabelPlural)
                     );
@@ -554,6 +572,19 @@ export class ToolsListComponent implements OnInit {
                     );
                 },
             });
+    }
+
+    /** The deleted card takes its focused ⋮ button along: the focus moves to the card now in its place. */
+    private keepFocusAfterRemoval(index: number): void {
+        if (index === -1) return;
+        afterNextRender(
+            () => {
+                if (!isFocusLost(this.document)) return;
+                const cards = this.toolCards();
+                cards[Math.min(index, cards.length - 1)]?.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     private runBulkSelectedDelete(ids: number[]): void {

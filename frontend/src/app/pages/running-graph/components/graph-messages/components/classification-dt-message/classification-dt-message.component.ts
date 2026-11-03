@@ -19,7 +19,7 @@ import {
         <!-- Condition Group -->
         @if (isConditionGroup()) {
             <div
-                class="dt-flow-container"
+                class="session-message dt-flow-container"
                 [ngClass]="conditionResultClass()"
             >
                 <div
@@ -42,7 +42,15 @@ import {
                         />
                     </div>
                     <div class="header-text">
-                        <h3>{{ getConditionData()?.group_name }}</h3>
+                        <h3>
+                            <button
+                                type="button"
+                                class="message-toggle"
+                                [attr.aria-expanded]="isMessageExpanded"
+                            >
+                                {{ getConditionData()?.group_name }}
+                            </button>
+                        </h3>
                         <span
                             class="badge"
                             [ngClass]="conditionResultClass()"
@@ -55,6 +63,7 @@ import {
                 <div
                     class="collapsible-content grid-collapsible"
                     [class.expanded]="isMessageExpanded"
+                    [inert]="!isMessageExpanded"
                 >
                     <div class="dt-content">
                         @if (getConditionData()?.expression) {
@@ -75,7 +84,7 @@ import {
 
         <!-- Classification Prompt -->
         @if (isClassificationPrompt()) {
-            <div class="dt-flow-container prompt-container">
+            <div class="session-message dt-flow-container prompt-container">
                 <div
                     class="dt-header"
                     (click)="toggleMessage()"
@@ -93,7 +102,15 @@ import {
                         />
                     </div>
                     <div class="header-text">
-                        <h3>LLM Classification</h3>
+                        <h3>
+                            <button
+                                type="button"
+                                class="message-toggle"
+                                [attr.aria-expanded]="isMessageExpanded"
+                            >
+                                LLM Classification
+                            </button>
+                        </h3>
                         <span class="badge prompt-badge">{{ getPromptData()?.prompt_id }}</span>
                     </div>
                 </div>
@@ -101,12 +118,15 @@ import {
                 <div
                     class="collapsible-content grid-collapsible"
                     [class.expanded]="isMessageExpanded"
+                    [inert]="!isMessageExpanded"
                 >
                     <div class="dt-content">
                         <!-- Prompt Text -->
                         <div class="detail-section">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isPromptExpanded"
                                 (click)="toggleSection('prompt'); $event.stopPropagation()"
                             >
                                 <app-svg-icon
@@ -114,10 +134,11 @@ import {
                                     size="1.1rem"
                                 />
                                 Prompt
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isPromptExpanded"
+                                [inert]="!isPromptExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <pre class="code-block">{{ getPromptData()?.prompt_text }}</pre>
@@ -127,8 +148,10 @@ import {
 
                         <!-- Raw Response -->
                         <div class="detail-section">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isResponseExpanded"
                                 (click)="toggleSection('response'); $event.stopPropagation()"
                             >
                                 <app-svg-icon
@@ -136,10 +159,11 @@ import {
                                     size="1.1rem"
                                 />
                                 Raw Response
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isResponseExpanded"
+                                [inert]="!isResponseExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <pre class="code-block">{{ getPromptData()?.raw_response }}</pre>
@@ -194,7 +218,7 @@ import {
 
         <!-- Condition Group Manipulation -->
         @if (isManipulation()) {
-            <div class="dt-flow-container manipulation-container">
+            <div class="session-message dt-flow-container manipulation-container">
                 <div
                     class="dt-header"
                     (click)="toggleMessage()"
@@ -212,7 +236,15 @@ import {
                         />
                     </div>
                     <div class="header-text">
-                        <h3>Manipulation</h3>
+                        <h3>
+                            <button
+                                type="button"
+                                class="message-toggle"
+                                [attr.aria-expanded]="isMessageExpanded"
+                            >
+                                Manipulation
+                            </button>
+                        </h3>
                         <span class="badge manipulation-badge">{{ getManipulationData()?.group_name }}</span>
                     </div>
                 </div>
@@ -220,6 +252,7 @@ import {
                 <div
                     class="collapsible-content grid-collapsible"
                     [class.expanded]="isMessageExpanded"
+                    [inert]="!isMessageExpanded"
                 >
                     <div class="dt-content">
                         <pre class="code-block">{{ getManipulationDisplay() | json }}</pre>
@@ -231,6 +264,18 @@ import {
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .dt-flow-container {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
@@ -411,7 +456,14 @@ import {
                 margin-bottom: 0.75rem;
             }
 
+            // The button that folds its section, drawn as the heading row it was.
             .section-heading {
+                width: 100%;
+                padding: 0;
+                border: none;
+                background: none;
+                font-family: inherit;
+                text-align: left;
                 font-size: var(--text-body-medium-size);
                 font-weight: var(--text-body-medium-weight);
                 line-height: var(--text-body-medium-line-height);
@@ -421,6 +473,11 @@ import {
                 user-select: none;
                 display: flex;
                 align-items: center;
+            }
+
+            // Drawn inside: the collapsible content around clips it.
+            .section-heading:focus-visible {
+                outline-offset: -2px;
             }
 
             .section-heading app-svg-icon {

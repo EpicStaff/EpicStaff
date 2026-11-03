@@ -219,6 +219,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
     private readonly shortcutsAnchor = viewChild.required<ElementRef<HTMLElement>>('shortcutsAnchor');
     private readonly flowHost = viewChild.required('flowHost', { read: ElementRef<HTMLElement> });
+    private readonly settingsButton = viewChild<ElementRef<HTMLButtonElement>>('settingsButton');
     private readonly filesButton = viewChild(FlowFilesButtonComponent);
     private readonly exportImportButton = viewChild(FlowExportImportButtonComponent);
 
@@ -1325,6 +1326,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.smartRoutingEnabled.set(value);
     }
 
+    /** The Unused nodes bar closed with the focus on it; Flow settings, where it is switched on, takes the focus. */
+    protected focusSettingsButton(): void {
+        this.settingsButton()?.nativeElement.focus();
+    }
+
     protected openSettings(): void {
         this.dialog.open(FlowSettingsPanelComponent, {
             width: '480px',
@@ -1335,6 +1341,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public updateMouseTrackerPosition(event: IPoint): void {
         this.mouseCursorPosition = event;
+    }
+
+    protected onAutoArrangeClick(): void {
+        if (this.isAutoArrangeDisabled()) return;
+        this.onAutoArrange();
     }
 
     public onAutoArrange(): void {

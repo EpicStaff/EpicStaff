@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer, OverlayModule } from '@angular/cdk/overlay';
 import { CUSTOM_ELEMENTS_SCHEMA, signal, WritableSignal } from '@angular/core';
@@ -10,10 +11,12 @@ import {
     UnsavedChangesDialogService,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
+import { of } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
 import { AgentDefinition } from '../../models/agent-definition.model';
+import { AgentGroupsStorageService } from '../../services/agent-groups-storage.service';
 import { AgentsPageStore } from '../../services/agents-page-store.service';
 import { SurfaceCatalogsStore } from '../../services/surface-catalogs-store.service';
 import { AgentDefinitionsPageComponent } from './agent-definitions-page.component';
@@ -31,6 +34,7 @@ const AGENT: AgentDefinition = {
     agent_definition_realtime_config_id: null,
     has_realtime_definition: false,
     default_surfaces: [],
+    group: null,
     metadata: {},
     max_iter: 20,
     max_rpm: 10,
@@ -89,12 +93,14 @@ function render(canWrite: boolean): {
             { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
             { provide: UnsavedChangesDialogService, useValue: {} },
             { provide: ConfirmationDialogService, useValue: {} },
+            // The breadcrumb group picker reads the org's groups.
+            { provide: AgentGroupsStorageService, useValue: { labelTree: signal([]), loadLabels: () => of([]) } },
         ],
     });
     // Only the editor header is under test: the explorer and editor panes stay unrendered custom elements.
     TestBed.overrideComponent(AgentDefinitionsPageComponent, {
         set: {
-            imports: [DetailHeaderComponent, AppSvgIconComponent, OverlayModule, HasPermissionDirective],
+            imports: [DetailHeaderComponent, AppSvgIconComponent, OverlayModule, CdkTrapFocus, HasPermissionDirective],
             providers: [
                 { provide: AgentsPageStore, useValue: agentSelectedStore() },
                 {
@@ -121,7 +127,10 @@ function savingSignal(fixture: ComponentFixture<AgentDefinitionsPageComponent>):
     return fixture.debugElement.injector.get(AgentsPageStore).saving as WritableSignal<boolean>;
 }
 
+// Focused first, as a real click or Enter leaves it: the menu's focus trap hands the focus back to whatever had it
+// when the menu opened, and a test must not depend on what an earlier spec left focused.
 function openMenu(fixture: ComponentFixture<AgentDefinitionsPageComponent>): void {
+    moreButton(fixture.nativeElement)!.focus();
     moreButton(fixture.nativeElement)!.click();
     fixture.detectChanges();
 }

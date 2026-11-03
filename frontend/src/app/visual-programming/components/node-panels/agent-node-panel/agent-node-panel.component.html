@@ -106,7 +106,6 @@
                                 <button
                                     type="button"
                                     class="view-summary-btn"
-                                    aria-label="View combined surface summary"
                                     matTooltip="View combined surface summary"
                                     (click)="onViewSummary()"
                                 >
@@ -269,6 +268,7 @@
                                 } @else {
                                     <app-variable-highlight-textarea
                                         #rightInstructionsTextarea
+                                        ariaLabel="Instructions"
                                         class="main-editor-pane__textarea"
                                         placeholder="Enter task instructions..."
                                         [value]="rightInstructionsValue()"
@@ -371,7 +371,6 @@
                             <button
                                 type="button"
                                 class="view-summary-btn"
-                                aria-label="View combined surface summary"
                                 matTooltip="View combined surface summary"
                                 (click)="onViewSummary()"
                             >

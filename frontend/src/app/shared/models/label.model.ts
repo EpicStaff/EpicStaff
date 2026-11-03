@@ -27,6 +27,19 @@ export function getLabelColorOption(color?: string | null): LabelColorOption {
     return LABEL_COLOR_OPTIONS.find((o) => o.id === color) ?? LABEL_COLOR_OPTIONS[0];
 }
 
+/** Labels created without a color picker take these in turn, so neighbouring labels are told apart. */
+const LABEL_COLORS_IN_TURN: readonly LabelColor[] = [
+    LabelColor.Purple,
+    LabelColor.Blue,
+    LabelColor.Green,
+    LabelColor.Orange,
+    LabelColor.Red,
+];
+
+export function labelColorInTurn(existingCount: number): LabelColor {
+    return LABEL_COLORS_IN_TURN[existingCount % LABEL_COLORS_IN_TURN.length];
+}
+
 export interface LabelDto {
     id: number;
     name: string;

@@ -33,6 +33,14 @@
     transition: border 0.2s ease;
     overflow: hidden;
 
+    // The textarea draws no focus of its own (its text sits over the highlight layer), so the field shows it as an
+    // accent border like the other text fields: drawn as a 1px inset line, since the field has no border to recolor and
+    // its container may clip anything drawn outside.
+    &:focus-within {
+        outline: 1px solid var(--accent-color);
+        outline-offset: -1px;
+    }
+
     &--disabled {
         opacity: 0.7;
     }

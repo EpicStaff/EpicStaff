@@ -398,6 +398,19 @@ export class KeyValueEntriesGridComponent {
         // tall as its rows and clips them. AG Grid keeps an open popup on its cell as the page scrolls.
         popupParent: inject(DOCUMENT).body,
         defaultColDef: { sortable: false, resizable: true, suppressMovable: true },
+        // The delete column's header is empty, so keyboard focus skips it: Tab from the last named header goes to
+        // the rows (where the grid goes after its last header), and any other way in moves to the header before it.
+        tabToNextHeader: ({ backwards, nextHeaderPosition, api }) => {
+            if (backwards || (nextHeaderPosition && nextHeaderPosition.column.getUniqueId() !== 'actions')) {
+                return nextHeaderPosition ?? false;
+            }
+            return { headerRowIndex: -1, column: api.getAllDisplayedColumns()[0] };
+        },
+        onHeaderFocused: ({ column, api }) => {
+            if (column.getUniqueId() !== 'actions' || !('getColId' in column)) return;
+            const previous = api.getDisplayedColBefore(column);
+            if (previous) api.setFocusedHeader(previous);
+        },
     };
 
     private readonly reloadTick = signal(0);

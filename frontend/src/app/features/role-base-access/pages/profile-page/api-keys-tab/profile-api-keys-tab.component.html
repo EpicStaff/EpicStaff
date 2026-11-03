@@ -13,9 +13,11 @@
     </h3>
 
     <div class="toolbar-actions">
-        <!-- aria-disabled keeps the button focusable so its disabled reason is reachable: the tooltip opens on focus by hand
-             (matTooltip only watches its host, and focus lands on the inner button); the hidden span is read aloud. -->
+        <!-- aria-disabled keeps the button focusable so its disabled reason is reachable, and keeps the focus the key dialog
+             hands back when that key reached the limit. The tooltip opens on focus by hand (matTooltip only watches its
+             host, and focus lands on the inner button); the hidden span is read aloud. -->
         <app-button
+            #createButton
             #createTooltipRef="matTooltip"
             type="primary"
             leftIcon="plus"

@@ -17,12 +17,17 @@
                     <h3 class="recent-section__title">Last modified</h3>
                     <ul class="recent-tools-list">
                         @for (tool of recentTools(); track tool.id) {
-                            <li
-                                class="recent-tool-card"
-                                data-selection-safe
-                                (click)="onRecentToolClick(tool.id)"
-                            >
-                                <span class="recent-tool-name">{{ tool.name }}</span>
+                            <li class="recent-tool-item">
+                                <button
+                                    type="button"
+                                    class="recent-tool-card"
+                                    data-selection-safe
+                                    appTooltipOnOverflow=".recent-tool-name"
+                                    [matTooltip]="tool.name"
+                                    (click)="onRecentToolClick(tool.id)"
+                                >
+                                    <span class="recent-tool-name">{{ tool.name }}</span>
+                                </button>
                             </li>
                         }
                     </ul>

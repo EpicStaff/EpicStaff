@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 
 import { CDT_COLUMN_KIND } from '../../cdt.constants';
 import { filterByQuery } from '../../cdt-search-filter.util';
@@ -92,7 +93,7 @@ const SYMBOLIC_TOKENS = new Set([
 @Component({
     selector: 'app-expression-builder',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FormsModule, MatTooltipModule],
+    imports: [FormsModule, MatTooltipModule, TooltipOnOverflowDirective],
     templateUrl: './expression-builder.component.html',
     styleUrls: ['./expression-builder.component.scss'],
 })
@@ -187,6 +188,8 @@ export class ExpressionBuilderComponent implements OnInit {
                 return;
             }
             if (event.key === 'Escape') {
+                // Closes only the mention list; the panel around it closes on the next Escape.
+                event.preventDefault();
                 this.mentionActive.set(false);
                 return;
             }

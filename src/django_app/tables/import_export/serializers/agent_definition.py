@@ -13,7 +13,9 @@ class AgentDefinitionImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.
         # created_at is instance-local: auto_now_add makes it read-only here, so an
         # import would discard it. Reuse matching (COMPARED_FIELDS in the strategy)
         # ignores it, so excluding it only keeps the export free of a dead value.
-        exclude = ["org", "created_by", "created_at", "default_surface_list"]
+        # group is an org-local label id: exporting it would carry one org's label
+        # id into another org's import, so an imported agent is always ungrouped.
+        exclude = ["org", "created_by", "created_at", "default_surface_list", "group"]
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

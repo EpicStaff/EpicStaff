@@ -1,3 +1,39 @@
+@if (store.newGroupDraft()) {
+    <div class="new-group">
+        <div
+            class="new-group__field"
+            (focusout)="onNewGroupFocusOut($event, newGroupInput.value)"
+        >
+            <input
+                #newGroupInput
+                class="new-group__input"
+                type="text"
+                placeholder="Group name"
+                aria-label="New group name"
+                [class.new-group__input--error]="newGroupError()"
+                [disabled]="creatingGroup()"
+                (input)="newGroupError.set(null)"
+                (keydown.enter)="createGroup(newGroupInput.value)"
+                (keydown.escape)="cancelNewGroup()"
+            />
+            <app-label-color-picker
+                [selectedColor]="newGroupColor()"
+                (colorChange)="onNewGroupColor($event)"
+            ></app-label-color-picker>
+        </div>
+        @if (newGroupError(); as error) {
+            <div
+                class="new-group__error"
+                role="alert"
+            >
+                {{ error }}
+            </div>
+        } @else {
+            <div class="new-group__help">Enter to create, Esc to cancel</div>
+        }
+    </div>
+}
+
 @if (store.agentsError()) {
     <app-fetch-error-state
         mod="small"
@@ -5,6 +41,20 @@
         message="Check your connection and try again."
         (retry)="store.retryAgents()"
     />
+} @else if (store.agentGroupBlocks(); as blocks) {
+    @for (block of blocks; track block.groupId) {
+        <app-explorer-group-block
+            [block]="block"
+            section="agents"
+            [selected]="store.selectedNode()"
+            (selectNode)="onSelect($event)"
+            (menuAction)="onMenuAction($event)"
+            (menuOpen)="onMenuOpen($event)"
+            (attachSurface)="onAttachSurface($event)"
+        />
+    } @empty {
+        <div class="section-state">No agents yet</div>
+    }
 } @else if (store.agentsTree().length === 0) {
     <div class="section-state">No agents yet</div>
 } @else {

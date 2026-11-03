@@ -40,7 +40,7 @@
     font-size: 12px;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--accent-color-hover);
     }
 
@@ -76,11 +76,11 @@
     white-space: nowrap;
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
         background-color: var(--color-secondary-btn-background-hover);
     }
 
-    &:disabled {
+    &:is(:disabled, [aria-disabled='true']) {
         opacity: 0.45;
         cursor: default;
     }
@@ -100,7 +100,7 @@
     border-color: var(--accent-color);
     color: var(--accent-color);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
         background-color: var(--color-ghost-btn-hover);
     }
 }
@@ -109,7 +109,7 @@
     border-color: var(--accent-color);
     background-color: var(--accent-color);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
         background-color: var(--accent-color-hover);
     }
 }
@@ -138,7 +138,7 @@
     background-color: var(--color-input-background);
 
     // on the whole card, not the main button, so the menu button's strip changes with it
-    &:hover:not(.is-disabled) {
+    &:is(:hover, :focus-visible):not(.is-disabled) {
         background-color: var(--color-input-background-hover);
     }
 
@@ -233,7 +233,7 @@
     color: var(--accent-color);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 
@@ -286,7 +286,7 @@
     line-height: 1;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-secondary-btn-background-hover);
         color: var(--color-text-primary);
     }
@@ -324,13 +324,18 @@
     white-space: nowrap;
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--color-ghost-btn-hover);
     }
 
     &:disabled {
         opacity: 0.45;
         cursor: default;
+    }
+
+    // Drawn inside: the menu clips its items.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     & + & {
@@ -404,7 +409,7 @@
         background-color: var(--accent-color);
     }
 
-    &:hover:not(.is-active) {
+    &:is(:hover, :focus-visible):not(.is-active) {
         background-color: var(--color-ghost-btn-hover);
     }
 

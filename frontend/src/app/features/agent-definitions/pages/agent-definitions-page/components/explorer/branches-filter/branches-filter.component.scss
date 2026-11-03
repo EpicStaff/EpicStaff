@@ -46,14 +46,19 @@
     text-align: left;
     box-sizing: border-box;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         border-color: var(--color-text-secondary);
+    }
+
+    // Drawn inside: the list scrolls and clips its items.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &--locked {
         cursor: default;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             border-color: var(--fog-alpha-16);
         }
     }

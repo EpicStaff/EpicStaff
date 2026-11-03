@@ -16,14 +16,20 @@
         [class.number-stepper__control--readonly]="readonly()"
         (mouseenter)="hovered.set(true)"
         (mouseleave)="hovered.set(false)"
+        (focusin)="focusWithin.set(true)"
+        (focusout)="onFocusOut($event)"
     >
         @if (showButtons()) {
             <button
                 type="button"
                 class="number-stepper__btn number-stepper__btn--minus"
                 [class]="'number-stepper__btn--' + size()"
-                (mousedown)="onStepDown(); $event.preventDefault()"
-                [disabled]="isDisabled() || !canStepDown()"
+                aria-label="Decrease"
+                matTooltip="Decrease"
+                [disabled]="isDisabled()"
+                [attr.aria-disabled]="!canStepDown()"
+                (mousedown)="$event.preventDefault()"
+                (click)="onStepDown()"
             >
                 <app-svg-icon
                     icon="minus-fit"
@@ -36,6 +42,7 @@
             [type]="integer() ? 'text' : 'number'"
             [attr.inputmode]="integer() ? 'numeric' : null"
             [attr.aria-label]="ariaLabel()"
+            [matTooltip]="fieldName()"
             class="number-stepper__input"
             [class]="'number-stepper__input--' + size()"
             [placeholder]="placeholder()"
@@ -52,8 +59,12 @@
                 type="button"
                 class="number-stepper__btn number-stepper__btn--plus"
                 [class]="'number-stepper__btn--' + size()"
-                (mousedown)="onStepUp(); $event.preventDefault()"
-                [disabled]="isDisabled() || !canStepUp()"
+                aria-label="Increase"
+                matTooltip="Increase"
+                [disabled]="isDisabled()"
+                [attr.aria-disabled]="!canStepUp()"
+                (mousedown)="$event.preventDefault()"
+                (click)="onStepUp()"
             >
                 <app-svg-icon
                     icon="plus-fit"

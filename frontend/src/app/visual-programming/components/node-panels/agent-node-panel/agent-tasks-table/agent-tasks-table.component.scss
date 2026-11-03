@@ -129,14 +129,14 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
         align-items: flex-start;
         cursor: pointer;
 
-        &:hover {
+        &:is(:hover, :focus-within) {
             background: var(--white-alpha-3-flat);
         }
 
         &.att-cell--readonly {
             cursor: default;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 background: transparent;
             }
         }
@@ -170,7 +170,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     padding: 0.2rem;
     border-radius: 4px;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--color-ghost-btn-hover);
     }
 }
@@ -282,10 +282,14 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     top: 0.6rem;
     right: 0.5rem;
     z-index: 2;
+    display: flex;
+    padding: 0;
+    border: none;
+    background: none;
     color: var(--fog-alpha-60);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
     }
 }
@@ -343,7 +347,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     padding: 0.2rem;
     border-radius: 4px;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--red-600);
         background: var(--red-400-alpha-10);
     }
@@ -354,4 +358,21 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     text-align: center;
     color: var(--fog-alpha-50);
     font-size: 0.8125rem;
+}
+
+// The context cell's own button: invisible, it fills the cell so the cell keeps its look and its click target.
+.att-context-trigger {
+    display: block;
+    align-self: stretch;
+    width: 100%;
+    min-height: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: inherit;
+    // The table scrolls and clips at its sides: the ring is drawn inside.
+    outline-offset: -2px;
 }

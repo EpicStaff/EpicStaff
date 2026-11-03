@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { VARIABLE_PREFIX } from '../../../../core/constants/telegram-field-variable-path-prefix';
 
@@ -7,7 +8,7 @@ import { VARIABLE_PREFIX } from '../../../../core/constants/telegram-field-varia
     selector: 'app-variables-input',
     templateUrl: './variables-input.component.html',
     styleUrls: ['./variables-input.component.scss'],
-    imports: [FormsModule],
+    imports: [FormsModule, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class VariablesInputComponent {

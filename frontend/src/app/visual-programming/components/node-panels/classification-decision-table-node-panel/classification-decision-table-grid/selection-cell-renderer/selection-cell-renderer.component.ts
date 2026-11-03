@@ -26,6 +26,7 @@ import { ICellRendererParams, IRowNode } from 'ag-grid-community';
                 <input
                     type="checkbox"
                     class="ag-input-field-input ag-checkbox-input"
+                    aria-label="Select row"
                     [checked]="isSelected"
                     (change)="toggleSelection($event)"
                 />

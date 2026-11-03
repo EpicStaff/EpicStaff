@@ -5,6 +5,7 @@
         [matTooltip]="isDisabled(option.value) ? disabledHint() : ''"
     >
         <app-checkbox
+            [ariaLabel]="option.label"
             [checked]="isSelected(option.value)"
             [disabled]="isDisabled(option.value)"
             (changed)="toggle(option.value)"

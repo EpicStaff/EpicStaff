@@ -1,8 +1,10 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
     ChangeDetectionStrategy,
     Component,
+    DestroyRef,
     ElementRef,
     EventEmitter,
     inject,
@@ -12,13 +14,15 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, DateRangePickerComponent } from '@shared/components';
 import { DateRangeFilter } from '@shared/models';
+import { filter } from 'rxjs/operators';
 
 @Component({
     selector: 'app-created-at-filter-dropdown',
-    imports: [OverlayModule, AppSvgIconComponent, DateRangePickerComponent, MatTooltipModule],
+    imports: [CdkTrapFocus, OverlayModule, AppSvgIconComponent, DateRangePickerComponent, MatTooltip],
     templateUrl: './date-picker-dropdown.component.html',
     styleUrls: ['./date-picker-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.Eager,
@@ -34,6 +38,9 @@ export class DatePickerDropdownComponent {
     private overlay = inject(Overlay);
     private overlayPositionBuilder = inject(OverlayPositionBuilder);
     private vcr = inject(ViewContainerRef);
+    private readonly destroyRef = inject(DestroyRef);
+    // Disposing the overlay also completes its event streams; the subscriptions end with the component too.
+    private readonly disposeOverlayOnDestroy = this.destroyRef.onDestroy(() => this.overlayRef?.dispose());
 
     public isOpen = false;
 
@@ -85,7 +92,17 @@ export class DatePickerDropdownComponent {
             backdropClass: 'transparent-backdrop',
         });
 
-        this.overlayRef.backdropClick().subscribe(() => this.close());
+        this.overlayRef
+            .backdropClick()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.close());
+        this.overlayRef
+            .keydownEvents()
+            .pipe(
+                filter((event) => event.key === 'Escape'),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.close());
 
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);

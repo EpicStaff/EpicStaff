@@ -25,6 +25,7 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { SecretsStorageService } from '@shared/services';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { SelectItem } from '../select/select.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -48,7 +49,7 @@ const toSecretMarker = (name: string): string => `epicstaff_secret(${name})`;
 
 @Component({
     selector: 'app-key-value-list',
-    imports: [TooltipComponent, FormsModule, MatTooltipModule, AppSvgIconComponent],
+    imports: [TooltipComponent, FormsModule, MatTooltipModule, AppSvgIconComponent, TooltipOnOverflowDirective],
     templateUrl: './key-value-list.component.html',
     styleUrls: ['./key-value-list.component.scss'],
     providers: [
