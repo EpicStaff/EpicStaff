@@ -79,8 +79,15 @@ jobs:
         with:
           python-version: "3.12.10"
 
+      # Read from the commit this workflow file came from, not from the tag being
+      # released: a tag cut before .github/requirements/ existed has no such file.
       - name: Install python deps
-        run: python -m pip install --require-hashes -r .github/requirements/ruamel-yaml.txt
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          git fetch --quiet origin "$WORKFLOW_SHA"
+          git show FETCH_HEAD:.github/requirements/ruamel-yaml.txt > "$RUNNER_TEMP/ruamel-yaml.txt"
+          python -m pip install --require-hashes -r "$RUNNER_TEMP/ruamel-yaml.txt"
 
       # This uploads a two-file asset (docker-compose.yaml + .env.example), NOT a
       # standalone install bundle. That compose file still mounts ./nginx/templates

@@ -97,9 +97,16 @@ jobs:
         with:
           python-version: '3.12.10'
 
+      # The hash-pinned requirements are read from the commit this workflow file
+      # came from, not from the ref being built: a branch or tag cut before
+      # .github/requirements/ existed has no such file.
       - name: Generate dev env from env.yaml
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
-          python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
+          git fetch --quiet --depth=1 origin "$WORKFLOW_SHA"
+          git show FETCH_HEAD:.github/requirements/pyyaml.txt > "$RUNNER_TEMP/pyyaml.txt"
+          python -m pip install --quiet --require-hashes -r "$RUNNER_TEMP/pyyaml.txt"
           python scripts/envtool.py --dev
 
       - name: Generate compose config json
