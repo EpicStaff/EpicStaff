@@ -225,6 +225,7 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
 
         expect(element(fixture, 'app-custom-input input')).not.toBeNull();
         expect(element(fixture, 'app-radio-button')).not.toBeNull();
+        expect((element(fixture, '[data-tooltip="Monday"]') as HTMLButtonElement).disabled).toBe(false);
         clickMonday(fixture);
         expect(element(fixture, '[data-tooltip="Monday"]')!.classList).toContain('round-btn--active');
         fixture.destroy();
@@ -236,6 +237,10 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
         expect(element(fixture, 'app-custom-input input')).toBeNull();
         expect(element(fixture, 'app-custom-input .readonly-value')!.textContent).toContain('Schedule #1');
         expect(element(fixture, 'app-radio-button')).toBeNull();
+        // The day buttons are disabled and faded like the Active toggle, so they read as not interactive.
+        const monday = element(fixture, '[data-tooltip="Monday"]') as HTMLButtonElement;
+        expect(monday.disabled).toBe(true);
+        expect(monday.classList).toContain('round-btn--disabled');
         clickMonday(fixture);
         expect(element(fixture, '[data-tooltip="Monday"]')!.classList).not.toContain('round-btn--active');
         // What the panel shell and the canvas take on close, Ctrl+S and a full save.

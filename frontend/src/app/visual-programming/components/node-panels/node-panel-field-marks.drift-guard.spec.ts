@@ -35,9 +35,9 @@ import {
 // A panel shows some fields only for some values of another (a one-time schedule hides its repeat settings). The
 // guard opens such a field with a version that shows it. The Schedule projection drops what the scheduler ignores (the
 // repeat and end settings of a one-time run, the end value of another end type, weekdays outside "days" and "weeks"),
-// so a hidden field only differs when the field that hides it differs too, and that one is marked.
-// Known limit: the scheduler reads weekdays on a "days" schedule, but the panel shows them for "weeks" only, so a
-// restore that changes only those weekdays shows no mark in the panel (the canvas badge still says "changed").
+// so a hidden field only differs when the field that hides it differs too, and that one is marked. Weekdays are the
+// exception: the scheduler reads them on a "days" schedule too, whose panel hides them, so the panel shows them
+// whenever a restore changes them; the guard checks that on a "days" version.
 
 /** Fields a panel shows no mark for on purpose, by node type, each with the reason. */
 const NO_MARK_ON_PURPOSE: Partial<Record<NodeType, Partial<Record<FieldName, string>>>> = {
@@ -78,6 +78,7 @@ const VERSION_NODES: Partial<Record<NodeType, () => NodeModel>> = {
 const FIELD_VERSION_NODES: Partial<Record<NodeType, Partial<Record<FieldName, () => NodeModel>>>> = {
     [NodeType.SCHEDULE_TRIGGER]: {
         max_runs: () => scheduleNodeWith({ endType: 'after_n_runs', endDateTime: null, maxRuns: 5 }),
+        weekdays: () => scheduleNodeWith({ intervalUnit: 'days', weekdays: ['tue'] }),
     },
 };
 

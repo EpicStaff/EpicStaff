@@ -10,4 +10,5 @@ export class RoundButtonComponent {
     label = input.required<string>();
     selected = input(false);
     tooltip = input('');
+    disabled = input(false);
 }

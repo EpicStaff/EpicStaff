@@ -180,6 +180,7 @@
                                                     [label]="wd.label"
                                                     [selected]="repeatDays().includes(wd.value)"
                                                     [tooltip]="wd.tooltip"
+                                                    [disabled]="isReadOnly()"
                                                     (click)="toggleDay(wd.value)"
                                                 />
                                             }

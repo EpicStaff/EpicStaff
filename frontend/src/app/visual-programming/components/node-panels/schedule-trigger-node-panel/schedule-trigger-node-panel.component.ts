@@ -135,7 +135,13 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     minRepeatEvery = computed(() => (this.repeatUnit() === 'seconds' ? MIN_INTERVAL_SECONDS : 1));
 
     showRepeatFields = computed(() => this.runMode() === 'repeat');
-    showWeekdays = computed(() => this.runMode() === 'repeat' && this.repeatUnit() === 'weeks');
+    /**
+     * "Repeat on" shows for a weekly run, and on the Changes tab also whenever a restore changes the weekdays: the
+     * scheduler reads them on a daily run too, and a restore to another unit drops them, so they must be seen there.
+     */
+    showWeekdays = computed(
+        () => this.runMode() === 'repeat' && (this.repeatUnit() === 'weeks' || this.weekdaysChange() !== null)
+    );
     showEndDateTime = computed(() => this.endMode() === 'on_date');
     showMaxRuns = computed(() => this.endMode() === 'after_n_runs');
 

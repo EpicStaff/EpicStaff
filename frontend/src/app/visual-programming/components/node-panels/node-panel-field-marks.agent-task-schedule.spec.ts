@@ -217,6 +217,22 @@ const FIELD_CASES: FieldCase[] = [
         marked: 'div.weekday-row',
         tooltip: 'Monday, [Friday]',
     },
+    // The version runs on a unit that hides "Repeat on" in the editor, so the section is shown here for the mark: a
+    // restore drops the canvas weekdays (an hourly run reads none) or replaces them (a daily run reads them).
+    {
+        panel: SCHEDULE,
+        change: fieldChange('weekdays', ['mon', 'wed'], null),
+        marked: 'div.weekday-row',
+        tooltip: '[Monday], [Wednesday]',
+        node: () => scheduleNodeWith({ intervalUnit: 'hours', weekdays: [] }),
+    },
+    {
+        panel: SCHEDULE,
+        change: fieldChange('weekdays', ['mon', 'wed'], ['tue']),
+        marked: 'div.weekday-row',
+        tooltip: '[Monday], [Wednesday]',
+        node: () => scheduleNodeWith({ intervalUnit: 'days', weekdays: ['tue'] }),
+    },
     {
         panel: SCHEDULE,
         change: fieldChange('end_type', 'after_n_runs', 'on_date'),
@@ -274,6 +290,15 @@ describe('Agent, Task and Schedule panels on the Changes tab of a version previe
         const root = open(panel, []);
 
         expect(root.querySelectorAll(SHOWN_DIFF_MARKS)).toHaveLength(0);
+    });
+
+    it.each([
+        { case: 'without a diff (Preview tab, live editor)', options: { onChangesTab: false } },
+        { case: 'when a restore keeps the weekdays', options: {} },
+    ])('Schedule: keeps "Repeat on" hidden for a daily schedule $case', ({ options }) => {
+        const root = open(SCHEDULE, [], options, scheduleNodeWith({ intervalUnit: 'days', weekdays: ['tue'] }));
+
+        expect(root.querySelector('.weekday-row')).toBeNull();
     });
 });
 

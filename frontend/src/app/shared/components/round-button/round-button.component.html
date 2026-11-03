@@ -2,6 +2,8 @@
     type="button"
     class="round-btn"
     [class.round-btn--active]="selected()"
+    [class.round-btn--disabled]="disabled()"
+    [disabled]="disabled()"
     [attr.data-tooltip]="tooltip() || null"
 >
     {{ label() }}
