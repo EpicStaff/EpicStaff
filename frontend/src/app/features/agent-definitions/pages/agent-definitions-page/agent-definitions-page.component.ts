@@ -25,7 +25,7 @@ import {
     UnsavedChangesDialogService,
 } from '@shared/components';
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
-import { ActionCode, getLabelColorOption, LABEL_COLOR_OPTIONS, ResourceCode } from '@shared/models';
+import { ActionCode, LABEL_COLOR_OPTIONS, ResourceCode } from '@shared/models';
 import { escapeHtml } from '@shared/utils';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -614,22 +614,13 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     /**
-     * The group crumb: a picker when `editable` ("Add to group" while ungrouped), else read-only
-     * text of the group, or nothing when there is no group to show.
+     * The group crumb: a picker when `editable`, else read-only text of the group. Nothing while
+     * ungrouped; a group is assigned from the explorer (drag and drop, or Move to group).
      */
     private groupCrumb(groupId: number | null, editable: boolean): DetailCrumb[] {
         const group = groupId === null ? undefined : this.store.groupsById().get(groupId);
-        if (!group && !editable) return [];
-        return [
-            {
-                label: group?.name ?? 'Add to group',
-                group: {
-                    groupId: group?.id ?? null,
-                    editable,
-                    color: group ? getLabelColorOption(group.metadata?.color).circleBg : null,
-                },
-            },
-        ];
+        if (!group) return [];
+        return [{ label: group.name, group: { groupId: group.id, editable } }];
     }
 
     private applyExplorerTreeMenu({ node, action }: ExplorerTreeMenuEvent): void {

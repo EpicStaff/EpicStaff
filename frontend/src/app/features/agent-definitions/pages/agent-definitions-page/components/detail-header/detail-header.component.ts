@@ -5,13 +5,11 @@ import { LABELS_STORE } from '@shared/services';
 
 import { AgentGroupsStorageService } from '../../../../services/agent-groups-storage.service';
 
-/** The group of the item a breadcrumb trail leads to. */
+/** The group of the item a breadcrumb trail leads to; ungrouped items have no group crumb. */
 export interface DetailGroupCrumb {
-    groupId: number | null;
-    /** A picker that moves the item; read-only text otherwise (an owned surface follows its agent). */
+    groupId: number;
+    /** A picker that moves the item to another group or out of it; read-only text otherwise (an owned surface follows its agent). */
     editable: boolean;
-    /** The dot's color; null while ungrouped. */
-    color: string | null;
 }
 
 export interface DetailCrumb {

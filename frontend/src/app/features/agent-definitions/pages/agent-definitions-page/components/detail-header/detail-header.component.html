@@ -48,15 +48,9 @@
                     class="crumbs__item crumbs__group"
                     aria-haspopup="listbox"
                     [attr.aria-expanded]="groupPicker.isOpen()"
-                    [attr.aria-label]="group.groupId === null ? 'Add to group' : 'Group: ' + crumb.label"
+                    [attr.aria-label]="'Group: ' + crumb.label"
                     (click)="groupPicker.openAt(groupTrigger)"
                 >
-                    @if (group.color; as color) {
-                        <span
-                            class="crumbs__dot"
-                            [style.background-color]="color"
-                        ></span>
-                    }
                     {{ crumb.label }}
                     <app-svg-icon
                         class="crumbs__caret"
@@ -70,19 +64,9 @@
                     noun="group"
                     emptyOptionLabel="No group"
                     [hideTrigger]="true"
-                    [selectedLabelIds]="group.groupId === null ? [] : [group.groupId]"
+                    [selectedLabelIds]="[group.groupId]"
                     (selectionChange)="onGroupPicked($event)"
                 />
-            } @else if (group) {
-                <span class="crumbs__item">
-                    @if (group.color; as color) {
-                        <span
-                            class="crumbs__dot"
-                            [style.background-color]="color"
-                        ></span>
-                    }
-                    {{ crumb.label }}
-                </span>
             } @else {
                 <span
                     class="crumbs__item"
