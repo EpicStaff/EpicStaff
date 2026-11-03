@@ -1985,6 +1985,14 @@ class TwilioChannelViewSet(
             # The row was found without org scoping: another org's channel must be a
             # 404 before the secret check can answer with anything else.
             self._assert_parent_in_active_org(serializer)
+            # Overwriting an existing channel on POST is an update in disguise; the
+            # action map only gates CREATE for this view's "create" action.
+            assert_org_permission(
+                request.user,
+                self.get_active_org_id(),
+                self.rbac_resource_type,
+                Permission.UPDATE,
+            )
             self.run_secret_use_check(instance, serializer.validated_data)
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
