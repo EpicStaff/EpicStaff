@@ -90,8 +90,9 @@ jobs:
           python -m pip install --require-hashes -r "$RUNNER_TEMP/ruamel-yaml.txt"
 
       # This uploads a two-file asset (docker-compose.yaml + .env.example), NOT a
-      # standalone install bundle. That compose file still mounts ./redis.conf,
-      # ./nginx/templates and ./nginx/certs relative to itself, and none ships here -- it works only
+      # standalone install bundle. That compose file still mounts configuration from
+      # the source tree relative to itself (./redis.conf, ./nginx/..., and more for the
+      # optional profiles), and none of it ships here -- it works only
       # as an overlay on an existing git-cloned checkout (README's "How to verify a
       # release" flow: pin/verify image digests, not `docker compose up` from this
       # asset alone). GitHub's own auto-generated "Source code (zip/tar.gz)" on the
@@ -163,8 +164,13 @@ jobs:
           # Appended, so notes written on the release by hand are kept. A second
           # run for the same tag appends it again.
           append_body: true
+          # The body starts with a rule so it never runs into the last paragraph of
+          # notes already on the release.
           body: |
-            **About the attached `docker-compose.yaml` and `.env.example`:** they are for verifying this release's image digests and signatures, not a standalone install. The compose file mounts `redis.conf`, `nginx/templates/` and `nginx/certs` from the folder next to it, and none of them is in the download. To run this release, clone the source at `${{ needs.resolve.outputs.tag }}` and use the compose file as an overlay, as described under "Running a verified release" in the README.
+
+            ---
+
+            **About the attached `docker-compose.yaml` and `.env.example`:** they are for verifying this release's image digests and signatures, not a standalone install. The compose file mounts configuration from the source tree next to it (`redis.conf`, the `nginx/` templates, start-up scripts and certificates, and more), and none of it is in the download. To run this release, clone the source at `${{ needs.resolve.outputs.tag }}` and use the compose file as an overlay, as described under "Running a verified release" in the README.
           files: |
             release-archives/*
             release-archives/.env.example
