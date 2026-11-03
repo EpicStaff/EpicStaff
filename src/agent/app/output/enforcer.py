@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from loguru import logger
 
 from app.constants import FAILURE_STOP_REASONS
-from app.exceptions import AgentServiceError, SchemaValidationError
+from app.exceptions import AgentLoopFailedError, SchemaValidationError
 from app.logging_utils import redact_value
 from app.loop.agent_loop import AgentLoop
 from app.loop.stop_policy import MaxIterAndNoToolCalls
@@ -62,9 +62,10 @@ class StructuredOutputEnforcer:
 
             if result.stop_reason in FAILURE_STOP_REASONS:
                 context.tool_choice = None
-                raise AgentServiceError(
+                raise AgentLoopFailedError(
                     result.error
-                    or f"agent loop failed ({result.stop_reason}) during schema enforcement"
+                    or f"agent loop failed ({result.stop_reason}) during schema enforcement",
+                    result=result,
                 )
 
             if capture.args is None:
@@ -101,11 +102,13 @@ class StructuredOutputEnforcer:
                     tool_invocations=tool_invocations,
                 )
 
+            # loguru calls each lambda within this statement, before the next attempt
+            # rebinds these locals, so the late binding B023 warns about never happens.
             logger.opt(lazy=True).debug(
                 "schema_enforce attempt={} correlation_id={} ok=False error={}",
-                lambda: attempt,
+                lambda: attempt,  # noqa: B023
                 lambda: context.correlation_id,
-                lambda: redact_value(outcome.error),
+                lambda: redact_value(outcome.error),  # noqa: B023
             )
             corrective = (
                 f"Your answer did not match the schema: {outcome.error}. "

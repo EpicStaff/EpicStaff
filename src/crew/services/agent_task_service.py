@@ -34,10 +34,11 @@ import uuid
 from collections.abc import Callable
 
 from loguru import logger
+from services.agent_run_errors import agent_run_error, agent_service_no_answer_error
 from services.graph.events import StopEvent
 from services.redis_service import RedisService
 from src.shared.bench_log import BENCH_LEVEL
-from src.shared.models import AgentDefinitionData, AgentNodeData, TaskNodeData
+from src.shared.models import AgentDefinitionData, AgentNodeData, LLMData, TaskNodeData
 from src.shared.models.agent_service import (
     FAILURE_STOP_REASONS,
     AgentRequest,
@@ -58,12 +59,6 @@ LIVE_EVENT_TYPES = frozenset(
     }
 )
 """Envelope types forwarded live to ``on_event`` instead of ending the wait."""
-
-
-class AgentTaskError(Exception): ...
-
-
-class AgentTaskTimeoutError(AgentTaskError): ...
 
 
 class AgentTaskService:
@@ -89,30 +84,52 @@ class AgentTaskService:
         self,
         node_data: TaskNodeData,
         stop_event: StopEvent,
+        *,
+        agent_definition: AgentDefinitionData,
+        llm: LLMData,
         on_event: Callable[[StreamEnvelope], None] | None = None,
         storage_credentials: StorageCredentials | None = None,
     ) -> dict:
-        blob = self._build_request_blob(node_data, storage_credentials=storage_credentials)
-        timeout_s = self._resolve_timeout_s(node_data.agent_definition)
-        return await self._dispatch(blob, timeout_s, stop_event, on_event)
+        """Run a Task node in the agent service and return the run's result payload.
+
+        Args:
+            agent_definition: ``node_data.agent_definition``, already checked to be set.
+            llm: The agent's LLM, already checked to be set.
+        """
+        blob = self._build_request_blob(
+            node_data, agent_definition, llm, storage_credentials=storage_credentials
+        )
+        timeout_s = self._resolve_timeout_s(agent_definition)
+        return await self._dispatch(blob, agent_definition, llm, timeout_s, stop_event, on_event)
 
     async def run_agent_node(
         self,
         agent_node_data: AgentNodeData,
         stop_event: StopEvent,
+        *,
+        agent_definition: AgentDefinitionData,
+        llm: LLMData,
         on_event: Callable[[StreamEnvelope], None] | None = None,
         storage_credentials: StorageCredentials | None = None,
     ) -> dict:
+        """Run an Agent node's tasks in the agent service and return the run's result payload.
+
+        Args:
+            agent_definition: ``agent_node_data.agent_definition``, already checked to be set.
+            llm: The agent's LLM, already checked to be set.
+        """
         blob = self._build_agent_node_request_blob(
-            agent_node_data, storage_credentials=storage_credentials
+            agent_node_data, agent_definition, llm, storage_credentials=storage_credentials
         )
         task_count = len(agent_node_data.tasks)
-        timeout_s = self._resolve_timeout_s(agent_node_data.agent_definition, task_count=task_count)
-        return await self._dispatch(blob, timeout_s, stop_event, on_event)
+        timeout_s = self._resolve_timeout_s(agent_definition, task_count=task_count)
+        return await self._dispatch(blob, agent_definition, llm, timeout_s, stop_event, on_event)
 
     async def _dispatch(
         self,
         blob: str,
+        agent_definition: AgentDefinitionData,
+        llm: LLMData,
         timeout_s: float,
         stop_event: StopEvent,
         on_event: Callable[[StreamEnvelope], None] | None = None,
@@ -150,14 +167,17 @@ class AgentTaskService:
                 deadline=deadline,
                 stop_event=stop_event,
                 on_event=on_event,
+                agent_definition=agent_definition,
+                llm=llm,
+                timeout_s=timeout_s,
             )
         finally:
             await client.delete(request_key, result_stream)
 
     def _resolve_timeout_s(
-        self, agent_definition: AgentDefinitionData | None, task_count: int = 1
+        self, agent_definition: AgentDefinitionData, task_count: int = 1
     ) -> float:
-        max_execution_time = agent_definition.max_execution_time if agent_definition else None
+        max_execution_time = agent_definition.max_execution_time
         if max_execution_time is not None:
             return max_execution_time * task_count + self.timeout_buffer_s
         return self.default_timeout_s * task_count
@@ -169,17 +189,25 @@ class AgentTaskService:
         result_stream: str,
         deadline: float,
         stop_event: StopEvent,
-        on_event: Callable[[StreamEnvelope], None] | None = None,
+        on_event: Callable[[StreamEnvelope], None] | None,
+        agent_definition: AgentDefinitionData,
+        llm: LLMData,
+        timeout_s: float,
     ) -> dict:
+        """Wait for the run's result and return its payload.
+
+        Raises:
+            AgentTaskError: The run failed; the message is the text the user sees.
+            AgentTaskTimeoutError: The agent hit its own time limit, or no result arrived
+                within ``timeout_s``.
+        """
         last_id = "0"
         while True:
             stop_event.check_stop()
 
             remaining_s = deadline - time.monotonic()
             if remaining_s <= 0:
-                raise AgentTaskTimeoutError(
-                    f"Timed out waiting for agent result, correlation_id={correlation_id}"
-                )
+                raise agent_service_no_answer_error(timeout_s, correlation_id)
 
             block_ms = min(self.poll_block_ms, max(int(remaining_s * 1000), 1))
             response = await client.xread({result_stream: last_id}, block=block_ms)
@@ -204,19 +232,22 @@ class AgentTaskService:
                         continue
 
                     if envelope.type == "agent.error":
-                        raise AgentTaskError(envelope.payload.get("error", "agent error"))
+                        raise agent_run_error(
+                            envelope.payload, agent_definition, llm, correlation_id
+                        )
 
                     if envelope.type == "agent.result":
                         stop_reason = envelope.payload.get("stop_reason")
                         if stop_reason in FAILURE_STOP_REASONS:
-                            raise AgentTaskError(
-                                envelope.payload.get("error") or f"agent stop_reason={stop_reason}"
+                            raise agent_run_error(
+                                envelope.payload, agent_definition, llm, correlation_id
                             )
                         return envelope.payload
 
     def _build_agent_spec(
         self,
         agent_definition: AgentDefinitionData,
+        llm: LLMData,
         surface_instructions: str,
         tools,
         collections,
@@ -230,7 +261,7 @@ class AgentTaskService:
             id=agent_definition.id,
             name=agent_definition.name,
             instructions=instructions,
-            llm=agent_definition.llm,
+            llm=llm,
             fcm_llm=agent_definition.fcm_llm,
             max_iter=agent_definition.max_iter,
             schema_max_retries=agent_definition.schema_max_retries,
@@ -248,12 +279,15 @@ class AgentTaskService:
         )
 
     def _build_request_blob(
-        self, node_data: TaskNodeData, storage_credentials: StorageCredentials | None = None
+        self,
+        node_data: TaskNodeData,
+        agent_definition: AgentDefinitionData,
+        llm: LLMData,
+        storage_credentials: StorageCredentials | None = None,
     ) -> str:
-        agent_definition = node_data.agent_definition
-
         agent_spec = self._build_agent_spec(
             agent_definition,
+            llm,
             node_data.surface.instructions,
             node_data.tools,
             node_data.collections,
@@ -278,12 +312,15 @@ class AgentTaskService:
         return json.dumps(dumped)
 
     def _build_agent_node_request_blob(
-        self, agent_node_data: AgentNodeData, storage_credentials: StorageCredentials | None = None
+        self,
+        agent_node_data: AgentNodeData,
+        agent_definition: AgentDefinitionData,
+        llm: LLMData,
+        storage_credentials: StorageCredentials | None = None,
     ) -> str:
-        agent_definition = agent_node_data.agent_definition
-
         agent_spec = self._build_agent_spec(
             agent_definition,
+            llm,
             agent_node_data.surface.instructions,
             agent_node_data.tools,
             agent_node_data.collections,

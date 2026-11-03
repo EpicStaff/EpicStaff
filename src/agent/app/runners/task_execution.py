@@ -14,7 +14,7 @@ import json
 
 from app.constants import FAILURE_STOP_REASONS
 from app.emitters.base import Emitter
-from app.exceptions import AgentServiceError
+from app.exceptions import AgentLoopFailedError
 from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.output.enforcer import EnforcementResult, StructuredOutputEnforcer
@@ -69,8 +69,11 @@ async def run_task_through_loop(
       go straight to the enforcer (which drives its own single-turn loop
       calls internally).
     - otherwise run the plain loop first; if it fails (a stop_reason in
-      ``FAILURE_STOP_REASONS``) while an ``output_schema`` was requested,
-      raise ``AgentServiceError`` without ever invoking the enforcer.
+      ``FAILURE_STOP_REASONS``), raise ``AgentLoopFailedError`` without ever
+      invoking the enforcer, with or without an ``output_schema``. A failed
+      loop must leave the service as ``agent.error``, never as an
+      ``agent.result``: a crew older than a stop reason in
+      ``FAILURE_STOP_REASONS`` would read that result as a success.
     - if an ``output_schema`` was requested and the plain loop succeeded,
       use its final text as-is when it is JSON that already matches the
       schema (unless the loop hit max_iter); otherwise enforce it and fold
@@ -111,8 +114,10 @@ async def run_task_through_loop(
     stop = MaxIterAndNoToolCalls(max_iter)
     result = await deps.loop.run(context, tools, emitter, stop)
 
-    if output_schema and result.stop_reason in FAILURE_STOP_REASONS:
-        raise AgentServiceError(result.error or f"agent loop failed ({result.stop_reason})")
+    if result.stop_reason in FAILURE_STOP_REASONS:
+        raise AgentLoopFailedError(
+            result.error or f"agent loop failed ({result.stop_reason})", result=result
+        )
 
     if output_schema:
         # A loop cut off by max_iter keeps text written before its last tool results.

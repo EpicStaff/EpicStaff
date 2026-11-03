@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from app.data_loader import DataLoader
-from app.exceptions import DataLoadError
+from app.exceptions import AgentLoopFailedError, DataLoadError
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from shared.models.agent_service import AgentRequest, LoopResult, RunType, TokenUsage
 
@@ -251,6 +251,56 @@ async def test_agent_result_payload_key_set_includes_tasks():
         "stop_reason",
         "token_usage",
         "error",
+        "error_kind",
         "warnings",
         "tasks",
     }
+
+
+# ---------------------------------------------------------------------------
+# agent.error payload key set is pinned (crew <-> agent wire contract)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_keys"),
+    [
+        (
+            AgentLoopFailedError(
+                "provider said no",
+                result=LoopResult(
+                    final_text=None,
+                    tool_invocations=0,
+                    iterations=1,
+                    stop_reason="llm_error",
+                    error="provider said no",
+                    error_kind="quota_exceeded",
+                ),
+            ),
+            {"error", "warnings", "stop_reason", "error_kind"},
+        ),
+        (DataLoadError("blob missing"), {"error", "warnings"}),
+    ],
+    ids=["failed-loop", "failure-outside-the-loop"],
+)
+async def test_agent_error_payload_key_set(error, expected_keys):
+    """Pin the keys crew reads on 'agent.error': a failed loop leaves through it, so it
+    carries the loop's stop_reason and error_kind; other failures have neither."""
+    published: list[dict] = []
+    fake_client = MagicMock()
+
+    async def capture_publish(stream, fields, maxlen=None, approximate=True, ttl_s=None):
+        published.append(fields)
+
+    fake_client.publish = capture_publish
+    emitter = RedisStreamBatchEmitter(
+        client=fake_client,
+        result_stream_prefix="agent.results",
+        correlation_id="corr-1",
+        result_stream_ttl_s=3600,
+    )
+
+    await emitter.on_error(error)
+
+    assert published[0]["type"] == "agent.error"
+    assert set(json.loads(published[0]["payload"]).keys()) == expected_keys

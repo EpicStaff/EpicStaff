@@ -28,6 +28,7 @@ from pydantic import ValidationError
 
 from models.graph_models import FinishMessageData, GraphMessage
 from models.state import State
+from services.agent_run_errors import agent_run_error
 from services.graph.events import StopEvent
 from services.graph.exceptions import KeyValueNodeError, KnowledgeSearchError, StopSession
 from services.graph.graph_session_manager_service import GraphSessionManagerService
@@ -38,8 +39,11 @@ from src.crew.services.graph import session_audit_provider
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
 from src.shared.audit.writers.session_writer import SessionAuditWriter
 from src.shared.models import (
+    AgentDefinitionData,
     EdgeData,
     KeyValueNodeData,
+    LLMConfigData,
+    LLMData,
     PythonCodeData,
     PythonNodeData,
     SessionData,
@@ -561,6 +565,9 @@ def fixed_correlation_id(monkeypatch):
     monkeypatch.setattr(
         "services.run_python_code_service.new_error_correlation_id", lambda: FIXED_REFERENCE
     )
+    monkeypatch.setattr(
+        "services.agent_run_errors.new_error_correlation_id", lambda: FIXED_REFERENCE
+    )
 
 
 class SandboxDownExecutor:
@@ -624,6 +631,25 @@ def _child_graph(**node_lists) -> GraphData:
 
 
 KEY_VALUE_NO_TABLE_TEXT = "Key-Value node 'persist #2' has no table selected."
+COPYWRITER = AgentDefinitionData(
+    id=3,
+    name="Copywriter",
+    instructions="Write copy.",
+    llm=LLMData(provider="openai", config=LLMConfigData(model="gpt-4o")),
+)
+RAW_PROVIDER_TEXT = "Incorrect API key provided: sk-proj-abc1****wxyz"
+LLM_AUTHENTICATION_TEXT = (
+    'The provider rejected the API key for model "gpt-4o". Check the key in the LLM settings.'
+)
+LLM_UNKNOWN_TEXT = (
+    'The LLM request for model "gpt-4o" failed. '
+    f"Try again or contact your administrator (reference: {FIXED_REFERENCE})."
+)
+
+
+def _failed_agent_run(error_kind: str) -> Exception:
+    payload = {"stop_reason": "llm_error", "error": RAW_PROVIDER_TEXT, "error_kind": error_kind}
+    return agent_run_error(payload, COPYWRITER, COPYWRITER.llm, "run-1")
 PYTHON_SANDBOX_DOWN_TEXT = (
     "Python node \"Clean data #2\" couldn't run its code. "
     f"Try again or contact your administrator (reference: {FIXED_REFERENCE})."
@@ -692,6 +718,18 @@ PYTHON_SANDBOX_DOWN_TEXT = (
             PYTHON_SANDBOX_DOWN_TEXT,
             f"Session execution failed (reference: {FIXED_REFERENCE})",
             id="reference-from-a-node-inside-a-subflow-is-kept",
+        ),
+        pytest.param(
+            lambda: _one_node_graph(RaisingNode(_failed_agent_run("authentication"))),
+            LLM_AUTHENTICATION_TEXT,
+            LLM_AUTHENTICATION_TEXT,
+            id="explained-llm-failure-is-repeated",
+        ),
+        pytest.param(
+            lambda: _one_node_graph(RaisingNode(_failed_agent_run("unknown"))),
+            LLM_UNKNOWN_TEXT,
+            f"Session execution failed (reference: {FIXED_REFERENCE})",
+            id="unexplained-llm-failure-keeps-its-reference",
         ),
     ],
 )

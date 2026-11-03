@@ -57,12 +57,13 @@ both services):
   `output_schema: dict|None`, `context: [str]` (names of earlier tasks whose
   output is injected).
 - **`LoopResult`** — `final_text: str|None`, `tool_invocations`, `iterations`,
-  `stop_reason: str`, `token_usage: TokenUsage`, `error: str|None`.
+  `stop_reason: str`, `token_usage: TokenUsage`, `error: str|None`,
+  `error_kind: LLMErrorKind|None` (set only for `llm_error`).
 - **`RunType`** — `SINGLE_TASK`, `LIST_OF_TASKS` (`CHAT`, `TEAM` reserved, not
   implemented).
 - **`StopReason`** — `completed`, `max_iter_reached`, `schema_satisfied`,
-  `llm_error`, `timeout`, `max_consecutive_failures`.
-  `FAILURE_STOP_REASONS = {llm_error, timeout}` — `max_consecutive_failures` is
+  `llm_error`, `timeout`, `internal_error`, `max_consecutive_failures`.
+  `FAILURE_STOP_REASONS = {llm_error, timeout, internal_error}` — `max_consecutive_failures` is
   a graceful stop, not a failure.
 
 Per-`run_type` `payload` shapes:
@@ -180,7 +181,8 @@ LLM call + executing any tool calls it requested (tool errors are fed back as
   `stop_reason="max_consecutive_failures"` and `error=None` — this is a
   graceful stop, not a failure. `None` disables the check.
 - LLM exceptions/timeouts are folded into `LoopResult(stop_reason="llm_error"|
-  "timeout", error=...)` and signalled up — the loop does not emit `on_error`.
+  "timeout", error=...)`, any other exception into `stop_reason="internal_error"`,
+  and signalled up — the loop does not emit `on_error`.
 
 ## Structured output
 

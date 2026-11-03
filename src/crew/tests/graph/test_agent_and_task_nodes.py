@@ -50,8 +50,11 @@ class FakeAgentService:
         self.dispatched = None
         self.storage_credentials = None
 
-    async def _run(self, node_data, stop_event, on_event=None, storage_credentials=None):
+    async def _run(
+        self, node_data, stop_event, *, agent_definition, llm, on_event=None, storage_credentials=None
+    ):
         self.dispatched = node_data
+        self.dispatched_agent = (agent_definition, llm)
         self.storage_credentials = storage_credentials
         for envelope_type, payload in self.events:
             on_event(StreamEnvelope(type=envelope_type, correlation_id="corr-1", payload=payload))
@@ -275,6 +278,15 @@ async def test_task_instructions_are_rendered_from_the_input(
     await _run(node, variables)
 
     assert service.dispatched.instructions == expected
+
+
+@NODE_KINDS
+async def test_node_dispatches_its_checked_agent_and_llm(build_node, stream_type, remembered_outputs):
+    service = FakeAgentService()
+
+    await _run(build_node(service, remembered_outputs))
+
+    assert service.dispatched_agent == (AGENT, AGENT.llm)
 
 
 async def test_task_instructions_are_rendered_afresh_on_every_run(remembered_outputs):

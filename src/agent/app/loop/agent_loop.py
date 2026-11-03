@@ -25,6 +25,7 @@ from loguru import logger
 from app.emitters.base import Emitter
 from app.exceptions import RunCancelled
 from app.llm.client import LLMChunk, LLMClient
+from app.llm.error_kind import classify_llm_error
 from app.logging_utils import format_exception_for_log, redact_messages, redact_value
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
@@ -166,8 +167,10 @@ class DefaultAgentLoop(AgentLoop):
 
     Tool errors (raises, JSON parse failures, unknown names) are coalesced into
     ``ToolResult(is_error=True)`` and fed back to the LLM — they never abort
-    the loop.  LLM-level exceptions and wall-clock limit exhaustion terminate
-    the loop and return a partial ``LoopResult``.
+    the loop.  Any other exception and wall-clock limit exhaustion terminate
+    the loop and return a partial ``LoopResult``: ``llm_error`` with an
+    ``error_kind`` for a litellm error, ``internal_error`` without one for
+    anything else (an emitter or Redis failure, a bug).
     """
 
     def __init__(self, llm: LLMClient, context_warning_ratio: float | None = None) -> None:
@@ -210,18 +213,22 @@ class DefaultAgentLoop(AgentLoop):
             )
 
         except Exception as error:
+            error_kind = classify_llm_error(error)
+            stop_reason = StopReason.INTERNAL_ERROR if error_kind is None else StopReason.LLM_ERROR
             logger.error(
-                "loop llm_error correlation_id={} error={}",
+                "loop {} correlation_id={} error={}",
+                stop_reason.value,
                 context.correlation_id,
                 format_exception_for_log(error),
             )
             return LoopResult(
-                stop_reason=StopReason.LLM_ERROR.value,
+                stop_reason=stop_reason.value,
                 final_text=state.final_text,
                 tool_invocations=state.tool_invocations,
                 iterations=state.iterations,
                 token_usage=state.usage.to_token_usage(),
                 error=str(error),
+                error_kind=error_kind,
             )
 
     async def _run_inner(

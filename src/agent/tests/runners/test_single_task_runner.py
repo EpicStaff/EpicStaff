@@ -473,7 +473,11 @@ class FailureLoop(AgentLoop):
 
 @pytest.mark.parametrize(
     ("stop_reason", "error"),
-    [("llm_error", "rate limited"), ("timeout", "execution exceeded 60s")],
+    [
+        ("llm_error", "rate limited"),
+        ("internal_error", "emitter failed"),
+        ("timeout", "execution exceeded 60s"),
+    ],
 )
 async def test_failed_main_loop_is_reported_without_enforcing_the_schema(stop_reason, error):
     emitter = FakeEmitter()

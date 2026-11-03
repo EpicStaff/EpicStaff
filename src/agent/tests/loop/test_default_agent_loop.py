@@ -13,6 +13,8 @@ import inspect
 import json
 from collections.abc import AsyncIterator, Callable
 
+import httpx
+import litellm
 import pytest
 from app.emitters.base import Emitter
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
@@ -21,10 +23,15 @@ from app.loop.agent_loop import _UNTRUSTED_CONTENT_NOTE, DefaultAgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.tools.registry import ToolRegistry, ToolSpec
-from shared.models.agent_service import AgentSpec, LoopResult, ToolResult
+from shared.models.agent_service import AgentSpec, LLMErrorKind, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
 from tests.log_capture import log_line_starting_with, capture_logs_at
+from tests.provider_errors import (
+    OPENAI_QUOTA_BODY,
+    OPENAI_RATE_LIMIT_BODY,
+    litellm_error_from_openai_response,
+)
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -724,7 +731,10 @@ async def test_llm_raises_returns_llm_error_no_on_error():
     tools = StubToolRegistry({})
     stop = MaxIterAndNoToolCalls(max_iter=5)
 
-    llm = FakeLLMClient([], chat_raises=RuntimeError("LLM down"))
+    llm = FakeLLMClient(
+        [],
+        chat_raises=litellm.APIConnectionError(message="LLM down", llm_provider="openai", model="gpt-4o"),
+    )
     loop = DefaultAgentLoop(llm)
 
     result = await loop.run(context, tools, emitter, stop)
@@ -732,31 +742,122 @@ async def test_llm_raises_returns_llm_error_no_on_error():
     assert result.stop_reason == "llm_error"
     assert result.iterations == 0
     assert result.tool_invocations == 0
-    assert result.error == "LLM down"
+    assert "LLM down" in result.error
 
     error_events = [payload for name, payload in emitter.events if name == "on_error"]
     assert len(error_events) == 0
 
 
-async def test_llm_error_logs_the_exception_class_without_its_message():
-    """The llm_error log line carries no raw exception text; LoopResult.error still does."""
+def _litellm_error(error_class: type[Exception], message: str = "provider said no") -> Exception:
+    response = httpx.Response(403, request=httpx.Request("POST", "https://api.openai.com/v1"))
+    if error_class is litellm.PermissionDeniedError:
+        return error_class(message=message, llm_provider="openai", model="gpt-4o", response=response)
+    return error_class(message=message, llm_provider="openai", model="gpt-4o")
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_kind"),
+    [
+        (_litellm_error(litellm.AuthenticationError), LLMErrorKind.AUTHENTICATION),
+        (_litellm_error(litellm.PermissionDeniedError), LLMErrorKind.AUTHENTICATION),
+        (_litellm_error(litellm.RateLimitError), LLMErrorKind.RATE_LIMIT),
+        (
+            _litellm_error(litellm.RateLimitError, "{'code': 'insufficient_quota'}"),
+            LLMErrorKind.QUOTA_EXCEEDED,
+        ),
+        (_litellm_error(litellm.ContextWindowExceededError), LLMErrorKind.CONTEXT_TOO_LONG),
+        (_litellm_error(litellm.NotFoundError), LLMErrorKind.MODEL_NOT_FOUND),
+        (_litellm_error(litellm.ServiceUnavailableError), LLMErrorKind.PROVIDER_UNAVAILABLE),
+        (_litellm_error(litellm.InternalServerError), LLMErrorKind.PROVIDER_UNAVAILABLE),
+        (_litellm_error(litellm.APIConnectionError), LLMErrorKind.PROVIDER_UNAVAILABLE),
+        (_litellm_error(litellm.BadGatewayError), LLMErrorKind.PROVIDER_UNAVAILABLE),
+        (_litellm_error(litellm.ContentPolicyViolationError), LLMErrorKind.CONTENT_REFUSED),
+        (_litellm_error(litellm.Timeout), LLMErrorKind.PROVIDER_TIMEOUT),
+        (_litellm_error(litellm.BadRequestError), LLMErrorKind.UNKNOWN),
+    ],
+    ids=[
+        "authentication", "permission-denied", "rate-limit", "insufficient-quota-code",
+        "context-window", "not-found",
+        "service-unavailable", "internal-server-error", "connection", "bad-gateway",
+        "content-policy", "provider-timeout", "bad-request",
+    ],
+)
+async def test_llm_error_carries_its_kind(error, expected_kind):
+    llm = FakeLLMClient([], chat_raises=error)
+
+    result = await DefaultAgentLoop(llm).run(
+        make_context(), StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+    assert result.stop_reason == "llm_error"
+    assert result.error_kind == expected_kind
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_kind"),
+    [
+        (OPENAI_RATE_LIMIT_BODY, LLMErrorKind.RATE_LIMIT),
+        (OPENAI_QUOTA_BODY, LLMErrorKind.QUOTA_EXCEEDED),
+    ],
+    ids=["openai-rate-limit", "openai-quota"],
+)
+async def test_an_openai_429_carries_the_kind_its_body_names(body, expected_kind):
+    error = await litellm_error_from_openai_response(429, body)
+    llm = FakeLLMClient([], chat_raises=error)
+
+    result = await DefaultAgentLoop(llm).run(
+        make_context(), StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+    assert result.stop_reason == "llm_error"
+    assert result.error_kind == expected_kind
+
+
+async def test_a_failure_that_is_not_a_litellm_error_is_an_internal_error_without_a_kind():
+    llm = FakeLLMClient([], chat_raises=ConnectionError("Redis connection lost"))
+
+    result = await DefaultAgentLoop(llm).run(
+        make_context(), StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+    assert result.stop_reason == "internal_error"
+    assert result.error_kind is None
+    assert result.error == "Redis connection lost"
+
+
+@pytest.mark.parametrize(
+    ("make_error", "expected_line_start", "expected_class"),
+    [
+        (
+            lambda text: litellm.AuthenticationError(message=text, llm_provider="openai", model="gpt-4o"),
+            "loop llm_error",
+            "AuthenticationError",
+        ),
+        (RuntimeError, "loop internal_error", "RuntimeError"),
+    ],
+    ids=["llm-error", "internal-error"],
+)
+async def test_loop_failure_logs_the_exception_class_without_its_message(
+    make_error, expected_line_start, expected_class
+):
+    """The failure's log line carries no raw exception text; LoopResult.error still does."""
     secret_marker = "LLM_CRASH_SECRET_13579"
     raw_error_text = f"provider rejected sk-live-{secret_marker}"
     emitter = RecordingEmitter()
     context = make_context()
     tools = StubToolRegistry({})
     stop = MaxIterAndNoToolCalls(max_iter=5)
-    llm = FakeLLMClient([], chat_raises=RuntimeError(raw_error_text))
+    llm = FakeLLMClient([], chat_raises=make_error(raw_error_text))
 
     with capture_logs_at("DEBUG") as messages:
         result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
 
-    error_line = log_line_starting_with(messages, "loop llm_error")
+    error_line = log_line_starting_with(messages, expected_line_start)
     assert "correlation_id=test-corr" in error_line
-    assert "RuntimeError" in error_line
+    assert expected_class in error_line
     assert "<redacted" in error_line
     assert secret_marker not in "\n".join(messages)
-    assert result.error == raw_error_text
+    assert raw_error_text in result.error
 
 
 async def test_timeout_fires_mid_execution():
@@ -790,6 +891,7 @@ async def test_timeout_fires_mid_execution():
     assert result.stop_reason == "timeout"
     assert result.error is not None
     assert "exceeded" in result.error
+    assert result.error_kind is None
 
     error_events = [payload for name, payload in emitter.events if name == "on_error"]
     assert len(error_events) == 0

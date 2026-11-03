@@ -12,6 +12,7 @@ from __future__ import annotations
 from loguru import logger
 
 from app.emitters.base import Emitter
+from app.exceptions import AgentLoopFailedError
 from app.llm.client import LLMChunk
 from app.logging_utils import format_exception_for_log, redact_payload, redact_value
 from shared.bench_log import BENCH_LEVEL
@@ -22,6 +23,7 @@ _RESULT_PASSTHROUGH_KEYS = {
     "tool_invocations",
     "iterations",
     "stop_reason",
+    "error_kind",
     "token_usage",
     "warnings",  # service-authored advisory templates; never tenant free text
 }
@@ -130,6 +132,7 @@ class RedisStreamBatchEmitter(Emitter):
                 "stop_reason": result.stop_reason,
                 "token_usage": result.token_usage.model_dump(),
                 "error": result.error,
+                "error_kind": result.error_kind,
                 "warnings": self._warnings,
                 "tasks": (
                     [task.model_dump() for task in result.tasks]
@@ -155,11 +158,19 @@ class RedisStreamBatchEmitter(Emitter):
         logger.info("published agent.result correlation_id={}", self._correlation_id)
 
     async def on_error(self, error: Exception) -> None:
-        """Publish a single ``agent.error`` envelope carrying the error message."""
+        """Publish a single ``agent.error`` envelope carrying the error message.
+
+        A failed agent loop also sends its ``stop_reason`` and ``error_kind``, so crew can
+        explain the failure without showing the raw ``error`` text.
+        """
+        payload = {"error": str(error), "warnings": self._warnings}
+        if isinstance(error, AgentLoopFailedError):
+            payload["stop_reason"] = error.stop_reason
+            payload["error_kind"] = error.error_kind
         envelope = StreamEnvelope(
             type="agent.error",
             correlation_id=self._correlation_id,
-            payload={"error": str(error), "warnings": self._warnings},
+            payload=payload,
         )
         await self._publish(envelope)
         logger.log(

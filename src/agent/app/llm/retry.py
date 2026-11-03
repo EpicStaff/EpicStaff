@@ -2,6 +2,9 @@
 RetryPolicy: exponential backoff with jitter for transient LiteLLM errors,
 or the provider's Retry-After when the error carries one.
 
+A RateLimitError saying the provider account is out of credit is not retried:
+waiting doesn't bring the credit back.
+
 Retryable exceptions are resolved at import time so a missing class in the
 installed LiteLLM version degrades to ``litellm.APIError`` with a warning
 rather than crashing on import.
@@ -18,6 +21,8 @@ import litellm
 from litellm.exceptions import APIError as LiteLLMAPIError
 from litellm.utils import _get_retry_after_from_exception_header
 from loguru import logger
+
+from app.llm.error_kind import is_quota_exhausted
 
 T = TypeVar("T")
 
@@ -122,8 +127,8 @@ class RetryPolicy:
         """Call ``await func(*args, **kwargs)``, retrying on retryable exceptions.
 
         Waits the error's Retry-After when present, else the exponential
-        backoff; both capped at ``max_delay``.  Non-retryable exceptions
-        re-raise immediately.  Last attempt re-raises whatever the final
+        backoff; both capped at ``max_delay``.  Non-retryable exceptions and
+        quota-exhausted rate-limit errors re-raise immediately.  Last attempt re-raises whatever the final
         exception was.
         """
         for attempt in range(self._max_retries + 1):
@@ -134,7 +139,7 @@ class RetryPolicy:
                 raise
 
             except RETRYABLE as error:
-                if attempt == self._max_retries:
+                if attempt == self._max_retries or is_quota_exhausted(error):
                     raise
 
                 delay = _retry_after_seconds(error)

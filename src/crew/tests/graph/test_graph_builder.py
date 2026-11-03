@@ -625,10 +625,10 @@ def test_storage_node_two_levels_deep_receives_session_credentials(mock_services
 
 
 class FakeAgentService:
-    async def run_task(self, node_data, stop_event, on_event=None, storage_credentials=None):
+    async def run_task(self, node_data, stop_event, *, agent_definition, llm, on_event=None, storage_credentials=None):
         return {"final_text": f"answer to: {node_data.instructions}"}
 
-    async def run_agent_node(self, node_data, stop_event, on_event=None, storage_credentials=None):
+    async def run_agent_node(self, node_data, stop_event, *, agent_definition, llm, on_event=None, storage_credentials=None):
         return {"final_text": f"answer to: {node_data.tasks[0].instructions}"}
 
 

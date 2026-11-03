@@ -91,7 +91,7 @@ sequenceDiagram
     alt started before its queue deadline
         S->>B: result
     else waited past the queue deadline
-        S->>B: "Sandbox overloaded: ... not run"
+        S->>B: "The server was too busy to run the code in time. ..."
     end
     B-->>P: result or overloaded answer
 ```
