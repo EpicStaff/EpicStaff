@@ -12,8 +12,15 @@ class AbstractUVProvider(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    async def apply(cls, venv_path: Path, *libs: LibraryString):
-        pass
+    async def apply(cls, venv_path: Path, *libs: LibraryString, wheelhouse: Path | None = None):
+        """Resolve `libs` into a lock file and install them into the venv.
+
+        Args:
+            venv_path: The venv to install into.
+            libs: One requirement per entry, written as a package index would read it.
+            wheelhouse: A directory of wheels to resolve against as well as the package
+                index, for libraries this installation stores itself and no index has.
+        """
 
     @classmethod
     @abc.abstractmethod

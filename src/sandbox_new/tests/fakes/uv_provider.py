@@ -25,6 +25,8 @@ class FakeUVProvider(AbstractUVProvider):
     def __init__(self) -> None:
         self.init_venv_calls: list[Path] = []
         self.apply_calls: list[tuple[Path, tuple[LibraryString, ...]]] = []
+        self.wheelhouses: list[Path | None] = []
+        self.wheelhouse_contents: list[list[str]] = []
         self.install_local_calls: list[tuple[Path, tuple[Path, ...]]] = []
         self.build_wheel_calls: list[tuple[Path, Path]] = []
         self.fail_init: Exception | None = None
@@ -41,8 +43,16 @@ class FakeUVProvider(AbstractUVProvider):
         (venv_path / "bin").mkdir(parents=True)
         self.get_python_binary(venv_path).write_text("#!/bin/sh\n")
 
-    async def apply(self, venv_path: Path, *libs: LibraryString) -> None:
+    async def apply(
+        self, venv_path: Path, *libs: LibraryString, wheelhouse: Path | None = None
+    ) -> None:
         self.apply_calls.append((venv_path, libs))
+        self.wheelhouses.append(wheelhouse)
+        # Read now, not handed back as a path: the wheelhouse is a temporary directory
+        # that is gone by the time a test looks, so what was in it is recorded here.
+        self.wheelhouse_contents.append(
+            sorted(path.name for path in wheelhouse.iterdir()) if wheelhouse else []
+        )
         if self.fail_apply is not None:
             raise self.fail_apply
         self.get_lock_file(venv_path).write_bytes("\n".join(libs).encode("utf-8"))

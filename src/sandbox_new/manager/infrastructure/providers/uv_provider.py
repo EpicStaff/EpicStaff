@@ -152,11 +152,14 @@ class UVProvider(AbstractUVProvider):
         )
 
     @classmethod
-    async def apply(cls, venv_path: Path, *libs: LibraryString):
+    async def apply(cls, venv_path: Path, *libs: LibraryString, wheelhouse: Path | None = None):
         if not venv_path.exists():
-            raise ValueError(f"Venv is not initialized yet. Paht: {venv_path}")
+            raise ValueError(f"Venv is not initialized yet. Path: {venv_path}")
         python_binary = cls.get_python_binary(venv_path)
         lock_file = cls.get_lock_file(venv_path)
+        # On both commands below, not only the compile: the lock pins a version that
+        # only this directory holds, so the sync reading that lock needs it as well.
+        find_links = () if wheelhouse is None else ("--find-links", str(wheelhouse))
 
         await cls.run(
             "pip",
@@ -166,6 +169,7 @@ class UVProvider(AbstractUVProvider):
             "--generate-hashes",
             "--no-header",
             "--no-annotate",
+            *find_links,
             "--python",
             str(python_binary),
             "--output-file",
@@ -178,6 +182,7 @@ class UVProvider(AbstractUVProvider):
             "sync",
             "--no-config",
             "--no-progress",
+            *find_links,
             "--python",
             str(python_binary),
             str(lock_file),
