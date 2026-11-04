@@ -175,7 +175,7 @@ export class ApiKeysTabComponent {
             filterKind: 'single',
             filterServerSide: true,
         },
-        { key: 'actions', label: 'Actions', width: '110px', align: 'end', pinned: 'end' },
+        { key: 'actions', label: 'Actions', width: '110px', pinned: 'end' },
     ]);
 
     /** Revoke is offered only for active keys the caller can retire. */

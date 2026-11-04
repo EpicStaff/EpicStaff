@@ -1,10 +1,17 @@
 @if (data().length || hasAnyFilter()) {
     <div
+        #wrapper
         class="table-wrapper"
         [class.table-wrapper--customizable]="customizable()"
+        [class.table-wrapper--pinned]="hasPinnedColumns()"
+        [class.table-wrapper--shadow-start]="shadowStart()"
+        [class.table-wrapper--shadow-end]="shadowEnd()"
+        (scroll)="onWrapperScroll()"
+        (wheel)="onWrapperWheel($event)"
     >
         <!-- HEADER ROW -->
         <div
+            #tableHeader
             class="table-header"
             [style.grid-template-columns]="gridTemplateColumns()"
         >
@@ -39,7 +46,9 @@
                     [class.end]="col.align === 'end'"
                     [class.pinned-start]="col.pinned === 'start'"
                     [class.pinned-end]="col.pinned === 'end'"
-                    [class.resizable]="customizable() && !col.pinned"
+                    [class.pinned-edge-start]="col.key === pinnedEdgeKeys().start"
+                    [class.pinned-edge-end]="col.key === pinnedEdgeKeys().end"
+                    [class.resizable]="isResizable(col)"
                     [style.left]="pinnedLeft(col)"
                     [style.right]="pinnedRight(col)"
                     [style.grid-area]="headerGridArea(col, columnIndex)"
@@ -121,7 +130,7 @@
                     } @else {
                         <span class="col-label">{{ col.label }}</span>
                     }
-                    @if (customizable() && !col.pinned) {
+                    @if (isResizable(col)) {
                         @let width = columnWidth(col.key);
                         <span
                             class="resize-handle"
@@ -178,6 +187,8 @@
                                 [class.end]="col.align === 'end'"
                                 [class.pinned-start]="col.pinned === 'start'"
                                 [class.pinned-end]="col.pinned === 'end'"
+                                [class.pinned-edge-start]="col.key === pinnedEdgeKeys().start"
+                                [class.pinned-edge-end]="col.key === pinnedEdgeKeys().end"
                                 [style.left]="pinnedLeft(col)"
                                 [style.right]="pinnedRight(col)"
                             >
@@ -224,6 +235,28 @@
             </div>
         }
     </div>
+    <!-- Horizontal scrollbar under the scrolling columns only, drawn by the table so it looks the same in every browser; the wrapper stays scrollable by keyboard and wheel. -->
+    @if (hasPinnedColumns() && scrollbarOverflow() > 0) {
+        <div
+            class="table-scrollbar"
+            [class.table-scrollbar--dragging]="scrollbarDragging()"
+            [style.margin-left]="scrollbarInset().start"
+            [style.margin-right]="scrollbarInset().end"
+            aria-hidden="true"
+            (pointerdown)="onScrollbarPointerDown($event)"
+            (pointermove)="onScrollbarPointerMove($event)"
+            (pointerup)="onScrollbarPointerEnd()"
+            (pointercancel)="onScrollbarPointerEnd()"
+            (lostpointercapture)="onScrollbarPointerEnd()"
+            (wheel)="onWrapperWheel($event)"
+        >
+            <div
+                class="table-scrollbar__thumb"
+                [style.width.%]="scrollbarThumb().width"
+                [style.left.%]="scrollbarThumb().left"
+            ></div>
+        </div>
+    }
 } @else {
     <!-- True empty state — no data has ever existed / no filters applied. -->
     <ng-content select="[tableEmpty]" />

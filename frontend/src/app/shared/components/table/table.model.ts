@@ -67,7 +67,9 @@ export interface AppTableColumnDef {
     /**
      * Keeps the column in view while the table scrolls horizontally: `start` sticks it to the left (after the
      * checkbox column, which then sticks too), `end` to the right. Give it a fixed `width` (e.g. `'200px'`) — the
-     * offsets of the next pinned columns are built from it. A pinned column can't be hidden or resized.
+     * offsets of the next pinned columns are built from it. A pinned column can't be hidden. In a table with a
+     * `layoutKey` a `start` column can still be resized (it stays sticky, the offsets follow its new width); an `end`
+     * column never is.
      */
     pinned?: 'start' | 'end';
     /** Starts hidden in a table with a `layoutKey` until the user shows it in the column picker. */

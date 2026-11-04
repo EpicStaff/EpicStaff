@@ -99,7 +99,7 @@ export class OrganizationsTabComponent {
             filterServerSide: true,
         },
         { key: 'auditVisibility', label: 'Audit visibility', width: 'minmax(160px, 1fr)', hiddenByDefault: true },
-        { key: 'actions', label: 'Actions', width: '130px', align: 'end', pinned: 'end' },
+        { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' },
     ];
 
     organizations = this.organizationStorage.organizations;

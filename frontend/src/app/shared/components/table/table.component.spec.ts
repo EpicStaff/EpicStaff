@@ -262,12 +262,12 @@ describe('AppTableComponent customizable columns', () => {
         expect(localStorage.length).toBe(0);
     });
 
-    it('hides a hiddenByDefault column and offers no resize handle on pinned columns', () => {
+    it('hides a hiddenByDefault column and offers a resize handle on every column but the end-pinned one', () => {
         const { headerLabels, handle, element } = render();
 
         expect(headerLabels()).toEqual(['Name', 'Owner', 'Sessions', 'Audit', 'Actions']);
         expect(handle('Owner')).not.toBeNull();
-        expect(handle('Name')).toBeNull();
+        expect(handle('Name')).not.toBeNull();
         expect(handle('Actions')).toBeNull();
         expect(element.querySelector('.table-header-group')?.textContent?.trim()).toBe('Retention');
     });
@@ -347,6 +347,17 @@ describe('AppTableComponent customizable columns', () => {
         expect(storedLayout()).toEqual({ visibility: {}, widths: { owner: 96 } });
     });
 
+    it('lets the last scrolling column fill the leftover space, so Actions stays at the end', () => {
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({ visibility: {}, widths: { owner: 100, sessions: 100, audit: 100, actions: 300 } })
+        );
+
+        const { gridTemplate } = render();
+
+        expect(gridTemplate()).toBe('200px 100px 100px minmax(100px, 1fr) 130px');
+    });
+
     it('raises a stored width below the minimum to 80px and resizes on from there', () => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ visibility: {}, widths: { owner: 20 } }));
 
@@ -372,8 +383,11 @@ describe('AppTableComponent customizable columns', () => {
         }
         vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         const { fixture, handle, gridTemplate, pressOnHandle } = render();
-        const observer = observers.at(-1)!;
-        const renderedWidths = [300, 150, 151];
+        const observer = observers.find((candidate) =>
+            candidate.observed.some((target) => target.classList.contains('table-cell'))
+        )!;
+        // Name (pinned start) is observed too, but stays at its defined width when another column is resized.
+        const renderedWidths = [200, 300, 150, 151];
         observer.callback(
             observer.observed.map((target, index) => ({
                 target,
@@ -387,8 +401,36 @@ describe('AppTableComponent customizable columns', () => {
 
         pressOnHandle('Sessions', 'ArrowRight');
 
-        expect(gridTemplate()).toBe('200px 300px 166px 151px 130px');
+        expect(gridTemplate()).toBe('200px 300px 166px minmax(151px, 1fr) 130px');
         expect(storedLayout()).toEqual({ visibility: {}, widths: { owner: 300, sessions: 166, audit: 151 } });
+    });
+
+    it('resizes a start-pinned column, which stays sticky and pushes the offset of the next pinned column', () => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ visibility: {}, widths: { name: 260, actions: 300 } }));
+        const columns: AppTableColumnDef[] = [
+            { key: 'name', label: 'Name', width: '200px', pinned: 'start' },
+            { key: 'email', label: 'Email', width: '120px', pinned: 'start' },
+            { key: 'owner', label: 'Owner' },
+            { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' },
+        ];
+        const { fixture, element, gridTemplate, pressOnHandle } = render(LAYOUT_KEY, columns);
+        fixture.componentRef.setInput('selectable', true);
+        fixture.detectChanges();
+        const headerCell = (label: string) =>
+            [...element.querySelectorAll<HTMLElement>('.table-header .table-cell')].find(
+                (cell) => cell.textContent?.trim() === label
+            )!;
+
+        // A stored width of the end-pinned column is ignored. The DOM serializes calc() terms px first.
+        expect(gridTemplate()).toBe('2rem 260px 120px 1fr 130px');
+        expect(headerCell('Email').style.left).toBe('calc(260px + 2rem)');
+
+        pressOnHandle('Name', 'ArrowRight');
+
+        expect(headerCell('Name').classList).toContain('pinned-start');
+        expect(gridTemplate()).toBe('2rem 276px 120px 1fr 130px');
+        expect(headerCell('Email').style.left).toBe('calc(276px + 2rem)');
+        expect(storedLayout()).toEqual({ visibility: {}, widths: { name: 276, actions: 300 } });
     });
 
     it('places the header group, the pinned columns and their offsets around the checkbox column', () => {
@@ -426,3 +468,147 @@ class EmptyTableHostComponent {
     readonly columns: AppTableColumnDef[] = [{ key: 'name', label: 'Name' }];
     readonly hideEveryRow = (): boolean => false;
 }
+
+describe('AppTableComponent horizontal scroll with pinned columns', () => {
+    const COLUMNS: AppTableColumnDef[] = [
+        { key: 'name', label: 'Name', width: '200px', pinned: 'start' },
+        { key: 'owner', label: 'Owner', width: '600px' },
+        { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' },
+    ];
+
+    /** jsdom does no layout: the wrapper's geometry is set by hand, and its scrollLeft made writable. */
+    function render(columns: AppTableColumnDef[] = COLUMNS) {
+        const fixture = TestBed.createComponent(AppTableComponent);
+        fixture.componentRef.setInput('columns', columns);
+        fixture.componentRef.setInput('data', [{ id: 1 }]);
+        fixture.componentRef.setInput('selectable', true);
+        fixture.detectChanges();
+        const element = fixture.nativeElement as HTMLElement;
+        const wrapper = element.querySelector<HTMLElement>('.table-wrapper')!;
+        const geometry = { scrollLeft: 0, scrollWidth: 1000, clientWidth: 600, offsetWidth: 608, clientLeft: 1 };
+        for (const [property, value] of Object.entries(geometry)) {
+            Object.defineProperty(wrapper, property, { value, writable: true, configurable: true });
+        }
+        const scrollWrapperTo = (scrollLeft: number) => {
+            wrapper.scrollLeft = scrollLeft;
+            wrapper.dispatchEvent(new Event('scroll'));
+            fixture.detectChanges();
+        };
+        const scrollbar = () => element.querySelector<HTMLElement>('.table-scrollbar');
+        const shadows = () => ({
+            start: wrapper.classList.contains('table-wrapper--shadow-start'),
+            end: wrapper.classList.contains('table-wrapper--shadow-end'),
+        });
+        return { fixture, element, wrapper, scrollWrapperTo, scrollbar, shadows };
+    }
+
+    it.each([
+        ['at the start', 0, { start: false, end: true }],
+        ['in the middle', 200, { start: true, end: true }],
+        ['at the end', 400, { start: true, end: false }],
+    ])('shades the pinned edges that columns are scrolled under, %s', (_case, scrollLeft, expected) => {
+        const { scrollWrapperTo, shadows } = render();
+
+        scrollWrapperTo(scrollLeft);
+
+        expect(shadows()).toEqual(expected);
+    });
+
+    it('puts the shadow edges on the last start-pinned and the first end-pinned cell of each row', () => {
+        const { element } = render();
+
+        const edgeLabels = (selector: string) =>
+            [...element.querySelectorAll(`.table-header ${selector}`)].map((cell) => cell.textContent?.trim());
+        expect(edgeLabels('.pinned-edge-start')).toEqual(['Name']);
+        expect(edgeLabels('.pinned-edge-end')).toEqual(['Actions']);
+        expect(element.querySelectorAll('.table-body .pinned-edge-start, .table-body .pinned-edge-end').length).toBe(2);
+    });
+
+    it('shows a scrollbar between the pinned columns whose thumb follows the wrapper scroll', () => {
+        const { scrollWrapperTo, scrollbar } = render();
+        scrollWrapperTo(0);
+
+        const bar = scrollbar()!;
+        // The checkbox and Name columns plus the left border; Actions plus the right border and vertical scrollbar (130 + 7).
+        const calcTerms = (css: string) =>
+            css
+                .replace(/^calc\((.*)\)$/, '$1')
+                .split(' + ')
+                .sort();
+        expect(calcTerms(bar.style.marginLeft)).toEqual(['1px', '200px', '2rem']);
+        expect(calcTerms(bar.style.marginRight)).toEqual(['137px']);
+        const thumb = bar.querySelector<HTMLElement>('.table-scrollbar__thumb')!;
+        // 600px visible of 1000px.
+        expect(thumb.style.width).toBe('60%');
+        expect(thumb.style.left).toBe('0%');
+
+        scrollWrapperTo(400);
+        expect(thumb.style.left).toBe('40%');
+    });
+
+    it('scrolls the wrapper when the thumb is dragged or the track pressed', () => {
+        const { wrapper, scrollWrapperTo, scrollbar, fixture } = render();
+        scrollWrapperTo(0);
+        const bar = scrollbar()!;
+        const thumb = bar.querySelector<HTMLElement>('.table-scrollbar__thumb')!;
+        bar.setPointerCapture = () => undefined;
+        // A 500px track: a 300px thumb leaves 200px of travel for the 400px overflow, 2 scroll px per pointer px.
+        bar.getBoundingClientRect = () => ({ left: 100, width: 500 }) as DOMRect;
+        const pointer = (type: string, clientX: number, target: HTMLElement = bar) =>
+            target.dispatchEvent(new PointerEvent(type, { clientX, button: 0, bubbles: true }));
+
+        pointer('pointerdown', 150, thumb);
+        pointer('pointermove', 200);
+        expect(wrapper.scrollLeft).toBe(100);
+        fixture.detectChanges();
+        expect(bar.classList).toContain('table-scrollbar--dragging');
+        pointer('pointerup', 200);
+        pointer('pointermove', 300);
+        expect(wrapper.scrollLeft).toBe(100);
+
+        scrollWrapperTo(0);
+        // Pressing the track at 300px centres the thumb there: its left edge 50px into the track, 100 scroll px.
+        pointer('pointerdown', 300);
+        expect(wrapper.scrollLeft).toBe(100);
+    });
+
+    it('shows no scrollbar while the columns fit', () => {
+        const { wrapper, scrollWrapperTo, scrollbar } = render();
+        Object.defineProperty(wrapper, 'scrollWidth', { value: 600, configurable: true });
+
+        scrollWrapperTo(0);
+
+        expect(scrollbar()).toBeNull();
+    });
+
+    it.each([
+        ['a sideways swipe', { deltaX: 50 }, 50, true],
+        ['shift + wheel', { deltaY: 50, shiftKey: true }, 50, true],
+        ['a diagonal swipe, keeping its vertical part', { deltaX: 50, deltaY: 30 }, 50, false],
+        ['a plain vertical wheel', { deltaY: 50 }, 0, false],
+    ])('scrolls the wrapper sideways on %s', (_case, init, expectedScrollLeft, expectedPrevented) => {
+        const { wrapper } = render();
+        const wheel = new WheelEvent('wheel', { ...init, cancelable: true });
+
+        wrapper.dispatchEvent(wheel);
+
+        expect(wrapper.scrollLeft).toBe(expectedScrollLeft);
+        expect(wheel.defaultPrevented).toBe(expectedPrevented);
+    });
+
+    it('keeps the native scrolling of a table without pinned columns', () => {
+        const { wrapper, scrollWrapperTo, scrollbar } = render([
+            { key: 'name', label: 'Name' },
+            { key: 'owner', label: 'Owner' },
+        ]);
+
+        scrollWrapperTo(200);
+        const wheel = new WheelEvent('wheel', { deltaX: 50, cancelable: true });
+        wrapper.dispatchEvent(wheel);
+
+        expect(wrapper.classList).not.toContain('table-wrapper--pinned');
+        expect(scrollbar()).toBeNull();
+        expect(wrapper.classList).not.toContain('table-wrapper--shadow-start');
+        expect(wheel.defaultPrevented).toBe(false);
+    });
+});

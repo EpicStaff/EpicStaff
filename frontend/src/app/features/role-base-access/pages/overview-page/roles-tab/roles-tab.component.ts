@@ -110,7 +110,7 @@ export class RolesTabComponent {
             defaultValues: this.activeOrgDefault(),
         },
         { key: 'members', label: 'Members', width: 'minmax(100px, 0.8fr)' },
-        { key: 'actions', label: 'Actions', width: '160px', align: 'end', pinned: 'end' },
+        { key: 'actions', label: 'Actions', width: '160px', pinned: 'end' },
     ]);
 
     /** Combined rows: built-in roles first (org label = "All"), then custom roles. */

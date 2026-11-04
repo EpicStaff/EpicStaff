@@ -151,7 +151,7 @@ export class UsersTabComponent {
         },
         { key: 'lastActive', label: 'Last Active', width: 'minmax(140px, 1.5fr)' },
         { key: 'status', label: 'Status', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
-        { key: 'actions', label: 'Actions', width: '130px', align: 'end', pinned: 'end' },
+        { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' },
     ]);
 
     /** Permission-aware; rendered together in the ACTIONS cell (see `actions` ng-template). */
