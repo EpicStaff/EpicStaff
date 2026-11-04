@@ -1,6 +1,9 @@
 import asyncio
+import os
+import tempfile
 from typing import Literal
 
+import anyio
 from application import commands
 from application.commands import GetMetrics, RemoveRag
 from application.orchestrators.estimating import build_estimator
@@ -9,16 +12,23 @@ from application.orchestrators.metrics import build_metrics
 from application.orchestrators.prechunking import build_prechunker
 from application.orchestrators.removing.factory import build_remover
 from application.orchestrators.searching import build_search
+from application.orchestrators.transferring.factory import (
+    build_artifact_exporter,
+    build_artifact_restorer,
+    build_document_id_rewriter,
+)
 from application.ports import AbstractUnitOfWork
+from application.ports.artifact_store import AbstractArtifactStore
 from application.ports.task_register import AbstractTaskRegister
 from common.utils import make_key
 from domain.enums import RAGStrategy
 from domain.errors import NotRunningOperationError
 from infrastructure.graphrag.availability import is_graphrag_available
-from litestar import Controller, delete, get, post, status_codes
+from litestar import Controller, Request, delete, get, post, put, status_codes
 from litestar.connection import ASGIConnection
 from litestar.exceptions import HTTPException
 from litestar.handlers.base import BaseRouteHandler
+from litestar.response import Stream
 from presentation.rest import schemas
 
 
@@ -167,4 +177,58 @@ class RagController(Controller):
     async def remove(self, strategy: RAGStrategy, rag_id: int, uow: AbstractUnitOfWork) -> None:
         command = RemoveRag(rag_id=rag_id)
         orchestrator = build_remover(strategy, uow)
+        await orchestrator.execute(command)
+
+    @get("{rag_id:int}/artifacts/")
+    async def export_artifacts(
+        self,
+        rag_id: int,
+        strategy: RAGStrategy,
+        uow: AbstractUnitOfWork,
+        artifact_store: AbstractArtifactStore,
+    ) -> Stream:
+        orchestrator = build_artifact_exporter(strategy, uow, artifact_store)
+        command = commands.ExportGraphArtifacts(rag_id=rag_id)
+        result = await orchestrator.execute(command)
+        return Stream(
+            result.stream,
+            media_type="application/x-tar",
+            headers={"Content-Disposition": f'attachment; filename="rag_{rag_id}.tar"'},
+        )
+
+    @put("{rag_id:int}/artifacts/", status_code=204, request_max_body_size=None)
+    async def restore_artifacts(
+        self,
+        request: Request,
+        rag_id: int,
+        strategy: RAGStrategy,
+        uow: AbstractUnitOfWork,
+        artifact_store: AbstractArtifactStore,
+    ) -> None:
+        orchestrator = build_artifact_restorer(strategy, uow, artifact_store)
+        # The body goes to disk, not memory: an index archive can be large.
+        file_descriptor, archive_path = tempfile.mkstemp(suffix=".tar")
+        try:
+            # Closed before the restore, so every written byte is flushed before tarfile reads it.
+            async with await anyio.open_file(file_descriptor, "wb") as archive:
+                async for chunk in request.stream():
+                    await archive.write(chunk)
+            command = commands.RestoreGraphArtifacts(rag_id=rag_id, archive_path=archive_path)
+            await orchestrator.execute(command)
+        finally:
+            os.unlink(archive_path)
+
+    @post("{rag_id:int}/artifacts/document-ids/", status_code=204)
+    async def rewrite_document_ids(
+        self,
+        data: schemas.DocumentIdRewriteInputSchema,
+        rag_id: int,
+        strategy: RAGStrategy,
+        uow: AbstractUnitOfWork,
+        artifact_store: AbstractArtifactStore,
+    ) -> None:
+        orchestrator = build_document_id_rewriter(strategy, uow, artifact_store)
+        command = commands.RewriteGraphDocumentIds(
+            rag_id=rag_id, document_id_map=data.document_id_map
+        )
         await orchestrator.execute(command)
