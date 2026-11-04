@@ -1,3 +1,6 @@
+from typing import Self
+
+
 class ArchiveLimitExceeded(ValueError):  # noqa: N818
     """Raised when an archive expands past what one extraction is allowed to buffer."""
 
@@ -39,3 +42,12 @@ class GuardedMemberReader:
         if chunk:
             self._guard.account_bytes(len(chunk), self._name)
         return chunk
+
+    def close(self) -> None:
+        self._f.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self.close()
