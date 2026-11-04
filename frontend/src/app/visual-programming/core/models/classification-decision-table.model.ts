@@ -1,3 +1,5 @@
+import { SystemOnePromptKind, SystemOneQuestion } from '@shared/models';
+
 import { CdtSection } from './cdt-section.model';
 import { ConditionGroup } from './decision-table.model';
 
@@ -60,6 +62,11 @@ export interface PromptConfig {
     result_variable: string;
     variable_mappings: Record<string, string>;
     output_schema_invalid?: boolean;
+    /** Absent means `'llm'`. */
+    kind?: SystemOnePromptKind;
+    system_one_config?: number | null;
+    questions?: Record<string, SystemOneQuestion>;
+    input_map?: Record<string, string>;
 }
 
 /**

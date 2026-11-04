@@ -374,28 +374,20 @@
         }
     }
 
-    .add-prompt-header-btn {
-        display: inline-flex;
+    .prompt-section-actions {
+        display: flex;
         align-items: center;
-        gap: 0.4rem;
-        background: var(--accent-color);
-        color: var(--white);
-        border: none;
-        border-radius: 6px;
-        padding: 0.5rem 0.875rem;
-        font-size: 0.875rem;
-        font-weight: 500;
-        cursor: pointer;
-        white-space: nowrap;
-        transition: background 0.2s ease;
+        gap: 0.5rem;
+    }
 
-        &:hover {
-            background: var(--purple-430);
-        }
-
-        i {
-            font-size: 0.9rem;
-        }
+    .prompt-kind-tag {
+        background: var(--green-alpha-8);
+        color: var(--color-ks-status-new);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: 1;
+        padding: 4px 8px;
+        border-radius: 4px;
     }
 
     .required-star {
@@ -584,6 +576,17 @@
         display: flex;
         flex-direction: column;
         gap: 0.4rem;
+    }
+
+    // Beside the config select: same label gap and control height as that select, so the two line up.
+    .prompt-name--paired {
+        .prompt-field {
+            gap: 0.5rem;
+        }
+
+        .field-input:not(:read-only) {
+            height: 40px;
+        }
     }
 
     .field-input {

@@ -7,7 +7,10 @@
     />
 }
 
-<div class="kv-list">
+<div
+    class="kv-list"
+    [class.kv-list--compact]="compact()"
+>
     @for (item of items(); track $index; let i = $index) {
         <div class="kv-list__row">
             <input
@@ -15,8 +18,8 @@
                 type="text"
                 [class.kv-list__input--error]="hasNameError(i)"
                 [placeholder]="namePlaceholder()"
-                [attr.aria-label]="'Header name, row ' + (i + 1)"
-                matTooltip="Header name"
+                [attr.aria-label]="rowLabel() + ' name, row ' + (i + 1)"
+                [matTooltip]="rowLabel() + ' name'"
                 [attr.aria-invalid]="hasNameError(i)"
                 [attr.aria-describedby]="hasNameError(i) ? errorId(i) : null"
                 [ngModel]="item.name"
@@ -31,8 +34,8 @@
                     [class.kv-list__input--error]="hasValueError(i)"
                     [class.kv-list__input--has-badge]="isSecretValue(item.value)"
                     [placeholder]="valuePlaceholder()"
-                    [attr.aria-label]="'Header value, row ' + (i + 1)"
-                    matTooltip="Header value"
+                    [attr.aria-label]="rowLabel() + ' value, row ' + (i + 1)"
+                    [matTooltip]="rowLabel() + ' value'"
                     [attr.aria-invalid]="hasValueError(i)"
                     [attr.aria-describedby]="hasValueError(i) ? errorId(i) : null"
                     [ngModel]="displayValue(item.value)"
@@ -56,7 +59,7 @@
                 class="kv-list__remove-btn"
                 [class.kv-list__remove-btn--hidden]="isSpareRow(i)"
                 matTooltip="Remove"
-                [attr.aria-label]="'Remove header, row ' + (i + 1)"
+                [attr.aria-label]="'Remove ' + rowLabel().toLowerCase() + ', row ' + (i + 1)"
                 matTooltipPosition="above"
                 (click)="removeCard(i)"
                 [disabled]="isDisabled()"
