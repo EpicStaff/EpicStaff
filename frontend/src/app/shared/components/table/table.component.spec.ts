@@ -205,6 +205,206 @@ describe('AppTableComponent rowVisible', () => {
     });
 });
 
+describe('AppTableComponent customizable columns', () => {
+    const LAYOUT_KEY = 'spec-table';
+    const STORAGE_KEY = `app-table-layout:${LAYOUT_KEY}`;
+    const COLUMNS: AppTableColumnDef[] = [
+        { key: 'name', label: 'Name', width: '200px', pinned: 'start' },
+        { key: 'owner', label: 'Owner', width: 'minmax(120px, 1fr)' },
+        { key: 'sessions', label: 'Sessions', headerGroup: 'Retention' },
+        { key: 'audit', label: 'Audit', headerGroup: 'Retention' },
+        { key: 'visibility', label: 'Visibility', hiddenByDefault: true },
+        { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' },
+    ];
+
+    beforeEach(() => localStorage.clear());
+    afterEach(() => {
+        localStorage.clear();
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
+    function render(layoutKey: string | null = LAYOUT_KEY, columns: AppTableColumnDef[] = COLUMNS) {
+        const fixture = TestBed.createComponent(AppTableComponent);
+        fixture.componentRef.setInput('columns', columns);
+        fixture.componentRef.setInput('data', [{ id: 1 }]);
+        fixture.componentRef.setInput('layoutKey', layoutKey);
+        fixture.detectChanges();
+        const element = fixture.nativeElement as HTMLElement;
+        const headerLabels = () =>
+            [...element.querySelectorAll('.table-header .table-cell .col-label')].map((label) => label.textContent);
+        const handle = (label: string) =>
+            element.querySelector<HTMLElement>(`.resize-handle[aria-label="Resize ${label} column"]`);
+        const gridTemplate = () => element.querySelector<HTMLElement>('.table-header')!.style.gridTemplateColumns;
+        const pressOnHandle = (label: string, key: string) => {
+            handle(label)!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+            fixture.detectChanges();
+        };
+        return { fixture, element, headerLabels, handle, gridTemplate, pressOnHandle };
+    }
+
+    function storedLayout(): unknown {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
+    }
+
+    it('renders a table without a layoutKey as before: every column, no handles, no layout stored', () => {
+        const plainColumns: AppTableColumnDef[] = [
+            { key: 'name', label: 'Name', width: '200px' },
+            { key: 'owner', label: 'Owner' },
+            { key: 'extra', label: 'Extra', hiddenByDefault: true },
+        ];
+        const { element, headerLabels, gridTemplate } = render(null, plainColumns);
+
+        expect(headerLabels()).toEqual(['Name', 'Owner', 'Extra']);
+        expect(gridTemplate()).toBe('200px 1fr 1fr');
+        expect(element.querySelector('.resize-handle')).toBeNull();
+        expect(element.querySelector('.table-wrapper--customizable, .pinned-start, .pinned-end')).toBeNull();
+        expect(localStorage.length).toBe(0);
+    });
+
+    it('hides a hiddenByDefault column and offers no resize handle on pinned columns', () => {
+        const { headerLabels, handle, element } = render();
+
+        expect(headerLabels()).toEqual(['Name', 'Owner', 'Sessions', 'Audit', 'Actions']);
+        expect(handle('Owner')).not.toBeNull();
+        expect(handle('Name')).toBeNull();
+        expect(handle('Actions')).toBeNull();
+        expect(element.querySelector('.table-header-group')?.textContent?.trim()).toBe('Retention');
+    });
+
+    it('shows exactly the chosen columns, keeps pinned ones and stores the choice', () => {
+        const { fixture, headerLabels, element } = render();
+
+        fixture.componentInstance.setVisibleColumns(['owner', 'visibility', 'unknown']);
+        fixture.detectChanges();
+
+        expect(headerLabels()).toEqual(['Name', 'Owner', 'Visibility', 'Actions']);
+        expect(element.querySelector('.table-header-group')).toBeNull();
+        expect(storedLayout()).toEqual({
+            visibility: { owner: true, sessions: false, audit: false, visibility: true },
+            widths: {},
+        });
+    });
+
+    it('restores stored visibility and widths, ignoring unknown columns and invalid entries', () => {
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({
+                visibility: { owner: false, gone: true, audit: 'no' },
+                widths: { sessions: 150, owner: -5, audit: 'wide' },
+            })
+        );
+
+        const { headerLabels, gridTemplate } = render();
+
+        expect(headerLabels()).toEqual(['Name', 'Sessions', 'Audit', 'Actions']);
+        expect(gridTemplate()).toBe('200px 150px 1fr 130px');
+    });
+
+    it.each([
+        ['broken JSON', '{not json'],
+        ['an array', '[1, 2]'],
+        ['null', 'null'],
+        ['records of the wrong type', '{"visibility": [true], "widths": "wide"}'],
+    ])('falls back to the default columns when storage holds %s', (_case, raw) => {
+        localStorage.setItem(STORAGE_KEY, raw);
+
+        const { headerLabels } = render();
+
+        expect(headerLabels()).toEqual(['Name', 'Owner', 'Sessions', 'Audit', 'Actions']);
+    });
+
+    it('still works for the session when storage throws', () => {
+        vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+            throw new Error('storage disabled');
+        });
+        vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new Error('storage disabled');
+        });
+        const { fixture, headerLabels } = render();
+        expect(headerLabels()).toEqual(['Name', 'Owner', 'Sessions', 'Audit', 'Actions']);
+
+        fixture.componentInstance.setVisibleColumns(['owner']);
+        fixture.detectChanges();
+
+        expect(headerLabels()).toEqual(['Name', 'Owner', 'Actions']);
+    });
+
+    it('resizes a column from the keyboard, never below 80px, and stores the width', () => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ visibility: {}, widths: { owner: 100 } }));
+        const { handle, gridTemplate, pressOnHandle } = render();
+
+        pressOnHandle('Owner', 'ArrowLeft');
+        expect(handle('Owner')!.getAttribute('aria-valuenow')).toBe('84');
+
+        pressOnHandle('Owner', 'ArrowLeft');
+        pressOnHandle('Owner', 'ArrowLeft');
+        expect(handle('Owner')!.getAttribute('aria-valuenow')).toBe('80');
+        expect(gridTemplate()).toBe('200px 80px 1fr 1fr 130px');
+
+        pressOnHandle('Owner', 'ArrowRight');
+        expect(handle('Owner')!.getAttribute('aria-valuenow')).toBe('96');
+        expect(storedLayout()).toEqual({ visibility: {}, widths: { owner: 96 } });
+    });
+
+    it('raises a stored width below the minimum to 80px and resizes on from there', () => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ visibility: {}, widths: { owner: 20 } }));
+
+        const { handle, gridTemplate, pressOnHandle } = render();
+        expect(gridTemplate()).toBe('200px 80px 1fr 1fr 130px');
+        expect(handle('Owner')!.getAttribute('aria-valuenow')).toBe('80');
+
+        pressOnHandle('Owner', 'ArrowRight');
+        expect(handle('Owner')!.getAttribute('aria-valuenow')).toBe('96');
+    });
+
+    it('reports the rendered width and fixes every resizable column in px on the first resize', () => {
+        const observers: ResizeObserverStub[] = [];
+        class ResizeObserverStub {
+            readonly observed: Element[] = [];
+            constructor(readonly callback: (entries: Partial<ResizeObserverEntry>[]) => void) {
+                observers.push(this);
+            }
+            observe(target: Element): void {
+                this.observed.push(target);
+            }
+            disconnect(): void {}
+        }
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        const { fixture, handle, gridTemplate, pressOnHandle } = render();
+        const observer = observers.at(-1)!;
+        const renderedWidths = [300, 150, 151];
+        observer.callback(
+            observer.observed.map((target, index) => ({
+                target,
+                borderBoxSize: [{ inlineSize: renderedWidths[index], blockSize: 36 }],
+            }))
+        );
+        fixture.detectChanges();
+        expect(handle('Sessions')!.getAttribute('aria-valuenow')).toBe('150');
+        expect(handle('Sessions')!.getAttribute('aria-valuetext')).toBe('150 pixels');
+        expect(gridTemplate()).toBe('200px minmax(120px, 1fr) 1fr 1fr 130px');
+
+        pressOnHandle('Sessions', 'ArrowRight');
+
+        expect(gridTemplate()).toBe('200px 300px 166px 151px 130px');
+        expect(storedLayout()).toEqual({ visibility: {}, widths: { owner: 300, sessions: 166, audit: 151 } });
+    });
+
+    it('places the header group, the pinned columns and their offsets around the checkbox column', () => {
+        const { fixture, element } = render();
+        fixture.componentRef.setInput('selectable', true);
+        fixture.componentInstance.setVisibleColumns(['sessions', 'audit']);
+        fixture.detectChanges();
+
+        const headerCell = (selector: string) => element.querySelector<HTMLElement>(`.table-header ${selector}`)!;
+        // Lines: checkbox 1, Name 2, Sessions 3, Audit 4.
+        expect(headerCell('.table-header-group').style.gridArea).toBe('1 / 3 / auto / span 2');
+        expect(headerCell('.table-cell.pinned-start:not(.checkbox)').style.left).toBe('calc(2rem)');
+        expect(headerCell('.table-cell.pinned-end').style.right).toBe('0px');
+    });
+});
+
 @Component({
     imports: [AppTableComponent],
     template: `

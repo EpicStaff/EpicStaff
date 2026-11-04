@@ -1,12 +1,19 @@
 @if (data().length || hasAnyFilter()) {
-    <div class="table-wrapper">
+    <div
+        class="table-wrapper"
+        [class.table-wrapper--customizable]="customizable()"
+    >
         <!-- HEADER ROW -->
         <div
             class="table-header"
             [style.grid-template-columns]="gridTemplateColumns()"
         >
             @if (selectable()) {
-                <div class="table-cell checkbox">
+                <div
+                    class="table-cell checkbox"
+                    [class.pinned-start]="hasPinnedStart()"
+                    [style.grid-area]="headerGroups().length ? '1 / 1 / span 2' : null"
+                >
                     <app-checkbox
                         color="secondary"
                         ariaLabel="Select all"
@@ -16,11 +23,26 @@
                     />
                 </div>
             }
-            @for (col of columns(); track col.key) {
+            @for (group of headerGroups(); track group.start) {
                 <div
+                    class="table-header-group"
+                    [style.grid-area]="'1 / ' + group.start + ' / auto / span ' + group.span"
+                >
+                    {{ group.label }}
+                </div>
+            }
+            @for (col of displayedColumns(); track col.key; let columnIndex = $index) {
+                <div
+                    #headerCell
                     class="table-cell cell"
                     [class.center]="col.align === 'center'"
                     [class.end]="col.align === 'end'"
+                    [class.pinned-start]="col.pinned === 'start'"
+                    [class.pinned-end]="col.pinned === 'end'"
+                    [class.resizable]="customizable() && !col.pinned"
+                    [style.left]="pinnedLeft(col)"
+                    [style.right]="pinnedRight(col)"
+                    [style.grid-area]="headerGridArea(col, columnIndex)"
                     [attr.aria-sort]="col.sortDirection ?? null"
                 >
                     @if (col.headerIcon) {
@@ -99,6 +121,26 @@
                     } @else {
                         <span class="col-label">{{ col.label }}</span>
                     }
+                    @if (customizable() && !col.pinned) {
+                        @let width = columnWidth(col.key);
+                        <span
+                            class="resize-handle"
+                            role="separator"
+                            aria-orientation="vertical"
+                            tabindex="0"
+                            [attr.aria-label]="'Resize ' + (col.label ?? col.key) + ' column'"
+                            [attr.aria-valuenow]="width"
+                            [attr.aria-valuetext]="width === null ? null : width + ' pixels'"
+                            [attr.aria-valuemin]="minColumnWidth"
+                            [attr.aria-valuemax]="maxColumnWidth"
+                            (pointerdown)="onResizeStart(col.key, $event)"
+                            (pointermove)="onResizeMove($event)"
+                            (pointerup)="onResizeEnd()"
+                            (pointercancel)="onResizeEnd()"
+                            (lostpointercapture)="onResizeEnd()"
+                            (keydown)="onResizeKeydown(col.key, $event)"
+                        ></span>
+                    }
                 </div>
             }
         </div>
@@ -117,6 +159,7 @@
                         @if (selectable()) {
                             <div
                                 class="table-cell checkbox"
+                                [class.pinned-start]="hasPinnedStart()"
                                 (click)="$event.stopPropagation()"
                             >
                                 <app-checkbox
@@ -128,11 +171,15 @@
                                 />
                             </div>
                         }
-                        @for (col of columns(); track col.key) {
+                        @for (col of displayedColumns(); track col.key) {
                             <div
                                 class="table-cell"
                                 [class.center]="col.align === 'center'"
                                 [class.end]="col.align === 'end'"
+                                [class.pinned-start]="col.pinned === 'start'"
+                                [class.pinned-end]="col.pinned === 'end'"
+                                [style.left]="pinnedLeft(col)"
+                                [style.right]="pinnedRight(col)"
                             >
                                 @if (getCellTemplate(col.key); as tmpl) {
                                     <ng-container *ngTemplateOutlet="tmpl; context: { $implicit: item, index: i }" />

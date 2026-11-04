@@ -64,4 +64,17 @@ export interface AppTableColumnDef {
      * An `<ng-template appTableCell="…">` for the same column key still takes precedence.
      */
     actions?: AppTableRowAction[];
+    /**
+     * Keeps the column in view while the table scrolls horizontally: `start` sticks it to the left (after the
+     * checkbox column, which then sticks too), `end` to the right. Give it a fixed `width` (e.g. `'200px'`) — the
+     * offsets of the next pinned columns are built from it. A pinned column can't be hidden or resized.
+     */
+    pinned?: 'start' | 'end';
+    /** Starts hidden in a table with a `layoutKey` until the user shows it in the column picker. */
+    hiddenByDefault?: boolean;
+    /**
+     * Label of a header spanning this column and its adjacent columns with the same value (e.g. "Retention" over
+     * Sessions / Audit Events / Conversations). Also the column's section in the column picker.
+     */
+    headerGroup?: string;
 }

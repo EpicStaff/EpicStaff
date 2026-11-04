@@ -13,6 +13,7 @@ import {
     LoadingSpinnerComponent,
     SearchComponent,
     SelectItem,
+    TableColumnPickerComponent,
     TableRow,
     ViewButtonComponent,
 } from '@shared/components';
@@ -46,6 +47,7 @@ import { rbacErrorMessage } from '../../../utils';
     imports: [
         AppTableComponent,
         AppTableCellDirective,
+        TableColumnPickerComponent,
         ButtonComponent,
         SearchComponent,
         LoadingSpinnerComponent,
@@ -96,19 +98,19 @@ export class RolesTabComponent {
     });
 
     readonly columns = computed<AppTableColumnDef[]>(() => [
-        { key: 'name', label: 'ROLE NAME', width: 'minmax(160px, 1.2fr)' },
-        { key: 'description', label: 'DESCRIPTION', width: 'minmax(200px, 2.5fr)' },
+        { key: 'name', label: 'Role Name', width: '200px', pinned: 'start' },
+        { key: 'description', label: 'Description', width: 'minmax(200px, 2.5fr)' },
         {
             key: 'organization',
-            label: 'ORGANIZATION',
+            label: 'Organization',
             width: 'minmax(175px, 1fr)',
             filterItems: this.orgFilterItems(),
             filterKind: 'multi',
             filterServerSide: true,
             defaultValues: this.activeOrgDefault(),
         },
-        { key: 'members', label: 'MEMBERS', width: 'minmax(90px, 0.8fr)' },
-        { key: 'actions', label: 'ACTIONS', width: '160px', align: 'end' },
+        { key: 'members', label: 'Members', width: 'minmax(100px, 0.8fr)' },
+        { key: 'actions', label: 'Actions', width: '160px', align: 'end', pinned: 'end' },
     ]);
 
     /** Combined rows: built-in roles first (org label = "All"), then custom roles. */

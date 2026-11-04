@@ -16,6 +16,7 @@ import {
     SearchComponent,
     SelectItem,
     StopButtonComponent,
+    TableColumnPickerComponent,
     TableRow,
 } from '@shared/components';
 import { ActionCode, GetOrganizationResponse, ResourceCode } from '@shared/models';
@@ -31,7 +32,9 @@ import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.co
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 import { HardDeleteFlowService } from '../../../services/hard-delete-flow.service';
-import { buildOrganizationDeleteContent, rbacErrorMessage } from '../../../utils';
+import { buildOrganizationDeleteContent, formatRetentionDays, rbacErrorMessage } from '../../../utils';
+
+const MISSING_VALUE = '—';
 
 const STATUS_ITEMS: SelectItem[] = [
     { name: 'Active', value: true },
@@ -45,6 +48,7 @@ const STATUS_ITEMS: SelectItem[] = [
     imports: [
         AppTableComponent,
         AppTableCellDirective,
+        TableColumnPickerComponent,
         ButtonComponent,
         SearchComponent,
         LoadingSpinnerComponent,
@@ -80,9 +84,12 @@ export class OrganizationsTabComponent {
     readonly isSuperadmin = this.permissionsService.isSuperadmin;
 
     readonly columns: AppTableColumnDef[] = [
-        { key: 'organization', label: 'Organization', width: 'minmax(180px, 2fr)' },
+        { key: 'organization', label: 'Organization', width: '200px', pinned: 'start' },
         { key: 'admin', label: 'Admin', width: 'minmax(180px, 2fr)' },
-        { key: 'members', label: 'Members', width: 'minmax(90px, 1fr)' },
+        { key: 'members', label: 'Members', width: 'minmax(100px, 1fr)' },
+        { key: 'sessions', label: 'Sessions', width: 'minmax(120px, 1fr)', headerGroup: 'Retention' },
+        { key: 'auditEvents', label: 'Audit Events', width: 'minmax(140px, 1fr)', headerGroup: 'Retention' },
+        { key: 'conversations', label: 'Conversations', width: 'minmax(150px, 1fr)', headerGroup: 'Retention' },
         { key: 'created', label: 'Created', width: 'minmax(120px, 1.5fr)' },
         {
             key: 'status',
@@ -91,7 +98,8 @@ export class OrganizationsTabComponent {
             filterItems: STATUS_ITEMS,
             filterServerSide: true,
         },
-        { key: 'actions', label: 'Actions', width: '130px', align: 'end' },
+        { key: 'auditVisibility', label: 'Audit visibility', width: 'minmax(160px, 1fr)', hiddenByDefault: true },
+        { key: 'actions', label: 'Actions', width: '130px', align: 'end', pinned: 'end' },
     ];
 
     organizations = this.organizationStorage.organizations;
@@ -245,11 +253,19 @@ export class OrganizationsTabComponent {
     }
 
     private orgToRow(org: GetOrganizationResponse): TableRow {
+        const config = org.config;
+        // No config row yet: the backend sends no retention, so none is shown.
+        const retention = (days: number | undefined): string =>
+            days === undefined ? MISSING_VALUE : formatRetentionDays(days);
         return {
             id: org.id,
             name: org.name,
             admins: org.admins,
             members: org.member_count,
+            sessions: retention(config?.sessions_effective_days),
+            auditEvents: retention(config?.audit_effective_days),
+            conversations: retention(config?.conversations_effective_days),
+            auditVisibility: retention(config?.audit_retention_days),
             created: org.created_at,
             status: org.is_active ? 'active' : 'deactivated',
         };

@@ -24,6 +24,7 @@ import {
     SearchComponent,
     SelectItem,
     StopButtonComponent,
+    TableColumnPickerComponent,
     TableRow,
     UserAvatarComponent,
 } from '@shared/components';
@@ -65,6 +66,7 @@ const STATUS_ITEMS: SelectItem[] = [
     imports: [
         AppTableComponent,
         AppTableCellDirective,
+        TableColumnPickerComponent,
         AppSvgIconComponent,
         CdkConnectedOverlay,
         CdkOverlayOrigin,
@@ -142,17 +144,18 @@ export class ApiKeysTabComponent {
     protected readonly columns = computed<AppTableColumnDef[]>(() => [
         {
             key: 'owner',
-            label: 'OWNER',
-            width: 'minmax(180px, 1.5fr)',
+            label: 'Owner',
+            width: '220px',
+            pinned: 'start',
             filterItems: this.ownerFilterItems(),
             filterKind: 'single',
             filterSearchable: true,
             filterServerSide: true,
         },
-        { key: 'name', label: 'NAME', width: 'minmax(140px, 1.5fr)' },
+        { key: 'name', label: 'Name', width: 'minmax(140px, 1.5fr)' },
         {
             key: 'orgName',
-            label: 'ORGANIZATION',
+            label: 'Organization',
             width: 'minmax(140px, 1.5fr)',
             filterItems: this.orgFilterItems(),
             filterKind: 'multi',
@@ -160,19 +163,19 @@ export class ApiKeysTabComponent {
             filterServerSide: true,
             defaultValues: this.activeOrgDefault(),
         },
-        { key: 'key', label: 'KEY', width: 'minmax(140px, 1.2fr)' },
-        { key: 'created', label: 'CREATED', width: 'minmax(110px, 1fr)' },
-        { key: 'expires', label: 'EXPIRES', width: 'minmax(100px, 1fr)' },
-        { key: 'lastUsed', label: 'LAST USED', width: 'minmax(100px, 1fr)' },
+        { key: 'key', label: 'Key', width: 'minmax(140px, 1.2fr)' },
+        { key: 'created', label: 'Created', width: 'minmax(110px, 1fr)' },
+        { key: 'expires', label: 'Expires', width: 'minmax(100px, 1fr)' },
+        { key: 'lastUsed', label: 'Last Used', width: 'minmax(100px, 1fr)' },
         {
             key: 'status',
-            label: 'STATUS',
+            label: 'Status',
             width: 'minmax(120px, 1fr)',
             filterItems: STATUS_ITEMS,
             filterKind: 'single',
             filterServerSide: true,
         },
-        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'end' },
+        { key: 'actions', label: 'Actions', width: '110px', align: 'end', pinned: 'end' },
     ]);
 
     /** Revoke is offered only for active keys the caller can retire. */

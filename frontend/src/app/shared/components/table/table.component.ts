@@ -5,10 +5,13 @@ import {
     computed,
     contentChildren,
     effect,
+    ElementRef,
     input,
+    linkedSignal,
     output,
     signal,
     untracked,
+    viewChildren,
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 
@@ -20,6 +23,24 @@ import { SelectComponent } from '../select/select.component';
 import { SelectTriggerDirective } from '../select/select-trigger.directive';
 import { AppTableActionVariant, AppTableColumnDef, AppTableRowAction, TableRow } from './table.model';
 import { AppTableCellDirective } from './table-cell.directive';
+import {
+    clampColumnWidth,
+    MAX_COLUMN_WIDTH,
+    MIN_COLUMN_WIDTH,
+    readTableLayout,
+    TableLayout,
+    writeTableLayout,
+} from './table-layout-storage';
+
+const CHECKBOX_COLUMN_WIDTH = '2rem';
+const RESIZE_KEYBOARD_STEP = 16;
+
+interface HeaderGroupSpan {
+    label: string;
+    /** 1-based grid column line the group starts at. */
+    start: number;
+    span: number;
+}
 
 @Component({
     selector: 'app-table',
@@ -64,6 +85,12 @@ export class AppTableComponent {
      * while `data` is non-empty.
      */
     hasExternalFilter = input<boolean>(false);
+    /**
+     * Opts in to user-customized columns: every column that isn't `pinned` can be hidden (through an
+     * `<app-table-column-picker>`) and resized by dragging its header edge. The choices are kept in localStorage
+     * under this key, so give each table its own. `null` (default) keeps the columns as defined.
+     */
+    layoutKey = input<string | null>(null);
 
     selectionChange = output<TableRow[]>();
     filterChange = output<{ key: string; values: unknown[] }>();
@@ -72,13 +99,103 @@ export class AppTableComponent {
     headerIconClick = output<{ key: string; target: HTMLElement }>();
 
     readonly cellTemplates = contentChildren(AppTableCellDirective);
+    /** Header cells of `displayedColumns()`, in the same order. */
+    private readonly headerCells = viewChildren<ElementRef<HTMLElement>>('headerCell');
+
+    protected readonly minColumnWidth = MIN_COLUMN_WIDTH;
+    protected readonly maxColumnWidth = MAX_COLUMN_WIDTH;
 
     private readonly selectedIds = signal<Set<unknown>>(new Set());
     private readonly activeFilters = signal<Record<string, unknown[]>>({});
     /** Last `defaultValues` applied per column key — used to detect actual changes and avoid re-applying on unrelated column def updates. */
     private readonly lastAppliedDefaults = signal<Record<string, unknown[]>>({});
+    /** Column visibility and widths; re-read from storage when the key changes. */
+    private readonly layout = linkedSignal<TableLayout>(() => readTableLayout(this.layoutKey()));
+    /** Rendered px width of each resizable column, kept current by a ResizeObserver. */
+    private readonly renderedWidths = signal<Record<string, number>>({});
+    private resizing: { key: string; startX: number; startWidth: number } | null = null;
+
+    readonly customizable = computed(() => this.layoutKey() !== null);
+
+    readonly displayedColumns = computed<AppTableColumnDef[]>(() => {
+        const visibility = this.layout().visibility;
+        const hiddenByDefaultApplies = this.customizable();
+        return this.columns().filter(
+            (col) => col.pinned || (visibility[col.key] ?? !(hiddenByDefaultApplies && col.hiddenByDefault))
+        );
+    });
+
+    /** The columns a column picker lists: all but the pinned ones, and none unless the table is customizable. */
+    readonly hideableColumns = computed<AppTableColumnDef[]>(() =>
+        this.customizable() ? this.columns().filter((col) => !col.pinned) : []
+    );
+
+    readonly visibleHideableKeys = computed<string[]>(() =>
+        this.displayedColumns()
+            .filter((col) => !col.pinned)
+            .map((col) => col.key)
+    );
+
+    readonly hasPinnedStart = computed(() => this.displayedColumns().some((col) => col.pinned === 'start'));
+
+    readonly headerGroups = computed<HeaderGroupSpan[]>(() => {
+        const firstColumnLine = this.selectable() ? 2 : 1;
+        const spans: HeaderGroupSpan[] = [];
+        this.displayedColumns().forEach((col, index) => {
+            if (!col.headerGroup) return;
+            const line = index + firstColumnLine;
+            const previous = spans.at(-1);
+            if (previous?.label === col.headerGroup && previous.start + previous.span === line) {
+                previous.span++;
+            } else {
+                spans.push({ label: col.headerGroup, start: line, span: 1 });
+            }
+        });
+        return spans;
+    });
+
+    /** CSS `left` / `right` of each pinned column: the summed widths of the pinned columns before it. */
+    private readonly pinnedOffsets = computed<Map<string, string>>(() => {
+        const offsets = new Map<string, string>();
+        const columns = this.displayedColumns();
+        const accumulate = (pinnedColumns: AppTableColumnDef[], widths: string[]) => {
+            for (const col of pinnedColumns) {
+                offsets.set(col.key, widths.length ? `calc(${widths.join(' + ')})` : '0px');
+                widths.push(col.width ?? '0px');
+            }
+        };
+        accumulate(
+            columns.filter((col) => col.pinned === 'start'),
+            this.selectable() ? [CHECKBOX_COLUMN_WIDTH] : []
+        );
+        accumulate(columns.filter((col) => col.pinned === 'end').reverse(), []);
+        return offsets;
+    });
 
     constructor() {
+        effect((onCleanup) => {
+            const cells = this.headerCells();
+            const columns = this.displayedColumns();
+            // jsdom has no ResizeObserver; without one the separators report a width only once resized.
+            if (!this.customizable() || typeof ResizeObserver === 'undefined') return;
+            const keyByCell = new Map<Element, string>();
+            cells.forEach((cell, index) => {
+                if (!columns[index]?.pinned) keyByCell.set(cell.nativeElement, columns[index].key);
+            });
+            const observer = new ResizeObserver((entries) =>
+                this.renderedWidths.update((widths) => {
+                    const next = { ...widths };
+                    for (const entry of entries) {
+                        const key = keyByCell.get(entry.target);
+                        if (key) next[key] = Math.round(entry.borderBoxSize[0].inlineSize);
+                    }
+                    return next;
+                })
+            );
+            keyByCell.forEach((_key, cell) => observer.observe(cell));
+            onCleanup(() => observer.disconnect());
+        });
+
         effect(() => {
             const currentIds = this.selectedIds();
             if (!currentIds.size) return;
@@ -185,12 +302,76 @@ export class AppTableComponent {
 
     readonly gridTemplateColumns = computed<string>(() => {
         const cols: string[] = [];
-        if (this.selectable()) cols.push('2rem');
-        for (const col of this.columns()) {
-            cols.push(col.width ?? '1fr');
+        if (this.selectable()) cols.push(CHECKBOX_COLUMN_WIDTH);
+        const widths = this.layout().widths;
+        for (const col of this.displayedColumns()) {
+            const resizedWidth = col.pinned ? undefined : widths[col.key];
+            cols.push(resizedWidth ? `${resizedWidth}px` : (col.width ?? '1fr'));
         }
         return cols.join(' ');
     });
+
+    /** Shows exactly the given hideable columns and stores the choice. Unknown keys are ignored. */
+    setVisibleColumns(keys: readonly string[]): void {
+        const visible = new Set(keys);
+        const visibility = Object.fromEntries(this.hideableColumns().map((col) => [col.key, visible.has(col.key)]));
+        this.layout.update((layout) => ({ ...layout, visibility }));
+        this.persistLayout();
+    }
+
+    /** Grid placement of a header cell when a header group adds a second header row; null otherwise. */
+    headerGridArea(col: AppTableColumnDef, index: number): string | null {
+        if (!this.headerGroups().length) return null;
+        const line = index + (this.selectable() ? 2 : 1);
+        return col.headerGroup ? `2 / ${line}` : `1 / ${line} / span 2`;
+    }
+
+    pinnedLeft(col: AppTableColumnDef): string | null {
+        return col.pinned === 'start' ? (this.pinnedOffsets().get(col.key) ?? null) : null;
+    }
+
+    pinnedRight(col: AppTableColumnDef): string | null {
+        return col.pinned === 'end' ? (this.pinnedOffsets().get(col.key) ?? null) : null;
+    }
+
+    /** The px width a column's resize separator reports: the stored one, else the rendered one; null until known. */
+    columnWidth(key: string): number | null {
+        return this.layout().widths[key] ?? this.renderedWidths()[key] ?? null;
+    }
+
+    onResizeStart(key: string, event: PointerEvent): void {
+        if (event.button !== 0 || this.resizing) return;
+        // Keeps the drag from selecting header text.
+        event.preventDefault();
+        // Captured, the handle keeps getting the moves while the pointer is over other cells.
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+        this.freezeColumnWidths();
+        this.resizing = { key, startX: event.clientX, startWidth: this.columnWidth(key) ?? MIN_COLUMN_WIDTH };
+    }
+
+    onResizeMove(event: PointerEvent): void {
+        if (!this.resizing) return;
+        const { key, startX, startWidth } = this.resizing;
+        this.setColumnWidth(key, startWidth + event.clientX - startX);
+    }
+
+    onResizeEnd(): void {
+        if (!this.resizing) return;
+        this.resizing = null;
+        this.persistLayout();
+    }
+
+    onResizeKeydown(key: string, event: KeyboardEvent): void {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        this.freezeColumnWidths();
+        const currentWidth = this.columnWidth(key) ?? MIN_COLUMN_WIDTH;
+        this.setColumnWidth(
+            key,
+            currentWidth + (event.key === 'ArrowLeft' ? -RESIZE_KEYBOARD_STEP : RESIZE_KEYBOARD_STEP)
+        );
+        this.persistLayout();
+    }
 
     getRowId(item: TableRow): unknown {
         return item[this.rowId()];
@@ -277,5 +458,34 @@ export class AppTableComponent {
         const variant = action.variant;
         if (typeof variant === 'function') return variant(row);
         return variant ?? 'default';
+    }
+
+    private setColumnWidth(key: string, width: number): void {
+        const clamped = clampColumnWidth(width);
+        this.layout.update((layout) => ({ ...layout, widths: { ...layout.widths, [key]: clamped } }));
+    }
+
+    /**
+     * Fixes every resizable column at its rendered px width before one is resized. Otherwise the `fr` columns share
+     * out the space the resized one gives or takes, so its edge drifts away from the pointer. The frozen widths are
+     * stored with the resized one: the layout restores as the user left it.
+     */
+    private freezeColumnWidths(): void {
+        const rendered = this.renderedWidths();
+        const frozen = Object.fromEntries(
+            this.visibleHideableKeys()
+                .filter((key) => rendered[key] !== undefined)
+                .map((key) => [key, clampColumnWidth(rendered[key])])
+        );
+        this.layout.update((layout) => ({ ...layout, widths: { ...frozen, ...layout.widths } }));
+    }
+
+    /** Stores only entries of columns the table still has, so renamed or removed columns don't pile up. */
+    private persistLayout(): void {
+        const keys = new Set(this.columns().map((col) => col.key));
+        const known = <T>(entries: Record<string, T>): Record<string, T> =>
+            Object.fromEntries(Object.entries(entries).filter(([key]) => keys.has(key)));
+        const { visibility, widths } = this.layout();
+        writeTableLayout(this.layoutKey(), { visibility: known(visibility), widths: known(widths) });
     }
 }
