@@ -1,8 +1,13 @@
 .menu-item {
     display: flex;
     align-items: center;
+    width: 100%;
     padding: 8px 12px;
+    border: none;
+    background: transparent;
+    font: inherit;
     font-size: 0.8125rem;
+    text-align: left;
     color: var(--color-text-primary);
     border-radius: 6px;
     cursor: pointer;
@@ -11,8 +16,13 @@
         color 0.15s;
     user-select: none;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--white-alpha-8);
+    }
+
+    // Drawn inside: the items sit tight in the menu.
+    &:focus-visible {
+        outline-offset: -2px;
     }
 
     &:active {

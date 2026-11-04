@@ -2,7 +2,8 @@ import { Dialog } from '@angular/cdk/dialog';
 import { DatePipe } from '@angular/common';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { MatTooltip } from '@angular/material/tooltip';
+import { provideRouter, RouterLink } from '@angular/router';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
 import { of } from 'rxjs';
@@ -73,7 +74,7 @@ describe('RunningGraphHeaderComponent session type', () => {
         });
         // The sidebar, files button and switcher bring their own services; only the meta row is under test.
         TestBed.overrideComponent(RunningGraphHeaderComponent, {
-            set: { imports: [DatePipe], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+            set: { imports: [DatePipe, RouterLink, MatTooltip], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
         });
     });
 
@@ -118,7 +119,10 @@ describe('RunningGraphHeaderComponent stop button', () => {
             ],
         });
         TestBed.overrideComponent(RunningGraphHeaderComponent, {
-            set: { imports: [DatePipe, HasPermissionDirective], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+            set: {
+                imports: [DatePipe, RouterLink, MatTooltip, HasPermissionDirective],
+                schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            },
         });
         const fixture = TestBed.createComponent(RunningGraphHeaderComponent);
         fixture.componentRef.setInput('graphId', 3);

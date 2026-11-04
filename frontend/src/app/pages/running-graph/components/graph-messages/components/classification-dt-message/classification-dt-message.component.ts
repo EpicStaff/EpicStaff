@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import {
@@ -13,12 +14,12 @@ import {
 
 @Component({
     selector: 'app-classification-dt-message',
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
     template: `
         <!-- Condition Group -->
         @if (isConditionGroup()) {
             <div
-                class="dt-flow-container"
+                class="session-message dt-flow-container"
                 [ngClass]="conditionResultClass()"
             >
                 <div
@@ -41,7 +42,15 @@ import {
                         />
                     </div>
                     <div class="header-text">
-                        <h3>{{ getConditionData()?.group_name }}</h3>
+                        <h3>
+                            <button
+                                type="button"
+                                class="message-toggle"
+                                [attr.aria-expanded]="isMessageExpanded"
+                            >
+                                {{ getConditionData()?.group_name }}
+                            </button>
+                        </h3>
                         <span
                             class="badge"
                             [ngClass]="conditionResultClass()"
@@ -54,6 +63,7 @@ import {
                 <div
                     class="collapsible-content grid-collapsible"
                     [class.expanded]="isMessageExpanded"
+                    [inert]="!isMessageExpanded"
                 >
                     <div class="dt-content">
                         @if (getConditionData()?.expression) {
@@ -74,7 +84,7 @@ import {
 
         <!-- Classification Prompt -->
         @if (isClassificationPrompt()) {
-            <div class="dt-flow-container prompt-container">
+            <div class="session-message dt-flow-container prompt-container">
                 <div
                     class="dt-header"
                     (click)="toggleMessage()"
@@ -92,31 +102,47 @@ import {
                         />
                     </div>
                     <div class="header-text">
-                        <h3>LLM Classification</h3>
+                        <h3>
+                            <button
+                                type="button"
+                                class="message-toggle"
+                                [attr.aria-expanded]="isMessageExpanded"
+                            >
+                                {{ isSystemOne() ? 'System One' : 'LLM Classification' }}
+                            </button>
+                        </h3>
                         <span class="badge prompt-badge">{{ getPromptData()?.prompt_id }}</span>
                     </div>
                 </div>
 
+                @if (providerLine(); as line) {
+                    <div class="provider-line">{{ line }}</div>
+                }
+
                 <div
                     class="collapsible-content grid-collapsible"
                     [class.expanded]="isMessageExpanded"
+                    [inert]="!isMessageExpanded"
                 >
                     <div class="dt-content">
                         <!-- Prompt Text -->
                         <div class="detail-section">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isPromptExpanded"
                                 (click)="toggleSection('prompt'); $event.stopPropagation()"
                             >
                                 <app-svg-icon
                                     [icon]="isPromptExpanded ? 'caret-down-filled' : 'caret-right-filled'"
                                     size="1.1rem"
                                 />
-                                Prompt
-                            </div>
+                                {{ isSystemOne() ? 'State sent' : 'Prompt' }}
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isPromptExpanded"
+                                [inert]="!isPromptExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <pre class="code-block">{{ getPromptData()?.prompt_text }}</pre>
@@ -126,8 +152,10 @@ import {
 
                         <!-- Raw Response -->
                         <div class="detail-section">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isResponseExpanded"
                                 (click)="toggleSection('response'); $event.stopPropagation()"
                             >
                                 <app-svg-icon
@@ -135,10 +163,11 @@ import {
                                     size="1.1rem"
                                 />
                                 Raw Response
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isResponseExpanded"
+                                [inert]="!isResponseExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <pre class="code-block">{{ getPromptData()?.raw_response }}</pre>
@@ -170,7 +199,7 @@ import {
                                 <div class="detail-row">
                                     <span
                                         class="detail-label"
-                                        title="Subset of prompt tokens — not added to the total."
+                                        matTooltip="Subset of prompt tokens — not added to the total."
                                         >Cached tokens</span
                                     >
                                     <span class="detail-value">
@@ -193,7 +222,7 @@ import {
 
         <!-- Condition Group Manipulation -->
         @if (isManipulation()) {
-            <div class="dt-flow-container manipulation-container">
+            <div class="session-message dt-flow-container manipulation-container">
                 <div
                     class="dt-header"
                     (click)="toggleMessage()"
@@ -211,7 +240,15 @@ import {
                         />
                     </div>
                     <div class="header-text">
-                        <h3>Manipulation</h3>
+                        <h3>
+                            <button
+                                type="button"
+                                class="message-toggle"
+                                [attr.aria-expanded]="isMessageExpanded"
+                            >
+                                Manipulation
+                            </button>
+                        </h3>
                         <span class="badge manipulation-badge">{{ getManipulationData()?.group_name }}</span>
                     </div>
                 </div>
@@ -219,6 +256,7 @@ import {
                 <div
                     class="collapsible-content grid-collapsible"
                     [class.expanded]="isMessageExpanded"
+                    [inert]="!isMessageExpanded"
                 >
                     <div class="dt-content">
                         <pre class="code-block">{{ getManipulationDisplay() | json }}</pre>
@@ -230,6 +268,18 @@ import {
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .dt-flow-container {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
@@ -353,6 +403,12 @@ import {
                 color: var(--amber-620);
             }
 
+            .provider-line {
+                padding-left: 4.5rem;
+                color: var(--gray-400);
+                font-size: 0.875rem;
+            }
+
             .manipulation-badge {
                 background-color: var(--emerald-300-alpha-15);
                 color: var(--emerald-300);
@@ -410,7 +466,14 @@ import {
                 margin-bottom: 0.75rem;
             }
 
+            // The button that folds its section, drawn as the heading row it was.
             .section-heading {
+                width: 100%;
+                padding: 0;
+                border: none;
+                background: none;
+                font-family: inherit;
+                text-align: left;
                 font-size: var(--text-body-medium-size);
                 font-weight: var(--text-body-medium-weight);
                 line-height: var(--text-body-medium-line-height);
@@ -420,6 +483,11 @@ import {
                 user-select: none;
                 display: flex;
                 align-items: center;
+            }
+
+            // Drawn inside: the collapsible content around clips it.
+            .section-heading:focus-visible {
+                outline-offset: -2px;
             }
 
             .section-heading app-svg-icon {
@@ -481,6 +549,16 @@ export class ClassificationDtMessageComponent {
             return this.message.message_data as ClassificationPromptMessageData;
         }
         return null;
+    }
+
+    isSystemOne(): boolean {
+        return !!this.getPromptData()?.provider;
+    }
+
+    providerLine(): string | null {
+        const data = this.getPromptData();
+        if (!data?.provider) return null;
+        return data.model_version ? `${data.provider} · ${data.model_version}` : data.provider;
     }
 
     get usage(): ClassificationTokenUsage | null {

@@ -1,14 +1,18 @@
 import { CdkDragDrop } from '@angular/cdk/drag-drop';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     effect,
+    inject,
+    Injector,
     input,
     OnInit,
     output,
     signal,
     untracked,
+    viewChild,
     viewChildren,
 } from '@angular/core';
 
@@ -57,6 +61,8 @@ export class ParametersTableViewComponent implements OnInit {
     readonly parameterRowSyncRevision = signal(0);
 
     private readonly sectionRefs = viewChildren(VariableSectionComponent);
+    private readonly breadcrumb = viewChild.required(VariablesBreadcrumbComponent);
+    private readonly injector = inject(Injector);
 
     private readonly userVariables = signal<ToolVariable[]>([]);
     private readonly agentVariables = signal<ToolVariable[]>([]);
@@ -218,6 +224,8 @@ export class ParametersTableViewComponent implements OnInit {
         if (wasDrilling) {
             this.parameterRowSyncRevision.update((n) => n + 1);
         }
+        // The row's navigate button goes with the table it was in: the focus moves to the crumb of the new level.
+        afterNextRender(() => this.breadcrumb().focusCurrent(), { injector: this.injector });
     }
 
     onCrumbClick(index: number): void {

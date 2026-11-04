@@ -1,14 +1,18 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
+    ElementRef,
     HostListener,
     inject,
+    Injector,
     OnDestroy,
     OnInit,
     signal,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -100,6 +104,11 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
 
     /** Sort orders surfaced by the Sort dropdown (vs filter-side `used_in_*`). */
     private readonly sortDropdownOrders: readonly ToolSortOrder[] = TOOLS_SORT_MENU_ITEMS.map((i) => i.value);
+
+    private readonly bulkTriggerButton = viewChild.required<ElementRef<HTMLButtonElement>>('bulkTriggerButton');
+    private readonly filterToggle = viewChild.required<ElementRef<HTMLButtonElement>>('filterToggle');
+    private readonly filterSidebar = viewChild(ToolsFilterSidebarComponent);
+    private readonly injector = inject(Injector);
 
     private readonly isMouseOnBulkButton = signal<boolean>(false);
     private readonly isMouseOnBulkMenu = signal<boolean>(false);
@@ -281,7 +290,21 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     }
 
     public toggleFilterSidebar(): void {
-        this.showFilterSidebar.update((v) => !v);
+        const opening = !this.showFilterSidebar();
+        this.showFilterSidebar.set(opening);
+        // The panel comes after the page content, so without this Tab would walk the whole list to reach it.
+        if (opening) afterNextRender(() => this.filterSidebar()?.focus(), { injector: this.injector });
+    }
+
+    public closeFilterSidebar(): void {
+        this.showFilterSidebar.set(false);
+        this.filterToggle().nativeElement.focus();
+    }
+
+    /** Escape inside the filter panel closes only the panel; page-level Escape handlers never see it. */
+    public closeFilterSidebarOnEscape(event: Event): void {
+        event.stopPropagation();
+        this.closeFilterSidebar();
     }
 
     public toggleSortMenu(): void {
@@ -329,9 +352,10 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         this.viewState.clearSelection();
     }
 
-    @HostListener('document:keydown.escape')
-    public onEscape(): void {
-        if (this.viewState.selectedCount() === 0) return;
+    @HostListener('document:keydown.escape', ['$event'])
+    public onEscape(event: Event): void {
+        // An open menu already handled this Escape (CDK overlays preventDefault it); it must not also clear the selection.
+        if (event.defaultPrevented || this.viewState.selectedCount() === 0) return;
         this.viewState.clearSelection();
     }
 
@@ -410,6 +434,8 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     }
 
     public onBulkAction(action: ToolsBulkAction): void {
+        // Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away.
+        this.bulkTriggerButton().nativeElement.focus();
         this.closeBulkMenu();
         this.viewState.dispatch({ kind: action.kind });
     }

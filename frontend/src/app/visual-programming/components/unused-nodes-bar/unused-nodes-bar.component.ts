@@ -1,4 +1,5 @@
 import { Component, computed, input, linkedSignal, output, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { NodeModel } from '../../core/models/node.model';
@@ -7,12 +8,14 @@ import { NodeModel } from '../../core/models/node.model';
     selector: 'app-unused-nodes-bar',
     templateUrl: './unused-nodes-bar.component.html',
     styleUrls: ['./unused-nodes-bar.component.scss'],
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
 })
 export class UnusedNodesBarComponent {
     /** The unused nodes, in the order the arrows step through them. */
     readonly nodes = input.required<NodeModel[]>();
     readonly nodeFocus = output<NodeModel>();
+    /** The user closed the bar; its Close button, which had the focus, is gone. */
+    readonly dismissed = output<void>();
 
     /**
      * The ids that were unused when the bar was closed, or null while it shows.
@@ -47,6 +50,7 @@ export class UnusedNodesBarComponent {
 
     protected close(): void {
         this.dismissedIds.set(new Set(this.nodes().map((node) => node.id)));
+        this.dismissed.emit();
     }
 
     private showAt(position: number): void {

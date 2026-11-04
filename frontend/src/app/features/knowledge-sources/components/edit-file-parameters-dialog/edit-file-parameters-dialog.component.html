@@ -4,36 +4,51 @@
 
         <div class="dialog__actions">
             <div class="dialog__actions-switcher">
-                <app-svg-icon
-                    icon="arrow-left"
-                    size="1.5rem"
+                <!-- aria-disabled, not disabled: reaching the first file must not drop the focus out of the dialog. -->
+                <button
+                    type="button"
                     class="dialog__action"
+                    aria-label="Previous file"
                     matTooltip="Previous file"
-                    matTooltipPosition="above"
+                    [attr.aria-disabled]="isPrevDisabled() || null"
                     [class.dialog__action--disabled]="isPrevDisabled()"
                     (click)="prevDocument()"
-                />
+                >
+                    <app-svg-icon
+                        icon="arrow-left"
+                        size="1.5rem"
+                    />
+                </button>
                 <span>
                     {{ document().file_name }}
                 </span>
-                <app-svg-icon
-                    icon="arrow-right"
+                <button
+                    type="button"
                     class="dialog__action"
-                    size="1.5rem"
+                    aria-label="Next file"
                     matTooltip="Next file"
-                    matTooltipPosition="above"
+                    [attr.aria-disabled]="isNextDisabled() || null"
                     [class.dialog__action--disabled]="isNextDisabled()"
                     (click)="nextDocument()"
-                />
+                >
+                    <app-svg-icon
+                        icon="arrow-right"
+                        size="1.5rem"
+                    />
+                </button>
             </div>
-            <app-svg-icon
-                icon="x"
-                size="1.5rem"
+            <button
+                type="button"
                 class="dialog__action"
+                aria-label="Close"
                 matTooltip="Close"
-                matTooltipPosition="above"
                 (click)="onClose()"
-            />
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="1.5rem"
+                />
+            </button>
         </div>
     </div>
 

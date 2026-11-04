@@ -21,6 +21,8 @@
             #dateInputEl
             class="date-picker__input"
             [placeholder]="placeholder()"
+            [attr.aria-label]="fieldName()"
+            [matTooltip]="fieldName()"
             [disabled]="isDisabled()"
             [readonly]="readonly()"
             [ngModel]="inputValue()"
@@ -29,22 +31,31 @@
             (keydown.enter)="onEnterKey()"
         />
         @if (!readonly()) {
-            <svg
-                class="date-picker__chevron"
-                [class.date-picker__chevron--open]="isOpen()"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
+            <button
+                type="button"
+                class="date-picker__chevron-btn"
+                aria-label="Open calendar"
+                matTooltip="Open calendar"
+                [attr.aria-expanded]="isOpen()"
+                [disabled]="isDisabled()"
                 (click)="$event.stopPropagation(); toggleDropdown()"
             >
-                <path
-                    d="M6 9l6 6 6-6"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    fill="none"
-                    stroke-linecap="round"
-                />
-            </svg>
+                <svg
+                    class="date-picker__chevron"
+                    [class.date-picker__chevron--open]="isOpen()"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        d="M6 9l6 6 6-6"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        fill="none"
+                        stroke-linecap="round"
+                    />
+                </svg>
+            </button>
         }
     </div>
 </div>
@@ -56,6 +67,8 @@
 <ng-template #dropdownTemplate>
     <div
         class="date-picker__dropdown"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
         [style.width.px]="dropdownWidth()"
         [style.min-width.px]="dropdownMinWidth()"
         [style.--active-color]="activeColor()"
@@ -66,6 +79,8 @@
                 <button
                     type="button"
                     class="date-picker__nav-btn"
+                    aria-label="Previous month"
+                    matTooltip="Previous month"
                     (click)="prevMonth()"
                 >
                     <svg
@@ -87,6 +102,8 @@
                 <button
                     type="button"
                     class="date-picker__nav-btn"
+                    aria-label="Next month"
+                    matTooltip="Next month"
                     (click)="nextMonth()"
                 >
                     <svg
@@ -117,17 +134,22 @@
             <div class="date-picker__days">
                 @for (cell of dayCells(); track $index) {
                     @if (cell.day !== null) {
-                        <div
+                        <button
+                            type="button"
                             class="date-picker__day"
                             [class.date-picker__day--today]="cell.isToday"
                             [class.date-picker__day--selected]="cell.isSelected"
                             [class.date-picker__day--past]="cell.isPast"
                             [style.background-color]="cell.isSelected ? resolvedActiveColor() : null"
                             [style.color]="cell.isSelected ? '#fff' : null"
+                            [attr.aria-pressed]="cell.isSelected"
+                            [attr.aria-label]="cell.date | date: 'd MMMM y'"
+                            [matTooltip]="cell.date | date: 'd MMMM y'"
+                            [disabled]="!allowPastDates() && cell.isPast"
                             (click)="selectDay(cell)"
                         >
                             {{ cell.day }}
-                        </div>
+                        </button>
                     } @else {
                         <div class="date-picker__day date-picker__day--empty"></div>
                     }

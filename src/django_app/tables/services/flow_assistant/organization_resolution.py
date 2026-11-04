@@ -4,6 +4,7 @@ from __future__ import annotations
 Organization resolution helper for Flow Assistant views.
 
 Priority order:
+  0. USER API key → the key's org; the header is not read.
   1. X-Organization-Id header present → look up the specific OrganizationUser row.
      - Found → return it.
      - Not found → raise OrganizationMembershipNotFound (403).
@@ -15,6 +16,7 @@ Priority order:
 Always selects related 'org' and 'user' on the returned row.
 """
 
+from rbac.access.principals import user_api_key_org_id
 from rbac.exceptions import (
     OrganizationContextAmbiguous,
     OrganizationMembershipNotFound,
@@ -29,21 +31,24 @@ def resolve_organization_user(request) -> OrganizationUser:
     """Return the OrganizationUser for the authenticated request.
 
     Resolution order:
+      0. USER API key → its org (403 if the owner is no longer a member).
       1. X-Organization-Id header present → targeted lookup (403 if not a member).
       2. Header absent → single-org fallback (400 if 0 or 2+ memberships).
 
     Always select_related('org', 'user') for callers that need org info.
     """
-    header_value = request.headers.get("X-Organization-Id", "").strip()
+    org_id = user_api_key_org_id(request)
+    if org_id is None:
+        header_value = request.headers.get("X-Organization-Id", "").strip()
+        if header_value:
+            try:
+                org_id = int(header_value)
+            except ValueError as e:
+                raise OrganizationMembershipNotFound(
+                    detail=f"Invalid X-Organization-Id header value: '{header_value}'."
+                ) from e
 
-    if header_value:
-        try:
-            org_id = int(header_value)
-        except ValueError as e:
-            raise OrganizationMembershipNotFound(
-                detail=f"Invalid X-Organization-Id header value: '{header_value}'."
-            ) from e
-
+    if org_id is not None:
         try:
             return OrganizationUser.objects.select_related("org", "user").get(
                 user=request.user,

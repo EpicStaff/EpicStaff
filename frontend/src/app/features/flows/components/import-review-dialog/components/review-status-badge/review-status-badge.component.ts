@@ -1,5 +1,5 @@
 import { NgClass } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 
 @Component({
@@ -14,6 +14,8 @@ export class ReviewStatusBadgeComponent {
     public readonly notReviewedLabel = input<string>('Needs review');
     public readonly clickable = input<boolean>(false);
     public readonly toggled = output<void>();
+
+    protected readonly label = computed(() => (this.reviewed() ? 'Reviewed' : this.notReviewedLabel()));
 
     public onToggle(event: Event): void {
         event.stopPropagation();

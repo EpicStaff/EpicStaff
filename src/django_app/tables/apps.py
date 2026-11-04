@@ -86,10 +86,6 @@ class TablesConfig(AppConfig):
 
             start_litellm_refresh_if_owner()
 
-            from tables.utils.recycle_bin_scheduler import start_recycle_bin_purge_if_owner
-
-            start_recycle_bin_purge_if_owner()
-
         redis_service = RedisService()
         converter_service = ConverterService()
         session_manager_service = SessionManagerService(
@@ -124,6 +120,7 @@ class TablesConfig(AppConfig):
         entity_registry.register(configs.OpenAIRealtimeConfigStrategy())
         entity_registry.register(configs.ElevenLabsRealtimeConfigStrategy())
         entity_registry.register(configs.GeminiRealtimeConfigStrategy())
+        entity_registry.register(configs.SystemOneConfigStrategy())
         entity_registry.register(venv.VenvStrategy())
         entity_registry.register(python_tools.PythonCodeToolStrategy())
         entity_registry.register(mcp_tools.McpToolStrategy())

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -25,6 +25,7 @@ type PageState = 'invalid-token' | 'set-password' | 'success';
     templateUrl: './reset-password-page.component.html',
     styleUrls: ['./reset-password-page.component.scss'],
     imports: [
+        RouterLink,
         ReactiveFormsModule,
         AppSvgIconComponent,
         ButtonComponent,
@@ -74,7 +75,8 @@ export class ResetPasswordPageComponent {
 
     onSubmit(): void {
         this.form.markAllAsTouched();
-        if (this.form.invalid) return;
+        // Enter submits the form while the button waits too, so the in-flight guard lives here.
+        if (this.form.invalid || this.loading()) return;
 
         const data = {
             token: this.token,

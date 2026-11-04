@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, ViewEncapsulation } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
@@ -8,6 +9,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
 @Component({
     selector: 'app-start-message',
     imports: [
+        MatTooltip,
         JsonViewerComponent,
         AppSvgIconComponent,
         CopyButtonComponent,
@@ -16,7 +18,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
     ],
     encapsulation: ViewEncapsulation.Emulated,
     template: `
-        <div class="start-container">
+        <div class="session-message start-container">
             <div
                 class="start-header"
                 (click)="toggleMessage()"
@@ -36,7 +38,19 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                     />
                 </div>
                 <h3>
-                    <span class="node-name">{{ message.name | runtimeNodeLabel }}</span> started
+                    <!-- Only inputs fold out of a start message, so without them the title is no button. -->
+                    @if (hasInputs()) {
+                        <button
+                            type="button"
+                            class="message-toggle"
+                            [matTooltip]="(message.name | runtimeNodeLabel) + ' started'"
+                            [attr.aria-expanded]="isMessageExpanded"
+                        >
+                            <span class="node-name">{{ message.name | runtimeNodeLabel }}</span> started
+                        </button>
+                    } @else {
+                        <span class="node-name">{{ message.name | runtimeNodeLabel }}</span> started
+                    }
                 </h3>
 
                 @if (showViewNestedMessages) {
@@ -52,13 +66,16 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             <div
                 class="collapsible-content grid-collapsible"
                 [class.expanded]="isMessageExpanded"
+                [inert]="!isMessageExpanded"
             >
                 <div class="start-content">
                     <!-- Input Parameters Section -->
                     @if (hasInputs()) {
                         <div class="input-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isInputsExpanded"
                                 (click)="toggleInputs($event)"
                             >
                                 <app-svg-icon
@@ -66,10 +83,11 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                                     size="1.1rem"
                                 />
                                 Input Parameters
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isInputsExpanded"
+                                [inert]="!isInputsExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="input-content">
@@ -90,6 +108,18 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .start-container {
                 --message-accent-color: var(--amber-400);
 
@@ -168,7 +198,14 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             }
 
             /* Section styling */
+            // The button that folds its section, drawn as the heading row it was.
             .section-heading {
+                width: 100%;
+                padding: 0;
+                border: none;
+                background: none;
+                font-family: inherit;
+                text-align: left;
                 font-size: var(--text-body-medium-size);
                 font-weight: var(--text-body-medium-weight);
                 line-height: var(--text-body-medium-line-height);
@@ -178,6 +215,11 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                 user-select: none;
                 display: flex;
                 align-items: center;
+            }
+
+            // Drawn inside: the collapsible content around clips it.
+            .section-heading:focus-visible {
+                outline-offset: -2px;
             }
 
             .section-heading app-svg-icon {

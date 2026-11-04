@@ -1,6 +1,8 @@
 <input
     type="text"
     class="variables-input"
+    aria-label="Variable path"
+    matTooltip="Variable path"
     [class.variables-input--invalid]="hasError()"
     [value]="value()"
     (input)="onInput($event)"

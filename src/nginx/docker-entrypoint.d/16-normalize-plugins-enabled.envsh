@@ -1,10 +1,11 @@
 # Sourced by the nginx image's /docker-entrypoint.sh before 20-envsubst-on-templates.sh, so the
-# templates see PLUGINS_ENABLED as exactly `true` or `false`: it names the included
-# plugins-main-, plugins-server- and plugins-internal-api-${PLUGINS_ENABLED} snippets. Read by the same
-# rule as frontend/entrypoint.sh. With the flag on it also derives the values the plugin snippets
-# need and stops the container (exit 64) on any value that could break or inject into the rendered
-# configuration, and does the same for PLUGINS_DEV_MODE, which names the plugins-development-*
-# snippets. With the flag off the plugin values are not read, so they cannot stop nginx.
+# templates see PLUGINS_ENABLED as exactly `true` or `false`: it names the included plugins-main-,
+# plugins-server-, plugins-internal-api- and plugins-tunnel-${PLUGINS_ENABLED} snippets. Read by the
+# same rule as frontend/entrypoint.sh. With the flag on it also derives the values the plugin
+# snippets need and stops the container (exit 64) on any value that could break or inject into the
+# rendered configuration, and does the same for PLUGINS_DEV_MODE, which names the
+# plugins-development-* snippets. With the flag off the plugin values are not read, so they cannot
+# stop nginx.
 # >>> env_bool
 # Strict boolean environment flag, accepting exactly the values Env.bool accepts
 # (src/shared/envtools.py). Copied verbatim into every script that needs it;

@@ -68,6 +68,12 @@ class ClientEventHandler:
         await self.cancel_response()
 
     async def handle_session_update(self, data: dict):
+        """Forward the client-safe subset of a browser `session.update`.
+
+        Instructions and tools are server-owned: they are built from the agent's
+        configuration, and the browser library sends `instructions: ''` on every
+        connect, which would otherwise erase the agent's role, goal and backstory.
+        """
         incoming = data.get("session") or {}
 
         safe_config: dict[str, Any] = {}
@@ -75,7 +81,7 @@ class ClientEventHandler:
         if "voice" in incoming:
             safe_config["voice"] = incoming["voice"]
         if "instructions" in incoming:
-            self.client.instructions = incoming["instructions"]
+            logger.debug("Dropping client-supplied instructions from session.update")
         if "tool_choice" in incoming:
             safe_config["tool_choice"] = incoming["tool_choice"]
         if "turn_detection" in incoming:

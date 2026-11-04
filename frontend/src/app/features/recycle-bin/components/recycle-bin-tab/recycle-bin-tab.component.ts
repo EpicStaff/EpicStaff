@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, inject, input, linkedSignal, OnInit, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, input, linkedSignal, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
     ButtonComponent,
@@ -96,6 +96,8 @@ export class RecycleBinTabComponent implements OnInit {
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     /** Absent outside the page (the tab's own specs). */
     private readonly reloadRequests = inject(RecycleBinReloadService, { optional: true });
+
+    private readonly table = viewChild(RecycleBinTableComponent);
 
     protected readonly tab = computed(() => RECYCLE_BIN_TAB_BY_KEY[this.recycleBinTab()]);
     protected readonly showKind = computed(() => recycleBinTabShowsKind(this.tab()));
@@ -312,6 +314,8 @@ export class RecycleBinTabComponent implements OnInit {
     /** Marks the row busy (no double submit) while `action$` runs. */
     private runRowAction<T>(item: RecycleBinItem, action$: Observable<T>): Observable<T> {
         this.setPending(item.key, true);
+        // Its button is disabled while pending and goes with the row: the table moves the focus on.
+        this.table()?.focusRowAfterReload(this.items().findIndex((shown) => shown.key === item.key));
         return action$.pipe(finalize(() => this.setPending(item.key, false)));
     }
 
@@ -323,6 +327,8 @@ export class RecycleBinTabComponent implements OnInit {
     ): void {
         this.confirmThen(dialog, () => {
             this.bulkBusy.set(true);
+            // The toolbar's buttons go with the selection the reload clears: the focus moves to the first row.
+            this.table()?.focusRowAfterReload(0);
             return action().pipe(finalize(() => this.bulkBusy.set(false)));
         })
             .pipe(takeUntilDestroyed(this.destroyRef))

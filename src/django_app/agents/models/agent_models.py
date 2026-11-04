@@ -62,6 +62,14 @@ class AgentDefinition(
         default=None,
         help_text="Primary LLM used for reasoning and tool selection.",
     )
+    fallback_llm_config = models.ForeignKey(
+        "tables.LLMConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="fallback_agent_definitions",
+        default=None,
+        help_text="Optional LLM used instead of llm_config when the primary fails with a transient error. Must differ from llm_config; requires llm_config.",
+    )
     fcm_llm_config = models.ForeignKey(
         "tables.LLMConfig",
         on_delete=models.SET_NULL,
@@ -123,6 +131,16 @@ class AgentDefinition(
         help_text="Max retries when enforcing structured-output schema validation.",
     )
 
+    group = models.ForeignKey(
+        "tables.Label",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={"scope": "agent"},
+        related_name="agent_definitions",
+        help_text="Agent-scope label this agent is grouped under. Null means ungrouped; deleting the group un-groups the agent.",
+    )
+
     # Surface linkage (through AgentDefaultSurface)
     default_surface_list = models.ManyToManyField(
         "Surface",
@@ -160,6 +178,11 @@ class AgentDefinition(
         base_manager_name = "all_objects"
         constraints = [
             soft_delete_consistency_constraint(),
+            models.CheckConstraint(
+                condition=models.Q(fallback_llm_config__isnull=True)
+                | ~models.Q(fallback_llm_config=models.F("llm_config")),
+                name="agent_fallback_llm_differs_from_primary",
+            ),
             models.UniqueConstraint(
                 fields=["org", "name"],
                 condition=models.Q(active=True),

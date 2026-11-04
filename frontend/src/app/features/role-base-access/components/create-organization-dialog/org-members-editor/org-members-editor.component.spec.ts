@@ -170,6 +170,16 @@ function render(users: AdminCreateUserResponse[], mode: { isEditMode: boolean; o
 const CREATE_MODE = { isEditMode: false, organizationId: null };
 const EDIT_MODE = { isEditMode: true, organizationId: ORG_ID };
 
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 describe('OrgMembersEditorComponent "Role for selected" bulk dropdown', () => {
     it('renders next to the search with the assignable roles and no default', () => {
         const { fixture, component } = render([user(SELF_ID), user(2)], CREATE_MODE);

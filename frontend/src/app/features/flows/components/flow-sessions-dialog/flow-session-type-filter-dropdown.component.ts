@@ -1,4 +1,6 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Component, computed, input, linkedSignal, output, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 
@@ -9,7 +11,7 @@ const ALL_RUN_TYPES: SessionRunType[] = ['test', 'live'];
 
 @Component({
     selector: 'app-flow-session-type-filter-dropdown',
-    imports: [ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
+    imports: [CdkTrapFocus, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent, MatTooltip],
     styles: [
         `
             :host .dropdown-toggle {
@@ -34,9 +36,14 @@ const ALL_RUN_TYPES: SessionRunType[] = ['test', 'live'];
             [class.open]="isOpen()"
             [class.has-value]="hasValue()"
             (appClickOutside)="onCancel()"
+            (keydown.escape)="closeOnEscape($event)"
         >
             <button
+                type="button"
                 class="dropdown-toggle"
+                aria-haspopup="dialog"
+                [attr.aria-expanded]="isOpen()"
+                matTooltip="Filter by type"
                 (click)="toggleDropdown($event)"
             >
                 <span class="selected-label">
@@ -49,14 +56,22 @@ const ALL_RUN_TYPES: SessionRunType[] = ['test', 'live'];
             </button>
 
             @if (isOpen()) {
-                <div class="dropdown-panel">
+                <!-- Takes the focus when it opens and hands it back to the toggle when it closes. -->
+                <div
+                    class="dropdown-panel"
+                    cdkTrapFocus
+                    [cdkTrapFocusAutoCapture]="true"
+                >
                     <ul class="dropdown-menu">
                         @for (runType of runTypes; track runType) {
                             <li
                                 class="group-item"
                                 (click)="toggleRunType(runType)"
                             >
-                                <app-checkbox [checked]="draftValue().includes(runType)"></app-checkbox>
+                                <app-checkbox
+                                    [checked]="draftValue().includes(runType)"
+                                    [ariaLabel]="labels[runType]"
+                                ></app-checkbox>
                                 <span>{{ labels[runType] }}</span>
                             </li>
                         }
@@ -64,19 +79,25 @@ const ALL_RUN_TYPES: SessionRunType[] = ['test', 'live'];
 
                     <div class="trigger-dropdown-footer">
                         <button
+                            type="button"
                             class="clear-filter-btn"
+                            matTooltip="Clear Filter"
                             (click)="onClear()"
                         >
                             Clear Filter
                         </button>
                         <button
+                            type="button"
                             class="cancel-btn"
+                            matTooltip="Cancel"
                             (click)="onCancel()"
                         >
                             Cancel
                         </button>
                         <button
+                            type="button"
                             class="save-btn"
+                            matTooltip="Save Changes"
                             (click)="onSave()"
                         >
                             Save Changes
@@ -117,6 +138,13 @@ export class FlowSessionTypeFilterDropdownComponent {
         this.draftValue.set([]);
         this.valueChange.emit([]);
         this.isOpen.set(false);
+    }
+
+    /** Escape closes the open panel without saving, and goes no further (it would close a dialog around it). */
+    protected closeOnEscape(event: Event): void {
+        if (!this.isOpen()) return;
+        event.stopPropagation();
+        this.onCancel();
     }
 
     protected onCancel(): void {

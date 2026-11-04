@@ -29,6 +29,13 @@
         border-radius: 0.5rem;
         border: 1px solid var(--color-divider-subtle);
         cursor: pointer;
+
+        // The name button opens the RAG configuration, so the row shows its keyboard focus; drawn inside, as the
+        // row clips its content and the list clips the rows.
+        &:has(.name:focus-visible) {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
+        }
     }
 
     .header {
@@ -42,6 +49,17 @@
         white-space: nowrap;
         font-size: 0.75rem;
         color: var(--color-text-primary);
+        // A button that opens its row, drawn as the plain name it was.
+        padding: 0;
+        border: none;
+        background: none;
+        font-family: inherit;
+        cursor: inherit;
+
+        // The row draws it.
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     .model {
@@ -72,8 +90,6 @@
         cursor: pointer;
 
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: 2px;
             border-radius: 4px;
         }
 
@@ -134,9 +150,16 @@
         color: var(--color-ks-transparent-text-80);
 
         &.action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            padding: 0;
+            border: none;
+            background: none;
             border-radius: 50%;
             cursor: pointer;
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 transition: 0.3s;
                 background-color: var(--color-ks-hover-row);
             }

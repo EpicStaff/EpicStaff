@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import { FlowSortOrder } from '../../../../models/flow-filter.model';
@@ -15,7 +16,7 @@ export const FLOWS_SORT_MENU_ITEMS: readonly FlowsSortMenuItem[] = [
 
 @Component({
     selector: 'app-flows-sort-menu',
-    imports: [],
+    imports: [CdkTrapFocus],
     templateUrl: './flows-sort-menu.component.html',
     styleUrls: ['./flows-sort-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

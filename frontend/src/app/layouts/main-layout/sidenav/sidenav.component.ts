@@ -21,14 +21,18 @@ import {
     viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink } from '@angular/router';
 import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
-import { ClickOutsideDirective } from '@shared/directives';
+import { ClickOutsideDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { isPlainPrimaryClick } from '@shared/utils';
+import { afterNavigationRender, isPlainPrimaryClick } from '@shared/utils';
 import { filter, map } from 'rxjs/operators';
 
+import { GuidedTourService } from '../../../core/guided-tour';
+import { AppNavigationDrawerService } from '../../../core/services/app-navigation-drawer.service';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
+import { CREATE_AGENT_TOUR_ANCHORS } from '../../../features/create-agent-tour/create-agent-tour-anchors';
 import { AppsListComponent } from '../../../features/plugins/components/apps-list/apps-list.component';
 import { PluginIconComponent } from '../../../features/plugins/components/plugin-icon/plugin-icon.component';
 import { PluginMenuIconComponent } from '../../../features/plugins/components/plugin-menu-icon/plugin-menu-icon.component';
@@ -43,7 +47,7 @@ import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
 import { EasterEggTriggerService } from '../../../services/easter-egg-trigger.service';
 import { isMainSidenavExpanded } from '../main-sidenav-width';
-import { TooltipComponent } from './tooltip/tooltip.component';
+import { HelpMenuComponent } from './help-menu/help-menu.component';
 
 interface NavItem {
     id: string;
@@ -53,7 +57,6 @@ interface NavItem {
     activePaths?: string[];
     icon?: string;
     label: string;
-    showTooltip: boolean;
     /** Function (not boolean) so signal reads inside happen at template-eval time.
      *  Ensures the sidebar refreshes when active-org permissions reload after an org switch. */
     isPermitted: () => boolean;
@@ -64,13 +67,15 @@ interface NavItem {
     /** The badge link's accessible name for a count. */
     badgeLabel?: (count: number) => string;
     action?: () => void;
-    customClass?: string;
     /** Draws a divider above the item, separating it from the group before it. */
     separatedAbove?: boolean;
 }
 
-/** The two lists of apps the sidebar opens: from the Apps row in EpicStaff, and from the app switcher in an app. */
-type AppsListKind = 'apps' | 'switcher';
+/**
+ * The lists the sidebar opens: the apps, from the Apps row in EpicStaff and from the app switcher in an app, and the
+ * guides, from the Help row.
+ */
+type SidenavListKind = 'apps' | 'switcher' | 'help';
 
 // To the right of the sidebar, level with the row (its `<li>` spans the sidebar), or rising from the row's bottom when
 // there is no room below.
@@ -96,8 +101,8 @@ function isEditableTarget(element: Element): boolean {
 @Component({
     selector: 'app-left-sidebar',
     imports: [
-        TooltipComponent,
         RouterLink,
+        MatTooltip,
         OverlayModule,
         PortalModule,
         UserMenuComponent,
@@ -109,9 +114,11 @@ function isEditableTarget(element: Element): boolean {
         PluginIconComponent,
         PluginMenuIconComponent,
         AppsListComponent,
+        HelpMenuComponent,
         CdkTrapFocus,
         CdkScrollable,
         NgTemplateOutlet,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
@@ -121,18 +128,18 @@ function isEditableTarget(element: Element): boolean {
 export class LeftSidebarComponent {
     /** Current sidebar width in px, owned by the main layout; collapsed vs expanded is derived from it. */
     public readonly width = input.required<number>();
-    /** The sidebar is the phone drawer, opened over the page: an apps list opens inline, under its row. */
+    /** The sidebar is the phone drawer, opened over the page: a list opens inline, under its row. */
     public readonly inDrawer = input(false);
     /** The open/close control was used; the owner of the width decides the new one. */
     public readonly expandedToggle = output<void>();
 
-    /** The open apps popover's focus trap. */
-    private readonly appsListFocusTrap = viewChild(CdkTrapFocus);
+    /** The open popover's focus trap: Apps, the app switcher or Help. */
+    private readonly appsListFocusTrap = viewChild('appsListTrap', { read: CdkTrapFocus });
 
     // Declared ahead of the state, whose initializers read the apps through it.
     private readonly appNavigation = inject(AppNavigationService);
 
-    /** Expanded rows show their labels, so the hover tooltips (which repeat the label) are suppressed. */
+    /** Expanded rows show their labels next to their icons; collapsed, only the icons. */
     protected readonly isExpanded = computed(() => isMainSidenavExpanded(this.width()));
     protected readonly sidebarToggleLabel = computed(() => (this.isExpanded() ? 'Close sidebar' : 'Open sidebar'));
 
@@ -156,15 +163,17 @@ export class LeftSidebarComponent {
     protected readonly appsRowLabel = computed(() => (this.hasNewApps() ? 'Apps, new apps available' : 'Apps'));
     /** A drawer wide enough for names lists apps under their row; a rail, in or out of the drawer, opens a popover. */
     protected readonly listsInline = computed(() => this.inDrawer() && this.isExpanded());
-    /** Closed when the page changes, and when the sidebar changes its width or its place. */
-    protected readonly openList = linkedSignal<unknown, AppsListKind | null>({
-        source: () => [this.currentPath(), this.isExpanded(), this.inDrawer()],
+    /** Help holds only the tours for now: without one there is nothing to show. Hidden in an app, like Settings. */
+    protected readonly showsHelp = computed(
+        () => !this.appContext() && this.guidedTourService.replayableTours().length > 0
+    );
+    /** Closed when the page changes, when the sidebar changes its width or its place, and when Help comes or goes. */
+    protected readonly openList = linkedSignal<unknown, SidenavListKind | null>({
+        source: () => [this.currentPath(), this.isExpanded(), this.inDrawer(), this.showsHelp()],
         computation: () => null,
     });
     /** The apps that were new when the open list opened: they keep their tag while it stays open. */
     protected readonly newAppTags = signal<ReadonlySet<string>>(new Set());
-    /** The row under the pointer, for the tooltips of the rows drawn for apps. */
-    protected readonly hoveredRow = signal<string | null>(null);
 
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
@@ -175,13 +184,14 @@ export class LeftSidebarComponent {
     public recycleBinNavItem: NavItem;
     /** Shown next to the logo when expanded; names the logo image when collapsed. */
     protected readonly productName = 'EpicStaff';
-    public showProfileTooltip = false;
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
-    public showAccountTooltip = false;
-    protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
+    protected readonly quickStartTourAnchors = QUICK_START_TOUR_ANCHORS;
+    protected readonly createAgentTourAnchors = CREATE_AGENT_TOUR_ANCHORS;
     protected readonly backToEpicStaffLabel = BACK_TO_EPICSTAFF_LABEL;
+    /** Names the account row when collapsed, and is its tooltip. */
+    protected readonly accountTooltip = 'Account';
     protected readonly manageAppsUrl = MANAGE_APPS_URL;
     protected readonly popoverPositions = RIGHT_OF_ROW;
 
@@ -236,6 +246,8 @@ export class LeftSidebarComponent {
     private readonly configService = inject(ConfigService);
     private readonly permissionService = inject(PermissionsService);
     private readonly chatInboxStream = inject(ChatInboxStreamService);
+    private readonly guidedTourService = inject(GuidedTourService);
+    private readonly navigationDrawer = inject(AppNavigationDrawerService);
     private readonly injector = inject(Injector);
     private readonly dialog = inject(Dialog);
     private readonly activatedRoute = inject(ActivatedRoute);
@@ -244,14 +256,12 @@ export class LeftSidebarComponent {
         routeLink: 'workspace',
         label: 'Workspace',
         isPermitted: () => this.activeMembership() !== null && this.permissionService.canAccessWorkspace(),
-        showTooltip: false,
     };
     private readonly profileNavItem: NavItem = {
         id: 'profile',
         routeLink: 'profile',
         label: 'Profile',
         isPermitted: () => this.user() !== null,
-        showTooltip: false,
     };
 
     constructor() {
@@ -264,7 +274,6 @@ export class LeftSidebarComponent {
                 icon: 'agents',
                 label: 'Agents',
                 isPermitted: () => this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
-                showTooltip: false,
             },
             {
                 id: 'tools',
@@ -273,7 +282,6 @@ export class LeftSidebarComponent {
                 icon: 'tools',
                 label: 'Tools',
                 isPermitted: () => this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
-                showTooltip: false,
             },
             {
                 id: 'venvs',
@@ -282,7 +290,6 @@ export class LeftSidebarComponent {
                 icon: 'python',
                 label: 'Virtual Environments',
                 isPermitted: () => this.permissionService.can(ResourceCode.Venvs, ActionCode.Read),
-                showTooltip: false,
             },
             {
                 id: 'files',
@@ -291,7 +298,6 @@ export class LeftSidebarComponent {
                 icon: 'sources',
                 label: 'Storage',
                 isPermitted: () => this.permissionService.resolveStorageTab() !== null,
-                showTooltip: false,
             },
             {
                 id: 'flows',
@@ -300,7 +306,6 @@ export class LeftSidebarComponent {
                 icon: 'flows',
                 label: 'Flows',
                 isPermitted: () => this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
-                showTooltip: false,
             },
             {
                 id: 'chats',
@@ -309,7 +314,6 @@ export class LeftSidebarComponent {
                 icon: 'chats',
                 isPermitted: () => true,
                 label: 'Chats',
-                showTooltip: false,
             },
             {
                 id: 'chat',
@@ -322,7 +326,6 @@ export class LeftSidebarComponent {
                 badge: () => this.chatInboxStream.waitingCount(),
                 badgeLink: '/chat-bindings/all',
                 badgeLabel: (count) => `Conversations inbox: ${count} waiting for a person`,
-                showTooltip: false,
             },
             {
                 id: 'audit',
@@ -333,7 +336,6 @@ export class LeftSidebarComponent {
                 isPermitted: () =>
                     this.configService.isAuditTrailEnabled &&
                     this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
-                showTooltip: false,
                 separatedAbove: true,
             },
         ];
@@ -346,8 +348,6 @@ export class LeftSidebarComponent {
             icon: 'settings',
             label: 'Settings',
             isPermitted: () => this.permissionService.canOpenConfigureModelsDialog(),
-            showTooltip: false,
-            customClass: 'settings-tooltip',
         });
 
         // Hidden when no bin tab is readable, the same rule as Files. No `icon`: that names a sprite icon,
@@ -359,7 +359,6 @@ export class LeftSidebarComponent {
             label: 'Recycle Bin',
             isPermitted: () =>
                 visibleRecycleBinTabs((resource, action) => this.permissionService.can(resource, action)).length > 0,
-            showTooltip: false,
         };
     }
 
@@ -371,23 +370,58 @@ export class LeftSidebarComponent {
         this.isUserMenuOpen.set(false);
     }
 
+    /** Escape closes the open account menu (its focus trap hands the focus back to the row), and only that. */
+    protected closeUserMenuOnEscape(event: Event): void {
+        if (!this.isUserMenuOpen()) return;
+        event.stopPropagation();
+        this.closeUserMenu();
+    }
+
     public toggleUserMenu(event: MouseEvent): void {
         event.stopPropagation();
         this.isUserMenuOpen.update((prev) => !prev);
     }
 
-    /** Opens an apps list, or closes it when it is open. Opening it marks every app in it as seen. */
-    protected toggleList(kind: AppsListKind): void {
+    /** Opens a list, or closes it when it is open. Opening an apps list marks every app in it as seen. */
+    protected toggleList(kind: SidenavListKind): void {
         if (this.openList() === kind) {
             this.closeLists();
             return;
         }
-        this.newAppTags.set(this.appNavigation.acknowledgeNewApps());
+        if (kind !== 'help') this.newAppTags.set(this.appNavigation.acknowledgeNewApps());
         this.openList.set(kind);
     }
 
     protected closeLists(): void {
         this.openList.set(null);
+    }
+
+    /**
+     * A tour runs on the page, so the list and the drawer over the page close first. The tour starts after the render
+     * that closes them, so its first step takes the focus last. In the drawer, closing it gives the focus back to the
+     * control that opened the drawer, and the tour returns it there when it ends. Elsewhere the focus goes to Help, for
+     * the tour to return it to: the guide that held it closes with the list.
+     */
+    protected onTourChosen(tourKey: string, helpRow: HTMLElement): void {
+        const isDrawerOpen = this.navigationDrawer.isOpen();
+        this.closeLists();
+        if (isDrawerOpen) {
+            this.navigationDrawer.close();
+        } else {
+            helpRow.focus();
+        }
+        // Registered after close(), so the drawer's own focus return (registered the same way) runs first, with a
+        // navigation in progress too: callbacks of one render run in the order they were registered.
+        afterNavigationRender(this.router, this.injector, () => void this.guidedTourService.start(tourKey));
+    }
+
+    /**
+     * A safeguard for a popover that goes away while its list still reads as open (Escape and an outside click close
+     * the list first). It closes only its own list: when another list opened in its place (Apps and Help switch in one
+     * click), that one stays open.
+     */
+    protected onPopoverDetach(kind: SidenavListKind): void {
+        if (this.openList() === kind) this.closeLists();
     }
 
     /** Escape closes the popover and hands the focus back to the row it opened from. */
@@ -397,7 +431,7 @@ export class LeftSidebarComponent {
         row.focus();
     }
 
-    /** A popover takes the focus on its search field when it has one, else on its first app. */
+    /** A popover takes the focus on its search field when it has one, else on its first item. */
     protected focusOpenedPopover(): void {
         afterNextRender(() => this.appsListFocusTrap()?.focusTrap.focusFirstTabbableElement(), {
             injector: this.injector,

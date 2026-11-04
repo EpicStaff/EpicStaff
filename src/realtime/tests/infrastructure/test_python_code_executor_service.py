@@ -13,20 +13,23 @@ from domain.ports.i_redis_messaging_service import IRedisMessagingService
 from infrastructure.messaging.python_code_executor_service import (
     PythonCodeExecutorService,
 )
-from infrastructure.sandbox.sandbox_client import SandboxExecutionClient
+from infrastructure.sandbox import sandbox_client as sandbox_client_module
 from src.shared.models import CodeResultData, PythonCodeData
 from tests.fixtures import RecordingSandboxIntake
 from utils.singleton_meta import SingletonMeta
 
 
 class FakePubSub:
-    def __init__(self, intake: RecordingSandboxIntake):
+    def __init__(self, intake: RecordingSandboxIntake, answers: bool = True):
         self._intake = intake
+        self._answers = answers
         self.closed = False
 
     async def get_message(self, ignore_subscribe_messages: bool, timeout: float):
         # run_code submits before it polls; failing here beats an endless poll loop.
         assert self._intake.bodies, "run_code polled without submitting a task"
+        if not self._answers:
+            return None
         submitted = self._intake.bodies[-1]
         result = CodeResultData(
             execution_id=submitted["execution_id"],
@@ -41,17 +44,19 @@ class FakePubSub:
 
 
 class FakeRedisMessagingService(IRedisMessagingService):
-    """Answers the result subscription with a result for the submitted task."""
+    """Answers the result subscription with a result for the submitted task, or
+    with nothing at all when `answers` is False (the result never arrives)."""
 
-    def __init__(self, intake: RecordingSandboxIntake):
+    def __init__(self, intake: RecordingSandboxIntake, answers: bool = True):
         self.intake = intake
+        self.answers = answers
         self.published: list[tuple[str, object]] = []
         self.subscribed_channels: list[str] = []
         self.subscriptions: list[FakePubSub] = []
 
     async def async_subscribe(self, channel: str):
         self.subscribed_channels.append(channel)
-        pubsub = FakePubSub(self.intake)
+        pubsub = FakePubSub(self.intake, self.answers)
         self.subscriptions.append(pubsub)
         return pubsub
 
@@ -139,6 +144,7 @@ async def test_submitted_body_is_the_intake_contract(executor, sandbox_intake):
         "storage_org_prefix": None,
         "storage_credentials": None,
         "timeout": None,
+        "reply_to_crew_channel": False,
     }
 
 
@@ -172,21 +178,19 @@ async def test_rejected_submit_fails_the_run_instead_of_waiting_for_a_result(san
     )
 
     assert result["returncode"] == 1
-    assert result["stderr"] == "Could not reach the code sandbox for this run."
+    assert result["stderr"] == '{"detail":"rejected"}'
     assert result["stdout"] == ""
 
 
 @pytest.mark.asyncio
 async def test_unreachable_sandbox_fails_the_run(sandbox_intake, captured_log_messages):
-    """A connect error carries the request -- and its secrets -- so the log may
-    name only the error class."""
+    """A connect error carries the request -- and its secrets -- so neither the log
+    nor the stderr may carry its text."""
 
     def refuse(request):
         raise httpx.ConnectError("connection refused", request=request)
 
-    client = SandboxExecutionClient(
-        base_url=RecordingSandboxIntake.BASE_URL, transport=httpx.MockTransport(refuse)
-    )
+    client = sandbox_intake.client(transport=httpx.MockTransport(refuse))
     executor = PythonCodeExecutorService(FakeRedisMessagingService(sandbox_intake), client)
 
     result = await asyncio.wait_for(
@@ -197,17 +201,63 @@ async def test_unreachable_sandbox_fails_the_run(sandbox_intake, captured_log_me
     )
 
     assert result["returncode"] == 1
+    assert result["stderr"] == "The sandbox is unreachable."
     assert "sk-live-SENTINEL" not in "".join(captured_log_messages)
-    assert "ConnectError" in "".join(captured_log_messages)
+    assert "SandboxUnreachableError" in "".join(captured_log_messages)
+
+
+@pytest.fixture
+def fast_status_checks(monkeypatch):
+    monkeypatch.setattr(sandbox_client_module, "STATUS_POLL_INTERVAL_SECONDS", 0.01)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("status_code", [202, 500], ids=["result-arrives", "submit-refused"])
-async def test_the_result_subscription_is_closed_on_every_exit(sandbox_intake, status_code):
+async def test_execution_the_sandbox_lost_fails_the_run(sandbox_intake, fast_status_checks):
+    """No result will ever arrive for an execution the sandbox no longer has."""
+    sandbox_intake.loses_executions = True
+    executor = PythonCodeExecutorService(
+        FakeRedisMessagingService(sandbox_intake, answers=False), sandbox_intake.client()
+    )
+
+    result = await asyncio.wait_for(
+        executor.run_code(build_python_code_data(), inputs={}), timeout=5
+    )
+
+    assert result["returncode"] == 1
+    assert result["stderr"] == (
+        "The sandbox lost the execution (it restarted, or its result was not delivered)."
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_result_within_the_backstop_fails_the_run(sandbox_intake, monkeypatch):
+    monkeypatch.setattr(config, "REALTIME_CODE_RESULT_TIMEOUT", 0.05)
+    executor = PythonCodeExecutorService(
+        FakeRedisMessagingService(sandbox_intake, answers=False), sandbox_intake.client()
+    )
+
+    result = await asyncio.wait_for(
+        executor.run_code(build_python_code_data(), inputs={}), timeout=5
+    )
+
+    assert result["returncode"] == 1
+    assert result["stderr"] == "Timed out waiting for the result after 0.05 s."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status_code", "answers", "loses_executions"),
+    [(202, True, False), (500, True, False), (503, True, False), (202, False, True)],
+    ids=["result-arrives", "submit-refused", "sandbox-full", "execution-lost"],
+)
+async def test_the_result_subscription_is_closed_on_every_exit(
+    sandbox_intake, fast_status_checks, status_code, answers, loses_executions
+):
     """One subscription per execution would otherwise outlive the call and pile up
     for the process's lifetime."""
     sandbox_intake.status_code = status_code
-    redis_service = FakeRedisMessagingService(sandbox_intake)
+    sandbox_intake.loses_executions = loses_executions
+    redis_service = FakeRedisMessagingService(sandbox_intake, answers=answers)
     executor = PythonCodeExecutorService(redis_service, sandbox_intake.client())
 
     await asyncio.wait_for(executor.run_code(build_python_code_data(), inputs={}), timeout=5)

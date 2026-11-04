@@ -21,13 +21,18 @@
                 class="chunk__id-wrapper"
                 [style.height.px]="chunkHeights().get(chunk.chunkIndex) ?? 20"
             >
-                <span
+                <!-- Copies a link to the chunk. -->
+                <button
+                    type="button"
                     class="chunk__id-item chunk__id-item--clickable"
                     [style.z-index]="$count - $index"
                     [ngClass]="$odd ? 'chunk__id-item--odd' : 'chunk__id-item--even'"
+                    [attr.aria-label]="'Copy link to chunk ' + chunk.chunkIndex"
+                    [matTooltip]="'Copy link to chunk ' + chunk.chunkIndex"
                     (click)="onChunkIdClick(chunk.chunkIndex)"
-                    >{{ chunk.chunkIndex }}</span
                 >
+                    {{ chunk.chunkIndex }}
+                </button>
             </div>
         }
         @if (loading() === 'down') {

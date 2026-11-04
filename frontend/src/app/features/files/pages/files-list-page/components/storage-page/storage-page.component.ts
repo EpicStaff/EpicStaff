@@ -85,6 +85,10 @@ export class StoragePageComponent {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((item) => this.storageTree()?.selectItemExternally(item));
 
+        this.facade.renameFailed
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((path) => this.storageTree()?.onRenameFailed(path));
+
         this.facade.renameInTree.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((item) => {
             this.showSidebar.set(true);
             setTimeout(() => this.storageTree()?.startRenameWhenReady(item));

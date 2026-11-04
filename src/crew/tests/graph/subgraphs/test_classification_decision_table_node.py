@@ -13,11 +13,14 @@ class with its own singleton.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from dotdict import DotDict
 from langgraph.graph import END, StateGraph
+from litellm.types.utils import ModelResponse, Usage
 
 from models.state import State
 from services.graph.events import StopEvent
@@ -33,6 +36,15 @@ from src.shared.models.graph_nodes import (
 )
 from src.shared.models import PythonCodeData
 from src.shared.models.ai_providers import LLMConfigData, LLMData
+from src.shared.models.sessions import TokenUsage
+from src.shared.models.system_one import (
+    NoulAnswer,
+    SystemOneConfigData,
+    SystemOneResult,
+)
+from src.shared.system_one.adapter import SYSTEM_ONE_ADAPTERS, SystemOneError
+from src.shared.system_one.llm_adapter import LlmSystemOneAdapter
+from src.shared.system_one.typesafe_adapter import TypeSafeAdapter
 from utils.singleton_meta import SingletonMeta
 
 
@@ -930,3 +942,308 @@ async def test_llm_failure_reports_the_prompt_without_provider_exception_text(mo
     assert first_error_message(redis_service)["details"] == (
         "Error in condition 'prompt_row': LLM call failed for prompt 'classify'"
     )
+
+
+# ---------------------------------------------------------------------------
+# System One entries
+# ---------------------------------------------------------------------------
+
+
+class FakeSystemOneAdapter:
+    """Answers every question with a fixed noul and records the state it got."""
+
+    def __init__(self, noul: float = 0.92, error: Exception | None = None, cost: float = 0.0):
+        self.noul, self.error, self.cost, self.states = noul, error, cost, []
+
+    async def evaluate(self, *, config, state, questions):
+        self.states.append(state)
+        if self.error:
+            raise self.error
+        answers = {name: NoulAnswer(type="noul", noul=self.noul) for name in questions}
+        result = SystemOneResult(answers=answers, provider=config.provider, model_version="fake-1")
+        return result, TokenUsage(prompt_tokens=7, total_tokens=7, total_cost_usd=self.cost)
+
+
+FAKE_CONFIG = SystemOneConfigData(id=1, provider="fake")
+
+
+def system_one_node(
+    config: SystemOneConfigData | None = FAKE_CONFIG,
+    questions: dict | None = None,
+    input_map: dict | None = None,
+):
+    entry = PromptConfigData(
+        prompt_text="",
+        kind="system_one",
+        system_one_config=config,
+        questions=(
+            {"is_engineering": {"type": "noul", "instructions": "Engineering?"}}
+            if questions is None
+            else questions
+        ),
+        input_map={"company": "variables.company"} if input_map is None else input_map,
+        result_variable="company_check",
+    )
+    rows = [
+        row(0, prompt_id="company_check", continue_flag=True),
+        row(1, "company_check.answers.is_engineering.noul > 0.8", "eng_branch"),
+    ]
+    return make_node_data(
+        condition_groups=rows,
+        prompts={"company_check": entry},
+        default_next_node="other",
+        next_error_node="error_node",
+    )
+
+
+def result_node(result) -> str:
+    return result["system_variables"]["nodes"]["cdt_node"]["result_node"]
+
+
+@pytest.fixture
+def sandbox(monkeypatch):
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+
+
+@pytest.mark.asyncio
+async def test_a_system_one_row_stores_answers_and_the_next_row_routes_on_them(
+    monkeypatch, sandbox
+):
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", FakeSystemOneAdapter(noul=0.92))
+    subgraph, _ = build_subgraph_with_redis(system_one_node())
+
+    result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "eng_branch"
+    assert result["variables"]["company_check"]["answers"]["is_engineering"]["noul"] == 0.92
+
+
+@pytest.mark.asyncio
+async def test_below_threshold_takes_the_default_path(monkeypatch, sandbox):
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", FakeSystemOneAdapter(noul=0.5))
+    subgraph, _ = build_subgraph_with_redis(system_one_node())
+
+    result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "other"
+    assert result["variables"]["company_check"]["answers"]["is_engineering"]["noul"] == 0.5
+
+
+TYPESAFE_RECORDED = (
+    '{"model":"jev-1.14.0","answers":{"is_engineering":{"type":"noul","noul":0.93},'
+    '"department":{"type":"choice","choice":"engineering","confidence":1.0,'
+    '"probabilities":{"engineering":1.0,"sales":0.0}},'
+    '"size":{"type":"score","score":0.48,"confidence":0.26,'
+    '"legend":{"0":"small","1":"medium","2":"large"},'
+    '"probabilities":{"0":0.53,"1":0.45,"2":0.02}}},'
+    '"usage":{"input_tokens":377,"output_tokens":64}}'
+)
+LLM_MODEL = "gpt-4o-mini"
+
+
+def real_typesafe_config() -> SystemOneConfigData:
+    return SystemOneConfigData(id=1, provider="typesafe", model_name="jev-1.14.0", api_key="ts-key")
+
+
+def real_llm_config() -> SystemOneConfigData:
+    return SystemOneConfigData(
+        id=2,
+        provider="llm",
+        llm_data=LLMData(provider="openai", config=LLMConfigData(model=LLM_MODEL)),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("config", "expected_provider", "expected_model_version"),
+    [
+        pytest.param(real_typesafe_config(), "typesafe", "jev-1.14.0", id="typesafe"),
+        pytest.param(real_llm_config(), "llm", LLM_MODEL, id="llm"),
+    ],
+)
+async def test_switching_the_provider_needs_no_table_change(
+    monkeypatch, sandbox, config, expected_provider, expected_model_version
+):
+    typesafe = TypeSafeAdapter(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, content=TYPESAFE_RECORDED)
+        )
+    )
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "typesafe", typesafe)
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "llm", LlmSystemOneAdapter())
+    llm_reply = ModelResponse(
+        model=LLM_MODEL,
+        choices=[
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps({"answers": {"is_engineering": {"noul": 0.92}}}),
+                }
+            }
+        ],
+        usage=Usage(prompt_tokens=50, completion_tokens=20, total_tokens=70),
+    )
+    subgraph, redis_service = build_subgraph_with_redis(system_one_node(config))
+
+    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=llm_reply):
+        result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "eng_branch"
+    message = next(
+        m for m in published_messages(redis_service) if m["message_type"] == "classification_prompt"
+    )
+    assert message["provider"] == expected_provider
+    assert message["model_version"] == expected_model_version
+
+
+@pytest.mark.asyncio
+async def test_a_new_provider_runs_through_the_cdt_with_one_registry_entry(monkeypatch, sandbox):
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", FakeSystemOneAdapter(noul=0.99))
+    subgraph, _ = build_subgraph_with_redis(system_one_node())
+
+    result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "eng_branch"
+
+
+@pytest.mark.asyncio
+async def test_the_message_carries_provider_model_version_state_and_raw_result(
+    monkeypatch, sandbox
+):
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", FakeSystemOneAdapter(cost=0.0000158))
+    subgraph, redis_service = build_subgraph_with_redis(system_one_node())
+
+    await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    message = next(
+        m for m in published_messages(redis_service) if m["message_type"] == "classification_prompt"
+    )
+    stored = {
+        "answers": {"is_engineering": {"type": "noul", "noul": 0.92}},
+        "provider": "fake",
+        "model_version": "fake-1",
+    }
+    assert message["provider"] == "fake"
+    assert message["model_version"] == "fake-1"
+    assert message["prompt_text"] == json.dumps({"company": "Acme"}, indent=2)
+    assert message["raw_response"] == json.dumps(stored)
+    assert message["parsed_result"] == stored
+    assert message["result_variable"] == "company_check"
+    assert message["usage"]["total_cost_usd"] == 0.0000158
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("node_kwargs", "adapter_error", "expected"),
+    [
+        pytest.param(
+            {"config": None},
+            None,
+            "Error in condition 'row0': System One entry 'company_check' has no config.",
+            id="no-config",
+        ),
+        pytest.param(
+            {"questions": {}},
+            None,
+            "Error in condition 'row0': System One entry 'company_check' has no valid questions.",
+            id="no-questions",
+        ),
+        pytest.param(
+            {"questions": {"1bad": {"type": "noul", "instructions": "x"}}},
+            None,
+            "Error in condition 'row0': System One entry 'company_check' has no valid questions.",
+            id="invalid-question-name",
+        ),
+        pytest.param(
+            {"input_map": {}},
+            None,
+            "Error in condition 'row0': System One entry 'company_check' has no input values.",
+            id="empty-input-map",
+        ),
+        pytest.param(
+            {"input_map": {"company": "variables.missing"}},
+            None,
+            "Error in condition 'row0': System One entry 'company_check' has no input values.",
+            id="every-input-value-is-none",
+        ),
+        pytest.param(
+            {},
+            SystemOneError("TypeSafe rate limit reached."),
+            "Error in condition 'row0': System One call failed for prompt 'company_check': "
+            "TypeSafe rate limit reached.",
+            id="adapter-reports-a-system-one-error",
+        ),
+        pytest.param(
+            {},
+            RuntimeError("401 key=ts-secret"),
+            "Error in condition 'row0': System One call failed for prompt 'company_check': "
+            "System One provider 'fake' failed.",
+            id="adapter-crashes-with-provider-text",
+        ),
+    ],
+)
+async def test_a_failing_system_one_entry_takes_the_error_path_with_our_own_message(
+    monkeypatch, sandbox, node_kwargs, adapter_error, expected
+):
+    adapter = FakeSystemOneAdapter(error=adapter_error)
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", adapter)
+    subgraph, redis_service = build_subgraph_with_redis(system_one_node(**node_kwargs))
+
+    result = await subgraph.ainvoke(make_state({"company": "Acme"}))
+
+    assert result_node(result) == "error_node"
+    details = first_error_message(redis_service)["details"]
+    assert details == expected
+    assert "ts-secret" not in details
+    if adapter_error is None:
+        assert adapter.states == []
+
+
+@pytest.mark.asyncio
+async def test_input_map_missing_path_and_datetime_still_go_out(monkeypatch):
+    # Called directly: a datetime in the state already breaks the session messages
+    # of a full run, so only this step is under test.
+    adapter = FakeSystemOneAdapter()
+    monkeypatch.setitem(SYSTEM_ONE_ADAPTERS, "fake", adapter)
+    when = datetime(2026, 1, 1, 12, 30, tzinfo=UTC)
+    node_data = system_one_node(input_map={"a": "variables.missing", "b": "variables.when"})
+    node = ClassificationDecisionTableNodeSubgraph(
+        session_id=1,
+        node_data=node_data,
+        graph_builder=StateGraph(State),
+        stop_event=StopEvent(),
+        redis_service=recording_redis_service(),
+    )
+
+    await node._execute_prompt("company_check", make_state({"when": when}))
+
+    assert adapter.states == [{"a": None, "b": str(when)}]
+
+
+@pytest.mark.asyncio
+async def test_llm_entries_are_unchanged(sandbox):
+    prompt_config = PromptConfigData(
+        prompt_text="Classify {text}",
+        llm_data=make_llm_data(),
+        result_variable="classification_result",
+    )
+    groups = [row(0, "True", "after_prompt", prompt_id="classify")]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups, prompts={"classify": prompt_config})
+    )
+    completion = MagicMock()
+    completion.choices = [MagicMock()]
+    completion.choices[0].message.content = '{"label": "a"}'
+    completion.usage.prompt_tokens = completion.usage.completion_tokens = 1
+    completion.usage.total_tokens = 2
+
+    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=completion):
+        result = await subgraph.ainvoke(make_state({"text": "hello"}))
+
+    assert result_node(result) == "after_prompt"
+    message = next(
+        m for m in published_messages(redis_service) if m["message_type"] == "classification_prompt"
+    )
+    assert message["provider"] is None
+    assert message["model_version"] is None
+    assert message["prompt_text"] == "Classify hello"
