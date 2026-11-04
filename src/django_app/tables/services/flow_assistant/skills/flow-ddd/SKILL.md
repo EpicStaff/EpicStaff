@@ -22,7 +22,7 @@ A good flow does not treat `variables` as a bag of flat keys. It shapes it as do
 {
   "city": "Amsterdam",
   "temperature": 18.5,
-  "service_account_info": {...},
+  "space_id": "spaces/AAAA",
   "model_id": "gpt-5",
   "jira_url": "..."
 }
@@ -31,7 +31,7 @@ A good flow does not treat `variables` as a bag of flat keys. It shapes it as do
 {
   "request":  { "city": "Amsterdam", "units": "celsius" },
   "weather":  { "temperature": null, "conditions": null },
-  "gchat":    { "service_account_info": {...} },
+  "gchat":    { "space_id": "spaces/AAAA" },
   "model": { "model_id": "gpt-5", "provider_id": "openai" },
   "jira":     { "base_url": "...", "project_key": "..." }
 }
@@ -63,7 +63,7 @@ Both are the correct answer to "what if this path may not exist" — prefer them
 ### 2. Group by bounded context, not by data shape
 Top-level keys are domains — things the business talks about. Typical domains:
 - `request` — the invoking user's input (what the webhook/trigger brought in, or the initial question).
-- `config` (or per-system: `jira`, `gchat`, `slack`) — credentials and endpoints for external systems.
+- `config` (or per-system: `jira`, `gchat`, `slack`) — endpoints and non-secret settings for external systems (base URL, project key, space id). Never credentials: those belong in the Secrets store, see "Credentials Never Live in `variables`" below.
 - Output domains named after what is produced (`weather`, `report`, `ticket`, `transcript`).
 - `session` — optional; state that survives across turns of the same session.
 
@@ -170,7 +170,8 @@ When a branch also needs to tweak `variables` before routing, the right place is
 
 ## Patterns That Break
 
-- **Flat variable namespace.** `variables.city`, `variables.api_key`, `variables.temperature` — grows into a minefield. Domain dicts are the fix.
+- **Flat variable namespace.** `variables.city`, `variables.temperature`, `variables.units` — grows into a minefield. Domain dicts are the fix.
+- **Credentials in `variables`.** An API key, token, password or service-account JSON declared in the start node is stored in plaintext in the flow and travels with it. See "Credentials Never Live in `variables`".
 - **Two writers, one path.** Order-dependent correctness. Always resolvable by splitting into subpaths.
 - **Undeclared variables.** Every `input_map` path should exist at session start — even though a missing one won't crash (see Rule 1), it will misbehave silently.
 - **`agent`/`task` where `python` would do.** If the work is deterministic and typed, an LLM adds latency, cost, and non-determinism for no benefit.
@@ -178,6 +179,17 @@ When a branch also needs to tweak `variables` before routing, the right place is
 - **Decision-table node with overlapping groups.** First match wins, in declared order. Ambiguous rules silently route to the first listed group. Order groups deliberately or write mutually exclusive conditions.
 - **Webhook handler that returns nothing.** The returned dict merges into `variables`. A handler that does `return None` or omits `return` writes nothing — downstream reads will fail.
 - **Changing domain shape mid-flow.** Node A writing `variables.user = "alice"` then node B overwriting `variables.user = {"name": "alice"}` is a bug waiting to happen. One shape per path, picked up front.
+
+---
+
+## Credentials Never Live in `variables`
+
+`variables` is plain flow data: it is saved with the flow and visible to anyone who can read it. Credentials (API keys, tokens, passwords, service-account JSON) belong in the **Secrets store**, which keeps them encrypted and gated by the "Use" permission on Secrets.
+
+- A `python` node reads one with `get_secret("NAME")` — no import needed — and the secret must be declared on that node's code (its secrets list). Reading an undeclared name raises an error that lists what was declared.
+- The flow then carries only non-secret settings (`variables.gchat.space_id`); the credential never appears in `variables`, an `input_map` or an `output_map`.
+- When reviewing a flow, flag any start-node variable that looks like a credential (`api_key`, `token`, `password`, `service_account_info`) as a finding and recommend moving it to the Secrets store.
+- Don't print or return a secret's value from node code: it can end up in `variables` through the node's output.
 
 ---
 
@@ -218,7 +230,7 @@ Every declared path — in both `organization` and `user` lists — must already
 ### When it's the right call
 - Flow-wide (organization-scoped) shared state today: shared context, org-level counters, config that should stick across every user's runs.
 - Not yet for per-user memory — the `user` list exists in the schema but does nothing. If someone wants per-user isolation across sessions, say so plainly rather than pointing them at the `user` list as if it worked.
-- Not for secrets that should always be pulled fresh from a vault — persistent values sit in the DB and can go stale.
+- Never for credentials — persistent values sit in the DB and can go stale. Use the Secrets store.
 
 ---
 
@@ -234,6 +246,7 @@ When explaining or reviewing a flow's variable design, you should be able to ans
 6. Where are the end points? What does `output_map` pick from `variables`?
 7. Is there a trigger? If so, is `__start__` also connected to the first real node (dual entry)?
 8. For each `task` node: what tools does it need, and what's its `output_schema`? For each `agent` node: what tools/surfaces does it need, and what's each internal sub-task's `output_schema`?
-9. Does the flow need cross-session state? If so, which paths are declared under `organization` (the only scope that actually persists), and are they nested under a domain dict like `variables.context`?
+9. Is any credential declared in `variables`, instead of read with `get_secret` from the Secrets store?
+10. Does the flow need cross-session state? If so, which paths are declared under `organization` (the only scope that actually persists), and are they nested under a domain dict like `variables.context`?
 
 When every question has a concrete, tool-grounded answer, the design holds together. Anything you can't answer from the tools is an open question — say so rather than guessing.
