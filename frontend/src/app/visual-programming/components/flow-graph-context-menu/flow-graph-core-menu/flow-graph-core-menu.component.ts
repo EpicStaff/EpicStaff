@@ -62,6 +62,21 @@ const MAC_KEY_GAP = '\u2009';
                                     aria-hidden="true"
                                 ></i>
                                 <span class="menu-group__item-label">{{ block.label }}</span>
+                                @if (block.type === NodeType.NOTE) {
+                                    <button
+                                        type="button"
+                                        class="area-draw-btn"
+                                        aria-label="Place note with selected area"
+                                        matTooltip="Place note with selected area"
+                                        matTooltipPosition="right"
+                                        (click)="onAreaNoteClicked()"
+                                    >
+                                        <i
+                                            class="ti ti-capture"
+                                            aria-hidden="true"
+                                        ></i>
+                                    </button>
+                                }
                                 @if (block.keyHint; as keyHint) {
                                     <span
                                         class="key-hint"
@@ -75,21 +90,6 @@ const MAC_KEY_GAP = '\u2009';
                                     ></i>
                                 }
                             </button>
-                            @if (block.type === NodeType.NOTE) {
-                                <button
-                                    type="button"
-                                    class="area-draw-btn"
-                                    aria-label="Place note with selected area"
-                                    matTooltip="Place note with selected area"
-                                    matTooltipPosition="right"
-                                    (click)="onAreaNoteClicked()"
-                                >
-                                    <i
-                                        class="ti ti-capture"
-                                        aria-hidden="true"
-                                    ></i>
-                                </button>
-                            }
                         </li>
                     }
                 </ul>
