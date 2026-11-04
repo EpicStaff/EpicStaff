@@ -3,6 +3,7 @@ import { GlobalPositionStrategy } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { ConfirmationDialogService } from '@shared/components';
 import { of, throwError } from 'rxjs';
 
@@ -16,6 +17,7 @@ import {
 import { CHAT_BINDING_DEFAULTS, ChatBinding, ChatMyAliasResult } from '../models/chat.model';
 import { ChatApiService } from './chat-api.service';
 import { ChatBindingActionsService } from './chat-binding-actions.service';
+import { ChatDesksStorageService } from './chat-desks-storage.service';
 
 const binding: ChatBinding = {
     ...CHAT_BINDING_DEFAULTS,
@@ -45,6 +47,8 @@ describe('ChatBindingActionsService', () => {
     const toast = { error: vi.fn(), success: vi.fn() };
     const dialog = { open: vi.fn() };
     const isPhone = signal(false);
+    const desksStorage = { reload: vi.fn() };
+    const router = { navigate: vi.fn(() => Promise.resolve(true)) };
 
     function collect(source: ReturnType<ChatBindingActionsService['pause']>): boolean[] {
         const values: boolean[] = [];
@@ -62,12 +66,14 @@ describe('ChatBindingActionsService', () => {
                 { provide: ToastService, useValue: toast },
                 { provide: Dialog, useValue: dialog },
                 { provide: PhoneLayoutService, useValue: { isPhone } },
+                { provide: ChatDesksStorageService, useValue: desksStorage },
+                { provide: Router, useValue: router },
             ],
         });
         service = TestBed.inject(ChatBindingActionsService);
     });
 
-    it('opens the create dialog and emits the created desk, or null when the dialog closed without one', () => {
+    it('opens the create dialog, emits the created desk or null, reloads the desks on every close and opens a created one', () => {
         const results: (ChatBinding | null)[] = [];
         dialog.open.mockReturnValueOnce({ closed: of(binding) });
         service.create().subscribe((created) => results.push(created));
@@ -79,6 +85,9 @@ describe('ChatBindingActionsService', () => {
         dialog.open.mockReturnValueOnce({ closed: of(undefined) });
         service.create().subscribe((created) => results.push(created));
         expect(results).toEqual([binding, null]);
+        expect(desksStorage.reload).toHaveBeenCalledTimes(2);
+        expect(router.navigate).toHaveBeenCalledTimes(1);
+        expect(router.navigate).toHaveBeenCalledWith(['/chat-bindings', 'b-1']);
     });
 
     it("opens a desk's settings and emits once the dialog closes, saved or not", () => {

@@ -2,9 +2,10 @@ import { Dialog, DialogConfig } from '@angular/cdk/dialog';
 import { createGlobalPositionStrategy } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, Injector } from '@angular/core';
+import { Router } from '@angular/router';
 import { ConfirmationDialogService } from '@shared/components';
 import { copyWithFeedback, escapeHtml, extractHttpErrorMessage } from '@shared/utils';
-import { catchError, EMPTY, filter, firstValueFrom, map, Observable, of, switchMap } from 'rxjs';
+import { catchError, EMPTY, filter, firstValueFrom, map, Observable, of, switchMap, tap } from 'rxjs';
 
 import { PhoneLayoutService } from '../../../core/services/phone-layout.service';
 import { ToastService } from '../../../services/notifications';
@@ -17,15 +18,17 @@ import {
     MyDeskAliasDialogComponent,
     MyDeskAliasDialogData,
 } from '../components/my-desk-alias-dialog/my-desk-alias-dialog.component';
+import { DESKS_ROUTE } from '../constants/routes.constants';
 import { ChatBinding, ChatErrorBody, ChatMyAliasResult } from '../models/chat.model';
 import { ChatApiService } from './chat-api.service';
-
+import { ChatDesksStorageService } from './chat-desks-storage.service';
 const CONTRACT_REFUSALS = new Set(['contract_failed', 'unknown_flow']);
 
 type DialogSize = Pick<DialogConfig, 'width' | 'maxWidth' | 'positionStrategy'>;
 
 /**
- * The desk actions offered by the desk rail and a desk's header, with their confirmations and error toasts. Pause,
+ * The desk actions offered by the chat area's header, the desk rail and a desk's toolbar, with their confirmations and
+ * error toasts. Create reloads the desks and opens a created one itself, as no caller has a desk to reload yet. Pause,
  * resume and delete return an observable that emits `true` once the server changed the desk (the caller then reloads
  * it) and completes without emitting when the user cancelled or the request failed. The dialog actions emit once,
  * when the dialog closes.
@@ -38,14 +41,21 @@ export class ChatBindingActionsService {
     private readonly dialog = inject(Dialog);
     private readonly isPhone = inject(PhoneLayoutService).isPhone;
     private readonly injector = inject(Injector);
+    private readonly desksStorage = inject(ChatDesksStorageService);
+    private readonly router = inject(Router);
 
     /**
-     * Opens the dialog that creates a desk. Emits once when it closes: the created desk, or null when none was
-     * created. Reload on every close all the same: Escape or a backdrop click after a create that showed an identity
-     * secret closes without a result.
+     * Opens the dialog that creates a desk; a created desk opens at once. Emits once when it closes: the created desk,
+     * or null when none was created. The desks reload on every close all the same: Escape or a backdrop click after a
+     * create that showed an identity secret closes without a result.
      */
     create(): Observable<ChatBinding | null> {
-        return this.openDialog(null);
+        return this.openDialog(null).pipe(
+            tap((created) => {
+                this.desksStorage.reload();
+                if (created) void this.router.navigate([DESKS_ROUTE, created.id]);
+            })
+        );
     }
 
     /** Opens a desk's settings. Emits once when the dialog closes; the caller reloads, as edits may have been saved. */

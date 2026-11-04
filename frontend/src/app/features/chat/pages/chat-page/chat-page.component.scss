@@ -15,18 +15,24 @@
     align-items: center;
     gap: 0.75rem;
     flex-shrink: 0;
-    height: var(--desk-toolbar-height, 52px);
-    padding: 0 16px;
+    height: var(--desk-toolbar-height, 60px);
+    padding: 10px 16px 10px 8px;
     box-sizing: border-box;
     border-bottom: 1px solid var(--color-divider-subtle);
     background-color: var(--color-background-body);
 
-    // The desk status sits beside the title, which gives way first.
+    // Avatar, title and desk status 16px apart; the title gives way first.
     &__titles {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: 16px;
         min-width: 0;
+    }
+
+    // The rail's desk square, at 40px.
+    &__avatar {
+        width: 40px;
+        height: 40px;
     }
 
     &__title {
@@ -36,10 +42,6 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         color: var(--color-text-primary);
-    }
-
-    &__status {
-        flex-shrink: 0;
     }
 
     .header-actions {
@@ -61,6 +63,31 @@
         }
     }
 
+    // A small outlined control, like the desk status beside the title: 28px tall, 8px either side.
+    .operator-name {
+        flex-shrink: 0;
+        height: 28px;
+        padding: 0 8px;
+        box-sizing: border-box;
+        border: 1px solid var(--color-control-outline);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--color-text-secondary);
+        font: inherit;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: border-color 0.2s ease-in-out;
+
+        &:hover {
+            border-color: var(--accent-color);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+    }
+
     .header-action {
         @include header-action-buttons.button;
 
@@ -72,8 +99,11 @@
             @include header-action-buttons.ghost;
         }
 
-        &--outline {
-            @include header-action-buttons.outline;
+        // Smaller type than its neighbours, 8px from its icon.
+        &--snippet {
+            font-size: var(--text-body-small-large-size);
+            font-weight: var(--text-body-small-large-weight);
+            line-height: var(--text-body-small-large-line-height);
         }
 
         &--primary {
@@ -228,13 +258,13 @@
     }
 }
 
-// The list screen's nav bar on phones, in place of the desk toolbar and as tall.
+// The list screen's nav bar on phones, in place of the desk toolbar; it keeps its own 52px height.
 .phone-bar {
     display: flex;
     align-items: center;
     gap: 4px;
     flex-shrink: 0;
-    height: var(--desk-toolbar-height, 52px);
+    height: 52px;
     padding: 0 max(4px, env(safe-area-inset-right, 0px)) 0 max(8px, env(safe-area-inset-left, 0px));
     box-sizing: border-box;
     border-bottom: 1px solid var(--color-divider-subtle);

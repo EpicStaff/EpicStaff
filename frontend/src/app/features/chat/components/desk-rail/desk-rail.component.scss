@@ -34,7 +34,7 @@
     justify-content: space-between;
     gap: 8px;
     flex-shrink: 0;
-    height: var(--desk-toolbar-height, 52px);
+    height: var(--desk-toolbar-height, 60px);
     padding: 0 12px 0 16px;
     border-bottom: 1px solid var(--color-divider-subtle);
 
@@ -60,17 +60,19 @@
     flex: 1;
     min-height: 0;
     margin: 0;
-    padding: 8px;
+    padding: 15px 10px 8px;
     list-style: none;
     overflow-y: auto;
 }
 
+// 40px tall around a 24px avatar; compact, a 40px square.
 .desk-rail__entry {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
-    padding: 6px 8px;
+    min-height: 40px;
+    padding: 8px;
     box-sizing: border-box;
     background: transparent;
     border: none;
@@ -81,8 +83,10 @@
     text-decoration: none;
     cursor: pointer;
 
+    // The avatar turns accent with the row: read by the desk avatar's fill.
     &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
+        --desk-avatar-fill: var(--accent-color);
     }
 
     &:focus-visible {
@@ -92,22 +96,11 @@
 
     &--selected {
         background-color: var(--color-ghost-btn-active);
+        --desk-avatar-fill: var(--accent-color);
     }
 
     :host(.desk-rail--compact) & {
         justify-content: center;
-        padding: 6px 0;
-    }
-}
-
-// Compact: the selected desk is ringed instead of filled, as the squares stand alone.
-:host(.desk-rail--compact) .desk-rail__entry--selected {
-    background-color: transparent;
-
-    .desk-rail__avatar {
-        border-radius: 8px;
-        outline: 2px solid var(--accent-color);
-        outline-offset: 2px;
     }
 }
 
@@ -119,7 +112,9 @@
     white-space: nowrap;
 }
 
+// Beside the name, over nothing: no ring, which would show as a dark halo on a hovered or selected row.
 .desk-rail__badge {
+    --count-badge-outline: transparent;
     @include count-badge.pill;
 }
 
@@ -134,8 +129,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     margin: 6px 0;
     padding: 0;
     background: transparent;
@@ -154,7 +149,9 @@
     }
 }
 
+// Its square is 28px, not the avatars' 24px: less padding keeps the row 40px tall (and 40px wide when compact).
 .desk-rail__new {
+    padding: 6px;
     color: var(--color-text-secondary);
 
     &:is(:hover, :focus-visible) {
@@ -167,9 +164,10 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 36px;
-    height: 36px;
+    width: 28px;
+    height: 28px;
     box-sizing: border-box;
-    border: 1px dashed var(--color-divider-regular);
-    border-radius: 8px;
+    border: 1px dashed var(--transparent-white-8);
+    border-radius: 4px;
+    color: var(--color-text-secondary);
 }

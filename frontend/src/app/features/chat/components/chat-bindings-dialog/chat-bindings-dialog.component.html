@@ -24,7 +24,7 @@
                 label="Identity secret (shown once)"
                 [value]="secret"
                 [hidden]="true"
-                info="Store it now; it is never shown again. Editing identity back to signed issues a new one."
+                info="Store it now; it is never shown again."
             />
         </div>
         <div class="bindings-dialog__actions">
@@ -35,25 +35,27 @@
             >
         </div>
     } @else {
-        <div class="bindings-dialog__tabs">
-            @for (tab of tabs; track tab.id) {
-                <app-tab-button
-                    mod="sm"
-                    [active]="tab.id === activeTab()"
-                    (action)="activeTab.set(tab.id)"
-                >
-                    {{ tab.label }}
-                </app-tab-button>
-                @if (!$last) {
-                    <div
-                        class="bindings-dialog__tab-divider"
-                        aria-hidden="true"
+        @if (tabs().length > 1) {
+            <div class="bindings-dialog__tabs">
+                @for (tab of tabs(); track tab.id) {
+                    <app-tab-button
+                        mod="sm"
+                        [active]="tab.id === activeTab()"
+                        (action)="activeTab.set(tab.id)"
                     >
-                        /
-                    </div>
+                        {{ tab.label }}
+                    </app-tab-button>
+                    @if (!$last) {
+                        <div
+                            class="bindings-dialog__tab-divider"
+                            aria-hidden="true"
+                        >
+                            /
+                        </div>
+                    }
                 }
-            }
-        </div>
+            </div>
+        }
         <form
             class="bindings-dialog__form"
             [formGroup]="form"
@@ -74,9 +76,9 @@
                 [hidden]="activeTab() !== 'general'"
             >
                 <div class="bindings-dialog__field">
-                    <!-- The dialog opens with the focus here, its first field. -->
+                    <!-- A new desk's dialog opens with the focus here, its first field; the settings never show it. -->
                     <app-custom-input
-                        cdkFocusInitial
+                        [attr.cdkFocusInitial]="isCreating() ? '' : null"
                         label="Name"
                         formControlName="name"
                         [required]="true"
@@ -163,12 +165,6 @@
                         </label>
                     }
                 </fieldset>
-                @if (isSwitchingToSupport() && backlogEffects().length) {
-                    <ng-container
-                        [ngTemplateOutlet]="backlogWarning"
-                        [ngTemplateOutletContext]="{ id: null }"
-                    />
-                }
                 <app-chips-input
                     label="Allowed origins"
                     formControlName="allowed_origins"

@@ -2,15 +2,15 @@ import { Component, computed, input } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { ChatBindingStatus } from '../../utils/binding-status.util';
-import { deskAccessibleName, deskAvatarColor, deskBadgeText, deskInitials } from '../../utils/desk-avatar.util';
+import { deskAccessibleName, deskBadgeText, deskInitials } from '../../utils/desk-avatar.util';
 
 // Shown for a blank name; the same picture as the sidenav's Conversations item.
 const FALLBACK_ICON = 'messages';
 
 /**
- * A desk's square: its picture (an icon when given, else the initials of its name, on a fill picked by its id), a
- * status mark whose shape differs per status, and a needs-a-person count badge. One image to assistive technology,
- * named in words.
+ * A desk's square: its picture (an icon when given, else the initials of its name) on the one neutral fill every desk
+ * shares, a status mark whose shape differs per status, and a needs-a-person count badge. One image to assistive
+ * technology, named in words. A container recolours the fill through `--desk-avatar-fill` (the rail on hover).
  */
 @Component({
     selector: 'app-desk-avatar',
@@ -24,8 +24,6 @@ const FALLBACK_ICON = 'messages';
 })
 export class DeskAvatarComponent {
     readonly name = input.required<string>();
-    /** Picks the fill; null for an entry that is not a desk (All desks), which gets the neutral one. */
-    readonly deskId = input<string | null>(null);
     /** A sprite icon drawn instead of the initials. */
     readonly icon = input<string | null>(null);
     /** No mark when null. */
@@ -35,10 +33,6 @@ export class DeskAvatarComponent {
     readonly showBadge = input(true);
 
     protected readonly initials = computed(() => deskInitials(this.name()));
-    protected readonly fill = computed(() => {
-        const deskId = this.deskId();
-        return deskId === null ? null : deskAvatarColor(deskId);
-    });
     protected readonly pictureIcon = computed(() => this.icon() ?? (this.initials() ? null : FALLBACK_ICON));
     protected readonly badge = computed(() => (this.showBadge() ? deskBadgeText(this.count()) : null));
     protected readonly accessibleName = computed(() => deskAccessibleName(this.name(), this.status(), this.count()));

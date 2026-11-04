@@ -11,11 +11,17 @@
     overflow: hidden;
     color: var(--color-text-primary);
     // The rail's header and the page's desk toolbar share it, so their bottom lines meet.
-    --desk-toolbar-height: 52px;
+    --desk-toolbar-height: 60px;
 
     // Nested beside `headerLayout()`, as on the Agents page, so the two cascade the same way.
     .header {
         @include header.pageHeader();
+
+        // As on the Agents page: the button beside the title, at the header's far end.
+        .header-actions {
+            align-items: center;
+            margin-left: 1rem;
+        }
     }
 }
 
@@ -65,10 +71,10 @@
 .desk-drawer__app-menu {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex-shrink: 0;
     min-height: touch.$target-size;
-    margin: 8px;
+    margin: 8px 10px;
     padding: 0 8px;
     background: transparent;
     border: none;
@@ -89,7 +95,7 @@
 
     // Lines its icon up with the desk avatars above.
     app-svg-icon {
-        width: 36px;
+        width: 24px;
     }
 }
 

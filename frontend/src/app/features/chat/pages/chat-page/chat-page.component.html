@@ -5,38 +5,61 @@
         <div class="desk-toolbar">
             <div class="desk-toolbar__titles">
                 @if (title(); as text) {
+                    <!-- The rail's picture of the open desk; the title beside it names it. -->
+                    <app-desk-avatar
+                        class="desk-toolbar__avatar"
+                        aria-hidden="true"
+                        [name]="text"
+                        [icon]="isAllBindings() ? allDesksIcon : null"
+                        [showBadge]="false"
+                    />
                     <h2 class="desk-toolbar__title text-h4">{{ text }}</h2>
                 }
                 <!-- Beside the title, not part of it. -->
                 @if (routeBinding(); as binding) {
-                    <app-chat-binding-status
-                        class="desk-toolbar__status"
+                    <app-desk-status-select
                         [binding]="binding"
+                        [canChange]="canUpdate()"
+                        (runStateChange)="setRunState($event)"
                     />
                 }
             </div>
             @if (routeBinding()) {
                 <!-- The flow editor header's buttons; the label may collapse to the icon, so each keeps an aria-label. -->
                 <div class="header-actions">
-                    <!-- Says the name visitors see now; the label alone may collapse to the icon. -->
-                    @if (canUse()) {
+                    @if (canBuildDesks()) {
+                        <!-- Like the flow editor's Get cURL: copies straight to the clipboard with a toast. -->
                         <button
                             type="button"
-                            class="header-action header-action--ghost"
-                            [attr.aria-label]="myNameLabel()"
-                            [matTooltip]="myNameTooltip()"
-                            [matTooltipDisabled]="!myNameTooltip()"
+                            class="header-action header-action--ghost header-action--snippet"
+                            aria-label="Copy install snippet"
+                            matTooltip="Copy install snippet"
                             [appCollapseOnOverflow]="true"
+                            appTooltipWhenCollapsed
                             collapseOnOverflowTarget=".btn-label"
                             collapseOnOverflowClass="btn--icon-only"
                             collapseOnOverflowRequireSelector="app-svg-icon"
-                            (click)="editMyAlias()"
+                            (click)="copySnippet()"
                         >
                             <app-svg-icon
-                                icon="user"
-                                size="1.25rem"
+                                icon="code-snippet"
+                                width="13px"
+                                height="12px"
                             />
-                            <span class="btn-label">My name</span>
+                            <span class="btn-label">Copy install snippet</span>
+                        </button>
+                    }
+                    <!-- The name visitors see now is in its accessible name and tooltip. -->
+                    @if (canUse()) {
+                        <button
+                            type="button"
+                            class="operator-name"
+                            [attr.aria-label]="myNameLabel()"
+                            [matTooltip]="myNameTooltip()"
+                            [matTooltipDisabled]="!myNameTooltip()"
+                            (click)="editMyAlias()"
+                        >
+                            <span class="text-body-small-large">Operator name</span>
                         </button>
                     }
                     @if (canUpdate()) {
@@ -77,37 +100,6 @@
                                 size="1.25rem"
                             />
                             <span class="btn-label">Delete</span>
-                        </button>
-                    }
-                    @if (canBuildDesks()) {
-                        <!-- Like the flow editor's Get cURL: copies straight to the clipboard with a toast. -->
-                        <button
-                            type="button"
-                            class="header-action header-action--outline"
-                            aria-label="Get snippet"
-                            (click)="copySnippet()"
-                        >
-                            <span class="btn-label">Get snippet</span>
-                        </button>
-                    }
-                    @if (canUpdate()) {
-                        <button
-                            type="button"
-                            class="header-action header-action--outline"
-                            [attr.aria-label]="pauseLabel()"
-                            [matTooltip]="pauseLabel()"
-                            [appCollapseOnOverflow]="true"
-                            appTooltipWhenCollapsed
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
-                            (click)="togglePause()"
-                        >
-                            <app-svg-icon
-                                [icon]="pauseIcon()"
-                                size="1.25rem"
-                            />
-                            <span class="btn-label">{{ pauseLabel() }}</span>
                         </button>
                     }
                     @if (canBuildDesks()) {
@@ -167,7 +159,6 @@
                             <app-desk-avatar
                                 class="phone-bar__avatar"
                                 [name]="title()"
-                                [deskId]="routeBinding()?.id ?? null"
                                 [icon]="isAllBindings() ? allDesksIcon : null"
                                 [showBadge]="false"
                             />

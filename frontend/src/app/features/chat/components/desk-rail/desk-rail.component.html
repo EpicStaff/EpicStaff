@@ -13,7 +13,7 @@
         >
             <app-svg-icon
                 icon="expand-sidebar"
-                size="0.85rem"
+                size="12px"
             />
         </button>
     }
@@ -36,7 +36,6 @@
                 <app-desk-avatar
                     class="desk-rail__avatar"
                     [name]="entry.name"
-                    [deskId]="entry.deskId"
                     [icon]="entry.icon"
                     [status]="entry.status"
                     [count]="entry.count"
@@ -116,9 +115,10 @@
                     class="desk-rail__new-picture"
                     aria-hidden="true"
                 >
+                    <!-- 17px draws the cross itself 10px wide: the icon's lines span 14 of its 24 units. -->
                     <app-svg-icon
                         icon="plus"
-                        size="1rem"
+                        size="17px"
                     />
                 </span>
                 @if (!isCompact()) {

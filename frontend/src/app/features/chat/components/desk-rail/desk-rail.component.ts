@@ -1,20 +1,19 @@
 import { afterNextRender, Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AppSvgIconComponent, FetchErrorStateComponent, LoadingSpinnerComponent } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { isPlainPrimaryClick } from '@shared/utils';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { DESKS_ROUTE } from '../../constants/routes.constants';
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { bindingStatus, ChatBindingStatus } from '../../utils/binding-status.util';
 import { ALL_DESKS_ICON, deskBadgeText } from '../../utils/desk-avatar.util';
 import { DeskAvatarComponent } from '../desk-avatar/desk-avatar.component';
-
-const DESKS_ROUTE = '/chat-bindings';
 const ALL_DESKS_NAME = 'All desks';
 
 type DeskListState = 'loading' | 'failed' | 'loaded';
@@ -26,8 +25,6 @@ interface DeskRailEntry {
     key: string;
     name: string;
     link: string[];
-    /** Null for All desks: it is not a desk. */
-    deskId: string | null;
     icon: string | null;
     status: ChatBindingStatus | null;
     count: number;
@@ -62,7 +59,7 @@ interface DeskRailEntry {
     },
 })
 export class DeskRailComponent {
-    /** People waiting per desk id (a desk with none may be absent); All desks shows their sum. */
+    /** People waiting per desk id (a desk with none may be absent). */
     readonly waitingByDesk = input<Readonly<Record<string, number>>>({});
     readonly presentation = input<DeskRailPresentation>('rail');
     readonly isCompact = input(false);
@@ -95,16 +92,15 @@ export class DeskRailComponent {
     );
     protected readonly entries = computed((): DeskRailEntry[] => {
         const waiting = this.waitingByDesk();
-        const total = Object.values(waiting).reduce((sum, count) => sum + count, 0);
+        // No count on All desks: it would repeat the desks' own counts below it.
         const allDesks: DeskRailEntry = {
             key: 'all',
             name: ALL_DESKS_NAME,
             link: [DESKS_ROUTE, 'all'],
-            deskId: null,
             icon: ALL_DESKS_ICON,
             status: null,
-            count: total,
-            badge: deskBadgeText(total),
+            count: 0,
+            badge: null,
         };
         const desks = [...this.desksStorage.desks()]
             .sort((first, second) => first.name.localeCompare(second.name))
@@ -114,7 +110,6 @@ export class DeskRailComponent {
                     key: `desk:${desk.id}`,
                     name: desk.name,
                     link: [DESKS_ROUTE, desk.id],
-                    deskId: desk.id,
                     icon: null,
                     status: bindingStatus(desk),
                     count,
@@ -130,7 +125,6 @@ export class DeskRailComponent {
     private readonly desksStorage = inject(ChatDesksStorageService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly bindingActions = inject(ChatBindingActionsService);
-    private readonly router = inject(Router);
     private readonly destroyRef = inject(DestroyRef);
 
     protected onEntryClick(event: MouseEvent): void {
@@ -141,17 +135,8 @@ export class DeskRailComponent {
         this.desksStorage.reload();
     }
 
-    /**
-     * Opens the create dialog; a created desk opens at once. The desks reload on every close: Escape after a create
-     * that showed an identity secret closes without the new desk.
-     */
+    /** Opens the create dialog; the actions service reloads the desks and opens a created one. */
     protected createDesk(): void {
-        this.bindingActions
-            .create()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((created) => {
-                this.desksStorage.reload();
-                if (created) void this.router.navigate([DESKS_ROUTE, created.id]);
-            });
+        this.bindingActions.create().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 }

@@ -1,11 +1,4 @@
-import {
-    AVATAR_COLORS,
-    avatarColor,
-    deskAccessibleName,
-    deskAvatarColor,
-    deskBadgeText,
-    deskInitials,
-} from './desk-avatar.util';
+import { AVATAR_COLORS, avatarColor, deskAccessibleName, deskBadgeText, deskInitials } from './desk-avatar.util';
 
 describe('deskInitials', () => {
     it.each([
@@ -51,29 +44,22 @@ describe('deskInitials', () => {
     });
 });
 
-describe('deskAvatarColor', () => {
+describe('avatarColor', () => {
     it('picks one of the palette tokens, the same one every time for the same id', () => {
-        const color = deskAvatarColor('6f1c2a9e-0d4b-4c43-9a51-2b7e8f3c1d10');
+        const color = avatarColor('6f1c2a9e-0d4b-4c43-9a51-2b7e8f3c1d10');
         expect(AVATAR_COLORS.map((token) => `var(${token})`)).toContain(color);
-        expect(deskAvatarColor('6f1c2a9e-0d4b-4c43-9a51-2b7e8f3c1d10')).toBe(color);
+        expect(avatarColor('6f1c2a9e-0d4b-4c43-9a51-2b7e8f3c1d10')).toBe(color);
     });
 
     it('depends on the id only, so ids one character apart can differ', () => {
-        expect(deskAvatarColor('6f1c2a9e-0d4b-4c43-9a51-2b7e8f3c1d10')).not.toBe(
-            deskAvatarColor('6f1c2a9e-0d4b-4c43-9a51-2b7e8f3c1d11')
+        expect(avatarColor('6f1c2a9e-0d4b-4c43-9a51-2b7e8f3c1d10')).not.toBe(
+            avatarColor('6f1c2a9e-0d4b-4c43-9a51-2b7e8f3c1d11')
         );
     });
 
     it('spreads ids over the whole palette', () => {
-        const used = new Set(Array.from({ length: 60 }, (_, index) => deskAvatarColor(`desk-${index}`)));
+        const used = new Set(Array.from({ length: 60 }, (_, index) => avatarColor(`conversation-${index}`)));
         expect(used.size).toBe(AVATAR_COLORS.length);
-    });
-});
-
-describe('avatarColor', () => {
-    it('is the colour a desk gets too, so desks and conversations share one palette', () => {
-        expect(avatarColor('b-1')).toBe(deskAvatarColor('b-1'));
-        expect(AVATAR_COLORS.map((token) => `var(${token})`)).toContain(avatarColor('c-42'));
     });
 });
 

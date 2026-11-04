@@ -40,10 +40,15 @@ import { ChatThreadComponent } from '../../components/chat-thread/chat-thread.co
 import { ConversationListComponent } from '../../components/conversation-list/conversation-list.component';
 import { DeskAvatarComponent } from '../../components/desk-avatar/desk-avatar.component';
 import {
+    DeskRunState,
+    DeskStatusSelectComponent,
+} from '../../components/desk-status-select/desk-status-select.component';
+import {
     CONVERSATIONS_WIDTH_KEY,
     CONVERSATIONS_WIDTH_OPTIONS,
     isCompactColumn,
 } from '../../constants/column-widths.constants';
+import { DESKS_ROUTE } from '../../constants/routes.constants';
 import { ChatConversation } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
@@ -56,7 +61,7 @@ import { OpenConversationSyncService } from '../../services/open-conversation-sy
 import { isDeskBuilder } from '../../utils/chat-permissions.util';
 import { ALL_DESKS_ICON } from '../../utils/desk-avatar.util';
 
-const ALL_DESKS_ROUTE: readonly string[] = ['/chat-bindings', 'all'];
+const ALL_DESKS_ROUTE: readonly string[] = [DESKS_ROUTE, 'all'];
 
 type DeskAction = 'my-name' | 'settings' | 'snippet' | 'pause' | 'delete';
 
@@ -79,6 +84,7 @@ type DeskAction = 'my-name' | 'settings' | 'snippet' | 'pause' | 'delete';
         TooltipWhenCollapsedDirective,
         ConversationListComponent,
         DeskAvatarComponent,
+        DeskStatusSelectComponent,
         ResizableSidebarDirective,
     ],
     providers: [OpenConversationService, OpenConversationSyncService, ChatVisitorTokensStore],
@@ -129,7 +135,6 @@ export class ChatPageComponent {
         return title ? `Switch desk, current: ${title}` : 'Switch desk';
     });
     readonly pauseLabel = computed(() => (this.routeBinding()?.is_active ? 'Pause' : 'Resume'));
-    readonly pauseIcon = computed(() => (this.routeBinding()?.is_active ? 'pause' : 'activate'));
     readonly canStartTest = computed(() => !!this.routeBinding() && !this.isStartingTest());
     readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
     readonly canBuildDesks = computed(() => isDeskBuilder(this.permissionsService));
@@ -143,7 +148,7 @@ export class ChatPageComponent {
     });
     readonly myNameLabel = computed(() => {
         const name = this.myNameOnDesk();
-        return name ? `My name: ${name}` : 'My name';
+        return name ? `Operator name: ${name}` : 'Operator name';
     });
     readonly myNameTooltip = computed(() => {
         const name = this.myNameOnDesk();
@@ -158,7 +163,7 @@ export class ChatPageComponent {
         const items: (ChatActionMenuItem<DeskAction> | false)[] = [
             this.canUse() && { id: 'my-name', label: this.myNameLabel() },
             canUpdate && { id: 'settings', label: 'Settings' },
-            this.canBuildDesks() && { id: 'snippet', label: 'Get snippet' },
+            this.canBuildDesks() && { id: 'snippet', label: 'Copy install snippet' },
             canUpdate && { id: 'pause', label: this.pauseLabel() },
             this.canDelete() && { id: 'delete', label: 'Delete' },
         ];
@@ -390,10 +395,17 @@ export class ChatPageComponent {
         if (binding) this.bindingActions.copySnippet(binding);
     }
 
+    /** The phone menu's Pause / Resume: the other state than the desk's. */
     togglePause(): void {
         const binding = this.routeBinding();
+        if (binding) this.setRunState(binding.is_active ? 'paused' : 'live');
+    }
+
+    /** The state picked in the toolbar's status menu: that state, not a toggle of a desk that may not have reloaded yet. */
+    setRunState(state: DeskRunState): void {
+        const binding = this.routeBinding();
         if (!binding) return;
-        (binding.is_active ? this.bindingActions.pause(binding) : this.bindingActions.resume(binding))
+        (state === 'paused' ? this.bindingActions.pause(binding) : this.bindingActions.resume(binding))
             .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.desksStorage.reload());
     }
