@@ -135,11 +135,6 @@ interface PanelInstanceView {
                             </button>
                         }
                         <div class="close-action">
-                            <span
-                                class="esc-label"
-                                aria-hidden="true"
-                                >ESC</span
-                            >
                             <button
                                 #closeButton
                                 type="button"
