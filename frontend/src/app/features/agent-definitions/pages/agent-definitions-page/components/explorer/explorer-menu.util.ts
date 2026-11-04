@@ -179,6 +179,7 @@ export function treeNodeMenuItems(node: BranchTreeNode): ExplorerMenuItem[] {
                 { id: 'duplicate', label: 'Duplicate', resource: ResourceCode.Agents, action: ActionCode.Create },
                 // Authorship is read-only, so seeing the agent is enough to see who created and edited it.
                 { id: 'view-details', label: 'View Details', resource: ResourceCode.Agents, action: ActionCode.Read },
+                { id: 'export', label: 'Export', resource: ResourceCode.Agents, action: ActionCode.Export },
                 { id: 'delete', label: 'Delete', resource: ResourceCode.Agents, action: ActionCode.Delete },
             ];
         case 'surface':

@@ -73,10 +73,10 @@ function openMenuLabels(host: HTMLElement, opened: ExplorerTreeMenuOpenEvent[]):
 }
 
 describe('TreeNodeComponent row menu "View Details"', () => {
-    it('sits between Duplicate and Delete on an agent row', () => {
+    it('sits between Duplicate and Export on an agent row', () => {
         const { host, opened } = render(AGENT_NODE, FULL_ACCESS);
 
-        expect(openMenuLabels(host, opened)).toEqual(['Duplicate', 'View Details', 'Delete']);
+        expect(openMenuLabels(host, opened)).toEqual(['Duplicate', 'View Details', 'Export', 'Delete']);
     });
 
     it('is offered to a user who can only read agents, as the only item', () => {

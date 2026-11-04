@@ -335,3 +335,19 @@ describe('AgentDefinitionsPageComponent Agents section menu', () => {
         expect(importAgents).not.toHaveBeenCalled();
     });
 });
+
+describe('AgentDefinitionsPageComponent agent row menu "Export"', () => {
+    it('exports that agent', () => {
+        const { fixture } = render(true);
+        const exportAgent = vi.fn();
+        Object.assign(fixture.debugElement.injector.get(AgentsPageStore), { exportAgent });
+
+        fixture.componentInstance.onExplorerTreeMenu({
+            node: { kind: 'agent', agentId: 3, label: 'CV Processor', children: [] },
+            action: 'export',
+            trigger: document.createElement('button'),
+        });
+
+        expect(exportAgent).toHaveBeenCalledExactlyOnceWith(3);
+    });
+});

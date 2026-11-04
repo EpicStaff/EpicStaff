@@ -528,6 +528,10 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             this.openExplorerAgentDetails(event);
             return;
         }
+        if (event.action === 'export' && event.node.kind === 'agent') {
+            this.store.exportAgent(event.node.agentId);
+            return;
+        }
         if (this.applyGroupMenuAction(event)) return;
         this.guardUnsaved(() => this.applyExplorerTreeMenu(event));
     }
