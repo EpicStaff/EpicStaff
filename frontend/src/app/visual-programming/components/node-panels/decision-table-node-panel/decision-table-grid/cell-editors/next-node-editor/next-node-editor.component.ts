@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ICellEditorAngularComp } from 'ag-grid-angular';
 import { ICellEditorParams } from 'ag-grid-community';
 
@@ -13,19 +15,28 @@ interface NextNodeEditorParams extends ICellEditorParams {
 
 @Component({
     selector: 'app-next-node-editor',
-    imports: [],
+    imports: [TooltipOnOverflowDirective, MatTooltip],
     template: `
-        <div class="next-node-editor-popup">
+        <!-- Tab moves between the list's own buttons: the grid would take it to the next cell. -->
+        <div
+            class="next-node-editor-popup"
+            (keydown.tab)="$event.stopPropagation()"
+            (keydown.shift.tab)="$event.stopPropagation()"
+        >
             @if (options.length > 0) {
                 <div class="nne-list">
                     @for (option of options; track option.value) {
-                        <div
+                        <button
+                            type="button"
                             class="nne-item"
                             [class.nne-item-selected]="option.value === value"
+                            [attr.aria-pressed]="option.value === value"
+                            appTooltipOnOverflow
+                            [matTooltip]="option.label"
                             (click)="select(option.value)"
                         >
                             {{ option.label }}
-                        </div>
+                        </button>
                     }
                 </div>
             } @else {
@@ -74,6 +85,9 @@ interface NextNodeEditorParams extends ICellEditorParams {
                 padding: 0 12px;
                 display: flex;
                 align-items: center;
+                width: 100%;
+                font-family: inherit;
+                text-align: left;
                 cursor: pointer;
                 flex-shrink: 0;
                 font-size: 0.875rem;
@@ -82,7 +96,7 @@ interface NextNodeEditorParams extends ICellEditorParams {
                 overflow: hidden;
                 text-overflow: ellipsis;
             }
-            .nne-item:hover {
+            .nne-item:is(:hover, :focus-visible) {
                 border-color: rgba(104, 95, 255, 0.4);
             }
             .nne-item-selected {

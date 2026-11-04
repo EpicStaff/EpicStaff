@@ -100,7 +100,12 @@ class PluginRolePermissionService:
         )
 
     def role_permissions(
-        self, actor, role_id, org_id: int | None, scopes: list[OrgScope] | None = None
+        self,
+        actor,
+        role_id,
+        org_id: int | None,
+        scopes: list[OrgScope] | None = None,
+        limit_to_org_ids: list[int] | None = None,
     ) -> RolePluginPermissions:
         """Return a role's plugin rows and the actions it has on each.
 
@@ -109,13 +114,17 @@ class PluginRolePermissionService:
         given, otherwise for every plugin usable in an organization where the caller may
         read roles (every running plugin for a SuperAdmin), each once. `scopes` is the
         caller's cross-org scopes already resolved by the door gate, if any.
+        `limit_to_org_ids` hides every custom role outside those orgs, as for a request
+        made with an API key.
 
         Raises:
             RoleNotFoundError: No such role, or a custom role the caller cannot read.
             OrganizationNotFoundError: A built-in role read for an organization that does
                 not exist or where the caller cannot read roles.
         """
-        role = self._roles.get_role_for_read(actor=actor, role_id=role_id, scopes=scopes)
+        role = self._roles.get_role_for_read(
+            actor=actor, role_id=role_id, scopes=scopes, org_ids=limit_to_org_ids
+        )
         if role.is_built_in:
             return self._built_in_role_permissions(actor, role, org_id, scopes)
         return self._custom_role_permissions(actor, role)

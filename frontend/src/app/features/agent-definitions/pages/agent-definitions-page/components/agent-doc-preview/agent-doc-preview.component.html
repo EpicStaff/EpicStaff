@@ -4,16 +4,20 @@
         [crumbs]="crumbs()"
         (toggleSidebar)="toggleSidebar.emit()"
         (navAgent)="openAgent.emit($event)"
+        (navAgentInstructions)="openAgentInstructions.emit($event)"
+        (groupChange)="groupChange.emit($event)"
     >
         <div
             *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
             class="doc-toggle"
-            role="tablist"
+            role="group"
+            aria-label="View mode"
         >
             <button
                 type="button"
                 class="doc-toggle__btn"
                 [class.doc-toggle__btn--active]="mode() === 'preview'"
+                [attr.aria-pressed]="mode() === 'preview'"
                 (click)="setMode('preview')"
             >
                 <app-svg-icon
@@ -26,6 +30,7 @@
                 type="button"
                 class="doc-toggle__btn"
                 [class.doc-toggle__btn--active]="mode() === 'markdown'"
+                [attr.aria-pressed]="mode() === 'markdown'"
                 (click)="setMode('markdown')"
             >
                 <app-svg-icon

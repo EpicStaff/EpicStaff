@@ -161,6 +161,7 @@ from tables.models.llm_models import (
     RealtimeConfig,
     RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
+    SystemOneConfig,
 )
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig, linked_secrets_prefetch
@@ -257,6 +258,7 @@ from tables.serializers.model_serializers.key_value_serializers import (
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
+    SystemOneConfigSerializer,
 )
 from tables.serializers.model_serializers.realtime_serializers import (
     TwilioAuthTokenSecretSerializer,
@@ -286,6 +288,7 @@ from tables.services.delete_services import (
     GraphVersionDeleteService,
     LLMConfigDeleteService,
     OpenAIRealtimeConfigDeleteService,
+    SystemOneConfigDeleteService,
 )
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.graph_bulk_save_service.registry import TRIGGER_NODE_LIST_KEYS
@@ -313,6 +316,7 @@ from tables.services.secrets.secret_use_checks import (
     check_python_node_write,
     check_realtime_config_write,
     check_realtime_transcription_config_write,
+    check_system_one_config_write,
     check_telegram_trigger_node_write,
     check_twilio_channel_write,
     check_webhook_trigger_node_write,
@@ -340,6 +344,7 @@ from tables.swagger_schemas.bulk_delete_schemas import (
     GRAPH_VERSION_BULK_DELETE_POST,
     LLM_CONFIG_BULK_DELETE_POST,
     OPENAI_REALTIME_CONFIG_BULK_DELETE_POST,
+    SYSTEM_ONE_CONFIG_BULK_DELETE_POST,
 )
 from tables.swagger_schemas.common_schemas import FLOW_WITH_TRIGGER_NODES_403_RESPONSE
 from tables.swagger_schemas.graph_copy_schemas import GRAPH_COPY_POST
@@ -500,6 +505,21 @@ class LLMConfigReadWriteViewSet(
     serializer_class = LLMConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = LLMConfigFilter
+
+
+@extend_schema_view(bulk_delete=extend_schema(**SYSTEM_ONE_CONFIG_BULK_DELETE_POST))
+class SystemOneConfigReadWriteViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = SystemOneConfigDeleteService
+    secret_use_check = check_system_one_config_write
+    queryset = SystemOneConfig.objects.select_related(
+        "api_key_secret", "llm_config"
+    ).prefetch_related(*authorship_prefetches())
+    serializer_class = SystemOneConfigSerializer
 
 
 class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
@@ -2831,8 +2851,9 @@ class GraphNoteViewSet(
 
 
 class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
-    """Shared behavior for the two independent label trees — Flow labels
-    (`LabelViewSet`) and Tool labels (`ToolLabelViewSet`). Each tree is a
+    """Shared behavior for the three independent label trees — Flow labels
+    (`LabelViewSet`), Tool labels (`ToolLabelViewSet`) and agent groups
+    (`AgentLabelViewSet`, flat, shared by agents and shared surfaces). Each tree is a
     disjoint subset of `Label` partitioned by `Label.scope`; concrete
     subclasses set `label_scope` and a `queryset` pre-filtered to it.
     """
@@ -2858,8 +2879,8 @@ class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
         # Build paths in memory (one extra lightweight query) to avoid N+1
         # and to correctly resolve parents that may be filtered out. Scoped to
-        # the active org and this tree's scope (the label tree never crosses
-        # orgs or Flow/Tool scopes).
+        # the active org and this tree's scope (a label tree never crosses
+        # orgs or the Flow, Tool and agent-group scopes).
         id_to_row = {
             row["id"]: row
             for row in Label.objects.filter(
@@ -2910,6 +2931,13 @@ class ToolLabelViewSet(BaseLabelViewSet):
     rbac_resource_type = ResourceType.TOOLS
     label_scope = Label.Scope.TOOL
     queryset = Label.objects.filter(scope=Label.Scope.TOOL)
+
+
+class AgentLabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.AGENTS
+    label_scope = Label.Scope.AGENT
+    queryset = Label.objects.filter(scope=Label.Scope.AGENT)
 
 
 class SecretViewSet(

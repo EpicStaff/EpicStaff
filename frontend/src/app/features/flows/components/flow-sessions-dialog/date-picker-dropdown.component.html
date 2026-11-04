@@ -1,8 +1,11 @@
 <button
     #triggerEl
+    type="button"
     class="cd-toggle"
     [class.cd-toggle--active]="hasValue || isOpen"
-    title="Filter by date"
+    aria-haspopup="dialog"
+    [attr.aria-expanded]="isOpen"
+    matTooltip="Filter by date"
     (click)="toggle($event)"
 >
     <ng-content></ng-content>
@@ -13,9 +16,15 @@
 </button>
 
 <ng-template #dropdownTemplate>
-    <app-date-range-picker
-        [value]="value"
-        (apply)="onSelect($event)"
-        (clear)="clear()"
-    />
+    <!-- Takes the focus when it opens and hands it back to the toggle when it closes. -->
+    <div
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+    >
+        <app-date-range-picker
+            [value]="value"
+            (apply)="onSelect($event)"
+            (clear)="clear()"
+        />
+    </div>
 </ng-template>

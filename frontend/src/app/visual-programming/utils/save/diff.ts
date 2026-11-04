@@ -24,8 +24,8 @@ import {
     WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
 import { toStoredCdtExplanations } from '../cdt-explanations';
-import { hasPersistedWaypoints, waypointsChanged } from './edge-waypoints.helpers';
-import { toNodeMetadata } from './metadata';
+import { hasPersistedWaypoints, hasStoredWaypoints, waypointsChanged } from './edge-waypoints.helpers';
+import { toNodeMetadata, toNoteMetadata } from './metadata';
 import { ConnectionDiff, NodeDiff, NodeDiffByType } from './types';
 
 function areEqual(left: unknown, right: unknown): boolean {
@@ -261,12 +261,7 @@ function toNoteComparable(node: GraphNoteModel): unknown {
     return {
         node_name: node.node_name,
         content: node.data.content,
-        metadata: {
-            ...toNodeMetadata(node),
-            backgroundColor: node.data.backgroundColor ?? null,
-            fontSize: node.data.fontSize ?? null,
-            linkedRegion: node.data.linkedRegion ?? null,
-        },
+        metadata: toNoteMetadata(node),
     };
 }
 
@@ -353,6 +348,10 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
                 output_schema: cfg.output_schema ?? null,
                 result_variable: cfg.result_variable ?? '',
                 variable_mappings: cfg.variable_mappings ?? {},
+                kind: cfg.kind ?? 'llm',
+                system_one_config: cfg.system_one_config ?? null,
+                questions: cfg.questions ?? {},
+                input_map: cfg.input_map ?? {},
             })),
         default_llm_config: tableData?.default_llm_config ?? null,
         default_next_node: tableData?.default_next_node || null,
@@ -519,6 +518,13 @@ export function getConnectionDiff(previous: FlowModel, current: FlowModel, idMap
     for (const [key, currConn] of currByKey) {
         const prevConn = prevByKey.get(key);
         if (!prevConn || currConn.data?.id == null) continue;
+        // The backend row still holds bends the canvas does not use (they were dropped on load because
+        // the node they belonged to was stored at an outdated size). They are cleared now, or they would
+        // come back on the next open once that node's row no longer marks them as outdated.
+        if (hasStoredWaypoints(prevConn) && !hasPersistedWaypoints(currConn)) {
+            toUpdate.push(currConn);
+            continue;
+        }
         if (!hasPersistedWaypoints(currConn) && !hasPersistedWaypoints(prevConn)) continue;
         if (waypointsChanged(prevConn.waypoints, currConn.waypoints)) {
             toUpdate.push(currConn);

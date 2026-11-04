@@ -35,6 +35,11 @@
         background: var(--color-background-body, #212325);
         border: 1px solid var(--color-divider-subtle);
         border-radius: 4px;
+
+        // The value input draws no border of its own, so the box shows its focus.
+        &:focus-within {
+            border-color: var(--accent-color);
+        }
     }
 
     &__btn {
@@ -51,8 +56,13 @@
         color: var(--color-text-primary, #d9d9de);
         cursor: pointer;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background: var(--color-ks-hover-row, #3a3e48);
+        }
+
+        // The controls clip anything drawn outside them.
+        &:focus-visible {
+            outline-offset: -2px;
         }
 
         &:disabled {
@@ -198,6 +208,16 @@
             border: none;
             cursor: pointer;
             box-shadow: 0 2px 4px var(--black-alpha-30);
+        }
+
+        &:focus-visible {
+            &::-webkit-slider-thumb {
+                box-shadow: 0 0 0 2px var(--accent-color);
+            }
+
+            &::-moz-range-thumb {
+                box-shadow: 0 0 0 2px var(--accent-color);
+            }
         }
 
         &:disabled {

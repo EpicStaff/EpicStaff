@@ -37,14 +37,21 @@ export interface NoteEditDialogData {
                 </span>
 
                 <div class="actions">
-                    <span class="esc-label">ESC</span>
-                    <app-svg-icon
-                        icon="x"
-                        (click)="close()"
-                        style="cursor:pointer"
+                    <span
+                        class="esc-label"
+                        aria-hidden="true"
+                        >ESC</span
+                    >
+                    <button
+                        type="button"
+                        class="close-button"
+                        aria-label="Close"
                         matTooltip="Close"
                         matTooltipPosition="above"
-                    ></app-svg-icon>
+                        (click)="close()"
+                    >
+                        <app-svg-icon icon="x"></app-svg-icon>
+                    </button>
                 </div>
             </div>
 
@@ -53,6 +60,7 @@ export interface NoteEditDialogData {
                     class="note-textarea"
                     [(ngModel)]="noteContent"
                     placeholder="Add note text..."
+                    aria-label="Note text"
                     autofocus
                 ></textarea>
             </div>
@@ -122,14 +130,19 @@ export interface NoteEditDialogData {
                 background: #2a2a2a;
             }
 
-            .actions app-svg-icon {
+            .close-button {
+                display: flex;
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
                 font-size: 1.25rem;
                 cursor: pointer;
                 transition: all 0.2s ease;
                 opacity: 0.8;
             }
 
-            .actions app-svg-icon:hover {
+            .close-button:is(:hover, :focus-visible) {
                 opacity: 1;
                 transform: scale(1.1);
                 color: var(--accent-color, #4a6da7);
@@ -197,8 +210,13 @@ export class NoteEditDialogComponent implements OnInit {
         this.dialogRef.close({ content: this.noteContent() });
     }
 
+    // The host listener runs ahead of the tooltip of the focused control, which would take the first Escape;
+    // the document one covers the focus being outside the dialog.
+    @HostListener('keydown.escape', ['$event'])
     @HostListener('document:keydown.escape', ['$event'])
     onEsc(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
         if (event instanceof KeyboardEvent) {
             event.preventDefault();
         }

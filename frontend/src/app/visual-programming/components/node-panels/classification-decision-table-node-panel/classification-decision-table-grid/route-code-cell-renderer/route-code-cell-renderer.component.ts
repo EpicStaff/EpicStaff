@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
-import { HelpTooltipComponent } from '@shared/components';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
 import { ICellRendererParams } from 'ag-grid-community';
 
 import { ConditionGroup } from '../../../../../core/models/decision-table.model';
@@ -70,7 +71,7 @@ export function routeCodeCellStatus(
  */
 @Component({
     selector: 'app-route-code-cell-renderer',
-    imports: [HelpTooltipComponent],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     template: `
         <div class="cdt-route-code-cell">
             <span
@@ -84,11 +85,11 @@ export function routeCodeCellStatus(
                     [class.cdt-route-code-cell__status--conflict]="isConflict()"
                     role="img"
                     [attr.aria-label]="current.message"
+                    [matTooltip]="current.message"
+                    matTooltipPosition="left"
                 >
-                    <app-help-tooltip
-                        [text]="current.message"
+                    <app-svg-icon
                         [icon]="current.icon"
-                        position="left"
                         [width]="current.iconWidth"
                         [height]="current.iconHeight"
                     />
@@ -126,14 +127,11 @@ export function routeCodeCellStatus(
             .cdt-route-code-cell__status {
                 display: inline-flex;
                 flex-shrink: 0;
+                cursor: help;
                 color: var(--transparent-white-16);
             }
             .cdt-route-code-cell__status--conflict {
                 color: var(--color-error);
-            }
-            /* app-help-tooltip paints its icon in the accent colour; the status colour wins here. */
-            .cdt-route-code-cell__status ::ng-deep .help-icon-wrapper {
-                color: inherit;
             }
         `,
     ],

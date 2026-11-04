@@ -2,7 +2,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { MatTooltip } from '@angular/material/tooltip';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -28,6 +29,8 @@ const LOGIN_THROTTLED_FALLBACK_MESSAGE = 'Too many login attempts. Please try ag
 @Component({
     selector: 'app-login-page',
     imports: [
+        RouterLink,
+        MatTooltip,
         ReactiveFormsModule,
         CustomInputComponent,
         ValidationErrorsComponent,
@@ -119,14 +122,6 @@ export class LoginPageComponent implements OnInit {
                     ]);
                 },
             });
-    }
-
-    navToSignUp(): void {
-        void this.router.navigateByUrl('sign-up');
-    }
-
-    navToForgotPassword(): void {
-        void this.router.navigateByUrl('forgot-password');
     }
 
     private handleThrottleError(err: HttpErrorResponse): void {

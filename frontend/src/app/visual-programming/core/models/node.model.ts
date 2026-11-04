@@ -19,8 +19,6 @@ export interface BaseNodeModel {
     position: { x: number; y: number };
     ports: ViewPort[] | null;
     node_name: string;
-    color: string;
-    icon: string;
     size: {
         width: number;
         height: number;

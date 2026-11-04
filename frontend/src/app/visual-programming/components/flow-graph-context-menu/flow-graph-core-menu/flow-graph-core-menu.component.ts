@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip } from '@angular/material/tooltip';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { MenuNodeType, NODE_MENU_GROUPS, NODE_MENU_LABELS } from '../../../core/constants/node-menu-groups';
@@ -34,44 +35,61 @@ const MAC_KEY_GAP = '\u2009';
 
 @Component({
     selector: 'app-flow-graph-core-menu',
+    imports: [MatTooltip, TooltipOnOverflowDirective],
     template: `
         @for (group of filteredGroups(); track group.title) {
             <section class="menu-group">
                 <div class="menu-group__title">{{ group.title }}</div>
                 <ul>
                     @for (block of group.blocks; track block.type) {
-                        <li
-                            [style.border-left-color]="block.color"
-                            [class.disabled]="isDisabled(block.type)"
-                            [class.note-row]="block.type === NodeType.NOTE"
-                        >
-                            <div
-                                class="block-main"
+                        <li [class.note-row]="block.type === NodeType.NOTE">
+                            <!-- aria-disabled, not disabled: a disabled End item would leave the Tab order. The name
+                                 has a tooltip only while it is cut short. -->
+                            <button
+                                type="button"
+                                class="menu-item"
+                                [class.disabled]="isDisabled(block.type)"
+                                [attr.aria-disabled]="isDisabled(block.type) || null"
+                                appTooltipOnOverflow=".menu-group__item-label"
+                                [matTooltip]="block.label"
+                                matTooltipPosition="right"
                                 (click)="onBlockClicked(block.type)"
                             >
                                 <i
                                     class="node-icon"
                                     [class]="block.icon"
                                     [style.color]="block.color"
+                                    aria-hidden="true"
                                 ></i>
                                 <span class="menu-group__item-label">{{ block.label }}</span>
-                                @if (block.type === NodeType.NOTE) {
-                                    <button
-                                        type="button"
-                                        class="area-draw-btn"
-                                        matTooltip="Place note with selected area"
-                                        matTooltipPosition="right"
-                                        (click)="$event.stopPropagation(); onAreaNoteClicked()"
-                                    >
-                                        <i class="ti ti-capture"></i>
-                                    </button>
-                                }
                                 @if (block.keyHint; as keyHint) {
-                                    <span class="key-hint">{{ keyHint }}</span>
+                                    <span
+                                        class="key-hint"
+                                        aria-hidden="true"
+                                        >{{ keyHint }}</span
+                                    >
                                 } @else {
-                                    <i class="ti ti-plus plus-icon"></i>
+                                    <i
+                                        class="ti ti-plus plus-icon"
+                                        aria-hidden="true"
+                                    ></i>
                                 }
-                            </div>
+                            </button>
+                            @if (block.type === NodeType.NOTE) {
+                                <button
+                                    type="button"
+                                    class="area-draw-btn"
+                                    aria-label="Place note with selected area"
+                                    matTooltip="Place note with selected area"
+                                    matTooltipPosition="right"
+                                    (click)="onAreaNoteClicked()"
+                                >
+                                    <i
+                                        class="ti ti-capture"
+                                        aria-hidden="true"
+                                    ></i>
+                                </button>
+                            }
                         </li>
                     }
                 </ul>
@@ -96,30 +114,39 @@ const MAC_KEY_GAP = '\u2009';
                 margin: 0;
             }
 
-            li {
+            .menu-item {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                padding: 0;
+                flex: 1 1 auto;
+                min-width: 0;
+                padding: 12px 16px;
+                border: none;
                 border-radius: 8px;
-                gap: 0;
+                gap: 14px;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
                 cursor: pointer;
                 transition: background 0.2s ease;
                 position: relative;
+                // The menu list scrolls and clips at its sides: the ring is drawn inside.
+                outline-offset: -2px;
+            }
+
+            li {
+                display: flex;
+                align-items: center;
+                border-radius: 8px;
             }
 
             li:hover {
                 background: var(--graphite-780);
             }
 
-            /* The main clickable area fills the row except for the area-draw button */
-            .block-main {
-                display: flex;
-                align-items: center;
-                gap: 14px;
-                flex: 1 1 auto;
-                min-width: 0;
-                padding: 12px 16px;
+            .menu-item:is(:hover, :focus-visible) {
+                background: #2a2a2a;
             }
 
             .node-icon {
@@ -147,7 +174,7 @@ const MAC_KEY_GAP = '\u2009';
                     color 0.2s ease;
             }
 
-            li:hover .plus-icon {
+            .menu-item:is(:hover, :focus-visible) .plus-icon {
                 opacity: 1;
                 color: inherit;
             }
@@ -162,11 +189,11 @@ const MAC_KEY_GAP = '\u2009';
                 transition: color 0.2s ease;
             }
 
-            li:hover .key-hint {
+            .menu-item:is(:hover, :focus-visible) .key-hint {
                 color: inherit;
             }
 
-            li.disabled {
+            .menu-item.disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
                 pointer-events: none;
@@ -199,7 +226,6 @@ const MAC_KEY_GAP = '\u2009';
             }
         `,
     ],
-    imports: [MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FlowGraphCoreMenuComponent {
@@ -237,6 +263,7 @@ export class FlowGraphCoreMenuComponent {
     private readonly flowReadOnly = inject(FlowReadOnlyService);
 
     protected onBlockClicked(type: NodeType): void {
+        if (this.isDisabled(type)) return;
         this.nodeSelected.emit({ type });
     }
 

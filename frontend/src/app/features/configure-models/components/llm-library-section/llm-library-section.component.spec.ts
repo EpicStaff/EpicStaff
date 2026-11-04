@@ -14,6 +14,7 @@ import {
     ModelTypes,
     OpenAIRealtimeConfig,
     ResourceCode,
+    SystemOneConfig,
     UserSummary,
 } from '@shared/models';
 import {
@@ -21,6 +22,7 @@ import {
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
     LLMLibraryService,
+    SystemOneConfigStorageService,
 } from '@shared/services';
 import { EMPTY, of } from 'rxjs';
 
@@ -34,6 +36,7 @@ import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-car
 import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
 import { RealtimeConfigDialogComponent } from '../realtime-config-dialog/realtime-config-dialog.component';
 import { RealtimeProvider } from '../realtime-config-form/realtime-config-form.component';
+import { SystemOneConfigDialogComponent } from '../system-one-config-dialog/system-one-config-dialog.component';
 import { LlmLibrarySectionComponent } from './llm-library-section.component';
 
 // An LLM config and an embedding config may share an id; the card's config type decides which one is meant.
@@ -122,6 +125,29 @@ const GEMINI_VOICE_CONFIG: GeminiRealtimeConfig = {
     last_edited_at: null,
 };
 
+const TYPESAFE_CONFIG: SystemOneConfig = {
+    id: 21,
+    custom_name: 'Jev prod',
+    provider: 'typesafe',
+    model_name: 'jev-1.14.0',
+    api_key_secret_id: 5,
+    llm_config: null,
+    created_at: '2026-10-01T10:00:00Z',
+    created_by: VOICE_OWNER,
+    last_edited_by: null,
+    last_edited_at: null,
+};
+
+const LLM_BACKED_CONFIG: SystemOneConfig = {
+    ...TYPESAFE_CONFIG,
+    id: 22,
+    custom_name: 'Judge',
+    provider: 'llm',
+    model_name: null,
+    api_key_secret_id: null,
+    llm_config: SHARED_ID,
+};
+
 type VoiceConfig = OpenAIRealtimeConfig | ElevenLabsRealtimeConfig | GeminiRealtimeConfig;
 
 const VOICE_CONFIGS: Record<RealtimeProvider, VoiceConfig> = {
@@ -163,7 +189,11 @@ function realtimeStorageStub(configs: VoiceConfig[] = []): object {
 
 function render(
     models: LlmLibraryModel[],
-    { voiceConfigs = [], grantedActions = [] }: { voiceConfigs?: VoiceConfig[]; grantedActions?: ActionCode[] } = {}
+    {
+        voiceConfigs = [],
+        systemOneConfigs = [],
+        grantedActions = [],
+    }: { voiceConfigs?: VoiceConfig[]; systemOneConfigs?: SystemOneConfig[]; grantedActions?: ActionCode[] } = {}
 ): {
     fixture: ComponentFixture<LlmLibrarySectionComponent>;
     open: ReturnType<typeof vi.fn>;
@@ -204,9 +234,13 @@ function render(
                 provide: GeminiRealtimeConfigStorageService,
                 useValue: realtimeStorageStub(voiceConfigs.filter((config) => config === GEMINI_VOICE_CONFIG)),
             },
+            {
+                provide: SystemOneConfigStorageService,
+                useValue: { configs: signal(systemOneConfigs), getAllConfigs: vi.fn(() => of(systemOneConfigs)) },
+            },
             { provide: AuthorshipDetailsDialogService, useValue: { open } },
             { provide: BulkDeleteService, useValue: { run: runBulkDelete } },
-            { provide: DefaultModelsStorageService, useValue: {} },
+            { provide: DefaultModelsStorageService, useValue: { markDefaultModelsOutdated: vi.fn() } },
             { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
             { provide: Dialog, useValue: { open: openDialog } },
             {
@@ -453,5 +487,129 @@ describe('LlmLibrarySectionComponent voice config cards', () => {
 
         expect(buttons).toHaveLength(1);
         expect(buttons[0].getAttribute('aria-label')).toBe('More actions');
+    });
+});
+
+describe('LlmLibrarySectionComponent System One configs', () => {
+    function groupTitles(fixture: ComponentFixture<LlmLibrarySectionComponent>): string[] {
+        return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.section-title'), (title) =>
+            title.textContent!.trim()
+        );
+    }
+
+    function cardNames(fixture: ComponentFixture<LlmLibrarySectionComponent>): string[] {
+        return fixture.debugElement
+            .queryAll(By.directive(LlmLibraryCardComponent))
+            .map((card) => (card.nativeElement as HTMLElement).querySelector('.llm-card__model')!.textContent!.trim());
+    }
+
+    it('lists them under "System One Configs:", showing the Jev version or the LLM config used', () => {
+        const { fixture } = render([], { systemOneConfigs: [TYPESAFE_CONFIG, LLM_BACKED_CONFIG] });
+
+        expect(groupTitles(fixture)).toEqual(['System One Configs:']);
+        const cards = fixture.debugElement.queryAll(By.directive(LlmLibraryCardComponent));
+        expect(
+            cards.map((card) =>
+                (card.nativeElement as HTMLElement).querySelector('.llm-card__name')!.textContent!.trim()
+            )
+        ).toEqual(['jev-1.14.0', 'LLM: gpt-4.1-chat']);
+    });
+
+    it('leaves the group out when there are none', () => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)]);
+
+        expect(groupTitles(fixture)).not.toContain('System One Configs:');
+    });
+
+    it('narrows them by name with the shared search', () => {
+        const { fixture } = render([], { systemOneConfigs: [TYPESAFE_CONFIG, LLM_BACKED_CONFIG] });
+
+        fixture.componentInstance.onSearchChange('judge');
+        fixture.detectChanges();
+
+        expect(cardNames(fixture)).toEqual(['Judge']);
+    });
+
+    it('opens the System One dialog with the config when its Edit button is clicked', () => {
+        const { fixture, openDialog } = render([], {
+            systemOneConfigs: [TYPESAFE_CONFIG],
+            grantedActions: [ActionCode.Update],
+        });
+
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>(`button[aria-label="Edit ${TYPESAFE_CONFIG.custom_name}"]`)!
+            .click();
+
+        expect(openDialog).toHaveBeenCalledExactlyOnceWith(
+            SystemOneConfigDialogComponent,
+            expect.objectContaining({ data: { config: TYPESAFE_CONFIG } })
+        );
+    });
+
+    it('selects them with "Select All" and deletes them in their own group beside the LLM group', () => {
+        const { fixture, runBulkDelete } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+            systemOneConfigs: [TYPESAFE_CONFIG],
+            grantedActions: [ActionCode.Delete],
+        });
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('app-bulk-select-dropdown .bulk-select__main')!
+            .click();
+        fixture.detectChanges();
+        document.querySelector<HTMLButtonElement>('.bulk-select-menu__item')!.click();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.selectedKeys()).toEqual(new Set([`llm:${SHARED_ID}`, 'system_one:21']));
+
+        fixture.componentInstance.deleteSelected();
+
+        const groups = runBulkDelete.mock.calls[0][0] as { label: { singular: string }; items: unknown[] }[];
+        expect(groups.map((group) => group.label.singular)).toEqual(['LLM config', 'System One config']);
+        expect(groups[1].items).toEqual([{ id: 21, name: 'Jev prod' }]);
+        expect(groups[1]).toEqual(expect.objectContaining({ target: TestBed.inject(SystemOneConfigStorageService) }));
+    });
+
+    it('sends only the clicked System One config to the bulk delete flow', () => {
+        const { fixture, runBulkDelete } = render([], {
+            systemOneConfigs: [TYPESAFE_CONFIG, LLM_BACKED_CONFIG],
+            grantedActions: [ActionCode.Delete],
+        });
+
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>(`button[aria-label="Delete ${LLM_BACKED_CONFIG.custom_name}"]`)!
+            .click();
+
+        expect(runBulkDelete).toHaveBeenCalledExactlyOnceWith([
+            expect.objectContaining({
+                target: TestBed.inject(SystemOneConfigStorageService),
+                label: { singular: 'System One config', plural: 'System One configs' },
+                items: [{ id: 22, name: 'Judge' }],
+            }),
+        ]);
+    });
+
+    it('shows "LLM: not set" for an LLM config whose LLM config is gone', () => {
+        const { fixture } = render([], { systemOneConfigs: [{ ...LLM_BACKED_CONFIG, llm_config: null }] });
+
+        expect(cardNames(fixture)).toEqual(['Judge']);
+        expect((fixture.nativeElement as HTMLElement).querySelector('.llm-card__name')!.textContent!.trim()).toBe(
+            'LLM: not set'
+        );
+    });
+
+    it('reloads them after an LLM config is deleted, since the server clears their link', () => {
+        const { fixture, runBulkDelete } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+            systemOneConfigs: [LLM_BACKED_CONFIG],
+            grantedActions: [ActionCode.Delete],
+        });
+        const systemOneStorage = TestBed.inject(SystemOneConfigStorageService);
+        const llmStorage = TestBed.inject(LlmConfigStorageService);
+        runBulkDelete.mockReturnValueOnce(of([{ group: { target: llmStorage }, response: { deleted_count: 1 } }]));
+        vi.mocked(systemOneStorage.getAllConfigs).mockClear();
+
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>(`button[aria-label="Delete llm-${SHARED_ID}"]`)!
+            .click();
+
+        expect(systemOneStorage.getAllConfigs).toHaveBeenCalledExactlyOnceWith(true);
     });
 });

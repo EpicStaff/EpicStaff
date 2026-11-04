@@ -3,6 +3,7 @@
         @for (action of actions(); track $index) {
             @if (action.type === 'button') {
                 <button
+                    type="button"
                     class="action-btn"
                     (click)="executed.emit(action)"
                 >

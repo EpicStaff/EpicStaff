@@ -347,7 +347,8 @@ export class CreateCustomToolDialogComponent {
         this.dialogRef.disableClose = true;
         this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.requestClose());
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
-            if (event.key === 'Escape') {
+            // A dropdown or a Monaco widget (suggestions, find) that closed on this Escape has taken it.
+            if (event.key === 'Escape' && !event.defaultPrevented) {
                 event.preventDefault();
                 this.requestClose();
             }

@@ -295,6 +295,7 @@
         <div class="top-left-actions">
             <div class="top-left-actions__column">
                 <button
+                    type="button"
                     class="domain-button"
                     [matTooltip]="keymap.withShortcut('Configure domain', 'flow.domain')"
                     matTooltipPosition="right"
@@ -308,7 +309,8 @@
                     iconSize="16px"
                     iconOffsetY="-2px"
                     ariaLabel="Multi-select"
-                    tooltip="Multi-select"
+                    [tooltip]="selectionManager.multiSelectActive() ? 'Multi-select: On' : 'Multi-select: Off'"
+                    [pressable]="true"
                     [active]="selectionManager.multiSelectActive()"
                     (clicked)="onToggleMultiSelect()"
                 ></app-flow-shortcuts-button>
@@ -338,8 +340,10 @@
             >
                 @if (selectionManager.selectedNodeCount() > 0 && !isPreview) {
                     <button
+                        type="button"
                         class="arrange-btn extract-subflow-btn"
                         data-hide-on-overflow
+                        aria-label="Extract to Subflow"
                         [matTooltip]="keymap.withShortcut('Extract to Subflow', 'flow.extract-subflow')"
                         matTooltipPosition="below"
                         (click)="onExtractToSubflow()"
@@ -366,14 +370,16 @@
                     ></app-flow-files-button>
                 }
                 @if (!flowReadOnly.isReadOnly()) {
+                    <!-- aria-disabled, not disabled: arranging disables it, which would drop the keyboard focus. -->
                     <button
+                        type="button"
                         class="arrange-btn"
                         data-hide-on-overflow
                         aria-label="Auto arrange"
                         [matTooltip]="keymap.withShortcut('Auto arrange', 'flow.auto-arrange')"
                         matTooltipPosition="below"
-                        [disabled]="isAutoArrangeDisabled()"
-                        (click)="onAutoArrange()"
+                        [attr.aria-disabled]="isAutoArrangeDisabled() || null"
+                        (click)="onAutoArrangeClick()"
                     >
                         <app-svg-icon
                             icon="auto-arrange"
@@ -382,6 +388,8 @@
                     </button>
                 }
                 <button
+                    #settingsButton
+                    type="button"
                     class="arrange-btn settings-icon-btn"
                     data-hide-on-overflow
                     (click)="openSettings()"
@@ -404,6 +412,7 @@
             class="unused-nodes-bar-slot"
             [nodes]="unusedNodesInCanvasOrder()"
             (nodeFocus)="onZoomInNode($event)"
+            (dismissed)="focusSettingsButton()"
         />
     }
 

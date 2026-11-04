@@ -1,0 +1,26 @@
+@if (variant() === 'popover') {
+    <div class="help-menu__head">
+        <span class="help-menu__heading text-body-bold">Guides</span>
+    </div>
+}
+
+<ul
+    class="help-menu__items"
+    aria-label="Guides"
+>
+    @for (tour of tours(); track tour.key) {
+        <li>
+            <button
+                type="button"
+                class="help-menu__item"
+                (click)="tourChosen.emit(tour.key)"
+            >
+                <app-svg-icon
+                    [icon]="tour.icon"
+                    size="1rem"
+                />
+                <span class="text-body-medium">{{ tour.label }}</span>
+            </button>
+        </li>
+    }
+</ul>

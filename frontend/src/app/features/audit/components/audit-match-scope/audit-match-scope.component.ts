@@ -1,11 +1,12 @@
 import { Component, model, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 
 import { AuditMatchScopeState, MAX_ROWS_BEFORE } from '../../models/audit-filter.models';
 
 @Component({
     selector: 'app-audit-match-scope',
-    imports: [AppSvgIconComponent, CheckboxComponent],
+    imports: [AppSvgIconComponent, CheckboxComponent, MatTooltip],
     templateUrl: './audit-match-scope.component.html',
     styleUrl: './audit-match-scope.component.scss',
 })

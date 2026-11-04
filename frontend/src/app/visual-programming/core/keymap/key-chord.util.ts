@@ -138,6 +138,19 @@ export function isInsideSidePanel(element: Element): boolean {
     return !!element.closest('app-node-panel-shell');
 }
 
+/** In a menu, dropdown or dialog: CDK renders each of them in its overlay container, outside the editor. */
+export function isInsideOverlay(element: Element): boolean {
+    return !!element.closest('.cdk-overlay-container');
+}
+
+/**
+ * A control the user reached with the keyboard (Tab): a key pressed there is meant for it, not for the canvas. A
+ * button focused by a mouse click does not match :focus-visible, so the keys keep acting on the canvas after it.
+ */
+export function isKeyboardFocusedControl(element: Element): boolean {
+    return element !== element.ownerDocument.body && element.matches(':focus-visible');
+}
+
 export function checkUserChord(chord: KeyChord): ChordRejection | null {
     const match = WELL_FORMED_CHORD.exec(chord);
     if (!match || MODIFIER_CODES.has(match[1]) || MODIFIER_TOKENS.has(match[1])) {
