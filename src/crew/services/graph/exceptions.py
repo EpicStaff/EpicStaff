@@ -32,6 +32,22 @@ class EmptyKnowledgeQueryError(PublicNodeError): ...
 class KeyValueNodeError(PublicNodeError): ...
 
 
+class OutputPathError(PublicNodeError):
+    """A code node's result couldn't be stored at its output variable path."""
+
+
+class NodeFileError(PublicNodeError):
+    """A File Extractor or Audio to text node couldn't use one of its files."""
+
+
+class TelegramFieldError(PublicNodeError):
+    """A Telegram Trigger field couldn't be read from the update or stored."""
+
+
+class SubflowPathError(PublicNodeError):
+    """A Subflow node's input path isn't a flow variable, or its output path doesn't exist."""
+
+
 class NodeExecutionError(Exception):
     """A node failed and has already shown the user an error message.
 

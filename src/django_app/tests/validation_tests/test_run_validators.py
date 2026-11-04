@@ -12,6 +12,7 @@ from tables.exceptions import (
     EndNodeValidationError,
     FileNodeValidationError,
     KeyValueNodeRunValidationError,
+    SubGraphNodeRunValidationError,
     SubGraphValidationError,
 )
 from tables.models import (
@@ -43,6 +44,7 @@ from tables.validators.decision_table_node_validator import (
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.key_value_node_validator import KeyValueNodeValidator
+from tables.validators.subgraph_node_validator import SubGraphNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
 from tests.fixtures import *
 
@@ -944,3 +946,135 @@ class TestClassificationDecisionTableNodeValidatorNoLlm:
         _row(with_own_llm, "Urgent", _prompt(with_own_llm, "detect", llm_config))
 
         _validate_classification_tables(graph)
+
+
+def _subflow_node(graph, input_map, *, name="Run B", number=1, output_variable_path=None):
+    return SubGraphNode.objects.create(
+        graph=graph,
+        node_name=name,
+        node_number=number,
+        input_map=input_map,
+        output_variable_path=output_variable_path,
+    )
+
+
+def _validate_subflow_nodes(graph, flow_name: str | None = None) -> None:
+    SubGraphNodeValidator().validate_runnable(
+        SubGraphNode.objects.filter(graph=graph).order_by("node_number", "id"),
+        flow_name=flow_name,
+    )
+
+
+@pytest.mark.django_db
+class TestSubGraphNodeValidator:
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "customer",
+            "variablescustomer",
+            "variables_customer",
+            "",
+            "   ",
+            "|fallback",
+            "customer|variables.customer",
+            "[0].variables",
+            42,
+            None,
+            True,
+            ["variables.customer"],
+            {"path": "variables.customer"},
+        ],
+        ids=[
+            "plain-name",
+            "prefix-without-separator",
+            "prefix-joined-by-underscore",
+            "empty",
+            "blank",
+            "only-a-default",
+            "variable-only-in-the-default",
+            "index-before-variables",
+            "number",
+            "null",
+            "boolean",
+            "list",
+            "object",
+        ],
+    )
+    def test_input_crew_cannot_read_is_refused_with_its_fix(self, graph, value):
+        _subflow_node(graph, {"customer": value})
+
+        with pytest.raises(SubGraphNodeRunValidationError) as error:
+            _validate_subflow_nodes(graph)
+
+        assert str(error.value.detail) == (
+            'Input "customer" of Subflow node "Run B #1" must be a flow variable, '
+            "like variables.customer."
+        )
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "variables",
+            "variables.customer",
+            "variables.customer.name",
+            "variables.items[0]",
+            "variables[0]",
+            "variables.customer|nobody",
+            "variables.customer|",
+            "  variables.customer",
+            "{variables.customer}",
+            "$variables.customer",
+            "variables-customer",
+        ],
+    )
+    def test_input_crew_reads_runs(self, graph, value):
+        _subflow_node(graph, {"customer": value})
+
+        _validate_subflow_nodes(graph)
+
+    @pytest.mark.parametrize(
+        "output_variable_path",
+        ["result", "variables", "variables.result", "results[0]", "-", ""],
+    )
+    def test_any_output_path_runs_since_crew_stores_every_one(self, graph, output_variable_path):
+        _subflow_node(graph, {}, output_variable_path=output_variable_path)
+
+        _validate_subflow_nodes(graph)
+
+    def test_map_that_is_not_an_object_is_left_to_the_session_build(self, graph):
+        _subflow_node(graph, ["customer"])
+
+        _validate_subflow_nodes(graph)
+
+    def test_first_input_by_name_of_the_first_node_is_named(self, graph):
+        _subflow_node(graph, {"zip": "zip"}, name="Run C", number=2)
+        _subflow_node(
+            graph,
+            {"order": "variables.order", "customer": "customer", "amount": "amount"},
+            name="Run B",
+            number=1,
+        )
+
+        with pytest.raises(SubGraphNodeRunValidationError) as error:
+            _validate_subflow_nodes(graph)
+
+        assert str(error.value.detail) == (
+            'Input "amount" of Subflow node "Run B #1" must be a flow variable, '
+            "like variables.amount."
+        )
+
+    def test_node_inside_a_subflow_names_that_subflow(self, graph):
+        _subflow_node(graph, {"customer": "customer"})
+
+        with pytest.raises(SubGraphNodeRunValidationError) as error:
+            _validate_subflow_nodes(graph, flow_name="Invoice parser")
+
+        assert str(error.value.detail) == (
+            'Input "customer" of Subflow node "Run B #1" in flow "Invoice parser" must be a '
+            "flow variable, like variables.customer."
+        )
+
+    def test_node_without_inputs_runs(self, graph):
+        _subflow_node(graph, {})
+
+        _validate_subflow_nodes(graph)

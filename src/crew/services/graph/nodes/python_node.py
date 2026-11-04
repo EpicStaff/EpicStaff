@@ -5,8 +5,14 @@ from langgraph.types import StreamWriter
 from models.graph_models import GraphMessage, PythonMessageData
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.exceptions import CodeExecutionUnavailableError, ReturnCodeError
+from services.graph.exceptions import (
+    CodeExecutionUnavailableError,
+    NodeFileError,
+    OutputPathError,
+    PublicNodeError,
+)
 from services.graph.nodes.base_node import BaseNode
+from services.graph.nodes.code_result_errors import code_failure_error
 from services.run_python_code_service import (
     CORRELATION_ID_KEY,
     RunPythonCodeService,
@@ -18,6 +24,8 @@ from src.shared.models.storage_scope import StorageCredentials
 
 class PythonNode(BaseNode):
     TYPE = "PYTHON"
+    # How messages name the node's kind, as the canvas does.
+    KIND_NAME = "Python"
 
     def __init__(
         self,
@@ -50,7 +58,7 @@ class PythonNode(BaseNode):
             execution_order=execution_order,
             message_data={
                 "message_type": "python_stream",
-                "text": f"Executing '{self.node_name}'...",
+                "text": f"Executing '{self.node_label}'...",
                 "is_final": False,
             },
         )
@@ -64,8 +72,9 @@ class PythonNode(BaseNode):
             storage_credentials=self.storage_credentials,
         )
 
+        error = self._result_error(python_code_execution_data)
         python_message_data = PythonMessageData(
-            python_code_execution_data=python_code_execution_data,
+            python_code_execution_data=self._shown_result(python_code_execution_data, error),
         )
         graph_message = GraphMessage(
             session_id=self.session_id,
@@ -75,14 +84,41 @@ class PythonNode(BaseNode):
         )
         writer(graph_message)
 
-        correlation_id = python_code_execution_data.get(CORRELATION_ID_KEY)
+        if error is not None:
+            raise error
+        return json.loads(python_code_execution_data["result_data"])
+
+    def store_output(self, state: State, output: Any) -> None:
+        # The path is only walked here: a missing list item, or a path through a value
+        # that isn't an object or a list, fails while storing.
+        try:
+            super().store_output(state=state, output=output)
+        except (IndexError, KeyError, TypeError, AttributeError, ValueError) as error:
+            raise OutputPathError(
+                f'Output path "{self.output_variable_path}" of {self.KIND_NAME} node '
+                f'"{self.node_label}" doesn\'t exist. Check the output variable path.'
+            ) from error
+
+    def _result_error(self, result: dict[str, Any]) -> PublicNodeError | None:
+        """Return the error the node fails with for this `run_code` result, or None if it ran."""
+        correlation_id = result.get(CORRELATION_ID_KEY)
         if correlation_id is not None:
-            raise CodeExecutionUnavailableError(
-                f'Python node "{self.node_label}" couldn\'t run its code. '
+            return CodeExecutionUnavailableError(
+                f'{self.KIND_NAME} node "{self.node_label}" couldn\'t run its code. '
                 f"Try again or contact your administrator (reference: {correlation_id}).",
                 correlation_id=correlation_id,
             )
-        if python_code_execution_data["returncode"] != 0:
-            raise ReturnCodeError(python_code_execution_data["stderr"])
+        if result["returncode"] != 0:
+            return code_failure_error(result, entrypoint=self.python_code_data.entrypoint)
+        return None
 
-        return json.loads(python_code_execution_data["result_data"])
+    @staticmethod
+    def _shown_result(result: dict[str, Any], error: PublicNodeError | None) -> dict[str, Any]:
+        """Return the result as the run's Python message shows it.
+
+        The stderr of a file the node couldn't use is crew's generated report, raw error
+        text included, so the message shows the node's error in its place.
+        """
+        if isinstance(error, NodeFileError):
+            return {**result, "stderr": str(error)}
+        return result

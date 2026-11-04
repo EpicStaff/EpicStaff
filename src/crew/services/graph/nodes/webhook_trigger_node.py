@@ -5,8 +5,9 @@ from langgraph.types import StreamWriter
 from models.graph_models import GraphMessage, PythonMessageData
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.exceptions import CodeExecutionUnavailableError, ReturnCodeError
+from services.graph.exceptions import CodeExecutionUnavailableError
 from services.graph.nodes.base_node import BaseNode
+from services.graph.nodes.code_result_errors import code_failure_error
 from services.run_python_code_service import (
     CORRELATION_ID_KEY,
     RunPythonCodeService,
@@ -69,6 +70,7 @@ class WebhookTriggerNode(BaseNode):
                 correlation_id=correlation_id,
             )
         if python_code_execution_data["returncode"] != 0:
-            raise ReturnCodeError(python_code_execution_data["stderr"])
+            # Its inputs are the whole flow state, not an input map the user can fix.
+            raise code_failure_error(python_code_execution_data)
 
         return json.loads(python_code_execution_data["result_data"])

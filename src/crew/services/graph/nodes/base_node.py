@@ -172,6 +172,14 @@ class BaseNode(ABC):
         """Value stored at output_variable_path. Default: whole output."""
         return output
 
+    def store_output(self, state: State, output: Any) -> None:
+        """Store the node's output in the flow state at `output_variable_path`."""
+        set_output_variables(
+            state=state,
+            output_variable_path=self.output_variable_path,
+            output=self.get_output_variable_value(output),
+        )
+
     async def run(self, state: State, writer: StreamWriter) -> State:
         """
         Run the node.
@@ -214,11 +222,7 @@ class BaseNode(ABC):
                 input_=input_,
             )
 
-            set_output_variables(
-                state=state,
-                output_variable_path=self.output_variable_path,
-                output=self.get_output_variable_value(output),
-            )
+            self.store_output(state=state, output=output)
 
             self.update_state_history(
                 state=state,

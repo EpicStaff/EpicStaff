@@ -83,6 +83,7 @@ from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.key_value_node_validator import KeyValueNodeValidator
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
+from tables.validators.subgraph_node_validator import SubGraphNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
 from utils.graph_utils import (
     NodeNameResolver,
@@ -113,6 +114,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         )
         self.end_node_validator: EndNodeValidator = EndNodeValidator()
         self.subgraph_validator = SubGraphValidator()
+        self.subgraph_node_validator = SubGraphNodeValidator()
         self.persistent_variables_service = PersistentVariablesService()
         self.surface_knowledge_warning_service = SurfaceKnowledgeWarningService()
 
@@ -587,6 +589,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             SubGraphNode.objects.filter(graph=graph.pk)
             .select_related("subgraph")
             .defer("subgraph__metadata")
+            .order_by("node_number", "id")
         )
         webhook_trigger_node_list = (
             WebhookTriggerNode.objects.filter(graph=graph.pk)
@@ -701,6 +704,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         self.classification_decision_table_node_validator.validate_runnable(
             classification_decision_table_node_list, flow_name=subflow_name
         )
+        self.subgraph_node_validator.validate_runnable(subgraph_node_list, flow_name=subflow_name)
 
         condition_group_next_ids = list(
             ConditionGroup.objects.filter(

@@ -185,6 +185,13 @@ class SubGraphValidationError(CustomAPIExeption):
     default_detail = "A subflow node can't run. Check its flow."
 
 
+class SubGraphNodeRunValidationError(CustomAPIExeption):
+    """Raised on run when a subflow node's input doesn't point to a flow variable."""
+
+    status_code = 400
+    default_detail = "A Subflow node isn't set up."
+
+
 class BuiltInToolModificationError(CustomAPIExeption):
     """
     Exception raised when someone tries to modify a built-in PythonCodeTool.

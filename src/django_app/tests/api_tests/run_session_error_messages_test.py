@@ -530,3 +530,75 @@ def test_set_up_decision_and_classification_tables_run(
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     redis_client_mock.publish.assert_called()
+
+
+@pytest.mark.django_db
+def test_subflow_input_that_is_not_a_flow_variable_is_named_with_its_fix(
+    auth_client, redis_client_mock, session_data, graph, child_flow
+):
+    _connect_start_to_end(child_flow)
+    subflow_node = SubGraphNode.objects.create(
+        graph=graph,
+        node_name="Run B",
+        node_number=1,
+        subgraph=child_flow,
+        input_map={"customer": "customer"},
+    )
+    start_node = StartNode.objects.get(graph=graph)
+    Edge.objects.create(graph=graph, start_node_id=start_node.id, end_node_id=subflow_node.id)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {
+        "error": 'Input "customer" of Subflow node "Run B #1" must be a flow variable, '
+        "like variables.customer."
+    }
+    redis_client_mock.publish.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_subflow_input_inside_a_subflow_names_that_subflow(
+    auth_client, redis_client_mock, session_data, graph, child_flow, default_org
+):
+    _run_subflow(graph, child_flow)
+    inner_flow = Graph.objects.create(name="Customer lookup", org=default_org)
+    StartNode.objects.create(graph=inner_flow, variables={})
+    _connect_start_to_end(inner_flow)
+    SubGraphNode.objects.create(
+        graph=child_flow,
+        node_name="Run B",
+        node_number=1,
+        subgraph=inner_flow,
+        input_map={"customer": "customer"},
+    )
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {
+        "error": 'Input "customer" of Subflow node "Run B #1" in flow "Invoice parser" must '
+        "be a flow variable, like variables.customer."
+    }
+
+
+@pytest.mark.django_db
+def test_subflow_with_inputs_crew_reads_and_any_output_path_runs(
+    auth_client, redis_client_mock, session_data, graph, child_flow
+):
+    _connect_start_to_end(child_flow)
+    subflow_node = SubGraphNode.objects.create(
+        graph=graph,
+        node_name="Run B",
+        node_number=1,
+        subgraph=child_flow,
+        input_map={"customer": "variables.customer|nobody", "everything": "variables"},
+        output_variable_path="result",
+    )
+    start_node = StartNode.objects.get(graph=graph)
+    Edge.objects.create(graph=graph, start_node_id=start_node.id, end_node_id=subflow_node.id)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    redis_client_mock.publish.assert_called()

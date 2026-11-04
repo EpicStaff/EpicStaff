@@ -38,6 +38,11 @@ CORRELATION_ID_KEY = "correlation_id"
 STOP_CHECK_INTERVAL_S = 0.5
 
 
+def is_result_timeout(result: dict[str, Any]) -> bool:
+    """Whether `run_code` gave up waiting for this result, rather than the code failing."""
+    return result["returncode"] == TIMEOUT_RETURNCODE and result["stderr"] == TIMEOUT_STDERR_MESSAGE
+
+
 def build_state_globals(state: State) -> dict[str, Any]:
     """Build the `state` global that user Python code can read in the sandbox."""
     return {

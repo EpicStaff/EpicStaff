@@ -19,17 +19,29 @@ from src.sandbox_new.worker.infrastructure.execution.code_wrapper import wrap_co
 _SHARED_DIR = Path(__file__).resolve().parents[4] / "shared"
 
 
-def run_in_sandbox_wrapper(code: str, entrypoint: str, inputs: dict[str, Any]) -> dict[str, Any]:
-    """Return the result the sandbox would send crew for running ``code``."""
+def run_in_sandbox_wrapper(
+    code: str,
+    entrypoint: str,
+    inputs: dict[str, Any],
+    extra_python_path: tuple[str, ...] = (),
+    extra_environment: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Return the result the sandbox would send crew for running ``code``.
+
+    ``extra_python_path`` comes first on the path, so a test can stand in for a library
+    the code imports; ``extra_environment`` is added to the code's environment.
+    """
     with tempfile.TemporaryDirectory() as directory:
         result_path = Path(directory) / "result.json"
         source = wrap_code(
             code=code, result_file_path=result_path, entrypoint=entrypoint, func_kwargs=inputs
         )
         python_path = os.pathsep.join(
-            path for path in (str(_SHARED_DIR), os.environ.get("PYTHONPATH")) if path
+            path
+            for path in (*extra_python_path, str(_SHARED_DIR), os.environ.get("PYTHONPATH"))
+            if path
         )
-        environment = {**os.environ, "PYTHONPATH": python_path}
+        environment = {**os.environ, **(extra_environment or {}), "PYTHONPATH": python_path}
         environment.pop("SANDBOX_NETWORK_BLOCKED", None)
         completed = subprocess.run(
             [sys.executable, "-c", source],
@@ -52,8 +64,14 @@ def run_in_sandbox_wrapper(code: str, entrypoint: str, inputs: dict[str, Any]) -
 class SandboxWrapperRunCodeService:
     """Stands in for RunPythonCodeService, running every code through the sandbox's wrapper."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        extra_python_path: tuple[str, ...] = (),
+        extra_environment: dict[str, str] | None = None,
+    ) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.extra_python_path = extra_python_path
+        self.extra_environment = extra_environment
 
     async def run_code(
         self,
@@ -64,4 +82,10 @@ class SandboxWrapperRunCodeService:
         storage_credentials=None,
     ) -> dict[str, Any]:
         self.calls.append(inputs)
-        return run_in_sandbox_wrapper(python_code_data.code, python_code_data.entrypoint, inputs)
+        return run_in_sandbox_wrapper(
+            python_code_data.code,
+            python_code_data.entrypoint,
+            inputs,
+            extra_python_path=self.extra_python_path,
+            extra_environment=self.extra_environment,
+        )

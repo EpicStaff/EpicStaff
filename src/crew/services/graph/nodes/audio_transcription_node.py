@@ -1,3 +1,11 @@
+from typing import Any
+
+from services.graph.exceptions import PublicNodeError
+from services.graph.nodes.node_file_failure import (
+    NODE_FILE_FAILURE_SOURCE,
+    NodeFileFailureKind,
+    node_file_error,
+)
 from services.graph.nodes.python_node import PythonNode
 from src.shared.models import PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
@@ -5,6 +13,7 @@ from src.shared.models.storage_scope import StorageCredentials
 
 class AudioTranscriptionNode(PythonNode):
     TYPE = "AUDIO_TRANSCRIPTION"
+    KIND_NAME = "Audio to text"
 
     def __init__(
         self,
@@ -49,6 +58,14 @@ class AudioTranscriptionNode(PythonNode):
             storage_credentials=storage_credentials,
         )
 
+    def _result_error(self, result: dict[str, Any]) -> PublicNodeError | None:
+        return node_file_error(
+            result,
+            kind_name=self.KIND_NAME,
+            node_label=self.node_label,
+            session_id=self.session_id,
+        ) or super()._result_error(result)
+
     def _get_code(self, arg_names: list[str]):
         return f"""
 
@@ -60,7 +77,7 @@ from pydub import AudioSegment
 
 def transcribe_audio(file_data_path: str):
     from faster_whisper import WhisperModel
-    audio_bytes = storage.read_bytes(file_data_path)
+    audio_bytes = read_storage_file(file_data_path)
 
     with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
         tmp_file.write(audio_bytes)
@@ -71,7 +88,7 @@ def transcribe_audio(file_data_path: str):
         wav_path = tempfile.mktemp(suffix=".wav")
         audio.export(wav_path, format="wav")
     except Exception as e:
-        raise ValueError(f"Failed to process audio/video file: {{e}}")
+        fail_on_file("{NodeFileFailureKind.UNPROCESSABLE}", file_data_path, e)
     finally:
         os.remove(input_path)
 
@@ -144,4 +161,5 @@ def get_transcription(**files):
 def main({", ".join(arg_names)}):
     content = get_transcription({", ".join(f"{a}={a}" for a in arg_names)})
     return content
-"""
+
+{NODE_FILE_FAILURE_SOURCE}"""

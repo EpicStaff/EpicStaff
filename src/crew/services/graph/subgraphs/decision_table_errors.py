@@ -15,11 +15,7 @@ from typing import Any
 from loguru import logger
 from services.agent_run_errors import llm_error_text
 from services.graph.exceptions import PublicNodeError
-from services.run_python_code_service import (
-    CORRELATION_ID_KEY,
-    TIMEOUT_RETURNCODE,
-    TIMEOUT_STDERR_MESSAGE,
-)
+from services.run_python_code_service import CORRELATION_ID_KEY, is_result_timeout
 from src.shared.llm_error_kind import classify_llm_error
 from src.shared.models import LLMData
 from src.shared.models.agent_service import LLMErrorKind
@@ -206,7 +202,7 @@ def check_code_ran(result: dict[str, Any], subject: str) -> None:
             _SERVER_ERROR_TEXT.format(subject=subject, reference=correlation_id),
             correlation_id=correlation_id,
         )
-    if result["returncode"] == TIMEOUT_RETURNCODE and result["stderr"] == TIMEOUT_STDERR_MESSAGE:
+    if is_result_timeout(result):
         raise DecisionTableError(_RESULT_TIMEOUT_TEXT.format(subject=subject))
 
 
