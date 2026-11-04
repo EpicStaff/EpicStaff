@@ -134,7 +134,7 @@ describe('FlowGraphCoreMenuComponent', () => {
         const emitted: CreateNodeRequest[] = [];
         fixture.componentInstance.nodeSelected.subscribe((value) => emitted.push(value));
 
-        itemNamed('Agent Node')?.querySelector<HTMLElement>('.block-main')?.click();
+        itemNamed('Agent Node')?.click();
 
         expect(emitted).toEqual([{ type: NodeType.AGENT }]);
     });
