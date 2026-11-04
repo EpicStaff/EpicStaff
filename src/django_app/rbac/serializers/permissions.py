@@ -104,8 +104,10 @@ class PermissionsMeResponseSerializer(serializers.Serializer):
 class MyOrgsPermissionsResponseSerializer(serializers.Serializer):
     """Multi-org capability response. `permissions` per org is
     {resource_type: [action_code]}; the top-level `permissions` is "*"
-    for superadmin (in which case `orgs` is omitted). Duck-typed;
-    drf-spectacular renders the union permissively."""
+    for a superadmin session (in which case `orgs` is omitted). A USER API
+    key caller always gets `orgs` with the key's org alone and no top-level
+    `permissions` -- a superadmin's key too, with `is_superadmin: true`.
+    Duck-typed; drf-spectacular renders the union permissively."""
 
     is_superadmin = serializers.BooleanField()
     permissions = serializers.JSONField(required=False)

@@ -1,4 +1,6 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { ToolSortOrder } from '../../../../models/tool-filter.model';
 
@@ -17,7 +19,7 @@ export const TOOLS_SORT_MENU_ITEMS: readonly ToolsSortMenuItem[] = [
 
 @Component({
     selector: 'app-tools-sort-menu',
-    imports: [],
+    imports: [CdkTrapFocus, MatTooltip],
     templateUrl: './tools-sort-menu.component.html',
     styleUrls: ['./tools-sort-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

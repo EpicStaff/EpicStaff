@@ -103,7 +103,7 @@ def use_default_dispatcher(monkeypatch, executor: Executor, max_in_flight: int =
 @pytest.fixture
 def captured_log_output():
     """Collect every loguru record in the default format, exception and its
-    variable values included, the way the stdout sink would print them."""
+    variable values included, through a worst-case sink with diagnose on."""
     messages: list[str] = []
     sink_id = logger.add(messages.append, level="TRACE", diagnose=True, backtrace=True)
     yield messages

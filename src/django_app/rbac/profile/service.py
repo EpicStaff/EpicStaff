@@ -51,20 +51,24 @@ class UserProfileService:
 
     # ---- read ----
 
-    def get_profile(self, user, active_org_id: int | None = None):
+    def get_profile(
+        self, user, active_org_id: int | None = None, api_key_org_id: int | None = None
+    ):
         """Refetch the user and attach the memberships list and completed tours.
 
         `_profile_memberships` is the caller's own active memberships, or —
         for a superadmin — every active organization with the built-in
-        Superadmin role. `_completed_tours` is the user's completed tour keys,
-        sorted. If `active_org_id` is provided AND the caller has
+        Superadmin role. With `api_key_org_id` (the org of the caller's USER
+        API key, which acts only there) it holds that org alone.
+        `_completed_tours` is the user's completed tour keys, sorted.
+        If `active_org_id` is provided AND the caller has
         membership (or is superadmin), also attach `_active_organization_id`
         and `_active_permissions` for the serializer to render. Soft-fail:
         invalid `active_org_id` results in both attributes being None (NOT 403).
         """
         User = get_user_model()  # noqa: N806
         user = User.objects.get(pk=user.pk)
-        user._profile_memberships = self._get_memberships(user)
+        user._profile_memberships = self._get_memberships(user, api_key_org_id)
         # Sorted in Python: the database collation may order hyphenated keys differently.
         user._completed_tours = sorted(
             UserTourProgress.objects.filter(user_id=user.pk).values_list("tour_key", flat=True)
@@ -92,26 +96,29 @@ class UserProfileService:
             }
         return user
 
-    def _get_memberships(self, user):
+    def _get_memberships(self, user, api_key_org_id: int | None):
         """Membership rows to render in the profile.
 
         Normal user: their real active memberships (with their real role),
         ordered by joined_at. Superadmin: every active organization with the
-        built-in Superadmin role, ordered by name.
+        built-in Superadmin role, ordered by name. Either narrowed to
+        `api_key_org_id` when given.
         """
         if getattr(user, "is_superadmin", False):
             superadmin_role = Role.objects.get(
                 name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True
             )
+            orgs = Organization.objects.filter(is_active=True)
+            if api_key_org_id is not None:
+                orgs = orgs.filter(pk=api_key_org_id)
             return [
                 {"id": None, "org": org, "role": superadmin_role, "joined_at": None}
-                for org in Organization.objects.filter(is_active=True).order_by(Lower("name"))
+                for org in orgs.order_by(Lower("name"))
             ]
-        return (
-            OrganizationUser.objects.filter(user=user, org__is_active=True)
-            .select_related("org", "role")
-            .order_by("joined_at")
-        )
+        memberships = OrganizationUser.objects.filter(user=user, org__is_active=True)
+        if api_key_org_id is not None:
+            memberships = memberships.filter(org_id=api_key_org_id)
+        return memberships.select_related("org", "role").order_by("joined_at")
 
     # ---- profile field updates ----
 

@@ -16,6 +16,8 @@ export interface BranchSurfaceNode {
     locked?: boolean;
     shared?: boolean;
     ownerAgentId?: number;
+    /** The shared surface's group; unset on owned surfaces, which are never grouped. */
+    groupId?: number | null;
 }
 
 export interface BranchAgentNode {
@@ -23,6 +25,7 @@ export interface BranchAgentNode {
     agentId: number;
     label: string;
     children: BranchTreeNode[];
+    groupId?: number | null;
 }
 
 /** One entry of an agent's `instruction_list`, identified by its position (names change on rename). */
@@ -44,4 +47,22 @@ export function nodeKey(node: BranchTreeNode): string {
         case 'agent-doc':
             return `agent-doc:${node.agentId}:${node.instructionIndex}`;
     }
+}
+
+/** The explorer sections whose items can be put into groups. */
+export type GroupedSectionId = 'agents' | 'surfaces';
+
+/** One block of a grouped section: a collapsible group, or the headerless ungrouped items when `groupId` is null. */
+export interface ExplorerGroupBlock {
+    groupId: number | null;
+    label: string;
+    /** Items in the block regardless of the search, for the header count. */
+    memberCount: number;
+    /** The rows to show: every member, or only the ones matching the search. */
+    nodes: BranchTreeNode[];
+}
+
+/** Collapse-state key of a group block, unique across both grouped sections. */
+export function groupBlockKey(section: GroupedSectionId, groupId: number | null): string {
+    return `${section}:${groupId ?? 'ungrouped'}`;
 }

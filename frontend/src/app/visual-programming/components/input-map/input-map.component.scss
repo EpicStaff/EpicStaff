@@ -129,6 +129,8 @@
 
 .delete-icon {
     font-size: 1rem;
+    border: none;
+    background: none;
     cursor: pointer;
     color: var(--color-text-secondary);
     padding: 0.2rem;
@@ -141,7 +143,7 @@
     align-items: center;
     justify-content: center;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-status-error);
         background-color: var(--color-status-error-subtle);
     }
@@ -174,7 +176,7 @@
     background: var(--color-action-btn-background);
     color: var(--color-text-primary);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background: var(--color-action-btn-background-hover);
     }
 
@@ -189,7 +191,7 @@
     color: white;
     border-color: var(--accent-color);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         filter: brightness(0.88);
     }
 

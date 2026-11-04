@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SectionHeightService, SidebarWidthService } from '@shared/services';
 
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { StorageDragService } from '../../../../../files/services/storage-drag.service';
 import { BranchTreeNode } from '../../../../models/tree-node.model';
 import { AgentsPageStore } from '../../../../services/agents-page-store.service';
@@ -20,7 +21,11 @@ function render(): {
 } {
     TestBed.configureTestingModule({
         providers: [
-            { provide: AgentsPageStore, useValue: { isSectionExpanded: () => false, isSectionVisible: () => true } },
+            {
+                provide: AgentsPageStore,
+                useValue: { isSectionExpanded: () => false, isSectionVisible: () => true, groups: () => [] },
+            },
+            { provide: PermissionsService, useValue: { can: () => true } },
             { provide: StorageDragService, useValue: { isDragging: signal(false) } },
             { provide: SurfaceDragService, useValue: { isDragging: signal(false) } },
             { provide: SidebarWidthService, useValue: { getWidth: () => signal(280) } },

@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, input, output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
@@ -9,13 +10,15 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 // place instead of being duplicated per row type.
 @Component({
     selector: 'app-view-nested-messages-button',
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [MatTooltip, CommonModule, AppSvgIconComponent],
     template: `
         <button
             class="view-nested-button"
             type="button"
             (click)="onClick($event)"
             [class.show-nested-btn--open]="isOpen()"
+            [attr.aria-expanded]="isOpen()"
+            [matTooltip]="(isOpen() ? 'Hide ' : 'View ') + count() + ' nested messages'"
         >
             {{ count() }} messages
             <div
@@ -66,7 +69,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                     border-color 0.2s ease;
             }
 
-            .view-nested-button:hover {
+            .view-nested-button:is(:hover, :focus-visible) {
                 background-color: transparent;
                 color: var(--message-accent-color, var(--color-nodes-flow-link));
                 border-color: var(--message-accent-color, var(--color-nodes-flow-link));

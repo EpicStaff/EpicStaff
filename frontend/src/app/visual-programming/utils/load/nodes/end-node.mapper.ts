@@ -15,8 +15,6 @@ export function mapEndNodeToModel(en: EndNode): EndNodeModel {
         data: { output_map: en.output_map ?? {} },
         position: ui.position,
         ports: null,
-        color: ui.color,
-        icon: ui.icon,
         input_map: {},
         output_variable_path: null,
         size: ui.size,

@@ -1,7 +1,6 @@
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { DestroyRef, inject, signal, ViewContainerRef } from '@angular/core';
-import { filter } from 'rxjs';
 
 import { isPathUnder } from '../../core/helpers/variable-path.util';
 import { PickerItem, VarPickerFlatComponent } from './var-picker-flat.component';
@@ -142,14 +141,19 @@ export class VariablePathPicker {
     }
 
     /**
-     * ArrowDown and ArrowUp move the highlight, Enter picks it. A key the picker takes comes back
+     * ArrowDown and ArrowUp move the highlight, Enter picks it, Escape closes it. A key the picker takes comes back
      * defaultPrevented, so a host can give Enter its own meaning while nothing is highlighted.
      * (Returns nothing: Angular prevents the default of any template handler that returns false.)
      */
     public onKeydown(rowIndex: number, event: KeyboardEvent): void {
         // An IME is still composing: its keys are not the picker's.
         if (event.isComposing || !this.isOpenFor(rowIndex) || this.picker === null) return;
-        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if (event.key === 'Escape') {
+            // Closes only the picker, here at the input: the panel around it closes on the next Escape.
+            event.preventDefault();
+            event.stopPropagation();
+            this.close();
+        } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
             this.picker.moveHighlight(event.key === 'ArrowDown' ? 1 : -1);
         } else if (isPlainEnter(event)) {
@@ -262,14 +266,6 @@ export class VariablePathPicker {
                 }
                 this.close();
             }),
-            overlayRef
-                .keydownEvents()
-                .pipe(filter((event) => event.key === 'Escape'))
-                .subscribe((event) => {
-                    // Closes only the picker: the panel's own Escape shortcut waits for a second press.
-                    event.stopPropagation();
-                    this.close();
-                }),
         ];
     }
 }

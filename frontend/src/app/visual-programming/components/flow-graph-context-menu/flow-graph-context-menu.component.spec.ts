@@ -17,6 +17,19 @@ function createFlow(id: number, name: string): GetGraphLightRequest {
 }
 
 describe('FlowGraphContextMenuComponent', () => {
+    // jsdom has no ResizeObserver; the tooltip that shows only for a cut-short name needs one.
+    beforeEach(() =>
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        )
+    );
+    afterEach(() => vi.unstubAllGlobals());
+
     let fixture: ComponentFixture<FlowGraphContextMenuComponent>;
     let overlayElement: HTMLElement;
     let contentHeight = 0;

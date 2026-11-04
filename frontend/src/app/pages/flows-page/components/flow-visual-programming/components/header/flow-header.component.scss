@@ -35,6 +35,7 @@
 
             .flows-prefix {
                 color: var(--white-alpha-60);
+                text-decoration: none;
                 cursor: pointer;
                 transition: all 0.2s ease;
                 display: flex;
@@ -54,7 +55,7 @@
                     line-height: 1;
                 }
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     color: var(--white-alpha-90);
                 }
             }
@@ -107,6 +108,24 @@
 
         .tooltip-host {
             @include header-action-buttons.tooltip-host;
+
+            &:has(> button[aria-disabled='true']) {
+                cursor: not-allowed;
+            }
+        }
+
+        // Save and Run while a save or a run is going: the look of the mixins' disabled state, kept focusable.
+        .save-split-btn__main,
+        .save-split-btn__chevron {
+            &[aria-disabled='true'] {
+                cursor: not-allowed;
+                opacity: 0.7;
+            }
+        }
+
+        .run-button[aria-disabled='true'] {
+            cursor: not-allowed;
+            opacity: 0.6;
         }
 
         .sessions-button {
@@ -176,7 +195,7 @@
                 font-size: 0.875rem;
                 cursor: pointer;
 
-                &:hover:not(:disabled) {
+                &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
                     background-color: var(--mauve-alpha-10);
                 }
             }
@@ -192,7 +211,7 @@
                 border-radius: 0;
                 cursor: pointer;
 
-                &:hover:not(:disabled) {
+                &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
                     background-color: var(--mauve-alpha-10);
                 }
             }
@@ -231,33 +250,94 @@
         opacity 0.15s ease,
         color 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--fog-200);
     }
 }
-.unsaved-indicator {
+.save-status-chip {
     display: inline-flex;
     align-items: center;
     align-self: center;
-    gap: 6px;
+    flex-shrink: 0;
+    gap: 4px;
+    height: 28px;
+    padding: 4px 8px 4px 4px;
     margin-left: 8px;
-    color: var(--accent-color);
-    font-size: 0.875rem;
+    border-radius: 4px;
+    color: var(--save-status-color);
+    background-color: var(--save-status-background);
     white-space: nowrap;
 
-    i {
-        font-size: 0.625rem;
-        margin-right: 6px;
-        color: var(--accent-color);
+    .save-status-chip__label {
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
     }
 
-    .unsaved-text {
-        font-size: var(--text-body-small-large-size);
-        font-weight: var(--text-body-small-large-weight);
-        color: var(--accent-color);
+    &.save-status-chip--icon-only {
+        justify-content: center;
+        width: 28px;
+        padding: 4px;
+
+        .save-status-chip__label {
+            display: none;
+        }
     }
 
-    &.unsaved-indicator--icon-only .unsaved-text {
-        display: none;
+    .save-status-chip__spinner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 20px;
+        height: 20px;
+
+        &::before {
+            content: '';
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: conic-gradient(
+                from 90deg,
+                currentColor 0deg,
+                color-mix(in srgb, currentColor 25%, transparent) 270deg,
+                transparent 270deg
+            );
+            mask: radial-gradient(circle, transparent 2.5px, black 3px);
+            animation: save-status-spin 1s linear infinite;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            &::before {
+                animation: none;
+            }
+        }
+    }
+
+    &--saved {
+        --save-status-color: var(--purple-500);
+        --save-status-background: var(--purple-alpha-8);
+    }
+
+    &--saving {
+        --save-status-color: var(--sky-500);
+        --save-status-background: var(--sky-alpha-6);
+    }
+
+    &--unsaved,
+    &--reconnecting {
+        --save-status-color: var(--color-text-primary);
+        --save-status-background: var(--fog-alpha-8);
+    }
+
+    &--connection-lost {
+        --save-status-color: var(--orange-500);
+        --save-status-background: var(--orange-alpha-6);
+    }
+}
+
+@keyframes save-status-spin {
+    to {
+        transform: rotate(360deg);
     }
 }

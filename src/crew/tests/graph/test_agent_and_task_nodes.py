@@ -160,6 +160,40 @@ async def test_agent_events_are_forwarded_to_the_session_stream(
     ]
 
 
+def _skipped_notices(messages):
+    return [
+        message for message in messages
+        if isinstance(message, dict) and message.get("event") == "llm_fallback_skipped"
+    ]
+
+
+@NODE_KINDS
+async def test_skipped_fallback_is_reported_once_when_the_node_starts(
+    build_node, stream_type, remembered_outputs
+):
+    agent = AGENT.model_copy(update={"fallback_llm_warning": "Fallback LLM was skipped: no API key."})
+    service = FakeAgentService(events=[("agent.task_start", {"task": {"name": "task_a", "order": 0}})])
+
+    _, messages = await _run(build_node(service, remembered_outputs, agent_definition=agent))
+
+    stream = [message for message in messages if isinstance(message, dict) and "event" in message]
+    assert [(message["event"], message["step_id"]) for message in stream] == [
+        ("llm_fallback_skipped", 1),
+        ("task_start", 2),
+    ]
+    assert _skipped_notices(messages) == [
+        {"message_type": stream_type, "event": "llm_fallback_skipped", "step_id": 1,
+         "is_final": False, "agent_id": 1, "data": {"message": "Fallback LLM was skipped: no API key."}},
+    ]
+
+
+@NODE_KINDS
+async def test_no_skipped_notice_without_a_warning(build_node, stream_type, remembered_outputs):
+    _, messages = await _run(build_node(FakeAgentService(), remembered_outputs))
+
+    assert _skipped_notices(messages) == []
+
+
 @NODE_KINDS
 @pytest.mark.parametrize(
     ("result", "expected_variable"),

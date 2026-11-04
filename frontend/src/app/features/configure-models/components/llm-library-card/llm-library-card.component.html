@@ -13,6 +13,7 @@
             >
                 <app-checkbox
                     color="secondary"
+                    [ariaLabel]="'Select ' + model().customName"
                     [checked]="selected()"
                     [disabled]="isDeleting()"
                     (changed)="onCardClick()"

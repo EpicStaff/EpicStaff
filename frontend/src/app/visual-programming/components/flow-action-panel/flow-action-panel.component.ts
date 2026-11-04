@@ -31,6 +31,7 @@ export class FlowActionPanelComponent {
     }
 
     handleAction(actionType: string): void {
+        if (this.isActionDisabled(actionType)) return;
         switch (actionType) {
             case 'undo':
                 this.undoRedoService.onUndo();

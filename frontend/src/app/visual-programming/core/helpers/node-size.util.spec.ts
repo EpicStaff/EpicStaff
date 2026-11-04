@@ -1,10 +1,12 @@
 import { NodeType } from '@shared/models';
 
+import { DecisionTableNodeModel, NodeModel } from '../models/node.model';
 import {
     DT_MIN_HEIGHT,
     getClassificationTableVisualHeight,
     getDecisionTableVisualHeight,
     getDefaultNodeSize,
+    normalizeTableNodeSize,
 } from './node-size.util';
 
 describe('getDecisionTableVisualHeight', () => {
@@ -58,5 +60,29 @@ describe('getClassificationTableVisualHeight', () => {
 describe('getDefaultNodeSize', () => {
     it('gives the key-value node the same default size as the Python node', () => {
         expect(getDefaultNodeSize(NodeType.KEY_VALUE)).toEqual(getDefaultNodeSize(NodeType.PYTHON));
+    });
+});
+
+describe('normalizeTableNodeSize', () => {
+    it.each([NodeType.TABLE, NodeType.CLASSIFICATION_TABLE])(
+        'sets a %s node to the table width whatever it had',
+        (type) => {
+            const node = {
+                type,
+                size: { width: 340, height: 999 },
+                data: { table: { condition_groups: [] } },
+            } as unknown as NodeModel;
+
+            expect(normalizeTableNodeSize(node).size!.width).toBe(330);
+        }
+    );
+
+    it('sets the width of a table node that has no size', () => {
+        const node = {
+            type: NodeType.TABLE,
+            data: { table: { condition_groups: [] } },
+        } as unknown as DecisionTableNodeModel;
+
+        expect(normalizeTableNodeSize(node).size).toEqual({ width: 330, height: 240 });
     });
 });

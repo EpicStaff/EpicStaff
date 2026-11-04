@@ -111,8 +111,9 @@ docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /
 ```
 
 It asks for the public URL, how HTTPS is handled, which features to turn on, which release
-tag to pull and how long to keep sessions, conversations and audit events, and generates every password and key into `src/.env` (keep that file private). It can
-also size the server and set the longest a code node may run. Run it again later to turn
+tag to pull and how long to keep sessions, conversations and audit events, and generates every password and key into `src/.env` (keep that file private). It sizes
+the server from the CPUs of the machine it runs on (change that, and the longest a code node may
+run, under advanced settings). Run it again later to turn
 features on or off, tune those limits, add settings a newer release introduced, or start over; it
 keeps the existing credentials, because the databases were created with them.
 

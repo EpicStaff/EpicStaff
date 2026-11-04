@@ -10,7 +10,7 @@ import asyncio
 import httpx
 import litellm
 import pytest
-from app.llm.retry import RetryPolicy
+from app.llm.retry import RetryPolicy, _resolve_present_exception_classes
 
 
 def _litellm_error(exception_type: type[Exception]) -> Exception:
@@ -64,7 +64,10 @@ ALWAYS = 99
         ],
         *[
             pytest.param(error, 1, 3, 0, True, id=f"not-retryable-{error.__name__}")
-            for error in (litellm.AuthenticationError, litellm.BadRequestError, litellm.ContextWindowExceededError)
+            for error in (
+                litellm.AuthenticationError, litellm.BadRequestError, litellm.ContextWindowExceededError,
+                litellm.NotFoundError, litellm.BadGatewayError,
+            )
         ],
     ],
 )
@@ -114,3 +117,11 @@ async def test_retry_after_header_overrides_backoff(slept, retry_after, expected
 
     assert await policy.aretry(call) == "ok"
     assert slept == pytest.approx(expected)
+
+
+def test_missing_fallback_trigger_class_is_skipped_not_widened_to_api_error(monkeypatch):
+    monkeypatch.delattr(litellm, "BadGatewayError")
+
+    resolved = _resolve_present_exception_classes(("RateLimitError", "BadGatewayError"))
+
+    assert resolved == (litellm.RateLimitError,)

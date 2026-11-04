@@ -3,7 +3,9 @@
         type="button"
         class="detail-header__toggle"
         [class.detail-header__toggle--active]="showSidebar()"
-        title="Toggle Branches"
+        aria-label="Toggle Branches"
+        matTooltip="Toggle Branches"
+        [attr.aria-pressed]="showSidebar()"
         (click)="toggleSidebar.emit()"
     >
         <app-svg-icon
@@ -14,6 +16,7 @@
 
     <nav class="crumbs">
         @for (crumb of crumbs(); track $index; let last = $last) {
+            @let group = crumb.group;
             @if (crumb.navAgentId != null) {
                 <button
                     type="button"
@@ -30,6 +33,41 @@
                 >
                     {{ crumb.label }}
                 </button>
+            } @else if (crumb.navAgentInstructionsId != null) {
+                <button
+                    type="button"
+                    class="crumbs__item crumbs__item--link"
+                    (click)="navAgentInstructions.emit(crumb.navAgentInstructionsId)"
+                >
+                    {{ crumb.label }}
+                </button>
+            } @else if (group?.editable) {
+                <button
+                    #groupTrigger
+                    type="button"
+                    class="crumbs__item crumbs__group"
+                    cdkMonitorElementFocus
+                    aria-haspopup="listbox"
+                    [attr.aria-expanded]="groupPicker.isOpen()"
+                    [attr.aria-label]="'Group: ' + crumb.label"
+                    (click)="groupPicker.openAt(groupTrigger)"
+                >
+                    {{ crumb.label }}
+                    <app-svg-icon
+                        class="crumbs__caret"
+                        icon="chevron-down-filled"
+                        size="8px"
+                    />
+                </button>
+                <app-label-dropdown
+                    #groupPicker
+                    mode="single"
+                    noun="group"
+                    emptyOptionLabel="No group"
+                    [hideTrigger]="true"
+                    [selectedLabelIds]="[group.groupId]"
+                    (selectionChange)="onGroupPicked($event)"
+                />
             } @else {
                 <span
                     class="crumbs__item"

@@ -16,6 +16,8 @@ import {
     Output,
     signal,
     SimpleChanges,
+    viewChild,
+    viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
@@ -56,6 +58,9 @@ export interface InputMapKeyChanges {
     removed: string[];
 }
 
+const DEFAULT_TOOLTIP =
+    "Maps function arguments to domain variables using key-value pairs. For example, 'project_id' = 'current_project' maps the function parameter 'project_id' to the flow variable 'current_project'.";
+
 @Component({
     selector: 'app-input-map',
     imports: [
@@ -86,6 +91,11 @@ export class InputMapComponent implements OnInit, OnChanges {
     @Input() testRunning: boolean = false;
     @Input() testInputDirty: boolean = false;
     readonly = input<boolean>(false);
+    /** The header above the rows; an empty string hides it (and its tooltip). */
+    readonly label = input<string>('Input List');
+    readonly tooltipText = input<string>(DEFAULT_TOOLTIP);
+    readonly keyPlaceholder = input<string>('Function Argument Name');
+    readonly valuePlaceholder = input<string>('Domain Variable Name');
     readonly nodeNumber = input<number | undefined>();
     /** Why the owning panel cannot run the test now (e.g. its stored code is not the panel's), or null. */
     readonly runTestBlocker = input<string | null>(null);
@@ -98,6 +108,8 @@ export class InputMapComponent implements OnInit, OnChanges {
     private normalModeSnapshot: { key: string; value: string }[] = [];
 
     private readonly destroyRef = inject(DestroyRef);
+    private readonly removeButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeButton');
+    private readonly addButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
     private readonly keySubs = new WeakMap<AbstractControl, Subscription>();
     private readonly testKeySubs = new WeakMap<AbstractControl, Subscription>();
     private readonly lastKnownKeys = new WeakMap<AbstractControl, string>();
@@ -360,6 +372,23 @@ export class InputMapComponent implements OnInit, OnChanges {
             })
         );
         this.mirrorTestPairKey(this.testPairs.at(this.testPairs.length - 1));
+    }
+
+    /** The pressed Remove button is gone: the focus goes to the row now in its place, else to Add Input. */
+    protected onRemoveButtonClick(index: number, testRow: boolean): void {
+        if (testRow) {
+            this.removeTestVariable(index);
+        } else {
+            this.removePair(index);
+        }
+        afterNextRender(
+            () => {
+                const buttons = this.removeButtons();
+                const target = buttons[Math.min(index, buttons.length - 1)] ?? this.addButton();
+                target?.nativeElement.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     removeTestVariable(index: number): void {

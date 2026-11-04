@@ -4,6 +4,7 @@ from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from loguru import logger
+
 from tables.models.graph_models import WebhookTriggerNode
 from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
