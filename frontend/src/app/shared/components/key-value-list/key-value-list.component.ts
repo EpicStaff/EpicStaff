@@ -8,6 +8,7 @@ import {
     forwardRef,
     inject,
     input,
+    OnInit,
     signal,
     TemplateRef,
     viewChild,
@@ -25,14 +26,23 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { SecretsStorageService } from '@shared/services';
 
+import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { SelectItem } from '../select/select.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 import {
     getHeaderRowError,
+    getRowError,
     HEADER_VALUE_LINE_BREAK_ERROR,
     HEADER_VALUE_REQUIRED_ERROR,
+    VALUE_REQUIRED_ERROR,
 } from './header-validation.util';
+
+const VALUE_ERRORS: ReadonlySet<string> = new Set([
+    HEADER_VALUE_REQUIRED_ERROR,
+    HEADER_VALUE_LINE_BREAK_ERROR,
+    VALUE_REQUIRED_ERROR,
+]);
 
 interface KeyValueItem {
     name: string;
@@ -48,7 +58,7 @@ const toSecretMarker = (name: string): string => `epicstaff_secret(${name})`;
 
 @Component({
     selector: 'app-key-value-list',
-    imports: [TooltipComponent, FormsModule, MatTooltipModule, AppSvgIconComponent],
+    imports: [TooltipComponent, FormsModule, MatTooltipModule, AppSvgIconComponent, TooltipOnOverflowDirective],
     templateUrl: './key-value-list.component.html',
     styleUrls: ['./key-value-list.component.scss'],
     providers: [
@@ -65,7 +75,7 @@ const toSecretMarker = (name: string): string => `epicstaff_secret(${name})`;
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class KeyValueListComponent implements ControlValueAccessor, Validator {
+export class KeyValueListComponent implements OnInit, ControlValueAccessor, Validator {
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly overlay = inject(Overlay);
@@ -79,6 +89,14 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
     required = input<boolean>(false);
     namePlaceholder = input<string>('Name');
     valuePlaceholder = input<string>('Value');
+    /** What a row is, in its screen-reader labels: "<rowLabel> name, row 1". */
+    rowLabel = input<string>('Header');
+    /** Offer the secrets picker on the value field. Off for values that are not credentials. */
+    secretSuggestions = input<boolean>(true);
+    /** Check rows as HTTP headers (token names, case-insensitive duplicates, line breaks). Off: any name, exact duplicates. */
+    headerRules = input<boolean>(true);
+    /** Drop the frame and padding and use the standard input surface, for a list that sits inside a card. */
+    compact = input<boolean>(false);
 
     items = signal<KeyValueItem[]>([]);
     isDisabled = signal<boolean>(false);
@@ -119,19 +137,20 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
     }
 
     isSecretValue(value: string): boolean {
-        return this.secretNameOf(value) !== null;
+        return this.secretSuggestions() && this.secretNameOf(value) !== null;
     }
 
     /** What the user sees: the secret's plain name, never the `epicstaff_secret(...)` payload syntax. */
     displayValue(value: string): string {
-        return this.secretNameOf(value) ?? value;
+        return (this.secretSuggestions() ? this.secretNameOf(value) : null) ?? value;
     }
 
     /** Error text per row, null when the row is valid or entirely empty (empty rows are ignored). */
     rowErrors = computed<(string | null)[]>(() => {
         const items = this.items();
+        const rowError = this.headerRules() ? getHeaderRowError : getRowError;
         return items.map((item, index) =>
-            getHeaderRowError(
+            rowError(
                 item.name,
                 item.value,
                 items.filter((_, other) => other !== index).map((other) => other.name)
@@ -145,12 +164,15 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
     private onTouched: () => void = () => {};
 
     constructor() {
+        this.destroyRef.onDestroy(() => this.disposeOverlay());
+    }
+
+    ngOnInit(): void {
+        if (!this.secretSuggestions()) return;
         this.secretsStorageService
             .getSecrets()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({ error: () => {} });
-
-        this.destroyRef.onDestroy(() => this.disposeOverlay());
     }
 
     updateName(index: number, name: string): void {
@@ -182,16 +204,16 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
 
     hasNameError(index: number): boolean {
         const error = this.rowErrors()[index];
-        return error !== null && error !== HEADER_VALUE_REQUIRED_ERROR && error !== HEADER_VALUE_LINE_BREAK_ERROR;
+        return error !== null && !VALUE_ERRORS.has(error);
     }
 
     hasValueError(index: number): boolean {
         const error = this.rowErrors()[index];
-        return error === HEADER_VALUE_REQUIRED_ERROR || error === HEADER_VALUE_LINE_BREAK_ERROR;
+        return error !== null && VALUE_ERRORS.has(error);
     }
 
     onValueFocus(event: FocusEvent, target: SecretPickerTarget): void {
-        if (this.isDisabled()) return;
+        if (this.isDisabled() || !this.secretSuggestions()) return;
         this.activeTarget.set(target);
         this.openSuggestions(event.target as HTMLElement);
     }

@@ -19,7 +19,7 @@
     text-align: left;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-input-background-hover);
     }
 

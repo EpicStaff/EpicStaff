@@ -32,7 +32,7 @@ from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
 )
 from infrastructure.providers.factory import RealtimeAgentClientFactory
-from infrastructure.sandbox.sandbox_client import SandboxExecutionClient
+from infrastructure.sandbox.sandbox_client import SandboxClient
 from infrastructure.summarization.openai_summarization_client import (
     OpenaiSummarizationClient,
 )
@@ -43,7 +43,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.knowledge.client import KnowledgeClient
 from src.shared.models import RealtimeAgentChatData
-from utils.auth import introspect_token
+from utils.auth import DjangoAuthClient
 from utils.instructions_concatenator import generate_instruction
 from utils.twilio_signature import validate_twilio_signature
 
@@ -55,13 +55,20 @@ app = FastAPI()
 redis_service = RedisService(
     host=config.REDIS_HOST, port=config.REDIS_PORT, password=config.REDIS_PASSWORD
 )
-sandbox_client = SandboxExecutionClient(
-    base_url=config.SANDBOX_BASE_URL, timeout=config.SANDBOX_TIMEOUT
+sandbox_client = SandboxClient(
+    queue_timeout=config.SANDBOX_QUEUE_TIMEOUT,
+    base_url=config.SANDBOX_BASE_URL,
+    timeout=config.SANDBOX_TIMEOUT,
 )
 python_code_executor_service = PythonCodeExecutorService(
     redis_service=redis_service, sandbox_client=sandbox_client
 )
 knowledge_client = KnowledgeClient(base_url=config.KNOWLEDGE_BASE_URL)
+django_auth_client = DjangoAuthClient(
+    base_url=config.DJANGO_AUTH_URL,
+    api_key=config.DJANGO_API_KEY,
+    timeout=config.DJANGO_AUTH_TIMEOUT,
+)
 tool_manager_service = ToolManagerService(
     python_code_executor_service=python_code_executor_service,
     knowledge_client=knowledge_client,
@@ -228,6 +235,7 @@ async def startup_event():
     """Start Redis listener and init DB on FastAPI startup."""
     await init_db()
     await knowledge_client.start()
+    await django_auth_client.start()
 
     # The event loop keeps only a weak reference to tasks, so the supervisor task
     # must be held here or it can be garbage-collected and nothing restarts the listener.
@@ -243,7 +251,8 @@ async def shutdown_event():
     redis_listener_task.cancel()
     await asyncio.gather(redis_listener_task, return_exceptions=True)
     await knowledge_client.stop()
-    await sandbox_client.close()
+    await django_auth_client.stop()
+    await sandbox_client.aclose()
 
 
 # Store active connections and their handlers
@@ -268,7 +277,7 @@ async def root(
         await websocket.close(code=1008)
         return
 
-    user_info = introspect_token(token)
+    user_info = await django_auth_client.introspect_token(token)
     if not user_info:
         logger.warning("WebSocket auth failed: token invalid or introspection failed")
         await websocket.close(code=1008)
@@ -417,10 +426,20 @@ async def _twilio_voice_webhook(
     request: Request,
     auth_token: str | None,
     voice_stream_url: str,
-    stream_token: str,
+    stream_bound_key: str,
     base_url: str,
 ) -> Response:
-    """Shared logic for both old and new Twilio voice webhook handlers."""
+    """Validate a Twilio voice webhook and answer it with Media Stream TwiML.
+
+    The single-use stream token for the Media Stream leg is minted here, only
+    after every fail-closed check has passed, so an unsigned request never
+    adds to the token store; the store's per-channel cap is what keeps one
+    tenant's signed requests from evicting another channel's pending tokens.
+
+    Args:
+        stream_bound_key: Route the minted token is bound to (the channel
+            token); the Media Stream handler must present the same key.
+    """
     logger.info(
         f"[voice_webhook] auth_token present={bool(auth_token)} voice_stream_url configured"
     )
@@ -457,6 +476,7 @@ async def _twilio_voice_webhook(
         logger.error("[voice_webhook] no voice_stream_url configured")
         raise HTTPException(status_code=503, detail="No voice stream URL configured")
 
+    stream_token = stream_token_repository.mint(bound_key=stream_bound_key)
     voice_stream_url = _append_stream_token(voice_stream_url, stream_token)
 
     stream_url_attr = quoteattr(voice_stream_url)
@@ -477,8 +497,8 @@ async def _voice_stream_handler(
     twilio_ws: WebSocket,
     agent_definition_id: int,
     auth_token: str | None,
+    stream_bound_key: str,
     stream_token: str | None = None,
-    stream_bound_key: str | None = None,
 ) -> None:
     """Shared logic for voice stream WebSocket handlers.
 
@@ -490,8 +510,7 @@ async def _voice_stream_handler(
     Twilio's Media Stream WS leg carries no verifiable Twilio header (no
     `X-Twilio-Signature`), so authentication here is a short-lived, single-use
     `stream_token` minted by the paired (signature-validated) TwiML webhook and
-    bound to the same route (`stream_bound_key` — the channel_token, or the
-    legacy sentinel).
+    bound to the same route (`stream_bound_key` — the channel_token).
 
     Confirmed in production (2026-08 voice-call regression): Twilio does NOT
     forward the `?stream_token=...` query string embedded in the TwiML
@@ -689,9 +708,8 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
         base_url = f"https://{ngrok_domain}"
     else:
         base_url = ""
-    stream_token = stream_token_repository.mint(bound_key=channel_token)
     return await _twilio_voice_webhook(
-        request, auth_token, voice_stream_url, stream_token, base_url
+        request, auth_token, voice_stream_url, channel_token, base_url
     )
 
 

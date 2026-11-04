@@ -5,23 +5,30 @@
         (mousedown)="$event.stopPropagation()"
     >
         <!-- Edit Button for Note -->
-        <div
+        <button
+            type="button"
             class="action-button edit-button"
+            aria-label="Edit note"
             matTooltip="Edit note"
             matTooltipPosition="above"
             (click)="onEditClick($event)"
         >
             <app-svg-icon icon="edit"></app-svg-icon>
-        </div>
+        </button>
         <!-- Delete Button (NOTE only here - never START) -->
-        <div
+        <button
+            type="button"
             class="action-button delete-button"
+            aria-label="Delete node"
             matTooltip="Delete node"
             matTooltipPosition="above"
             (click)="onDeleteClick($event)"
         >
-            <i class="ti ti-trash"></i>
-        </div>
+            <i
+                class="ti ti-trash"
+                aria-hidden="true"
+            ></i>
+        </button>
     </div>
 }
 
@@ -92,8 +99,8 @@
                         ></i>
                     } @else {
                         <i
-                            [class]="node.icon"
-                            [style.color]="node.color"
+                            [class]="nodeIcons[node.type]"
+                            [style.color]="nodeColors[node.type]"
                         ></i>
                     }
                 </div>
@@ -128,7 +135,8 @@
                 @if (isBlockedSubgraph) {
                     <div
                         class="blocked-badge"
-                        title="Referenced subgraph was deleted"
+                        matTooltip="Referenced subgraph was deleted"
+                        matTooltipPosition="above"
                     >
                         Missing flow
                     </div>
@@ -162,7 +170,8 @@
                 @if (hasMissingKeyValueTable) {
                     <div
                         class="llm-warning-badge"
-                        [title]="isReadOnly() ? 'No table selected' : 'Select a table in the node panel'"
+                        [matTooltip]="isReadOnly() ? 'No table selected' : 'Select a table in the node panel'"
+                        matTooltipPosition="above"
                     >
                         <app-svg-icon
                             icon="alert-triangle"
@@ -178,7 +187,7 @@
                     @if (keyValueSummaryValue) {
                         <div
                             class="key-value-summary-tab"
-                            [attr.title]="keyValueSummaryValue.full"
+                            [matTooltip]="keyValueSummaryValue.full"
                         >
                             <span
                                 class="summary"
@@ -200,17 +209,23 @@
                             (mouseup)="$event.stopPropagation()"
                             (click)="$event.stopPropagation()"
                         >
-                            <div
+                            <button
+                                type="button"
                                 class="action-button unpack-button"
                                 [class.disabled]="isBlockedSubgraph"
+                                aria-label="Unpack subflow"
+                                [attr.aria-disabled]="isBlockedSubgraph || null"
                                 [matTooltip]="
                                     isBlockedSubgraph ? 'Cannot unpack: referenced flow is missing' : 'Unpack subflow'
                                 "
                                 matTooltipPosition="above"
                                 (click)="onUnpackClick($event)"
                             >
-                                <i class="ti ti-package-off"></i>
-                            </div>
+                                <i
+                                    class="ti ti-package-off"
+                                    aria-hidden="true"
+                                ></i>
+                            </button>
                         </div>
                     }
                     <!-- Stops mousedown/mouseup/click so it never bubbles into appClickOrDrag's actualClick (mouseup) and opens the panel. -->
@@ -221,14 +236,19 @@
                             (mouseup)="$event.stopPropagation()"
                             (click)="$event.stopPropagation()"
                         >
-                            <div
+                            <button
+                                type="button"
                                 class="action-button delete-button"
+                                aria-label="Delete node"
                                 matTooltip="Delete node"
                                 matTooltipPosition="above"
                                 (click)="onDeleteClick($event)"
                             >
-                                <i class="ti ti-trash"></i>
-                            </div>
+                                <i
+                                    class="ti ti-trash"
+                                    aria-hidden="true"
+                                ></i>
+                            </button>
                         </div>
                     }
                 </div>
@@ -265,14 +285,19 @@
             (mouseup)="$event.stopPropagation()"
             (click)="$event.stopPropagation()"
         >
-            <div
+            <button
+                type="button"
                 class="action-button delete-button"
+                aria-label="Delete node"
                 matTooltip="Delete node"
                 matTooltipPosition="above"
                 (click)="onDeleteClick($event)"
             >
-                <i class="ti ti-trash"></i>
-            </div>
+                <i
+                    class="ti ti-trash"
+                    aria-hidden="true"
+                ></i>
+            </button>
         </div>
     </div>
 }

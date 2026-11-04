@@ -72,6 +72,16 @@
             color: rgba(104, 95, 255, 0.85);
         }
     }
+
+    &.chm-menu-item--disabled {
+        color: var(--color-text-disabled);
+        cursor: not-allowed;
+
+        &:hover {
+            background: transparent;
+            color: var(--color-text-disabled);
+        }
+    }
 }
 // Pin the "All supported file formats" popover to 60px from the viewport left.
 .cdk-overlay-pane.create-folder-dialog__formats-pane {

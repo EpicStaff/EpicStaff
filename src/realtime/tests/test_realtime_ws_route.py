@@ -71,7 +71,7 @@ def started_sessions(monkeypatch):
 async def _connect(monkeypatch, user_info, connection_key="key", token=TOKEN, saved=None):
     from api import main as main_module
 
-    monkeypatch.setattr(main_module, "introspect_token", lambda token: user_info)
+    monkeypatch.setattr(main_module.django_auth_client, "introspect_token", AsyncMock(return_value=user_info))
     if saved is not None:
         ConnectionRepository().save_connection(connection_key=saved.connection_key, data=saved)
     ws = MagicMock()

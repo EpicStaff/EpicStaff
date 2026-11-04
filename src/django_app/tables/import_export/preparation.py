@@ -108,7 +108,7 @@ def _agent_surface_errors(export_data: dict) -> list[str]:
         if not _is_int(agent_id):
             continue
         label = f"AgentDefinition {agent_id}"
-        for llm_config_field in ("llm_config", "fcm_llm_config"):
+        for llm_config_field in ("llm_config", "fcm_llm_config", "fallback_llm_config"):
             llm_config_id = entry.get(llm_config_field)
             if llm_config_id is not None and not _is_int(llm_config_id):
                 errors.append(f"{label}: {llm_config_field} must be an integer id or null.")

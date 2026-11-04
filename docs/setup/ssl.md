@@ -47,6 +47,11 @@ doesn't start: its log (`docker logs epicstaff-nginx`) names the missing file. A
 certificate as above, or set `NGINX_SSL_MODE=off` only if a load balancer in front of nginx
 handles TLS (see below).
 
+`NGINX_SSL_MODE` does not affect webhook tunnels: an ngrok tunnel forwards to nginx's internal
+tunnel listener (port 8083, not published), which is always plain HTTP and serves only
+`/webhooks/` and `/voice/` (see `docs/webhook/Webhook_Developer_Guide.md`). ngrok ends TLS at its
+own edge.
+
 ## HSTS
 
 `NGINX_HSTS_ENABLED` decides whether nginx sends `Strict-Transport-Security:

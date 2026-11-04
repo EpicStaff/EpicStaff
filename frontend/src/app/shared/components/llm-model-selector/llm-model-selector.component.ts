@@ -1,6 +1,8 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { ComponentType } from '@angular/cdk/portal';
+import { NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -19,6 +21,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import {
@@ -40,7 +43,16 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
 
 @Component({
     selector: 'app-llm-model-selector',
-    imports: [FormsModule, OverlayModule, AppSvgIconComponent, LlmModelItemComponent, HasPermissionDirective],
+    imports: [
+        FormsModule,
+        OverlayModule,
+        CdkTrapFocus,
+        AppSvgIconComponent,
+        LlmModelItemComponent,
+        HasPermissionDirective,
+        MatTooltip,
+        NgTemplateOutlet,
+    ],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -50,45 +62,31 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
     ],
     template: `
         <div class="llm-selector-container">
-            <div
-                #trigger="cdkOverlayOrigin"
-                cdkOverlayOrigin
-                class="selected-model"
-                [class.placeholder]="!selectedConfig()"
-                [class.loading]="isLoading"
-                [class.readonly]="readonly()"
-                [class.open]="isDropdownOpen()"
-                (click)="!isLoading && !readonly() && toggleDropdown($event)"
-            >
-                @if (isLoading) {
-                    <div class="loading-spinner"></div>
-                }
-                @if (selectedConfig() && !isLoading) {
-                    <div class="model-info">
-                        <app-svg-icon
-                            [icon]="getProviderIcon(selectedConfig()!)"
-                            size="20px"
-                            [ariaLabel]="selectedConfig()!.providerDetails?.name || ''"
-                            class="provider-icon"
-                        />
-                        <div class="model-text">
-                            <span class="model-name">{{
-                                selectedConfig()!.modelDetails?.name || 'Unknown Model'
-                            }}</span>
-                            @if (selectedConfig()!.custom_name) {
-                                <span class="custom-name"> ({{ selectedConfig()!.custom_name }}) </span>
-                            }
-                        </div>
-                    </div>
-                } @else {
-                    @if (!isLoading) {
-                        <div class="placeholder-text">
-                            {{ placeholder }}
-                        </div>
-                    }
-                }
-                @if (!readonly()) {
-                    <div
+            @if (readonly()) {
+                <!-- Read-only: the value as plain text, nothing to open. -->
+                <div
+                    class="selected-model readonly"
+                    [class.placeholder]="!selectedConfig()"
+                    [class.loading]="isLoading"
+                >
+                    <ng-container *ngTemplateOutlet="selectedModel" />
+                </div>
+            } @else {
+                <button
+                    type="button"
+                    #trigger="cdkOverlayOrigin"
+                    cdkOverlayOrigin
+                    class="selected-model"
+                    [class.placeholder]="!selectedConfig()"
+                    [class.loading]="isLoading"
+                    [class.open]="isDropdownOpen()"
+                    [disabled]="isLoading"
+                    [attr.aria-expanded]="isDropdownOpen()"
+                    [matTooltip]="placeholder"
+                    (click)="toggleDropdown($event)"
+                >
+                    <ng-container *ngTemplateOutlet="selectedModel" />
+                    <span
                         class="dropdown-icon"
                         [class.open]="isDropdownOpen()"
                     >
@@ -107,67 +105,102 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                                 stroke-linejoin="round"
                             />
                         </svg>
-                    </div>
-                }
-            </div>
+                    </span>
+                </button>
 
-            <!-- Dropdown Menu (rendered in an overlay so no parent overflow clips it) -->
-            <ng-template
-                cdkConnectedOverlay
-                [cdkConnectedOverlayOrigin]="trigger"
-                [cdkConnectedOverlayOpen]="isDropdownOpen()"
-                [cdkConnectedOverlayWidth]="triggerWidth()"
-                [cdkConnectedOverlayPositions]="overlayPositions"
-                [cdkConnectedOverlayFlexibleDimensions]="true"
-                (overlayOutsideClick)="onOverlayOutsideClick($event)"
-                (detach)="closeDropdown()"
-            >
-                <div class="dropdown-menu">
-                    <!-- Search Input -->
-                    <div class="search-container">
-                        <input
-                            type="text"
-                            [ngModel]="searchTerm()"
-                            (ngModelChange)="searchTerm.set($event)"
-                            placeholder="Search models..."
-                            (click)="$event.stopPropagation()"
-                        />
-                        <button
-                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
-                            class="create-btn"
-                            (click)="onCreateLlm()"
-                        >
-                            {{ createButtonLabel() }}
-                        </button>
-                    </div>
-
-                    <!-- Models List -->
-                    <div class="models-list">
-                        @if (selectedConfig() && !searchTerm()) {
-                            <div
-                                class="deselect-option"
-                                (click)="deselectConfig()"
+                <!-- Dropdown Menu (rendered in an overlay so no parent overflow clips it) -->
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="trigger"
+                    [cdkConnectedOverlayOpen]="isDropdownOpen()"
+                    [cdkConnectedOverlayWidth]="triggerWidth()"
+                    [cdkConnectedOverlayPositions]="overlayPositions"
+                    [cdkConnectedOverlayFlexibleDimensions]="true"
+                    (overlayOutsideClick)="onOverlayOutsideClick($event)"
+                    (detach)="closeDropdown()"
+                >
+                    <div
+                        class="dropdown-menu"
+                        cdkTrapFocus
+                        [cdkTrapFocusAutoCapture]="true"
+                    >
+                        <!-- Search Input -->
+                        <div class="search-container">
+                            <input
+                                type="text"
+                                [ngModel]="searchTerm()"
+                                (ngModelChange)="searchTerm.set($event)"
+                                placeholder="Search models..."
+                                aria-label="Search models"
+                                (click)="$event.stopPropagation()"
+                            />
+                            <button
+                                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
+                                type="button"
+                                class="create-btn"
+                                (click)="onCreateLlm()"
                             >
-                                <i class="ti ti-x"></i>
-                                <span>Clear</span>
-                            </div>
-                        }
-                        @if (filteredConfigs().length === 0) {
-                            <div class="no-results">No matching models found</div>
-                        }
+                                {{ createButtonLabel() }}
+                            </button>
+                        </div>
 
-                        @for (config of filteredConfigs(); track config.id) {
-                            <app-llm-model-item
-                                [config]="config"
-                                [isSelected]="selectedConfigId() === config.id"
-                                (selected)="selectConfig($event)"
-                            >
-                            </app-llm-model-item>
-                        }
+                        <!-- Models List -->
+                        <div class="models-list">
+                            @if (selectedConfig() && !searchTerm()) {
+                                <button
+                                    type="button"
+                                    class="deselect-option"
+                                    (click)="deselectConfig()"
+                                >
+                                    <i class="ti ti-x"></i>
+                                    <span>Clear</span>
+                                </button>
+                            }
+                            @if (filteredConfigs().length === 0) {
+                                <div class="no-results">No matching models found</div>
+                            }
+
+                            @for (config of filteredConfigs(); track config.id) {
+                                <app-llm-model-item
+                                    [config]="config"
+                                    [isSelected]="selectedConfigId() === config.id"
+                                    (selected)="selectConfig($event)"
+                                >
+                                </app-llm-model-item>
+                            }
+                        </div>
                     </div>
-                </div>
-            </ng-template>
+                </ng-template>
+            }
         </div>
+
+        <ng-template #selectedModel>
+            @if (isLoading) {
+                <span class="loading-spinner"></span>
+            }
+            @if (selectedConfig() && !isLoading) {
+                <span class="model-info">
+                    <app-svg-icon
+                        [icon]="getProviderIcon(selectedConfig()!)"
+                        size="20px"
+                        [ariaLabel]="selectedConfig()!.providerDetails?.name || ''"
+                        class="provider-icon"
+                    />
+                    <span class="model-text">
+                        <span class="model-name">{{ selectedConfig()!.modelDetails?.name || 'Unknown Model' }}</span>
+                        @if (selectedConfig()!.custom_name) {
+                            <span class="custom-name"> ({{ selectedConfig()!.custom_name }}) </span>
+                        }
+                    </span>
+                </span>
+            } @else {
+                @if (!isLoading) {
+                    <span class="placeholder-text">
+                        {{ placeholder }}
+                    </span>
+                }
+            }
+        </ng-template>
     `,
     styles: [
         `
@@ -193,9 +226,13 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                 line-height: var(--text-body-line-height);
                 cursor: pointer;
                 transition: border-color 0.2s ease;
+                width: 100%;
+                color: inherit;
+                font-family: inherit;
+                text-align: left;
             }
 
-            .selected-model:hover:not(.loading):not(.readonly),
+            .selected-model:is(:hover, :focus-visible):not(.loading):not(.readonly),
             .selected-model.open:not(.readonly) {
                 border-color: var(--accent-color);
             }
@@ -214,6 +251,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
             }
 
             .loading-spinner {
+                display: block;
                 width: 24px;
                 height: 24px;
                 border: 3px solid #44474f;
@@ -272,6 +310,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
             }
 
             .placeholder-text {
+                display: block;
                 flex: 1;
                 min-width: 0;
                 overflow: hidden;
@@ -352,6 +391,10 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
 
             .deselect-option {
                 display: flex;
+                width: 100%;
+                background: transparent;
+                border: none;
+                font-family: inherit;
                 align-items: center;
                 gap: 14px;
                 padding: 8px 12px;
@@ -361,7 +404,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                 border-bottom: 1px solid var(--color-divider-subtle);
                 transition: background-color 0.15s ease;
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     background-color: rgba(255, 255, 255, 0.05);
                     color: var(--color-text-primary);
                 }
@@ -392,6 +435,10 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
 
     // Readonly mode: renders the current selection as plain text (no dropdown, no create button).
     readonly readonly = input<boolean>(false);
+
+    // A config id left out of the dropdown options (e.g. the primary model, when picking a fallback).
+    // It is not hidden from the trigger if it is already the selected value.
+    readonly excludedConfigId = input<number | null>(null);
 
     @Output() modelSelected = new EventEmitter<number>();
 
@@ -432,8 +479,9 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
 
     public readonly filteredConfigs = computed<SelectorConfig[]>(() => {
         const term = this.searchTerm().trim().toLowerCase();
-        const configs = this.configs();
-        if (!term) return [...configs];
+        const excludedId = this.excludedConfigId();
+        const configs = this.configs().filter((config) => config.id !== excludedId);
+        if (!term) return configs;
         return configs.filter((config) => {
             const modelName = config.modelDetails?.name?.toLowerCase() || '';
             const customName = config.custom_name?.toLowerCase() || '';

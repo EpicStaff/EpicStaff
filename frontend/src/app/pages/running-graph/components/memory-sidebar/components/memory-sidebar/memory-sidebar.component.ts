@@ -1,4 +1,16 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { CdkTrapFocus } from '@angular/cdk/a11y';
+import {
+    afterNextRender,
+    ChangeDetectionStrategy,
+    Component,
+    ElementRef,
+    EventEmitter,
+    inject,
+    Injector,
+    Input,
+    Output,
+    viewChild,
+} from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
@@ -7,7 +19,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
 
 @Component({
     selector: 'app-memories-sidebar',
-    imports: [MemoryItemComponent, AppSvgIconComponent, MatTooltipModule],
+    imports: [MemoryItemComponent, AppSvgIconComponent, MatTooltipModule, CdkTrapFocus],
     template: `
         <!-- Memories Sidebar Overlay -->
         @if (isOpen) {
@@ -17,17 +29,27 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
             ></div>
         }
 
-        <!-- Memories Sidebar -->
+        <!-- Memories Sidebar: out of the Tab order while it is slid away, and keeps the focus in while it covers the page.
+             Escape is handled here, ahead of the tooltip of the focused control, which would take the first one;
+             tabindex -1 keeps the focus in the sidebar when a click lands on its background. -->
         <div
             class="memories-sidebar"
+            role="dialog"
+            aria-labelledby="session-memories-title"
+            tabindex="-1"
             [class.open]="isOpen"
+            [attr.inert]="isOpen ? null : ''"
+            [cdkTrapFocus]="isOpen"
+            (keydown.escape)="closeOnEscape($event)"
         >
             <div class="sidebar-header">
-                <h2>Session Memories ({{ memories.length }})</h2>
+                <h2 id="session-memories-title">Session Memories ({{ memories.length }})</h2>
                 <button
+                    #closeButton
+                    type="button"
                     class="close-button"
+                    aria-label="Close"
                     matTooltip="Close"
-                    matTooltipPosition="above"
                     (click)="close.emit()"
                 >
                     <app-svg-icon
@@ -41,16 +63,22 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                 <div class="memory-filters">
                     <div class="filter-chips">
                         <button
+                            type="button"
                             class="filter-chip"
                             [class.active]="activeFilter === 'all'"
+                            [attr.aria-pressed]="activeFilter === 'all'"
+                            matTooltip="Memory type: All"
                             (click)="setFilter('all')"
                         >
                             All ({{ memories.length }})
                         </button>
                         @if (getMemoriesByType('entity').length > 0) {
                             <button
+                                type="button"
                                 class="filter-chip"
                                 [class.active]="activeFilter === 'entity'"
+                                [attr.aria-pressed]="activeFilter === 'entity'"
+                                matTooltip="Memory type: Entity"
                                 (click)="setFilter('entity')"
                             >
                                 Entity ({{ getMemoriesByType('entity').length }})
@@ -58,8 +86,11 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                         }
                         @if (getMemoriesByType('short_term').length > 0) {
                             <button
+                                type="button"
                                 class="filter-chip"
                                 [class.active]="activeFilter === 'short_term'"
+                                [attr.aria-pressed]="activeFilter === 'short_term'"
+                                matTooltip="Memory type: Short Term"
                                 (click)="setFilter('short_term')"
                             >
                                 Short Term ({{ getMemoriesByType('short_term').length }})
@@ -67,8 +98,11 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                         }
                         @if (getMemoriesByType('long_term').length > 0) {
                             <button
+                                type="button"
                                 class="filter-chip"
                                 [class.active]="activeFilter === 'long_term'"
+                                [attr.aria-pressed]="activeFilter === 'long_term'"
+                                matTooltip="Memory type: Long Term"
                                 (click)="setFilter('long_term')"
                             >
                                 Long Term ({{ getMemoriesByType('long_term').length }})
@@ -76,8 +110,11 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                         }
                         @if (getMemoriesByType('user').length > 0) {
                             <button
+                                type="button"
                                 class="filter-chip"
                                 [class.active]="activeFilter === 'user'"
+                                [attr.aria-pressed]="activeFilter === 'user'"
+                                matTooltip="Memory type: User"
                                 (click)="setFilter('user')"
                             >
                                 User ({{ getMemoriesByType('user').length }})
@@ -158,7 +195,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                     align-items: center;
                     justify-content: center;
 
-                    &:hover {
+                    &:is(:hover, :focus-visible) {
                         color: var(--white);
                     }
                 }
@@ -190,7 +227,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                     color: var(--gray-300);
                     cursor: pointer;
 
-                    &:hover {
+                    &:is(:hover, :focus-visible) {
                         background-color: var(--gray-700);
                     }
 
@@ -222,8 +259,28 @@ export class MemoriesSidebarComponent {
     @Output() close = new EventEmitter<void>();
     @Output() deleteMemoryEvent = new EventEmitter<string>();
 
+    private readonly closeButton = viewChild.required<ElementRef<HTMLButtonElement>>('closeButton');
+
     public activeFilter: MemoryType | 'all' = 'all';
     private expandedMemories: Set<string> = new Set();
+    private readonly injector = inject(Injector);
+
+    /** Moves the keyboard focus into the sidebar, for when a control in it went away. */
+    focus(): void {
+        this.closeButton().nativeElement.focus();
+    }
+
+    /** Moves the keyboard focus into the sidebar once it is open: inert until then, it takes no focus. */
+    focusWhenOpen(): void {
+        afterNextRender(() => this.focus(), { injector: this.injector });
+    }
+
+    /** Escape closes the sidebar, unless a control inside it already used this Escape (it marks it handled). */
+    closeOnEscape(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.close.emit();
+    }
 
     get filteredMemories(): Memory[] {
         if (this.activeFilter === 'all') {

@@ -1,6 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, EventEmitter, inject, Input, Output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 
 import { RealtimeAgentDefinition } from '../../../../../features/agent-definitions/models/realtime-agent-definition.model';
 import { ChatAgent, chatAgentTitle, sameChatAgent } from '../../../models/chat-agent.model';
@@ -13,7 +14,7 @@ import {
 
 @Component({
     selector: 'app-chats-sidebar-item',
-    imports: [MatTooltipModule],
+    imports: [MatTooltipModule, TooltipOnOverflowDirective],
     templateUrl: './chats-sidebar-item.component.html',
     styleUrls: ['./chats-sidebar-item.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

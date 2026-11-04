@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { JsonEditorComponent } from '@shared/components';
+import { NODE_COLORS } from '@shared/models';
 
 import { EndNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -87,7 +88,7 @@ export class EndNodePanelComponent extends BaseSidePanel<EndNodeModel> {
     }
 
     public get activeColor(): string {
-        return this.node().color || '#d3d3d3';
+        return NODE_COLORS[this.node().type] || '#d3d3d3';
     }
 
     public outputMapJson: string = '{}';

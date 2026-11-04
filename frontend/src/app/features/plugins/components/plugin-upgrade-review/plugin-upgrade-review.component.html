@@ -39,6 +39,7 @@
                 @if (growth.requires_acknowledgement && showAcknowledgement()) {
                     <label class="upgrade__acknowledge text-body">
                         <app-checkbox
+                            ariaLabel="I approve the new access"
                             [checked]="growthAcknowledged()"
                             [disabled]="disabled()"
                             (changed)="growthAcknowledged.set($event)"

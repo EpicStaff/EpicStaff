@@ -1,14 +1,17 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/portal';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
     inject,
+    Injector,
     OnInit,
     Signal,
     signal,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -37,12 +40,14 @@ import {
     LlmLibraryProviderGroup,
     ModelTypes,
     ResourceCode,
+    SystemOneConfig,
 } from '@shared/models';
 import {
     BulkDeleteService,
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
     LLMLibraryService,
+    SystemOneConfigStorageService,
 } from '@shared/services';
 import { forkJoin, Observable, of } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
@@ -68,6 +73,10 @@ import {
     RealtimeConfigDialogData,
 } from '../realtime-config-dialog/realtime-config-dialog.component';
 import { RealtimeConfig, RealtimeProvider } from '../realtime-config-form/realtime-config-form.component';
+import {
+    SystemOneConfigDialogComponent,
+    SystemOneConfigDialogData,
+} from '../system-one-config-dialog/system-one-config-dialog.component';
 
 /** Voice configs have no tags, temperature or deprecation, so the shared card shows only their names. */
 function toVoiceCardModel(config: RealtimeConfig): LlmLibraryModel {
@@ -83,6 +92,20 @@ function toVoiceCardModel(config: RealtimeConfig): LlmLibraryModel {
     };
 }
 
+/** `llmConfigName` is the LLM config an LLM-provider config answers with; the card does not show `configType`. */
+function toSystemOneCardModel(config: SystemOneConfig, llmConfigName: string | undefined): LlmLibraryModel {
+    return {
+        id: config.id,
+        customName: config.custom_name,
+        modelName: config.provider === 'llm' ? `LLM: ${llmConfigName ?? 'not set'}` : (config.model_name ?? ''),
+        tags: [],
+        temperature: null,
+        usedByCount: null,
+        configType: ModelTypes.LLM,
+        isDeprecated: false,
+    };
+}
+
 interface VoiceProvider {
     key: RealtimeProvider;
     label: string;
@@ -93,10 +116,12 @@ interface VoiceProvider {
     } & BulkDeleteTarget;
 }
 
-type SectionKey = 'llm' | 'embedding' | 'realtime' | 'transcription' | RealtimeProvider;
+type SectionKey = 'llm' | 'embedding' | 'realtime' | 'transcription' | 'system_one' | RealtimeProvider;
 
+const SYSTEM_ONE_LABEL = 'System One Configs';
 const LLM_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'LLM config', plural: 'LLM configs' };
 const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding config', plural: 'embedding configs' };
+const SYSTEM_ONE_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'System One config', plural: 'System One configs' };
 
 @Component({
     selector: 'app-llm-library-section',
@@ -117,17 +142,21 @@ const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding conf
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LlmLibrarySectionComponent implements OnInit {
+    private readonly addButton = viewChild('addButton', { read: ButtonComponent });
+
     private readonly llmLibraryService = inject(LLMLibraryService);
     private readonly llmConfigStorageService = inject(LlmConfigStorageService);
     private readonly embeddingConfigStorage = inject(EmbeddingConfigStorageService);
     private readonly openaiRealtimeStorage = inject(OpenAIRealtimeConfigStorageService);
     private readonly elevenLabsRealtimeStorage = inject(ElevenLabsRealtimeConfigStorageService);
     private readonly geminiRealtimeStorage = inject(GeminiRealtimeConfigStorageService);
+    private readonly systemOneStorage = inject(SystemOneConfigStorageService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly defaultModelsStorageService = inject(DefaultModelsStorageService);
     private readonly bulkDeleteService = inject(BulkDeleteService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dialog = inject(Dialog);
+    private readonly injector = inject(Injector);
 
     readonly voiceProviders: VoiceProvider[] = [
         {
@@ -163,6 +192,7 @@ export class LlmLibrarySectionComponent implements OnInit {
         openai: false,
         elevenlabs: false,
         gemini: false,
+        system_one: false,
     });
 
     public readonly selectMode = signal(false);
@@ -226,6 +256,31 @@ export class LlmLibrarySectionComponent implements OnInit {
             .filter((provider) => provider.hasError || provider.cards.length > 0);
     });
 
+    filteredSystemOne = computed(() => {
+        const query = this.searchQuery().toLowerCase();
+        const llmConfigNames = new Map(
+            this.llmConfigStorageService.configs().map((config) => [config.id, config.custom_name])
+        );
+        const hasError = this.sectionErrors().system_one;
+        const cards = this.systemOneStorage
+            .configs()
+            .map((config) => ({
+                config,
+                model: toSystemOneCardModel(
+                    config,
+                    config.llm_config === null ? undefined : llmConfigNames.get(config.llm_config)
+                ),
+            }))
+            .filter(
+                ({ model }) =>
+                    !query ||
+                    model.customName.toLowerCase().includes(query) ||
+                    model.modelName.toLowerCase().includes(query) ||
+                    SYSTEM_ONE_LABEL.toLowerCase().includes(query)
+            );
+        return { hasError, cards, isVisible: hasError || cards.length > 0 };
+    });
+
     groupedByType = computed(() => {
         const all = this.filteredGroups();
         const errors = this.sectionErrors();
@@ -240,7 +295,12 @@ export class LlmLibrarySectionComponent implements OnInit {
             .filter((section) => section.hasError || section.groups.length > 0);
     });
 
-    hasNoConfigs = computed(() => this.groupedByType().length === 0 && this.filteredVoiceProviders().length === 0);
+    hasNoConfigs = computed(
+        () =>
+            this.groupedByType().length === 0 &&
+            this.filteredVoiceProviders().length === 0 &&
+            !this.filteredSystemOne().isVisible
+    );
 
     public capabilities = computed<SelectItem[]>(() => [
         { name: 'All Capabilities', value: null },
@@ -262,6 +322,12 @@ export class LlmLibrarySectionComponent implements OnInit {
             if (provider.hasError) continue;
             for (const card of provider.cards) {
                 keys.add(llmLibrarySelectionKey(provider.key, card.config.id));
+            }
+        }
+        const systemOne = this.filteredSystemOne();
+        if (!systemOne.hasError) {
+            for (const card of systemOne.cards) {
+                keys.add(llmLibrarySelectionKey('system_one', card.config.id));
             }
         }
         return keys;
@@ -289,6 +355,11 @@ export class LlmLibrarySectionComponent implements OnInit {
             openai: this.voiceProviderSource('openai'),
             elevenlabs: this.voiceProviderSource('elevenlabs'),
             gemini: this.voiceProviderSource('gemini'),
+            system_one: {
+                label: SYSTEM_ONE_BULK_DELETE_LABEL,
+                target: this.systemOneStorage,
+                configs: this.systemOneStorage.configs(),
+            },
         };
         return sources;
     });
@@ -316,6 +387,8 @@ export class LlmLibrarySectionComponent implements OnInit {
                 return this.llmLibraryService.loadRealtimeData();
             case 'transcription':
                 return this.llmLibraryService.loadTranscriptionData();
+            case 'system_one':
+                return this.systemOneStorage.getAllConfigs();
             default:
                 return this.voiceProviders.find((p) => p.key === key)!.storage.getAllConfigs();
         }
@@ -330,6 +403,7 @@ export class LlmLibrarySectionComponent implements OnInit {
             'realtime',
             'transcription',
             ...this.voiceProviders.map((p) => p.key),
+            'system_one',
         ];
         const errors: Record<SectionKey, boolean> = {
             llm: false,
@@ -339,6 +413,7 @@ export class LlmLibrarySectionComponent implements OnInit {
             openai: false,
             elevenlabs: false,
             gemini: false,
+            system_one: false,
         };
 
         const tracked = keys.map((key) =>
@@ -384,9 +459,42 @@ export class LlmLibrarySectionComponent implements OnInit {
             .run([group])
             .pipe(
                 tap((outcomes) => this.applyDefaultModelsOutdated(outcomes)),
+                tap(() => this.focusAddAfterDelete()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe();
+    }
+
+    onEditSystemOne(config: SystemOneConfig): void {
+        const data: SystemOneConfigDialogData = { config };
+        this.dialog.open(SystemOneConfigDialogComponent, {
+            height: '90vh',
+            width: '600px',
+            disableClose: true,
+            data,
+        });
+    }
+
+    onViewSystemOneDetails(config: SystemOneConfig, trigger: HTMLElement): void {
+        this.authorshipDetailsDialog.open('Configuration Details', config, trigger);
+    }
+
+    onDeleteSystemOne(config: SystemOneConfig): void {
+        const group: BulkDeleteGroup = {
+            target: this.systemOneStorage,
+            label: SYSTEM_ONE_BULK_DELETE_LABEL,
+            items: [{ id: config.id, name: config.custom_name }],
+        };
+        this.bulkDeleteService.run([group]).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+    }
+
+    public isSystemOneSelected(config: SystemOneConfig): boolean {
+        return this.selectedKeys().has(llmLibrarySelectionKey('system_one', config.id));
+    }
+
+    public onSystemOneSelectedChange(config: SystemOneConfig, selected: boolean): void {
+        if (this.isDeleting()) return;
+        this.setSelected('system_one', config.id, selected);
     }
 
     public isVoiceSelected(provider: VoiceProvider, config: RealtimeConfig): boolean {
@@ -436,6 +544,7 @@ export class LlmLibrarySectionComponent implements OnInit {
             .run([this.buildModelGroup(model)])
             .pipe(
                 tap((outcomes) => this.applyDefaultModelsOutdated(outcomes)),
+                tap(() => this.focusAddAfterDelete()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe();
@@ -474,6 +583,7 @@ export class LlmLibrarySectionComponent implements OnInit {
                 tap((outcomes) => {
                     this.applyDefaultModelsOutdated(outcomes);
                     this.exitSelectMode();
+                    this.focusAddAfterDelete();
                 }),
                 finalize(() => this.isDeleting.set(false)),
                 takeUntilDestroyed(this.destroyRef)
@@ -481,8 +591,14 @@ export class LlmLibrarySectionComponent implements OnInit {
             .subscribe();
     }
 
+    protected readonly systemOneLabel = SYSTEM_ONE_LABEL;
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+
+    /** The deleted card (or the bulk Delete button, gone with select mode) had the focus: it goes to Add Configuration. */
+    private focusAddAfterDelete(): void {
+        afterNextRender(() => this.addButton()?.focus(), { injector: this.injector });
+    }
 
     private kindForModel(model: LlmLibraryModel): LlmLibrarySelectionKind {
         return model.configType === ModelTypes.EMBEDDING ? 'embedding' : 'llm';
@@ -518,6 +634,19 @@ export class LlmLibrarySectionComponent implements OnInit {
         );
         if (hasDefaultModelChange) {
             this.defaultModelsStorageService.markDefaultModelsOutdated();
+        }
+        // The server clears the LLM link of a System One config whose LLM config was deleted.
+        const deletedLlmConfig = outcomes.some(
+            (outcome) =>
+                outcome.group.target === this.llmConfigStorageService && (outcome.response?.deleted_count ?? 0) > 0
+        );
+        if (deletedLlmConfig) {
+            this.systemOneStorage
+                .getAllConfigs(true)
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe({
+                    error: () => {},
+                });
         }
     }
 }

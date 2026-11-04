@@ -1,3 +1,5 @@
+import { NODE_COLORS, NodeType } from '@shared/models';
+
 import { BasePort } from '../../models/port.model';
 
 export const DEFAULT_SUBGRAPH_NODE_PORTS: BasePort[] = [
@@ -24,7 +26,7 @@ export const DEFAULT_SUBGRAPH_NODE_PORTS: BasePort[] = [
             'key-value-out',
         ],
         position: 'left',
-        color: '#00bfa5',
+        color: NODE_COLORS[NodeType.SUBGRAPH],
     },
     {
         port_type: 'output',
@@ -46,6 +48,6 @@ export const DEFAULT_SUBGRAPH_NODE_PORTS: BasePort[] = [
             'key-value-in',
         ],
         position: 'right',
-        color: '#00bfa5',
+        color: NODE_COLORS[NodeType.SUBGRAPH],
     },
 ];

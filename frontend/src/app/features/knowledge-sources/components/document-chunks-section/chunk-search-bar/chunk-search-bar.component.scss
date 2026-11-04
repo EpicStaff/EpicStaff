@@ -102,6 +102,11 @@
         gap: 0.375rem;
         border: 1px solid var(--color-divider-subtle);
         border-radius: 4px;
+
+        // The input draws no border of its own, so the box shows its focus.
+        &:focus-within {
+            border-color: var(--accent-color);
+        }
     }
 
     &__text-input {
@@ -154,7 +159,7 @@
         cursor: pointer;
         padding: 0;
 
-        &:hover:not(:disabled) {
+        &:not(:disabled):is(:hover, :focus-visible) {
             background: var(--graphite-650);
         }
 

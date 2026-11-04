@@ -18,6 +18,7 @@ import {
     ViewChild,
     ViewChildren,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
@@ -167,6 +168,7 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
         SubgraphFinishMessageComponent,
         NodeStreamMessageComponent,
         AppSvgIconComponent,
+        MatTooltip,
     ],
     templateUrl: './graph-messages.component.html',
     styleUrls: ['./graph-messages.component.scss'],
@@ -415,6 +417,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         this.updateScrollButtonsVisibility();
         this.cdr.markForCheck();
         el.scrollTo({ top: 0, behavior: 'smooth' });
+        this.focusMessagesAfterScrollButton();
     }
 
     private scrollToBottom(): void {
@@ -435,6 +438,12 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         this.autoScrollEnabled = true;
         this.unseenMessageCount = 0;
         this.scrollToBottom();
+        this.focusMessagesAfterScrollButton();
+    }
+
+    // The scroll a button starts hides that button, so the focus moves to the messages it scrolled.
+    private focusMessagesAfterScrollButton(): void {
+        this.messagesContainer?.nativeElement.focus({ preventScroll: true });
     }
 
     public ngOnDestroy(): void {
@@ -829,6 +838,23 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         this.updateRootViews();
         this.cdr.markForCheck();
         this.scheduleBreadcrumbOverflowRefresh();
+    }
+
+    // Opening the search moves the focus into its field, which stays out of the Tab order while folded away.
+    public onBreadcrumbSearchButton(rootKey: string, searchInput: HTMLInputElement): void {
+        this.toggleBreadcrumbSearch(rootKey);
+        if (this.isBreadcrumbSearchExpanded(rootKey)) {
+            searchInput.focus();
+        }
+    }
+
+    // Escape folds the search away and hands the focus back to its button.
+    public closeBreadcrumbSearch(event: Event, rootKey: string, searchButton: HTMLButtonElement): void {
+        event.stopPropagation();
+        if (this.isBreadcrumbSearchExpanded(rootKey)) {
+            this.toggleBreadcrumbSearch(rootKey);
+        }
+        searchButton.focus();
     }
 
     public onBreadcrumbSearchBlur(rootKey: string): void {

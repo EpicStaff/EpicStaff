@@ -9,13 +9,14 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from rbac.models import ApiKey
+from rbac.models import ApiKey, OrganizationUser
 from rbac.identity.api_keys.generator import (
     KEY_PREFIX,
     PREFIX_LENGTH,
     ApiKeyGenerator,
 )
 from rbac.identity.api_keys.system_key import SystemKeyService
+from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 PROFILE_URL = "/api/profile/"
 INTROSPECT_URL = "/api/auth/introspect/"
@@ -195,25 +196,48 @@ class TestInternalEndpointHardening:
         assert body["prefix"] == key.prefix
         assert "scopes" not in body
 
+    def test_validate_names_the_org_of_a_user_key(self, user_api_key):
+        raw, key = user_api_key
+        client = APIClient()
+        client.credentials(HTTP_X_API_KEY=raw)
+
+        body = client.get(VALIDATE_URL).json()
+
+        assert (body["owner_user_id"], body["org_id"]) == (key.created_by_id, key.org_id)
+        assert body["org_id"] is not None
+
+    def test_validate_gives_a_system_key_no_org(self, env_api_key):
+        raw, _ = env_api_key
+        client = APIClient()
+        client.credentials(HTTP_X_API_KEY=raw)
+
+        body = client.get(VALIDATE_URL).json()
+
+        assert (body["owner_user_id"], body["org_id"]) == (None, None)
+
 
 @pytest.mark.django_db
 class TestSelfServiceApiKeys:
-    def test_create_returns_the_raw_key_once_with_a_90_day_default_expiry(self, auth_client):
-        resp = auth_client.post(PROFILE_KEYS_URL, data={"name": "mcp-laptop"}, format="json")
+    def test_create_returns_the_raw_key_once_with_a_90_day_default_expiry(self, auth_client, default_org):
+        resp = auth_client.post(
+            PROFILE_KEYS_URL, data={"name": "mcp-laptop", "org_id": default_org.id}, format="json"
+        )
 
         assert resp.status_code == status.HTTP_201_CREATED
         body = resp.json()
         assert body["api_key"].startswith("es-")
-        assert (body["name"], body["status"]) == ("mcp-laptop", "active")
+        assert (body["name"], body["status"], body["org_id"]) == ("mcp-laptop", "active", default_org.id)
         expires_at = datetime.fromisoformat(body["expires_at"].replace("Z", "+00:00"))
         assert timedelta(days=89) < expires_at - timezone.now() <= timedelta(days=90)
         (listed,) = auth_client.get(PROFILE_KEYS_URL).json()
         assert "api_key" not in listed and "key_hash" not in listed
 
     @pytest.mark.parametrize(("expires_in_days", "expected_status"), [(None, 201), (0, 400)])
-    def test_create_expiry_choice(self, auth_client, expires_in_days, expected_status):
+    def test_create_expiry_choice(self, auth_client, default_org, expires_in_days, expected_status):
         resp = auth_client.post(
-            PROFILE_KEYS_URL, data={"name": "k", "expires_in_days": expires_in_days}, format="json"
+            PROFILE_KEYS_URL,
+            data={"name": "k", "org_id": default_org.id, "expires_in_days": expires_in_days},
+            format="json",
         )
 
         assert resp.status_code == expected_status
@@ -221,21 +245,116 @@ class TestSelfServiceApiKeys:
             assert resp.json()["expires_at"] is None
 
     @pytest.mark.parametrize(("revoked", "expected_status"), [(False, 400), (True, 201)], ids=["active", "revoked"])
-    def test_at_most_five_active_keys(self, auth_client, regular_user, issue_api_key, revoked, expected_status):
+    def test_at_most_five_active_keys(
+        self, auth_client, regular_user, default_org, issue_api_key, revoked, expected_status
+    ):
         for index in range(5):
             issue_api_key(user=regular_user, name=f"k{index}", revoked_at=timezone.now() if revoked else None)
 
-        resp = auth_client.post(PROFILE_KEYS_URL, data={"name": "sixth"}, format="json")
+        resp = auth_client.post(
+            PROFILE_KEYS_URL, data={"name": "sixth", "org_id": default_org.id}, format="json"
+        )
 
         assert resp.status_code == expected_status
         if expected_status == 400:
             assert resp.json()["code"] == "api_key_limit_exceeded"
 
-    def test_list_own_keys_only(self, auth_client, superadmin_user, issue_api_key):
+    def test_list_own_keys_only(self, auth_client, superadmin_user, default_org, issue_api_key):
         issue_api_key(user=superadmin_user, name="not-mine")
-        auth_client.post(PROFILE_KEYS_URL, data={"name": "mine"}, format="json")
+        auth_client.post(PROFILE_KEYS_URL, data={"name": "mine", "org_id": default_org.id}, format="json")
         names = [k["name"] for k in auth_client.get(PROFILE_KEYS_URL).json()]
         assert names == ["mine"]
+
+    @pytest.mark.parametrize(
+        "org_id, reason",
+        [
+            (None, "Organization is required."),
+            ("1", "Must be a positive integer."),
+            (0, "Must be a positive integer."),
+            (True, "Must be a positive integer."),
+        ],
+        ids=["missing", "string", "zero", "bool"],
+    )
+    def test_create_key_requires_org_id(self, auth_client, org_id, reason):
+        data = {"name": "k"} if org_id is None else {"name": "k", "org_id": org_id}
+
+        resp = auth_client.post(PROFILE_KEYS_URL, data=data, format="json")
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        body = resp.json()
+        assert body["code"] == "invalid"
+        assert [(error["field"], error["reason"]) for error in body["errors"]] == [
+            ("org_id", reason)
+        ]
+
+    def test_create_key_in_org_user_is_not_member_of(self, auth_client, regular_user, acme):
+        resp = auth_client.post(PROFILE_KEYS_URL, data={"name": "k", "org_id": acme.id}, format="json")
+
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
+        assert resp.json()["code"] == "org_membership_required"
+        assert not ApiKey.objects.filter(created_by=regular_user).exists()
+
+    def test_member_cannot_create_key_in_inactive_org(self, auth_client, regular_user, default_org):
+        default_org.is_active = False
+        default_org.save(update_fields=["is_active"])
+
+        resp = auth_client.post(PROFILE_KEYS_URL, data={"name": "k", "org_id": default_org.id}, format="json")
+
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
+        assert resp.json()["code"] == "org_membership_required"
+        assert not ApiKey.objects.filter(created_by=regular_user).exists()
+
+    @pytest.mark.parametrize(("org_is_active", "expected_status"), [(True, 201), (False, 403)], ids=["active", "inactive"])
+    def test_superadmin_creates_key_in_any_active_org(
+        self, superadmin_client, superadmin_user, acme, org_is_active, expected_status
+    ):
+        acme.is_active = org_is_active
+        acme.save(update_fields=["is_active"])
+
+        resp = superadmin_client.post(PROFILE_KEYS_URL, data={"name": "k", "org_id": acme.id}, format="json")
+
+        assert resp.status_code == expected_status
+        assert list(ApiKey.objects.filter(created_by=superadmin_user).values_list("org_id", flat=True)) == (
+            [acme.id] if org_is_active else []
+        )
+
+    def test_superadmin_create_in_missing_org(self, superadmin_client, acme):
+        missing_org_id = acme.id + 1000
+
+        resp = superadmin_client.post(PROFILE_KEYS_URL, data={"name": "k", "org_id": missing_org_id}, format="json")
+
+        assert resp.status_code == status.HTTP_404_NOT_FOUND
+        assert resp.json()["code"] == "organization_not_found"
+
+    def test_cap_is_five_per_org(self, auth_client, regular_user, default_org, acme, role_member, issue_api_key):
+        OrganizationUser.objects.create(user=regular_user, org=acme, role=role_member)
+        for index in range(5):
+            issue_api_key(user=regular_user, org=default_org, name=f"k{index}")
+
+        sixth_in_same_org = auth_client.post(
+            PROFILE_KEYS_URL, data={"name": "sixth", "org_id": default_org.id}, format="json"
+        )
+        first_in_other_org = auth_client.post(
+            PROFILE_KEYS_URL, data={"name": "acme", "org_id": acme.id}, format="json"
+        )
+
+        assert sixth_in_same_org.status_code == status.HTTP_400_BAD_REQUEST
+        assert sixth_in_same_org.json()["code"] == "api_key_limit_exceeded"
+        assert first_in_other_org.status_code == status.HTTP_201_CREATED
+
+    def test_list_shows_org_of_each_key(
+        self, auth_client, regular_user, default_org, acme, role_member, issue_api_key
+    ):
+        OrganizationUser.objects.create(user=regular_user, org=acme, role=role_member)
+        issue_api_key(user=regular_user, org=default_org, name="default-key")
+        issue_api_key(user=regular_user, org=acme, name="acme-key")
+
+        listed = auth_client.get(PROFILE_KEYS_URL).json()
+
+        assert {(key["name"], key["org_id"], key["org_name"]) for key in listed} == {
+            ("default-key", default_org.id, "Default Organization"),
+            ("acme-key", acme.id, "Acme-xorg"),
+        }
 
     def test_revoke_own_key(self, auth_client, regular_user, issue_api_key):
         raw, key = issue_api_key(user=regular_user)
@@ -275,7 +394,7 @@ class TestSelfServiceApiKeys:
 
 @pytest.mark.django_db
 class TestApiKeyPermissionParity:
-    """A key acts exactly as its owner per X-Organization-Id (MCP flow)."""
+    """A key acts exactly as its owner, in the key's org (MCP flow)."""
 
     def test_key_with_org_header_hits_org_scoped_endpoint(
         self, regular_user, user_api_key, default_org
@@ -288,15 +407,15 @@ class TestApiKeyPermissionParity:
         # regular_user is Org Admin of default_org (roles: READ)
         assert client.get(ROLES_ADMIN_URL).status_code == status.HTTP_200_OK
 
-    def test_key_against_non_member_org_403(self, user_api_key, default_org):
-        raw, _ = user_api_key
+    def test_key_ignores_header_naming_another_org(self, user_api_key, default_org):
+        raw, key = user_api_key
         client = APIClient()
         client.credentials(
             HTTP_X_API_KEY=raw, HTTP_X_ORGANIZATION_ID=str(default_org.id + 999)
         )
-        assert (
-            client.get("/api/permissions/me/").status_code == status.HTTP_403_FORBIDDEN
-        )
+        response = client.get("/api/permissions/me/")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["org_id"] == key.org_id
 
     def test_sse_ticket_via_api_key(self, user_api_key):
         raw, _ = user_api_key

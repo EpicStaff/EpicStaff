@@ -3,11 +3,12 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 
 # Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
 # sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
-# never executes arbitrary Python code. dotdict is a local first-party path
-# dependency with no wheel of its own, so it is the one audited exception in
-# this service, carved out via UV_NO_BINARY_PACKAGE below -- a service that
-# gains another dependency with no Linux wheel will fail the build rather than
-# silently regain source execution.
+# never executes arbitrary Python code. dotdict and foundation are local
+# first-party path dependencies with no wheel of their own, so they are the
+# audited exceptions in this service, carved out via UV_NO_BINARY_PACKAGE below
+# (uv reads it as a space-separated list). Both are pure Python, so they still
+# need no compiler. A service that gains another dependency with no Linux wheel
+# will fail the build rather than silently regain source execution.
 #
 # UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
 # interpreter instead of using the digest-pinned base image above, silently
@@ -15,7 +16,7 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 RUN pip install --no-cache-dir uv==0.11.21
 
 ENV UV_NO_BUILD=1 \
-    UV_NO_BINARY_PACKAGE=dotdict \
+    UV_NO_BINARY_PACKAGE="dotdict foundation" \
     UV_PROJECT_ENVIRONMENT=/app/src/.venv \
     UV_PYTHON_DOWNLOADS=never \
     UV_LINK_MODE=copy \
@@ -28,14 +29,16 @@ ENV UV_NO_BUILD=1 \
 WORKDIR /app/src
 
 # Copy only dependency descriptors first (better layer caching).
-# dotdict is a local path dependency, so its source must already exist in the
-# image before `uv sync` runs -- copied here, ahead of the sync, rather than
-# with the rest of ./shared below. pyproject.toml/uv.lock land flattened at
-# /app/src (matching the descriptor-copy convention used by every service in
-# this repo), so the "../shared/dotdict" path in [tool.uv.sources] resolves
-# to /app/shared/dotdict -- one level above WORKDIR, not /app/src/shared.
+# dotdict and foundation are local path dependencies, so their source must
+# already exist in the image before `uv sync` runs -- copied here, ahead of the
+# sync, rather than with the rest of ./shared below. pyproject.toml/uv.lock land
+# flattened at /app/src (matching the descriptor-copy convention used by every
+# service in this repo), so the "../shared/dotdict" and "../foundation" paths in
+# [tool.uv.sources] resolve to /app/shared/dotdict and /app/foundation -- one
+# level above WORKDIR, not under /app/src.
 COPY ./crew/pyproject.toml ./crew/uv.lock ./
 COPY ./shared/dotdict /app/shared/dotdict
+COPY ./foundation /app/foundation
 
 # Install dependencies into /app/src/.venv.
 # --all-groups is required: transitive-pins (and any other non-dev group) is

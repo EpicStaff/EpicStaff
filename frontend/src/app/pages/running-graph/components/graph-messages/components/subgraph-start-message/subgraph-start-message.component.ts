@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, ViewEncapsulation } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
 import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../models/graph-session-message.model';
@@ -8,6 +9,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
 @Component({
     selector: 'app-subgraph-start-message',
     imports: [
+        MatTooltip,
         JsonViewerComponent,
         AppSvgIconComponent,
         CopyButtonComponent,
@@ -16,7 +18,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
     ],
     encapsulation: ViewEncapsulation.Emulated,
     template: `
-        <div class="subgraph-start-container">
+        <div class="session-message subgraph-start-container">
             <div
                 class="subgraph-start-header"
                 (click)="toggleMessage()"
@@ -36,8 +38,15 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                     />
                 </div>
                 <h3>
-                    <span class="node-name">{{ message.name | runtimeNodeLabel }}</span> subgraph started
-                    {{ subgraphName }}
+                    <button
+                        type="button"
+                        class="message-toggle"
+                        [matTooltip]="(message.name | runtimeNodeLabel) + ' subgraph started ' + subgraphName"
+                        [attr.aria-expanded]="isMessageExpanded"
+                    >
+                        <span class="node-name">{{ message.name | runtimeNodeLabel }}</span> subgraph started
+                        {{ subgraphName }}
+                    </button>
                 </h3>
 
                 @if (showViewNestedMessages) {
@@ -53,13 +62,16 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             <div
                 class="collapsible-content grid-collapsible"
                 [class.expanded]="isMessageExpanded"
+                [inert]="!isMessageExpanded"
             >
                 <div class="subgraph-start-content">
                     <!-- Input Parameters Section -->
                     @if (hasInput()) {
                         <div class="input-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isInputsExpanded"
                                 (click)="toggleInputs($event)"
                             >
                                 <app-svg-icon
@@ -67,10 +79,11 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                                     size="1.1rem"
                                 />
                                 Input Parameters
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isInputsExpanded"
+                                [inert]="!isInputsExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="input-content">
@@ -88,8 +101,10 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                     <!-- Variables Section -->
                     @if (hasVariables()) {
                         <div class="variables-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isVariablesExpanded"
                                 (click)="toggleVariables($event)"
                             >
                                 <app-svg-icon
@@ -97,10 +112,11 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                                     size="1.1rem"
                                 />
                                 Variables
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isVariablesExpanded"
+                                [inert]="!isVariablesExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="variables-content">
@@ -124,6 +140,18 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .subgraph-start-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
@@ -200,7 +228,14 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             }
 
             /* Section styling */
+            // The button that folds its section, drawn as the heading row it was.
             .section-heading {
+                width: 100%;
+                padding: 0;
+                border: none;
+                background: none;
+                font-family: inherit;
+                text-align: left;
                 font-size: var(--text-body-medium-size);
                 font-weight: var(--text-body-medium-weight);
                 line-height: var(--text-body-medium-line-height);
@@ -210,6 +245,11 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                 user-select: none;
                 display: flex;
                 align-items: center;
+            }
+
+            // Drawn inside: the collapsible content around clips it.
+            .section-heading:focus-visible {
+                outline-offset: -2px;
             }
 
             .section-heading app-svg-icon {
