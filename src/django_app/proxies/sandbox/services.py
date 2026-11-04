@@ -23,6 +23,7 @@ from tables.models.graph_models import (
 )
 from tables.models.python_models import PythonCodeTool
 
+from proxies.models import AbstractBinding
 from proxies.sandbox.clients import SandboxVenvClient
 from proxies.sandbox.errors import VenvInUseError
 from proxies.sandbox.models import SandboxVenvBinding
@@ -31,6 +32,23 @@ __all__ = ["VenvService"]
 
 #: How many owners a refusal names before the rest become a count.
 MAX_NAMED_OWNERS = 5
+
+
+def pair_with_bindings(
+    page: dict, bindings_by_resource_id: dict[str, AbstractBinding]
+) -> list[tuple[dict, AbstractBinding]]:
+    """Take `result` off the page and pair each row with the binding that owns it.
+
+    A row the sandbox returned without a binding among these is dropped: it belongs
+    to another organization, or to no one. This is what keeps the answer inside the
+    organization, so both gateways go through it rather than each filtering its own.
+    """
+    pairs = []
+    for item in page.pop("result", None) or []:
+        binding = bindings_by_resource_id.get(str(item.get("id")))
+        if binding is not None:
+            pairs.append((item, binding))
+    return pairs
 
 
 class VenvService:
@@ -72,11 +90,7 @@ class VenvService:
                 offset=offset,
             )
 
-        pairs = []
-        for venv in page.pop("result", None) or []:
-            binding = bindings_by_resource_id.get(str(venv.get("id")))
-            if binding is not None:
-                pairs.append((venv, binding))
+        pairs = pair_with_bindings(page, bindings_by_resource_id)
         return page, pairs
 
     def retrieve(self, binding: SandboxVenvBinding) -> dict:

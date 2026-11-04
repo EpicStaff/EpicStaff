@@ -12,8 +12,21 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
+from proxies.models import AbstractBinding
 from proxies.sandbox.models import SandboxVenvBinding
 from proxies.sandbox.services import VenvService
+
+
+def serialize_owner(binding: AbstractBinding) -> dict | None:
+    """The binding's creator as a lightweight embed, or null when unknown."""
+    if binding.created_by is None:
+        return None
+    owner = binding.created_by
+    return {
+        "id": owner.id,
+        "email": owner.email,
+        "display_name": owner.display_name,
+    }
 
 
 class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
@@ -119,17 +132,6 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
         organization allowed to reach it, and the sandbox's id never leaves here.
         """
         item["id"] = binding.pk
-        item["owner"] = self._serialize_owner(binding)
+        item["owner"] = serialize_owner(binding)
         item["is_favorite"] = bool(getattr(binding, "is_favorite", False))
         return item
-
-    def _serialize_owner(self, binding: SandboxVenvBinding) -> dict | None:
-        """The binding's creator as a lightweight embed, or null when unknown."""
-        if binding.created_by is None:
-            return None
-        owner = binding.created_by
-        return {
-            "id": owner.id,
-            "email": owner.email,
-            "display_name": owner.display_name,
-        }
