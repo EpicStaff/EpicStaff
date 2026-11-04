@@ -17,11 +17,14 @@ class UnsupportedLLMProviderError(Exception):
 # tool that was not in the request; the same request usually succeeds on a second try.
 TOOL_USE_FAILED_CODE = "tool_use_failed"
 
+# Error code for a call cut off because the model did not finish its reply in time.
+TIMEOUT_CODE = "timeout"
+
 # Provider error codes whose message is safe to show any user of the config. Other
 # messages (bad key, unknown model or deployment) can echo key fragments or endpoints
 # to members who may not see the config itself.
 USER_VISIBLE_PROVIDER_ERROR_CODES = frozenset(
-    {TOOL_USE_FAILED_CODE, "rate_limit_exceeded", "context_length_exceeded"}
+    {TOOL_USE_FAILED_CODE, TIMEOUT_CODE, "rate_limit_exceeded", "context_length_exceeded"}
 )
 
 

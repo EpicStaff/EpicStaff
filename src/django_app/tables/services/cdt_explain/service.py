@@ -18,7 +18,7 @@ from tables.exceptions import (
     ClassificationDecisionTableNodeNotFoundError,
 )
 from tables.models.graph_models import ClassificationDecisionTableNode
-from tables.models.llm_models import LLMConfig
+from tables.models.llm_models import LLM_CONFIG_TIMEOUT_MAX_SECONDS, LLMConfig
 from tables.services.llm_clients import get_llm_client
 from tables.services.llm_clients.base import (
     DoneEvent,
@@ -141,9 +141,11 @@ class CdtExplainService:
         self, client, table: dict, batches: list[list[dict]]
     ) -> tuple[dict[str, str], int]:
         semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
+        # One deadline for the whole request: the sync view holds a worker thread until it ends.
+        deadline = asyncio.get_running_loop().time() + LLM_CONFIG_TIMEOUT_MAX_SECONDS
 
         async def guarded(batch):
-            async with semaphore:
+            async with asyncio.timeout_at(deadline), semaphore:
                 return await self._explain_batch(client, table, batch)
 
         results = await asyncio.gather(

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from rbac.models.last_edit import LastEditTrackedModel
@@ -13,6 +14,11 @@ from tables.models.tag_models import (
     RealtimeTranscriptionConfigTag,
 )
 from tables.validators.finite_number_validator import validate_finite_number
+
+LLM_CONFIG_TIMEOUT_MIN_SECONDS = 1
+# Set by DJANGO_LLM_CONFIG_MAX_TIMEOUT. Checked by the serializers, not by a model
+# validator, so a deployment's value never ends up in a migration.
+LLM_CONFIG_TIMEOUT_MAX_SECONDS = settings.LLM_CONFIG_TIMEOUT_MAX_SECONDS
 
 
 class LLMModel(OrgScopedModel, models.Model):
@@ -121,7 +127,15 @@ class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableMod
         related_name="llm_configs",
     )
     extra_headers = models.JSONField(default=dict, blank=True)
-    timeout = models.FloatField(default=120.0, null=True, blank=True)
+    timeout = models.FloatField(
+        default=120.0,
+        null=True,
+        blank=True,
+        validators=[
+            validate_finite_number,
+            MinValueValidator(LLM_CONFIG_TIMEOUT_MIN_SECONDS),
+        ],
+    )
     # Not on DefaultLLMConfig on purpose: fill_with_defaults only copies the default
     # model's fields, so a price is never inherited from the platform defaults.
     input_cost_per_token = models.FloatField(

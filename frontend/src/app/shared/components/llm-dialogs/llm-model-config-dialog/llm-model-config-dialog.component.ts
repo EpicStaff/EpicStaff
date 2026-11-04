@@ -15,7 +15,7 @@ import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } 
 import { DEFAULT_STEP_SIZE, TOKEN_PRICE_HINT } from '@shared/constants';
 import { EnterSubmitDirective } from '@shared/directives';
 import { pricePairValidator } from '@shared/form-validators';
-import { GetLlmConfigRequest, ModelTypes, ReasoningEffort } from '@shared/models';
+import { GetLlmConfigRequest, LlmConfigTimeoutLimits, ModelTypes, ReasoningEffort } from '@shared/models';
 import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
 import {
     extractFieldErrorMessages,
@@ -86,6 +86,8 @@ export class LlmModelConfigDialogComponent implements OnInit {
     isSaving = signal<boolean>(false);
     isLoading = signal<boolean>(false);
     errorMessage = signal<string | null>(null);
+    /** Null until the deployment's limits load, or if they fail to: then only the minimum is checked here. */
+    protected readonly timeoutLimits = signal<LlmConfigTimeoutLimits | null>(null);
     // FormGroup.invalid is a plain property: on this OnPush view it would keep showing the state from before the
     // reasoning-effort field cleared its server error in the same pass. Fed from statusChanges in ngOnInit.
     private readonly isFormInvalid = signal(false);
@@ -124,7 +126,7 @@ export class LlmModelConfigDialogComponent implements OnInit {
             logit_bias: [null],
             seed: [null, [Validators.min(-2147483648), Validators.max(2147483647)]],
             extra_headers: [{}],
-            timeout: [120, [Validators.min(1), Validators.max(600)]],
+            timeout: [120, [Validators.min(1)]],
             reasoning_effort: this.reasoningEffortControl,
             is_visible: [true],
             pricing: this.fb.group(
@@ -139,6 +141,10 @@ export class LlmModelConfigDialogComponent implements OnInit {
             .pipe(startWith(this.form.status), takeUntilDestroyed(this.destroyRef))
             .subscribe((status) => this.isFormInvalid.set(status === 'INVALID'));
         trackPickedSecrets(this.form, ['api_key_secret_id'], this.pickedSecretIds, this.destroyRef);
+        this.configStorageService
+            .getTimeoutLimits()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({ next: (limits) => this.applyTimeoutLimits(limits), error: () => {} });
 
         if (this.data?.configId) {
             this.loadConfig(this.data.configId);
@@ -239,6 +245,13 @@ export class LlmModelConfigDialogComponent implements OnInit {
                 console.error(err);
             },
         });
+    }
+
+    private applyTimeoutLimits(limits: LlmConfigTimeoutLimits): void {
+        this.timeoutLimits.set(limits);
+        const timeout = this.form.controls['timeout'];
+        timeout.setValidators([Validators.min(limits.min_seconds), Validators.max(limits.max_seconds)]);
+        timeout.updateValueAndValidity();
     }
 
     private priceToSave(

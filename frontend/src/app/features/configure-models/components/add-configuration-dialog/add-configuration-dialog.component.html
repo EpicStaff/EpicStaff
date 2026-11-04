@@ -169,8 +169,8 @@
                 <div>
                     <app-input-number
                         formControlName="timeout"
-                        [min]="1"
-                        [max]="600"
+                        [min]="timeoutLimits()?.min_seconds ?? 1"
+                        [max]="timeoutLimits()?.max_seconds ?? null"
                         [stepSize]="DEFAULT_STEP_SIZE"
                         label="Timeout (seconds)"
                         tooltipText="How long to wait for the model to respond"
