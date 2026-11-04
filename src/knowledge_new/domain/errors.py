@@ -5,6 +5,7 @@ __all__ = [
     "EmbeddingConfigNotFoundError",
     "EmbeddingError",
     "FileTextExtractingError",
+    "GraphNotIndexedError",
     "GraphRagConfigNotFoundError",
     "KnowledgeError",
     "NoPreviewChunksProducedError",
@@ -67,6 +68,10 @@ class GraphRagConfigNotFoundError(KnowledgeError):
 
 class ChunksNotIndexedError(KnowledgeError):
     default_message = "Document(id={document_id}) chunks not indexed for RAG(id={rag_id})."
+
+
+class GraphNotIndexedError(KnowledgeError):
+    default_message = "Graph index output not available for RAG(id={rag_id}). Run indexing first."
 
 
 class RagNotFoundError(KnowledgeError):

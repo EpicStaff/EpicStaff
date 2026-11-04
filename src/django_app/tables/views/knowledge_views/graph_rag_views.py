@@ -7,6 +7,8 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tables.clients.errors import ClientError
+from tables.clients.knowledge import KnowledgeClient
 from tables.exceptions import (
     CollectionNotFoundException,
     EmbedderNotFoundException,
@@ -62,6 +64,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         "delete_document": Permission.UPDATE,
         "list_documents": Permission.READ,
         "initialize_documents": Permission.UPDATE,
+        "visualization": Permission.READ,
     }
 
     queryset = GraphRag.objects.all()
@@ -385,3 +388,27 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["get"], url_path="visualization")
+    def visualization(self, request, pk=None):
+        """Proxy graph visualization data from the knowledge_new service."""
+        self._assert_graph_rag_in_active_org(pk)
+
+        max_entities_raw = request.query_params.get("max_entities")
+        max_entities = None
+        if max_entities_raw is not None:
+            try:
+                max_entities = int(max_entities_raw)
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "max_entities must be an integer."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        try:
+            with KnowledgeClient() as client:
+                data = client.get_visualization(rag_id=int(pk), max_entities=max_entities)
+        except ClientError as e:
+            return Response({"error": e.public_detail}, status=e.status_code)
+
+        return Response(data)

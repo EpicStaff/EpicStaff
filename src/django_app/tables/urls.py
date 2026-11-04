@@ -394,6 +394,11 @@ urlpatterns = [
         name="graph-rag-documents-initialize",
     ),
     path(
+        "graph-rag/<int:pk>/visualization/",
+        GraphRagViewSet.as_view({"get": "visualization"}),
+        name="graph-rag-visualization",
+    ),
+    path(
         "telegram-trigger-available-fields/",
         TelegramTriggerNodeAvailableFieldsView.as_view(),
         name="telegram-trigger-available-fields",

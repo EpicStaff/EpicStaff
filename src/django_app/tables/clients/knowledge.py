@@ -105,6 +105,14 @@ class KnowledgeClient:
         response = self._request(method="get", url=f"rags/{strategy}/{rag_id}/metrics/")
         return response.json()
 
+    def get_visualization(self, rag_id: int, max_entities: int | None = None) -> dict:
+        """Fetch graph visualization data for a graph RAG."""
+        url = f"rags/graph/{rag_id}/visualization/"
+        if max_entities is not None:
+            url = f"{url}?max_entities={max_entities}"
+        response = self._request(method="get", url=url)
+        return response.json()
+
     def _request(self, method: str, url: str, *, json: dict | None = None) -> httpx.Response:
         try:
             response = self._client.request(method, url, json=json)

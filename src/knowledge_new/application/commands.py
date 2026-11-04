@@ -4,6 +4,7 @@ from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
     "Command",
+    "GetGraphVisualization",
     "GetIndexEstimate",
     "GetMetrics",
     "RemoveRag",
@@ -58,6 +59,12 @@ class RemoveRag(Command):
 @dataclass(frozen=True)
 class GetMetrics(Command):
     rag_id: int
+
+
+@dataclass(frozen=True)
+class GetGraphVisualization(Command):
+    rag_id: int
+    max_entities: int | None = None
 
 
 @dataclass(frozen=True)

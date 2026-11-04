@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -9,6 +9,7 @@ import {
     CreateGraphRagIndexConfigRequest,
 } from '../models/graph-rag.model';
 import { GraphRagDocumentListResponse } from '../models/graph-rag-document.model';
+import { GraphVisualizationData } from '../models/graph-visualization.model';
 
 @Injectable({
     providedIn: 'root',
@@ -68,5 +69,13 @@ export class GraphRagService {
 
     reIncludeFiles(ragId: number): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}${ragId}/documents/initialize/`, {});
+    }
+
+    getVisualizationData(ragId: number, maxEntities?: number): Observable<GraphVisualizationData> {
+        let params = new HttpParams();
+        if (maxEntities !== undefined) {
+            params = params.set('max_entities', maxEntities.toString());
+        }
+        return this.http.get<GraphVisualizationData>(`${this.apiUrl}${ragId}/visualization/`, { params });
     }
 }
