@@ -287,6 +287,8 @@
 
     .f-selection-area {
         background-color: var(--vp-selection-area-color);
+        border: 1px solid var(--vp-selection-area-border-color);
+        box-sizing: border-box;
     }
 
     .f-minimap {

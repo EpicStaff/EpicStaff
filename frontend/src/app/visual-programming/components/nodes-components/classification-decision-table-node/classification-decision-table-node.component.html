@@ -1,5 +1,6 @@
 <div
     class="decision-table"
+    [style.--cdt-color]="nodeColors[node.type]"
     [class.is-blocked-llm]="hasMissingLlmConfig || hasMissingSystemOneConfig || hasEmptyConditionName"
     appClickOrDrag
     (actualClick)="onEditClick()"

@@ -78,6 +78,7 @@
                             [origin]="importOriginEl"
                             [open]="importOptionsOpen()"
                             (closed)="closeImportOptions()"
+                            (importRequested)="onImportFromOptions()"
                         />
                     </ng-container>
                 }
