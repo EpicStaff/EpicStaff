@@ -56,7 +56,7 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
-import { getClassificationTableVisualHeight } from '../../../core/helpers/node-size.util';
+import { getClassificationTableVisualHeight, TABLE_NODE_WIDTH } from '../../../core/helpers/node-size.util';
 import { CdtSection, reconcileCdtSections } from '../../../core/models/cdt-section.model';
 import {
     ClassificationDecisionTableData,
@@ -544,7 +544,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         // or the "No condition groups" placeholder — plus Default and Error), so ports
         // line up horizontally with their connected target nodes. See node-size.util.ts.
         const updatedSize = {
-            width: currentNode.size?.width || 330,
+            width: TABLE_NODE_WIDTH,
             height: getClassificationTableVisualHeight(conditionGroups),
         };
 

@@ -20,8 +20,8 @@ import {
 } from '../../core/models/node.model';
 import { toStoredCdtExplanations } from '../cdt-explanations';
 import { isPythonCodeBlockSaved } from './cdt-python-code-block';
-import { hasPersistedWaypoints, mergeWaypointsIntoMetadata } from './edge-waypoints.helpers';
-import { toNodeMetadata } from './metadata';
+import { hasPersistedWaypoints, mergeWaypointsIntoMetadata, waypointsToPersist } from './edge-waypoints.helpers';
+import { toNodeMetadata, toNoteMetadata } from './metadata';
 import { ConnectionDiff, CreatedNodeItemKeys, NodeDiff, NodeDiffByType } from './types';
 
 function resolveNodeRef(
@@ -332,7 +332,8 @@ export function buildBulkSavePayload(
             graph: graphId,
             ...(startNodeId != null ? { start_node_id: startNodeId } : { start_temp_id: conn.sourceNodeId }),
             ...(endNodeId != null ? { end_node_id: endNodeId } : { end_temp_id: conn.targetNodeId }),
-            metadata: mergeWaypointsIntoMetadata(conn.data?.metadata ?? {}, conn.waypoints ?? []),
+            // A wire the router draws carries its routed bends on the canvas; they are not the user's.
+            metadata: mergeWaypointsIntoMetadata(conn.data?.metadata ?? {}, waypointsToPersist(conn)),
         };
     });
 
@@ -472,7 +473,7 @@ export function buildBulkSavePayload(
             node_name: n.node_name,
             graph: graphId,
             content: n.data.content,
-            metadata: { ...toNodeMetadata(n), backgroundColor: n.data.backgroundColor ?? null },
+            metadata: toNoteMetadata(n),
         })),
         classification_decision_table_node_list: nodeItems(nodeDiff.classificationDecisionTableNodes, (n) =>
             buildCdtNodePayload(n, graphId, current.nodes, idMap, current.connections)

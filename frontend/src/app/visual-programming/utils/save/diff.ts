@@ -24,8 +24,8 @@ import {
     WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
 import { toStoredCdtExplanations } from '../cdt-explanations';
-import { hasPersistedWaypoints, waypointsChanged } from './edge-waypoints.helpers';
-import { toNodeMetadata } from './metadata';
+import { hasPersistedWaypoints, hasStoredWaypoints, waypointsChanged } from './edge-waypoints.helpers';
+import { toNodeMetadata, toNoteMetadata } from './metadata';
 import { ConnectionDiff, NodeDiff, NodeDiffByType } from './types';
 
 function areEqual(left: unknown, right: unknown): boolean {
@@ -261,7 +261,7 @@ function toNoteComparable(node: GraphNoteModel): unknown {
     return {
         node_name: node.node_name,
         content: node.data.content,
-        metadata: { ...toNodeMetadata(node), backgroundColor: node.data.backgroundColor ?? null },
+        metadata: toNoteMetadata(node),
     };
 }
 
@@ -518,6 +518,13 @@ export function getConnectionDiff(previous: FlowModel, current: FlowModel, idMap
     for (const [key, currConn] of currByKey) {
         const prevConn = prevByKey.get(key);
         if (!prevConn || currConn.data?.id == null) continue;
+        // The backend row still holds bends the canvas does not use (they were dropped on load because
+        // the node they belonged to was stored at an outdated size). They are cleared now, or they would
+        // come back on the next open once that node's row no longer marks them as outdated.
+        if (hasStoredWaypoints(prevConn) && !hasPersistedWaypoints(currConn)) {
+            toUpdate.push(currConn);
+            continue;
+        }
         if (!hasPersistedWaypoints(currConn) && !hasPersistedWaypoints(prevConn)) continue;
         if (waypointsChanged(prevConn.waypoints, currConn.waypoints)) {
             toUpdate.push(currConn);
