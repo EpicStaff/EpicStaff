@@ -56,6 +56,17 @@
     min-width: 0;
 }
 
+.tooltips-wrapper {
+    display: flex;
+}
+
+.fields-tooltip {
+    flex: 1;
+    font-size: 0.75rem;
+    color: var(--text-secondary-60);
+    margin-bottom: 4px;
+}
+
 .value-field-wrapper {
     flex: 1;
     min-width: 0;

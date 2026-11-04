@@ -151,14 +151,14 @@
                             <ng-template #valueField>
                                 <div class="entry-field">
                                     <div class="value-field-wrapper">
-                                        <span class="variables-prefix">variables</span>
+                                        <span class="variables-prefix">&#64;</span>
                                         <input
                                             type="text"
                                             class="entry-input"
                                             [class.duplicate]="isConflictingVariable(i)"
                                             [class.invalid-border]="isValueInvalid(i)"
                                             [value]="getValueDisplayText(i)"
-                                            placeholder="all fields"
+                                            placeholder="All fields if empty"
                                             aria-label="Variable path"
                                             autocomplete="off"
                                             role="combobox"

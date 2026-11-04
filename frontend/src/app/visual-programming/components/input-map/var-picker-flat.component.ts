@@ -18,8 +18,6 @@ export interface PickerItem {
     displayLabel: string;
     depth: number;
     fullPath: string;
-    /** Formatted runtime value for display on the right side of the suggestion row. */
-    previewValue?: string;
     /** True when this item is an array index — displayed as [0] instead of .key. */
     isArrayItem?: boolean;
     /** Listed to keep the variables under it in place, but not offered: another row uses it. */
@@ -52,7 +50,6 @@ let nextPickerId = 0;
                             role="option"
                             [id]="optionId($index)"
                             [title]="item.fullPath"
-                            [style.padding-left.px]="indentPx(item.depth)"
                             [disabled]="item.disabled"
                             [class.vpf-item--highlighted]="$index === highlightedIndex()"
                             [attr.aria-selected]="$index === highlightedIndex()"
@@ -62,9 +59,6 @@ let nextPickerId = 0;
                             <span class="vpf-key">{{
                                 item.isArrayItem ? '[' + item.displayLabel + ']' : '.' + item.displayLabel
                             }}</span>
-                            @if (item.previewValue !== undefined) {
-                                <span class="vpf-value">{{ item.previewValue }}</span>
-                            }
                             @if (item.disabled) {
                                 <span class="vpf-note">in use</span>
                             }
@@ -145,16 +139,6 @@ let nextPickerId = 0;
                 color: var(--color-text-primary-hover);
             }
 
-            .vpf-value {
-                flex-shrink: 0;
-                max-width: 45%;
-                font-size: 0.75rem;
-                color: var(--text-secondary-60);
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
-
             .vpf-note {
                 flex-shrink: 0;
                 font-size: 0.68rem;
@@ -218,10 +202,6 @@ export class VarPickerFlatComponent {
         }
     }
 
-    indentPx(depth: number): number {
-        return Math.min(8 + depth * 12, 80);
-    }
-
     /**
      * Filters by the path in the host's input, e.g. the Input List row's value. `byEdit` is true when
      * the user changed the input (typing, deleting, pasting), false when only its caret moved.
@@ -255,7 +235,7 @@ export class VarPickerFlatComponent {
     private applyFilter(query: string): void {
         this.currentFilter = query;
         const filter = query.toLowerCase().trim();
-        this.filteredItems = filter ? this.filteredBy(filter) : this.allItems;
+        this.filteredItems = filter ? this.filteredBy(filter) : this.allItems.filter((item) => item.depth === 0);
         this.highlightDefault();
         // The rows for a new filter exist only once it renders, by which time the highlight may have moved.
         afterNextRender(
@@ -269,46 +249,21 @@ export class VarPickerFlatComponent {
 
     /**
      * A filter that starts with a listed path and a `.` or `[` after it, as `user.` or `user.tags[0`,
-     * names that path: the list is what lies under it, matched by what follows it, and indented from
-     * there. The path itself is typed already, so it is not offered again. Any other filter matches
-     * anywhere in a path, as `id` does in `user.id`.
+     * scopes into that path: only its direct children are shown, matched by what follows the
+     * separator. Any other filter matches depth-0 items by label.
      */
     private filteredBy(filter: string): PickerItem[] {
         const separatorIndex = Math.max(filter.lastIndexOf('.'), filter.lastIndexOf('['));
         const typedPath = filter.slice(0, Math.max(separatorIndex, 0));
-        // Several when names differ only in case, as the filter ignores it; each has the same depth.
         const scopes = typedPath ? this.allItems.filter((item) => item.label.toLowerCase() === typedPath) : [];
         if (scopes.length === 0) {
-            return this.withParents(this.allItems, (item) => item.fullPath.toLowerCase().includes(filter));
+            return this.allItems.filter((item) => item.depth === 0 && item.label.toLowerCase().includes(filter));
         }
-        const rest = filter.slice(separatorIndex);
-        const underScopes = this.allItems.filter((item) =>
-            scopes.some((scope) => isPathUnder(item.fullPath, scope.fullPath))
+        const scope = scopes[0];
+        const rest = filter.slice(separatorIndex + 1).toLowerCase();
+        const directChildren = this.allItems.filter(
+            (item) => item.depth === scope.depth + 1 && isPathUnder(item.fullPath, scope.fullPath)
         );
-        return this.withParents(
-            underScopes,
-            (item) => item.label.toLowerCase().slice(typedPath.length).includes(rest)
-            // At least 0: a key with a dot in its name can make a scope look deeper than what lies under it.
-        ).map((item) => ({ ...item, depth: Math.max(0, item.depth - scopes[0].depth - 1) }));
-    }
-
-    /**
-     * The items that match, each under its parents so a match never shows up indented without them.
-     * The items come parents first, as buildVariablePickerItems lists them, though a host may have
-     * left some out: parents are told by path, not by depth.
-     */
-    private withParents(items: PickerItem[], matches: (item: PickerItem) => boolean): PickerItem[] {
-        const shown = new Set<PickerItem>();
-        const parents: PickerItem[] = [];
-        for (const item of items) {
-            while (parents.length > 0 && !isPathUnder(item.fullPath, parents[parents.length - 1].fullPath)) {
-                parents.pop();
-            }
-            if (matches(item)) {
-                [...parents, item].forEach((shownItem) => shown.add(shownItem));
-            }
-            parents.push(item);
-        }
-        return items.filter((item) => shown.has(item));
+        return rest ? directChildren.filter((item) => item.displayLabel.toLowerCase().includes(rest)) : directChildren;
     }
 }

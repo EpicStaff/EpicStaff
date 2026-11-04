@@ -61,6 +61,12 @@
                     class="input-map-item"
                     [formGroupName]="i"
                 >
+                    @if ($first) {
+                        <div class="tooltips-wrapper">
+                            <span class="fields-tooltip">Arguments</span>
+                            <span class="fields-tooltip">Variables</span>
+                        </div>
+                    }
                     <div class="input-map-fields">
                         <div class="input-wrapper">
                             <input
@@ -77,7 +83,7 @@
                             class="value-field-wrapper"
                             [style.--active-color]="activeColor"
                         >
-                            <span class="variables-prefix">variables</span>
+                            <span class="variables-prefix">&#64;</span>
                             <input
                                 type="text"
                                 [value]="getValueDisplayText(pair)"
@@ -132,6 +138,12 @@
                     class="input-map-item"
                     [formGroupName]="i"
                 >
+                    @if ($first) {
+                        <div class="tooltips-wrapper">
+                            <span class="fields-tooltip">Arguments</span>
+                            <span class="fields-tooltip">Variables</span>
+                        </div>
+                    }
                     <div class="input-map-fields">
                         <div class="input-wrapper">
                             <input
