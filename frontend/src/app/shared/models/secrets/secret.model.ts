@@ -56,6 +56,7 @@ export type SecretUsageResourceType =
     | 'embedding_config'
     | 'realtime_config'
     | 'realtime_transcription_config'
+    | 'system_one_config'
     | 'mcp_tool'
     | 'python_code_tool';
 

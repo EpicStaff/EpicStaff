@@ -1,0 +1,60 @@
+# Sourced by the nginx image's /docker-entrypoint.sh before 20-envsubst-on-templates.sh. Turns
+# DJANGO_SGI_WORKERS into NGINX_DJANGO_UPSTREAM_SERVERS, the servers of default.conf.template's
+# Django upstreams. django_app runs DJANGO_SGI_WORKERS single-worker servers, each on a port of
+# its own from DJANGO_PORT + 1 up (DJANGO_PORT itself is the port they share for the services
+# that call django_app directly; src/django_app/entrypoint.sh), so nginx, not the kernel, chooses
+# the server for each request. The values are rendered into the configuration, so anything but a
+# whole number in range stops the container (exit 64) instead of breaking it.
+
+for django_upstream_name in DJANGO_HOST DJANGO_PORT DJANGO_SGI_WORKERS; do
+  eval "django_upstream_is_set=\${$django_upstream_name+set}"
+  if [ -z "$django_upstream_is_set" ]; then
+    echo "ERROR: environment variable $django_upstream_name is not set." >&2
+    exit 64
+  fi
+done
+
+# Digits only, no leading zero (the shell would read it as octal), and short enough that the
+# arithmetic below cannot overflow. Checked on lower-case copies: an upper-case variable in a
+# `case` reads as boolean parsing to .github/scripts/check_env_conventions.py.
+django_upstream_workers=$DJANGO_SGI_WORKERS
+django_upstream_first_port=$DJANGO_PORT
+case "$django_upstream_workers" in
+  '' | *[!0-9]* | 0*)
+    echo "ERROR: DJANGO_SGI_WORKERS='$django_upstream_workers' is not a whole number of 1 or more." >&2
+    exit 64
+    ;;
+esac
+if [ "${#django_upstream_workers}" -gt 3 ]; then
+  echo "ERROR: DJANGO_SGI_WORKERS='$django_upstream_workers' is more servers than django_app can run." >&2
+  exit 64
+fi
+case "$django_upstream_first_port" in
+  '' | *[!0-9]* | 0*)
+    echo "ERROR: DJANGO_PORT='$django_upstream_first_port' is not a port number." >&2
+    exit 64
+    ;;
+esac
+if [ "${#django_upstream_first_port}" -gt 5 ] \
+  || [ $((django_upstream_first_port + django_upstream_workers)) -gt 65535 ]; then
+  echo "ERROR: DJANGO_PORT='$django_upstream_first_port' with DJANGO_SGI_WORKERS='$django_upstream_workers' needs ports past 65535." >&2
+  exit 64
+fi
+
+# max_fails=0: nginx never takes a server out of the group. Its default (max_fails=1
+# fail_timeout=10s) takes one out for 10 s after a single error, so a few scattered connection
+# resets under a burst take several servers out at once: requests get an instant 502 (no live
+# upstreams) or pile onto the rest. A connection refused by a server that is down still moves the
+# request on to the next server (proxy_next_upstream), so nothing is lost by keeping it listed.
+NGINX_DJANGO_UPSTREAM_SERVERS=
+django_upstream_port=$((django_upstream_first_port + 1))
+while [ "$django_upstream_port" -le $((django_upstream_first_port + django_upstream_workers)) ]; do
+  NGINX_DJANGO_UPSTREAM_SERVERS="$NGINX_DJANGO_UPSTREAM_SERVERS    server $DJANGO_HOST:$django_upstream_port max_fails=0 resolve;
+"
+  django_upstream_port=$((django_upstream_port + 1))
+done
+export NGINX_DJANGO_UPSTREAM_SERVERS
+
+# This file is sourced into the entrypoint's shell: leave nothing behind but the export.
+unset django_upstream_name django_upstream_is_set django_upstream_port django_upstream_workers \
+  django_upstream_first_port

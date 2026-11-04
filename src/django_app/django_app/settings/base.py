@@ -1,6 +1,7 @@
 from django.core.exceptions import ImproperlyConfigured
 from rbac.identity.first_setup_mode import FirstSetupMode
 from src.shared import humanize
+from src.shared.envtools import Env
 from src.shared.retention import load_retention_policy
 
 from django_app.settings import BASE_DIR, env
@@ -41,6 +42,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "plugins.gateway.origin_policy_middleware.PluginOriginPolicyMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    "django_app.admission.RequestAdmissionMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -126,15 +128,57 @@ UPLOAD_IDLE_TIMEOUT = env.time("DJANGO_UPLOAD_IDLE_TIMEOUT")
 UPLOAD_MAX_DURATION = env.time("DJANGO_UPLOAD_MAX_DURATION")
 ARCHIVE_UPLOAD_CONCURRENCY = env.int("DJANGO_ARCHIVE_UPLOAD_CONCURRENCY")
 
+
+def read_request_admission(environment: Env) -> tuple[int, float | None]:
+    """Read the request cap and the wait for a slot that RequestAdmissionMiddleware applies.
+
+    DJANGO_SGI_MAX_CONCURRENT_REQUESTS must be at least 1 and DJANGO_SGI_ADMISSION_TIMEOUT
+    `none` (wait without limit) or not negative. The cap is not compared with the pool here:
+    every manage.py process loads these settings, and the Redis workers run with a smaller
+    pool and serve no HTTP. The middleware checks it when a request handler builds it.
+
+    Returns:
+        The cap, and the timeout in seconds (None: no limit).
+    """
+    max_concurrent_requests = environment.int("DJANGO_SGI_MAX_CONCURRENT_REQUESTS")
+    if max_concurrent_requests is None or max_concurrent_requests < 1:
+        raise ImproperlyConfigured(
+            f"DJANGO_SGI_MAX_CONCURRENT_REQUESTS must be at least 1; got {max_concurrent_requests}."
+        )
+    timeout = environment.time("DJANGO_SGI_ADMISSION_TIMEOUT")
+    if timeout is not None and timeout < 0:
+        raise ImproperlyConfigured(
+            f"DJANGO_SGI_ADMISSION_TIMEOUT must not be negative; got {timeout}s. "
+            "Use none to wait without limit."
+        )
+    return max_concurrent_requests, timeout
+
+
+MAX_CONCURRENT_REQUESTS, REQUEST_ADMISSION_TIMEOUT = read_request_admission(env)
+
 TUNNEL_URLS_HASH_KEY = "tunnel_urls"
 
 MALLOC_TRIM_INTERVAL = env.time("DJANGO_MALLOC_TRIM_INTERVAL")
 
+
+def read_recycle_bin_retention_days(environment: Env) -> int:
+    """Read DJANGO_RECYCLE_BIN_RETENTION_DAYS, the days an item stays in the recycle bin.
+
+    Only a whole number of at least 1 is accepted: 0 would make the nightly purge empty
+    every recycle bin on its next run, and `none` would leave the purge without a cutoff.
+    """
+    message = "DJANGO_RECYCLE_BIN_RETENTION_DAYS must be a whole number, at least 1."
+    try:
+        days = environment.int("DJANGO_RECYCLE_BIN_RETENTION_DAYS")
+    except ValueError as error:
+        raise ImproperlyConfigured(message) from error
+    if days is None or days < 1:
+        raise ImproperlyConfigured(message)
+    return days
+
+
 # Days a deleted item stays in the recycle bin before the purge job removes it for good.
-RECYCLE_BIN_RETENTION_DAYS = env.int("DJANGO_RECYCLE_BIN_RETENTION_DAYS")
-if RECYCLE_BIN_RETENTION_DAYS < 1:
-    # 0 would make the nightly purge empty every recycle bin on its next run.
-    raise ImproperlyConfigured("DJANGO_RECYCLE_BIN_RETENTION_DAYS must be at least 1.")
+RECYCLE_BIN_RETENTION_DAYS = read_recycle_bin_retention_days(env)
 
 try:
     RETENTION_POLICY = load_retention_policy(env)

@@ -2,6 +2,8 @@
 agent's own surfaces, a surface's tools and sources, a collection's documents.
 
 The machinery only: what each resource shows is its BinPresentation, in presentation.py.
+Contents and detail lines name an item only to a user who may read its resource type;
+the rest are counted (`hidden_contents`) or say NO_ACCESS.
 """
 
 import operator
@@ -9,6 +11,7 @@ import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import reduce
+from typing import NamedTuple
 
 from django.db.models import (
     Count,
@@ -23,6 +26,7 @@ from django.db.models import (
     Window,
 )
 from django.db.models.functions import Coalesce, RowNumber
+from rbac.access.effective import EffectivePermissions
 from rbac.authorship.policy import AUTHOR_FIELD, has_author_field
 from tables.services.recycle_bin.authorship import (
     BinEntryAuthorship,
@@ -40,6 +44,8 @@ from tables.services.recycle_bin.presentation import (
     BinPresentation,
     ContentSource,
     DetailContext,
+    HiddenContents,
+    may_read,
 )
 from tables.services.recycle_bin.registry import BinResource
 
@@ -58,7 +64,29 @@ CONTENTS_FILTERS: dict[str, dict[str, int]] = {
 class RecycleBinEntryWithContents(RecycleBinEntry):
     details: list[BinDetail] = field(default_factory=list)
     contents: list[BinContent] = field(default_factory=list)
+    hidden_contents: list[HiddenContents] = field(default_factory=list)
     contents_total: int = 0
+
+
+class EntryContents(NamedTuple):
+    """What a restore brings back with each entry, keyed by entry id.
+
+    `named` lists what the user may see the names of, `hidden` counts per kind what
+    they may not, and `totals` counts everything, both of those included.
+    """
+
+    named: dict[int, list[BinContent]]
+    hidden: dict[int, list[HiddenContents]]
+    totals: dict[int, int]
+
+
+@dataclass(frozen=True)
+class BinRootContents:
+    """One binned root's contents for "Show all", shaped like an entry's."""
+
+    contents: list[BinContent]
+    hidden_contents: list[HiddenContents]
+    contents_total: int
 
 
 class BinContentsService:
@@ -94,47 +122,63 @@ class BinContentsService:
         org_id: int,
         rows,
         *,
+        viewer: EffectivePermissions,
         request=None,
     ) -> list[RecycleBinEntryWithContents]:
         """Entries for a page of entry_rows, each with what its restore brings back.
 
-        `request` makes the avatar URLs of the "Created by" and "Deleted by" lines absolute.
+        Args:
+            viewer: The request user's permissions in `org_id`. Contents and detail
+                lines of a resource type it can't read are counted or hidden, not named.
+            request: Makes the avatar URLs of the "Created by" and "Deleted by" lines absolute.
         """
         entries = RecycleBinService.to_entries(rows)
         batch_by_parent = {entry.id: entry.batch for entry in entries}
-        contents, totals = cls._contents(
+        contents = cls._contents(
             presentation.content_sources,
             batch_by_parent,
+            viewer,
             names=presentation.named_contents,
         )
         details = cls._details(
-            resource, presentation, list(batch_by_parent), DetailContext(org_id=org_id), request
+            resource,
+            presentation,
+            list(batch_by_parent),
+            DetailContext(org_id=org_id, viewer=viewer),
+            request,
         )
         return [
             RecycleBinEntryWithContents(
                 **vars(entry),
                 details=details.get(entry.id, []),
-                contents=contents.get(entry.id, []),
-                contents_total=totals.get(entry.id, 0),
+                contents=contents.named.get(entry.id, []),
+                hidden_contents=contents.hidden.get(entry.id, []),
+                contents_total=contents.totals.get(entry.id, 0),
             )
             for entry in entries
         ]
 
     @classmethod
     def contents_of(
-        cls, presentation: BinPresentation, root: Model
-    ) -> tuple[list[BinContent], int]:
+        cls, presentation: BinPresentation, root: Model, *, viewer: EffectivePermissions
+    ) -> BinRootContents:
         """One binned root's contents, up to SHOW_ALL_LIMIT: the bin's "Show all" for that row.
 
-        A resource whose contents are only counted (a table's keys) lists none.
+        A resource whose contents are only counted (a table's keys) lists none. Contents
+        of a resource type `viewer` can't read are only counted, as in to_entries.
         """
-        contents, totals = cls._contents(
+        contents = cls._contents(
             presentation.content_sources,
             {root.pk: root.soft_delete_batch},
+            viewer,
             names=presentation.named_contents,
             limit=SHOW_ALL_LIMIT,
         )
-        return contents.get(root.pk, []), totals.get(root.pk, 0)
+        return BinRootContents(
+            contents=contents.named.get(root.pk, []),
+            hidden_contents=contents.hidden.get(root.pk, []),
+            contents_total=contents.totals.get(root.pk, 0),
+        )
 
     @staticmethod
     def _contents_count(sources: tuple[ContentSource, ...]) -> Expression:
@@ -166,34 +210,45 @@ class BinContentsService:
     def _contents(
         sources: tuple[ContentSource, ...],
         batch_by_parent: dict[int, uuid.UUID],
+        viewer: EffectivePermissions,
         *,
         names: bool = True,
         limit: int | None = CONTENTS_LIMIT,
-    ) -> tuple[dict[int, list[BinContent]], dict[int, int]]:
-        """Two queries per source (one without `names`), whatever the number of entries.
+    ) -> EntryContents:
+        """Each entry's named, hidden and total contents, in at most two queries per source.
 
-        `limit` caps the names per entry (None for all of them).
+        Whatever the number of entries; one query for a source without `names` or a
+        hidden one. `limit` caps the names per entry (None for all of them). A source
+        whose resource type `viewer` can't read is counted in `hidden`, never named.
 
         A row counts only if it's binned in its entry's own batch: that's what a
         restore of the entry brings back. One deleted on its own before has
         another batch and stays in the bin.
         """
-        contents: dict[int, list[BinContent]] = defaultdict(list)
-        totals: dict[int, int] = defaultdict(int)
+        contents = EntryContents(defaultdict(list), defaultdict(list), defaultdict(int))
         if not batch_by_parent:
-            return contents, totals
+            return contents
         batches = set(batch_by_parent.values())
         for source in sources:
             rows = source.model.deleted_objects.filter(
                 **{f"{source.parent_field}__in": batch_by_parent.keys()},
                 soft_delete_batch__in=batches,
             )
-            for parent_id, batch, count in rows.values_list(
-                source.parent_field, "soft_delete_batch"
-            ).annotate(count=Count("pk")):
-                if batch == batch_by_parent[parent_id]:
-                    totals[parent_id] += count
+            # One row per (entry, batch): only the entry's own batch is kept.
+            counts = {
+                parent_id: count
+                for parent_id, batch, count in rows.values_list(
+                    source.parent_field, "soft_delete_batch"
+                ).annotate(count=Count("pk"))
+                if batch == batch_by_parent[parent_id]
+            }
+            for parent_id, count in counts.items():
+                contents.totals[parent_id] += count
             if not names:
+                continue
+            if not may_read(viewer, source.resource_type):
+                for parent_id, count in counts.items():
+                    contents.hidden[parent_id].append(HiddenContents(kind=source.kind, count=count))
                 continue
             named = rows
             if limit is not None:
@@ -210,8 +265,8 @@ class BinContentsService:
                 source.parent_field, "soft_delete_batch", source.name_field
             ):
                 if batch == batch_by_parent[parent_id]:
-                    contents[parent_id].append(BinContent(name=name or "", kind=source.kind))
-        return contents, totals
+                    contents.named[parent_id].append(BinContent(name=name or "", kind=source.kind))
+        return contents
 
     @staticmethod
     def _details(
@@ -225,7 +280,7 @@ class BinContentsService:
 
         Three queries for the whole list (the fields, the last edits, the users), plus
         a resource's extra lines. Every field of the tab is sent, with a null value when
-        it's empty.
+        it's empty, or NO_ACCESS when it names an item `context.viewer` can't read.
 
         Only plain descriptive fields: never secrets, URLs with credentials or keys.
         """
@@ -269,7 +324,7 @@ class BinContentsService:
                 lines.append(
                     BinDetail(
                         label=detail_field.label_of(row),
-                        value=detail_field.render(row),
+                        value=detail_field.render(row, context),
                         format=detail_field.format,
                     )
                 )

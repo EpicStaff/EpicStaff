@@ -30,9 +30,15 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: inherit;
+    text-align: left;
     cursor: pointer;
     min-width: 0;
     user-select: none;
+    border-radius: 4px;
 }
 
 .trigger-name {

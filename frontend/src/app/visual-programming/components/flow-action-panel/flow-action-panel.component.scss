@@ -22,19 +22,17 @@
             justify-content: center;
             cursor: pointer;
             transition: all 0.2s ease;
-            outline: none;
 
-            &:hover {
+            &:is(:hover, :focus-visible):not([aria-disabled='true']) {
                 background-color: var(--gray-750);
             }
 
-            &:disabled {
+            &[aria-disabled='true'] {
                 opacity: 0.35;
                 cursor: not-allowed;
-                pointer-events: all;
             }
 
-            &:active {
+            &:active:not([aria-disabled='true']) {
                 transform: scale(0.95);
             }
 

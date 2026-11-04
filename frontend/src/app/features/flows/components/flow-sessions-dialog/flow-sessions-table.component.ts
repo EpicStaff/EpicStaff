@@ -12,7 +12,7 @@ import {
     SimpleChanges,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Router } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -68,6 +68,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
         TriggerFilterDropdownComponent,
         FlowSessionTypeFilterDropdownComponent,
         ButtonComponent,
+        RouterLink,
     ],
     template: `
         <div
@@ -86,6 +87,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                 [disabled]="isLoading || sessions.length === 0"
                                 (changed)="toggleSelectAll($event)"
                                 id="select-all-checkbox"
+                                ariaLabel="Select all sessions"
                             ></app-checkbox>
                         </th>
                         <th class="col-id">ID</th>
@@ -181,6 +183,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                         [checked]="isSelected(session.id)"
                                         (changed)="toggleSelection(session.id, $event)"
                                         [id]="'session-checkbox-' + session.id"
+                                        [ariaLabel]="'Select session ' + session.id"
                                     ></app-checkbox>
                                 </td>
                                 <td class="col-id">{{ session.id }}</td>
@@ -199,7 +202,8 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                     <td class="col-flow flow-link-td">
                                         <a
                                             class="flow-link"
-                                            (click)="navigateToFlow(session.graph_id)"
+                                            [routerLink]="['/flows', session.graph_id]"
+                                            [matTooltip]="session.graph_name"
                                         >
                                             <app-svg-icon
                                                 icon="flow"
@@ -253,13 +257,14 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                         <button
                                             type="button"
                                             class="icon-img-btn"
+                                            aria-label="View session"
                                             matTooltip="View session"
                                             matTooltipPosition="above"
                                             (click)="viewSession.emit(session.id)"
                                         >
                                             <img
                                                 src="assets/icons/ui/session-arrow.svg"
-                                                alt="arrow-icon"
+                                                alt=""
                                                 class="arrow-icon"
                                             />
                                         </button>
@@ -352,7 +357,6 @@ export class FlowSessionsTableComponent implements OnChanges {
 
     constructor(
         private readonly cdr: ChangeDetectorRef,
-        private router: Router,
         private perms: PermissionsService
     ) {}
 
@@ -366,10 +370,6 @@ export class FlowSessionsTableComponent implements OnChanges {
             this.expandedSessionId.set(this.activePreviewId);
             this.cdr.markForCheck();
         }
-    }
-
-    public navigateToFlow(graphId: number): void {
-        this.router.navigate(['/flows', graphId]);
     }
 
     public togglePreview(sessionId: number): void {

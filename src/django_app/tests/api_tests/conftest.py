@@ -68,7 +68,10 @@ def python_code_tool_pointing_at_secret_a(default_org, secret_a) -> PythonCodeTo
 
 @pytest.fixture
 def no_use_client_6b(db, django_user_model, default_org):
-    """Holds READ (not USE) on secrets, plus full CRUD on the resources 6b's five viewsets gate on."""
+    """Holds READ (not USE) on secrets, plus full CRUD on the resources 6b's five viewsets gate on.
+
+    USE on flows too: saving a flow with a trigger node needs it, and these tests are about secrets.
+    """
     return client_with_grants(
         org=default_org,
         django_user_model=django_user_model,
@@ -78,14 +81,17 @@ def no_use_client_6b(db, django_user_model, default_org):
             ResourceType.LLM_CONFIGS.value: FULL_CRUD,
             ResourceType.VOICE.value: FULL_CRUD,
             ResourceType.TOOLS.value: FULL_CRUD,
-            ResourceType.FLOWS.value: FULL_CRUD,
+            ResourceType.FLOWS.value: FULL_CRUD | int(Permission.USE),
         },
     )
 
 
 @pytest.fixture
 def use_client_6b(db, django_user_model, default_org):
-    """Holds READ + USE on secrets, plus full CRUD on the resources 6b's five viewsets gate on."""
+    """Holds READ + USE on secrets, plus full CRUD on the resources 6b's five viewsets gate on.
+
+    USE on flows too: saving a flow with a trigger node needs it, and these tests are about secrets.
+    """
     return client_with_grants(
         org=default_org,
         django_user_model=django_user_model,
@@ -95,6 +101,6 @@ def use_client_6b(db, django_user_model, default_org):
             ResourceType.LLM_CONFIGS.value: FULL_CRUD,
             ResourceType.VOICE.value: FULL_CRUD,
             ResourceType.TOOLS.value: FULL_CRUD,
-            ResourceType.FLOWS.value: FULL_CRUD,
+            ResourceType.FLOWS.value: FULL_CRUD | int(Permission.USE),
         },
     )

@@ -1,11 +1,14 @@
 <div class="flow-action-panel">
     <div class="action-buttons">
         @for (action of actionIcons; track action.action) {
+            <!-- aria-disabled, not disabled: the last undo disables its button, which would drop the keyboard focus. -->
             <button
+                type="button"
                 class="action-button"
+                [attr.aria-label]="action.tooltip"
                 [matTooltip]="action.tooltip"
                 matTooltipPosition="right"
-                [disabled]="isActionDisabled(action.action)"
+                [attr.aria-disabled]="isActionDisabled(action.action) || null"
                 (click)="handleAction(action.action)"
             >
                 <app-svg-icon [icon]="action.icon"></app-svg-icon>

@@ -1,0 +1,16 @@
+# The security headers both servers set at server level: EpicStaff's own server and the tunnel
+# listener (default.conf.template). EpicStaff's server sets more next to them: CSP-Report-Only, and
+# HSTS when NGINX_HSTS_ENABLED.
+#
+# WARNING: nginx inherits add_header into a location only if that location declares no add_header
+# of its own. Adding one to any location silently drops every header here for that route -- repeat
+# them there if a route ever needs its own.
+#
+# Django's XFrameOptionsMiddleware already sends X-Frame-Options: DENY on proxied responses. Hide it
+# so nginx is the single source of truth and browsers never receive two conflicting values.
+proxy_hide_header X-Frame-Options;
+
+add_header X-Frame-Options SAMEORIGIN always;
+add_header X-Content-Type-Options nosniff always;
+add_header Referrer-Policy strict-origin-when-cross-origin always;
+add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;

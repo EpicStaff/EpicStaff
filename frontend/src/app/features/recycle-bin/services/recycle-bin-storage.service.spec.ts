@@ -16,6 +16,7 @@ function entry(id: number, deletedAt: string): GetRecycleBinEntryResponse {
         days_left: 5,
         details: [],
         contents: [],
+        hidden_contents: [],
         contents_total: 0,
     };
 }

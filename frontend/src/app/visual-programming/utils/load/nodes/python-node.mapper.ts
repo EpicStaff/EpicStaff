@@ -26,8 +26,6 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
         },
         position: ui.position,
         ports: null,
-        color: ui.color,
-        icon: ui.icon,
         input_map: pn.input_map ?? {},
         output_variable_path: pn.output_variable_path,
         size: ui.size,

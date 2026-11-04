@@ -1,3 +1,4 @@
+import { CdkMonitorFocus } from '@angular/cdk/a11y';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgComponentOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -48,6 +49,7 @@ export interface CreateCollectionDialogData {
         AppSvgIconComponent,
         NgComponentOutlet,
         MatTooltipModule,
+        CdkMonitorFocus,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

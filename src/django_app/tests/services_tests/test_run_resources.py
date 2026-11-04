@@ -75,6 +75,25 @@ class World:
             org=self.org,
         )
 
+    def typesafe_config(self):
+        return self.make(
+            "tables.SystemOneConfig",
+            custom_name=self.name("typesafe"),
+            provider="typesafe",
+            model_name="jev-1.14.0",
+            api_key_secret=self.secret(),
+            org=self.org,
+        )
+
+    def llm_backed_system_one_config(self):
+        return self.make(
+            "tables.SystemOneConfig",
+            custom_name=self.name("llm-backed"),
+            provider="llm",
+            llm_config=self.llm_config(),
+            org=self.org,
+        )
+
     def embedding_config(self):
         model = self.make("tables.EmbeddingModel", name=self.name("embedding"), org=self.org)
         return self.make(
@@ -168,6 +187,7 @@ class World:
             org=self.org,
             llm_config=self.llm_config(),
             fcm_llm_config=self.llm_config(),
+            fallback_llm_config=self.llm_config(),
         )
         self.make(
             "agents.AgentDefaultSurface", agent_definition=agent, surface=self.surface(), place="all"
@@ -276,6 +296,14 @@ class World:
             prompt_key="route",
             llm_config=self.llm_config(),
         )
+        for config in (self.typesafe_config(), self.llm_backed_system_one_config()):
+            self.make(
+                "tables.ClassificationDecisionTablePrompt",
+                cdt_node=table,
+                prompt_key=self.name("ask"),
+                kind="system_one",
+                system_one_config=config,
+            )
         section = self.make(
             "tables.ClassificationConditionGroupSection",
             id=uuid.uuid4(),
@@ -451,6 +479,17 @@ def test_a_binned_node_is_not_followed(world):
 
 
 @pytest.mark.django_db
+def test_a_flow_run_follows_the_fallback_llm_of_its_agent(world):
+    flow = world.make("tables.Graph", name="fallback-agent", org=world.org)
+    agent = world.agent_definition()
+    world.make("tables.TaskNode", graph=flow, agent_definition=agent)
+
+    reached = _collect(RunKind.FLOW, flow).refs
+
+    assert {ref(agent.fallback_llm_config), ref(agent.fallback_llm_config.api_key_secret)} <= reached
+
+
+@pytest.mark.django_db
 def test_a_binned_forward_target_is_still_followed(world):
     flow = world.make("tables.Graph", name="binned-agent", org=world.org)
     agent = world.agent_definition()
@@ -534,6 +573,8 @@ def test_a_realtime_start_walks_the_agent_and_its_voice_configs(world):
         ref(agent),
         ref(agent.llm_config),
         ref(agent.fcm_llm_config),
+        ref(agent.fallback_llm_config),
+        ref(agent.fallback_llm_config.api_key_secret),
         ref(realtime),
         ref(realtime.openai_config.api_key_secret),
         ref(realtime.openai_config.transcription_api_key_secret),

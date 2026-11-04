@@ -2,6 +2,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 
+from rbac.access.principals import limit_org_ids_to_api_key
 from rbac.governance.roles import RoleManagementService
 from rbac.models.enums import Permission, ResourceType
 from rbac.schemas.roles import (
@@ -49,10 +50,14 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
         # `assignable_org_ids` is `org_ids` plus the assignability filter, so
         # when present it defines the org scope as well.
         assignable_ids = self.parse_org_ids(request.query_params.get("assignable_org_ids"))
+        if assignable_ids is not None:
+            assignable_ids = limit_org_ids_to_api_key(request, assignable_ids)
         org_ids = (
             assignable_ids
             if assignable_ids is not None
-            else self.parse_org_ids(request.query_params.get("org_ids"))
+            else limit_org_ids_to_api_key(
+                request, self.parse_org_ids(request.query_params.get("org_ids"))
+            )
         )
         scopes = getattr(request, "_rbac_org_scopes", None)
         # One resolution for the whole request: it decides which orgs the
@@ -89,6 +94,7 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
             actor=request.user,
             role_id=pk,
             scopes=getattr(request, "_rbac_org_scopes", None),
+            org_ids=limit_org_ids_to_api_key(request, None),
         )
         return Response(RoleResponseSerializer(role).data)
 

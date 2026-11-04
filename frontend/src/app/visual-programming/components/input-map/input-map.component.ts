@@ -1,11 +1,14 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
+    ElementRef,
     EventEmitter,
     inject,
+    Injector,
     Input,
     input,
     OnChanges,
@@ -13,6 +16,8 @@ import {
     Output,
     signal,
     SimpleChanges,
+    viewChild,
+    viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
@@ -46,6 +51,9 @@ export interface InputMapKeyChanges {
     removed: string[];
 }
 
+const DEFAULT_TOOLTIP =
+    "Maps function arguments to domain variables using key-value pairs. For example, 'project_id' = 'current_project' maps the function parameter 'project_id' to the flow variable 'current_project'.";
+
 @Component({
     selector: 'app-input-map',
     imports: [
@@ -64,22 +72,27 @@ export interface InputMapKeyChanges {
     ],
     template: `
         <div class="input-map-container">
-            <div class="input-map-header">
-                <label>Input List</label>
-                <app-help-tooltip
-                    position="right"
-                    text="Maps function arguments to domain variables using key-value pairs. For example, 'project_id' = 'current_project' maps the function parameter 'project_id' to the flow variable 'current_project'."
-                ></app-help-tooltip>
-                @if (showTestMode && !readonly()) {
-                    <div class="test-mode-header">
-                        <span>Test mode</span>
-                        <app-toggle-switch
-                            [checked]="testMode"
-                            (checkedChange)="onTestModeToggle($event)"
-                        />
-                    </div>
-                }
-            </div>
+            @if (label() || (showTestMode && !readonly())) {
+                <div class="input-map-header">
+                    @if (label()) {
+                        <label>{{ label() }}</label>
+                        <app-help-tooltip
+                            position="right"
+                            [text]="tooltipText()"
+                        ></app-help-tooltip>
+                    }
+                    @if (showTestMode && !readonly()) {
+                        <div class="test-mode-header">
+                            <span>Test mode</span>
+                            <app-toggle-switch
+                                ariaLabel="Test mode"
+                                [checked]="testMode"
+                                (checkedChange)="onTestModeToggle($event)"
+                            />
+                        </div>
+                    }
+                </div>
+            }
 
             @if (readonly()) {
                 @if (hasNoMeaningfulPairs()) {
@@ -127,7 +140,8 @@ export interface InputMapKeyChanges {
                                     <input
                                         type="text"
                                         formControlName="key"
-                                        placeholder="Function Argument Name"
+                                        [placeholder]="keyPlaceholder()"
+                                        [attr.aria-label]="keyPlaceholder()"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                         (keydown.enter)="onEnterKey($event, i)"
@@ -138,7 +152,8 @@ export interface InputMapKeyChanges {
                                     <input
                                         type="text"
                                         formControlName="value"
-                                        placeholder="Domain Variable Name"
+                                        [placeholder]="valuePlaceholder()"
+                                        [attr.aria-label]="valuePlaceholder()"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                         role="combobox"
@@ -153,14 +168,20 @@ export interface InputMapKeyChanges {
                                     />
                                 </div>
                                 @if (!parentForm.disabled) {
-                                    <app-svg-icon
-                                        icon="trash"
-                                        size="1rem"
+                                    <button
+                                        #removeButton
+                                        type="button"
                                         class="delete-icon"
+                                        aria-label="Remove input"
                                         matTooltip="Remove"
                                         matTooltipPosition="above"
-                                        (click)="removePair(i)"
-                                    ></app-svg-icon>
+                                        (click)="onRemoveButtonClick(i, false)"
+                                    >
+                                        <app-svg-icon
+                                            icon="trash"
+                                            size="1rem"
+                                        ></app-svg-icon>
+                                    </button>
                                 }
                             </div>
                         </div>
@@ -168,6 +189,7 @@ export interface InputMapKeyChanges {
                 </div>
                 @if (!parentForm.disabled) {
                     <button
+                        #addButton
                         type="button"
                         class="add-pair-btn"
                         (click)="addPair()"
@@ -195,7 +217,8 @@ export interface InputMapKeyChanges {
                                     <input
                                         type="text"
                                         formControlName="key"
-                                        placeholder="Function Argument Name"
+                                        [placeholder]="keyPlaceholder()"
+                                        [attr.aria-label]="keyPlaceholder()"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                     />
@@ -206,23 +229,31 @@ export interface InputMapKeyChanges {
                                         type="text"
                                         formControlName="value"
                                         placeholder="Test value"
+                                        aria-label="Test value"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                     />
                                 </div>
-                                <app-svg-icon
-                                    icon="trash"
-                                    size="1rem"
+                                <button
+                                    #removeButton
+                                    type="button"
                                     class="delete-icon"
+                                    aria-label="Remove input"
                                     matTooltip="Remove"
                                     matTooltipPosition="above"
-                                    (click)="removeTestVariable(i)"
-                                ></app-svg-icon>
+                                    (click)="onRemoveButtonClick(i, true)"
+                                >
+                                    <app-svg-icon
+                                        icon="trash"
+                                        size="1rem"
+                                    ></app-svg-icon>
+                                </button>
                             </div>
                         </div>
                     }
                 </div>
                 <button
+                    #addButton
                     type="button"
                     class="add-pair-btn"
                     (click)="addTestVariable()"
@@ -366,6 +397,8 @@ export interface InputMapKeyChanges {
 
             .delete-icon {
                 font-size: 1rem;
+                border: none;
+                background: none;
                 cursor: pointer;
                 color: #ccc;
                 padding: 0.2rem;
@@ -378,7 +411,7 @@ export interface InputMapKeyChanges {
                 align-items: center;
                 justify-content: center;
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     color: red;
                     background-color: rgba(255, 0, 0, 0.1);
                 }
@@ -415,7 +448,7 @@ export interface InputMapKeyChanges {
                 background: var(--color-action-btn-background);
                 color: var(--color-text-primary);
 
-                &:hover:not(:disabled) {
+                &:is(:hover, :focus-visible):not(:disabled) {
                     background: var(--color-action-btn-background-hover);
                 }
 
@@ -430,7 +463,7 @@ export interface InputMapKeyChanges {
                 color: white;
                 border-color: #685fff;
 
-                &:hover:not(:disabled) {
+                &:is(:hover, :focus-visible):not(:disabled) {
                     background: #5a4ade;
                     border-color: #5a4ade;
                 }
@@ -541,6 +574,11 @@ export class InputMapComponent implements OnInit, OnChanges {
     @Input() testRunning: boolean = false;
     @Input() testInputDirty: boolean = false;
     readonly = input<boolean>(false);
+    /** The header above the rows; an empty string hides it (and its tooltip). */
+    readonly label = input<string>('Input List');
+    readonly tooltipText = input<string>(DEFAULT_TOOLTIP);
+    readonly keyPlaceholder = input<string>('Function Argument Name');
+    readonly valuePlaceholder = input<string>('Domain Variable Name');
     readonly nodeNumber = input<number | undefined>();
     /** Why the owning panel cannot run the test now (e.g. its stored code is not the panel's), or null. */
     readonly runTestBlocker = input<string | null>(null);
@@ -553,6 +591,9 @@ export class InputMapComponent implements OnInit, OnChanges {
     private normalModeSnapshot: { key: string; value: string }[] = [];
 
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
+    private readonly removeButtons = viewChildren<ElementRef<HTMLButtonElement>>('removeButton');
+    private readonly addButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
     private readonly keySubs = new WeakMap<AbstractControl, Subscription>();
     private readonly testKeySubs = new WeakMap<AbstractControl, Subscription>();
     private readonly lastKnownKeys = new WeakMap<AbstractControl, string>();
@@ -807,6 +848,23 @@ export class InputMapComponent implements OnInit, OnChanges {
             })
         );
         this.mirrorTestPairKey(this.testPairs.at(this.testPairs.length - 1));
+    }
+
+    /** The pressed Remove button is gone: the focus goes to the row now in its place, else to Add Input. */
+    protected onRemoveButtonClick(index: number, testRow: boolean): void {
+        if (testRow) {
+            this.removeTestVariable(index);
+        } else {
+            this.removePair(index);
+        }
+        afterNextRender(
+            () => {
+                const buttons = this.removeButtons();
+                const target = buttons[Math.min(index, buttons.length - 1)] ?? this.addButton();
+                target?.nativeElement.focus();
+            },
+            { injector: this.injector }
+        );
     }
 
     removeTestVariable(index: number): void {

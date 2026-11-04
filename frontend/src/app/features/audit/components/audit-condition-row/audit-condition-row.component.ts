@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, input, model, output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AuditCondition, AuditConditionJoin, AuditEnumOption, AuditFilterOp } from '../../models/audit-filter.models';
 import { VALUE_FREE_OPS } from '../../models/audit-filter.models';
@@ -8,7 +9,7 @@ import { AuditSelectComponent } from '../audit-select/audit-select.component';
 
 @Component({
     selector: 'app-audit-condition-row',
-    imports: [AuditOperatorSelectComponent, AuditSelectComponent],
+    imports: [AuditOperatorSelectComponent, AuditSelectComponent, MatTooltip],
     templateUrl: './audit-condition-row.component.html',
     styleUrl: './audit-condition-row.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,

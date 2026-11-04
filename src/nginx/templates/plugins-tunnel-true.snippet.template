@@ -1,0 +1,7 @@
+# PLUGINS_ENABLED=true: the webhook tunnel listener (8083, default.conf.template) refuses the
+# plugins network like EpicStaff's own server does on 80/443: a plugin backend reaches EpicStaff only
+# through the internal API listener on 8081. Refused before choosing a location
+# ($plugin_network_caller, plugins-server-true.snippet).
+if ($plugin_network_caller) {
+    return 403;
+}

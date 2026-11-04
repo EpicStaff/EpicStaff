@@ -2,7 +2,10 @@
     type="button"
     class="round-btn"
     [class.round-btn--active]="selected()"
-    [attr.data-tooltip]="tooltip() || null"
+    [attr.aria-pressed]="selected()"
+    [matTooltip]="tooltip()"
+    matTooltipPosition="above"
+    [attr.aria-label]="tooltip() || null"
 >
     {{ label() }}
 </button>

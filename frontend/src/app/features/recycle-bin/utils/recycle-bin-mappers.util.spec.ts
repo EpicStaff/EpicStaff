@@ -16,6 +16,7 @@ function entry(overrides: Partial<GetRecycleBinEntryResponse> = {}): GetRecycleB
         days_left: 6,
         details: [],
         contents: [],
+        hidden_contents: [],
         contents_total: 0,
         ...overrides,
     };
@@ -34,6 +35,7 @@ describe('recycle bin mappers', () => {
             daysLeft: 6,
             details: [],
             contents: [],
+            hiddenContentsCount: 0,
             contentsTotal: 0,
         });
     });

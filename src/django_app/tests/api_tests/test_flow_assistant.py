@@ -437,6 +437,21 @@ def test_audit_endpoint_superadmin_can_list(
 
 
 @pytest.mark.django_db
+def test_audit_endpoint_refuses_a_superadmin_api_key(
+    graph, flow_assistant, conversation_a, superadmin_user, issue_api_key
+):
+    """Auditing every org is a platform action; a key acts only in its own org."""
+    raw_key, _ = issue_api_key(user=superadmin_user)
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw_key)
+
+    response = client.get(reverse("flow-assistant-audit-conversations"))
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
+    assert "results" not in response.data
+
+
+@pytest.mark.django_db
 def test_audit_endpoint_non_superadmin_gets_403(
     graph, flow_assistant, conversation_a, auth_client_a
 ):
@@ -3429,3 +3444,102 @@ async def test_tool_use_failed_after_a_tool_call_is_retried(
     assert len(calls) == 3
     assert [e.message for e in events if e.type == "structured"] == ["Here is the flow"]
     assert events[-1].type == "done"
+
+
+@pytest.mark.django_db
+def test_session_tools_treat_a_binned_flows_sessions_as_missing(org_a):
+    from tables.models.session_models import Session
+    from tables.services.flow_assistant.tools import (
+        get_recent_sessions,
+        get_session_detail,
+        get_session_messages,
+        get_session_stats,
+    )
+
+    flow = Graph.objects.create(name="Binned Flow", description="", org=org_a)
+    session = Session.objects.create(graph=flow, status=Session.SessionStatus.END)
+    flow.delete()
+
+    assert get_session_stats(flow.pk)["total"] == 0
+    assert get_recent_sessions(flow.pk)["sessions"] == []
+    assert "error" in get_session_detail(flow.pk, session.pk)
+    assert "error" in get_session_messages(flow.pk, session.pk)
+
+
+@pytest.mark.django_db
+def test_get_node_classification_decision_table_lists_prompt_entries(graph, org_a):
+    from tables.models import SystemOneConfig
+    from tables.models.graph_models import (
+        ClassificationDecisionTableNode,
+        ClassificationDecisionTablePrompt,
+    )
+    from tables.services.flow_assistant import get_node
+
+    node = ClassificationDecisionTableNode.objects.create(graph=graph, node_name="router")
+    config = SystemOneConfig.objects.create(
+        org=org_a, custom_name="jev", provider="typesafe", model_name="jev-1.14.0"
+    )
+    llm_config = LLMConfig.objects.create(custom_name="llm", org=org_a)
+    questions = {"is_engineering": {"type": "noul", "instructions": "Engineering?"}}
+    ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=node,
+        prompt_key="company_check",
+        kind="system_one",
+        system_one_config=config,
+        questions=questions,
+        input_map={"company": "variables.company"},
+        result_variable="company_check",
+    )
+    ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=node,
+        prompt_key="a_llm_entry",
+        llm_config=llm_config,
+        prompt_text="secret prompt text",
+        result_variable="sentiment",
+    )
+
+    entries = get_node(graph.pk, str(node.pk))["prompt_entries"]
+
+    assert entries == [
+        {
+            "prompt_key": "a_llm_entry",
+            "kind": "llm",
+            "result_variable": "sentiment",
+            "llm_config_id": llm_config.id,
+        },
+        {
+            "prompt_key": "company_check",
+            "kind": "system_one",
+            "result_variable": "company_check",
+            "system_one_config": {
+                "name": "jev",
+                "provider": "typesafe",
+                "model_version": "jev-1.14.0",
+            },
+            "input_map": {"company": "variables.company"},
+            "questions": questions,
+        },
+    ]
+
+
+@pytest.mark.django_db
+def test_get_node_prompt_entry_whose_config_was_deleted_has_no_config(graph, org_a):
+    from tables.models import SystemOneConfig
+    from tables.models.graph_models import (
+        ClassificationDecisionTableNode,
+        ClassificationDecisionTablePrompt,
+    )
+    from tables.services.flow_assistant import get_node
+
+    node = ClassificationDecisionTableNode.objects.create(graph=graph, node_name="router")
+    config = SystemOneConfig.objects.create(
+        org=org_a, custom_name="jev", provider="typesafe", model_name="jev-1.14.0"
+    )
+    ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=node, prompt_key="company_check", kind="system_one", system_one_config=config
+    )
+    config.delete()
+
+    [entry] = get_node(graph.pk, str(node.pk))["prompt_entries"]
+
+    assert entry["system_one_config"] is None

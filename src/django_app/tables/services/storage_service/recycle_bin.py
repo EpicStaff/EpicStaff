@@ -35,7 +35,7 @@ from tables.services.recycle_bin.authorship import BinEntryAuthorship, authorshi
 from tables.services.recycle_bin.bin_contents_service import CONTENTS_LIMIT, SHOW_ALL_LIMIT
 from tables.services.recycle_bin.bin_service import RecycleBinService
 from tables.services.recycle_bin.bulk_results import BulkFailure, BulkPurgeResult, BulkRestoreResult
-from tables.services.recycle_bin.presentation import BinContent, BinDetail
+from tables.services.recycle_bin.presentation import BinContent, BinDetail, HiddenContents
 from tables.services.recycle_bin.restore_service import RestoreResult
 from tables.services.storage_service.dataclasses import PurgedBinEntry
 from tables.services.storage_service.db_sync import _ancestor_paths, _name_of, _parent_of
@@ -84,6 +84,8 @@ class StorageRecycleBinEntry:
     days_left: int
     details: list[BinDetail] = field(default_factory=list)
     contents: list[BinContent] = field(default_factory=list)
+    # Always empty: a folder holds only files, which the user already may read to see this bin.
+    hidden_contents: list[HiddenContents] = field(default_factory=list)
     contents_total: int = 0
 
 

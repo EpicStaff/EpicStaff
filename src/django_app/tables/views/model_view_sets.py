@@ -134,6 +134,7 @@ from tables.models import (
     PythonNode,
     RealtimeModel,
     Secret,
+    Session,
     StartNode,
     SubGraphNode,
     TaskNode,
@@ -141,7 +142,6 @@ from tables.models import (
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.flow_filter_preset_models import FlowFilterPreset
-from tables.models.tool_filter_preset_models import ToolFilterPreset
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     Condition,
@@ -161,6 +161,7 @@ from tables.models.llm_models import (
     RealtimeConfig,
     RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
+    SystemOneConfig,
 )
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig, linked_secrets_prefetch
@@ -173,6 +174,7 @@ from tables.models.realtime_models import (
     RealtimeAgentDefinition,
     RealtimeSessionItem,
 )
+from tables.models.tool_filter_preset_models import ToolFilterPreset
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     ProviderType,
@@ -202,6 +204,7 @@ from tables.serializers.model_serializers import (
     ElevenLabsRealtimeConfigSerializer,
     EndNodeSerializer,
     FileExtractorNodeSerializer,
+    FlowFilterPresetSerializer,
     GeminiRealtimeConfigSerializer,
     GraphLightSerializer,
     GraphNoteSerializer,
@@ -236,7 +239,6 @@ from tables.serializers.model_serializers import (
     TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
     TelegramWebhookInfoSerializer,
-    FlowFilterPresetSerializer,
     ToolFilterPresetSerializer,
     TwilioChannelSerializer,
     WebhookTriggerFlowsSerializer,
@@ -256,12 +258,14 @@ from tables.serializers.model_serializers.key_value_serializers import (
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
+    SystemOneConfigSerializer,
 )
 from tables.serializers.model_serializers.realtime_serializers import (
     TwilioAuthTokenSecretSerializer,
 )
 from tables.serializers.serializers import (
     BulkExportSerializer,
+    BulkIdsSerializer,
     GraphNodesPartialExportSerializer,
     ImportRequestSerializer,
 )
@@ -284,6 +288,7 @@ from tables.services.delete_services import (
     GraphVersionDeleteService,
     LLMConfigDeleteService,
     OpenAIRealtimeConfigDeleteService,
+    SystemOneConfigDeleteService,
 )
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.graph_bulk_save_service.registry import TRIGGER_NODE_LIST_KEYS
@@ -311,6 +316,7 @@ from tables.services.secrets.secret_use_checks import (
     check_python_node_write,
     check_realtime_config_write,
     check_realtime_transcription_config_write,
+    check_system_one_config_write,
     check_telegram_trigger_node_write,
     check_twilio_channel_write,
     check_webhook_trigger_node_write,
@@ -338,6 +344,7 @@ from tables.swagger_schemas.bulk_delete_schemas import (
     GRAPH_VERSION_BULK_DELETE_POST,
     LLM_CONFIG_BULK_DELETE_POST,
     OPENAI_REALTIME_CONFIG_BULK_DELETE_POST,
+    SYSTEM_ONE_CONFIG_BULK_DELETE_POST,
 )
 from tables.swagger_schemas.common_schemas import FLOW_WITH_TRIGGER_NODES_403_RESPONSE
 from tables.swagger_schemas.graph_copy_schemas import GRAPH_COPY_POST
@@ -498,6 +505,21 @@ class LLMConfigReadWriteViewSet(
     serializer_class = LLMConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = LLMConfigFilter
+
+
+@extend_schema_view(bulk_delete=extend_schema(**SYSTEM_ONE_CONFIG_BULK_DELETE_POST))
+class SystemOneConfigReadWriteViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = SystemOneConfigDeleteService
+    secret_use_check = check_system_one_config_write
+    queryset = SystemOneConfig.objects.select_related(
+        "api_key_secret", "llm_config"
+    ).prefetch_related(*authorship_prefetches())
+    serializer_class = SystemOneConfigSerializer
 
 
 class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
@@ -726,12 +748,10 @@ class PythonCodeToolViewSet(
     @extend_schema(**PYTHON_CODE_TOOL_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
-        ids = request.data.get("ids", [])
-        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
-            return Response(
-                {"detail": "ids must be a list of integers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = BulkIdsSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        ids = body.validated_data["ids"]
 
         with transaction.atomic():
             # Built-in tools are silently excluded, never rejected — they are
@@ -1533,11 +1553,16 @@ class TaskNodeViewSet(
                 "attached surfaces and inline surface.",
             ),
             400: OpenApiResponse(description="Conflicting RAG configs."),
+            403: OpenApiResponse(description="Caller lacks surfaces READ."),
         },
     )
     @action(detail=True, methods=["get"], url_path="combine")
     def combine(self, request, pk=None):
         node = self.get_object()
+        # The combined view is the node's surface content, so it needs surfaces READ too.
+        assert_org_permission(
+            request.user, self.get_active_org_id(), ResourceType.SURFACES, Permission.READ
+        )
         combined = NodeSurfaceService.build_combined_surface(node)
         return Response(combined, status=status.HTTP_200_OK)
 
@@ -1576,11 +1601,16 @@ class AgentNodeViewSet(
                 "attached surfaces and inline surface.",
             ),
             400: OpenApiResponse(description="Conflicting RAG configs."),
+            403: OpenApiResponse(description="Caller lacks surfaces READ."),
         },
     )
     @action(detail=True, methods=["get"], url_path="combine")
     def combine(self, request, pk=None):
         node = self.get_object()
+        # The combined view is the node's surface content, so it needs surfaces READ too.
+        assert_org_permission(
+            request.user, self.get_active_org_id(), ResourceType.SURFACES, Permission.READ
+        )
         combined = NodeSurfaceService.build_combined_surface(node)
         return Response(combined, status=status.HTTP_200_OK)
 
@@ -1592,7 +1622,13 @@ class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     queryset = AgentNodeTask.objects.all()
     serializer_class = AgentNodeTaskSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["agent_node"]
+
+    class AgentNodeTaskFilter(FilterSet):
+        # Plain number, not ModelChoiceFilter: that validates against every org's
+        # agent nodes, so a foreign id (200, empty) would be distinguishable from a missing one (400).
+        agent_node = NumberFilter(field_name="agent_node_id")
+
+    filterset_class = AgentNodeTaskFilter
 
     def _clean_and_save(self, serializer):
         instance = serializer.save()
@@ -1657,7 +1693,8 @@ class GraphSessionMessageReadOnlyViewSet(OrgScopedChildViewSetMixin, ReadOnlyMod
     filterset_class = GraphSessionMessageFilter
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # The messages of a session hidden with its binned flow (Session.visible) are hidden too.
+        qs = super().get_queryset().filter(session__in=Session.objects.visible())
         if not self.request.query_params.get("parent_subgraph_execution_id"):
             qs = qs.filter(parent_subgraph_execution_id__isnull=True)
         return qs
@@ -1968,6 +2005,14 @@ class TwilioChannelViewSet(
             # The row was found without org scoping: another org's channel must be a
             # 404 before the secret check can answer with anything else.
             self._assert_parent_in_active_org(serializer)
+            # Overwriting an existing channel on POST is an update in disguise; the
+            # action map only gates CREATE for this view's "create" action.
+            assert_org_permission(
+                request.user,
+                self.get_active_org_id(),
+                self.rbac_resource_type,
+                Permission.UPDATE,
+            )
             self.run_secret_use_check(instance, serializer.validated_data)
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -2520,12 +2565,10 @@ class McpToolViewSet(
     @extend_schema(**MCP_TOOL_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
-        ids = request.data.get("ids", [])
-        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
-            return Response(
-                {"detail": "ids must be a list of integers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        body = BulkIdsSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        ids = body.validated_data["ids"]
 
         with transaction.atomic():
             # McpTool has no built-in concept — every matching id is deletable.
@@ -2816,8 +2859,9 @@ class GraphNoteViewSet(
 
 
 class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
-    """Shared behavior for the two independent label trees — Flow labels
-    (`LabelViewSet`) and Tool labels (`ToolLabelViewSet`). Each tree is a
+    """Shared behavior for the three independent label trees — Flow labels
+    (`LabelViewSet`), Tool labels (`ToolLabelViewSet`) and agent groups
+    (`AgentLabelViewSet`, flat, shared by agents and shared surfaces). Each tree is a
     disjoint subset of `Label` partitioned by `Label.scope`; concrete
     subclasses set `label_scope` and a `queryset` pre-filtered to it.
     """
@@ -2843,8 +2887,8 @@ class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
         # Build paths in memory (one extra lightweight query) to avoid N+1
         # and to correctly resolve parents that may be filtered out. Scoped to
-        # the active org and this tree's scope (the label tree never crosses
-        # orgs or Flow/Tool scopes).
+        # the active org and this tree's scope (a label tree never crosses
+        # orgs or the Flow, Tool and agent-group scopes).
         id_to_row = {
             row["id"]: row
             for row in Label.objects.filter(
@@ -2895,6 +2939,13 @@ class ToolLabelViewSet(BaseLabelViewSet):
     rbac_resource_type = ResourceType.TOOLS
     label_scope = Label.Scope.TOOL
     queryset = Label.objects.filter(scope=Label.Scope.TOOL)
+
+
+class AgentLabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.AGENTS
+    label_scope = Label.Scope.AGENT
+    queryset = Label.objects.filter(scope=Label.Scope.AGENT)
 
 
 class SecretViewSet(

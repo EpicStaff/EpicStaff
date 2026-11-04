@@ -9,26 +9,17 @@
 .status-error {
     @include status-chip.error;
 }
-.status-badge.status-stop {
-    height: 28px;
-    padding: 4px 8px 4px 4px;
-    border-radius: var(--radius-sm);
-    gap: 4px;
-    background: var(--red-alpha-8-flat);
-    color: var(--red-500);
-    font-family: Inter, sans-serif;
-    font-size: 12px;
-    font-weight: 400;
-    line-height: 1.3;
-    letter-spacing: 0;
+.status-stop {
+    @include status-chip.stopped;
 }
+// Drawn instead of an icon glyph, so it takes the glyph's 14px box.
 .status-stop-square {
     flex-shrink: 0;
     width: 10px;
     height: 10px;
-    margin: 5px;
+    margin: 2px;
     border-radius: 1px;
-    background: var(--red-500);
+    background: currentColor;
 }
 .status-completed {
     @include status-chip.completed;

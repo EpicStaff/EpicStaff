@@ -1,23 +1,31 @@
 <div
     class="dialog-container"
     [ngClass]="data.type || 'warning'"
+    [class.neutral]="data.appearance === 'neutral'"
     (appEnterSubmit)="onSave()"
     [appEnterSubmitDisabled]="isSaving"
 >
     <div class="dialog-header">
         <div class="dialog-title-row">
             <span class="dialog-icon">
-                <app-svg-icon
-                    icon="warning"
-                    width="20.8px"
-                    height="18.29px"
-                />
+                @if (data.appearance === 'neutral') {
+                    <app-svg-icon
+                        icon="alert-circle"
+                        size="1.25rem"
+                    />
+                } @else {
+                    <app-svg-icon
+                        icon="warning"
+                        width="20.8px"
+                        height="18.29px"
+                    />
+                }
             </span>
             <h2 class="dialog-title">{{ data.title }}</h2>
         </div>
         <app-icon-button
             icon="x"
-            size="2rem"
+            [size]="data.appearance === 'neutral' ? '2.25rem' : '2rem'"
             ariaLabel="Close"
             tooltip="Close"
             (click)="onClose()"
@@ -31,39 +39,60 @@
     ></p>
 
     <div class="dialog-actions">
-        @if (data.showDontSave !== false) {
-            <button
-                type="button"
-                class="button dont-save-button"
-                (click)="onDontSave()"
-            >
-                {{ data.dontSaveText || "Don't Save" }}
-            </button>
+        @if (data.appearance === 'neutral') {
+            <ng-container [ngTemplateOutlet]="cancelButton" />
+            <div class="right-buttons">
+                <ng-container [ngTemplateOutlet]="dontSaveButton" />
+                <ng-container [ngTemplateOutlet]="saveButton" />
+            </div>
+        } @else {
+            <ng-container [ngTemplateOutlet]="dontSaveButton" />
+            <div class="right-buttons">
+                <ng-container [ngTemplateOutlet]="cancelButton" />
+                <ng-container [ngTemplateOutlet]="saveButton" />
+            </div>
         }
-        <div class="right-buttons">
-            <button
-                type="button"
-                class="button cancel-button"
-                (click)="onCancel()"
-            >
-                {{ data.cancelText || 'Cancel' }}
-            </button>
-            <button
-                type="button"
-                class="button save-button"
-                [ngClass]="data.type || 'warning'"
-                (click)="onSave()"
-                [disabled]="isSaving"
-            >
-                @if (!isSaving) {
-                    <span>{{ data.saveText || 'Save' }}</span>
-                }
-                @if (isSaving) {
-                    <span class="loading-content">
-                        <app-spinner2 [size]="16" />
-                    </span>
-                }
-            </button>
-        </div>
     </div>
 </div>
+
+<ng-template #dontSaveButton>
+    @if (data.showDontSave !== false) {
+        <button
+            type="button"
+            class="button dont-save-button"
+            [class.neutral]="data.appearance === 'neutral'"
+            (click)="onDontSave()"
+        >
+            {{ data.dontSaveText || "Don't Save" }}
+        </button>
+    }
+</ng-template>
+
+<ng-template #cancelButton>
+    <button
+        type="button"
+        class="button cancel-button"
+        (click)="onCancel()"
+    >
+        {{ data.cancelText || 'Cancel' }}
+    </button>
+</ng-template>
+
+<ng-template #saveButton>
+    <button
+        type="button"
+        class="button save-button"
+        [ngClass]="data.type || 'warning'"
+        (click)="onSave()"
+        [disabled]="isSaving"
+    >
+        @if (!isSaving) {
+            <span>{{ data.saveText || 'Save' }}</span>
+        }
+        @if (isSaving) {
+            <span class="loading-content">
+                <app-spinner2 [size]="16" />
+            </span>
+        }
+    </button>
+</ng-template>

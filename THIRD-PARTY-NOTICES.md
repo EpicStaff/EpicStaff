@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Tue, 27 Oct 2026 12:37:41 GMT -->
-<!-- commit: 612e28dc2a146d5237d5f2ca8badfc5e583f0da0 -->
-<!-- package-lock.json sha256: df34f81eaa00dac8 -->
+<!-- generated: Thu, 29 Oct 2026 13:21:16 GMT -->
+<!-- commit: 2dd4777b72ddf5d8dcd431514899a065930e6db8 -->
+<!-- package-lock.json sha256: c545f5ca8f1743fc -->
 
 ## Frontend license summary
 
@@ -3702,9 +3702,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-26T13:22:53Z UTC -->
-<!-- commit: 255eb09d88e7d4ef0832371f02eee4925572383d -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:b1ab4ff5012d5ac4, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:d1d991c84d05eedb, manager:9ff994d896174ddd, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, sandbox_new:4438d1e7c09f00dc, webhook:6e6a68286cd96f18 -->
+<!-- generated: 2026-11-02T16:55:53Z UTC -->
+<!-- commit: 0e8c9c551f281de1e00390c7204f62dd6f628c7c -->
+<!-- lock-hashes: agent:83cefc2b59540d91, auditor:49bc6b4568ea6ce4, chat:0e40c6142ddd64d8, crew:52f4af39a42d68af, django_app:644a8311bbb3cf6f, es_plugins:cf58ae9355d4d516, foundation:da2ef7a6b1550191, knowledge_new:617a4fe991000c06, manager:263decd2407ab889, plugin_sdk:1d91f171502da724, plugins_egress:9a5691273399ac26, realtime:f3bdc1234519e379, sandbox:117c57af453053a0, sandbox_new:8077ff5467db9eb4, shared:c8f577231b56a363, webhook:b0fc119a3af1fcd1 -->
 
 ## Backend (Python)
 
@@ -3965,7 +3965,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pgvector` | 0.3.6 | MIT | Copyright (c) 2021-2024 Andrew Kane |
 | `pgvector` | 0.4.2 | MIT | Copyright (c) 2021-2025 Andrew Kane |
 | `piccolo` | 1.36.0 | MIT License | Copyright (c) 2018 Daniel Townsend |
-| `pillow` | 12.3.0 | MIT-CMU | Copyright © 1997-2011 by Secret Labs AB |
+| `pillow` | 13.0.0 | MIT-CMU | Copyright © 1997-2011 by Secret Labs AB |
 | `platformdirs` | 4.11.7 | MIT | Copyright (c) 2010-202x The platformdirs developers |
 | `platformdirs` | 4.13.5 | MIT | Copyright (c) 2010-202x The platformdirs developers |
 | `polyfactory` | 3.3.0 | MIT License | Copyright (c) 2021, 2022, 2023 Litestar Org. |
@@ -3989,7 +3989,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pydantic_core` | 2.46.4 | MIT | Copyright (c) 2022 Samuel Colvin |
 | `Pygments` | 2.20.0 | BSD-2-Clause | Copyright (c) 2006-2022 by the respective authors (see AUTHORS file). |
 | `Pygments` | 2.21.0 | BSD-2-Clause | Copyright (c) 2006-2022 by the respective authors (see AUTHORS file). |
-| `PyJWT` | 2.13.0 | MIT | Copyright (c) 2015-2022 José Padilla |
+| `PyJWT` | 2.15.1 | MIT | Copyright (c) 2015-2022 José Padilla |
 | `pyngrok` | 7.4.1 | MIT | Copyright (c) 2018-2025 Alex Laird |
 | `pypdfium2` | 5.12.1 | BSD-3-Clause, Apache-2.0, dependency licenses | Copyright (c) pypdfium2-team |
 | `pyperclip` | 1.11.0 | BSD License | Copyright (c) 2014, Al Sweigart |
@@ -23481,7 +23481,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 > No NOTICE file shipped by upstream.
 
-#### pillow@12.3.0
+#### pillow@13.0.0
 
 - **License:** MIT-CMU
 - **Author:** Jeffrey 'Alex' Clark <aclark@aclark.net>
@@ -29177,7 +29177,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 > No NOTICE file shipped by upstream.
 
-#### PyJWT@2.13.0
+#### PyJWT@2.15.1
 
 - **License:** MIT
 - **Author:** Jose Padilla <hello@jpadilla.com>

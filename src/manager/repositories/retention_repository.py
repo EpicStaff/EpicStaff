@@ -73,8 +73,9 @@ _GRAPH_SCOPE_CONDITION = (
     "WHERE graph.id = :graph_id AND graph.org_id = :org_id AND graph.soft_deleted_at IS NULL)"
 )
 # tables_graph.org_id is NOT NULL, so a session belongs to no organization only when it has
-# no flow; deleting a flow deletes its sessions, so graph_id is NULL only for sessions
-# created without one.
+# no flow. Binning a flow keeps its sessions linked and purging it deletes them, so graph_id
+# is NULL only for sessions created without a flow, or whose flow was binned before sessions
+# kept that link.
 _NO_FLOW_SCOPE_CONDITION = "session.graph_id IS NULL"
 _PICK_FLOW_ROOTS = text(
     _PICK_ROOTS.format(scope_condition=_GRAPH_SCOPE_CONDITION, parent_column=SESSION_PARENT_COLUMN)

@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { DOWN_ARROW, ENTER, ESCAPE } from '@angular/cdk/keycodes';
+import { DOWN_ARROW, ENTER, ESCAPE, TAB } from '@angular/cdk/keycodes';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { AuthorshipDetailsDialogService } from '@shared/components';
@@ -167,6 +167,19 @@ describe('KeyValueTableListComponent row menu', () => {
         expect(menuItems(list.overlay)).toHaveLength(0);
         expect(document.activeElement).toBe(list.trigger);
         expect(emitted).not.toHaveBeenCalled();
+    });
+
+    it('moves between the items on Tab instead of closing the menu', () => {
+        const list = renderList(true, true);
+        openMenu(list);
+        const rename = menuItem(list.overlay, 'Rename');
+        rename.focus();
+
+        pressKey(rename, 'Tab', TAB);
+        list.fixture.detectChanges();
+
+        expect(document.activeElement).toBe(menuItem(list.overlay, 'View Details'));
+        expect(menuItems(list.overlay)).toHaveLength(3);
     });
 
     it('keeps the row marked while its menu is open', () => {

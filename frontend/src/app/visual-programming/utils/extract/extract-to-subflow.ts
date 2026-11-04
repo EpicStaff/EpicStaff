@@ -1,4 +1,4 @@
-import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
 import { generatePortsForNode, parsePortId } from '../../core/helpers/helpers';
@@ -267,8 +267,6 @@ function createSubflowStartNode(selectedNodes: NodeModel[], entryPointNodeIds: S
         data: { initialState: {} },
         position: { x: leftmostX - START_NODE_HORIZONTAL_OFFSET, y: averageY },
         ports: null,
-        color: NODE_COLORS[NodeType.START],
-        icon: NODE_ICONS[NodeType.START],
         input_map: {},
         output_variable_path: null,
         size: getDefaultNodeSize(NodeType.START),
@@ -604,8 +602,6 @@ function createSubGraphNode(
         },
         position: { x: centroidX, y: centroidY },
         ports,
-        color: NODE_COLORS[NodeType.SUBGRAPH],
-        icon: NODE_ICONS[NodeType.SUBGRAPH],
         input_map: inputMap,
         output_variable_path: 'variables',
         size: getDefaultNodeSize(NodeType.SUBGRAPH),

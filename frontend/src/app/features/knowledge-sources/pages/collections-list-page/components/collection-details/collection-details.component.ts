@@ -5,10 +5,12 @@ import {
     computed,
     DestroyRef,
     effect,
+    ElementRef,
     inject,
     linkedSignal,
     signal,
     untracked,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -22,6 +24,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { movedToRecycleBinMessage } from '@shared/utils';
 import { filter, switchMap, throwError } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
 
@@ -77,6 +80,8 @@ export class CollectionDetailsComponent {
     private collectionDetailsDialog = inject(CollectionDetailsDialogService);
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
+
+    private readonly createRagButton = viewChild<ElementRef<HTMLButtonElement>>('createRagButton');
 
     loadingCollection = signal<boolean>(false);
     loadingDocuments = signal<boolean>(false);
@@ -147,6 +152,11 @@ export class CollectionDetailsComponent {
         this.activeFileType.set(typeof fileType === 'string' ? fileType : null);
     }
 
+    /** The RAG list emptied with the focus on its last Delete button: the focus moves to adding a RAG. */
+    protected focusCreateRagButton(): void {
+        this.createRagButton()?.nativeElement.focus();
+    }
+
     protected openDetails(trigger: HTMLElement): void {
         const collection = this.fullCollection();
         if (!collection) return;
@@ -194,7 +204,7 @@ export class CollectionDetailsComponent {
             )
             .subscribe({
                 next: () => {
-                    this.toastService.success('Collection deleted successfully');
+                    this.toastService.success(movedToRecycleBinMessage(1, 'collection', 'collections'));
                     if (this.selectedCollectionId() === deletedId) {
                         this.collectionsStorageService.setSelectedCollectionId(null);
                         this.fullCollection.set(null);

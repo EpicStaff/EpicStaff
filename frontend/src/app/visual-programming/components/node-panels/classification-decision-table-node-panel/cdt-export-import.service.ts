@@ -1,10 +1,13 @@
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
+import { SystemOnePromptKind, SystemOneQuestion } from '@shared/models';
+import { SystemOneConfigStorageService } from '@shared/services';
 import { downloadBlob } from '@shared/utils';
 
 import { CdtSection, normalizeCdtSectionColor } from '../../../core/models/cdt-section.model';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { normalizeRouteCode } from './cdt-route-continue.util';
+import { isCompleteQuestion } from './cdt-system-one-entry/question-name.util';
 
 /**
  * KNOWN BROKEN: libraries live only on the venv now, and nothing here carries a
@@ -41,6 +44,10 @@ export interface CdtExportPromptConfig {
     output_schema: Record<string, unknown> | string | null;
     result_variable: string;
     variable_mappings: Record<string, string>;
+    kind: SystemOnePromptKind;
+    system_one_config: number | null;
+    questions: Record<string, SystemOneQuestion>;
+    input_map: Record<string, string>;
 }
 
 export interface CdtExportSection {
@@ -88,12 +95,18 @@ const PROMPT_CONFIG_COLUMNS = [
     'output_schema',
     'result_variable',
     'variable_mappings',
+    'kind',
+    'system_one_config',
+    'questions',
+    'input_map',
 ] as const;
 
 const SECTION_COLUMNS = ['id', 'name', 'color'] as const;
 
 @Injectable({ providedIn: 'root' })
 export class CdtExportImportService {
+    private readonly systemOneConfigs = inject(SystemOneConfigStorageService);
+
     public exportToJson(data: CdtExportData): string {
         return JSON.stringify(data, null, 2);
     }
@@ -148,6 +161,10 @@ export class CdtExportImportService {
                     prompt.output_schema == null ? '' : JSON.stringify(prompt.output_schema),
                     prompt.result_variable ?? '',
                     JSON.stringify(prompt.variable_mappings ?? {}),
+                    prompt.kind ?? 'llm',
+                    prompt.system_one_config == null ? '' : String(prompt.system_one_config),
+                    JSON.stringify(prompt.questions ?? {}),
+                    JSON.stringify(prompt.input_map ?? {}),
                 ])
             ),
         ].join('\n');
@@ -406,6 +423,10 @@ export class CdtExportImportService {
                 output_schema: config.output_schema ?? null,
                 result_variable: config.result_variable ?? '',
                 variable_mappings: config.variable_mappings ?? {},
+                kind: config.kind ?? 'llm',
+                system_one_config: config.system_one_config ?? null,
+                questions: config.questions ?? {},
+                input_map: config.input_map ?? {},
             })),
             sections: (input.sections ?? []).map((section) => ({
                 id: section.id,
@@ -444,6 +465,10 @@ export class CdtExportImportService {
                 output_schema: prompt.output_schema,
                 result_variable: prompt.result_variable,
                 variable_mappings: prompt.variable_mappings,
+                kind: prompt.kind,
+                system_one_config: prompt.system_one_config,
+                questions: prompt.questions,
+                input_map: prompt.input_map,
             };
         });
         return record;
@@ -487,6 +512,7 @@ export class CdtExportImportService {
 
     private normalizePromptConfig(prompt: Record<string, unknown>): CdtExportPromptConfig {
         const schema = prompt['output_schema'];
+        const kind: SystemOnePromptKind = prompt['kind'] === 'system_one' ? 'system_one' : 'llm';
         return {
             prompt_key: this.asString(prompt['prompt_key']),
             prompt_text: this.asString(prompt['prompt_text']),
@@ -495,7 +521,31 @@ export class CdtExportImportService {
                 schema == null ? null : typeof schema === 'string' ? schema : (schema as Record<string, unknown>),
             result_variable: this.asString(prompt['result_variable']),
             variable_mappings: this.asStringRecord(prompt['variable_mappings']),
+            kind,
+            system_one_config: kind === 'system_one' ? this.asKnownSystemOneConfig(prompt['system_one_config']) : null,
+            questions: this.asQuestions(prompt['questions']),
+            input_map: this.asStringRecord(prompt['input_map']),
         };
+    }
+
+    /**
+     * A config from another workspace, or a deleted one, would make every save of the
+     * flow fail, so it imports as no config and the entry shows as needing one.
+     * Before the configs have loaded nothing can be judged, so the id is kept.
+     */
+    private asKnownSystemOneConfig(value: unknown): number | null {
+        const id = this.asNullableNumber(value);
+        if (id === null || !this.systemOneConfigs.isConfigsLoaded()) return id;
+        return this.systemOneConfigs.configs().some((config) => config.id === id) ? id : null;
+    }
+
+    private asQuestions(value: unknown): Record<string, SystemOneQuestion> {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+        const questions: Record<string, SystemOneQuestion> = {};
+        for (const [name, question] of Object.entries(value)) {
+            if (isCompleteQuestion(name, question)) questions[name] = question;
+        }
+        return questions;
     }
 
     private normalizeSection(section: Record<string, unknown>): CdtExportSection {

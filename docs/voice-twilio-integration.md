@@ -251,6 +251,8 @@ Full `ModelViewSet`. PK is `channel` (the `RealtimeChannel` id).
 
 `create()` is an **upsert** — if a `TwilioChannel` already exists for the posted `channel` id, it is updated and returned with `200 OK`.
 
+**Permission:** Creating a new channel requires `Voice: CREATE`. Updating an existing channel (upsert) requires both `Voice: CREATE` and `Voice: UPDATE`. A request attempting to upsert a channel belonging to another org returns `404 Not Found` (before the UPDATE permission check).
+
 Request body:
 ```json
 { "channel": 12, "account_sid": "AC...", "auth_token_secret_id": 7, "phone_number": "+15551234567", "webhook_trigger": 5 }

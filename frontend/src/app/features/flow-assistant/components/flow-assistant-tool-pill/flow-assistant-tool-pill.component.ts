@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 export interface ToolPillEntry {
@@ -11,7 +12,7 @@ export interface ToolPillEntry {
 
 @Component({
     selector: 'app-flow-assistant-tool-pill',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
     templateUrl: './flow-assistant-tool-pill.component.html',
     styleUrls: ['./flow-assistant-tool-pill.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

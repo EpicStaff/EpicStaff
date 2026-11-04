@@ -48,18 +48,16 @@ class ApiKeyAdminViewSet(CrossOrgAdminViewSet):
     def list(self, request):
         org_ids: list[int] | None = self.parse_org_ids(request.query_params.get("org_ids"))
         filters: dict = self._validator.validate_list_keys_query(request.query_params)
-        scopes = getattr(request, "_rbac_org_scopes", None)
         qs = self._service.list_keys(
             actor=request.user,
             org_ids=org_ids,
             owner_id=filters["owner_id"],
             status_value=filters["status_value"],
             search=filters["search"],
-            scopes=scopes,
+            scopes=getattr(request, "_rbac_org_scopes", None),
         )
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(qs, request, view=self)
-        self._service.attach_visible_orgs(keys=page, actor=request.user, scopes=scopes)
         return paginator.get_paginated_response(
             ApiKeyAdminSerializer(page, many=True, context={"request": request}).data
         )
@@ -67,16 +65,10 @@ class ApiKeyAdminViewSet(CrossOrgAdminViewSet):
     @action(detail=True, methods=["post"], url_path="revoke")
     @extend_schema(**API_KEYS_MANAGEMENT_REVOKE_POST)
     def revoke(self, request, pk=None):
-        scopes = getattr(request, "_rbac_org_scopes", None)
-        key = self._service.revoke_key(actor=request.user, key_id=int(pk), scopes=scopes)
-        self._service.attach_visible_orgs(keys=[key], actor=request.user, scopes=scopes)
+        key = self._service.revoke_key(actor=request.user, key_id=int(pk))
         return Response(ApiKeyAdminSerializer(key, context={"request": request}).data)
 
     @extend_schema(**API_KEYS_MANAGEMENT_DELETE)
     def destroy(self, request, pk=None):
-        self._service.delete_key(
-            actor=request.user,
-            key_id=int(pk),
-            scopes=getattr(request, "_rbac_org_scopes", None),
-        )
+        self._service.delete_key(actor=request.user, key_id=int(pk))
         return Response(status=status.HTTP_204_NO_CONTENT)

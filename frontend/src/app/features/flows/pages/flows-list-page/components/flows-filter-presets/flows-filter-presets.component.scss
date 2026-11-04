@@ -71,7 +71,7 @@
     white-space: nowrap;
     cursor: pointer;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--color-secondary-btn-background-hover);
     }
 
@@ -90,7 +90,7 @@
     border-color: var(--accent-color);
     color: var(--accent-color);
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background-color: var(--color-ghost-btn-hover);
     }
 }
@@ -112,6 +112,7 @@
 }
 
 .preset-card {
+    position: relative;
     display: flex;
     align-items: flex-start;
     border: 1px solid var(--color-divider-subtle);
@@ -138,7 +139,7 @@
     text-align: left;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--accent-color);
     }
 
@@ -148,10 +149,11 @@
     }
 }
 
+// Keeps the room the actions take over the top right of the apply button: three 24px buttons, 2px apart, 8px off.
 .preset-card__header {
     display: flex;
-    justify-content: space-between;
-    gap: 8px;
+    min-height: 24px;
+    padding-right: calc(3 * 24px + 2 * 2px + 8px);
 }
 
 .preset-card__name {
@@ -161,15 +163,18 @@
     white-space: nowrap;
 }
 
+// Over the apply button's padding corner, where its header leaves them room; shown with the keyboard focus too.
 .preset-card__actions {
+    position: absolute;
+    top: 8px;
+    right: 10px;
     display: flex;
-    flex-shrink: 0;
     align-items: center;
     gap: 2px;
     opacity: 0;
     transition: opacity 120ms ease;
 
-    .preset-card:hover & {
+    .preset-card:is(:hover, :focus-within) & {
         opacity: 1;
     }
 }
@@ -187,7 +192,7 @@
     color: var(--color-text-secondary);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--color-text-primary);
         background-color: var(--color-ghost-btn-hover);
     }

@@ -29,6 +29,7 @@ function binItem(overrides: Partial<RecycleBinItem>): RecycleBinItem {
         daysLeft: 5,
         details: [],
         contents: [],
+        hiddenContentsCount: 0,
         contentsTotal: 0,
         ...overrides,
     };
