@@ -4,6 +4,13 @@ import { AppTableComponent, SelectComponent, TableRow } from '@shared/components
 import { FullMembership, GetRoleResponse, Organization, ResourceCode, UserRole } from '@shared/models';
 import { of } from 'rxjs';
 
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { RolesService } from '../../../../services/admin/roles.service';
 import { StepAssignToOrgComponent } from './step-assign-to-org.component';
@@ -238,7 +245,7 @@ describe('StepAssignToOrgComponent "Role for selected" bulk dropdown', () => {
         expect(assignments()).toEqual([{ orgId: BETA_ID, roleId: UserRole.VIEWER }]);
     });
 
-    it('keeps a manual per-row override and re-applies on every bulk pick', () => {
+    it('keeps a manual per-row override when the bulk role is re-picked', () => {
         const { toggle, pickBulkRole, pickRowRole, selectedRole } = render();
         toggle(ALPHA_ID);
         pickBulkRole(UserRole.MEMBER);
@@ -249,10 +256,10 @@ describe('StepAssignToOrgComponent "Role for selected" bulk dropdown', () => {
         expect(selectedRole(BETA_ID)).toBe(UserRole.MEMBER);
 
         pickBulkRole(UserRole.MEMBER);
-        expect(selectedRole(ALPHA_ID)).toBe(UserRole.MEMBER);
+        expect(selectedRole(ALPHA_ID)).toBe(ALPHA_CUSTOM_ROLE_ID);
     });
 
-    it('changes an existing membership only when it is selected at apply time', () => {
+    it('does not change an existing membership role via bulk pick', () => {
         const { toggle, row, pickBulkRole, selectedIds, selectedRole, assignments } = render({
             isEditMode: true,
             memberships: [membership(ALPHA_ID, UserRole.VIEWER), membership(BETA_ID, UserRole.ORG_ADMIN)],
@@ -261,13 +268,13 @@ describe('StepAssignToOrgComponent "Role for selected" bulk dropdown', () => {
 
         toggle(BETA_ID);
         pickBulkRole(UserRole.MEMBER);
-        expect(selectedRole(ALPHA_ID)).toBe(UserRole.MEMBER);
+        expect(selectedRole(ALPHA_ID)).toBe(UserRole.VIEWER);
         expect(row(BETA_ID)['role']).toBe(UserRole.ORG_ADMIN);
 
         toggle(BETA_ID);
         expect(selectedRole(BETA_ID)).toBe(UserRole.ORG_ADMIN);
         expect(assignments()).toEqual([
-            { orgId: ALPHA_ID, roleId: UserRole.MEMBER },
+            { orgId: ALPHA_ID, roleId: UserRole.VIEWER },
             { orgId: BETA_ID, roleId: UserRole.ORG_ADMIN },
         ]);
     });
