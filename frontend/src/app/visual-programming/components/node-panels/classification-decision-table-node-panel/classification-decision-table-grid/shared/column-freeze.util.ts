@@ -1,4 +1,9 @@
-import { CDT_COLUMN_KIND, CDT_EXPR_PARAMS_GROUP_ID, CDT_MANIP_PARAMS_GROUP_ID } from '../../cdt.constants';
+import {
+    CDT_COLUMN_KIND,
+    CDT_EXPR_PARAMS_GROUP_ID,
+    CDT_FREEZE_COPY,
+    CDT_MANIP_PARAMS_GROUP_ID,
+} from '../../cdt.constants';
 
 export type CdtFreezeSide = 'left' | 'right';
 
@@ -22,12 +27,12 @@ const BOTH_SIDES: readonly CdtFreezeSide[] = ['left', 'right'];
 /** The sides each column (or Params group) may be frozen from, from the design. Not listed: no freeze. */
 export const CDT_FREEZE_SIDES_BY_ANCHOR: Readonly<Record<string, readonly CdtFreezeSide[]>> = {
     group_name: ['left'],
-    [CDT_COLUMN_KIND.EXPRESSION]: ['left'],
+    [CDT_COLUMN_KIND.EXPRESSION]: BOTH_SIDES,
     [CDT_EXPR_PARAMS_GROUP_ID]: BOTH_SIDES,
     prompt_id: BOTH_SIDES,
     [CDT_COLUMN_KIND.MANIPULATION]: BOTH_SIDES,
     [CDT_MANIP_PARAMS_GROUP_ID]: BOTH_SIDES,
-    route_code: ['right'],
+    route_code: BOTH_SIDES,
     continue_flag: ['right'],
 };
 
@@ -35,7 +40,12 @@ export const CDT_FREEZE_SIDES_BY_ANCHOR: Readonly<Record<string, readonly CdtFre
  * The freeze items of the header menu of `anchorId` (a column id or a Params group id): one per
  * side it may be frozen from.
  */
-export function buildFreezeMenuItems(freeze: CdtFreezeState | null, anchorId: string): CdtFreezeMenuItem[] {
+export function buildFreezeMenuItems(
+    freeze: CdtFreezeState | null,
+    anchorId: string,
+    isTooWide: (side: CdtFreezeSide) => boolean
+): CdtFreezeMenuItem[] {
+    const isAnchor = freeze?.anchorColId === anchorId;
     return (CDT_FREEZE_SIDES_BY_ANCHOR[anchorId] ?? []).map((side) => {
         if (freeze && freeze.side !== side) {
             return {
@@ -44,11 +54,13 @@ export function buildFreezeMenuItems(freeze: CdtFreezeState | null, anchorId: st
                 disabledReason: `Unfreeze ${SIDE_LABEL[freeze.side]} first`,
             };
         }
-        const isAnchor = freeze?.anchorColId === anchorId;
+        if (isAnchor) {
+            return { side, label: `Unfreeze ${SIDE_LABEL[side]}`, disabledReason: null };
+        }
         return {
             side,
-            label: isAnchor ? `Unfreeze ${SIDE_LABEL[side]}` : `Freeze All ${SIDE_LABEL[side]}`,
-            disabledReason: null,
+            label: `Freeze All ${SIDE_LABEL[side]}`,
+            disabledReason: isTooWide(side) ? CDT_FREEZE_COPY.tooWide : null,
         };
     });
 }

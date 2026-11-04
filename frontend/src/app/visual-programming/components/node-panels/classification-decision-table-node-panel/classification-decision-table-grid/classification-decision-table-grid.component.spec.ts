@@ -543,7 +543,10 @@ describe(
                 await render();
 
                 expect(pinned('right')).toEqual(['route_code', 'continue_flag', 'actions']);
-                expect([...(await openFreezeItems('route_code')).keys()]).toEqual(['Unfreeze Right']);
+                expect([...(await openFreezeItems('route_code')).keys()]).toEqual([
+                    'Freeze All Left',
+                    'Unfreeze Right',
+                ]);
             });
 
             describe('which sides a column offers', () => {
@@ -553,8 +556,18 @@ describe(
                     expect([...(await openFreezeItems('group_name')).keys()]).toEqual(['Freeze All Left']);
                 });
 
-                it('offers only Right on a right-only column (Route Code)', async () => {
-                    expect([...(await openFreezeItems('route_code')).keys()]).toEqual(['Freeze All Right']);
+                it('offers both sides on Route Code', async () => {
+                    expect([...(await openFreezeItems('route_code')).keys()]).toEqual([
+                        'Freeze All Left',
+                        'Freeze All Right',
+                    ]);
+                });
+
+                it('offers both sides on Expression', async () => {
+                    expect([...(await openFreezeItems('expression')).keys()]).toEqual([
+                        'Freeze All Left',
+                        'Freeze All Right',
+                    ]);
                 });
 
                 it('offers both sides on Manipulation', async () => {
@@ -579,7 +592,6 @@ describe(
                     expect(labels).toEqual(['Unfreeze Right']);
                 });
             });
-
             describe('the table width limit', () => {
                 let warnings: ReturnType<typeof vi.spyOn>;
 
@@ -599,14 +611,26 @@ describe(
                         .reduce((sum, width) => sum + width, 0);
                 }
 
-                it('refuses a freeze wider than 90% of the table, and says why', async () => {
+                it('disables a freeze wider than 90% of the table, with the reason as its tooltip', async () => {
                     const width = leftOfConditionNameWidth();
                     expect(width).toBeGreaterThan(0);
                     setTableWidth(Math.floor(width / CDT_FREEZE_MAX_WIDTH_RATIO) - 1);
 
-                    await choose('group_name', 'Freeze All Left');
+                    const left = (await openFreezeItems('group_name')).get('Freeze All Left')!;
+                    expect(left.getAttribute('aria-disabled')).toBe('true');
+                    expect(left.getAttribute('title')).toBe(CDT_FREEZE_COPY.tooWide);
 
+                    left.click();
+                    await settle();
                     expect(pinned('left')).toEqual([]);
+                    expect(fixture.componentInstance.freezeState()).toBeNull();
+                });
+
+                it('still refuses a too-wide freeze that gets past the menu, and says why', async () => {
+                    setTableWidth(Math.floor(leftOfConditionNameWidth() / CDT_FREEZE_MAX_WIDTH_RATIO) - 1);
+
+                    fixture.componentInstance.toggleFreeze('left', 'group_name');
+
                     expect(fixture.componentInstance.freezeState()).toBeNull();
                     expect(warnings).toHaveBeenCalledWith(CDT_FREEZE_COPY.tooWide, undefined, 'bottom-right');
                 });

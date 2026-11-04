@@ -1028,7 +1028,10 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     /** Header params for the freeze items of `anchorId`: a column id, or a Params group id. */
     private makeFreezeMenuParams(anchorId: string): object {
         return {
-            getFreezeMenuItems: () => buildFreezeMenuItems(this.freezeState(), anchorId),
+            getFreezeMenuItems: () =>
+                buildFreezeMenuItems(this.freezeState(), anchorId, (side) =>
+                    this.isTooWideToFreeze({ side, anchorColId: anchorId })
+                ),
             onFreezeToggle: (side: CdtFreezeSide) => this.toggleFreeze(side, anchorId),
         };
     }

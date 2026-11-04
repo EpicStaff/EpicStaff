@@ -84,7 +84,7 @@ export const CDT_FREEZE_MAX_WIDTH_RATIO = 0.9;
 
 export const CDT_FREEZE_COPY = {
     /** Toast when a freeze is refused for being too wide. */
-    tooWide: "You can't freeze columns that take up more than 90% of the table width.",
+    tooWide: 'These columns are too wide to freeze.',
 } as const;
 
 // ── Header auto-collapse ──────────────────────────────────────────────────────
