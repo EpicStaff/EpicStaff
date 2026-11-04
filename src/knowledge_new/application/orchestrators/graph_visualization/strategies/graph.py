@@ -1,3 +1,6 @@
+from collections.abc import Sized
+
+import numpy
 import pandas
 from application.commands import GetGraphVisualization
 from application.orchestrators.graph_visualization.base import AbstractGraphVisualizationOrchestrator
@@ -12,6 +15,23 @@ from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag.data_model import DataReader
 from graphrag_storage import create_storage
 from graphrag_storage.tables.table_provider_factory import create_table_provider
+
+
+def _to_str_list(value: object) -> list[str]:
+    """Safely convert a parquet list column value to a list of strings.
+
+    Parquet list columns may arrive as numpy arrays, Python lists, None, or
+    scalar NaN — bare truthiness checks on numpy arrays raise ValueError.
+    """
+    if value is None:
+        return []
+    if isinstance(value, float) and pandas.isna(value):
+        return []
+    if isinstance(value, numpy.ndarray):
+        return [str(v) for v in value]
+    if isinstance(value, Sized):
+        return [str(v) for v in value]
+    return []
 
 
 class GraphVisualizationOrchestrator(AbstractGraphVisualizationOrchestrator):
@@ -75,9 +95,7 @@ class GraphVisualizationOrchestrator(AbstractGraphVisualizationOrchestrator):
         """Convert the entities DataFrame to result objects."""
         result = []
         for _, row in dataframe.iterrows():
-            community_ids = row.get("community_ids")
-            if community_ids is None or (isinstance(community_ids, float) and pandas.isna(community_ids)):
-                community_ids = []
+            community_ids = _to_str_list(row.get("community_ids"))
             result.append(
                 VisualizationEntity(
                     id=str(row["id"]),
@@ -87,7 +105,7 @@ class GraphVisualizationOrchestrator(AbstractGraphVisualizationOrchestrator):
                         str(row["description"]) if pandas.notna(row.get("description")) else None
                     ),
                     degree=int(row.get("degree", 0)),
-                    community_ids=[str(cid) for cid in community_ids] if community_ids else [],
+                    community_ids=community_ids,
                 )
             )
         return result
@@ -115,16 +133,14 @@ class GraphVisualizationOrchestrator(AbstractGraphVisualizationOrchestrator):
         """Convert the communities DataFrame to result objects."""
         result = []
         for _, row in dataframe.iterrows():
-            entity_ids = row.get("entity_ids")
-            if entity_ids is None or (isinstance(entity_ids, float) and pandas.isna(entity_ids)):
-                entity_ids = []
+            entity_ids = _to_str_list(row.get("entity_ids"))
             result.append(
                 VisualizationCommunity(
                     id=str(row["id"]),
                     title=str(row["title"]),
                     level=int(row["level"]),
                     size=int(row.get("size", 0)),
-                    entity_ids=[str(eid) for eid in entity_ids] if entity_ids else [],
+                    entity_ids=entity_ids,
                 )
             )
         return result
