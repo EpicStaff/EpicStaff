@@ -62,20 +62,28 @@ class DeclarationViolation:
 class SecretDeclarationValidator:
     """Finds nodes whose code reads secrets they did not declare."""
 
-    def violations(self, *, graph_id: int) -> list[DeclarationViolation]:
+    def violations(
+        self, *, graph_id: int, node_ids: set[int] | None = None
+    ) -> list[DeclarationViolation]:
         """Every node in this graph whose code reads a secret it did not declare.
 
         Only the graph-owned sites are walked. A PythonCodeTool is org-owned rather
         than graph-owned, so it is not reachable from a graph id — it is gated in
         the converter instead.
+
+        Args:
+            node_ids: Only these nodes are walked, such as the nodes a run reaches;
+                None walks every node of the graph.
         """
         violations: list[DeclarationViolation] = []
         for site in GRAPH_PYTHON_CODE_SITES:
-            violations.extend(self._violations_for(site=site, graph_id=graph_id))
+            violations.extend(self._violations_for(site=site, graph_id=graph_id, node_ids=node_ids))
         return violations
 
     @staticmethod
-    def _violations_for(*, site, graph_id: int) -> list[DeclarationViolation]:
+    def _violations_for(
+        *, site, graph_id: int, node_ids: set[int] | None
+    ) -> list[DeclarationViolation]:
         code_field = site.code_field
         # The SQL prefilter cannot replace the AST pass — get_secret inside a
         # comment or an unrelated string matches it but must not count. It only
@@ -84,6 +92,8 @@ class SecretDeclarationValidator:
             graph_id=graph_id,
             **{f"{code_field}__code__contains": GET_SECRET_FUNC},
         ).prefetch_related(f"{code_field}__secrets", linked_secrets_prefetch(code_field))
+        if node_ids is not None:
+            rows = rows.filter(pk__in=node_ids)
 
         found: list[DeclarationViolation] = []
         for row in rows:

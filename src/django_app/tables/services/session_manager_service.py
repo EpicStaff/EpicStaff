@@ -1,4 +1,6 @@
+from collections.abc import Iterable
 from dataclasses import replace
+from typing import TypeVar
 
 from django.db import transaction
 from django.utils import timezone
@@ -23,6 +25,7 @@ from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.exceptions import GraphEntryPointException, SubGraphValidationError
 from tables.models import (
     AudioTranscriptionNode,
+    BaseGlobalNode,
     Edge,
     FileExtractorNode,
     Graph,
@@ -53,6 +56,7 @@ from tables.models.session_models import (
 )
 from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService, secret_names_prefetch
+from tables.services.flow_reachability import FlowRoutes, nodes_reachable_by_run
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
 from tables.services.run_admission import (
@@ -98,6 +102,9 @@ from utils.graph_utils import (
 )
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
+
+# Any node model the session builder loads.
+NodeT = TypeVar("NodeT", bound=BaseGlobalNode)
 
 
 class SessionManagerService(metaclass=SingletonMeta):
@@ -252,8 +259,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         token_budget: int | None = None,
         run_type: str = "",
     ) -> SessionData:
-        self.subgraph_validator.validate(session.graph)
-
         unique_subgraphs: dict[int, SubGraphData] = {}
         graph_data = self._build_graph_data(
             session.graph, unique_subgraphs, session, start_node=start_node
@@ -417,12 +422,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             callback_secret=callback_secret,
         )
         try:
-            violations = secret_declaration_validator.violations(graph_id=graph_id)
-            if violations:
-                raise UndeclaredSecretError(
-                    "Session aborted: " + " ".join(violation.describe() for violation in violations)
-                )
-
             session_data: SessionData = self.create_session_data(
                 session=session,
                 start_node=start_node,
@@ -486,7 +485,14 @@ class SessionManagerService(metaclass=SingletonMeta):
         # the run didn't start, and a retry would start it twice.
         try:
             surface_knowledge_warnings = self.surface_knowledge_warning_service.build_warnings(
-                graph
+                graph,
+                node_names={
+                    node.node_name
+                    for node in (
+                        *session_data.graph.agent_node_list,
+                        *session_data.graph.task_node_list,
+                    )
+                },
             )
             all_warnings = run_vars.warnings + surface_knowledge_warnings
             if all_warnings:
@@ -535,8 +541,14 @@ class SessionManagerService(metaclass=SingletonMeta):
         start_node: StartNode | None,
         visiting_graph_ids: set[int] | None = None,
         parent_graph: Graph | None = None,
+        reachable_node_ids_by_subflow: dict[int, set[int]] | None = None,
     ) -> GraphData:
         """Recursively build GraphData for a graph to handle subgraphs
+
+        Only the nodes the run reaches are checked and sent to crew, together with the
+        edges out of them: the nodes a route leads to from the trigger that started the
+        run, or else from the Start node (see `FlowRoutes`). A node the run never gets
+        to may be half set up, so it is neither checked nor converted.
 
         Args:
             graph: The graph to build data for
@@ -547,6 +559,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 Used to detect cycles that bypass the validator.
             parent_graph: The graph whose subgraph reference led to this call, used only to
                 name the offending edge if the re-entry guard below fires.
+            reachable_node_ids_by_subflow: The nodes each subflow's run reaches, by flow
+                id, as the subflow check found them for the flow that was run. A flow
+                missing from it works them out from its own rows by the same rule.
         """
         if visiting_graph_ids is None:
             visiting_graph_ids = set()
@@ -695,7 +710,91 @@ class SessionManagerService(metaclass=SingletonMeta):
         # Only a subflow is built without a session. Its name goes into every message
         # about its nodes, since they aren't on the canvas the user ran.
         subflow_name = graph.name if session is None else None
-        # Iterating fills each queryset's cache, so the conversion below reuses the rows.
+
+        # Build name cache directly from already-fetched node instances
+        # to avoid re-querying the same tables via NodeNameResolver.
+        # Iterating fills each queryset's cache, so the checks and the conversion
+        # below reuse the rows.
+        name_cache: dict[int, str] = {}
+        for node_list in (
+            python_node_list,
+            knowledge_node_list,
+            file_extractor_node_list,
+            key_value_node_list,
+            audio_transcription_node_list,
+            decision_table_node_list,
+            classification_decision_table_node_list,
+            subgraph_node_list,
+            webhook_trigger_node_list,
+            telegram_trigger_node_list,
+            schedule_trigger_node_list,
+            task_node_list,
+            agent_node_list,
+        ):
+            for node in node_list:
+                name_cache[node.id] = runtime_node_name(
+                    node_name=node.node_name, node_number=node.node_number, node_id=node.id
+                )
+        # Taken now: names resolved later for edge ends are added to the cache too.
+        loaded_node_ids = set(name_cache)
+
+        entrypoint = session.entrypoint if session else None
+        if reachable_node_ids_by_subflow is not None and graph.pk in reachable_node_ids_by_subflow:
+            reachable_node_ids = reachable_node_ids_by_subflow[graph.pk]
+        else:
+            reachable_node_ids = nodes_reachable_by_run(
+                routes=FlowRoutes.from_rows(
+                    edges=edge_list,
+                    decision_table_nodes=decision_table_node_list,
+                    classification_decision_table_nodes=classification_decision_table_node_list,
+                ),
+                node_names=name_cache,
+                entrypoint=entrypoint,
+                start_node_id=start_node.id if start_node else None,
+            )
+
+        # NOTE: a node list not passed through this is checked and sent whole, as
+        # before any node was left out; that fails closed, so a list added later and
+        # missed here only loses the filtering.
+        def reached(node_list: Iterable[NodeT]) -> list[NodeT]:
+            if reachable_node_ids is None:
+                return list(node_list)
+            return [node for node in node_list if node.id in reachable_node_ids]
+
+        python_node_list = reached(python_node_list)
+        knowledge_node_list = reached(knowledge_node_list)
+        file_extractor_node_list = reached(file_extractor_node_list)
+        key_value_node_list = reached(key_value_node_list)
+        audio_transcription_node_list = reached(audio_transcription_node_list)
+        decision_table_node_list = reached(decision_table_node_list)
+        subgraph_node_list = reached(subgraph_node_list)
+        webhook_trigger_node_list = reached(webhook_trigger_node_list)
+        telegram_trigger_node_list = reached(telegram_trigger_node_list)
+        schedule_trigger_node_list = reached(schedule_trigger_node_list)
+        classification_decision_table_node_list = reached(classification_decision_table_node_list)
+        task_node_list = reached(task_node_list)
+        agent_node_list = reached(agent_node_list)
+        # An edge out of a node the run doesn't reach is left out. Edges out of Start
+        # are kept when the run starts there: the entrypoint is read from them below.
+        edge_list = [
+            edge
+            for edge in edge_list
+            if reachable_node_ids is None or edge.start_node_id in reachable_node_ids
+        ]
+
+        if session is not None:
+            # The flow that was run checks its code's secrets and the whole chain of
+            # subflows it reaches first; the subflows built below are part of that chain.
+            violations = secret_declaration_validator.violations(
+                graph_id=graph.pk, node_ids=reachable_node_ids
+            )
+            if violations:
+                raise UndeclaredSecretError(
+                    "Session aborted: " + " ".join(violation.describe() for violation in violations)
+                )
+            reachable_node_ids_by_subflow = self.subgraph_validator.validate(
+                graph, reachable_node_ids=reachable_node_ids
+            )
         self.file_node_validator.validate_file_nodes(
             [*file_extractor_node_list, *audio_transcription_node_list], flow_name=subflow_name
         )
@@ -726,29 +825,6 @@ class SessionManagerService(metaclass=SingletonMeta):
                 classification_decision_table_node__in=classification_decision_table_node_list
             ).values_list("next_node_id", flat=True)
         )
-
-        # Build name cache directly from already-fetched node instances
-        # to avoid re-querying the same tables via NodeNameResolver
-        name_cache: dict[int, str] = {}
-        for node_list in (
-            python_node_list,
-            knowledge_node_list,
-            file_extractor_node_list,
-            key_value_node_list,
-            audio_transcription_node_list,
-            decision_table_node_list,
-            classification_decision_table_node_list,
-            subgraph_node_list,
-            webhook_trigger_node_list,
-            telegram_trigger_node_list,
-            schedule_trigger_node_list,
-            task_node_list,
-            agent_node_list,
-        ):
-            for node in node_list:
-                name_cache[node.id] = runtime_node_name(
-                    node_name=node.node_name, node_number=node.node_number, node_id=node.id
-                )
 
         # IDs only referenced by edges/conditions (not node instances)
         # need to be resolved from DB — collect any that are missing
@@ -860,7 +936,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             for item in agent_node_list
         ]
 
-        entrypoint = session.entrypoint if session else None
         start_node_id = start_node.id if start_node else None
 
         edge_data_list: list[EdgeData] = []
@@ -897,6 +972,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                     start_node=subgraph_start_node,
                     visiting_graph_ids=visiting_graph_ids_for_recursion,
                     parent_graph=graph,
+                    reachable_node_ids_by_subflow=reachable_node_ids_by_subflow,
                 )
                 # Not None here: _build_graph_data raises GraphEntryPointException without one.
                 variables = self._get_actual_variables(subgraph_start_node.variables or {})
@@ -924,7 +1000,19 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
             )
 
-        end_node = self.end_node_validator.validate(graph_id=graph.pk, flow_name=subflow_name)
+        # Crew never runs an End node no route leads to, so it is left out like any
+        # other node the run doesn't reach. It can only be among the reached ids that
+        # aren't Start or one of the nodes loaded above.
+        end_node = self.end_node_validator.find(
+            graph_id=graph.pk,
+            node_ids=(
+                None
+                if reachable_node_ids is None
+                else reachable_node_ids - loaded_node_ids - {start_node_id}
+            ),
+        )
+        if end_node is not None:
+            self.end_node_validator.validate(end_node, flow_name=subflow_name)
 
         # TODO: remove validation
         end_node_data = (

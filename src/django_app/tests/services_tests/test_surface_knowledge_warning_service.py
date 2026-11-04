@@ -12,7 +12,7 @@ Covers:
 from __future__ import annotations
 
 import pytest
-from src.shared.models import GraphData, SessionData
+from src.shared.models import GraphData, SessionData, TaskNodeData
 
 from agents.models import Surface
 from agents.models.surface_models import (
@@ -32,6 +32,7 @@ from tables.services.surface_knowledge_warning_service import (
     SurfaceKnowledgeWarningService,
 )
 from tables.services.trigger_spec import TriggerSpec
+from utils.graph_utils import runtime_node_name
 
 
 @pytest.fixture
@@ -65,19 +66,38 @@ def agent_node(graph):
     return AgentNode.objects.create(graph=graph, node_name="warning-agent-node")
 
 
-def _empty_session_data() -> SessionData:
-    """Real session data with an empty graph: only the session's own records are under
-    test, and a hand-made stand-in breaks as soon as production reads a new field."""
-    return SessionData(id=1, org_id=1, audit_retention_days=0, graph=GraphData(name="stub", entrypoint="__end__", end_node=None))
-
-
-def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = None):
-    """Stub the run_session tail (SessionData build + Redis publish) so tests
-    don't need a fully wired, runnable graph."""
-    sm = session_manager or SessionManagerService()
-    monkeypatch.setattr(
-        sm, "create_session_data", lambda session, **kwargs: _empty_session_data()
+def _session_data(task_node_list: list[TaskNodeData]) -> SessionData:
+    """Real session data sending only `task_node_list`: only the session's own records
+    are under test, and a hand-made stand-in breaks as soon as production reads a new
+    field."""
+    return SessionData(
+        id=1,
+        org_id=1,
+        audit_retention_days=0,
+        graph=GraphData(
+            name="stub", entrypoint="__end__", end_node=None, task_node_list=task_node_list
+        ),
     )
+
+
+def _runtime_name(node) -> str:
+    return runtime_node_name(
+        node_name=node.node_name, node_number=node.node_number, node_id=node.id
+    )
+
+
+def _stub_publish(
+    monkeypatch,
+    session_manager: SessionManagerService | None = None,
+    sent_task_nodes: tuple = (),
+):
+    """Stub the run_session tail (SessionData build + Redis publish) so tests
+    don't need a fully wired, runnable graph. The session sends `sent_task_nodes`."""
+    sm = session_manager or SessionManagerService()
+    session_data = _session_data(
+        [TaskNodeData(node_name=_runtime_name(node)) for node in sent_task_nodes]
+    )
+    monkeypatch.setattr(sm, "create_session_data", lambda session, **kwargs: session_data)
     monkeypatch.setattr(
         sm.redis_service, "publish_session_data", lambda session_data, **kwargs: 2
     )
@@ -137,6 +157,19 @@ class TestSurfaceKnowledgeWarningService:
         assert warning["node_type"] == "AgentNode"
         assert warning["collection_id"] == collection.collection_id
 
+    def test_only_the_named_nodes_are_warned_about(
+        self, graph, task_node, agent_node, surface, collection
+    ):
+        SurfaceKnowledge.objects.create(surface=surface, collection=collection)
+        task_node.surface_list.set([surface])
+        agent_node.surface_list.set([surface])
+
+        warnings = SurfaceKnowledgeWarningService().build_warnings(
+            graph, node_names={_runtime_name(agent_node)}
+        )
+
+        assert [warning["node_id"] for warning in warnings] == [agent_node.id]
+
     def test_graph_with_nodes_but_no_surfaces_has_no_warnings(
         self, graph, task_node, agent_node
     ):
@@ -153,7 +186,7 @@ class TestSessionWarningPersistence:
         SurfaceKnowledge.objects.create(surface=surface, collection=collection)
         task_node.surface_list.set([surface])
 
-        sm = _stub_publish(monkeypatch)
+        sm = _stub_publish(monkeypatch, sent_task_nodes=(task_node,))
         monkeypatch.setattr(
             sm.persistent_variables_service,
             "build_run_variables",

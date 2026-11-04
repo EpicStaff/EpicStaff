@@ -7,8 +7,27 @@ from tables.models import EndNode
 
 
 class EndNodeValidator:
-    def validate(self, graph_id: int, *, flow_name: str | None = None) -> EndNode | None:
-        """Return the flow's End node after checking its outputs, or None when it has none.
+    def find(self, graph_id: int, *, node_ids: set[int] | None = None) -> EndNode | None:
+        """Return the flow's End node, or None when it has none.
+
+        Args:
+            node_ids: Return it only if it is one of these, such as the nodes a run
+                reaches; no query is made when the set is empty. None looks at every node.
+        """
+        if node_ids is not None and not node_ids:
+            return None
+        end_nodes = EndNode.objects.filter(graph=graph_id)
+        if node_ids is not None:
+            end_nodes = end_nodes.filter(pk__in=node_ids)
+        try:
+            return end_nodes.get()
+        except EndNode.DoesNotExist:
+            # Allowed: a flow doesn't need an End node to run.
+            logger.warning("No End node to run in flow id={}", graph_id)
+            return None
+
+    def validate(self, end_node: EndNode, *, flow_name: str | None = None) -> None:
+        """Refuse the run when an output of the End node doesn't point to a flow variable.
 
         Args:
             flow_name: The subflow's name, named in the message; None for the flow that was run.
@@ -16,21 +35,6 @@ class EndNodeValidator:
         Raises:
             EndNodeValidationError: An output doesn't point to a flow variable.
         """
-        end_node = self._check_exists(graph_id)
-
-        if end_node is not None:
-            self._validate_output_map(end_node, flow_name=flow_name)
-
-        return end_node
-
-    def _check_exists(self, graph_id: int) -> EndNode | None:
-        try:
-            return EndNode.objects.get(graph=graph_id)
-        except EndNode.DoesNotExist:
-            # Allowed: a flow doesn't need an End node to run.
-            logger.warning(f"end_node is missing for flow id={graph_id}")
-
-    def _validate_output_map(self, end_node: EndNode, *, flow_name: str | None) -> None:
         location = flow_location(flow_name)
         if not isinstance(end_node.output_map, dict):
             problem = (

@@ -64,7 +64,7 @@ class DecisionTableNodeValidator:
     condition without a next node goes on to the next condition, an empty simple group
     matches, and a complex group without an expression never matches. Saving any of
     these is allowed, so this is checked only before a run. A blank expression is refused
-    even where this run might not reach it, since it is never intended.
+    even in a condition this run might not get to, since it is never intended.
     """
 
     def validate_runnable(

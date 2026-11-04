@@ -32,10 +32,13 @@ from tables.models.graph_models import (
     Condition,
     ConditionGroup,
     DecisionTableNode,
+    Edge,
     EndNode,
+    StartNode,
     SubGraphNode,
     TaskNode,
 )
+from tables.services.flow_reachability import nodes_reachable_from_start
 from tables.validators.agent_node_validator import AgentNodeValidator
 from tables.validators.decision_table_node_validator import (
     ClassificationDecisionTableNodeValidator,
@@ -87,10 +90,10 @@ class TestEndNodeValidator:
     def test_invalid_output_map_is_refused_with_a_readable_message(
         self, graph, output_map, expected_message
     ):
-        EndNode.objects.create(graph=graph, output_map=output_map)
+        end_node = EndNode.objects.create(graph=graph, output_map=output_map)
 
         with pytest.raises(EndNodeValidationError) as error:
-            EndNodeValidator().validate(graph_id=graph.id)
+            EndNodeValidator().validate(end_node)
 
         assert str(error.value.detail) == expected_message
 
@@ -112,10 +115,10 @@ class TestEndNodeValidator:
     def test_end_node_inside_a_subflow_names_that_subflow(
         self, graph, output_map, expected_message
     ):
-        EndNode.objects.create(graph=graph, output_map=output_map)
+        end_node = EndNode.objects.create(graph=graph, output_map=output_map)
 
         with pytest.raises(EndNodeValidationError) as error:
-            EndNodeValidator().validate(graph_id=graph.id, flow_name="Invoice parser")
+            EndNodeValidator().validate(end_node, flow_name="Invoice parser")
 
         assert str(error.value.detail) == expected_message
 
@@ -125,7 +128,7 @@ class TestEndNodeValidator:
     def test_outputs_pointing_to_flow_variables_pass(self, graph, output_map):
         end_node = EndNode.objects.create(graph=graph, output_map=output_map)
 
-        assert EndNodeValidator().validate(graph_id=graph.id) == end_node
+        EndNodeValidator().validate(end_node)
 
 
 @pytest.mark.django_db
@@ -199,15 +202,25 @@ def child_flow(default_org) -> Graph:
     return Graph.objects.create(name="Invoice parser", org=default_org)
 
 
+def _connected_subflow_node(graph: Graph, **fields) -> SubGraphNode:
+    """A Subflow node the run reaches: an edge leads to it from the flow's Start node."""
+    start_node, _ = StartNode.objects.get_or_create(graph=graph, defaults={"variables": {}})
+    subflow_node = SubGraphNode.objects.create(graph=graph, **fields)
+    Edge.objects.create(graph=graph, start_node_id=start_node.id, end_node_id=subflow_node.id)
+    return subflow_node
+
+
+def _validate_run_of(graph: Graph) -> None:
+    SubGraphValidator().validate(graph, reachable_node_ids=nodes_reachable_from_start(graph.id))
+
+
 @pytest.mark.django_db
 class TestSubGraphValidator:
     def test_node_running_its_own_flow_is_named_not_the_flow(self, graph):
-        SubGraphNode.objects.create(
-            graph=graph, node_name="Run again", node_number=4, subgraph=graph
-        )
+        _connected_subflow_node(graph, node_name="Run again", node_number=4, subgraph=graph)
 
         with pytest.raises(SubGraphValidationError) as error:
-            SubGraphValidator().validate(graph)
+            _validate_run_of(graph)
 
         assert str(error.value.detail) == (
             'Subflow node "Run again #4" runs its own flow. Choose another flow.'
@@ -216,15 +229,15 @@ class TestSubGraphValidator:
     def test_loop_through_another_flow_names_the_node_on_this_canvas_and_its_flow(
         self, graph, child_flow
     ):
-        SubGraphNode.objects.create(
-            graph=graph, node_name="Parse invoice", node_number=2, subgraph=child_flow
+        _connected_subflow_node(
+            graph, node_name="Parse invoice", node_number=2, subgraph=child_flow
         )
-        SubGraphNode.objects.create(
-            graph=child_flow, node_name="Back to parent", node_number=1, subgraph=graph
+        _connected_subflow_node(
+            child_flow, node_name="Back to parent", node_number=1, subgraph=graph
         )
 
         with pytest.raises(SubGraphValidationError) as error:
-            SubGraphValidator().validate(graph)
+            _validate_run_of(graph)
 
         assert str(error.value.detail) == (
             'Subflow node "Parse invoice #2" makes a loop through flow "Invoice parser". '
@@ -252,29 +265,27 @@ class TestSubGraphValidator:
     ):
         flow_b = Graph.objects.create(name="Step B", org=default_org)
         flow_c = Graph.objects.create(name="Step C", org=default_org)
-        SubGraphNode.objects.create(
-            graph=graph, node_name="Parse invoice", node_number=2, subgraph=flow_b
-        )
-        SubGraphNode.objects.create(graph=flow_b, node_name="To C", subgraph=flow_c)
-        SubGraphNode.objects.create(
-            graph=flow_c,
+        _connected_subflow_node(graph, node_name="Parse invoice", node_number=2, subgraph=flow_b)
+        _connected_subflow_node(flow_b, node_name="To C", subgraph=flow_c)
+        _connected_subflow_node(
+            flow_c,
             node_name="Back",
             subgraph={"flow_b": flow_b, "root": graph}[loop_closes_at],
         )
 
         with pytest.raises(SubGraphValidationError) as error:
-            SubGraphValidator().validate(graph)
+            _validate_run_of(graph)
 
         assert str(error.value.detail) == expected_message
 
     def test_flow_running_itself_deeper_in_the_chain_is_found(self, graph, child_flow):
-        SubGraphNode.objects.create(
-            graph=graph, node_name="Parse invoice", node_number=2, subgraph=child_flow
+        _connected_subflow_node(
+            graph, node_name="Parse invoice", node_number=2, subgraph=child_flow
         )
-        SubGraphNode.objects.create(graph=child_flow, node_name="Again", subgraph=child_flow)
+        _connected_subflow_node(child_flow, node_name="Again", subgraph=child_flow)
 
         with pytest.raises(SubGraphValidationError) as error:
-            SubGraphValidator().validate(graph)
+            _validate_run_of(graph)
 
         assert str(error.value.detail) == (
             'Subflow node "Parse invoice #2" leads to a loop in flow "Invoice parser". '
@@ -282,31 +293,69 @@ class TestSubGraphValidator:
         )
 
     def test_node_without_a_flow_is_refused(self, graph):
-        SubGraphNode.objects.create(graph=graph, node_name="Parse invoice", node_number=2)
+        _connected_subflow_node(graph, node_name="Parse invoice", node_number=2)
 
         with pytest.raises(SubGraphValidationError) as error:
-            SubGraphValidator().validate(graph)
+            _validate_run_of(graph)
 
         assert str(error.value.detail) == 'Subflow node "Parse invoice #2" has no flow selected.'
 
     def test_node_without_a_flow_inside_a_subflow_names_that_subflow(self, graph, child_flow):
-        SubGraphNode.objects.create(
-            graph=graph, node_name="Parse invoice", node_number=2, subgraph=child_flow
+        _connected_subflow_node(
+            graph, node_name="Parse invoice", node_number=2, subgraph=child_flow
         )
-        SubGraphNode.objects.create(graph=child_flow, node_name="Nested", node_number=1)
+        _connected_subflow_node(child_flow, node_name="Nested", node_number=1)
 
         with pytest.raises(SubGraphValidationError) as error:
-            SubGraphValidator().validate(graph)
+            _validate_run_of(graph)
 
         assert str(error.value.detail) == (
             'Subflow node "Nested #1" in flow "Invoice parser" has no flow selected.'
         )
 
     def test_subflows_without_a_loop_pass(self, graph, child_flow):
-        SubGraphNode.objects.create(graph=graph, node_name="Parse invoice", subgraph=child_flow)
-        SubGraphNode.objects.create(graph=graph, node_name="Parse again", subgraph=child_flow)
+        _connected_subflow_node(graph, node_name="Parse invoice", subgraph=child_flow)
+        _connected_subflow_node(graph, node_name="Parse again", subgraph=child_flow)
 
-        SubGraphValidator().validate(graph)
+        _validate_run_of(graph)
+
+    def test_subflow_nodes_the_run_does_not_reach_are_not_checked(self, graph, child_flow):
+        # Neither node is connected: one has no flow, the other runs its own flow.
+        SubGraphNode.objects.create(graph=graph, node_name="Draft", node_number=1)
+        SubGraphNode.objects.create(graph=graph, node_name="Again", node_number=2, subgraph=graph)
+        # The run reaches child_flow, whose only loop is behind an unconnected node.
+        _connected_subflow_node(graph, node_name="Parse invoice", node_number=3, subgraph=child_flow)
+        SubGraphNode.objects.create(graph=child_flow, node_name="Back", subgraph=graph)
+
+        _validate_run_of(graph)
+
+    def test_returns_the_nodes_each_reached_subflow_s_run_reaches(
+        self, graph, child_flow, default_org
+    ):
+        _connected_subflow_node(graph, node_name="Parse invoice", subgraph=child_flow)
+        nested_flow = Graph.objects.create(name="Lookup", org=default_org)
+        SubGraphNode.objects.create(graph=graph, node_name="Draft", subgraph=nested_flow)
+        inner = _connected_subflow_node(child_flow, node_name="Nested", subgraph=nested_flow)
+        SubGraphNode.objects.create(graph=child_flow, node_name="Unconnected")
+        child_start = StartNode.objects.get(graph=child_flow)
+
+        reachable_by_subflow = SubGraphValidator().validate(
+            graph, reachable_node_ids=nodes_reachable_from_start(graph.id)
+        )
+
+        # "Draft" isn't reached; "Nested" is, and its flow has no Start node.
+        assert reachable_by_subflow == {
+            child_flow.id: {child_start.id, inner.id},
+            nested_flow.id: set(),
+        }
+
+    def test_without_reachable_nodes_every_subflow_node_of_the_flow_is_checked(self, graph):
+        SubGraphNode.objects.create(graph=graph, node_name="Draft", node_number=1)
+
+        with pytest.raises(SubGraphValidationError) as error:
+            SubGraphValidator().validate(graph, reachable_node_ids=None)
+
+        assert str(error.value.detail) == 'Subflow node "Draft #1" has no flow selected.'
 
 
 def _agent(org, name: str, llm_config=None) -> AgentDefinition:

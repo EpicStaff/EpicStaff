@@ -220,6 +220,23 @@ describe('GraphMessagesComponent', () => {
         fixture.detectChanges();
     }
 
+    /** The stream delivers a message the way the server sends it. */
+    function streamMessage(
+        fixture: ComponentFixture<GraphMessagesComponent>,
+        stream: FakeEventSource,
+        graphMessage: GraphMessage
+    ): void {
+        const { session, ...fields } = graphMessage;
+        stream.emit('messages', { ...fields, session_id: session });
+        fixture.detectChanges();
+    }
+
+    /** The server ends the stream of a finished session once the messages stored after its final status are sent. */
+    function closeStream(fixture: ComponentFixture<GraphMessagesComponent>, stream: FakeEventSource): void {
+        stream.emit('done', { session_id: SESSION_ID });
+        fixture.detectChanges();
+    }
+
     beforeEach(() => {
         FakeEventSource.instances = [];
         vi.stubGlobal('EventSource', FakeEventSource);
@@ -308,8 +325,55 @@ describe('GraphMessagesComponent', () => {
                 status: GraphSessionStatus.ERROR,
                 status_data: { error: TOKEN_BUDGET_REASON },
             });
+            closeStream(fixture, stream);
 
             expect(texts(fixture.nativeElement, '.session-end-reason__text')).toEqual([TOKEN_BUDGET_REASON]);
+        });
+
+        it.each([
+            { case: 'an error card that says the same arrives', details: TOKEN_BUDGET_REASON, shown: [] },
+            {
+                case: 'only an error card that says something else arrives',
+                details: 'Writer #1 failed: the model refused.',
+                shown: [TOKEN_BUDGET_REASON],
+            },
+        ])('waits for the live stream to end when $case after the final status', ({ details, shown }) => {
+            const { fixture, stream } = renderRunningSession();
+            endSession(fixture, stream, {
+                session_id: SESSION_ID,
+                status: GraphSessionStatus.ERROR,
+                status_data: { error: TOKEN_BUDGET_REASON },
+            });
+            expect(fixture.nativeElement.querySelector('.session-end-reason')).toBeNull();
+
+            streamMessage(fixture, stream, message('Writer #1 #4', { message_type: MessageType.ERROR, details }));
+            expect(fixture.nativeElement.querySelector('.session-end-reason')).toBeNull();
+
+            closeStream(fixture, stream);
+            expect(texts(fixture.nativeElement, '.session-end-reason__text')).toEqual(shown);
+        });
+
+        it.each([
+            {
+                case: 'hides it when an error card already says the same',
+                details: `  ${TOKEN_BUDGET_REASON}
+`,
+                shown: [],
+            },
+            {
+                case: 'shows it when no error card says it',
+                details: 'Writer #1 failed: the model refused.',
+                shown: [TOKEN_BUDGET_REASON],
+            },
+        ])('$case', ({ details, shown }) => {
+            const failedNode = message('Writer #1 #4', { message_type: MessageType.ERROR, details });
+
+            const element = render([startMessage('Writer #1 #4'), failedNode], rootGraph(), {
+                status: GraphSessionStatus.ERROR,
+                status_data: { error: TOKEN_BUDGET_REASON },
+            });
+
+            expect(texts(element, '.session-end-reason__text')).toEqual(shown);
         });
 
         it('keeps the reason when a later status event carries no status data', () => {
@@ -322,6 +386,7 @@ describe('GraphMessagesComponent', () => {
 
             stream.emit('status', { session_id: SESSION_ID, status: GraphSessionStatus.ERROR });
             fixture.detectChanges();
+            closeStream(fixture, stream);
 
             expect(texts(fixture.nativeElement, '.session-end-reason__text')).toEqual([TOKEN_BUDGET_REASON]);
         });
@@ -346,6 +411,60 @@ describe('GraphMessagesComponent', () => {
             );
 
             expect(fixture.nativeElement.querySelector('.session-end-reason')).toBeNull();
+        });
+
+        it("shows nothing until a stored session's messages are read, then hides what an error card says", () => {
+            const fixture = create();
+            httpMock
+                .expectOne((request) => request.url === `/api/sessions/${SESSION_ID}/`)
+                .flush({
+                    id: Number(SESSION_ID),
+                    status: GraphSessionStatus.ERROR,
+                    status_data: { error: TOKEN_BUDGET_REASON },
+                });
+            serveFlows(httpMock);
+            fixture.detectChanges();
+            expect(fixture.nativeElement.querySelector('.session-end-reason')).toBeNull();
+
+            const sessionMessages = [
+                startMessage('Writer #1 #4'),
+                message('Writer #1 #4', { message_type: MessageType.ERROR, details: TOKEN_BUDGET_REASON }),
+            ];
+            const [firstPage, rereadAtEnd] = httpMock.match(
+                (request) => request.url === '/api/graph-session-messages/'
+            );
+            firstPage.flush(page(sessionMessages));
+            fixture.detectChanges();
+            expect(fixture.nativeElement.querySelector('.session-end-reason')).toBeNull();
+
+            rereadAtEnd.flush(page(sessionMessages));
+            fixture.detectChanges();
+            expect(fixture.nativeElement.querySelector('.session-end-reason')).toBeNull();
+            expect(texts(fixture.nativeElement, 'app-error-message .node-name')).toEqual(['Writer #1']);
+        });
+
+        it('shows the reason only once the reread at the end of a stored session is done', () => {
+            const fixture = create();
+            httpMock
+                .expectOne((request) => request.url === `/api/sessions/${SESSION_ID}/`)
+                .flush({
+                    id: Number(SESSION_ID),
+                    status: GraphSessionStatus.ERROR,
+                    status_data: { error: TOKEN_BUDGET_REASON },
+                });
+            serveFlows(httpMock);
+            fixture.detectChanges();
+            const [firstPage, rereadAtEnd] = httpMock.match(
+                (request) => request.url === '/api/graph-session-messages/'
+            );
+
+            firstPage.flush(page([startMessage('Fetch #1 #3')]));
+            fixture.detectChanges();
+            expect(fixture.nativeElement.querySelector('.session-end-reason')).toBeNull();
+
+            rereadAtEnd.flush(page([startMessage('Fetch #1 #3')]));
+            fixture.detectChanges();
+            expect(texts(fixture.nativeElement, '.session-end-reason__text')).toEqual([TOKEN_BUDGET_REASON]);
         });
 
         it('waits for the last page of messages before showing the reason', () => {
@@ -379,6 +498,7 @@ describe('GraphMessagesComponent', () => {
             const { fixture, stream } = renderRunningSession();
 
             endSession(fixture, stream, { session_id: SESSION_ID, status: GraphSessionStatus.STOP });
+            closeStream(fixture, stream);
 
             expect(fixture.nativeElement.querySelector('.session-end-reason')).toBeNull();
         });

@@ -35,6 +35,7 @@ import {
 import { ToastService } from '../../../../services/notifications';
 import {
     AgentNodeStreamMessageData,
+    ErrorMessageData,
     GraphMessage,
     MessageData,
     MessageType,
@@ -155,6 +156,10 @@ const UNFINISHED_END_STATUSES = new Set<GraphSessionStatus>([
     GraphSessionStatus.EXPIRED,
 ]);
 
+// The live stream's states in which it can still deliver messages. After a session's final status the server
+// keeps the stream open a few seconds for the messages stored after it, then ends it.
+const OPEN_STREAM_STATUSES: ReadonlySet<string> = new Set(['connecting', 'connected', 'reconnecting']);
+
 @Component({
     selector: 'app-graph-messages',
     imports: [
@@ -216,6 +221,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private readonly PAGE_SIZE = 20;
     private seenKeys = new Set<string>();
     private hasReconciledTerminal = false;
+    private isReconcilingMessages = false;
     private currentOffset = 0;
     public isLoadingMore = false;
     public hasMore = true;
@@ -302,6 +308,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             // from the server so any messages the realtime SSE stream missed are backfilled (once).
             if (TERMINAL_STATUSES.has(status) && !this.hasReconciledTerminal) {
                 this.hasReconciledTerminal = true;
+                this.isReconcilingMessages = true;
                 this.reconcileMessagesFromServer();
             }
             this.cdr.markForCheck();
@@ -336,11 +343,15 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     /**
      * Why the session ended early, shown after its last message; null for a session that ended normally or
-     * gave no reason (a manual stop). Waits for the last page so it never sits between two pages of messages.
+     * gave no reason (a manual stop). A failed node's error card already says it: the session repeats that node's
+     * text, so it is not shown twice. Waits until no more messages can arrive, so it is never shown before the
+     * error card that says it, nor between two pages of messages.
      */
     get sessionEndReason(): string | null {
-        if (!UNFINISHED_END_STATUSES.has(this.sseService.status()) || this.hasMore) return null;
-        return this.sseService.statusReason();
+        if (!UNFINISHED_END_STATUSES.has(this.sseService.status()) || this.canMoreMessagesArrive()) return null;
+        const reason = this.sseService.statusReason();
+        if (!reason || this.hasErrorCardSaying(reason)) return null;
+        return reason;
     }
 
     public ngOnInit(): void {
@@ -492,6 +503,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.visibleMessageEntries = [];
             this.seenKeys = new Set<string>();
             this.hasReconciledTerminal = false;
+            this.isReconcilingMessages = false;
             this.currentOffset = 0;
             this.isLoadingMore = false;
             this.hasMore = true;
@@ -1020,10 +1032,16 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     this.mergeMessages(response.results);
                     this.rebuildMessageState(this.messages);
                     this.messagesChanged.emit(this.messages);
-                    this.cdr.markForCheck();
                     if (response.next !== null) {
                         this.reconcileMessagesFromServer(offset + this.PAGE_SIZE);
+                    } else {
+                        this.isReconcilingMessages = false;
                     }
+                    this.cdr.markForCheck();
+                },
+                error: () => {
+                    this.isReconcilingMessages = false;
+                    this.cdr.markForCheck();
                 },
             });
     }
@@ -1152,6 +1170,26 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private getSubgraphRunChain(message: GraphMessage): readonly string[] {
         const chain = (message.message_data as unknown as Record<string, unknown>)['subgraph_execution_ids'];
         return Array.isArray(chain) ? chain.filter((runId): runId is string => typeof runId === 'string') : [];
+    }
+
+    /**
+     * Whether messages not shown yet can still come: a page not read yet, the reread at the session's end, or the
+     * live stream, whose last messages can arrive after the final status (the server sends a message only once it
+     * has stored it, while crew sends the status itself).
+     */
+    private canMoreMessagesArrive(): boolean {
+        return (
+            this.hasMore || this.isReconcilingMessages || OPEN_STREAM_STATUSES.has(this.sseService.connectionStatus())
+        );
+    }
+
+    /** Whether an error card, at any level, shows exactly `text` as its details. */
+    private hasErrorCardSaying(text: string): boolean {
+        return this.messages.some((message) => {
+            if (!isMessageType(message, MessageType.ERROR)) return false;
+            const { details } = message.message_data as ErrorMessageData;
+            return typeof details === 'string' && details.trim() === text;
+        });
     }
 
     private syncDrillPaths(messages: GraphMessage[]): void {

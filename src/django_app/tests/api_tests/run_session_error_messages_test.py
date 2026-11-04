@@ -9,10 +9,13 @@ from storage_credentials.exceptions import TemporaryCredentialIssueError
 from storage_credentials.services.session_credential_service import session_credential_service
 
 from tables.models import (
+    AudioTranscriptionNode,
     FileExtractorNode,
     Graph,
     KeyValueNode,
     KeyValueTable,
+    PythonCode,
+    PythonNode,
     Session,
     SessionWarningMessage,
 )
@@ -26,6 +29,7 @@ from tables.models.graph_models import (
     DecisionTableNode,
     Edge,
     EndNode,
+    KnowledgeNode,
     StartNode,
     SubGraphNode,
     TaskNode,
@@ -105,9 +109,10 @@ def test_node_inside_a_subflow_is_named_with_its_flow(
     auth_client, redis_client_mock, session_data, graph, child_flow
 ):
     _run_subflow(graph, child_flow)
-    FileExtractorNode.objects.create(
+    file_node = FileExtractorNode.objects.create(
         graph=child_flow, node_name="Extract PDF", node_number=1, input_map={}
     )
+    _chain_from_start(child_flow, file_node)
 
     response = auth_client.post(reverse("run-session"), session_data, format="json")
 
@@ -260,7 +265,10 @@ def test_subflow_loop_names_the_subflow_node_not_the_parent_flow(
     auth_client, redis_client_mock, session_data, graph
 ):
     _connect_start_to_end(graph)
-    SubGraphNode.objects.create(graph=graph, node_name="Run again", node_number=5, subgraph=graph)
+    subflow_node = SubGraphNode.objects.create(
+        graph=graph, node_name="Run again", node_number=5, subgraph=graph
+    )
+    _chain_from_start(graph, subflow_node)
 
     response = auth_client.post(reverse("run-session"), session_data, format="json")
 
@@ -312,7 +320,7 @@ def test_unexpected_failure_returns_a_generic_message_without_internals(
 def test_failure_after_crew_got_the_session_still_reports_it_started(
     auth_client, redis_client_mock, session_data, graph, monkeypatch
 ):
-    def warnings_unavailable(graph):
+    def warnings_unavailable(graph, **kwargs):
         raise RuntimeError("warnings lookup failed")
 
     _connect_start_to_end(graph)
@@ -394,9 +402,19 @@ def test_decision_tables_crew_runs_without_failing_run(
     # Crew takes the default route for a table without conditions, goes on past a
     # condition without a next node or a complex one without an expression, and
     # matches an empty simple group.
-    _decision_table_routing_to_end(graph, next_node_id=None)
-    DecisionTableNode.objects.create(graph=graph, node_name="Empty", node_number=5)
     triage = DecisionTableNode.objects.create(graph=graph, node_name="Triage", node_number=6)
+    empty = DecisionTableNode.objects.create(
+        graph=graph, node_name="Empty", node_number=5, default_next_node_id=triage.id
+    )
+    table, _ = _decision_table_routing_to_end(graph)
+    ConditionGroup.objects.create(
+        decision_table_node=table,
+        group_name="Anything else",
+        group_type="complex",
+        expression="True",
+        order=1,
+        next_node_id=empty.id,
+    )
     ConditionGroup.objects.create(
         decision_table_node=triage, group_name="Unwritten", group_type="complex", order=1
     )
@@ -565,13 +583,14 @@ def test_subflow_input_inside_a_subflow_names_that_subflow(
     inner_flow = Graph.objects.create(name="Customer lookup", org=default_org)
     StartNode.objects.create(graph=inner_flow, variables={})
     _connect_start_to_end(inner_flow)
-    SubGraphNode.objects.create(
+    subflow_node = SubGraphNode.objects.create(
         graph=child_flow,
         node_name="Run B",
         node_number=1,
         subgraph=inner_flow,
         input_map={"customer": "customer"},
     )
+    _chain_from_start(child_flow, subflow_node)
 
     response = auth_client.post(reverse("run-session"), session_data, format="json")
 
@@ -602,3 +621,314 @@ def test_subflow_with_inputs_crew_reads_and_any_output_path_runs(
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     redis_client_mock.publish.assert_called()
+
+
+# Only the nodes a run reaches are checked: a half set up node the run never gets to
+# must not block it.
+
+
+def _python_node(graph: Graph, node_number: int = 9) -> PythonNode:
+    return PythonNode.objects.create(
+        graph=graph,
+        node_name="Prepare",
+        node_number=node_number,
+        python_code=PythonCode.objects.create(code="def main(): return 1"),
+    )
+
+
+def _agent_node_without_agent(graph: Graph, child_flow: Graph):
+    agent_node = AgentNode.objects.create(graph=graph, node_name="Writer", node_number=2)
+    AgentNodeTask.objects.create(agent_node=agent_node, name="Draft", order=0)
+    return agent_node
+
+
+def _key_value_node_without_table(graph: Graph, child_flow: Graph):
+    return KeyValueNode.objects.create(graph=graph, node_name="Save lead", node_number=3)
+
+
+def _file_extractor_node_without_input(graph: Graph, child_flow: Graph):
+    return FileExtractorNode.objects.create(
+        graph=graph, node_name="Extract PDF", node_number=1, input_map={}
+    )
+
+
+def _audio_node_without_input(graph: Graph, child_flow: Graph):
+    return AudioTranscriptionNode.objects.create(
+        graph=graph, node_name="Transcribe call", node_number=1, input_map={}
+    )
+
+
+def _knowledge_node_without_settings(graph: Graph, child_flow: Graph):
+    return KnowledgeNode.objects.create(graph=graph, node_name="Search docs", node_number=5)
+
+
+def _decision_table_with_blank_condition(graph: Graph, child_flow: Graph):
+    table = DecisionTableNode.objects.create(graph=graph, node_name="Route", node_number=4)
+    ConditionGroup.objects.create(
+        decision_table_node=table, group_name="High score", group_type="complex", expression=" "
+    )
+    return table
+
+
+def _classification_table_with_prompt_without_llm(graph: Graph, child_flow: Graph):
+    table = ClassificationDecisionTableNode.objects.create(
+        graph=graph, node_name="Route", node_number=4
+    )
+    prompt = ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=table, prompt_key="classify", prompt_text="Classify {text}"
+    )
+    ClassificationConditionGroup.objects.create(
+        classification_decision_table_node=table, group_name="High score", prompt=prompt
+    )
+    return table
+
+
+def _subflow_node_without_flow(graph: Graph, child_flow: Graph):
+    return SubGraphNode.objects.create(graph=graph, node_name="Parse invoice", node_number=2)
+
+
+def _subflow_node_with_input_crew_fails_on(graph: Graph, child_flow: Graph):
+    _connect_start_to_end(child_flow)
+    return SubGraphNode.objects.create(
+        graph=graph,
+        node_name="Run B",
+        node_number=1,
+        subgraph=child_flow,
+        input_map={"customer": "customer"},
+    )
+
+
+def _end_node_with_output_not_a_flow_variable(graph: Graph, child_flow: Graph):
+    return EndNode.objects.create(graph=graph, output_map={"summary": "result"})
+
+
+HALF_SET_UP_NODES = [
+    pytest.param(
+        _agent_node_without_agent, 'Agent node "Writer #2" has no agent chosen.', id="agent"
+    ),
+    pytest.param(
+        _key_value_node_without_table,
+        'Key-Value node "Save lead #3" has no table selected.',
+        id="key-value",
+    ),
+    pytest.param(
+        _file_extractor_node_without_input,
+        'File Extractor node "Extract PDF #1" has no input file.',
+        id="file-extractor",
+    ),
+    pytest.param(
+        _audio_node_without_input,
+        'Audio to text node "Transcribe call #1" has no input file.',
+        id="audio-to-text",
+    ),
+    pytest.param(
+        _knowledge_node_without_settings,
+        'Knowledge Retriever node "Search docs #5" needs a collection, a RAG and a query.',
+        id="knowledge-retriever",
+    ),
+    pytest.param(
+        _decision_table_with_blank_condition,
+        'Condition "High score" in Decision Table node "Route #4" has no expression.',
+        id="decision-table",
+    ),
+    pytest.param(
+        _classification_table_with_prompt_without_llm,
+        'Prompt "classify" in Classification Table node "Route #4" has no LLM. '
+        "Choose one for it, or set a default LLM for the node.",
+        id="classification-table",
+    ),
+    pytest.param(
+        _subflow_node_without_flow,
+        'Subflow node "Parse invoice #2" has no flow selected.',
+        id="subflow-without-flow",
+    ),
+    pytest.param(
+        _subflow_node_with_input_crew_fails_on,
+        'Input "customer" of Subflow node "Run B #1" must be a flow variable, '
+        "like variables.customer.",
+        id="subflow-input",
+    ),
+    pytest.param(
+        _end_node_with_output_not_a_flow_variable,
+        'Output "summary" of the End node must be a flow variable, like variables.summary.',
+        id="end",
+    ),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("make_node", "message"), HALF_SET_UP_NODES)
+def test_half_set_up_node_the_run_does_not_reach_does_not_block_it(
+    auth_client, redis_client_mock, session_data, graph, child_flow, make_node, message
+):
+    _chain_from_start(graph, _python_node(graph))
+    make_node(graph, child_flow)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    redis_client_mock.publish.assert_called()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("make_node", "message"), HALF_SET_UP_NODES)
+def test_half_set_up_node_the_run_reaches_is_refused_with_its_message(
+    auth_client, redis_client_mock, session_data, graph, child_flow, make_node, message
+):
+    _chain_from_start(graph, _python_node(graph), make_node(graph, child_flow))
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {"error": message}
+    redis_client_mock.publish.assert_not_called()
+
+
+def _decision_table_routing_to(graph: Graph, target, route: str) -> None:
+    table = DecisionTableNode.objects.create(
+        graph=graph,
+        node_name="Route",
+        node_number=4,
+        default_next_node_id=target.id if route == "default" else None,
+        next_error_node_id=target.id if route == "error" else None,
+    )
+    ConditionGroup.objects.create(
+        decision_table_node=table,
+        group_name="High score",
+        group_type="complex",
+        expression="variables.score > 5",
+        next_node_id=target.id if route == "condition" else None,
+    )
+    _chain_from_start(graph, table)
+
+
+def _classification_table_routing_to(graph: Graph, target, route: str) -> None:
+    table = ClassificationDecisionTableNode.objects.create(
+        graph=graph,
+        node_name="Route",
+        node_number=4,
+        default_next_node_id=target.id if route == "default" else None,
+        next_error_node_id=target.id if route == "error" else None,
+    )
+    ClassificationConditionGroup.objects.create(
+        classification_decision_table_node=table,
+        group_name="High score",
+        next_node_id=target.id if route == "row" else None,
+    )
+    _chain_from_start(graph, table)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("route_to", "route"),
+    [
+        pytest.param(_decision_table_routing_to, "condition", id="decision-table-condition"),
+        pytest.param(_decision_table_routing_to, "default", id="decision-table-default"),
+        pytest.param(_decision_table_routing_to, "error", id="decision-table-error"),
+        pytest.param(_classification_table_routing_to, "row", id="classification-table-row"),
+        pytest.param(
+            _classification_table_routing_to, "default", id="classification-table-default"
+        ),
+        pytest.param(_classification_table_routing_to, "error", id="classification-table-error"),
+    ],
+)
+def test_node_reached_only_through_a_table_route_is_checked(
+    auth_client, redis_client_mock, session_data, graph, child_flow, route_to, route
+):
+    route_to(graph, _agent_node_without_agent(graph, child_flow), route)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {"error": 'Agent node "Writer #2" has no agent chosen.'}
+
+
+@pytest.mark.django_db
+def test_node_behind_a_disabled_classification_row_is_not_checked(
+    auth_client, redis_client_mock, session_data, graph, child_flow
+):
+    # Crew skips a disabled row, so the node it would route to never runs.
+    _classification_table_routing_to(graph, _agent_node_without_agent(graph, child_flow), "row")
+    ClassificationConditionGroup.objects.filter(group_name="High score").update(
+        dock_visible=False
+    )
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+
+
+@pytest.mark.django_db
+def test_subflow_reached_only_through_an_unconnected_subflow_node_is_not_checked(
+    auth_client, redis_client_mock, session_data, graph, child_flow
+):
+    _chain_from_start(graph, _python_node(graph))
+    SubGraphNode.objects.create(
+        graph=graph, node_name="Parse invoice", node_number=2, subgraph=child_flow
+    )
+    _chain_from_start(child_flow, _agent_node_without_agent(child_flow, child_flow))
+    # A loop behind the unconnected node is not followed either.
+    SubGraphNode.objects.create(graph=child_flow, node_name="Back", node_number=3, subgraph=graph)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    redis_client_mock.publish.assert_called()
+
+
+@pytest.mark.django_db
+def test_inside_a_subflow_only_the_nodes_its_run_reaches_are_checked(
+    auth_client, redis_client_mock, session_data, graph, child_flow
+):
+    _run_subflow(graph, child_flow)
+    _chain_from_start(child_flow, _python_node(child_flow))
+    _agent_node_without_agent(child_flow, child_flow)
+    SubGraphNode.objects.create(graph=child_flow, node_name="Nested", node_number=4)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+
+
+def _python_node_reading_an_undeclared_secret(graph: Graph) -> PythonNode:
+    return PythonNode.objects.create(
+        graph=graph,
+        node_name="Fetch",
+        node_number=7,
+        python_code=PythonCode.objects.create(
+            code='def main():\n    return get_secret("API_KEY")\n'
+        ),
+    )
+
+
+@pytest.mark.django_db
+def test_undeclared_secret_in_a_node_the_run_does_not_reach_does_not_block_it(
+    auth_client, redis_client_mock, session_data, graph
+):
+    _chain_from_start(graph, _python_node(graph))
+    _python_node_reading_an_undeclared_secret(graph)
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert Session.objects.get(graph=graph).status == Session.SessionStatus.PENDING
+
+
+@pytest.mark.django_db
+def test_undeclared_secret_in_a_node_the_run_reaches_is_refused(
+    auth_client, redis_client_mock, session_data, graph
+):
+    _chain_from_start(graph, _python_node(graph), _python_node_reading_an_undeclared_secret(graph))
+
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
+
+    expected = (
+        'Session aborted: node "Fetch" calls get_secret("API_KEY"), which is not declared '
+        "for that node. Declared: none."
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data == {"error": expected}
+    redis_client_mock.publish.assert_not_called()
+    session = Session.objects.get(graph=graph)
+    assert session.status == Session.SessionStatus.ERROR
+    assert session.status_data["reason"] == expected

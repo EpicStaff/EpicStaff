@@ -2,6 +2,7 @@ from utils.graph_utils import flow_location, node_label
 
 from tables.exceptions import SubGraphValidationError
 from tables.models import Graph, SubGraphNode
+from tables.services.flow_reachability import nodes_reachable_from_start
 
 
 class SubGraphValidator:
@@ -9,36 +10,52 @@ class SubGraphValidator:
 
     A subflow node with no flow chosen has nothing to run, and a chain of subflows
     that comes back to a flow already on it would loop forever: building the session
-    recurses into every subflow.
+    recurses into every subflow the run reaches. Only subflow nodes the run reaches
+    are checked and followed; one the run never gets to is left out of the session.
     """
 
-    def validate(self, graph: Graph) -> None:
-        """Walk every flow reachable through subflow nodes, depth first.
+    def validate(self, graph: Graph, *, reachable_node_ids: set[int] | None) -> dict[int, set[int]]:
+        """Walk every flow the run reaches through subflow nodes, depth first.
 
         A loop is reported through the subflow node in `graph` that leads into it,
         because that is the node the user sees on the canvas they ran, together
         with the flow where the loop closes.
 
+        Args:
+            reachable_node_ids: The nodes of `graph` the run reaches, or None to check
+                every subflow node of `graph`. In a subflow, the nodes reached from its
+                Start node are checked.
+
+        Returns:
+            The ids of the nodes each subflow's run reaches, by flow id, for every
+            subflow the run reaches; the session builder sends exactly those.
+
         Raises:
             SubGraphValidationError: A subflow node has no flow chosen, or a chain of
                 subflows runs a flow that is already on it.
         """
+        reachable_node_ids_by_subflow: dict[int, set[int]] = {}
         self._visit(
             graph_id=graph.id,
+            reachable_node_ids=reachable_node_ids,
             entry_node=None,
             root_graph=graph,
             flows_on_path=set(),
             finished_flow_ids=set(),
+            reachable_node_ids_by_subflow=reachable_node_ids_by_subflow,
         )
+        return reachable_node_ids_by_subflow
 
     def _visit(
         self,
         *,
         graph_id: int,
+        reachable_node_ids: set[int] | None,
         entry_node: SubGraphNode | None,
         root_graph: Graph,
         flows_on_path: set[int],
         finished_flow_ids: set[int],
+        reachable_node_ids_by_subflow: dict[int, set[int]],
     ) -> None:
         # Recursion depth is the subflow nesting depth, which _build_graph_data
         # recurses through as well.
@@ -50,6 +67,8 @@ class SubGraphValidator:
             .order_by("node_number", "id")
         )
         for subflow_node in subflow_nodes:
+            if reachable_node_ids is not None and subflow_node.id not in reachable_node_ids:
+                continue
             if subflow_node.subgraph_id is None:
                 raise SubGraphValidationError(self._no_flow_message(subflow_node, root_graph))
 
@@ -59,12 +78,16 @@ class SubGraphValidator:
                     self._loop_message(path_start, subflow_node, root_graph)
                 )
             if subflow_node.subgraph_id not in finished_flow_ids:
+                subflow_reachable_node_ids = nodes_reachable_from_start(subflow_node.subgraph_id)
+                reachable_node_ids_by_subflow[subflow_node.subgraph_id] = subflow_reachable_node_ids
                 self._visit(
                     graph_id=subflow_node.subgraph_id,
+                    reachable_node_ids=subflow_reachable_node_ids,
                     entry_node=path_start,
                     root_graph=root_graph,
                     flows_on_path=flows_on_path,
                     finished_flow_ids=finished_flow_ids,
+                    reachable_node_ids_by_subflow=reachable_node_ids_by_subflow,
                 )
         flows_on_path.remove(graph_id)
         finished_flow_ids.add(graph_id)

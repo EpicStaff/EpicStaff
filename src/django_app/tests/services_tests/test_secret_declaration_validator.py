@@ -55,6 +55,30 @@ class TestViolations:
         assert violations[0].undeclared == ["VAL_KEY"]
         assert violations[0].declared == []
 
+    def test_only_the_given_nodes_are_walked(self, graph, secret):
+        walked = PythonNode.objects.create(
+            graph=graph,
+            node_name="walked",
+            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+        )
+        PythonNode.objects.create(
+            graph=graph,
+            node_name="skipped",
+            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+        )
+        WebhookTriggerNode.objects.create(
+            graph=graph,
+            node_name="skipped_trigger",
+            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+        )
+
+        violations = secret_declaration_validator.violations(
+            graph_id=graph.pk, node_ids={walked.id}
+        )
+
+        assert [violation.node_name for violation in violations] == ["walked"]
+        assert secret_declaration_validator.violations(graph_id=graph.pk, node_ids=set()) == []
+
     def test_a_declared_secret_is_not_a_violation(self, graph, secret):
         python_code = PythonCode.objects.create(code=DECLARING_CODE)
         python_code.secrets.set([secret])
