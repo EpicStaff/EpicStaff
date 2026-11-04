@@ -1,10 +1,19 @@
-import { NodeModel } from '../../core/models/node.model';
+import { GraphNoteModel, NodeModel } from '../../core/models/node.model';
 
-export function toNodeMetadata(node: NodeModel): Record<string, unknown> {
+/** Colour, icon and size come from frontend constants, so only the position is persisted. */
+export function toNodeMetadata(node: NodeModel): { position: { x: number; y: number } } {
+    return { position: node.position };
+}
+
+/** A note is user-resizable and user-coloured, so unlike other nodes it persists both. */
+export function toNoteMetadata(node: GraphNoteModel): {
+    position: { x: number; y: number };
+    size: { width: number; height: number };
+    backgroundColor: string | null;
+} {
     return {
-        position: node.position,
-        color: node.color,
-        icon: node.icon,
+        ...toNodeMetadata(node),
         size: node.size,
+        backgroundColor: node.data.backgroundColor ?? null,
     };
 }

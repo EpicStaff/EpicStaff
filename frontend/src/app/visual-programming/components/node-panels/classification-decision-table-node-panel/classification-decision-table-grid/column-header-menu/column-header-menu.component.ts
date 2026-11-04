@@ -17,19 +17,20 @@ import { IHeaderAngularComp } from 'ag-grid-angular';
 import { Column, GridApi, IHeaderParams } from 'ag-grid-community';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CdtFreezeMenuItem, CdtFreezeSide } from '../shared/column-freeze.util';
 import { headerBesideColumns, listenForHeaderActivation } from '../shared/header-keyboard.util';
 import { OverlayMenuController } from '../shared/overlay-menu.util';
 
 export interface ColumnHeaderMenuParams extends IHeaderParams {
     label?: string;
     colId?: string;
-    /** Called when the user clicks "Freeze" or "Unfreeze" */
-    onFreezeToggle?: (colId: string) => void;
+    /** Called when the user clicks an enabled "Freeze All …" or "Unfreeze …" item */
+    onFreezeToggle?: (side: CdtFreezeSide) => void;
     /** Called when the user clicks "Hide" */
     onHide?: (colId: string) => void;
-    /** Returns true when this column is currently pinned */
-    isPinned?: () => boolean;
-    /** Whether to show the Freeze/Unfreeze menu item (default: true) */
+    /** The freeze items as they stand when the menu opens */
+    getFreezeMenuItems?: () => CdtFreezeMenuItem[];
+    /** Whether to show the freeze menu items (default: true) */
     showFreeze?: boolean;
     /** Whether to render the chevron button at all (default: true) */
     showChevron?: boolean;
@@ -95,27 +96,30 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 [cdkTrapFocusAutoCapture]="true"
             >
                 @if (showFreeze) {
+                    @for (item of freezeMenuItems; track item.side) {
+                        <button
+                            type="button"
+                            role="menuitem"
+                            class="chm-menu-item"
+                            [class.chm-menu-item--disabled]="item.disabledReason"
+                            [attr.title]="item.disabledReason"
+                            [attr.aria-disabled]="item.disabledReason ? true : null"
+                            (click)="handleFreeze(item)"
+                        >
+                            <span>{{ item.label }}</span>
+                        </button>
+                    }
+                }
+                @if (onHide) {
                     <button
                         type="button"
                         role="menuitem"
                         class="chm-menu-item"
-                        (click)="handleFreeze()"
+                        (click)="handleHide()"
                     >
-                        @if (isPinned && isPinned()) {
-                            <span>Unfreeze All Columns</span>
-                        } @else {
-                            <span>Freeze Up to This Column</span>
-                        }
+                        <span>Hide</span>
                     </button>
                 }
-                <button
-                    type="button"
-                    role="menuitem"
-                    class="chm-menu-item"
-                    (click)="handleHide()"
-                >
-                    <span>Hide</span>
-                </button>
             </div>
         </ng-template>
     `,
@@ -262,9 +266,10 @@ export class ColumnHeaderMenuComponent implements IHeaderAngularComp, OnDestroy 
     public iconClass = '';
     public variant: 'default' | 'delete' = 'default';
     public onIconClick: ((event: MouseEvent) => void) | undefined = undefined;
-    public onFreezeToggle: ((colId: string) => void) | undefined = undefined;
+    public onFreezeToggle: ((side: CdtFreezeSide) => void) | undefined = undefined;
     public onHide: ((colId: string) => void) | undefined = undefined;
-    public isPinned: (() => boolean) | undefined = undefined;
+    public getFreezeMenuItems: (() => CdtFreezeMenuItem[]) | undefined = undefined;
+    public freezeMenuItems: CdtFreezeMenuItem[] = [];
     public showFreeze = true;
     public showChevron = true;
     public showDragGrip = false;
@@ -294,16 +299,18 @@ export class ColumnHeaderMenuComponent implements IHeaderAngularComp, OnDestroy 
         this.onIconClick = params.onIconClick;
         this.onFreezeToggle = params.onFreezeToggle;
         this.onHide = params.onHide;
-        this.isPinned = params.isPinned;
+        this.getFreezeMenuItems = params.getFreezeMenuItems;
         this.showFreeze = params.showFreeze !== false;
         this.showChevron = params.showChevron !== false;
         this.showDragGrip = params.showDragGrip === true;
     }
 
     refresh(_params: ColumnHeaderMenuParams): boolean {
-        // Refresh isPinned state so "Freeze"/"Unfreeze" label updates
-        if (_params.isPinned) {
-            this.isPinned = _params.isPinned;
+        if (_params.getFreezeMenuItems) {
+            this.getFreezeMenuItems = _params.getFreezeMenuItems;
+        }
+        if (_params.onFreezeToggle) {
+            this.onFreezeToggle = _params.onFreezeToggle;
         }
         if (_params.showFreeze !== undefined) {
             this.showFreeze = _params.showFreeze !== false;
@@ -320,16 +327,16 @@ export class ColumnHeaderMenuComponent implements IHeaderAngularComp, OnDestroy 
 
     toggleMenu(event: MouseEvent): void {
         event.stopPropagation();
+        this.freezeMenuItems = this.getFreezeMenuItems?.() ?? [];
         this.menuCtrl.toggle(event.currentTarget as HTMLElement, this.menuTemplate, { closeOnEscape: true });
     }
 
-    handleFreeze(): void {
+    handleFreeze(item: CdtFreezeMenuItem): void {
+        if (item.disabledReason) return;
         this.menuCtrl.close();
-        if (this.onFreezeToggle && this.colId) {
-            this.onFreezeToggle(this.colId);
-            // Freezing moves the header to the other side of the pin line, into a new cell; the focus follows it.
-            this.gridApi?.setFocusedHeader(this.colId);
-        }
+        this.onFreezeToggle?.(item.side);
+        // Freezing moves the header to the other side of the pin line, into a new cell; the focus follows it.
+        if (this.colId) this.gridApi?.setFocusedHeader(this.colId);
     }
 
     handleHide(): void {

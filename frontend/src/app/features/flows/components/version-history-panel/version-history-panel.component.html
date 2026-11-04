@@ -159,7 +159,7 @@
                                     role="menuitem"
                                     (click)="restoreVersion(version, $event)"
                                 >
-                                    Restore
+                                    Restore this version
                                 </button>
                                 <button
                                     type="button"
@@ -169,6 +169,10 @@
                                 >
                                     Create flow from this
                                 </button>
+                                <div
+                                    class="action-dropdown-panel__separator"
+                                    role="separator"
+                                ></div>
                                 <button
                                     type="button"
                                     class="action-dropdown-panel__item"
@@ -185,15 +189,20 @@
                                 >
                                     Change Description
                                 </button>
-                                <button
-                                    *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
-                                    type="button"
-                                    class="action-dropdown-panel__item action-dropdown-panel__item--danger"
-                                    role="menuitem"
-                                    (click)="deleteVersion(version, $event)"
-                                >
-                                    Delete
-                                </button>
+                                <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]">
+                                    <div
+                                        class="action-dropdown-panel__separator"
+                                        role="separator"
+                                    ></div>
+                                    <button
+                                        type="button"
+                                        class="action-dropdown-panel__item"
+                                        role="menuitem"
+                                        (click)="deleteVersion(version, $event)"
+                                    >
+                                        Delete
+                                    </button>
+                                </ng-container>
                             </div>
                         </ng-template>
                     </div>

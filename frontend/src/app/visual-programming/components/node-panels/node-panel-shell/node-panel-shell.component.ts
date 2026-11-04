@@ -20,7 +20,7 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
-import { NodeType } from '@shared/models';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
 import { COMPACT_HEADER_NODE_TYPES, PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
@@ -69,8 +69,8 @@ interface PanelInstanceView {
                 >
                     <div class="icon-and-title">
                         <i
-                            [class]="node()!.icon"
-                            [style.color]="node()!.color || '#685fff'"
+                            [class]="nodeIcons[node()!.type]"
+                            [style.color]="nodeColors[node()!.type] || '#685fff'"
                         ></i>
                         <span class="title-with-number">
                             <span
@@ -293,6 +293,8 @@ export class NodePanelShellComponent {
         const panel = this.panelInstanceSig();
         return !!panel?.form?.invalid || !!panel?.isSaving?.();
     });
+    protected readonly nodeColors = NODE_COLORS;
+    protected readonly nodeIcons = NODE_ICONS;
     /** Set while the Save button has the focus: once it is gone after the save, the focus moves to Close. */
     protected saveButtonHasFocus = false;
     private previousNodeId: string | null = null;

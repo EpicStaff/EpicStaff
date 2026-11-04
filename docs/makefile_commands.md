@@ -235,6 +235,10 @@ python scripts/envtool.py --setup --dev   # local: asks which features to turn o
 python scripts/envtool.py --setup         # production: asks URL, HTTPS, features, release tag; generates every secret
 ```
 
+In production, `--setup` picks the server size (Django servers and chat workers) from the CPUs of
+the machine it runs on, hyperthreads counted: 1-3 small, 4-7 medium, 8 or more large. Run it on the
+server itself, or pick the size under advanced settings.
+
 With an existing `src/.env`, `--setup` offers to change features (it rewrites only
 `CHAT_ENABLED`, `AUDIT_TRAIL_ENABLED`, `PLUGINS_ENABLED` and `COMPOSE_PROFILES`; turning
 plugins on also fills unset plugin secrets, asks for `PLUGINS_BASE_DOMAIN` unless it is

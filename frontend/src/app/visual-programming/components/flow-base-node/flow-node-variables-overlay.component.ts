@@ -1,5 +1,6 @@
 import { NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { NODE_COLORS } from '@shared/models';
 
 import { BaseNodeModel, NodeModel } from '../../core/models/node.model';
 
@@ -9,7 +10,7 @@ import { BaseNodeModel, NodeModel } from '../../core/models/node.model';
         @if (showInputsOverlay) {
             <div
                 class="inputs-overlay"
-                [ngStyle]="{ '--node-overlay-color': node.color || '#23272e' }"
+                [ngStyle]="{ '--node-overlay-color': nodeColors[node.type] || '#23272e' }"
             >
                 <div class="inputs-title">Inputs</div>
                 <div class="inputs-list">
@@ -29,7 +30,7 @@ import { BaseNodeModel, NodeModel } from '../../core/models/node.model';
         @if (showOutputOverlay) {
             <div
                 class="output-overlay"
-                [ngStyle]="{ '--node-overlay-color': node.color || '#23272e' }"
+                [ngStyle]="{ '--node-overlay-color': nodeColors[node.type] || '#23272e' }"
             >
                 <div class="output-title">Output</div>
                 <span class="output-label">
@@ -45,6 +46,8 @@ import { BaseNodeModel, NodeModel } from '../../core/models/node.model';
 export class FlowNodeVariablesOverlayComponent {
     @Input({ required: true }) node!: NodeModel;
     @Input() showVariables = false;
+
+    protected readonly nodeColors = NODE_COLORS;
 
     public get baseNode(): (BaseNodeModel & NodeModel) | null {
         const node = this.node;

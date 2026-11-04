@@ -15,8 +15,6 @@ function canvasNode(id: string, type: NodeType, overrides: Partial<NodeModel> = 
         data: {},
         position: { x: 0, y: 0 },
         ports: [],
-        color: '',
-        icon: '',
         input_map: {},
         output_variable_path: null,
         size: { width: 200, height: 100 },

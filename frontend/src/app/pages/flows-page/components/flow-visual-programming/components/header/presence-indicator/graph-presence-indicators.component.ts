@@ -5,7 +5,15 @@ import { PresentEditor } from '../../../../../../../features/flows/services/grap
 import { ProfileService } from '../../../../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../../../../services/config';
 
-const AVATAR_COLORS = ['#4A90D9', '#7B68EE', '#E05C5C', '#4ECDC4', '#45B7D1', '#96CEB4', '#D4A843', '#C47ED4'];
+const AVATAR_COLORS = [
+    'var(--presence-red)',
+    'var(--presence-orange)',
+    'var(--presence-yellow)',
+    'var(--presence-green)',
+    'var(--presence-cyan)',
+    'var(--presence-indigo)',
+    'var(--presence-gray)',
+];
 
 @Component({
     selector: 'app-graph-presence-indicators',
