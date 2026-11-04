@@ -159,7 +159,7 @@
             color: var(--accent-color);
         }
 
-        &:hover:not(&--active) {
+        &:is(:hover, :focus-visible):not(&--active) {
             border-color: var(--color-text-secondary);
             color: var(--color-text-primary);
         }
@@ -194,7 +194,7 @@
             border-bottom-color: var(--accent-color);
         }
 
-        &:hover:not(&--active) {
+        &:is(:hover, :focus-visible):not(&--active) {
             color: var(--color-text-primary);
         }
     }

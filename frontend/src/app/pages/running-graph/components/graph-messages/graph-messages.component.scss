@@ -16,6 +16,11 @@
     overflow-y: auto;
     font-size: 0.875rem;
 
+    // It takes the focus only from a scroll button its scroll hides: the ring is drawn inside, round the messages.
+    &:focus-visible {
+        outline-offset: -2px;
+    }
+
     //   background-color: rgba(255, 255, 255, 0.03);
     //   border-radius: 12px;
 
@@ -320,7 +325,7 @@
                 color 0.2s ease;
         }
 
-        .breadcrumbs-arrow:hover {
+        .breadcrumbs-arrow:is(:hover, :focus-visible) {
             background-color: var(--white-alpha-8);
             color: var(--gray-100);
         }
@@ -361,8 +366,18 @@
             flex: 0 0 auto;
         }
 
-        .breadcrumbs-search-button:hover {
+        .breadcrumbs-search-button:is(:hover, :focus-visible) {
             color: var(--gray-100);
+        }
+
+        // Drawn inside: the search box clips it.
+        .breadcrumbs-search-button:focus-visible {
+            outline-offset: -2px;
+        }
+
+        // The field shows its focus on the search box's border, like other text fields.
+        .breadcrumbs-search:focus-within {
+            border-color: var(--accent-color);
         }
 
         .search-icon {
@@ -439,8 +454,13 @@
             background-color: var(--color-nodes-background);
         }
 
-        .breadcrumb-button:hover {
+        .breadcrumb-button:is(:hover, :focus-visible) {
             text-decoration: underline;
+        }
+
+        // Drawn inside: the breadcrumb row scrolls and would clip it.
+        .breadcrumb-button:focus-visible {
+            outline-offset: -2px;
         }
 
         .breadcrumb-separator {
@@ -498,7 +518,7 @@
             background-color 0.2s,
             transform 0.2s;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
 

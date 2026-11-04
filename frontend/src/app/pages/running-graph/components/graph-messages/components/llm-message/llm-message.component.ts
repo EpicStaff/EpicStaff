@@ -9,7 +9,7 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
     selector: 'app-llm-message',
     imports: [CommonModule, MarkdownComponent, AppSvgIconComponent, CopyButtonComponent],
     template: `
-        <div class="llm-flow-container">
+        <div class="session-message llm-flow-container">
             <!-- LLM Message Header with Toggle -->
             <div
                 class="llm-header"
@@ -27,19 +27,30 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                         size="1.25rem"
                     />
                 </div>
-                <h3>LLM Response</h3>
+                <h3>
+                    <button
+                        type="button"
+                        class="message-toggle"
+                        [attr.aria-expanded]="isMessageExpanded"
+                    >
+                        LLM Response
+                    </button>
+                </h3>
             </div>
 
             <!-- Collapsible LLM Content -->
             <div
                 class="collapsible-content grid-collapsible"
                 [class.expanded]="isMessageExpanded"
+                [inert]="!isMessageExpanded"
             >
                 <div class="llm-content">
                     <!-- Response Subsection -->
                     <div class="llm-section">
-                        <div
+                        <button
+                            type="button"
                             class="section-heading"
+                            [attr.aria-expanded]="isResponseExpanded"
                             (click)="toggleResponseSection()"
                         >
                             <app-svg-icon
@@ -47,10 +58,11 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                                 size="1.1rem"
                             />
                             Response
-                        </div>
+                        </button>
                         <div
                             class="collapsible-content grid-collapsible"
                             [class.expanded]="isResponseExpanded"
+                            [inert]="!isResponseExpanded"
                         >
                             <div class="grid-collapsible__inner">
                                 <div
@@ -62,6 +74,7 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                                 </div>
                                 @if (shouldShowToggle() && isResponseExpanded) {
                                     <button
+                                        type="button"
                                         class="toggle-button"
                                         (click)="toggleCollapse()"
                                     >
@@ -78,6 +91,18 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .llm-flow-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
@@ -143,7 +168,14 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                 width: 100%;
             }
 
+            // The button that folds its section, drawn as the heading row it was.
             .section-heading {
+                width: 100%;
+                padding: 0;
+                border: none;
+                background: none;
+                font-family: inherit;
+                text-align: left;
                 font-size: var(--text-body-medium-size);
                 font-weight: var(--text-body-medium-weight);
                 line-height: var(--text-body-medium-line-height);
@@ -153,6 +185,11 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                 user-select: none;
                 display: flex;
                 align-items: center;
+            }
+
+            // Drawn inside: the collapsible content around clips it.
+            .section-heading:focus-visible {
+                outline-offset: -2px;
             }
 
             .section-heading app-svg-icon {
@@ -201,7 +238,7 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                 margin-left: 23px;
             }
 
-            .toggle-button:hover {
+            .toggle-button:is(:hover, :focus-visible) {
                 text-decoration: underline;
             }
         `,

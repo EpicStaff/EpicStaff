@@ -8,6 +8,8 @@
  * are pure functions, unit-tested without TestBed.
  */
 
+import { SystemOneConfig } from '@shared/models';
+
 import { PromptConfig } from '../../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 
@@ -104,6 +106,8 @@ export interface CdtDecisionTreeInput {
      * these only to turn config ids into the labels the prompt reads.
      */
     readonly llmConfigOptions: readonly CdtTreeLlmOption[];
+    /** Names the config of a System One entry; without it such an entry reads "No config". */
+    readonly systemOneConfigs?: readonly SystemOneConfig[];
     /**
      * The editor's read-only state when the dialog opened (no Flows:Update, or a
      * version preview). Stored explanations still show; generating one is not

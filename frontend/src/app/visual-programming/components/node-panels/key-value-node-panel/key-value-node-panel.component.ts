@@ -25,6 +25,7 @@ import {
     ValidatorFn,
     Validators,
 } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     CustomInputComponent,
@@ -37,6 +38,7 @@ import {
     TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, KEY_VALUE_MODE_COLORS, ResourceCode } from '@shared/models';
 import { formatNodeLabel } from '@shared/utils';
 import {
@@ -100,6 +102,8 @@ import {
     buildVariablePickerItems,
     isPlainEnter,
     VariablePathPicker,
+    variablesDisplayToFormValue,
+    variablesFormValueToDisplay,
     withoutUsedPaths,
 } from '../../input-map/variable-path-picker';
 import { highlightVariablesHtml } from '../shared/variable-highlight-textarea/highlight-variables';
@@ -169,6 +173,8 @@ interface EntryFormValue {
         AppSvgIconComponent,
         TooltipComponent,
         NgTemplateOutlet,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './key-value-node-panel.component.html',
     styleUrls: ['./key-value-node-panel.component.scss'],
@@ -252,7 +258,12 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
             control?.setValue(path);
             control?.markAsDirty();
         },
-        pathOf: writeSourcePath,
+        pathOf: (displayValue: string) => {
+            const rawPath = writeSourcePath(displayValue);
+            if (!rawPath) return 'variables.';
+            if (rawPath.startsWith('.')) return 'variables' + rawPath;
+            return 'variables.' + rawPath;
+        },
     });
     // The same picker for a `{variables.…` placeholder at a key's caret; any flow variable may go into a key.
     protected readonly keyVariablePicker = new VariablePathPicker({
@@ -541,6 +552,29 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     protected onValueKeydown(entryIndex: number, event: KeyboardEvent): void {
         this.variablePicker.onKeydown(entryIndex, event);
         this.moveOnEnter(entryIndex, event);
+    }
+
+    protected onValueInput(entryIndex: number, event: Event): void {
+        const input = event.target as HTMLInputElement;
+        const valueCtrl = this.entries.at(entryIndex).get('value');
+        valueCtrl?.setValue(variablesDisplayToFormValue(input.value), { emitEvent: true });
+        valueCtrl?.markAsDirty();
+        this.variablePicker.onInput(entryIndex, event);
+    }
+
+    protected onValueBlur(entryIndex: number, event: FocusEvent): void {
+        this.entries.at(entryIndex).get('value')?.markAsTouched();
+        this.variablePicker.onBlur(entryIndex, event);
+    }
+
+    /** Returns the portion of the form value to show in the display input (strips the `variables` prefix). */
+    protected getValueDisplayText(entryIndex: number): string {
+        return variablesFormValueToDisplay((this.entries.at(entryIndex).get('value')?.value ?? '') as string);
+    }
+
+    protected isValueInvalid(entryIndex: number): boolean {
+        const ctrl = this.entries.at(entryIndex).get('value');
+        return (ctrl?.invalid ?? false) && (ctrl?.touched ?? false);
     }
 
     protected isKeyListOpen(entryIndex: number): boolean {

@@ -11,6 +11,9 @@ export const SERVER_FAILED_MESSAGE = 'Something went wrong on the server. Try ag
 /** A 4xx whose body says nothing readable. */
 export const REQUEST_REJECTED_MESSAGE = 'The server rejected the request.';
 
+// The backend's generic answer to an error it didn't expect; it tells the user nothing.
+const BACKEND_UNEXPECTED_ERROR_MESSAGE = 'Unpredictable error';
+
 /**
  * Why a request failed, to put after a heading such as "Couldn't save the flow.": the server's own message, or
  * a plain sentence when there was no response or the body names no reason. Never Angular's
@@ -24,7 +27,8 @@ export function httpErrorReason(error: HttpErrorResponse | Error): string {
     const statusMessage = error.status >= 500 ? SERVER_FAILED_MESSAGE : REQUEST_REJECTED_MESSAGE;
     // The fallback is what an HTML error page reads as; a body with no message at all gives back `error.message`.
     const message = extractHttpErrorMessage(error, statusMessage);
-    return message && message !== error.message ? message : statusMessage;
+    if (!message || message === error.message || message === BACKEND_UNEXPECTED_ERROR_MESSAGE) return statusMessage;
+    return message;
 }
 
 function hasHttpStatus(error: HttpErrorResponse | Error): error is HttpErrorResponse {

@@ -66,6 +66,14 @@ class InvalidOutputSchemaError(AgentServiceError):
     """
 
 
+class FallbackLLMFailedError(AgentServiceError):
+    """Raised when the fallback LLM also fails after the primary LLM failed.
+
+    The message names both configs and error classes only, never the provider's
+    error text; the fallback's error is chained as ``__cause__``.
+    """
+
+
 class RunCancelled(BaseException):
     """Raised when crew withdrew the run (the user stopped the session).
 

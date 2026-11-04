@@ -35,6 +35,14 @@ describe('httpErrorReason', () => {
             reason: 'Something went wrong on the server. Try again or contact your administrator.',
         },
         {
+            case: "the backend's generic answer to an error it didn't expect",
+            error: new HttpErrorResponse({
+                status: 500,
+                error: { status_code: 500, code: 'RuntimeError', message: 'Unpredictable error' },
+            }),
+            reason: 'Something went wrong on the server. Try again or contact your administrator.',
+        },
+        {
             case: 'a refused request with no message in its body',
             error: new HttpErrorResponse({ status: 400, url: 'http://localhost/api/graphs/1/', error: {} }),
             reason: 'The server rejected the request.',

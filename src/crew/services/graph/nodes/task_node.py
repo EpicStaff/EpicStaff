@@ -66,6 +66,8 @@ class TaskNode(BaseNode):
             stream_message_type="task_node_stream",
             agent_id=agent_definition.id,
         )
+        if agent_definition.fallback_llm_warning:
+            on_agent_event.forward_fallback_skipped(agent_definition.fallback_llm_warning)
 
         result = await self.agent_task_service.run_task(
             task_node_data,

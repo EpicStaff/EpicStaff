@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import { VenvSortOrder } from '../../../../models/venv.model';
@@ -17,7 +18,7 @@ export const VENVS_SORT_MENU_ITEMS: readonly VenvsSortMenuItem[] = [
 
 @Component({
     selector: 'app-venvs-sort-menu',
-    imports: [],
+    imports: [CdkTrapFocus],
     templateUrl: './venvs-sort-menu.component.html',
     styleUrls: ['./venvs-sort-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

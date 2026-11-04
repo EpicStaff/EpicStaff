@@ -293,14 +293,20 @@ def test_error_with_its_own_status_keeps_that_status_and_text(
 
     expected = "We couldn't grant access to file storage for this run. Please try again shortly."
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR, response.content
-    assert response.data == {"error": expected}
+    assert response.json() == {
+        "status_code": 500,
+        "code": "temporary_credential_issue_error",
+        "message": expected,
+    }
     assert Session.objects.get(graph=graph).status_data["reason"] == expected
 
 
 @pytest.mark.django_db
 def test_unexpected_failure_returns_a_generic_message_without_internals(
-    auth_client, redis_client_mock, session_data, graph
+    auth_client, redis_client_mock, session_data, graph, monkeypatch
 ):
+    # With DEBUG on the handler leaves the exception to Django instead of rendering the 500.
+    monkeypatch.setattr("utils.exception_handler.DEBUG", False)
     _connect_start_to_end(graph)
     redis_client_mock.publish.side_effect = ConnectionError(
         "Error 111 connecting to redis-internal.svc:6379. Connection refused."
@@ -308,8 +314,13 @@ def test_unexpected_failure_returns_a_generic_message_without_internals(
 
     response = auth_client.post(reverse("run-session"), session_data, format="json")
 
-    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data == {"error": FLOW_START_FAILED_MESSAGE}
+    # Left to the global handler, so callers can retry a 5xx under load.
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR, response.content
+    assert response.json() == {
+        "status_code": 500,
+        "code": "ConnectionError",
+        "message": "Unpredictable error",
+    }
     assert b"redis-internal" not in response.content
     session = Session.objects.get(graph=graph)
     assert session.status == Session.SessionStatus.ERROR
@@ -358,6 +369,7 @@ def test_refusal_is_logged_as_a_warning_without_a_traceback(
 def test_unexpected_failure_logs_its_traceback_once(
     auth_client, redis_client_mock, session_data, graph, monkeypatch, captured_log_records, fails
 ):
+    monkeypatch.setattr("utils.exception_handler.DEBUG", False)
     _connect_start_to_end(graph)
     if fails == "before_the_session_exists":
 
@@ -374,7 +386,7 @@ def test_unexpected_failure_logs_its_traceback_once(
 
     response = auth_client.post(reverse("run-session"), session_data, format="json")
 
-    assert response.data == {"error": FLOW_START_FAILED_MESSAGE}
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR, response.content
     assert len(_tracebacks(captured_log_records)) == 1
 
 

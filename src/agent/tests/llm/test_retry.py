@@ -10,7 +10,7 @@ import asyncio
 import httpx
 import litellm
 import pytest
-from app.llm.retry import RetryPolicy
+from app.llm.retry import RetryPolicy, _resolve_present_exception_classes
 
 from tests.provider_errors import (
     OPENAI_QUOTA_BODY,
@@ -70,7 +70,10 @@ ALWAYS = 99
         ],
         *[
             pytest.param(error, 1, 3, 0, True, id=f"not-retryable-{error.__name__}")
-            for error in (litellm.AuthenticationError, litellm.BadRequestError, litellm.ContextWindowExceededError)
+            for error in (
+                litellm.AuthenticationError, litellm.BadRequestError, litellm.ContextWindowExceededError,
+                litellm.NotFoundError, litellm.BadGatewayError,
+            )
         ],
     ],
 )
@@ -141,3 +144,11 @@ async def test_an_account_out_of_credit_is_not_retried(slept, body, expected_cal
         await policy.aretry(call)
 
     assert calls[0] == expected_calls
+
+
+def test_missing_fallback_trigger_class_is_skipped_not_widened_to_api_error(monkeypatch):
+    monkeypatch.delattr(litellm, "BadGatewayError")
+
+    resolved = _resolve_present_exception_classes(("RateLimitError", "BadGatewayError"))
+
+    assert resolved == (litellm.RateLimitError,)

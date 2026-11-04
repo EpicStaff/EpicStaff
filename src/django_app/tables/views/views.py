@@ -21,6 +21,7 @@ from rbac.access.gates import (
     HasOrgPermission,
 )
 from rbac.access.org_context import OrgContextService
+from rbac.access.principals import user_api_key_org_id
 from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
@@ -475,7 +476,12 @@ class RunSession(APIView):
         graph_id = serializer.validated_data.get("graph_id")
         graph_uuid = serializer.validated_data.get("graph_uuid")
 
-        graph = get_runnable_graph(request.user, graph_id=graph_id, graph_uuid=graph_uuid)
+        graph = get_runnable_graph(
+            request.user,
+            graph_id=graph_id,
+            graph_uuid=graph_uuid,
+            api_key_org_id=user_api_key_org_id(request),
+        )
         graph_id = graph.id
 
         parent_session_id = serializer.validated_data.get("parent_session_id")
@@ -535,20 +541,13 @@ class RunSession(APIView):
             # A refusal is the caller's answer (409), not a failure to start.
             raise
         except APIException as error:
-            # Its text is written for the user and its status is its own: a run check
-            # answers 400, a temporary storage outage 500, which fanout_tool retries on
-            # purpose. run_session has already logged it.
-            return Response(status=error.status_code, data={"error": user_facing_run_error(error)})
-        except Exception as error:
-            # A bug: the caller gets the generic text, and run_session has already
-            # logged the traceback. A 400, not a 500: fanout_tool retries a 5xx, and
-            # retrying a bug only creates one more ERROR session each time.
-            logger.error(
-                "Session for graph_id {} failed to start: {}: {}",
-                graph_id,
-                type(error).__name__,
-                error,
-            )
+            # The run path raises its domain errors as APIExceptions. A 4xx one (a run check,
+            # an undeclared secret, a deleted LLM provider) answers 400 with text written for
+            # the user; run_session has already logged it. A 5xx one, like any other
+            # exception, goes to the global handler, which answers without the internal text
+            # (503 for an exhausted database pool, so callers retry under load).
+            if status.is_server_error(error.status_code):
+                raise
             return Response(
                 status=status.HTTP_400_BAD_REQUEST, data={"error": user_facing_run_error(error)}
             )
@@ -615,7 +614,9 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
 class GetUpdates(APIView):
     @extend_schema(**GET_UPDATES_GET)
     def get(self, request, *args, **kwargs):
-        session = get_accessible_session(request.user, kwargs["session_id"])
+        session = get_accessible_session(
+            request.user, kwargs["session_id"], api_key_org_id=user_api_key_org_id(request)
+        )
 
         return Response(
             data={"status": session.status},
@@ -626,7 +627,12 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session = get_accessible_session(request.user, kwargs["session_id"], Permission.USE)
+        session = get_accessible_session(
+            request.user,
+            kwargs["session_id"],
+            Permission.USE,
+            api_key_org_id=user_api_key_org_id(request),
+        )
         session_manager_service.stop_running_session(session=session)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

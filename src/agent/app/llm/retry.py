@@ -8,6 +8,11 @@ waiting doesn't bring the credit back.
 Retryable exceptions are resolved at import time so a missing class in the
 installed LiteLLM version degrades to ``litellm.APIError`` with a warning
 rather than crashing on import.
+
+``FALLBACK_TRIGGERS`` lists the errors that, once they escape the retries, move
+an agent to its fallback LLM.  A missing class there is skipped instead: every
+LiteLLM error subclasses ``APIError``, so substituting it would make request
+errors such as ``ContextWindowExceededError`` switch too.
 """
 
 from __future__ import annotations
@@ -43,6 +48,19 @@ _NON_RETRYABLE_NAMES = (
 )
 
 
+_FALLBACK_TRIGGER_NAMES = (
+    "RateLimitError",
+    "APIConnectionError",
+    "Timeout",
+    "InternalServerError",
+    "ServiceUnavailableError",
+    "BadGatewayError",
+    "AuthenticationError",
+    "PermissionDeniedError",
+    "NotFoundError",
+)
+
+
 def _resolve_exception_classes(
     names: tuple[str, ...],
 ) -> tuple[type[BaseException], ...]:
@@ -63,8 +81,31 @@ def _resolve_exception_classes(
     return tuple(resolved)
 
 
+def _resolve_present_exception_classes(
+    names: tuple[str, ...],
+) -> tuple[type[BaseException], ...]:
+    resolved = []
+
+    for name in names:
+        cls = getattr(litellm, name, None)
+
+        if cls is None:
+            logger.warning(
+                "litellm.{} not found in installed version; it will not trigger the fallback LLM",
+                name,
+            )
+            continue
+
+        resolved.append(cls)
+
+    return tuple(resolved)
+
+
 RETRYABLE: tuple[type[BaseException], ...] = _resolve_exception_classes(_RETRYABLE_NAMES)
 NON_RETRYABLE: tuple[type[BaseException], ...] = _resolve_exception_classes(_NON_RETRYABLE_NAMES)
+FALLBACK_TRIGGERS: tuple[type[BaseException], ...] = _resolve_present_exception_classes(
+    _FALLBACK_TRIGGER_NAMES
+)
 
 
 def _retry_after_seconds(error: BaseException) -> int | None:

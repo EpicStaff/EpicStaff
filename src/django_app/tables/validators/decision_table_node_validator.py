@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 
+from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND
 from utils.graph_utils import join_with_and, node_label, node_list_phrase
 
 from tables.exceptions import (
@@ -158,6 +159,10 @@ class ClassificationDecisionTableNodeValidator:
     def _has_llm(
         prompt: ClassificationDecisionTablePrompt, node: ClassificationDecisionTableNode
     ) -> bool:
+        # A System One entry calls its own service, never the prompt LLM, so crew never
+        # looks for one on it.
+        if prompt.kind == SYSTEM_ONE_PROMPT_KIND:
+            return True
         # Resolved as the converter resolves it for crew: the prompt's own LLM wins even
         # when it has no model, and only a prompt without one falls back to the node's.
         llm_config = prompt.llm_config or node.default_llm_config

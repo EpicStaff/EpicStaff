@@ -1,0 +1,146 @@
+<div class="config-row">
+    <ng-content select="[promptName]" />
+    <app-select
+        class="config-select"
+        label="System One config"
+        placeholder="Select a config"
+        [items]="configItems()"
+        [selectedValue]="prompt().system_one_config ?? null"
+        [readonly]="readOnly()"
+        (changed)="onConfigChange($event)"
+    />
+</div>
+
+<app-custom-input
+    label="Result Variable"
+    placeholder="e.g. classification"
+    [ngModel]="prompt().result_variable"
+    [readonly]="readOnly()"
+    (ngModelChange)="onResultVariableChange($event)"
+/>
+
+<div class="section">
+    <span class="section__label">Input to classify</span>
+    <div [formGroup]="inputMapForm">
+        <app-input-map
+            label=""
+            keyPlaceholder="Name"
+            [readonly]="readOnly()"
+        />
+    </div>
+</div>
+
+<div class="section">
+    <span class="section__label">Questions</span>
+    @for (item of questionViews(); track item.row.uid) {
+        <div class="question">
+            <div class="question__header">
+                <app-tooltip label="Question name" />
+                <app-tooltip
+                    label="Question type"
+                    [tooltipText]="typeHelp[item.row.question.type]"
+                />
+                <app-custom-input
+                    class="question__name"
+                    ariaLabel="Question name"
+                    placeholder="e.g. correctness"
+                    [ngModel]="item.row.name"
+                    [errorMessage]="item.view.nameError ?? ''"
+                    [readonly]="readOnly()"
+                    (ngModelChange)="onNameChange(item.row, $event)"
+                />
+                <app-select
+                    class="question__type"
+                    [items]="typeItems"
+                    [selectedValue]="item.row.question.type"
+                    [readonly]="readOnly()"
+                    (changed)="onTypeChange(item.row, $event)"
+                />
+                <app-delete-button
+                    tooltip="Delete question"
+                    ariaLabel="Delete question"
+                    [disabled]="readOnly()"
+                    (triggered)="removeQuestion(item.row)"
+                />
+            </div>
+
+            <app-textarea
+                placeholder="Instructions for the model"
+                [ngModel]="item.row.question.instructions"
+                [readonly]="readOnly()"
+                (ngModelChange)="onInstructionsChange(item.row, $event)"
+            />
+
+            @switch (item.row.question.type) {
+                @case ('noul') {
+                    <div class="question__meanings">
+                        <app-custom-input
+                            ariaLabel="True means"
+                            placeholder="True means…"
+                            [ngModel]="noulMeaning(item.row.question, 'true')"
+                            [readonly]="readOnly()"
+                            (ngModelChange)="onNoulMeaningChange(item.row, 'true', $event)"
+                        />
+                        <app-custom-input
+                            ariaLabel="False means"
+                            placeholder="False means…"
+                            [ngModel]="noulMeaning(item.row.question, 'false')"
+                            [readonly]="readOnly()"
+                            (ngModelChange)="onNoulMeaningChange(item.row, 'false', $event)"
+                        />
+                    </div>
+                }
+                @case ('choice') {
+                    <app-key-value-list
+                        label="Options"
+                        namePlaceholder="Option"
+                        valuePlaceholder="What it means"
+                        rowLabel="Option"
+                        [secretSuggestions]="false"
+                        [headerRules]="false"
+                        [compact]="true"
+                        [ngModel]="choiceOptions(item.row.question)"
+                        [disabled]="readOnly()"
+                        (ngModelChange)="onChoiceOptionsChange(item.row, $event)"
+                    />
+                }
+                @case ('score') {
+                    <app-chips-input
+                        label="Levels, from low to high"
+                        inputPlaceholder="Add a level…"
+                        readOnlyEmptyText="No levels"
+                        [ngModel]="scoreLevels(item.row.question)"
+                        [readOnly]="readOnly()"
+                        (ngModelChange)="onScoreLevelsChange(item.row, $event)"
+                    />
+                }
+            }
+
+            @if (item.view.note) {
+                <p class="question__note">{{ item.view.note }}</p>
+            }
+        </div>
+    }
+    <app-button
+        class="add-question"
+        type="outline-secondary"
+        mod="small"
+        leftIcon="plus"
+        [disabled]="readOnly()"
+        (click)="addQuestion()"
+        >Add question</app-button
+    >
+</div>
+
+@if (isLlmBacked()) {
+    <app-hint-message tone="warning">
+        This config uses an LLM. Its probabilities are the LLM's own estimate, so thresholds tuned on Jev may behave
+        differently.
+    </app-hint-message>
+}
+
+<app-hint-message>
+    One row runs <strong>{{ hintExample().resultVariable }}</strong> with Continue on; the rows below check e.g.
+    <code>{{ hintExample().resultVariable }}.answers.{{ hintExample().question }}.{{ hintExample().condition }}</code
+    >. Keep one row calling this entry: every call is billed.
+</app-hint-message>

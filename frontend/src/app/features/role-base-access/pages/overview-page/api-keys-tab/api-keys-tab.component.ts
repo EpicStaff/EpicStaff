@@ -1,7 +1,18 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { CdkConnectedOverlay, CdkOverlayOrigin } from '@angular/cdk/overlay';
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    ElementRef,
+    inject,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     AppTableCellDirective,
@@ -67,10 +78,15 @@ const STATUS_ITEMS: SelectItem[] = [
         DatePipe,
         DeleteButtonComponent,
         StopButtonComponent,
+        CdkTrapFocus,
+        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ApiKeysTabComponent {
+    // Takes the focus back when a menu action or a row action removes the control that had it.
+    private readonly bulkButton = viewChild.required<ElementRef<HTMLButtonElement>>('bulkButton');
+
     private readonly apiKeysService = inject(AdminApiKeysService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly organizationsService = inject(OrganizationsStorageService);
@@ -127,6 +143,7 @@ export class ApiKeysTabComponent {
             filterServerSide: true,
         },
         { key: 'name', label: 'NAME', width: 'minmax(140px, 1.5fr)' },
+        { key: 'orgName', label: 'ORGANIZATION', width: 'minmax(140px, 1.5fr)' },
         { key: 'key', label: 'KEY', width: 'minmax(140px, 1.2fr)' },
         { key: 'created', label: 'CREATED', width: 'minmax(110px, 1fr)' },
         { key: 'expires', label: 'EXPIRES', width: 'minmax(100px, 1fr)' },
@@ -163,7 +180,8 @@ export class ApiKeysTabComponent {
                 ownerAvatar: k.owner.avatar_url,
                 ownerName: k.owner.display_name || k.owner.email,
                 ownerEmail: k.owner.email,
-                orgIds: k.org_ids,
+                orgId: k.org_id,
+                orgName: k.org_name,
             }))
             .sort((a, b) => API_KEY_STATUS_ORDER.get(a.status)! - API_KEY_STATUS_ORDER.get(b.status)!)
     );
@@ -172,6 +190,7 @@ export class ApiKeysTabComponent {
         const selectedIds = this.selectedIds();
         return this.tableData().filter((row) => selectedIds.has(row['id'] as number));
     });
+    protected readonly isBulkDisabled = computed(() => this.selectedItems().length === 0 || this.isBulkLoading());
 
     protected readonly isRowSelectable = (row: TableRow): boolean => this.canRetireRow(row);
 
@@ -221,12 +240,7 @@ export class ApiKeysTabComponent {
     }
 
     canRetireRow(row: TableRow): boolean {
-        if (this.permissionsService.isSuperadmin) {
-            return true;
-        }
-
-        const orgIds = (row['orgIds'] as number[] | undefined) ?? [];
-        return orgIds.some((id) => this.permissionsService.canInOrg(id, ResourceCode.ApiKeys, ActionCode.Delete));
+        return this.permissionsService.canInOrg(row['orgId'] as number, ResourceCode.ApiKeys, ActionCode.Delete);
     }
 
     onOrgFilterChange(values: unknown[]): void {
@@ -247,6 +261,7 @@ export class ApiKeysTabComponent {
     }
 
     toggleBulkMenu(): void {
+        if (this.isBulkDisabled()) return;
         this.isBulkMenuOpen.update((v) => !v);
     }
 
@@ -255,7 +270,7 @@ export class ApiKeysTabComponent {
     }
 
     onBulkRevoke(): void {
-        this.closeBulkMenu();
+        this.closeMenuBeforeDialog();
         const isSomeRevoked = this.selectedItems().some((r) => r['status'] === ApiKeyStatus.REVOKED);
         const activeRows = this.selectedItems().filter((r) => r['status'] === ApiKeyStatus.ACTIVE);
         const count = activeRows.length;
@@ -294,7 +309,7 @@ export class ApiKeysTabComponent {
     }
 
     onBulkDelete(): void {
-        this.closeBulkMenu();
+        this.closeMenuBeforeDialog();
         const rows = this.selectedItems();
         if (!rows.length) return;
         const count = rows.length;
@@ -337,7 +352,10 @@ export class ApiKeysTabComponent {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => this.toast.success(`"${row['name']}" was revoked`),
+                next: () => {
+                    this.toast.success(`"${row['name']}" was revoked`);
+                    this.bulkButton().nativeElement.focus();
+                },
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to revoke API key'),
             });
     }
@@ -352,9 +370,18 @@ export class ApiKeysTabComponent {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => this.toast.success(`"${row['name']}" was deleted`),
+                next: () => {
+                    this.toast.success(`"${row['name']}" was deleted`);
+                    this.bulkButton().nativeElement.focus();
+                },
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to delete API key'),
             });
+    }
+
+    // The confirmation dialog hands the focus back to what had it on open: the trigger, not the menu item going away.
+    private closeMenuBeforeDialog(): void {
+        this.bulkButton().nativeElement.focus();
+        this.closeBulkMenu();
     }
 
     /** Triggers a re-fetch by bumping `refreshTrigger`; `switchMap` cancels any in-flight request. */

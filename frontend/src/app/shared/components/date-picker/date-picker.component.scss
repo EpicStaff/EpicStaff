@@ -22,7 +22,8 @@
         box-sizing: border-box;
         cursor: pointer;
 
-        &:hover:not(.date-picker__trigger--readonly) {
+        // Its input draws no focus of its own: the field shows it.
+        &:is(:hover, :focus-within):not(.date-picker__trigger--readonly) {
             border-color: var(--active-color, var(--accent-color, #685fff));
         }
 
@@ -80,6 +81,20 @@
         }
     }
 
+    &__chevron-btn {
+        display: inline-flex;
+        flex-shrink: 0;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+
+        &:disabled {
+            cursor: not-allowed;
+        }
+    }
+
     &__chevron {
         flex-shrink: 0;
         color: var(--color-input-text-placeholder);
@@ -134,7 +149,7 @@
         transition: color 0.15s ease;
         padding: 0;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--active-color, var(--accent-color, #685fff));
         }
     }
@@ -170,6 +185,10 @@
         width: 100%;
         aspect-ratio: 1;
         max-width: 30px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        font-family: inherit;
         border-radius: 50%;
         font-size: 0.8125rem;
         font-weight: 400;
@@ -179,7 +198,7 @@
             color 0.15s ease;
         color: var(--color-text-primary);
 
-        &:hover:not(&--selected):not(&--empty):not(&--past) {
+        &:is(:hover, :focus-visible):not(&--selected):not(&--empty):not(&--past) {
             background: var(--color-ks-transparent-black-72);
         }
 

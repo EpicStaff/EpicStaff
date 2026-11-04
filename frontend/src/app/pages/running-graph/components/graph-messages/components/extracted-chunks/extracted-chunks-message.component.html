@@ -1,5 +1,5 @@
 @if (data) {
-    <div class="extracted-chunks-container">
+    <div class="session-message extracted-chunks-container">
         <div
             class="header"
             (click)="toggle()"
@@ -17,7 +17,15 @@
                 />
             </div>
             <div class="title">
-                <h3>Knowledge Retrieval</h3>
+                <h3>
+                    <button
+                        type="button"
+                        class="message-toggle"
+                        [attr.aria-expanded]="isExpanded()"
+                    >
+                        Knowledge Retrieval
+                    </button>
+                </h3>
                 <p class="subtitle">
                     Query:
                     <span class="query">
@@ -117,7 +125,8 @@
                                 @if (chunk.source || ragKind === 'naive') {
                                     <div
                                         class="chunk-source"
-                                        [title]="chunk.source || 'Unknown source'"
+                                        appTooltipOnOverflow
+                                        [matTooltip]="chunk.source || 'Unknown source'"
                                     >
                                         {{ chunk.source || 'Unknown source' }}
                                     </div>

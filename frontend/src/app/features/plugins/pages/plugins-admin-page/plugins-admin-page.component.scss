@@ -25,6 +25,16 @@
     }
 }
 
+// A button that opens its row, drawn as the plain name it was; the row shows its focus too.
+.cell-name {
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: inherit;
+    text-align: left;
+    cursor: inherit;
+}
+
 .empty-title {
     margin: 0;
     color: var(--color-text-primary);

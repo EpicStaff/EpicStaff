@@ -3,6 +3,7 @@ import { formatDate } from '@angular/common';
 import { Component, computed, DestroyRef, inject, LOCALE_ID, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 import { filter, finalize } from 'rxjs';
 
@@ -34,7 +35,7 @@ export const PLUGIN_RESTORE_DIALOG_TITLE_ID = 'plugin-restore-dialog-title';
  */
 @Component({
     selector: 'app-plugin-restore-dialog',
-    imports: [AppSvgIconComponent, ButtonComponent, ReactiveFormsModule],
+    imports: [MatTooltip, AppSvgIconComponent, ButtonComponent, ReactiveFormsModule],
     templateUrl: './plugin-restore-dialog.component.html',
     styleUrl: './plugin-restore-dialog.component.scss',
 })

@@ -284,7 +284,7 @@ export class MyFlowsComponent implements AfterViewChecked {
             providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
-        dialogRef.closed.subscribe((result) => {
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (!result) return;
             this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()).subscribe();
         });
@@ -297,7 +297,7 @@ export class MyFlowsComponent implements AfterViewChecked {
             providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
-        dialogRef.closed.subscribe((newName) => {
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((newName) => {
             if (newName && newName.trim().length > 0) {
                 this.flowCopyImport.copyFlow(flow.id, newName.trim()).subscribe({
                     next: (graph) => {

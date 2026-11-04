@@ -80,4 +80,10 @@ export class FlowAssistantTableComponent {
     isSortable(): boolean {
         return this.table().isSortable !== false;
     }
+
+    /** The header cell's `aria-sort`: only the sorted column says its direction. */
+    sortState(key: string): 'ascending' | 'descending' | null {
+        if (!this.isSortable() || !this.isSortActive(key)) return null;
+        return this.sortDir() === 'asc' ? 'ascending' : 'descending';
+    }
 }

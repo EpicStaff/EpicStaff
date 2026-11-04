@@ -19,6 +19,7 @@
             class="textarea"
             [attr.rows]="rows()"
             [placeholder]="placeholder()"
+            [attr.aria-label]="fieldName()"
             [disabled]="isDisabled()"
             [readonly]="isReadonly()"
             [value]="value()"
@@ -28,7 +29,7 @@
 
         <span
             class="resize-handle"
-            title="Drag to resize"
+            matTooltip="Drag to resize"
             (pointerdown)="onResizeStart($event)"
             (pointermove)="onResizeMove($event)"
             (pointerup)="onResizeEnd($event)"

@@ -11,6 +11,15 @@
     gap: 0;
 }
 
+.dialog-container.neutral {
+    background: var(--color-ks-background);
+
+    .button {
+        height: 44px;
+        padding: 0 20px;
+    }
+}
+
 .dialog-divider {
     height: 1px;
     background: var(--color-divider-regular);
@@ -90,7 +99,7 @@
         color: var(--accent-color);
         border: 1px solid var(--accent-color);
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background: var(--color-secondary-btn-background-hover);
         }
     }
@@ -101,8 +110,17 @@
         border: 1px solid var(--color-error);
         padding: 0 16px;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background: var(--red-alpha-8-flat);
+        }
+
+        &.neutral {
+            color: var(--accent-color);
+            border-color: var(--accent-color);
+
+            &:hover:not(:disabled) {
+                background: var(--color-secondary-btn-background-hover);
+            }
         }
     }
 
@@ -110,7 +128,7 @@
         background: var(--accent-color);
         color: var(--white);
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background: var(--accent-color-hover);
         }
 
@@ -120,14 +138,14 @@
 
         &.danger {
             background: var(--scarlet-500);
-            &:hover:not(:disabled) {
+            &:is(:hover, :focus-visible):not(:disabled) {
                 background: var(--scarlet-700);
             }
         }
 
         &.warning {
             background: var(--accent-color);
-            &:hover:not(:disabled) {
+            &:is(:hover, :focus-visible):not(:disabled) {
                 background: var(--accent-color-hover);
             }
             &:active:not(:disabled) {

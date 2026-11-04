@@ -3,6 +3,7 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    ElementRef,
     EventEmitter,
     inject,
     Input,
@@ -11,6 +12,7 @@ import {
     OnInit,
     Output,
     SimpleChanges,
+    viewChild,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -49,6 +51,8 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
     @Output() close = new EventEmitter<void>();
     @Output() sessionSelected = new EventEmitter<string>();
 
+    private readonly closeButton = viewChild.required<ElementRef<HTMLButtonElement>>('closeButton');
+
     public sessions: GraphSessionLight[] = [];
     public selectedSessionId: string | null = null;
     public sessionsLoaded = false;
@@ -58,6 +62,11 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
     protected readonly keymap = inject(KeymapService);
 
     private readonly destroy$ = new Subject<void>();
+
+    /** Moves the keyboard focus into the panel, for its host to call when it opens the panel. */
+    public focus(): void {
+        this.closeButton().nativeElement.focus();
+    }
 
     constructor(
         private readonly graphSessionService: GraphSessionService,

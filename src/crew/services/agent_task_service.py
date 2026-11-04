@@ -56,6 +56,7 @@ LIVE_EVENT_TYPES = frozenset(
         "agent.task_start",
         "agent.task_finish",
         "agent.knowledge_search",
+        "agent.llm_fallback",
     }
 )
 """Envelope types forwarded live to ``on_event`` instead of ending the wait."""
@@ -263,6 +264,7 @@ class AgentTaskService:
             instructions=instructions,
             llm=llm,
             fcm_llm=agent_definition.fcm_llm,
+            fallback_llm=agent_definition.fallback_llm,
             max_iter=agent_definition.max_iter,
             schema_max_retries=agent_definition.schema_max_retries,
             max_rpm=agent_definition.max_rpm,

@@ -5,7 +5,7 @@ from tables.models.flow_assistant_models import FlowAssistantConversation
 
 
 def get_streamable_conversation(
-    user, graph_id: int, conversation_id: int
+    user, graph_id: int, conversation_id: int, *, api_key_org_id: int | None
 ) -> FlowAssistantConversation:
     """Fetch the conversation to stream a reply for, authorizing `user` via its flow's org.
 
@@ -14,7 +14,8 @@ def get_streamable_conversation(
     graph. A missing, soft-deleted or another user's conversation, and one in an org
     the user is not an active member of, all raise the same NotFound, so the response
     never reveals that a conversation id exists. Superadmin passes the org check but must
-    still own the conversation.
+    still own the conversation. With `api_key_org_id` (the org of the caller's USER API
+    key), a conversation of any other org is not found either.
 
     Raises:
         NotFound (404): no conversation the user may stream.
@@ -43,5 +44,6 @@ def get_streamable_conversation(
         ResourceType.FLOWS,
         Permission.READ,
         not_found=not_found,
+        api_key_org_id=api_key_org_id,
     )
     return conversation

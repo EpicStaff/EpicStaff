@@ -52,7 +52,6 @@
         cursor: pointer;
 
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
             border-radius: 4px;
         }
     }
@@ -100,19 +99,38 @@
 
         // A host whose rows open nothing can turn the highlight off with
         // --flow-node-list-row-hover: transparent.
-        &:hover {
+        &:hover,
+        &:has(> .flow-node-list__node-name:focus-visible) {
             background: var(--flow-node-list-row-hover, var(--color-ks-hover-row));
+        }
+
+        // The name button does the row's action, so the row shows its keyboard focus; inside, as the list clips
+        // anything drawn outside a row.
+        &:has(> .flow-node-list__node-name:focus-visible) {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
         }
     }
 
     &__node-name {
         flex: 1;
         min-width: 0;
+        padding: 0;
+        border: none;
+        background: none;
+        font: inherit;
         font-weight: 500;
+        text-align: left;
+        cursor: inherit;
         color: var(--color-text-primary);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+
+        // The row draws it.
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     &__node-type {
@@ -132,7 +150,7 @@
         color: var(--accent-color);
         cursor: pointer;
 
-        &:hover:not(:disabled) {
+        &:is(:hover, :focus-visible):not(:disabled) {
             background: var(--color-ks-hover-row);
         }
 
@@ -142,8 +160,7 @@
         }
 
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -1px;
+            outline-offset: -2px;
         }
     }
 

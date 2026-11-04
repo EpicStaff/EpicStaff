@@ -28,6 +28,7 @@
 
             <div class="filter">
                 <app-select
+                    tooltip="Capabilities"
                     [items]="capabilities()"
                     placeholder="All Capabilities"
                     (changed)="selectedCapability.set($event)"
@@ -46,6 +47,7 @@
                 </app-button>
             } @else {
                 <app-button
+                    #addButton
                     class="add-btn"
                     *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
                     (click)="onAddModel()"
@@ -131,6 +133,38 @@
                     </div>
                 }
             </div>
+        }
+
+        @if (filteredSystemOne(); as systemOne) {
+            @if (systemOne.isVisible) {
+                <div class="section">
+                    <h4 class="section-title">{{ systemOneLabel }}:</h4>
+
+                    @if (systemOne.hasError) {
+                        <app-fetch-error-state
+                            mod="small"
+                            title="Failed to load {{ systemOneLabel }}"
+                            message="Check your connection and try again."
+                            (retry)="retrySection('system_one')"
+                        />
+                    } @else {
+                        <div class="grid">
+                            @for (card of systemOne.cards; track card.config.id) {
+                                <app-llm-library-card
+                                    [model]="card.model"
+                                    [selectMode]="selectMode()"
+                                    [selected]="isSystemOneSelected(card.config)"
+                                    [isDeleting]="isDeleting()"
+                                    (selectedChange)="onSystemOneSelectedChange(card.config, $event)"
+                                    (editClick)="onEditSystemOne(card.config)"
+                                    (deleteClick)="onDeleteSystemOne(card.config)"
+                                    (viewDetailsClick)="onViewSystemOneDetails(card.config, $event.trigger)"
+                                />
+                            }
+                        </div>
+                    }
+                </div>
+            }
         }
 
         @if (hasNoConfigs()) {

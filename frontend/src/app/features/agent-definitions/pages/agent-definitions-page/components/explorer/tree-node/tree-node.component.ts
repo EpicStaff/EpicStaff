@@ -2,28 +2,33 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, ou
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { DragHoverDirective, TooltipOnOverflowDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../../../services/auth/permissions.service';
 import { StorageDragService } from '../../../../../../files/services/storage-drag.service';
 import { ExplorerSelection } from '../../../../../models/explorer.model';
 import { BranchTreeNode, nodeKey } from '../../../../../models/tree-node.model';
+import { AgentDragService } from '../../../../../services/agent-drag.service';
 import { SurfaceDragService } from '../../../../../services/surface-drag.service';
-import { ExplorerMenuItem, ExplorerMenuPosition } from '../explorer-context-menu/explorer-menu.model';
+import {
+    ExplorerMenuItem,
+    ExplorerMenuPosition,
+    ExplorerMenuSubject,
+} from '../explorer-context-menu/explorer-menu.model';
 import { menuPositionFromClick, treeNodeMenuItems } from '../explorer-menu.util';
 
 export interface ExplorerTreeMenuEvent {
-    node: BranchTreeNode;
+    node: ExplorerMenuSubject;
     action: string;
     /**
      * The row's ⋮ button that opened the menu — where a dialog opened from the menu returns focus.
-     * It only takes focus while visible: `.row__hover-actions` is `visibility: hidden` once the row
-     * loses hover, so today focus falls back to <body> when the dialog closes.
+     * It stays focusable while hidden (`.row__hover-actions` is only transparent), so focus can return to it.
      */
     trigger: HTMLElement;
 }
 
 export interface ExplorerTreeMenuOpenEvent {
-    node: BranchTreeNode;
+    node: ExplorerMenuSubject;
     items: ExplorerMenuItem[];
     position: ExplorerMenuPosition;
     trigger: HTMLElement;
@@ -44,6 +49,7 @@ export interface ExplorerTreeAttachSurfaceEvent {
 export class TreeNodeComponent implements OnInit {
     private readonly storageDrag = inject(StorageDragService);
     private readonly surfaceDrag = inject(SurfaceDragService);
+    private readonly agentDrag = inject(AgentDragService);
     private readonly permissionService = inject(PermissionsService);
 
     node = input.required<BranchTreeNode>();
@@ -151,6 +157,17 @@ export class TreeNodeComponent implements OnInit {
         this.selectNode.emit(this.node());
     }
 
+    /** Right/Left arrows on the focused name expand/collapse the row; Enter/Space click the name, which selects the row. */
+    onNameKeydown(event: KeyboardEvent): void {
+        if (event.key === 'ArrowRight' && this.hasChildren() && !this.isExpanded()) {
+            event.preventDefault();
+            this.expanded.set(true);
+        } else if (event.key === 'ArrowLeft' && this.hasChildren() && this.expanded()) {
+            event.preventDefault();
+            this.expanded.set(false);
+        }
+    }
+
     /** While a storage item or shared surface is dragged over a row: reveal children and show the node in the preview. */
     onRowDragHover(): void {
         const n = this.node();
@@ -190,6 +207,25 @@ export class TreeNodeComponent implements OnInit {
 
     onSurfaceDragEnd(): void {
         this.surfaceDrag.end();
+    }
+
+    // ---- agent drag & drop (onto a group block, see ExplorerGroupBlockComponent) ----
+    readonly isDraggableAgent = computed(
+        () => this.node().kind === 'agent' && this.permissionService.can(ResourceCode.Agents, ActionCode.Update)
+    );
+
+    onAgentDragStart(event: DragEvent): void {
+        const n = this.node();
+        if (n.kind !== 'agent') return;
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', n.label);
+        }
+        this.agentDrag.start({ id: n.agentId, name: n.label });
+    }
+
+    onAgentDragEnd(): void {
+        this.agentDrag.end();
     }
 
     private dropAgentId(): number | null {

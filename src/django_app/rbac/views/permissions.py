@@ -8,6 +8,7 @@ from rbac.access.cross_org_resolver import (
     CrossOrgPermissionResolver,
 )
 from rbac.access.org_context import OrgContextService
+from rbac.access.principals import user_api_key_org_id
 from rbac.access.resolver import PermissionResolver
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.schemas.permissions import (
@@ -61,6 +62,8 @@ class MyOrgsPermissionsView(APIView):
 
     Superadmin short-circuits to a wildcard without enumerating orgs.
     No X-Organization-Id header — this endpoint is inherently multi-org.
+    A USER API key acts only in its own org, so its caller (a superadmin too)
+    gets `orgs` with that org alone.
     """
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
@@ -70,10 +73,14 @@ class MyOrgsPermissionsView(APIView):
 
     @extend_schema(**PERMISSIONS_ME_ORGS_GET)
     def get(self, request):
-        if getattr(request.user, "is_superadmin", False):
+        is_superadmin = bool(getattr(request.user, "is_superadmin", False))
+        key_org_id = user_api_key_org_id(request)
+        if key_org_id is not None:
+            scopes = self._resolver.resolve_in_org(user=request.user, org_id=key_org_id)
+        elif is_superadmin:
             return Response({"is_superadmin": True, "permissions": "*"})
-
-        scopes = self._resolver.resolve_all(user=request.user)
+        else:
+            scopes = self._resolver.resolve_all(user=request.user)
         orgs = [
             {
                 "org": {"id": scope.org.id, "name": scope.org.name},
@@ -89,4 +96,4 @@ class MyOrgsPermissionsView(APIView):
             }
             for scope in scopes
         ]
-        return Response({"is_superadmin": False, "orgs": orgs})
+        return Response({"is_superadmin": is_superadmin, "orgs": orgs})

@@ -526,6 +526,37 @@ async def test_task_request_carries_the_agent_spec_and_task(service, client):
     assert request.storage_credentials == credentials
 
 
+@pytest.mark.parametrize(
+    "fallback_llm",
+    [LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet")), None],
+    ids=["with-fallback", "without-fallback"],
+)
+async def test_request_spec_carries_the_agents_fallback_llm(service, client, fallback_llm):
+    node = _task_node(fallback_llm=fallback_llm)
+
+    _, agent = await _run(service, client, run=lambda: service.run_task(node, StopEvent()))
+
+    (spec,) = AgentRequest(correlation_id="unused", **agent.request).agents
+    assert spec.fallback_llm == fallback_llm
+
+
+async def test_fallback_envelope_is_forwarded_live(service, client):
+    collected: list[str] = []
+    payload = {
+        "task": None,
+        "primary": {"config_name": "main", "model": "gpt-4o"},
+        "fallback": {"config_name": "backup", "model": "claude-sonnet"},
+        "error_type": "RateLimitError",
+    }
+
+    await _run(
+        service, client, replies=[("agent.llm_fallback", payload), COMPLETED],
+        on_event=lambda envelope: collected.append(envelope.type),
+    )
+
+    assert collected == ["agent.llm_fallback"]
+
+
 async def test_agent_node_request_lists_every_task_with_its_context(service, client):
     node = AgentNodeData(
         node_name="agent_node_1",

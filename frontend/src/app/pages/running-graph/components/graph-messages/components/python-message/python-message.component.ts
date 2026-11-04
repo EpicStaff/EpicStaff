@@ -9,7 +9,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
     selector: 'app-python-message',
     imports: [CommonModule, JsonViewerComponent, FormatExecutionDataPipe, AppSvgIconComponent, CopyButtonComponent],
     template: `
-        <div class="python-flow-container">
+        <div class="session-message python-flow-container">
             <!-- Python Message Header with Toggle -->
             <div
                 class="python-header"
@@ -27,20 +27,31 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                         size="1.25rem"
                     />
                 </div>
-                <h3>Python Code Execution</h3>
+                <h3>
+                    <button
+                        type="button"
+                        class="message-toggle"
+                        [attr.aria-expanded]="isMessageExpanded"
+                    >
+                        Python Code Execution
+                    </button>
+                </h3>
             </div>
 
             <!-- Collapsible Python Content -->
             <div
                 class="collapsible-content grid-collapsible"
                 [class.expanded]="isMessageExpanded"
+                [inert]="!isMessageExpanded"
             >
                 <div class="python-content">
                     <!-- Code Section -->
                     @if (hasCode()) {
                         <div class="code-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isCodeExpanded"
                                 (click)="toggleSection('code')"
                             >
                                 <app-svg-icon
@@ -48,10 +59,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                     size="1.1rem"
                                 />
                                 Python Code
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isCodeExpanded"
+                                [inert]="!isCodeExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="code-wrapper">
@@ -67,8 +79,10 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                     <!-- Input Section -->
                     @if (hasInput()) {
                         <div class="input-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isInputExpanded"
                                 (click)="toggleSection('input')"
                             >
                                 <app-svg-icon
@@ -76,10 +90,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                     size="1.1rem"
                                 />
                                 Input
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isInputExpanded"
+                                [inert]="!isInputExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="input-wrapper">
@@ -103,8 +118,10 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                     <!-- Output Section -->
                     @if (hasOutput()) {
                         <div class="output-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isOutputExpanded"
                                 (click)="toggleSection('output')"
                             >
                                 <app-svg-icon
@@ -112,10 +129,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                     size="1.1rem"
                                 />
                                 Output
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isOutputExpanded"
+                                [inert]="!isOutputExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="output-wrapper">
@@ -129,6 +147,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                         </div>
                                         @if (shouldShowToggle() && isOutputExpanded) {
                                             <button
+                                                type="button"
                                                 class="toggle-button"
                                                 (click)="toggleCollapse()"
                                             >
@@ -144,8 +163,10 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                     <!-- Error Section -->
                     @if (hasError()) {
                         <div class="error-container">
-                            <div
+                            <button
+                                type="button"
                                 class="section-heading"
+                                [attr.aria-expanded]="isErrorExpanded"
                                 (click)="toggleSection('error')"
                             >
                                 <app-svg-icon
@@ -153,10 +174,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                     size="1.1rem"
                                 />
                                 Error
-                            </div>
+                            </button>
                             <div
                                 class="collapsible-content grid-collapsible"
                                 [class.expanded]="isErrorExpanded"
+                                [inert]="!isErrorExpanded"
                             >
                                 <div class="collapsible-inner">
                                     <div class="error-wrapper">
@@ -171,8 +193,10 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
                     <!-- Raw Data Section -->
                     <div class="raw-data-container">
-                        <div
+                        <button
+                            type="button"
                             class="section-heading"
+                            [attr.aria-expanded]="isRawDataExpanded"
                             (click)="toggleSection('rawData')"
                         >
                             <app-svg-icon
@@ -180,10 +204,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 size="1.1rem"
                             />
                             Raw Execution Data
-                        </div>
+                        </button>
                         <div
                             class="collapsible-content grid-collapsible"
                             [class.expanded]="isRawDataExpanded"
+                            [inert]="!isRawDataExpanded"
                         >
                             <div class="collapsible-inner">
                                 <div class="raw-data-wrapper">
@@ -205,6 +230,18 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            // The title is the button that folds the message; drawn as the plain title it was. The header row keeps
+            // its own click, which this button's click reaches.
+            .message-toggle {
+                padding: 0;
+                border: none;
+                background: none;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: inherit;
+            }
+
             .python-flow-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
@@ -277,7 +314,14 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             }
 
             /* Section styling */
+            // The button that folds its section, drawn as the heading row it was.
             .section-heading {
+                width: 100%;
+                padding: 0;
+                border: none;
+                background: none;
+                font-family: inherit;
+                text-align: left;
                 font-size: var(--text-body-medium-size);
                 font-weight: var(--text-body-medium-weight);
                 line-height: var(--text-body-medium-line-height);
@@ -287,6 +331,11 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 user-select: none;
                 display: flex;
                 align-items: center;
+            }
+
+            // Drawn inside: the collapsible content around clips it.
+            .section-heading:focus-visible {
+                outline-offset: -2px;
             }
 
             .section-heading app-svg-icon {
@@ -357,7 +406,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 margin-top: 0.25rem;
             }
 
-            .toggle-button:hover {
+            .toggle-button:is(:hover, :focus-visible) {
                 text-decoration: underline;
             }
 

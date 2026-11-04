@@ -1,5 +1,6 @@
-import { Component, signal } from '@angular/core';
+import { Component, getDebugNode, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { PickerItem } from './var-picker-flat.component';
 import {
@@ -48,11 +49,46 @@ class RowsHostComponent {
 describe('buildVariablePickerItems', () => {
     it('lists every variable path, each parent first, tagged and indented by depth', () => {
         expect(buildVariablePickerItems(STATE)).toEqual([
-            { tag: 'obj', label: 'user', displayLabel: 'user', depth: 0, fullPath: 'variables.user' },
-            { tag: 'var', label: 'user.id', displayLabel: 'id', depth: 1, fullPath: 'variables.user.id' },
-            { tag: 'obj', label: 'user.tags', displayLabel: 'tags', depth: 1, fullPath: 'variables.user.tags' },
-            { tag: 'var', label: 'user.tags[0]', displayLabel: '0', depth: 2, fullPath: 'variables.user.tags[0]' },
-            { tag: 'var', label: 'plan', displayLabel: 'plan', depth: 0, fullPath: 'variables.plan' },
+            {
+                tag: 'obj',
+                label: 'user',
+                displayLabel: 'user',
+                depth: 0,
+                fullPath: 'variables.user',
+                isArrayItem: false,
+            },
+            {
+                tag: 'var',
+                label: 'user.id',
+                displayLabel: 'id',
+                depth: 1,
+                fullPath: 'variables.user.id',
+                isArrayItem: false,
+            },
+            {
+                tag: 'obj',
+                label: 'user.tags',
+                displayLabel: 'tags',
+                depth: 1,
+                fullPath: 'variables.user.tags',
+                isArrayItem: false,
+            },
+            {
+                tag: 'var',
+                label: 'user.tags[0]',
+                displayLabel: '0',
+                depth: 2,
+                fullPath: 'variables.user.tags[0]',
+                isArrayItem: true,
+            },
+            {
+                tag: 'var',
+                label: 'plan',
+                displayLabel: 'plan',
+                depth: 0,
+                fullPath: 'variables.plan',
+                isArrayItem: false,
+            },
         ]);
     });
 
@@ -100,12 +136,14 @@ describe('VariablePathPicker', () => {
     let host: RowsHostComponent;
 
     const input = (row: number): HTMLInputElement => fixture.nativeElement.querySelectorAll('.row-value')[row];
+    // A row's full variable path, shown in its tooltip.
+    const fullPath = (item: Element): string => getDebugNode(item)!.injector.get(MatTooltip).message;
     const listed = (): string[] =>
-        Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), (item) => item.title);
+        Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), fullPath);
     const highlighted = (): string[] =>
-        Array.from(document.querySelectorAll<HTMLElement>('.vpf-item--highlighted'), (item) => item.title);
+        Array.from(document.querySelectorAll<HTMLElement>('.vpf-item--highlighted'), fullPath);
     const disabled = (): string[] =>
-        Array.from(document.querySelectorAll<HTMLButtonElement>('.vpf-item:disabled'), (item) => item.title);
+        Array.from(document.querySelectorAll<HTMLButtonElement>('.vpf-item:disabled'), fullPath);
     const press = (row: number, key: string, init: KeyboardEventInit = {}): KeyboardEvent => {
         const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
         input(row).dispatchEvent(event);
@@ -134,10 +172,10 @@ describe('VariablePathPicker', () => {
 
     afterEach(() => fixture.destroy());
 
-    it('opens on focus once the value starts with variables., listing what the row is offered', () => {
+    it('opens on focus once the value starts with variables., listing only top-level variables', () => {
         focus(0);
         expect(host.picker.isOpenFor(0)).toBe(true);
-        expect(listed()).toEqual(buildVariablePickerItems(STATE).map((item) => item.fullPath));
+        expect(listed()).toEqual(['variables.user', 'variables.plan']);
 
         host.picker.close();
         type(1, 'plan');
@@ -155,12 +193,7 @@ describe('VariablePathPicker', () => {
     it('filters by what follows the prefix while typing, and closes on an exact match or without the prefix', () => {
         type(0, 'variables.US');
         expect(host.picker.isOpenFor(0)).toBe(true);
-        expect(listed()).toEqual([
-            'variables.user',
-            'variables.user.id',
-            'variables.user.tags',
-            'variables.user.tags[0]',
-        ]);
+        expect(listed()).toEqual(['variables.user']);
 
         type(0, 'variables.user.id');
         expect(host.picker.isOpenFor(0)).toBe(false);
@@ -170,15 +203,13 @@ describe('VariablePathPicker', () => {
         expect(host.picker.isOpenFor(0)).toBe(false);
     });
 
-    it('keeps each match under the parents the row is offered, never under a sibling', () => {
-        type(0, 'variables.tags[');
-        expect(listed()).toEqual(['variables.user', 'variables.user.tags', 'variables.user.tags[0]']);
+    it('scopes into a parent to show its direct children when a separator follows the path', () => {
+        type(0, 'variables.user.');
+        expect(listed()).toEqual(['variables.user.id', 'variables.user.tags']);
         host.picker.close();
 
-        // As when another row uses `variables.user.tags`.
-        host.items = buildVariablePickerItems(STATE).filter((item) => item.fullPath !== 'variables.user.tags');
-        type(0, 'variables.[0]');
-        expect(listed()).toEqual(['variables.user', 'variables.user.tags[0]']);
+        type(0, 'variables.user.tags[');
+        expect(listed()).toEqual(['variables.user.tags[0]']);
     });
 
     describe('with an object named as the object it sits in', () => {
@@ -187,7 +218,7 @@ describe('VariablePathPicker', () => {
 
         beforeEach(() => (host.items = buildVariablePickerItems(NESTED_STATE)));
 
-        it('reopens after the exact match closes it with the children highlighted, which Enter picks', () => {
+        it('reopens after the exact match closes it with the direct child highlighted, which Enter picks', () => {
             // Scroll is only mocked in the keyboard specs.
             Element.prototype.scrollIntoView = vi.fn();
             try {
@@ -195,7 +226,7 @@ describe('VariablePathPicker', () => {
                 expect(host.picker.isOpenFor(0)).toBe(false);
 
                 type(0, 'variables.test.');
-                expect(listed()).toEqual(['variables.test.test', 'variables.test.test.a']);
+                expect(listed()).toEqual(['variables.test.test']);
                 expect(highlighted()).toEqual(['variables.test.test']);
                 expect(press(0, 'Enter').defaultPrevented).toBe(true);
                 expect(host.inserted).toEqual([[0, 'variables.test.test']]);
@@ -204,30 +235,30 @@ describe('VariablePathPicker', () => {
             }
         });
 
-        it('lists the children of a typed path, not the path itself again', () => {
+        it('lists only direct children of a typed path, not the path itself or grandchildren', () => {
             type(0, 'variables.test.');
-            expect(listed()).toEqual(['variables.test.test', 'variables.test.test.a']);
+            expect(listed()).toEqual(['variables.test.test']);
 
             type(0, 'variables.test.test.');
             expect(listed()).toEqual(['variables.test.test.a']);
         });
 
-        it('filters the children of a typed path by what follows it', () => {
+        it('filters the direct children of a typed path by what follows it', () => {
             type(0, 'variables.test.te');
-            expect(listed()).toEqual(['variables.test.test', 'variables.test.test.a']);
+            expect(listed()).toEqual(['variables.test.test']);
 
             type(0, 'variables.test.x');
             expect(listed()).toEqual([]);
         });
 
-        it('lists the children of a typed path that another row uses, the used child kept disabled', () => {
+        it('lists the direct children of a typed path that another row uses, the used child kept disabled', () => {
             host.items = withoutUsedPaths(
                 buildVariablePickerItems(NESTED_STATE),
                 new Set(['variables.test', 'variables.test.test'])
             );
             type(0, 'variables.test.');
 
-            expect(listed()).toEqual(['variables.test.test', 'variables.test.test.a']);
+            expect(listed()).toEqual(['variables.test.test']);
             expect(disabled()).toEqual(['variables.test.test']);
         });
     });
@@ -333,6 +364,7 @@ describe('VariablePathPicker', () => {
             expect(press(0, 'Enter').defaultPrevented).toBe(false);
 
             type(0, 'variables.p');
+            expect(listed()).toEqual(['variables.plan']);
             expect(press(0, 'Enter').defaultPrevented).toBe(true);
             expect(host.inserted).toEqual([[0, 'variables.plan']]);
             expect(host.picker.isOpenFor(0)).toBe(false);
@@ -341,12 +373,7 @@ describe('VariablePathPicker', () => {
         it('highlights nothing when opened on focus, whatever the value, until the user edits it', () => {
             input(1).value = 'variables.us';
             focus(1);
-            expect(listed()).toEqual([
-                'variables.user',
-                'variables.user.id',
-                'variables.user.tags',
-                'variables.user.tags[0]',
-            ]);
+            expect(listed()).toEqual(['variables.user']);
             expect(highlighted()).toEqual([]);
 
             type(1, 'variables.use');
@@ -377,16 +404,16 @@ describe('VariablePathPicker', () => {
 
         it('restores the default highlight when the pointer leaves, without scrolling the list', () => {
             focus(0);
-            type(0, 'variables.u');
+            type(0, 'variables.user.');
             TestBed.tick();
-            hover(2);
+            hover(1);
             scrollIntoView.mockClear();
 
             document.querySelector('.vpf-list')!.dispatchEvent(new MouseEvent('mouseleave'));
             fixture.detectChanges();
             TestBed.tick();
 
-            expect(highlighted()).toEqual(['variables.user']);
+            expect(highlighted()).toEqual(['variables.user.id']);
             expect(scrollIntoView).not.toHaveBeenCalled();
         });
 
@@ -429,13 +456,10 @@ describe('VariablePathPicker', () => {
             expect(highlighted()).toEqual(['variables.user']);
             expect(down.defaultPrevented).toBe(true);
             press(0, 'ArrowDown');
-            expect(highlighted()).toEqual(['variables.user.id']);
+            expect(highlighted()).toEqual(['variables.plan']);
             expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' });
             expect(scrollIntoView.mock.contexts.at(-1)).toBe(document.querySelectorAll('.vpf-item')[1]);
 
-            press(0, 'ArrowUp');
-            press(0, 'ArrowUp');
-            expect(highlighted()).toEqual(['variables.plan']);
             press(0, 'ArrowDown');
             expect(highlighted()).toEqual(['variables.user']);
             host.picker.close();
@@ -467,7 +491,7 @@ describe('VariablePathPicker', () => {
 
         it('follows the pointer, so Enter picks the hovered row', () => {
             focus(0);
-            hover(4);
+            hover(1);
             expect(highlighted()).toEqual(['variables.plan']);
 
             press(0, 'Enter');
@@ -480,13 +504,12 @@ describe('VariablePathPicker', () => {
                 fixture.detectChanges();
             };
             focus(0);
-            hover(4);
+            hover(1);
             leave();
             expect(highlighted()).toEqual([]);
             expect(press(0, 'Enter').defaultPrevented).toBe(false);
 
             type(0, 'variables.u');
-            hover(2);
             leave();
             expect(highlighted()).toEqual(['variables.user']);
             expect(press(0, 'Enter').defaultPrevented).toBe(true);
@@ -526,7 +549,7 @@ describe('VariablePathPicker', () => {
             press(0, 'ArrowDown');
             press(0, 'ArrowDown');
             const active = document.getElementById(input(0).getAttribute('aria-activedescendant')!);
-            expect(active?.title).toBe('variables.user.id');
+            expect(fullPath(active!)).toBe('variables.plan');
             expect(active?.getAttribute('aria-selected')).toBe('true');
 
             // Each picker has its own ids.
@@ -552,12 +575,12 @@ describe('VariablePathPicker', () => {
             hover(0);
             expect(highlighted()).toEqual([]);
             press(0, 'ArrowDown');
-            expect(highlighted()).toEqual(['variables.user.id']);
+            expect(highlighted()).toEqual(['variables.plan']);
             press(0, 'ArrowUp');
             expect(highlighted()).toEqual(['variables.plan']);
 
-            type(0, 'variables.u');
-            expect(highlighted()).toEqual(['variables.user.id']);
+            type(0, 'variables.p');
+            expect(highlighted()).toEqual(['variables.plan']);
         });
     });
 
@@ -565,7 +588,7 @@ describe('VariablePathPicker', () => {
         host.items = withoutUsedPaths(buildVariablePickerItems(STATE), new Set(['variables.user']));
         focus(0);
 
-        expect(listed()).toEqual(buildVariablePickerItems(STATE).map((item) => item.fullPath));
+        expect(listed()).toEqual(['variables.user', 'variables.plan']);
         expect(disabled()).toEqual(['variables.user']);
         expect(document.querySelector('.vpf-item:disabled')!.textContent).toContain('in use');
         document.querySelector<HTMLElement>('.vpf-item:disabled')!.click();
@@ -581,9 +604,7 @@ describe('VariablePathPicker', () => {
 
         expect(document.querySelector('app-var-picker-flat input')).toBeNull();
         type(0, 'variables.pl');
-        expect(Array.from(document.querySelectorAll<HTMLElement>('.vpf-item'), (item) => item.title)).toEqual([
-            'variables.plan',
-        ]);
+        expect(Array.from(document.querySelectorAll<HTMLElement>('.vpf-item'), fullPath)).toEqual(['variables.plan']);
     });
 
     it('closes when focus leaves the input, e.g. on Tab, but not for one of its rows or a click on a row', () => {
