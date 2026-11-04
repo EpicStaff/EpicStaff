@@ -4,7 +4,6 @@
 from src.shared.epicstaff_storage.path_safety import sanitize_storage_path
 from storage_credentials.resource_names import TRASH_DIRECTORY, org_storage_prefix
 
-
 # S3's key limit, and a segment limit since RustFS stores each segment on disk (NAME_MAX).
 MAX_KEY_BYTES = 1024
 MAX_SEGMENT_BYTES = 255

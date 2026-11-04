@@ -86,9 +86,9 @@ class RedisService(metaclass=SingletonMeta):
     ) -> int:
         """Publish session data to crew, with every secret resolved on a copy.
 
-        The caller's `session_data` is what gets persisted to `Session.graph_schema`,
-        so neither resolved plaintext nor `storage_credentials` may touch it:
-        `resolve_payload` returns a deep copy and both live only on that copy.
+        The caller's `session_data` stays unresolved: neither resolved plaintext nor
+        `storage_credentials` may touch it. `resolve_payload` returns a deep copy and
+        both exist only on that copy, which is the payload published to Redis.
 
         `storage_credentials` is authoritative and unconditionally overwrites
         whatever the copy carries -- `session_data.storage_credentials` is never

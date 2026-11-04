@@ -7,7 +7,11 @@
     (overlayOutsideClick)="close()"
     (detach)="close()"
 >
-    <div class="popover">
+    <div
+        class="popover"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+    >
         <div class="popover__header">Import options</div>
 
         <div class="popover__row">
@@ -21,10 +25,7 @@
                     position="right"
                 />
             </span>
-            <div
-                class="toggle-group"
-                (click)="togglePreserveUuids()"
-            >
+            <div class="toggle-group">
                 <div
                     class="toggle-slider"
                     [class.right]="settings().preserveUuids"
@@ -32,12 +33,16 @@
                 <button
                     type="button"
                     class="toggle-btn"
+                    [attr.aria-pressed]="!settings().preserveUuids"
+                    (click)="setPreserveUuids(false)"
                 >
                     No
                 </button>
                 <button
                     type="button"
                     class="toggle-btn"
+                    [attr.aria-pressed]="settings().preserveUuids"
+                    (click)="setPreserveUuids(true)"
                 >
                     Yes
                 </button>
@@ -56,10 +61,7 @@
                         position="right"
                     />
                 </span>
-                <div
-                    class="toggle-group"
-                    (click)="toggleReplaceExisting()"
-                >
+                <div class="toggle-group">
                     <div
                         class="toggle-slider"
                         [class.right]="settings().replaceExisting"
@@ -67,12 +69,16 @@
                     <button
                         type="button"
                         class="toggle-btn"
+                        [attr.aria-pressed]="!settings().replaceExisting"
+                        (click)="setReplaceExisting(false)"
                     >
                         No
                     </button>
                     <button
                         type="button"
                         class="toggle-btn"
+                        [attr.aria-pressed]="settings().replaceExisting"
+                        (click)="setReplaceExisting(true)"
                     >
                         Yes
                     </button>
@@ -91,10 +97,7 @@
                     position="right"
                 />
             </span>
-            <div
-                class="toggle-group"
-                (click)="toggleImportLabels()"
-            >
+            <div class="toggle-group">
                 <div
                     class="toggle-slider"
                     [class.right]="settings().importLabels"
@@ -102,12 +105,16 @@
                 <button
                     type="button"
                     class="toggle-btn"
+                    [attr.aria-pressed]="!settings().importLabels"
+                    (click)="setImportLabels(false)"
                 >
                     No
                 </button>
                 <button
                     type="button"
                     class="toggle-btn"
+                    [attr.aria-pressed]="settings().importLabels"
+                    (click)="setImportLabels(true)"
                 >
                     Yes
                 </button>

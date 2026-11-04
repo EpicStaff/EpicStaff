@@ -11,6 +11,7 @@ from rbac.authorship import (
     resolve_author,
     user_summaries_by_id,
 )
+from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status
@@ -66,6 +67,7 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_MKDIR_SWAGGER,
     STORAGE_MOVE_SWAGGER,
     STORAGE_PREVIEW_SWAGGER,
+    STORAGE_RECYCLE_BIN_CONTENTS_SWAGGER,
     STORAGE_REMOVE_FROM_GRAPH_SWAGGER,
     STORAGE_RENAME_SWAGGER,
     STORAGE_SEARCH_SWAGGER,
@@ -152,7 +154,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
     def _assert_cross_org_superadmin(self, request, src_org_id) -> bool:
         """True when this is a cross-org transfer; such transfers require
-        superadmin (operating across organizations is a platform action).
+        superadmin (operating across organizations is a platform action) signed
+        in with a session: an API key acts only in its own org.
 
         The transfer serializer guarantees both org ids or neither, and that they differ.
         """
@@ -161,6 +164,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         # CREATE in dst_org_id, Part of cross-org RBAC feature
         if cross_org and not getattr(request.user, "is_superadmin", False):
             raise PermissionDenied("Cross-organization file transfer requires superadmin.")
+        if cross_org and isinstance(request.auth, ApiKey):
+            raise PermissionDenied("Cross-organization file transfer is not available to API keys.")
         return cross_org
 
     @extend_schema(**STORAGE_LIST_SWAGGER)
@@ -603,15 +608,16 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             StorageRecycleBinEntrySerializer(entries, many=True).data
         )
 
-    @extend_schema(request=None, responses=RecycleBinContentsSerializer)
+    @extend_schema(**STORAGE_RECYCLE_BIN_CONTENTS_SWAGGER)
     @action(detail=False, methods=["get"], url_path=r"recycle-bin/(?P<entry_id>\d+)/contents")
     def recycle_bin_contents(self, request, entry_id=None):
-        """Files and folders deleted with one binned folder, up to 5,000: "Show all" past the list's 100."""
         contents, total = StorageRecycleBinService.contents_of(
             self.get_active_org_id(), int(entry_id)
         )
         return Response(
-            RecycleBinContentsSerializer({"contents": contents, "contents_total": total}).data
+            RecycleBinContentsSerializer(
+                {"contents": contents, "hidden_contents": [], "contents_total": total}
+            ).data
         )
 
     @extend_schema(

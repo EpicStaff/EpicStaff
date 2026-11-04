@@ -23,6 +23,12 @@ from tables.import_export.registry import entity_registry
 from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.services.import_service import ImportService
+from tables.import_export.services.partial_export_service import (
+    GraphPartialExportService,
+    NodeRef,
+)
+from tables.import_export.services.partial_import_service import PartialImportService
 from tables.import_export.utils import nest_owned_surface_entries
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -77,6 +83,16 @@ def agent_definition(rich_seeded_db, default_org):
         metadata={"key": "value"},
         llm_config=rich_seeded_db["llm_config"],
         max_iter=5,
+    )
+
+
+@pytest.fixture
+def fallback_llm_config(agent_definition, default_org):
+    return LLMConfig.objects.create(
+        custom_name="fallback config",
+        model=agent_definition.llm_config.model,
+        temperature=0.9,
+        org=default_org,
     )
 
 
@@ -148,6 +164,220 @@ class TestAgentDefinitionStrategy:
         data["fcm_llm_config"] = agent_definition.llm_config_id
 
         assert strategy.find_existing(data, mapper) is None
+
+    def test_fallback_llm_config_is_a_dependency(
+        self, agent_definition, fallback_llm_config
+    ):
+        agent_definition.fallback_llm_config = fallback_llm_config
+        agent_definition.save()
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+
+        dependencies = strategy.extract_dependencies_from_instance(agent_definition)
+
+        assert set(dependencies[EntityType.LLM_CONFIG]) == {
+            agent_definition.llm_config_id,
+            fallback_llm_config.id,
+        }
+
+    def test_find_existing_matches_agent_with_same_fallback(
+        self, agent_definition, fallback_llm_config, export_service
+    ):
+        agent_definition.fallback_llm_config = fallback_llm_config
+        agent_definition.save()
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
+        mapper = _build_identity_mapper(export_data)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+
+        assert strategy.find_existing(data, mapper).id == agent_definition.id
+
+    def test_find_existing_miss_when_stored_agent_has_other_fallback(
+        self, agent_definition, fallback_llm_config, export_service
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
+        mapper = _build_identity_mapper(export_data)
+        mapper.map(EntityType.LLM_CONFIG, fallback_llm_config.id, fallback_llm_config.id, was_created=False)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        data["fallback_llm_config"] = fallback_llm_config.id
+
+        assert strategy.find_existing(data, mapper) is None
+
+    def test_find_existing_miss_when_file_has_no_fallback_but_stored_agent_does(
+        self, agent_definition, fallback_llm_config, export_service
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
+        agent_definition.fallback_llm_config = fallback_llm_config
+        agent_definition.save()
+        mapper = _build_identity_mapper(export_data)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+
+        assert strategy.find_existing(data, mapper) is None
+
+    def test_create_entity_remaps_fallback_to_the_new_config(
+        self, agent_definition, fallback_llm_config, export_service, default_org
+    ):
+        agent_definition.fallback_llm_config = fallback_llm_config
+        agent_definition.save()
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
+        new_primary = LLMConfig.objects.create(
+            custom_name="new primary", model=agent_definition.llm_config.model, org=default_org
+        )
+        new_fallback = LLMConfig.objects.create(
+            custom_name="new fallback", model=agent_definition.llm_config.model, org=default_org
+        )
+        mapper = IDMapper()
+        mapper.map(EntityType.LLM_CONFIG, agent_definition.llm_config_id, new_primary.id, was_created=True)
+        mapper.map(EntityType.LLM_CONFIG, fallback_llm_config.id, new_fallback.id, was_created=True)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.llm_config_id == new_primary.id
+        assert created.fallback_llm_config_id == new_fallback.id
+
+    def test_create_entity_from_file_without_fallback_key_has_no_fallback(
+        self, agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
+        mapper = _build_identity_mapper(export_data)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        del data["fallback_llm_config"]
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.fallback_llm_config_id is None
+
+    def test_create_entity_drops_fallback_that_resolves_to_the_primary(
+        self, agent_definition, fallback_llm_config, export_service, default_org
+    ):
+        agent_definition.fallback_llm_config = fallback_llm_config
+        agent_definition.save()
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
+        # Both exported configs were matched to the same existing row.
+        mapper = IDMapper()
+        mapper.map(EntityType.LLM_CONFIG, agent_definition.llm_config_id, agent_definition.llm_config_id, was_created=False)
+        mapper.map(EntityType.LLM_CONFIG, fallback_llm_config.id, agent_definition.llm_config_id, was_created=False)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.llm_config_id == agent_definition.llm_config_id
+        assert created.fallback_llm_config_id is None
+
+    def test_create_entity_drops_fallback_when_the_primary_is_not_resolved(
+        self, agent_definition, fallback_llm_config, export_service, default_org
+    ):
+        agent_definition.fallback_llm_config = fallback_llm_config
+        agent_definition.save()
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
+        # Only the fallback config is in the mapper; the primary has no mapping.
+        mapper = IDMapper()
+        mapper.map(EntityType.LLM_CONFIG, fallback_llm_config.id, fallback_llm_config.id, was_created=False)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.llm_config_id is None
+        assert created.fallback_llm_config_id is None
+
+    def test_import_into_another_org_creates_both_configs_and_links_the_fallback(
+        self, agent_definition, fallback_llm_config, export_service, beta
+    ):
+        agent_definition.fallback_llm_config = fallback_llm_config
+        agent_definition.save()
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
+
+        id_mapper, _ = ImportService(entity_registry).import_data(
+            export_data, EntityType.AGENT_DEFINITION, org_id=beta.id
+        )
+
+        imported = AgentDefinition.objects.get(
+            id=id_mapper.get(EntityType.AGENT_DEFINITION, agent_definition.id)
+        )
+        assert imported.llm_config_id == id_mapper.get(
+            EntityType.LLM_CONFIG, agent_definition.llm_config_id
+        )
+        assert imported.fallback_llm_config_id == id_mapper.get(
+            EntityType.LLM_CONFIG, fallback_llm_config.id
+        )
+        assert imported.fallback_llm_config_id != imported.llm_config_id
+        assert imported.fallback_llm_config.org_id == beta.id
+
+    def test_partial_import_keeps_the_fallback_of_a_copied_agent_node(
+        self, agent_definition, fallback_llm_config, beta
+    ):
+        agent_definition.fallback_llm_config = fallback_llm_config
+        agent_definition.save()
+        source_graph = Graph.objects.create(org=agent_definition.org, name="source")
+        agent_node = AgentNode.objects.create(
+            graph=source_graph, agent_definition=agent_definition
+        )
+        export_result = GraphPartialExportService(entity_registry).export(
+            [NodeRef(entity_type=EntityType.AGENT_NODE, node_id=agent_node.id)],
+            org_id=agent_definition.org_id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        assert not export_result.has_errors, export_result.errors
+        target_graph = Graph.objects.create(org=beta, name="target")
+
+        result = PartialImportService(entity_registry).import_data(
+            export_result.data, target_graph, org_id=beta.id
+        )
+
+        imported = AgentDefinition.objects.get(
+            id=result.id_mapper.get(EntityType.AGENT_DEFINITION, agent_definition.id)
+        )
+        assert imported.org_id == beta.id
+        assert imported.fallback_llm_config_id == result.id_mapper.get(
+            EntityType.LLM_CONFIG, fallback_llm_config.id
+        )
+        assert imported.fallback_llm_config_id != imported.llm_config_id
 
     def test_export_carries_instruction_list_not_compiled_instructions(
         self, agent_definition, export_service

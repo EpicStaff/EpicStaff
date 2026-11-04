@@ -11,13 +11,17 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
+import litellm
 import pytest
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
 from app.llm.client import LLMChunk
 from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import LoopResult, TokenUsage, ToolResult
+from shared.models.ai_providers import LLMConfigData, LLMData
 from shared.models.knowledge import NaiveRagSearchConfig
 from shared.models.knowledge_new import FoundChunk, SearchUsage
+
+from tests.log_capture import assert_masked_exception, capture_logs_at, log_line_starting_with
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -816,3 +820,50 @@ async def test_on_knowledge_search_unpriced_embedding_usage_costs_zero():
     )
 
     assert _decode_payload(published[0])["token_usage"]["total_cost_usd"] == 0.0
+
+
+async def test_llm_fallback_published_live_with_task_and_error_class_only():
+    emitter, published = _make_emitter()
+    primary = LLMData(provider="openai", config=LLMConfigData(model="gpt-4o", custom_name="Key A", api_key="sk-a"))
+    fallback = LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet-4-5", api_key="sk-b"))
+    error = litellm.RateLimitError("provider said: secret-ish text", llm_provider="openai", model="gpt-4o")
+
+    await emitter.on_task_start("t", 1)
+    await emitter.on_llm_fallback(primary, fallback, error)
+
+    assert published[1]["type"] == "agent.llm_fallback"
+    assert published[1]["correlation_id"] == "test-corr"
+    assert _decode_payload(published[1]) == {
+        "task": {"name": "t", "order": 1},
+        "primary": {"config_name": "Key A", "model": "gpt-4o"},
+        "fallback": {"config_name": None, "model": "claude-sonnet-4-5"},
+        "error_type": "RateLimitError",
+    }
+    assert "secret-ish" not in published[1]["payload"]
+
+
+async def test_live_publish_failure_logs_class_name_and_digest_only():
+    """A publish error can quote the envelope it failed on, tool arguments included;
+    the WARNING line names the class and digests the message."""
+    secret_marker = "SENSITIVE_TOOL_ARGUMENTS_MARKER_24682"
+    client = MagicMock()
+
+    async def failing_publish(stream: str, fields: dict, **options) -> None:
+        raise RuntimeError(f"redis refused: {secret_marker}")
+
+    client.publish = failing_publish
+
+    emitter = RedisStreamToolEventEmitter(
+        client=client,
+        result_stream_prefix="agent.results",
+        correlation_id="test-corr",
+        result_stream_ttl_s=3600,
+    )
+
+    with capture_logs_at("WARNING") as logs:
+        await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
+
+    warning_line = log_line_starting_with(logs, "failed to publish live agent.tool_call ")
+    assert secret_marker not in warning_line
+    assert "correlation_id=test-corr" in warning_line
+    assert_masked_exception(warning_line, "RuntimeError")

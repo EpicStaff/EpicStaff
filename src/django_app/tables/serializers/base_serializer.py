@@ -1,4 +1,5 @@
 from django.db.models import Q
+from rbac.scoping.fields import resolve_active_org_id
 from rest_framework import serializers
 
 
@@ -65,24 +66,15 @@ class OpenAIRealtimeModelNameValidationMixin(serializers.Serializer):
         if self.instance is not None:
             org_id = self.instance.org_id
         else:
-            # The import strategies (BaseProviderRealtimeConfigStrategy.create_entity)
-            # already put `org` in the submitted data before building the
-            # serializer -- they're request-agnostic by design (importable from
-            # a management command, not just a live HTTP view), so read it
-            # straight from there first. The API serializer never sends `org`
-            # in the payload (it's read_only, stamped by the viewset after
-            # validation), so fall back to resolving it from the request.
-            org_id = self.initial_data.get("org")
-            if org_id is None:
-                from rbac.scoping.fields import resolve_active_org_id
-
-                request = self.context.get("request")
-                if request is None:
-                    # Shouldn't happen in normal API flow, but allow validation
-                    # to pass if request is missing (e.g., in shell/management
-                    # commands)
-                    return value
+            # Never read `org` from the payload: a forged value would probe
+            # another org's custom model names.
+            request = self.context.get("request")
+            if request is not None:
                 org_id = resolve_active_org_id(request)
+            else:
+                org_id = self.context.get("org_id")
+                if org_id is None:
+                    return value
 
         self._validate_openai_realtime_model_name(value, org_id)
         return value

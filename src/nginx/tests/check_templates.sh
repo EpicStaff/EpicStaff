@@ -9,7 +9,11 @@
 #     each lab's nginx must set; and that the hooks refuse what they must: TLS on without a
 #     certificate, an NGINX_HSTS_ENABLED that is not a boolean, and an NGINX_TRUSTED_PROXIES that
 #     is not none or a list of IPv4 addresses and CIDRs, or that holds an empty entry, a /0 range
-#     or a CIDR with host bits set;
+#     or a CIDR with host bits set, and a DJANGO_SGI_WORKERS or DJANGO_PORT that is not a whole
+#     number in range;
+#   - that Django's upstreams are least_conn (requests) and round-robin (websockets, the session
+#     event stream) over django_app's servers, DJANGO_SGI_WORKERS of them on their own ports
+#     from DJANGO_PORT + 1 up, none of which nginx ever marks failed (max_fails=0);
 #   - that every X-Forwarded-Proto a template sets is $forwarded_proto, never the client's header,
 #     and never $scheme but on the plugin listeners, which no proxy is in front of; that every
 #     location that proxies and passes the client's headers on sends one, so none passes the
@@ -29,6 +33,12 @@
 #     drops the Cookie header and the upstream's Set-Cookie and Clear-Site-Data, and that nginx's
 #     X-Frame-Options is the only one (read from the rendered configuration, includes expanded);
 #     and that every location of the plugin hosts that proxies, to Django too, does the same;
+#   - in each, the webhook tunnel listener, on the port the webhook service's ngrok tunnels forward
+#     to (its NGROK_TARGET_PORT default) and never published by src/docker-compose.yaml: plain
+#     http whatever NGINX_SSL_MODE, only /webhooks/ and /voice/ (with EpicStaff's cookie rule) and a
+#     404 for everything else, and the plugins subnet refused with plugins on; live, that it serves
+#     those two to their upstreams, 404s every other route of EpicStaff's server without reaching
+#     an upstream, refuses a plugins-subnet caller, and with TLS on answers http without a redirect;
 #   - the values 16-normalize-plugins-enabled.envsh derives, and the ones it must refuse;
 #   - the maintenance answers: the flag test in both SPA locations and the page's named location
 #     with its headers, the gateway's maintenance refusal (its map entries and JSON), no
@@ -63,6 +73,15 @@ hooks_dir="$nginx_dir/docker-entrypoint.d"
 gateway_lab_compose_file="$nginx_dir/tests/gateway/compose.yaml"
 development_lab_compose_file="$nginx_dir/tests/development/compose.yaml"
 platform_dir="$nginx_dir/plugin-platform"
+webhook_settings="$nginx_dir/../webhook/app/core/settings.py"
+
+# The port of nginx's webhook tunnel listener: the webhook service's default NGROK_TARGET_PORT,
+# which every ngrok tunnel forwards to. Read from there, so the two cannot disagree.
+tunnel_port=$(sed -n 's/^.*env\.int("NGROK_TARGET_PORT", \([0-9][0-9]*\)).*$/\1/p' "$webhook_settings")
+if [ -z "$tunnel_port" ]; then
+  echo "ERROR: no NGROK_TARGET_PORT default found in $webhook_settings" >&2
+  exit 2
+fi
 
 # The stack's start-up hooks, by file name. Each container here mounts all of them, and the
 # image's entrypoint runs them in the order of their names, as in the stack.
@@ -123,7 +142,7 @@ fail() {
 # (a check below fails when one is missing here), with this script's values.
 stack_environment=(
   NGINX_SERVER_NAME=epicstaff.test NGINX_SSL_MODE=off NGINX_HSTS_ENABLED=true NGINX_TRUSTED_PROXIES=none
-  DJANGO_HOST=django DJANGO_PORT=8000 FRONTEND_HOST=frontend FRONTEND_PORT=80
+  DJANGO_HOST=django DJANGO_PORT=8000 DJANGO_SGI_WORKERS=1 FRONTEND_HOST=frontend FRONTEND_PORT=80
   REALTIME_HOST=realtime REALTIME_PORT=8050 WEBHOOK_HOST=webhook WEBHOOK_PORT=8009
   AUDITOR_HOST=auditor AUDITOR_PORT=8010 CHAT_ENABLED=false CHAT_UPSTREAM_URL=http://chat:8200
   PLUGINS_ENABLED=false PLUGINS_DEV_MODE=false PLUGINS_BASE_DOMAIN=plugins.epicstaff.test
@@ -132,6 +151,11 @@ stack_environment=(
   STORAGE_HOST=storage STORAGE_PORT=9000 STORAGE_BUCKET=epicstaff
   AVATAR_URL_SIGNING_SECRET="$avatar_signing_secret"
 )
+
+# The live tests' stand-in Django listens on 127.0.0.1:8000. nginx sends Django's requests to each
+# server's own port, from DJANGO_PORT + 1 up (19-render-django-upstream.envsh), so with one server
+# those tests set DJANGO_PORT one below the stand-in's.
+live_django_port=7999
 
 # Fills docker_arguments with the stack's nginx environment, overridden by the NAME=value
 # arguments, and the mounts the image's entrypoint needs: the templates, every hook and the
@@ -297,17 +321,18 @@ function enclosing_location(    d) {
 }
 AWK
 
-# Reads the flattened configuration and checks every location of EpicStaff's own server (server 1)
-# that proxies: one line "<location> -> <proxy_pass target>: <problem>" per broken rule, then
-# "checked <n> <m>" (how many proxy anywhere but Django, how many to Django). The rules:
+# Reads the flattened configuration and checks every location of EpicStaff's own server (server 1,
+# or the server -v server names: the tunnel listener's is checked the same way) that proxies: one
+# line "<location> -> <proxy_pass target>: <problem>" per broken rule, then "checked <n> <m>" (how
+# many proxy anywhere but Django, how many to Django). The rules:
 #   - only Django gets the browser's cookies and may set or clear one: elsewhere Cookie is cleared
 #     and Set-Cookie and Clear-Site-Data hidden;
 #   - nginx's own X-Frame-Options is the only one: every proxying location hides the upstream's.
 # A location's proxy_set_header and proxy_hide_header lines replace the server's when it has any,
 # and only then; the check applies nginx's inheritance the same way.
 read -r -d '' main_server_check_program << 'AWK' || :
-BEGIN { FS = "\t" }
-$1 != 1 { next }
+BEGIN { FS = "\t"; if (server == "") server = 1 }
+$1 != server { next }
 {
   location = $2
   split($3, word, " ")
@@ -339,7 +364,7 @@ END {
     if (location == "" || !(location in target)) continue
     label = location " -> " target[location]
     if (!hides(location, "x-frame-options")) print label ": passes X-Frame-Options through"
-    if (target[location] ~ /^http:\/\/backend_server(\/|$)/) { django++; continue }
+    if (target[location] ~ /^http:\/\/backend_(stream_)?server(\/|$)/) { django++; continue }
     elsewhere++
     if (!clears_cookie(location)) print label ": passes the browser's Cookie on"
     if (!hides(location, "set-cookie")) print label ": passes Set-Cookie through"
@@ -353,8 +378,8 @@ flatten_configuration() { # $1 = a file of `nginx -T` output
   awk "$flatten_program" "$1"
 }
 
-main_server_violations() { # $1 = a file of `nginx -T` output
-  flatten_configuration "$1" | awk "$main_server_check_program"
+main_server_violations() { # $1 = a file of `nginx -T` output, $2 = the server (default 1)
+  flatten_configuration "$1" | awk -v server="${2:-1}" "$main_server_check_program"
 }
 
 # $1 = description. Checks the last rendered configuration: the refresh cookie (Path=/ on HTTPS)
@@ -374,6 +399,76 @@ expect_only_django_cookies() {
     fail "$1: found no proxied location in EpicStaff's server ($elsewhere elsewhere, $django to Django)"
   else
     pass "$1 ($elsewhere locations proxy elsewhere without cookies either way, $django proxy to Django)"
+  fi
+}
+
+# Reads the flattened configuration twice (the file name, twice) and describes the server(s) that
+# listen on -v port, the webhook tunnel listener, one line each, for an exact comparison: "servers
+# <n>", the server level's listen, server_name, return, rewrite and ssl_* directives as "server
+# <directive>", and each location as "location <name> -> <proxy_pass target or return>". A
+# redirect, a TLS setting, another listen or another route shows up as a line of its own.
+read -r -d '' tunnel_listener_program << 'AWK' || :
+BEGIN { FS = "\t" }
+NR == FNR {
+  if ($3 == "listen " port && !($1 in tunnel)) { tunnel[$1] = 1; servers++ }
+  next
+}
+!($1 in tunnel) { next }
+{
+  split($3, word, " ")
+  if ($2 == "") {
+    if (word[1] ~ /^(listen|server_name|return|rewrite|ssl_.*)$/) print "server " $3
+    next
+  }
+  if (word[1] == "proxy_pass" || word[1] == "return" || word[1] == "rewrite") answer[$2] = answer[$2] " " $3
+  if (!($2 in seen)) { seen[$2] = 1; order[++count] = $2 }
+}
+END {
+  print "servers " servers + 0
+  for (i = 1; i <= count; i++) {
+    label = answer[order[i]]
+    sub(/^ (proxy_pass )?/, "", label)
+    print "location " order[i] " -> " label
+  }
+}
+AWK
+
+# $1 = a file of `nginx -T` output; prints the tunnel listener's description, sorted.
+tunnel_listener_description() {
+  flatten_configuration "$1" > "$work_dir/flat"
+  awk -v port="$tunnel_port" "$tunnel_listener_program" "$work_dir/flat" "$work_dir/flat" | LC_ALL=C sort
+}
+
+# $1 = description, $2 = PLUGINS_ENABLED of the last rendered configuration. Passes when exactly one
+# server listens on the webhook service's NGROK_TARGET_PORT, plain http whatever NGINX_SSL_MODE (no
+# TLS, no redirect), and serves the tunnel routes and a 404 for everything else; with plugins on it
+# also refuses the plugins subnet before choosing a location. Its proxied locations follow the
+# cookie rule of EpicStaff's own server.
+expect_tunnel_listener() {
+  local found expected server result violations
+  found=$(tunnel_listener_description "$work_dir/out")
+  expected=$(
+    printf '%s\n' "servers 1" "server listen $tunnel_port" "server server_name _" \
+      "location ^~ /webhooks/ -> http://webhook_server" \
+      "location ^~ /voice/ -> http://realtime_server" \
+      "location /voice/stream -> http://realtime_server" \
+      "location / -> return 404"
+    if [ "$2" = true ]; then
+      echo "server return 403"
+    fi
+  )
+  expected=$(printf '%s\n' "$expected" | LC_ALL=C sort)
+  if [ "$found" != "$expected" ]; then
+    fail "$1: the server on $tunnel_port is [$(printf '%s\n' "$found" | paste -sd ';' -)], not [$(printf '%s\n' "$expected" | paste -sd ';' -)]"
+    return
+  fi
+  server=$(awk -F '\t' -v listen="listen $tunnel_port" '$3 == listen { print $1; exit }' "$work_dir/flat")
+  result=$(main_server_violations "$work_dir/out" "$server")
+  violations=$(printf '%s\n' "$result" | grep -v '^checked ' || true)
+  if [ -n "$violations" ] || [ "$(printf '%s\n' "$result" | sed -n 's/^checked //p')" != "3 0" ]; then
+    fail "$1: the tunnel listener's routes break the cookie rule: $(printf '%s\n' "$result" | paste -sd ';' -)"
+  else
+    pass "$1"
   fi
 }
 
@@ -686,7 +781,7 @@ word[1] == "proxy_set_header" && (word[3] == "\"\"" || word[3] == "''") { blanke
 END {
   for (i = 1; i <= location_count; i++) {
     split(order[i], part, SUBSEP)
-    if (part[2] == "" || target[order[i]] !~ /^http:\/\/backend_server(\/|$)/) continue
+    if (part[2] == "" || target[order[i]] !~ /^http:\/\/backend_(stream_)?server(\/|$)/) continue
     if (!passes_caller_headers(part[1], part[2])) { closed++; continue }
     checked++
     level = header_level(part[1], part[2])
@@ -818,8 +913,9 @@ expect_hsts_rule() {
 
 # Reads `docker compose config` and prints how it wires one nginx service (-v service): "image
 # <image>", "environment <NAME>", "hook <file name>" for each mount into /docker-entrypoint.d, and
-# "healthcheck <command>" for a CMD-SHELL healthcheck. Compose prints every service in one canonical
-# layout (two spaces per level, keys sorted, every mount in the long syntax), which this relies on.
+# "healthcheck <command>" for a CMD-SHELL healthcheck, and "port <container port>" for each
+# published port. Compose prints every service in one canonical layout (two spaces per level, keys
+# sorted, every mount in the long syntax), which this relies on.
 read -r -d '' compose_wiring_program << 'AWK' || :
 $0 == "  " service ":" { in_service = 1; next }
 !in_service { next }
@@ -837,6 +933,7 @@ section == "environment:" && /^      [A-Za-z_][A-Za-z0-9_]*:/ {
 section == "volumes:" && $1 == "target:" && index($2, "/docker-entrypoint.d/") == 1 {
   print "hook " substr($2, length("/docker-entrypoint.d/") + 1)
 }
+section == "ports:" && ($1 == "target:" || ($1 == "-" && $2 == "target:")) { print "port " $NF }
 section == "healthcheck:" && /^      [a-z_]+:/ { in_test = ($1 == "test:"); next }
 section == "healthcheck:" && in_test && /^        - / {
   item = substr($0, 11)
@@ -851,7 +948,8 @@ compose_nginx_wiring() {
   docker compose -f "$1" --env-file /dev/null --profile '*' config --no-interpolate 2> "$work_dir/compose-err" \
     | awk -v service="$2" "$compose_wiring_program"
 }
-# $1 = a wiring, $2 = image, environment, hook or healthcheck; prints its values of that kind, sorted.
+# $1 = a wiring, $2 = image, environment, hook, healthcheck or port; prints its values of that kind,
+# sorted.
 wiring_values() {
   printf '%s\n' "$1" | sed -n "s/^$2 //p" | LC_ALL=C sort
 }
@@ -892,6 +990,16 @@ expect_stack_wiring() {
   fi
 }
 expect_stack_wiring "src/docker-compose.yaml's epicstaff-nginx" "$stack_wiring"
+# The webhook tunnel listener is for the webhook service's ngrok tunnel, which reaches it inside the
+# Docker network: published, it would be one more way in from outside.
+stack_ports=$(wiring_values "$stack_wiring" port | paste -sd ' ' -)
+if [ -z "$stack_ports" ]; then
+  fail "docker compose config shows no published port for epicstaff-nginx"
+elif printf '%s\n' "$stack_ports" | tr ' ' '\n' | grep -qxF "$tunnel_port"; then
+  fail "src/docker-compose.yaml publishes the webhook tunnel listener's port $tunnel_port (published: $stack_ports)"
+else
+  pass "src/docker-compose.yaml does not publish the webhook tunnel listener's port $tunnel_port (published: $stack_ports)"
+fi
 expect_stack_wiring "this script" "$(printf 'hook %s\n' "${hooks[@]}"; printf 'environment %s\n' "${stack_environment[@]%%=*}")"
 for lab_service in "tests/gateway's nginx|$gateway_lab_compose_file|nginx" \
   "tests/development's nginx|$development_lab_compose_file|nginx" \
@@ -1159,6 +1267,64 @@ if expect_valid "NGINX_TRUSTED_PROXIES with /32, /31, /30, /24 and /1 ranges fro
   fi
 fi
 
+# DJANGO_SGI_WORKERS (19-render-django-upstream.envsh): django_app runs single-worker servers, each
+# on its own port from DJANGO_PORT + 1 up (DJANGO_PORT is the one they share for direct callers).
+# nginx balances requests across them with least_conn, and the long-lived connections in turn,
+# and never takes one out of the group after an error (max_fails=0).
+# $1 = upstream name; prints the directives of that upstream in the last render, one per line.
+django_upstream_directives() {
+  directives | awk -v name="$1" '$0 == "upstream " name " {" { inside = 1; next }
+    inside && /^\}/ { exit }
+    inside && NF { sub(/^[[:space:]]+/, ""); print }'
+}
+# $1 = description, $2 = the servers expected, joined by |; checks both Django upstreams.
+expect_django_upstreams() {
+  local requests streams
+  requests=$(django_upstream_directives backend_server | paste -sd '|' -)
+  streams=$(django_upstream_directives backend_stream_server | paste -sd '|' -)
+  if [ "$requests" = "zone backend_server 64k;|least_conn;|$2" ] \
+    && [ "$streams" = "zone backend_stream_server 64k;|$2" ]; then
+    pass "$1"
+  else
+    fail "$1: backend_server [$requests], backend_stream_server [$streams]"
+  fi
+}
+if expect_valid "DJANGO_SGI_WORKERS=1 is accepted"; then
+  expect_django_upstreams "DJANGO_SGI_WORKERS=1 sends Django's requests to the one server's own port, DJANGO_PORT + 1" \
+    "server django:8001 max_fails=0 resolve;"
+fi
+if expect_valid "DJANGO_SGI_WORKERS=3 is accepted" DJANGO_SGI_WORKERS=3 DJANGO_PORT=8100; then
+  expect_django_upstreams "DJANGO_SGI_WORKERS=3 balances Django's requests across the three servers' own ports" \
+    "server django:8101 max_fails=0 resolve;|server django:8102 max_fails=0 resolve;|server django:8103 max_fails=0 resolve;"
+fi
+if expect_valid "the highest ports are accepted" DJANGO_PORT=65532 DJANGO_SGI_WORKERS=3; then
+  expect_django_upstreams "DJANGO_PORT=65532 with three servers ends at 65535" \
+    "server django:65533 max_fails=0 resolve;|server django:65534 max_fails=0 resolve;|server django:65535 max_fails=0 resolve;"
+fi
+# Only the websockets and the session event stream take the round-robin upstream; every other
+# location that reaches Django counts toward least_conn.
+stream_locations=$(directives | awk '/^[[:space:]]*location / { location = $0 }
+  /proxy_pass http:\/\/backend_stream_server/ { sub(/^[[:space:]]+/, "", location); print location }' \
+  | LC_ALL=C sort | paste -sd '|' -)
+if [ "$stream_locations" = "location ^~ /api/run-session/subscribe/ {|location ~ ^/ws/ {" ]; then
+  pass "only /ws/ and /api/run-session/subscribe/ proxy to backend_stream_server"
+else
+  fail "the locations proxying to backend_stream_server are [$stream_locations]"
+fi
+# Values that would break or inject into the upstream block, or start more servers than exist.
+for django_workers in "" " " 0 00 01 -1 1.5 "2 " "1; server evil:80" a 1000; do
+  expect_refused "DJANGO_SGI_WORKERS=$(printf '%q' "$django_workers") is refused" \
+    "ERROR: DJANGO_SGI_WORKERS='$django_workers'" "DJANGO_SGI_WORKERS=$django_workers"
+done
+expect_refused "an unset DJANGO_SGI_WORKERS is refused" \
+  "environment variable DJANGO_SGI_WORKERS is not set" unset:DJANGO_SGI_WORKERS
+for django_port in "" 0 08000 abc "8000;" 123456; do
+  expect_refused "DJANGO_PORT=$(printf '%q' "$django_port") is refused" \
+    "ERROR: DJANGO_PORT='$django_port'" "DJANGO_PORT=$django_port"
+done
+expect_refused "ports past 65535 are refused" \
+  "needs ports past 65535" DJANGO_PORT=65533 DJANGO_SGI_WORKERS=3
+
 # The NGINX_HSTS_ENABLED of a run of the loops below, $1 = CHAT_ENABLED, $2 = NGINX_SSL_MODE: over
 # a loop's four runs each TLS mode gets both values. True with TLS in nginx, or ended by a load
 # balancer in front of it (TLS off); false with TLS off, or on with an internal certificate.
@@ -1177,6 +1343,7 @@ for chat_enabled in false true; do for ssl_mode in off on; do
     expect_hsts_rule "PLUGINS_ENABLED=false $flags: Strict-Transport-Security follows NGINX_HSTS_ENABLED" \
       "$hsts_enabled" false
     expect_only_django_cookies "PLUGINS_ENABLED=false $flags: only Django gets and sets cookies"
+    expect_tunnel_listener "PLUGINS_ENABLED=false $flags: the tunnel listener on $tunnel_port is plain http and serves only /webhooks/ and /voice/" false
     expect_django_headers_blanked "PLUGINS_ENABLED=false $flags: no caller can send Django the internal listener's headers" 6
     expect_forwarded_proto_locations "PLUGINS_ENABLED=false $flags: every location that proxies the client's headers sends X-Forwarded-Proto \$forwarded_proto" 12
     leaked=""
@@ -1205,6 +1372,7 @@ for chat_enabled in false true; do for ssl_mode in off on; do
     expect_hsts_rule "PLUGINS_ENABLED=true $flags: Strict-Transport-Security follows NGINX_HSTS_ENABLED on EpicStaff's server and the plugin hosts" \
       "$hsts_enabled" true
     expect_only_django_cookies "PLUGINS_ENABLED=true $flags: only Django gets and sets cookies"
+    expect_tunnel_listener "PLUGINS_ENABLED=true $flags: the tunnel listener on $tunnel_port is plain http, serves only /webhooks/ and /voice/ and refuses the plugins subnet" true
     expect_plugin_hosts_cookie_free "PLUGINS_ENABLED=true $flags: the plugin hosts' proxied locations (the platform config and /api/) pass no cookie either way, no Clear-Site-Data and no X-Frame-Options" 2
     expect_gateway_denies_marked "PLUGINS_ENABLED=true $flags: the gateway marks its own refusals"
     expected_tls="include /etc/nginx/conf.d/plugins-ssl-off.snippet;"
@@ -1277,10 +1445,10 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       'geo $plugin_network_caller {' \
       '10.235.0.0/24  1;' \
       'if ($plugin_network_caller) {'
-    if [ "$(directives | grep -cF 'if ($plugin_network_caller) {')" = 2 ]; then
-      pass "both EpicStaff's server and the plugin hosts' server refuse the plugins subnet"
+    if [ "$(directives | grep -cF 'if ($plugin_network_caller) {')" = 3 ]; then
+      pass "EpicStaff's server, the plugin hosts' server and the tunnel listener refuse the plugins subnet"
     else
-      fail "the plugins subnet is refused by $(directives | grep -cF 'if ($plugin_network_caller) {') server(s), not 2"
+      fail "the plugins subnet is refused by $(directives | grep -cF 'if ($plugin_network_caller) {') server(s), not 3"
     fi
     expect_directives "PLUGINS_ENABLED=true $flags renders the plugin gateway" \
       'client_max_body_size 20m;' \
@@ -1392,6 +1560,7 @@ for chat_enabled in false true; do for ssl_mode in off on; do
     expect_hsts_rule "PLUGINS_ENABLED=true $flags: Strict-Transport-Security follows NGINX_HSTS_ENABLED on EpicStaff's server and the plugin hosts" \
       "$hsts_enabled" true
     expect_only_django_cookies "PLUGINS_ENABLED=true $flags: only Django gets and sets cookies"
+    expect_tunnel_listener "PLUGINS_ENABLED=true $flags: the tunnel listener on $tunnel_port is plain http, serves only /webhooks/ and /voice/ and refuses the plugins subnet" true
     expect_plugin_hosts_cookie_free "PLUGINS_ENABLED=true $flags: the plugin hosts' proxied locations (the platform config, /api/ and the development server's page) pass no cookie either way, no Clear-Site-Data and no X-Frame-Options" 3
     expect_gateway_denies_marked "PLUGINS_ENABLED=true $flags: the gateway marks its own refusals, and never the development server's page"
     expect_internal_headers "PLUGINS_ENABLED=true $flags: both listeners' /api/ set the network secret (from the environment) and the on-behalf-of header, and only the development listener says it is" true
@@ -1449,10 +1618,10 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       expect_location_directive "PLUGINS_ENABLED=true $flags: the unreachable answer has [$directive]" \
         "@plugin_development_unreachable" "$directive"
     done
-    if [ "$(directives | grep -cF 'if ($plugin_network_caller) {')" = 3 ] && has_directive 'listen 8082;'; then
-      pass "PLUGINS_ENABLED=true $flags renders the development API listener, and it refuses the plugins subnet like EpicStaff's server and the plugin hosts"
+    if [ "$(directives | grep -cF 'if ($plugin_network_caller) {')" = 4 ] && has_directive 'listen 8082;'; then
+      pass "PLUGINS_ENABLED=true $flags renders the development API listener, and it refuses the plugins subnet like EpicStaff's server, the plugin hosts and the tunnel listener"
     else
-      fail "PLUGINS_ENABLED=true $flags: $(directives | grep -cF 'if ($plugin_network_caller) {') server(s) refuse the plugins subnet, not 3, or nothing listens on 8082"
+      fail "PLUGINS_ENABLED=true $flags: $(directives | grep -cF 'if ($plugin_network_caller) {') server(s) refuse the plugins subnet, not 4, or nothing listens on 8082"
     fi
   fi
 done; done
@@ -1924,7 +2093,7 @@ server {
     }
 }
 STUB
-set_docker_arguments PLUGINS_ENABLED=true PLUGINS_MAX_PACKAGE_MB=1 DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000
+set_docker_arguments PLUGINS_ENABLED=true PLUGINS_MAX_PACKAGE_MB=1 DJANGO_HOST=127.0.0.1 DJANGO_PORT=$live_django_port
 live_container=$(docker run -d "${docker_arguments[@]}" \
   -v "$work_dir/stub-django.conf:/etc/nginx/conf.d/zz-stub-django.conf:ro" "$image")
 live() { docker exec "$live_container" "$@"; }
@@ -2126,7 +2295,7 @@ live_container=""
 #     waiting for the body; nginx streams uploads unbuffered);
 #   - 301 MiB and one byte, more than the cap plus the framing allowance, get 413 before Django
 #     is asked anything.
-set_docker_arguments PLUGINS_ENABLED=true PLUGINS_MAX_PACKAGE_MB=300 DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000
+set_docker_arguments PLUGINS_ENABLED=true PLUGINS_MAX_PACKAGE_MB=300 DJANGO_HOST=127.0.0.1 DJANGO_PORT=$live_django_port
 live_container=$(docker run -d "${docker_arguments[@]}" \
   -v "$work_dir/stub-django.conf:/etc/nginx/conf.d/zz-stub-django.conf:ro" "$image")
 for _ in $(seq 50); do
@@ -2171,7 +2340,7 @@ live_container=""
 # the container a plugin backend. The 8081 listener reaches "Django"; EpicStaff's server and a
 # plugin host refuse it before any location, so even the plugin API's own error pages (which
 # would answer a refusal as 503 plugin_unavailable) never run.
-set_docker_arguments PLUGINS_ENABLED=true DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000 \
+set_docker_arguments PLUGINS_ENABLED=true DJANGO_HOST=127.0.0.1 DJANGO_PORT=$live_django_port \
   PLUGINS_NETWORK_SUBNET=127.0.0.0/8
 live_container=$(docker run -d "${docker_arguments[@]}" \
   -v "$work_dir/stub-django.conf:/etc/nginx/conf.d/zz-stub-django.conf:ro" "$image")
@@ -2224,6 +2393,14 @@ for target in "epicstaff.test /" "epicstaff.test /api/other/" "epicstaff.test /a
     fail "a plugins-subnet caller on ${target% *}${target#* }: expected 403, got $status"
   fi
 done
+for path in /webhooks/x /voice/x /; do
+  status=$(live curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$tunnel_port$path" || true)
+  if [ "$status" = 403 ]; then
+    pass "a plugins-subnet caller is refused with 403 on the tunnel listener: $path"
+  else
+    fail "a plugins-subnet caller on the tunnel listener, $path: expected 403, got $status"
+  fi
+done
 
 docker rm -f "$live_container" > /dev/null
 live_container=""
@@ -2249,7 +2426,7 @@ server {
 STUB
 for plugins_enabled in false true; do
   set_docker_arguments PLUGINS_ENABLED=$plugins_enabled CHAT_ENABLED=true \
-    CHAT_UPSTREAM_URL=http://127.0.0.1:8200 DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000 \
+    CHAT_UPSTREAM_URL=http://127.0.0.1:8200 DJANGO_HOST=127.0.0.1 DJANGO_PORT=$live_django_port \
     FRONTEND_HOST=127.0.0.1 FRONTEND_PORT=8001 WEBHOOK_HOST=127.0.0.1 WEBHOOK_PORT=8009 \
     AUDITOR_HOST=127.0.0.1 AUDITOR_PORT=8010 REALTIME_HOST=127.0.0.1 REALTIME_PORT=8050
   live_container=$(docker run -d "${docker_arguments[@]}" \
@@ -2287,6 +2464,48 @@ for plugins_enabled in false true; do
     pass "PLUGINS_ENABLED=$plugins_enabled, live: only Django's routes get cookies and may set or clear one; X-Frame-Options is nginx's alone"
   else
     fail "PLUGINS_ENABLED=$plugins_enabled, live: wrong cookies or framing rule:$wrong"
+  fi
+  # The tunnel listener: /webhooks/ and /voice/ reach their upstreams as on EpicStaff's server,
+  # without cookies either way; every other path is nginx's 404 and reaches no upstream (each stub
+  # answers 200 with its port). /webhooks and /voice get nginx's redirect to the route, relative,
+  # so it keeps the tunnel's public scheme, host and port.
+  # "<path> <port of the upstream it must reach, 404, or 301 and the Location>"
+  wrong=""
+  for target in "/webhooks/x 8009" "/voice/x 8050" "/voice/token/stream 8050" "/voice/stream 8050" \
+    "/webhooks 301 /webhooks/" "/voice 301 /voice/" \
+    "/ 404" "/api/x/ 404" "/admin/ 404" "/ht/ 404" "/swagger/ 404" \
+    "/media/x 404" "/media/avatars/x 404" "/static/x 404" "/ws/x 404" "/realtime/x 404" \
+    "/auditor/api/x 404" "/chat 404" "/chat/api/x 404" "/plugins/weather 404" \
+    "/api/storage/upload/stream 404" "/api/run-session/subscribe/1/ 404"; do
+    read -r path port location <<< "$target"
+    status=$(live sh -c 'curl -s -D /tmp/headers -o /tmp/body -w "%{http_code}" -H "Host: epicstaff.test" \
+      -H "Cookie: __Host-auth.refresh=live-refresh" "http://127.0.0.1:$2$1"' request "$path" "$tunnel_port" || true)
+    answer=$(live cat /tmp/body)
+    set_cookies=$(live sh -c 'grep -ci "^set-cookie:" /tmp/headers' || true)
+    clear_site_data=$(live sh -c 'grep -ci "^clear-site-data:" /tmp/headers' || true)
+    frame_options=$(live sh -c 'grep -i "^x-frame-options:" /tmp/headers | tr -d "\r" | paste -sd "|" -' || true)
+    if [ "$port" = 404 ] || [ "$port" = 301 ]; then
+      case "$answer" in
+        [0-9]*" cookie=["*) got="reached the stub on ${answer%% *}" ;;
+        *) got="status $status" ;;
+      esac
+      expected="status $port"
+      if [ "$port" = 301 ]; then
+        got="$got location=$(live sh -c 'sed -n "s/^[Ll]ocation: //p" /tmp/headers | tr -d "\r"' || true)"
+        expected="$expected location=$location"
+      fi
+    else
+      got="$status $answer set-cookie=$set_cookies clear-site-data=$clear_site_data"
+      expected="200 $port cookie=[] set-cookie=0 clear-site-data=0"
+    fi
+    if [ "$got" != "$expected" ] || [ "$frame_options" != "X-Frame-Options: SAMEORIGIN" ]; then
+      wrong="$wrong [$path: $got $frame_options]"
+    fi
+  done
+  if [ -z "$wrong" ]; then
+    pass "PLUGINS_ENABLED=$plugins_enabled, live: the tunnel listener on $tunnel_port serves /webhooks/ and /voice/ without cookies, and 404s EpicStaff's other routes"
+  else
+    fail "PLUGINS_ENABLED=$plugins_enabled, live: the tunnel listener on $tunnel_port:$wrong"
   fi
   docker rm -f "$live_container" > /dev/null
   live_container=""
@@ -2365,7 +2584,7 @@ start_forwarded_proto_container() {
   [ $# -gt 0 ] && shift
   extra=("$@")
   set_docker_arguments PLUGINS_ENABLED=true CHAT_ENABLED=true \
-    CHAT_UPSTREAM_URL=http://127.0.0.1:8200 DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000 \
+    CHAT_UPSTREAM_URL=http://127.0.0.1:8200 DJANGO_HOST=127.0.0.1 DJANGO_PORT=$live_django_port \
     FRONTEND_HOST=127.0.0.1 FRONTEND_PORT=8001 WEBHOOK_HOST=127.0.0.1 WEBHOOK_PORT=8009 \
     AUDITOR_HOST=127.0.0.1 AUDITOR_PORT=8010 REALTIME_HOST=127.0.0.1 REALTIME_PORT=8050 "${overrides[@]}"
   live_container=$(docker run -d "${docker_arguments[@]}" \
@@ -2415,6 +2634,27 @@ expect_forwarded_proto "live, TLS in nginx and nobody trusted, a client that cla
   https http https
 expect_forwarded_proto "live, TLS in nginx and nobody trusted, a client that says nothing: every upstream is told https" \
   https - https
+# ngrok ends TLS at its edge and reaches the tunnel listener over http, saying https: no redirect,
+# which would send the request back out through the tunnel in a loop, and the upstream is told
+# nginx's own scheme (the webhook service is not a trusted proxy). EpicStaff's server, for
+# contrast, redirects the same http request.
+wrong=""
+for path in /webhooks/x /voice/x /voice/token/stream; do
+  answer=$(live curl -s -H "X-Forwarded-Proto: https" -w " status=%{http_code}" \
+    "http://127.0.0.1:$tunnel_port$path" || true)
+  case "$answer" in
+    "proto=[http] "*" status=200") ;;
+    *) wrong="$wrong [$path: $answer]" ;;
+  esac
+done
+status=$(live curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$tunnel_port/" || true)
+[ "$status" = 404 ] || wrong="$wrong [/: $status]"
+main_status=$(live curl -s -o /dev/null -w '%{http_code}' -H "Host: epicstaff.test" http://127.0.0.1/webhooks/x || true)
+if [ -z "$wrong" ] && [ "$main_status" = 301 ]; then
+  pass "live, NGINX_SSL_MODE=on: the tunnel listener answers http without a redirect (EpicStaff's server redirects: $main_status), tells the upstream http, and 404s /"
+else
+  fail "live, NGINX_SSL_MODE=on: the tunnel listener:$wrong; EpicStaff's server on http answered $main_status, not 301"
+fi
 stop_forwarded_proto_container
 
 if [ "$failures" -ne 0 ]; then

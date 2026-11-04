@@ -24,7 +24,6 @@
                     [attr.aria-label]="action.label"
                     [attr.aria-disabled]="isActionDisabled()"
                     [matTooltip]="actionTooltip()"
-                    matTooltipPosition="above"
                     (click)="onAction()"
                 >
                     <app-svg-icon
@@ -38,7 +37,6 @@
                 class="action-icon"
                 aria-label="Copy code"
                 matTooltip="Copy code"
-                matTooltipPosition="above"
                 (click)="copyCode()"
             >
                 <app-svg-icon
@@ -52,7 +50,6 @@
                     class="action-icon"
                     [attr.aria-label]="expandLabel()"
                     [matTooltip]="expandLabel()"
-                    matTooltipPosition="above"
                     (click)="onExpand()"
                 >
                     <app-svg-icon
@@ -80,8 +77,6 @@
                 icon="copy"
                 size="2rem"
                 ariaLabel="Copy code"
-                matTooltip="Copy code"
-                matTooltipPosition="above"
                 (onClick)="copyCode()"
             ></app-icon-button>
             @if (allowExpand()) {
@@ -89,8 +84,6 @@
                     icon="editor-expand"
                     size="2rem"
                     [ariaLabel]="expandLabel()"
-                    [matTooltip]="expandLabel()"
-                    matTooltipPosition="above"
                     (onClick)="onExpand()"
                 ></app-icon-button>
             }

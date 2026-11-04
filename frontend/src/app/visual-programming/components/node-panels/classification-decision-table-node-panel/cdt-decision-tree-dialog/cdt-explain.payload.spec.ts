@@ -289,6 +289,12 @@ describe('resolveExplainLlmConfig', () => {
         ).toBe(9);
     });
 
+    it('skips a System One entry, which never runs on an LLM', () => {
+        const systemOne = prompt({ kind: 'system_one', llm_config: 9, system_one_config: 7 });
+
+        expect(resolveExplainLlmConfig(input({ prompts: { p: systemOne } }))).toBeNull();
+    });
+
     it('is null when neither the table nor any prompt names a model', () => {
         expect(resolveExplainLlmConfig(input({ prompts: { p: prompt({ llm_config: null }) } }))).toBeNull();
         expect(resolveExplainLlmConfig(input())).toBeNull();

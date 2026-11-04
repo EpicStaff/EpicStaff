@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentType, TemplatePortal } from '@angular/cdk/portal';
@@ -20,10 +21,13 @@ import {
 } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
 import { LLMLibraryService, ProviderWithModels } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
+import { filter } from 'rxjs';
 
+import { TooltipOnOverflowDirective } from '../../../directives/tooltip-on-overflow.directive';
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
 import { TooltipComponent } from '../../tooltip/tooltip.component';
@@ -48,6 +52,8 @@ const TOP_PROVIDERS = [
 @Component({
     selector: 'app-llm-model-selector',
     imports: [
+        CdkTrapFocus,
+        MatTooltip,
         FormsModule,
         OverlayModule,
         AppSvgIconComponent,
@@ -55,6 +61,7 @@ const TOP_PROVIDERS = [
         UpperCasePipe,
         ButtonComponent,
         IconButtonComponent,
+        TooltipOnOverflowDirective,
     ],
     providers: [
         {
@@ -75,6 +82,8 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
     private overlay = inject(Overlay);
     private overlayPositionBuilder = inject(OverlayPositionBuilder);
     private vcr = inject(ViewContainerRef);
+    // Disposing the overlay also completes its event streams; the subscriptions end with the component too.
+    private readonly disposeOverlayOnDestroy = this.destroyRef.onDestroy(() => this.overlayRef?.dispose());
 
     placeholder = input<string>('Select LLM model');
     icon = input<string>('help_outline');
@@ -184,7 +193,17 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
                 width: this.triggerBtn.nativeElement.offsetWidth,
             });
 
-            this.overlayRef.backdropClick().subscribe(() => this.close());
+            this.overlayRef
+                .backdropClick()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe(() => this.close());
+            this.overlayRef
+                .keydownEvents()
+                .pipe(
+                    filter((event) => event.key === 'Escape'),
+                    takeUntilDestroyed(this.destroyRef)
+                )
+                .subscribe(() => this.close());
         }
 
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);

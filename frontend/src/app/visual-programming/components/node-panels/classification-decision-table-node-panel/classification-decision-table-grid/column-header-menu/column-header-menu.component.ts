@@ -1,19 +1,24 @@
+import { A11yModule } from '@angular/cdk/a11y';
 import { Overlay } from '@angular/cdk/overlay';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    ElementRef,
     inject,
     OnDestroy,
     TemplateRef,
     ViewChild,
+    viewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { IHeaderAngularComp } from 'ag-grid-angular';
-import { IHeaderParams } from 'ag-grid-community';
+import { Column, GridApi, IHeaderParams } from 'ag-grid-community';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CdtFreezeMenuItem, CdtFreezeSide } from '../shared/column-freeze.util';
+import { headerBesideColumns, listenForHeaderActivation } from '../shared/header-keyboard.util';
 import { OverlayMenuController } from '../shared/overlay-menu.util';
 
 export interface ColumnHeaderMenuParams extends IHeaderParams {
@@ -39,28 +44,29 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
 
 @Component({
     selector: 'app-column-header-menu',
-    imports: [AppSvgIconComponent],
+    imports: [A11yModule, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div
-            class="chm-wrapper"
-            [title]="tooltip"
-        >
+        <div class="chm-wrapper">
             @if (label) {
                 <span class="chm-label">{{ label }}</span>
             }
             @if (iconClass && onIconClick) {
-                <i
+                <!-- On the icon it names, not the header: there it would stack on the grip's and chevron's. -->
+                <button
+                    type="button"
                     [class]="iconClass"
                     [class.chm-icon-clickable]="variant === 'default'"
                     [class.chm-icon-delete]="variant === 'delete'"
+                    [attr.aria-label]="tooltip || label"
+                    [matTooltip]="tooltip"
                     (click)="onIconClick($event)"
-                ></i>
+                ></button>
             }
             @if (showDragGrip) {
                 <span
                     class="drag-grip-btn"
-                    title="Drag to reposition"
+                    matTooltip="Drag to reposition"
                 >
                     <app-svg-icon
                         icon="drag-grip"
@@ -70,9 +76,12 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
             }
             @if (showChevron) {
                 <button
+                    type="button"
+                    #chevronButton
                     class="chm-chevron"
                     (click)="toggleMenu($event)"
-                    title="Column options"
+                    aria-label="Column options"
+                    matTooltip="Column options"
                 >
                     <i class="ti ti-chevron-down"></i>
                 </button>
@@ -80,10 +89,17 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
         </div>
 
         <ng-template #menuTemplate>
-            <div class="chm-dropdown">
+            <div
+                class="chm-dropdown"
+                role="menu"
+                cdkTrapFocus
+                [cdkTrapFocusAutoCapture]="true"
+            >
                 @if (showFreeze) {
                     @for (item of freezeMenuItems; track item.side) {
-                        <div
+                        <button
+                            type="button"
+                            role="menuitem"
                             class="chm-menu-item"
                             [class.chm-menu-item--disabled]="item.disabledReason"
                             [attr.title]="item.disabledReason"
@@ -91,22 +107,38 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                             (click)="handleFreeze(item)"
                         >
                             <span>{{ item.label }}</span>
-                        </div>
+                        </button>
                     }
                 }
                 @if (onHide) {
-                    <div
+                    <button
+                        type="button"
+                        role="menuitem"
                         class="chm-menu-item"
                         (click)="handleHide()"
                     >
                         <span>Hide</span>
-                    </div>
+                    </button>
                 }
             </div>
         </ng-template>
     `,
     styles: [
         `
+            button.chm-menu-item {
+                width: 100%;
+                border: none;
+                font-family: inherit;
+                text-align: left;
+                outline-offset: -2px;
+            }
+            button.chm-menu-item:not(:hover, :focus-visible) {
+                background: transparent;
+            }
+            button.chm-menu-item:focus-visible {
+                background: var(--purple-alpha-20);
+                color: var(--white);
+            }
             :host {
                 display: block;
                 width: 100%;
@@ -152,13 +184,15 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 flex-shrink: 0;
             }
 
-            .chm-icon-clickable:hover {
+            .chm-icon-clickable:is(:hover, :focus-visible) {
                 background: rgba(104, 95, 255, 0.5) !important;
                 color: #fff !important;
                 border-color: var(--accent-color);
             }
 
             .chm-icon-delete {
+                border: none;
+                background: none;
                 cursor: pointer;
                 font-size: 0.8rem !important;
                 color: rgba(255, 255, 255, 0.4) !important;
@@ -167,7 +201,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 padding: 2px;
             }
 
-            .chm-icon-delete:hover {
+            .chm-icon-delete:is(:hover, :focus-visible) {
                 color: rgba(255, 100, 100, 0.85) !important;
             }
 
@@ -224,6 +258,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
 })
 export class ColumnHeaderMenuComponent implements IHeaderAngularComp, OnDestroy {
     @ViewChild('menuTemplate') menuTemplate!: TemplateRef<unknown>;
+    private readonly chevronButton = viewChild<ElementRef<HTMLButtonElement>>('chevronButton');
 
     public label = '';
     public tooltip = '';
@@ -243,8 +278,19 @@ export class ColumnHeaderMenuComponent implements IHeaderAngularComp, OnDestroy 
     private vcr = inject(ViewContainerRef);
     private cdr = inject(ChangeDetectorRef);
     private menuCtrl = new OverlayMenuController(this.overlay, this.vcr);
+    private gridApi: GridApi | null = null;
+    private column: Column | null = null;
+    private stopListeningForActivation: (() => void) | null = null;
 
     agInit(params: ColumnHeaderMenuParams): void {
+        this.gridApi = params.api;
+        this.column = params.column;
+        // Enter or Space on the focused header opens its menu, as a click on the chevron does.
+        // A header without one (a variable column) does nothing: its only control removes
+        // the variable and its values, too much for a stray key.
+        this.stopListeningForActivation = listenForHeaderActivation(params.eGridHeader, () =>
+            this.chevronButton()?.nativeElement.click()
+        );
         this.label = params.label || '';
         this.tooltip = params.tooltip || '';
         this.colId = params.colId || params.column?.getColId() || '';
@@ -282,23 +328,29 @@ export class ColumnHeaderMenuComponent implements IHeaderAngularComp, OnDestroy 
     toggleMenu(event: MouseEvent): void {
         event.stopPropagation();
         this.freezeMenuItems = this.getFreezeMenuItems?.() ?? [];
-        this.menuCtrl.toggle(event.currentTarget as HTMLElement, this.menuTemplate);
+        this.menuCtrl.toggle(event.currentTarget as HTMLElement, this.menuTemplate, { closeOnEscape: true });
     }
 
     handleFreeze(item: CdtFreezeMenuItem): void {
         if (item.disabledReason) return;
         this.menuCtrl.close();
         this.onFreezeToggle?.(item.side);
+        // Freezing moves the header to the other side of the pin line, into a new cell; the focus follows it.
+        if (this.colId) this.gridApi?.setFocusedHeader(this.colId);
     }
 
     handleHide(): void {
         this.menuCtrl.close();
         if (this.onHide && this.colId) {
+            // The hidden header takes the focus with it; the header beside it gets it instead.
+            const next = this.gridApi && this.column ? headerBesideColumns(this.gridApi, [this.column]) : null;
             this.onHide(this.colId);
+            if (next) this.gridApi?.setFocusedHeader(next);
         }
     }
 
     ngOnDestroy(): void {
+        this.stopListeningForActivation?.();
         this.menuCtrl.dispose();
     }
 }

@@ -19,7 +19,8 @@ location = /chat {
 }
 
 location ^~ /chat/internal/ {
-    # Django's signed callbacks come over the compose network, never through nginx.
+    # Django's signed callbacks and the manager's retention purge come over the compose network,
+    # never through nginx.
     return 404;
 }
 

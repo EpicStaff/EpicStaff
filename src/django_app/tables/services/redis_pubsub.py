@@ -106,8 +106,8 @@ class RedisPubSub:
                 # Locked so the token total read below cannot interleave with
                 # GraphMessageStore storing it: whichever runs second stores the full one.
                 # NO KEY UPDATE: it does not wait for the KEY SHARE locks of message inserts.
-                # Only the fields used here and after the commit: graph_schema, variables
-                # and status_data are large JSON this handler never reads.
+                # Only the fields used here and after the commit: variables and
+                # status_data are large JSON this handler never reads.
                 session = (
                     Session.objects.select_for_update(no_key=True)
                     .only("id", "status", "finished_at", "graph_id")

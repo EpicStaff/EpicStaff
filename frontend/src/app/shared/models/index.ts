@@ -30,6 +30,7 @@ export * from './realtime-voice/realtime-model.model';
 export * from './role-based-access';
 export * from './secrets/secret.model';
 export * from './session/graph-session-status.model';
+export * from './system-one/system-one.model';
 export * from './tag.model';
 export * from './task-message.model';
 export * from './tools/mcp-tool.model';

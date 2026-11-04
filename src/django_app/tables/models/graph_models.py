@@ -8,6 +8,7 @@ from django.db.models import F
 from loguru import logger
 from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
+from src.shared.models.system_one import LLM_PROMPT_KIND, SYSTEM_ONE_PROMPT_KIND
 
 from tables.exceptions import GraphSaveVersionConflictError
 from tables.models.base_models import (
@@ -365,8 +366,12 @@ class GraphSessionMessage(models.Model):
     name = models.CharField(default="")
     execution_order = models.IntegerField(default=0)
     message_data = models.JSONField()
-    # The emitting node's BaseNode.TYPE (e.g. "AGENT"); empty when the emitter is not a
-    # BaseNode and on rows saved before this field existed.
+    # The emitting node's TYPE (e.g. "AGENT"). A node's start and finish rows store it; its
+    # other rows (tool calls, end output) may leave it empty and take it from the same
+    # node's rows at export. Empty also on non-node rows (graph_end), on user messages
+    # (written by Django), and on rows saved before crew sent it that the migration
+    # backfill could not type: subflow-inner rows, subflow-session rows, and names
+    # missing from the session's old graph snapshot.
     node_type = models.CharField(default="", blank=True)
     uuid = models.UUIDField(null=False, editable=False, unique=True)
     parent_subgraph_execution_id = models.UUIDField(null=True, blank=True, db_index=True)
@@ -858,12 +863,17 @@ class ClassificationDecisionTableNode(
 
 
 class ClassificationDecisionTablePrompt(TimestampMixin, SoftDeleteFields):
+    class Kind(models.TextChoices):
+        LLM = LLM_PROMPT_KIND, "LLM"
+        SYSTEM_ONE = SYSTEM_ONE_PROMPT_KIND, "System One"
+
     cdt_node = models.ForeignKey(
         "ClassificationDecisionTableNode",
         on_delete=models.CASCADE,
         related_name="prompt_configs",
     )
     prompt_key = models.CharField(max_length=255)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.LLM)
     prompt_text = models.TextField(blank=True, default="")
     llm_config = models.ForeignKey(
         "LLMConfig",
@@ -872,6 +882,15 @@ class ClassificationDecisionTablePrompt(TimestampMixin, SoftDeleteFields):
         blank=True,
         related_name="cdt_prompts",
     )
+    system_one_config = models.ForeignKey(
+        "SystemOneConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cdt_prompts",
+    )
+    questions = models.JSONField(default=dict, blank=True)
+    input_map = models.JSONField(default=dict, blank=True)
     output_schema = models.JSONField(default=dict, blank=True)
     result_variable = models.CharField(max_length=255, default="prompt_result")
     variable_mappings = models.JSONField(default=dict, blank=True)
@@ -879,7 +898,16 @@ class ClassificationDecisionTablePrompt(TimestampMixin, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        # Forbids only the other kind's field. "Required" is not a database rule:
+        # deleting a config sets the link to null and must not fail.
+        constraints = [
+            soft_delete_consistency_constraint(),
+            models.CheckConstraint(
+                condition=models.Q(kind=LLM_PROMPT_KIND, system_one_config__isnull=True)
+                | models.Q(kind=SYSTEM_ONE_PROMPT_KIND, llm_config__isnull=True),
+                name="cdt_prompt_kind_fields",
+            ),
+        ]
         unique_together = ("cdt_node", "prompt_key")
 
 

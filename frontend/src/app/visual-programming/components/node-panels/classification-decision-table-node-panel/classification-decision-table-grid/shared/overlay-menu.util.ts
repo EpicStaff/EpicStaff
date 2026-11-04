@@ -4,6 +4,8 @@ import { TemplateRef, ViewContainerRef } from '@angular/core';
 import { Subscription } from 'rxjs';
 
 export interface OverlayMenuConfig {
+    /** Escape on an item closes the menu and goes no further (the menu's focus trap gives the focus back). */
+    closeOnEscape?: boolean;
     /**
      * Panel CSS class(es) applied to the overlay pane.
      * Defaults to no panelClass (none set).
@@ -67,7 +69,9 @@ export interface OverlayMenuConfig {
     ignoreOutsideFor?: readonly HTMLElement[];
 }
 
-const DEFAULT_CONFIG: Required<Omit<OverlayMenuConfig, 'panelClass' | 'scrollStrategy' | 'ignoreOutsideFor'>> = {
+const DEFAULT_CONFIG: Required<
+    Omit<OverlayMenuConfig, 'panelClass' | 'scrollStrategy' | 'ignoreOutsideFor' | 'closeOnEscape'>
+> = {
     offsetY: 4,
     withFlipFallback: true,
     withPush: true,
@@ -184,7 +188,18 @@ export class OverlayMenuController {
               });
 
         this.overlayRef.attach(new TemplatePortal(template, this.vcr));
+        if (cfg?.closeOnEscape) {
+            // On the pane, ahead of the tooltip of the focused item, which would take the first Escape on the body.
+            this.overlayRef.overlayElement.addEventListener('keydown', this.closeOnEscape);
+        }
     }
+
+    private readonly closeOnEscape = (event: KeyboardEvent): void => {
+        if (event.key !== 'Escape' || event.defaultPrevented) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.close();
+    };
 
     /** Close and dispose the overlay panel. Safe to call when already closed. */
     close(): void {

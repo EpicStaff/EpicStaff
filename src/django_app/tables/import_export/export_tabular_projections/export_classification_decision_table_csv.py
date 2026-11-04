@@ -1,6 +1,7 @@
 import csv
 import io
 
+from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND
 from utils.graph_utils import node_label
 
 from tables.import_export.export_tabular_projections._csv_helpers import (
@@ -48,20 +49,32 @@ def _collect_llm_configs(
     return list(configs.values())
 
 
+def _prompt_columns(prompt) -> tuple[str, str]:
+    if prompt is None:
+        return "", ""
+    if prompt.kind == SYSTEM_ONE_PROMPT_KIND:
+        config = prompt.system_one_config
+        return ", ".join(
+            prompt.questions
+        ), f"System One: {config.custom_name if config else '(no config)'}"
+    return prompt.prompt_text, _llm_config_label(prompt.llm_config)
+
+
 def rule_row(
     number: int,
     group: ClassificationConditionGroup,
     node_names: dict[int, str],
 ) -> list:
     prompt = group.prompt
+    prompt_text, model_label = _prompt_columns(prompt)
     return [
         number,
         group.group_name,
         group.section.name if group.section else "",
         group.route_code or "",
         group.expression or "",
-        prompt.prompt_text if prompt else "",
-        _llm_config_label(prompt.llm_config) if prompt else "",
+        prompt_text,
+        model_label,
         prompt.result_variable if prompt else "",
         group.manipulation or "",
         _format_mapping(group.field_expressions),
@@ -73,7 +86,9 @@ def rule_row(
 
 def export_condition_groups_csv(node: ClassificationDecisionTableNode) -> io.StringIO:
     groups = list(
-        node.condition_groups.select_related("prompt__llm_config__model").order_by("order")
+        node.condition_groups.select_related(
+            "prompt__llm_config__model", "prompt__system_one_config"
+        ).order_by("order")
     )
     node_names = _node_labels(
         [

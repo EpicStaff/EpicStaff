@@ -39,7 +39,9 @@
         @if (!isEditMode()) {
             <div class="control">
                 <label class="label">Organization <span class="required">*</span></label>
+                <!-- A new role's dialog opens with the focus here, its first field. -->
                 <app-select
+                    cdkFocusInitial
                     placeholder="Select organization..."
                     [items]="orgOptions()"
                     [selectedValue]="targetOrgId()"
@@ -50,8 +52,11 @@
 
         <div class="control">
             <label class="label">Role Name <span class="required">*</span></label>
+            <!-- The edit dialog opens with the focus here: the organization is fixed, so this is its first field. -->
             <app-custom-input
+                [attr.cdkFocusInitial]="isEditMode() ? '' : null"
                 placeholder="Enter the name..."
+                ariaLabel="Role Name"
                 formControlName="name"
             />
         </div>
@@ -61,6 +66,7 @@
             <label class="label">Description</label>
             <app-custom-input
                 placeholder="Enter the description..."
+                ariaLabel="Description"
                 formControlName="description"
             />
         </div>

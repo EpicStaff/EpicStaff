@@ -39,6 +39,9 @@ class LLMConfigData(BaseModel):
     """
 
     model: str
+    custom_name: str | None = None
+    """Display name of the LLMConfig this was built from. Used to label which
+    config served a run; never sent to litellm."""
     timeout: float | int | None = None
     temperature: float | None = None
     top_p: float | None = None
@@ -53,7 +56,7 @@ class LLMConfigData(BaseModel):
     api_key: str | None = None
     api_key_secret_id: int | None = Field(default=None, exclude=True)
     """In-memory carrier for SecretResolver; excluded from every dump so no
-    Secret id reaches Session.graph_schema or the Redis payload."""
+    Secret id reaches the Redis payload or anything persisted from this model."""
     deployment_id: str | None = None
     extra_headers: dict[str, str] | None = None
     input_cost_per_token: float | None = None

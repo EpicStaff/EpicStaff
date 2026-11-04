@@ -6,6 +6,7 @@ from app.constants import FAILURE_STOP_REASONS
 from app.emitters.base import Emitter
 from app.enums import EmitterMode, RunType
 from app.exceptions import AgentServiceError
+from app.logging_utils import format_exception_for_log
 from app.loop.context import AgentContext, CancellationCheck
 from app.output.schema import add_usage
 from app.prompt.single_task import SingleTaskPromptBuilder
@@ -183,12 +184,16 @@ class ListOfTasksRunner(Runner):
             logger.error(
                 "list_of_tasks failed correlation_id={} error={}",
                 request.correlation_id,
-                error,
+                format_exception_for_log(error),
             )
             await emitter.on_error(error)  # expected domain failure → agent.error; do NOT re-raise
 
         except Exception as error:
-            logger.exception("list_of_tasks crashed correlation_id={}", request.correlation_id)
+            logger.error(
+                "list_of_tasks crashed correlation_id={} error={}",
+                request.correlation_id,
+                format_exception_for_log(error),
+            )
             await emitter.on_error(error)  # unexpected failure → agent.error; do NOT re-raise
 
     def _parse_tasks(self, payload: dict) -> list[AgentTaskSpec]:

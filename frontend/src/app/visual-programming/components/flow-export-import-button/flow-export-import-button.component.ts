@@ -1,4 +1,4 @@
-import { FocusMonitor } from '@angular/cdk/a11y';
+import { A11yModule } from '@angular/cdk/a11y';
 import { OverlayModule } from '@angular/cdk/overlay';
 import {
     afterNextRender,
@@ -26,7 +26,7 @@ import { KeymapService } from '../../services/keymap.service';
 
 @Component({
     selector: 'app-flow-export-import-button',
-    imports: [OverlayModule, AppSvgIconComponent, MatTooltipModule, HasPermissionDirective],
+    imports: [A11yModule, OverlayModule, AppSvgIconComponent, MatTooltipModule, HasPermissionDirective],
     templateUrl: './flow-export-import-button.component.html',
     styleUrls: ['./flow-export-import-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -48,10 +48,9 @@ export class FlowExportImportButtonComponent {
     readonly canUseMenu = computed(() => this.permissions.meets(FLOW_ACTION_PERMISSIONS.exportImport));
 
     private readonly permissions = inject(PermissionsService);
-    private readonly injector = inject(Injector);
-    private readonly focusMonitor = inject(FocusMonitor);
     protected readonly keymap = inject(KeymapService);
     private readonly host: HTMLElement = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    private readonly injector = inject(Injector);
 
     @HostListener('mousedown', ['$event'])
     onMouseDown(event: MouseEvent): void {
@@ -67,16 +66,14 @@ export class FlowExportImportButtonComponent {
         // The toolbar hides this button when it runs out of room (the node side panel is open); a menu anchored
         // to a hidden button would open in the corner of the screen, so the key does nothing until it is back.
         if (getComputedStyle(this.host).display === 'none') return;
-        this.isOpen.set(true);
-        // Focus set by code, not by the user's Tab: the item's tooltip opens only on keyboard focus, and an open
-        // tooltip would take the first Esc that should close this menu and reach the editor.
-        afterNextRender(
-            () => {
-                const firstItem = this.menuItems()[0]?.nativeElement;
-                if (firstItem) this.focusMonitor.focusVia(firstItem, 'program');
-            },
-            { injector: this.injector }
-        );
+        this.open();
+    }
+
+    /** Escape closes the menu and goes no further, unless something inside it already used this Escape. */
+    protected onMenuEscape(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.close();
     }
 
     /** Arrow keys move between the items, Home and End jump to the ends; Enter clicks the focused item button. */
@@ -86,12 +83,22 @@ export class FlowExportImportButtonComponent {
         const next = nextListIndex(event.key, current, items.length);
         if (next === null) return;
         event.preventDefault();
-        this.focusMonitor.focusVia(items[next], 'program');
+        items[next].focus();
     }
 
     protected toggle(event: Event): void {
         event.stopPropagation();
-        this.isOpen.update((v) => !v);
+        if (this.isOpen()) {
+            this.close();
+        } else {
+            this.open();
+        }
+    }
+
+    /** The first item takes the focus once the menu is drawn; the menu's focus trap gives it back on close. */
+    private open(): void {
+        this.isOpen.set(true);
+        afterNextRender(() => this.menuItems()[0]?.nativeElement.focus(), { injector: this.injector });
     }
 
     protected close(): void {

@@ -70,7 +70,9 @@
         <nav class="tabs">
             <div class="tabs-left">
                 @for (tab of tabs; track tab.link; let last = $last) {
+                    <!-- RouterLink makes a non-link host focusable; the tab's own button already takes Tab and Enter. -->
                     <app-tab-button
+                        tabindex="-1"
                         mod="sm"
                         routerLink="{{ tab.link }}"
                         routerLinkActive="active"
@@ -107,10 +109,13 @@
         <div class="body-content">
             <div class="breadcrumb-bar">
                 <button
+                    type="button"
                     class="expand-sidebar-btn"
                     data-selection-safe
                     (click)="toggleSidebar()"
                     [class.active]="showSidebar()"
+                    [attr.aria-label]="showSidebar() ? 'Close sidebar' : 'Open sidebar'"
+                    [attr.aria-expanded]="showSidebar()"
                     [matTooltip]="showSidebar() ? 'Close sidebar' : 'Open sidebar'"
                     matTooltipPosition="right"
                 >
@@ -121,8 +126,10 @@
                 </button>
                 <div class="breadcrumb-path">
                     <button
+                        type="button"
                         class="breadcrumb-home"
                         (click)="selectAllLabels()"
+                        aria-label="All Tools"
                         matTooltip="All Tools"
                         matTooltipPosition="right"
                     >
@@ -141,6 +148,7 @@
                     <div class="usage-toggle">
                         <span class="usage-toggle__label">Show usage & unused</span>
                         <app-toggle-switch
+                            ariaLabel="Show usage & unused"
                             [checked]="viewState.showUsageAndUnused()"
                             (checkedChange)="viewState.showUsageAndUnused.set($event)"
                         />
@@ -148,10 +156,13 @@
 
                     <button
                         #bulkTrigger="cdkOverlayOrigin"
+                        #bulkTriggerButton
                         cdkOverlayOrigin
                         type="button"
                         class="menu-trigger"
                         data-selection-safe
+                        aria-haspopup="menu"
+                        [attr.aria-expanded]="bulkMenuOpen()"
                         [class.active]="bulkMenuOpen()"
                         (click)="toggleBulkMenu()"
                         (mouseenter)="onBulkButtonEnter()"
@@ -169,6 +180,7 @@
                             [class.open]="bulkMenuOpen()"
                         />
                     </button>
+                    <!-- Escape detaches the overlay, which closes the menu; its focus trap returns the focus here. -->
                     <ng-template
                         cdkConnectedOverlay
                         [cdkConnectedOverlayOrigin]="bulkTrigger"
@@ -198,69 +210,45 @@
                         />
                     </ng-template>
 
-                    <button
-                        #filterTrigger="cdkOverlayOrigin"
-                        cdkOverlayOrigin
-                        type="button"
+                    <!-- Two buttons drawn as one: the clear button cannot sit inside the toggle. -->
+                    <div
                         class="menu-trigger filter-trigger"
-                        [class.active]="filterMenuOpen() || activeFilterCount() > 0"
-                        (click)="toggleFilterMenu()"
+                        [class.active]="showFilterSidebar() || activeFilterCount() > 0"
                     >
-                        <app-svg-icon
-                            icon="filter-outline"
-                            size="0.875rem"
-                        />
-                        <span>
-                            Filter
-                            @if (activeFilterCount() > 0) {
-                                <span class="filter-count">({{ activeFilterCount() }})</span>
-                            }
-                        </span>
+                        <button
+                            #filterToggle
+                            type="button"
+                            class="filter-trigger__toggle"
+                            [attr.aria-expanded]="showFilterSidebar()"
+                            (click)="toggleFilterSidebar()"
+                        >
+                            <app-svg-icon
+                                icon="filter-outline"
+                                size="0.875rem"
+                            />
+                            <span>
+                                Filter
+                                @if (activeFilterCount() > 0) {
+                                    <span class="filter-count">({{ activeFilterCount() }})</span>
+                                }
+                            </span>
+                        </button>
                         @if (activeFilterCount() > 0) {
-                            <span
+                            <!-- Goes away once the filters are cleared: the focus moves to the Filter button. -->
+                            <button
+                                type="button"
                                 class="filter-clear-inline"
-                                role="button"
+                                aria-label="Clear all filters"
                                 matTooltip="Clear all filters"
-                                matTooltipPosition="above"
-                                (click)="clearAllFilters($event)"
+                                (click)="clearAllFilters($event); filterToggle.focus()"
                             >
                                 <app-svg-icon
                                     icon="x"
                                     size="0.875rem"
                                 />
-                            </span>
+                            </button>
                         }
-                    </button>
-                    <ng-template
-                        cdkConnectedOverlay
-                        [cdkConnectedOverlayOrigin]="filterTrigger"
-                        [cdkConnectedOverlayOpen]="filterMenuOpen()"
-                        [cdkConnectedOverlayHasBackdrop]="true"
-                        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
-                        [cdkConnectedOverlayOffsetY]="6"
-                        [cdkConnectedOverlayPositions]="[
-                            {
-                                originX: 'end',
-                                originY: 'bottom',
-                                overlayX: 'end',
-                                overlayY: 'top',
-                            },
-                        ]"
-                        (backdropClick)="closeFilterMenu()"
-                        (detach)="closeFilterMenu()"
-                    >
-                        <app-tools-filter-menu
-                            [initial]="viewState.filter()"
-                            [showSource]="showSourceFilter()"
-                            [includeExcludeIsSet]="includeExcludeIsSet()"
-                            [customFilterIsSet]="customFilterIsSet()"
-                            (save)="onFilterSave($event)"
-                            (cancel)="onFilterCancel()"
-                            (clear)="onFilterClear()"
-                            (openIncludeExclude)="onOpenIncludeExclude()"
-                            (openCustomFilter)="onOpenCustomFilter()"
-                        />
-                    </ng-template>
+                    </div>
 
                     <button
                         #sortTrigger="cdkOverlayOrigin"
@@ -268,6 +256,8 @@
                         type="button"
                         class="menu-trigger"
                         [class.active]="sortMenuOpen() || activeSort() !== 'default'"
+                        aria-haspopup="menu"
+                        [attr.aria-expanded]="sortMenuOpen()"
                         (click)="toggleSortMenu()"
                     >
                         <app-svg-icon
@@ -282,6 +272,7 @@
                             [class.open]="sortMenuOpen()"
                         />
                     </button>
+                    <!-- Escape detaches the overlay, which closes the menu; its focus trap returns the focus here. -->
                     <ng-template
                         cdkConnectedOverlay
                         [cdkConnectedOverlayOrigin]="sortTrigger"
@@ -311,5 +302,27 @@
                 <router-outlet></router-outlet>
             </div>
         </div>
+        @if (showFilterSidebar()) {
+            <aside
+                #filterPanel
+                class="filter-panel"
+                (keydown.escape)="closeFilterSidebarOnEscape($event)"
+                [style.flex-basis.px]="filterPanelWidth()"
+            >
+                <div
+                    class="resizable-sidebar-handle filter-panel__handle"
+                    sidebarAriaLabel="Resize filter panel"
+                    [sidebarSide]="'right'"
+                    [appResizableSidebar]="filterPanelWidthKey"
+                    [sidebarTarget]="filterPanel"
+                    [sidebarMinWidth]="filterPanelWidthOptions.minWidth"
+                    [sidebarMaxWidth]="filterPanelWidthOptions.maxWidth"
+                ></div>
+                <app-tools-filter-sidebar
+                    [showSource]="showSourceFilter()"
+                    (closeSidebar)="closeFilterSidebar()"
+                />
+            </aside>
+        }
     </section>
 </div>

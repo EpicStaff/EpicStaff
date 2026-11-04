@@ -8,6 +8,9 @@ import { ConfirmationDialogComponent, ConfirmationDialogData, DialogResult } fro
 
 export type ConfirmationResult = boolean | 'close';
 
+/** Every open confirmation dialog gets its own title id, so a dialog stacked on another is labelled by its own title. */
+let nextTitleId = 0;
+
 export interface ConfirmationResultWithOptions {
     confirmed: boolean;
     checked: boolean;
@@ -58,6 +61,9 @@ export class ConfirmationDialogService {
             width: config?.width ?? '400px',
             panelClass: config?.panelClass,
             data: options,
+            ariaModal: true,
+            // The component gives its title this id (it reads it back from the dialog config).
+            ariaLabelledBy: `confirmation-dialog-title-${nextTitleId++}`,
         });
         return dialogRef.closed;
     }

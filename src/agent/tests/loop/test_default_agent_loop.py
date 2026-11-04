@@ -13,8 +13,11 @@ import inspect
 import json
 from collections.abc import AsyncIterator, Callable
 
+import httpx
+import litellm
 import pytest
 from app.emitters.base import Emitter
+from app.exceptions import RunCancelled
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
 from app.logging_utils import redact_value
 from app.loop.agent_loop import _UNTRUSTED_CONTENT_NOTE, DefaultAgentLoop
@@ -24,7 +27,7 @@ from app.tools.registry import ToolRegistry, ToolSpec
 from shared.models.agent_service import AgentSpec, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
-from tests.log_capture import log_line_starting_with, capture_logs_at
+from tests.log_capture import assert_masked_exception, log_line_starting_with, capture_logs_at
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -35,12 +38,13 @@ class FakeLLMClient(LLMClient):
     """Yields scripted chunk sequences; pops one response per ``chat()`` call.
 
     Set ``chat_raises`` to an exception instance to make the next ``chat()``
-    call raise instead of yielding chunks.
+    call raise instead of yielding chunks. A scripted response may itself be an
+    exception: it is raised on iteration, the way the real client's generator does.
     Records the model_config passed to each ``chat()`` call in ``received_configs``.
     """
 
     def __init__(
-        self, responses: list[list[LLMChunk]], chat_raises: Exception | None = None
+        self, responses: list[list[LLMChunk] | Exception], chat_raises: Exception | None = None
     ) -> None:
         self._responses = list(responses)
         self.chat_raises = chat_raises
@@ -48,7 +52,10 @@ class FakeLLMClient(LLMClient):
         self.received_tools: list[list] = []
         self.received_streams: list[bool] = []
 
-    async def _iter_chunks(self, chunks: list[LLMChunk]) -> AsyncIterator[LLMChunk]:
+    async def _iter_chunks(self, chunks: list[LLMChunk] | Exception) -> AsyncIterator[LLMChunk]:
+        if isinstance(chunks, Exception):
+            raise chunks
+
         for chunk in chunks:
             yield chunk
 
@@ -78,6 +85,7 @@ class RecordingEmitter(Emitter):
     def __init__(self) -> None:
         self.events: list[tuple[str, object]] = []
         self.warnings: list[str] = []
+        self.llm_fallbacks: list[tuple[LLMData, LLMData, str]] = []
 
     async def on_start(self, request) -> None:
         self.events.append(("on_start", request))
@@ -100,6 +108,9 @@ class RecordingEmitter(Emitter):
 
     async def on_error(self, error: Exception) -> None:
         self.events.append(("on_error", error))
+
+    async def on_llm_fallback(self, primary: LLMData, fallback: LLMData, error: BaseException) -> None:
+        self.llm_fallbacks.append((primary, fallback, type(error).__name__))
 
 
 class StubToolRegistry(ToolRegistry):
@@ -738,6 +749,27 @@ async def test_llm_raises_returns_llm_error_no_on_error():
     assert len(error_events) == 0
 
 
+async def test_llm_error_logs_the_exception_class_without_its_message():
+    """The llm_error log line carries no raw exception text; LoopResult.error still does."""
+    secret_marker = "LLM_CRASH_SECRET_13579"
+    raw_error_text = f"provider rejected sk-live-{secret_marker}"
+    emitter = RecordingEmitter()
+    context = make_context()
+    tools = StubToolRegistry({})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient([], chat_raises=RuntimeError(raw_error_text))
+
+    with capture_logs_at("DEBUG") as messages:
+        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    error_line = log_line_starting_with(messages, "loop llm_error")
+    assert "correlation_id=test-corr" in error_line
+    assert "RuntimeError" in error_line
+    assert "<redacted" in error_line
+    assert secret_marker not in "\n".join(messages)
+    assert result.error == raw_error_text
+
+
 async def test_timeout_fires_mid_execution():
     """Wall-clock limit fires during tool execution → stop_reason='timeout', on_error NOT called."""
     emitter = RecordingEmitter()
@@ -1240,6 +1272,245 @@ async def test_finalization_token_usage_accumulated():
     assert result.token_usage.completion_tokens == 4
     assert result.token_usage.total_tokens == 14
     assert result.token_usage.total_cost_usd == pytest.approx(0.0025)
+
+
+# ---------------------------------------------------------------------------
+# Tests: fallback LLM
+# ---------------------------------------------------------------------------
+
+_PRIMARY_LLM = LLMData(
+    provider="openai", config=LLMConfigData(model="fake-model", custom_name="Key A", api_key="key-a")
+)
+_FALLBACK_LLM = LLMData(
+    provider="anthropic",
+    config=LLMConfigData(model="claude-sonnet-4-5", custom_name="Key B", api_key="key-b"),
+)
+_PRIMARY_MODEL = "openai/fake-model"
+_FALLBACK_MODEL = "anthropic/claude-sonnet-4-5"
+
+
+def _provider_error(error_type: type[Exception]) -> Exception:
+    """Build a LiteLLM error the way the provider adapter raises it, with provider text."""
+    kwargs: dict = {"message": "provider said: secret-ish text", "llm_provider": "openai", "model": "fake-model"}
+    parameters = inspect.signature(error_type.__init__).parameters
+
+    if "response" in parameters:
+        kwargs["response"] = httpx.Response(500, request=httpx.Request("POST", "https://provider.test"))
+
+    if "status_code" in parameters:
+        kwargs["status_code"] = 500
+
+    return error_type(**kwargs)
+
+
+def _context_with_fallback(
+    fallback: LLMData | None = _FALLBACK_LLM,
+    tool_choice: dict | None = None,
+    max_consecutive_failures: int | None = None,
+    is_cancelled=never_cancelled,
+) -> AgentContext:
+    agent = AgentSpec(
+        id=1,
+        name="test-agent",
+        instructions="You are a test assistant.",
+        llm=_PRIMARY_LLM,
+        fallback_llm=fallback,
+        max_consecutive_failures=max_consecutive_failures,
+    )
+    return AgentContext(
+        agent=agent, attachments=[], correlation_id="test-corr", tool_choice=tool_choice, is_cancelled=is_cancelled
+    )
+
+
+def _called_models(llm: FakeLLMClient) -> list[str]:
+    return [config["model"] for config in llm.received_configs]
+
+
+async def _run(llm: FakeLLMClient, context: AgentContext, emitter: Emitter, tools: dict | None = None) -> LoopResult:
+    return await DefaultAgentLoop(llm).run(
+        context, StubToolRegistry(tools or {}), emitter, MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        litellm.RateLimitError,
+        litellm.Timeout,
+        litellm.APIConnectionError,
+        litellm.InternalServerError,
+        litellm.ServiceUnavailableError,
+        litellm.BadGatewayError,
+        litellm.AuthenticationError,
+        litellm.PermissionDeniedError,
+        litellm.NotFoundError,
+    ],
+    ids=lambda error_type: error_type.__name__,
+)
+async def test_trigger_error_switches_to_fallback(error_type):
+    emitter = RecordingEmitter()
+    llm = FakeLLMClient([_provider_error(error_type), text_chunks("fallback answer")])
+
+    result = await _run(llm, _context_with_fallback(), emitter)
+
+    assert result.stop_reason == "completed"
+    assert result.final_text == "fallback answer"
+    assert _called_models(llm) == [_PRIMARY_MODEL, _FALLBACK_MODEL]
+    assert llm.received_configs[1]["api_key"] == "key-b"
+    assert emitter.llm_fallbacks == [(_PRIMARY_LLM, _FALLBACK_LLM, error_type.__name__)]
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        litellm.BadRequestError,
+        litellm.ContextWindowExceededError,
+        litellm.ContentPolicyViolationError,
+        litellm.APIError,
+    ],
+    ids=lambda error_type: error_type.__name__,
+)
+async def test_request_errors_do_not_switch(error_type):
+    emitter = RecordingEmitter()
+    error = _provider_error(error_type)
+    llm = FakeLLMClient([error, text_chunks("never reached")])
+
+    result = await _run(llm, _context_with_fallback(), emitter)
+
+    assert result.stop_reason == "llm_error"
+    assert result.error == str(error)
+    assert _called_models(llm) == [_PRIMARY_MODEL]
+    assert emitter.llm_fallbacks == []
+
+
+async def test_switch_warning_names_the_error_class_without_provider_text():
+    llm = FakeLLMClient([_provider_error(litellm.AuthenticationError), text_chunks("fallback answer")])
+
+    with capture_logs_at("WARNING") as logs:
+        await _run(llm, _context_with_fallback(), RecordingEmitter())
+
+    warning_line = log_line_starting_with(logs, "primary llm failed, switching to fallback ")
+    assert "secret-ish" not in warning_line
+    assert "correlation_id=test-corr" in warning_line
+    assert_masked_exception(warning_line, "AuthenticationError")
+
+
+async def test_without_fallback_a_trigger_error_fails_the_run_as_before():
+    emitter = RecordingEmitter()
+    error = _provider_error(litellm.RateLimitError)
+    llm = FakeLLMClient([error, text_chunks("never reached")])
+
+    result = await _run(llm, _context_with_fallback(fallback=None), emitter)
+
+    assert result.stop_reason == "llm_error"
+    assert result.error == str(error)
+    assert _called_models(llm) == [_PRIMARY_MODEL]
+    assert emitter.llm_fallbacks == []
+
+
+async def test_fallback_sticks_for_the_rest_of_the_run():
+    emitter = RecordingEmitter()
+    llm = FakeLLMClient(
+        [_provider_error(litellm.RateLimitError), tool_chunks("c1", "ping", "{}"), text_chunks("done")]
+    )
+
+    result = await _run(llm, _context_with_fallback(), emitter, tools={"ping": lambda args: "pong"})
+
+    assert result.final_text == "done"
+    assert _called_models(llm) == [_PRIMARY_MODEL, _FALLBACK_MODEL, _FALLBACK_MODEL]
+    assert len(emitter.llm_fallbacks) == 1
+
+
+async def test_trigger_error_on_the_fallback_after_the_switch_fails_the_run_unchanged():
+    emitter = RecordingEmitter()
+    fallback_error = _provider_error(litellm.RateLimitError)
+    llm = FakeLLMClient([_provider_error(litellm.RateLimitError), tool_chunks("c1", "ping", "{}"), fallback_error])
+
+    result = await _run(llm, _context_with_fallback(), emitter, tools={"ping": lambda args: "pong"})
+
+    assert result.stop_reason == "llm_error"
+    assert result.error == str(fallback_error)
+    assert _called_models(llm) == [_PRIMARY_MODEL, _FALLBACK_MODEL, _FALLBACK_MODEL]
+    assert len(emitter.llm_fallbacks) == 1
+
+
+async def test_final_answer_call_switches_to_fallback():
+    emitter = RecordingEmitter()
+    context = _context_with_fallback(
+        tool_choice={"type": "function", "function": {"name": "bad"}}, max_consecutive_failures=1
+    )
+    llm = FakeLLMClient(
+        [tool_chunks("c1", "bad", "{}"), _provider_error(litellm.RateLimitError), text_chunks("fallback summary")]
+    )
+
+    def bad_tool(args):
+        raise RuntimeError("boom")
+
+    result = await _run(llm, context, emitter, tools={"bad": bad_tool})
+
+    assert result.stop_reason == "max_consecutive_failures"
+    assert result.final_text == "fallback summary"
+    assert _called_models(llm) == [_PRIMARY_MODEL, _PRIMARY_MODEL, _FALLBACK_MODEL]
+    assert llm.received_tools[-1] == []
+    assert "tool_choice" not in llm.received_configs[-1]
+
+
+@pytest.mark.parametrize(
+    ("fallback", "expected_error"),
+    [
+        (
+            _FALLBACK_LLM,
+            'Primary LLM "Key A" failed with RateLimitError; '
+            'fallback LLM "Key B" failed with AuthenticationError.',
+        ),
+        (
+            LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet-4-5")),
+            'Primary LLM "Key A" failed with RateLimitError; '
+            'fallback LLM "claude-sonnet-4-5" failed with AuthenticationError.',
+        ),
+    ],
+    ids=["named-configs", "unnamed-config-uses-model"],
+)
+async def test_fallback_failure_names_both_configs_and_error_classes(fallback, expected_error):
+    emitter = RecordingEmitter()
+    llm = FakeLLMClient([_provider_error(litellm.RateLimitError), _provider_error(litellm.AuthenticationError)])
+
+    result = await _run(llm, _context_with_fallback(fallback=fallback), emitter)
+
+    assert result.stop_reason == "llm_error"
+    assert result.error == expected_error
+    assert _called_models(llm) == [_PRIMARY_MODEL, _FALLBACK_MODEL]
+
+
+async def test_cancelled_run_does_not_call_the_fallback():
+    checks = iter([False, True])
+
+    async def cancelled_after_primary_call() -> bool:
+        return next(checks)
+
+    llm = FakeLLMClient([_provider_error(litellm.RateLimitError), text_chunks("never reached")])
+
+    with pytest.raises(RunCancelled):
+        await _run(llm, _context_with_fallback(is_cancelled=cancelled_after_primary_call), RecordingEmitter())
+
+    assert _called_models(llm) == [_PRIMARY_MODEL]
+
+
+async def test_context_window_warning_uses_the_fallback_model_after_a_switch(monkeypatch):
+    windows = {_PRIMARY_MODEL: 100_000, _FALLBACK_MODEL: 1000}
+    monkeypatch.setattr(litellm, "get_model_info", lambda model: {"max_input_tokens": windows[model]})
+    emitter = RecordingEmitter()
+    usage = LLMChunk(usage={"prompt_tokens": 900, "completion_tokens": 1})
+    llm = FakeLLMClient([_provider_error(litellm.RateLimitError), [*text_chunks("done"), usage]])
+
+    await DefaultAgentLoop(llm, context_warning_ratio=0.8).run(
+        _context_with_fallback(), StubToolRegistry({}), emitter, MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+    assert emitter.warnings == [
+        "input context >= 80% of model context window (1000 tokens) for "
+        "'anthropic/claude-sonnet-4-5'; approaching limit"
+    ]
 
 
 # ---------------------------------------------------------------------------

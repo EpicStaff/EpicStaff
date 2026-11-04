@@ -11,12 +11,12 @@ import {
     Output,
     signal,
 } from '@angular/core';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 // import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
 // import { ToastService } from '../../../../../../services/notifications';
 import { AppSvgIconComponent, Spinner2Component, StatusBadgeComponent } from '@shared/components';
-import { CollapseOnOverflowDirective, HasPermissionDirective } from '@shared/directives';
+import { CollapseOnOverflowDirective, HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
 import { PresentEditor } from 'src/app/features/flows/services/graph-collaboration.ws.service';
@@ -35,6 +35,7 @@ import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
 @Component({
     selector: 'app-flow-header',
     imports: [
+        TooltipOnOverflowDirective,
         RouterModule,
         Spinner2Component,
         AppSvgIconComponent,
@@ -86,7 +87,25 @@ export class FlowHeaderComponent {
 
     toggleSaveDropdown(event: Event): void {
         event.stopPropagation();
+        if (this.isSaving || this.isRunning) return;
         this.isSaveDropdownOpen.update((v) => !v);
+    }
+
+    /** Escape closes only the save menu; its focus trap gives the focus back to the chevron. */
+    protected onSaveDropdownEscape(event: Event): void {
+        if (event.defaultPrevented) return;
+        event.stopPropagation();
+        this.closeSaveDropdown();
+    }
+
+    /**
+     * The tooltips sit on a wrapper, which a disabled button lets the pointer through to; a button reached with
+     * the keyboard shows its wrapper's tooltip too.
+     */
+    protected showTooltipOnKeyboardFocus(event: FocusEvent, tooltip: MatTooltip): void {
+        if (event.target instanceof HTMLElement && event.target.matches(':focus-visible')) {
+            tooltip.show();
+        }
     }
 
     closeSaveDropdown(): void {
@@ -94,6 +113,7 @@ export class FlowHeaderComponent {
     }
 
     onSave() {
+        if (this.isSaving || this.isRunning) return;
         this.save.emit();
     }
 
@@ -106,6 +126,7 @@ export class FlowHeaderComponent {
     }
 
     onRun() {
+        if (this.isSaving || this.isRunning) return;
         this.run.emit();
     }
 

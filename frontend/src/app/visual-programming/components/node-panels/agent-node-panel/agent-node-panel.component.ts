@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ColumnResizeDividerComponent,
@@ -99,6 +100,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ColumnResizeDividerComponent,
         InputsYouCanUseComponent,
         IfFlowEditableDirective,
+        MatTooltipModule,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -123,6 +125,8 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
      *  dropdown — used to force-close whichever is open after the local-surface dialog
      *  resolves, so reopening re-seeds `tempSelected` from the up-to-date `selectedValues`. */
     private readonly surfaceMultiSelects = viewChildren(MultiSelectComponent);
+
+    private readonly tasksTable = viewChild(AgentTasksTableComponent);
 
     private readonly rightInstructionsTextarea =
         viewChild<VariableHighlightTextareaComponent>('rightInstructionsTextarea');
@@ -189,6 +193,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
                 value: LOCAL_SURFACE_VALUE,
                 group: 'Local surface',
                 trailingActionIcon: 'edit-label',
+                trailingActionLabel: 'Edit local surface',
             });
         }
 
@@ -433,8 +438,11 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         if (!this.isExpanded()) {
             this.sidePanelService.requestExpand();
         }
-        this.resyncRightSchemaDraft(selection);
-        this.rightPane.set(selection);
+        this.selectRightPane(selection);
+    }
+
+    onInstructionsFocus(taskIndex: number): void {
+        this.selectRightPane({ taskIndex, field: 'instructions' });
     }
 
     setInstructionsView(view: InstructionsView): void {
@@ -470,15 +478,11 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
 
     insertInputToInstructions(name: string): void {
         if (!this.isExpanded()) {
-            // No instructions editor exists in the collapsed layout — append straight to the
-            // selected task's data instead of expanding the panel.
-            const task = this.selectedTask();
-            if (!task) return;
-            const current = task.instructions ?? '';
-            const needsLeadingSpace = current !== '' && !/\s$/.test(current);
-            this.updateSelectedTaskField(task.tempId, {
-                instructions: `${current}${needsLeadingSpace ? ' ' : ''}{${name}}`,
-            });
+            // No instructions editor exists in the collapsed layout — insert at the caret of the
+            // selected task's instructions cell in the table instead of expanding the panel.
+            const pane = this.effectiveRightPane();
+            if (!pane) return;
+            this.tasksTable()?.insertIntoInstructionsAtCursor(pane.taskIndex, name);
             return;
         }
 
@@ -523,6 +527,13 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
             this.updateSelectedTaskField(task.tempId, { output_schema_invalid: true });
             this.setRightSchemaError(task.tempId, OUTPUT_SCHEMA_JSON_ERROR);
         }
+    }
+
+    private selectRightPane(selection: RightPaneSelection): void {
+        const current = this.rightPane();
+        if (current && current.taskIndex === selection.taskIndex && current.field === selection.field) return;
+        this.resyncRightSchemaDraft(selection);
+        this.rightPane.set(selection);
     }
 
     private resyncRightSchemaDraft(selection: RightPaneSelection): void {

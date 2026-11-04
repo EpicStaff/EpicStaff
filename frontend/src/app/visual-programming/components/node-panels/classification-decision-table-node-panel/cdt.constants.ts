@@ -47,6 +47,9 @@ export const CDT_EXPRESSION_EDITOR_POPUP_WIDTH = 660;
 /** Fallback display label used when no LLM config is selected. */
 export const CDT_DEFAULT_LLM_LABEL = 'Default LLM';
 
+/** Fallback display label used when a System One entry has no config, or its config was deleted. */
+export const CDT_NO_SYSTEM_ONE_CONFIG_LABEL = 'No config';
+
 // ── Route Code / Continue copy ────────────────────────────────────────────────
 
 /** Width of the "Enable Continue?" confirmation, from the design. */

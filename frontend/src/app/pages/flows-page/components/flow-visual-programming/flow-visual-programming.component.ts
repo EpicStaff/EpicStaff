@@ -31,8 +31,10 @@ import {
     GetLlmConfigRequest,
     GraphSessionStatus,
     isTerminalSessionStatus,
+    NODE_COLORS,
     NodeType,
     ResourceCode,
+    SystemOnePromptKind,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, LABELS_STORE, LlmConfigStorageService } from '@shared/services';
 import { escapeHtml, extractHttpErrorMessage, formatNodeLabel, generateUuid } from '@shared/utils';
@@ -261,7 +263,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     );
     /** Read-only node id to node-type colour lookup for the snake-game intro; only evaluated while a game runs. */
     protected readonly snakeGameNodeColors = computed<ReadonlyMap<string, string>>(
-        () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
+        () => new Map(this.flowService.nodes().map((node) => [node.id, NODE_COLORS[node.type]]))
     );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly keymap = inject(KeymapService);
@@ -1191,7 +1193,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             // emitted either, so what was chained on the save (a run, an extraction) does not go on.
             switchMap(({ graph, flows }) => {
                 if (!this.isCurrentGraph(graphId)) return EMPTY;
-                this.onFlowSaved(graph, flows, flowState, previous, nodeDiff, showSuccessToast);
+                this.onFlowSaved(graph, flows, flowToSave, previous, nodeDiff, showSuccessToast);
                 return of(void 0);
             }),
             catchError((err: HttpErrorResponse) => {
@@ -1229,7 +1231,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             graph
         );
         const liveFlow = patchCdtPromptBackendIds(
-            patchLiveFlowWithBackendIds(this.currentFlowState(), patchedFlow, previous, nodeDiff, graph),
+            patchLiveFlowWithBackendIds(
+                clearStaleIds(previous, this.currentFlowState()),
+                patchedFlow,
+                previous,
+                nodeDiff,
+                graph
+            ),
             graph
         );
 
@@ -1307,10 +1315,11 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             return EMPTY;
         }
 
-        const node = this.flowService.nodes().find((candidate) => candidate.id === nodeId);
+        const previous = this.loadedFlowState();
+        const wholeFlow = clearStaleIds(previous, this.currentFlowState());
+        const node = wholeFlow.nodes.find((candidate) => candidate.id === nodeId);
         if (!node) return EMPTY;
 
-        const previous = this.loadedFlowState();
         const previousForDiff: FlowModel = {
             nodes: node.backendId != null ? previous.nodes.filter((n) => n.backendId === node.backendId) : [],
             connections: [],
@@ -1326,7 +1335,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         // the whole canvas to resolve the node's references to its neighbours. Given
         // just this node, `resolveNodeRef` finds none of them and emits `*_temp_id`
         // for nodes that already exist on the server, which the backend rejects.
-        const wholeFlow = this.currentFlowState();
         const idMap = buildUuidToBackendIdMap(wholeFlow.nodes);
         const payload = buildBulkSavePayload(
             graphId,
@@ -1356,7 +1364,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     responseGraph
                 );
                 const liveFlow = patchLiveFlowWithBackendIds(
-                    this.currentFlowState(),
+                    clearStaleIds(previous, this.currentFlowState()),
                     sentFlow,
                     previous,
                     nodeDiff,
@@ -1864,7 +1872,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     data?: {
                         table?: {
                             default_llm_config?: number | null;
-                            prompts?: Record<string, { llm_config: number | null }>;
+                            prompts?: Record<string, { llm_config: number | null; kind?: SystemOnePromptKind }>;
                         };
                     };
                 }
@@ -1874,7 +1882,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             // Any prompt with no LLM config selected counts as missing.
             if (table.prompts) {
                 for (const prompt of Object.values(table.prompts)) {
-                    if (prompt.llm_config == null) return true;
+                    if (prompt.kind !== 'system_one' && prompt.llm_config == null) return true;
                 }
             }
             // Deleted-config references also count as missing.
@@ -1883,7 +1891,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }
             if (table.prompts) {
                 for (const prompt of Object.values(table.prompts)) {
-                    if (prompt.llm_config != null && !availableIds.has(prompt.llm_config)) return true;
+                    if (
+                        prompt.kind !== 'system_one' &&
+                        prompt.llm_config != null &&
+                        !availableIds.has(prompt.llm_config)
+                    )
+                        return true;
                 }
             }
             return false;

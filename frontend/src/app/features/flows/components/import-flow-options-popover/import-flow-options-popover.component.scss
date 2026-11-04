@@ -108,6 +108,11 @@
     line-height: 1.3;
     cursor: pointer;
     user-select: none;
+
+    // Drawn inside: the slider sits right under the button.
+    &:focus-visible {
+        outline-offset: -2px;
+    }
 }
 
 .popover__footer {

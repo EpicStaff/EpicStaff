@@ -46,6 +46,7 @@
             type="text"
             class="search-input"
             [placeholder]="primaryTab.searchPlaceholder ?? 'Search...'"
+            [attr.aria-label]="primaryTab.searchPlaceholder ?? 'Search'"
             [ngModel]="primarySearch()"
             (ngModelChange)="primarySearch.set($event)"
         />
@@ -54,7 +55,8 @@
             @for (item of filteredItems(); track item.id) {
                 <label
                     class="list-row"
-                    [title]="item.name"
+                    appTooltipOnOverflow=".row-label"
+                    [matTooltip]="item.name"
                 >
                     <app-checkbox
                         color="secondary"
@@ -81,6 +83,7 @@
             type="text"
             class="search-input"
             [placeholder]="labelsTab.searchPlaceholder ?? 'Search label...'"
+            [attr.aria-label]="labelsTab.searchPlaceholder ?? 'Search label'"
             [ngModel]="labelSearch()"
             (ngModelChange)="labelSearch.set($event)"
         />
@@ -90,12 +93,16 @@
                 <div
                     class="list-row label-row"
                     [style.paddingLeft]="indentPadding(entry.depth)"
-                    [title]="entry.node.name"
+                    appTooltipOnOverflow=".row-label"
+                    [matTooltip]="entry.node.name"
                 >
                     @if (entry.node.children.length > 0) {
                         <button
                             type="button"
                             class="expand-btn"
+                            [attr.aria-expanded]="isExpanded(entry.node.id)"
+                            [attr.aria-label]="(isExpanded(entry.node.id) ? 'Collapse ' : 'Expand ') + entry.node.name"
+                            [matTooltip]="isExpanded(entry.node.id) ? 'Collapse' : 'Expand'"
                             (click)="toggleExpand(entry.node.id)"
                         >
                             <app-svg-icon

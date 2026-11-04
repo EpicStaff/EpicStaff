@@ -14,6 +14,8 @@ from datetime import date
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import envtool
@@ -275,34 +277,43 @@ class FeatureProfilesTest(unittest.TestCase):
 
     def test_local_keeps_dev_and_unknown_profiles(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": True}, "mcp,dev,chat", local=True
+            {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": True, "PLUGINS_ENABLED": False},
+            "mcp,dev,chat",
+            local=True,
         )
         self.assertEqual(
             values,
             {
                 "CHAT_ENABLED": "false",
                 "AUDIT_TRAIL_ENABLED": "true",
+                "PLUGINS_ENABLED": "false",
                 "COMPOSE_PROFILES": "mcp,dev,auditor",
             },
         )
 
     def test_production_with_nothing_enabled_writes_none(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": False}, "chat,auditor", local=False
+            {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": False},
+            "chat,auditor,plugins",
+            local=False,
         )
         self.assertEqual(values["COMPOSE_PROFILES"], "none")
 
     def test_production_drops_the_dev_profile(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": False}, "dev,auditor", local=False
+            {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": False},
+            "dev,auditor",
+            local=False,
         )
         self.assertEqual(values["COMPOSE_PROFILES"], "chat")
 
     def test_local_adds_dev_when_missing(self):
         values = envtool.feature_values(
-            {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": False}, "none", local=True
+            {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": True},
+            "none",
+            local=True,
         )
-        self.assertEqual(values["COMPOSE_PROFILES"], "dev,chat")
+        self.assertEqual(values["COMPOSE_PROFILES"], "dev,chat,plugins")
 
 
 class ProductionValuesTest(unittest.TestCase):
@@ -374,6 +385,7 @@ class SchemaCoverageTest(unittest.TestCase):
     def test_every_name_the_wizard_writes_exists_in_the_schema(self):
         written = set(envtool.production_values("https://host", "nginx-tls", "v1"))
         written |= set(envtool.GENERATED_SECRETS) | {"COMPOSE_PROFILES"}
+        written |= set(envtool.RETENTION_DAYS)
         for group in (*envtool.SERVING_MODES.values(), *envtool.SERVER_SIZE_VALUES.values()):
             written |= set(group)
         for feature in envtool.FEATURES:
@@ -391,6 +403,10 @@ class SetupWizardTest(unittest.TestCase):
     def setUp(self):
         self.env_file = Path(tempfile.mkdtemp()) / ".env"
         self.schema = real_schema()
+        # Production sizes the server from the CPU count; the test machine's must not matter.
+        cpu_count_patch = mock.patch.object(envtool, "detect_cpu_count", return_value=2)
+        self.cpu_count = cpu_count_patch.start()
+        self.addCleanup(cpu_count_patch.stop)
 
     def run_setup(self, target: str, answers: list) -> tuple[dict[str, str], str]:
         output = io.StringIO()
@@ -399,20 +415,90 @@ class SetupWizardTest(unittest.TestCase):
         return envtool.read_env_values(self.env_file.read_text(encoding="utf-8")), output.getvalue()
 
     def test_local_new_file_asks_only_features(self):
-        values, _ = self.run_setup("dev", ["n", "y"])
+        values, _ = self.run_setup("dev", ["n", "y", ""])
         self.assertEqual(values["CHAT_ENABLED"], "false")
         self.assertEqual(values["AUDIT_TRAIL_ENABLED"], "true")
         self.assertEqual(values["COMPOSE_PROFILES"], "dev,auditor")
         self.assertEqual(values["DB_PASSWORD"], "root_password")
+        self.assertEqual(values["PLUGINS_ENABLED"], "false")
+        for name in envtool.PLUGIN_SECRETS:
+            self.assertRegex(values[name], r"^[A-Za-z0-9]{32,}$", name)
+
+    def test_local_plugins_use_the_localhost_host_django_accepts(self):
+        values, output = self.run_setup("dev", ["n", "y", "y"])
+        self.assertEqual(values["COMPOSE_PROFILES"], "dev,auditor,plugins")
+        self.assertEqual(values["DJANGO_FRONTEND_BASE_URL"], "http://epicstaff.localhost")
+        self.assertEqual(values["NGINX_SERVER_NAME"], "epicstaff.localhost")
+        self.assertIn("http://epicstaff.localhost", output)
+
+    def test_production_with_plugins_asks_their_domain(self):
+        values, output = self.run_setup(
+            "prod",
+            [
+                "https://es.example.com", "1", "n", "n", "y",
+                "plugins.invalid", "example.com", "Plugins.Example.com.", "v1", "1", "n",
+            ],
+        )  # fmt: skip
+        self.assertEqual(values["PLUGINS_ENABLED"], "true")
+        self.assertEqual(values["COMPOSE_PROFILES"], "plugins")
+        self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "plugins.example.com")
+        for name in envtool.PLUGIN_SECRETS:
+            self.assertRegex(values[name], r"^[A-Za-z0-9]{32,}$", name)
+        self.assertIn("*.plugins.example.com", output)
+
+    def test_plugins_stay_off_for_an_ip_or_plain_http_host(self):
+        for public_url in ("http://10.0.0.5", "http://es.example.com"):
+            self.env_file.unlink(missing_ok=True)
+            values, output = self.run_setup(
+                "prod", [public_url, "3", "n", "n", "y", "v1", "1", "n"]
+            )
+            self.assertEqual(values["PLUGINS_ENABLED"], "false", public_url)
+            self.assertNotIn("plugins", values["COMPOSE_PROFILES"])
+            self.assertIn("Plugins stay off", output)
+
+    def test_plugins_over_plain_http_need_a_localhost_domain(self):
+        values, output = self.run_setup(
+            "prod",
+            [
+                "http://es.localhost", "3", "n", "n", "y",
+                "plugins.example.com", "p.localhost", "v1", "1", "n",
+            ],
+        )  # fmt: skip
+        self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "p.localhost")
+        self.assertNotIn("Point *.", output)
+
+    def test_turning_plugins_on_fills_missing_secrets_and_keeps_set_ones(self):
+        envtool.main(["--dev", "--env-file", str(self.env_file)])
+        text = self.env_file.read_text(encoding="utf-8")
+        text = text.replace(
+            "\nPLUGINS_DB_ADMIN_PASSWORD=none\n", "\nPLUGINS_DB_ADMIN_PASSWORD=keepme123\n"
+        )
+        self.env_file.write_text(text, encoding="utf-8")
+        # The dev domain default is valid, so it is not asked again.
+        values, _ = self.run_setup("dev", ["1", "", "", "y"])
+        self.assertEqual(values["PLUGINS_ENABLED"], "true")
+        self.assertEqual(values["COMPOSE_PROFILES"], "dev,chat,auditor,plugins")
+        self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "plugins.epicstaff.localhost")
+        self.assertEqual(values["DJANGO_FRONTEND_BASE_URL"], "http://epicstaff.localhost")
+        self.assertEqual(values["PLUGINS_DB_ADMIN_PASSWORD"], "keepme123")
+        self.assertRegex(values["PLUGINS_NODE_KEY"], r"^[A-Za-z0-9]{32,}$")
+
+    def test_add_missing_settings_locally_generates_plugin_secrets(self):
+        self.env_file.write_text("IMAGE_TAG=latest\n", encoding="utf-8")
+        values, _ = self.run_setup("dev", ["3"])
+        for name in envtool.PLUGIN_SECRETS:
+            self.assertRegex(values[name], r"^[A-Za-z0-9]{32,}$", name)
 
     def test_production_new_file(self):
         values, output = self.run_setup(
-            "prod", ["https://es.example.com", "1", "y", "n", "latest", "v1.3.0", "n"]
+            "prod", ["https://es.example.com", "1", "y", "n", "n", "latest", "v1.3.0", "3", "n"]
         )
         self.assertNotRegex(
             self.env_file.read_text(encoding="utf-8"), r"(?m)^# \w+=<enter your value>$"
         )
         self.assertEqual(values["IMAGE_TAG"], "v1.3.0")
+        for name in envtool.RETENTION_DAYS:
+            self.assertEqual(values[name], "90", name)
         self.assertEqual(values["NGINX_SSL_MODE"], "on")
         self.assertEqual(values["NGINX_SERVER_NAME"], "es.example.com")
         self.assertEqual(values["COMPOSE_PROFILES"], "chat")
@@ -425,11 +511,11 @@ class SetupWizardTest(unittest.TestCase):
         self.assertIn("src/nginx/certs", output)
 
     def test_wizard_files_are_private(self):
-        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "v1", "n"])
+        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "n"])
         self.assertEqual(self.env_file.stat().st_mode & 0o777, 0o600)
 
     def test_wizard_header_warns_against_plain_regeneration(self):
-        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "v1", "n"])
+        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "n"])
         header = self.env_file.read_text(encoding="utf-8").split("\n# Deploy\n")[0]
         self.assertIn("envtool.py --setup", header)
         self.assertIn("overwrites this file", header)
@@ -437,23 +523,68 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_proxy_in_front_points_at_the_proxy_count(self):
         _, behind_proxy = self.run_setup(
-            "prod", ["https://es.example.com", "2", "n", "n", "v1", "n"]
+            "prod", ["https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertIn("DJANGO_NUM_PROXIES", behind_proxy)
         self.env_file.unlink()
-        _, nginx_tls = self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "v1", "n"])
+        _, nginx_tls = self.run_setup(
+            "prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "n"]
+        )
         self.assertNotIn("DJANGO_NUM_PROXIES", nginx_tls)
 
     def test_production_advanced_settings(self):
         values, _ = self.run_setup(
-            "prod", ["https://es.example.com", "1", "y", "n", "v1", "y", "3", "3", "1"]
+            "prod", ["https://es.example.com", "1", "y", "n", "n", "v1", "1", "y", "3", "3", "1"]
         )
-        self.assertEqual(values["DJANGO_SGI_WORKERS"], "3")
-        self.assertEqual(values["DJANGO_DB_POOL_MAX_SIZE"], "12")
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "6")
+        self.assertEqual(values["DJANGO_DB_POOL_MAX_SIZE"], "15")
         self.assertEqual(values["CHAT_WORKERS"], "4")
         self.assertEqual(values["SANDBOX_MAX_EXECUTION_TIMEOUT"], "2h")
         self.assertEqual(values["CREW_CODE_RESULT_TIMEOUT"], "130m")
         self.assertEqual(values["DJANGO_LOG_LEVEL"], "DEBUG")
+
+    def test_production_sizes_the_server_from_its_cpus(self):
+        # Chat on, advanced settings declined.
+        answers = ["https://es.example.com", "1", "y", "n", "n", "v1", "1", "n"]
+        expected = {
+            2: ("1", "1", "Detected 2 CPUs: using the Small server size"),
+            4: ("3", "2", "Detected 4 CPUs: using the Medium server size"),
+            7: ("3", "2", "Detected 7 CPUs: using the Medium server size"),
+            8: ("6", "4", "Detected 8 CPUs: using the Large server size"),
+            16: ("6", "4", "Detected 16 CPUs: using the Large server size"),
+            None: ("1", "1", "Could not detect the CPUs: using the Small server size"),
+        }
+        for cpu_count, (workers, chat_workers, note) in expected.items():
+            with self.subTest(cpu_count=cpu_count):
+                self.env_file.unlink(missing_ok=True)
+                self.cpu_count.return_value = cpu_count
+                values, output = self.run_setup("prod", answers)
+                self.assertEqual(values["DJANGO_SGI_WORKERS"], workers)
+                self.assertEqual(values["CHAT_WORKERS"], chat_workers)
+                self.assertIn(note, output)
+
+    def test_advanced_settings_keep_the_detected_size_on_enter_and_take_another_choice(self):
+        self.cpu_count.return_value = 4
+        # Advanced settings opened: server size, then code time limit 30 minutes, logging INFO.
+        opened = ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "y"]
+        kept, _ = self.run_setup("prod", [*opened, "", "2", "2"])
+        self.assertEqual(kept["DJANGO_SGI_WORKERS"], "3")
+        self.env_file.unlink()
+        overridden, output = self.run_setup("prod", [*opened, "1", "2", "2"])
+        self.assertEqual(overridden["DJANGO_SGI_WORKERS"], "1")
+        # Every screen after the size question shows the chosen size and no other one.
+        screens = output.split("EpicStaff setup")
+        after_size = [screen for screen in screens if "Server size: Small" in screen]
+        self.assertEqual(len(after_size), 3)  # code time limit, logging, the final screen
+        for screen in after_size:
+            self.assertIn("Detected 4 CPUs.", screen)
+            self.assertNotIn("Medium server size", screen)
+
+    def test_local_setup_ignores_the_cpu_count(self):
+        self.cpu_count.return_value = 16
+        values, output = self.run_setup("dev", ["n", "y", ""])
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "1")
+        self.assertNotIn("CPUs", output)
 
     def test_tune_rewrites_only_its_lines_and_skips_chat_when_off(self):
         envtool.main(["--env-file", str(self.env_file)])
@@ -464,7 +595,7 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(
             changed,
             {
-                "DJANGO_SGI_WORKERS=2",
+                "DJANGO_SGI_WORKERS=3",
                 "SANDBOX_MAX_EXECUTION_TIMEOUT=5m",
                 "CREW_CODE_RESULT_TIMEOUT=15m",
             },
@@ -473,7 +604,7 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_verbose_logging_reminds_to_switch_back(self):
         _, created = self.run_setup(
-            "prod", ["https://es.example.com", "1", "n", "n", "v1", "y", "1", "2", "1"]
+            "prod", ["https://es.example.com", "1", "n", "n", "n", "v1", "1", "y", "1", "2", "1"]
         )
         self.assertIn("back to INFO", created)
         # Tune lists "Keep current" first, so DEBUG is 2 and WARNING is 4.
@@ -510,14 +641,16 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(values["SANDBOX_DEFAULT_EXECUTION_TIMEOUT"], "5m")
 
     def test_scheme_mismatch_reasks_the_serving_mode(self):
-        values, _ = self.run_setup("prod", ["http://10.0.0.5", "1", "3", "n", "n", "v1", "n"])
+        values, _ = self.run_setup(
+            "prod", ["http://10.0.0.5", "1", "3", "n", "n", "n", "v1", "1", "n"]
+        )
         self.assertEqual(values["NGINX_SSL_MODE"], "off")
         self.assertEqual(values["NGINX_HSTS_ENABLED"], "false")
 
     def test_change_features_rewrites_only_feature_lines(self):
         envtool.main(["--dev", "--env-file", str(self.env_file)])
         original = self.env_file.read_text(encoding="utf-8").splitlines()
-        _, output = self.run_setup("dev", ["1", "n", "y"])
+        _, output = self.run_setup("dev", ["1", "n", "y", ""])
         changed = set(self.env_file.read_text(encoding="utf-8").splitlines()) - set(original)
         self.assertEqual(
             changed,
@@ -538,7 +671,7 @@ class SetupWizardTest(unittest.TestCase):
             encoding="utf-8",
         )
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "v1", "n"]
+            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertEqual(values["REDIS_PASSWORD"], "keepme123")
         self.assertEqual(values["CHAT_DB_USER"], "chat")
@@ -549,7 +682,7 @@ class SetupWizardTest(unittest.TestCase):
     def test_start_over_drops_a_quoted_dev_value(self):
         self.env_file.write_text('DB_PASSWORD="root_password"  # dev\n', encoding="utf-8")
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "v1", "n"]
+            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertNotIn("root_password", values["DB_PASSWORD"])
         self.assertIn("DB_PASSWORD", output)
@@ -560,14 +693,16 @@ class SetupWizardTest(unittest.TestCase):
         self.env_file.write_text(
             text.replace("\nCHAT_ENABLED=true\n", '\nCHAT_ENABLED="true" # on\n'), encoding="utf-8"
         )
-        _, output = self.run_setup("dev", ["1", "", ""])
+        _, output = self.run_setup("dev", ["1", "", "", ""])
         self.assertNotIn("out of sync", output)
         self.assertNotIn("docker compose stop", output)
 
     def test_start_over_keeps_a_private_backup_of_the_old_file(self):
         original = "DB_PASSWORD=keepme123\nDB_NAME=custom_db\n"
         self.env_file.write_text(original, encoding="utf-8")
-        self.run_setup("prod", ["4", "y", "https://es.example.com", "2", "n", "n", "v1", "n"])
+        self.run_setup(
+            "prod", ["4", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
+        )
         backup = self.env_file.with_name(".env.backup.env")
         self.assertEqual(backup.read_text(encoding="utf-8"), original)
         self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
@@ -580,7 +715,7 @@ class SetupWizardTest(unittest.TestCase):
             encoding="utf-8",
         )
         values, output = self.run_setup(
-            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "v1", "n"]
+            "prod", ["4", "n", "y", "https://es.example.com", "2", "n", "n", "n", "v1", "1", "n"]
         )
         self.assertNotEqual(values["DJANGO_API_KEY"], "epicstaff_realtime_api_key")
         self.assertNotEqual(values["AUDIT_JWT_SECRET"], "keepme123")
@@ -610,20 +745,46 @@ class FakeTerminal(io.StringIO):
 ANSI_CODE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
-ALL_ON = {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": True}
+ALL_ON = {"CHAT_ENABLED": True, "AUDIT_TRAIL_ENABLED": True, "PLUGINS_ENABLED": True}
+
+# Most crewdb connections held outside django_app's web servers:
+#   realtime       15 per REALTIME_SGI_WORKERS, 1 by default (SQLAlchemy's default pool, 5 + 10)
+#   knowledge_new  15 (SQLAlchemy's default pool)
+#   manager        10 (src/manager/db/config.py: pool_size 5 + max_overflow 5)
+#   sandbox_new    10 (asyncpg's default pool, min = max = 10)
+#   django_app's background processes: 8 (listen_redis, cache_redis and run_recycle_bin_purge
+#   at a pool of at most 2 each in entrypoint.sh; send_session_callbacks keeps the web pool's
+#   minimum of 2 and queries from one thread)
+OTHER_CREWDB_CONNECTIONS = 15 + 15 + 10 + 10 + 8
+# Postgres keeps superuser_reserved_connections (3 by default) of max_connections.
+POSTGRES_RESERVED_CONNECTIONS = 3
+
+
+def crewdb_usable_connections() -> int:
+    compose = yaml.safe_load((envtool.BASE_DIR / "docker-compose.yaml").read_text(encoding="utf-8"))
+    for argument in compose["services"]["crewdb"]["command"]:
+        if argument.startswith("max_connections="):
+            return int(argument.removeprefix("max_connections=")) - POSTGRES_RESERVED_CONNECTIONS
+    raise AssertionError("crewdb's command sets no max_connections: Postgres allows only 100")
 
 
 class AdvancedSettingsTest(unittest.TestCase):
-    def test_small_size_matches_the_schema_defaults(self):
+    def test_large_size_runs_django_as_in_the_schema_defaults(self):
         defaults = envtool.target_defaults(real_schema(), "prod")
-        for name, value in envtool.SERVER_SIZE_VALUES["small"].items():
-            self.assertEqual(value, str(defaults[name]), name)
+        for name in ("DJANGO_SGI_WORKERS", "DJANGO_DB_POOL_MAX_SIZE"):
+            self.assertEqual(envtool.SERVER_SIZE_VALUES["large"][name], str(defaults[name]), name)
 
-    def test_every_size_fits_the_postgres_connection_budget(self):
-        # env.yaml: ~97 usable connections, ~40 for other services, django_app adds 4.
-        for size, values in envtool.SERVER_SIZE_VALUES.items():
-            django = int(values["DJANGO_SGI_WORKERS"]) * int(values["DJANGO_DB_POOL_MAX_SIZE"]) + 4
-            self.assertLessEqual(django + 40, 97, size)
+    def test_every_size_and_the_defaults_fit_the_postgres_connection_budget(self):
+        # chatdb is a separate Postgres with the default max_connections of 100: 6 chat workers.
+        usable = crewdb_usable_connections()
+        sizes = dict(envtool.SERVER_SIZE_VALUES)
+        for target in ("prod", "dev"):
+            defaults = envtool.target_defaults(real_schema(), target)
+            self.assertEqual(str(defaults["REALTIME_SGI_WORKERS"]), "1", target)
+            sizes[f"{target} defaults"] = defaults
+        for size, values in sizes.items():
+            web_servers = int(values["DJANGO_SGI_WORKERS"]) * int(values["DJANGO_DB_POOL_MAX_SIZE"])
+            self.assertLessEqual(web_servers + OTHER_CREWDB_CONNECTIONS, usable, size)
             self.assertLessEqual(int(values["CHAT_WORKERS"]), 6, size)
 
     def test_code_time_limits_keep_crew_waiting_longer_than_sandbox(self):
@@ -649,11 +810,11 @@ class AdvancedSettingsTest(unittest.TestCase):
         self.assertEqual(set(levels.values()), {"DEBUG"})
 
     def test_settings_of_disabled_features_are_left_alone(self):
-        all_off = {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": False}
+        all_off = {"CHAT_ENABLED": False, "AUDIT_TRAIL_ENABLED": False, "PLUGINS_ENABLED": False}
         values = envtool.advanced_values("large", "30m", "DEBUG", all_off, real_schema())
         for name in ("CHAT_WORKERS", "CHAT_LOG_LEVEL", "AUDITOR_LOG_LEVEL"):
             self.assertNotIn(name, values)
-        self.assertEqual(values["DJANGO_SGI_WORKERS"], "3")
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "6")
         self.assertEqual(values["DJANGO_LOG_LEVEL"], "DEBUG")
         values = envtool.advanced_values("large", "30m", "DEBUG", ALL_ON, real_schema())
         self.assertEqual(values["CHAT_WORKERS"], "4")
@@ -666,6 +827,20 @@ class AdvancedSettingsTest(unittest.TestCase):
         uvicorn = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE"}
         accepted = django & uvicorn & set(envtool.Env.LOG_LEVELS)
         self.assertEqual({level.upper() for level in envtool.LOG_CHOICES}, accepted)
+
+    def test_cpu_count_falls_back_to_every_cpu_when_the_affinity_mask_is_refused(self):
+        with (
+            mock.patch.object(envtool.os, "sched_getaffinity", side_effect=OSError, create=True),
+            mock.patch.object(envtool.os, "cpu_count", return_value=5),
+        ):
+            self.assertEqual(envtool.detect_cpu_count(), 5)
+
+    def test_server_size_follows_the_cpu_bands_of_the_labels(self):
+        expected = {
+            None: "small", 0: "small", 1: "small", 3: "small", 4: "medium", 7: "medium", 8: "large"
+        }  # fmt: skip
+        for cpu_count, size in expected.items():
+            self.assertEqual(envtool.server_size_for(cpu_count), size, cpu_count)
 
     def test_nothing_chosen_changes_nothing(self):
         self.assertEqual(envtool.advanced_values(None, None, None, ALL_ON, real_schema()), {})
@@ -685,8 +860,8 @@ class TerminalOutputTest(unittest.TestCase):
         return output.getvalue()
 
     def test_terminal_clears_the_screen_per_question_and_shows_the_answers_so_far(self):
-        output = self.run_setup(["n", "y"], {}, FakeTerminal())
-        self.assertEqual(output.count("\x1b[2J"), 3)
+        output = self.run_setup(["n", "y", ""], {}, FakeTerminal())
+        self.assertEqual(output.count("\x1b[2J"), 4)
         self.assertIn("\x1b[32m", output)
         final_screen = ANSI_CODE.sub("", output.split("\x1b[2J\x1b[H")[-1])
         self.assertIn("EpicStaff setup", final_screen)
@@ -695,7 +870,7 @@ class TerminalOutputTest(unittest.TestCase):
         self.assertIn("✓ Wrote", final_screen)
 
     def test_no_color_keeps_clearing_but_drops_colours(self):
-        output = self.run_setup(["n", "y"], {"NO_COLOR": "1"}, FakeTerminal())
+        output = self.run_setup(["n", "y", ""], {"NO_COLOR": "1"}, FakeTerminal())
         self.assertIn("\x1b[2J", output)
         self.assertEqual(
             ANSI_CODE.sub("", output.replace("\x1b[2J\x1b[H", "")),
@@ -703,7 +878,7 @@ class TerminalOutputTest(unittest.TestCase):
         )
 
     def test_output_that_is_not_a_terminal_has_no_escape_codes(self):
-        output = self.run_setup(["n", "y"], {}, io.StringIO())
+        output = self.run_setup(["n", "y", ""], {}, io.StringIO())
         self.assertNotIn("\x1b", output)
         self.assertIn("✓ Chat: no", output)
 

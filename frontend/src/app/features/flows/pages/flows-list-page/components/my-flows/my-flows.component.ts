@@ -29,7 +29,11 @@ import { filter, switchMap } from 'rxjs/operators';
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
-import { FlowCardAction, FlowCardComponent } from '../../../../components/flow-card/flow-card.component';
+import {
+    FlowCardAction,
+    FlowCardComponent,
+    FlowLabelDropEvent,
+} from '../../../../components/flow-card/flow-card.component';
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
 import { FlowSessionsListComponent } from '../../../../components/flow-sessions-dialog/flow-sessions-list.component';
 import { GetGraphLightRequest, GraphDto } from '../../../../models/graph.model';
@@ -236,6 +240,20 @@ export class MyFlowsComponent implements AfterViewChecked {
             default:
                 console.warn(`Action '${action}' not implemented for flow:`, flow.id);
         }
+    }
+
+    public onLabelDrop(event: FlowLabelDropEvent): void {
+        this.flowsService
+            .updateFlowLabels(event.flow.id, event.labelIds, event.flow.save_version)
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                switchMap(() => this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()))
+            )
+            .subscribe({
+                error: () => {
+                    this.toastService.error(`Failed to update labels for "${event.flow.name}".`);
+                },
+            });
     }
 
     private confirmAndDeleteFlow(flow: GetGraphLightRequest): void {

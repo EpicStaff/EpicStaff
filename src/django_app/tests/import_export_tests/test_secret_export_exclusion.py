@@ -34,11 +34,17 @@ _CREDENTIAL_NAME_RE = re.compile(
 )
 
 # Credential-shaped names verified safe to export. `max_tokens` is a generation
-# limit (matches on "token"), not a credential. Secret FKs (api_key_secret, ...)
-# are already dropped via each serializer's Meta.exclude, so they never appear.
-# extra_headers carries only `epicstaff_secret(<name>)` markers (names, not raw
-# values) and does not match the pattern, so it needs no entry here.
-SAFE_CREDENTIAL_SHAPED_FIELDS = {"max_tokens"}
+# limit (matches on "token"), not a credential. `input_cost_per_token` and
+# `output_cost_per_token` are LLMConfig prices in USD per token (also matching on
+# "token"), not credentials. Secret FKs (api_key_secret, ...) are already dropped
+# via each serializer's Meta.exclude, so they never appear. extra_headers carries
+# only `epicstaff_secret(<name>)` markers (names, not raw values) and does not
+# match the pattern, so it needs no entry here.
+SAFE_CREDENTIAL_SHAPED_FIELDS = {
+    "max_tokens",
+    "input_cost_per_token",
+    "output_cost_per_token",
+}
 
 
 @pytest.mark.django_db

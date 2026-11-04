@@ -12,7 +12,7 @@ from tables.services.webhook_trigger_service import WebhookTriggerService
 
 def _empty_session_data(session, **kwargs):
     graph = GraphData(name="g", entrypoint="__end__", end_node=None)
-    return SessionData(id=session.id, org_id=session.graph.org_id, graph=graph)
+    return SessionData(id=session.id, org_id=session.graph.org_id, audit_retention_days=0, graph=graph)
 
 
 @pytest.fixture

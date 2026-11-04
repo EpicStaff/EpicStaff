@@ -67,7 +67,7 @@
     border: 1.5px solid transparent;
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--white-alpha-7);
     }
 
@@ -177,7 +177,7 @@
     cursor: pointer;
     transition: background 0.2s;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not(:disabled) {
         background: var(--accent-color-hover);
     }
 

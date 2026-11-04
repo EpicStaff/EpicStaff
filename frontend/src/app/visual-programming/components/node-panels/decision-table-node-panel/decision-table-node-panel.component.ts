@@ -13,6 +13,7 @@ import { formatNodeLabel } from '@shared/utils';
 
 import { convertDecisionTableToCdt } from '../../../core/helpers/dt-to-cdt-converter';
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
+import { TABLE_NODE_WIDTH } from '../../../core/helpers/node-size.util';
 import { Condition, ConditionGroup, DecisionTableNode } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -139,7 +140,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
         const calculatedHeight = headerHeight + rowHeight * totalRows;
 
         const updatedSize = {
-            width: currentNode.size?.width || 330,
+            width: TABLE_NODE_WIDTH,
             height: Math.max(calculatedHeight, 152),
         };
 

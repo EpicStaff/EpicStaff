@@ -35,6 +35,7 @@
 
             .flows-prefix {
                 color: var(--white-alpha-60);
+                text-decoration: none;
                 cursor: pointer;
                 transition: all 0.2s ease;
                 display: flex;
@@ -54,7 +55,7 @@
                     line-height: 1;
                 }
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     color: var(--white-alpha-90);
                 }
             }
@@ -107,6 +108,24 @@
 
         .tooltip-host {
             @include header-action-buttons.tooltip-host;
+
+            &:has(> button[aria-disabled='true']) {
+                cursor: not-allowed;
+            }
+        }
+
+        // Save and Run while a save or a run is going: the look of the mixins' disabled state, kept focusable.
+        .save-split-btn__main,
+        .save-split-btn__chevron {
+            &[aria-disabled='true'] {
+                cursor: not-allowed;
+                opacity: 0.7;
+            }
+        }
+
+        .run-button[aria-disabled='true'] {
+            cursor: not-allowed;
+            opacity: 0.6;
         }
 
         .sessions-button {
@@ -176,7 +195,7 @@
                 font-size: 0.875rem;
                 cursor: pointer;
 
-                &:hover:not(:disabled) {
+                &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
                     background-color: var(--mauve-alpha-10);
                 }
             }
@@ -192,7 +211,7 @@
                 border-radius: 0;
                 cursor: pointer;
 
-                &:hover:not(:disabled) {
+                &:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
                     background-color: var(--mauve-alpha-10);
                 }
             }
@@ -231,7 +250,7 @@
         opacity 0.15s ease,
         color 0.15s ease;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--fog-200);
     }
 }

@@ -31,7 +31,12 @@
                     />
                 }
             </span>
-            <h2 class="dialog-title">{{ data.title }}</h2>
+            <h2
+                class="dialog-title"
+                [attr.id]="titleId"
+            >
+                {{ data.title }}
+            </h2>
         </div>
         <app-icon-button
             icon="x"
@@ -119,6 +124,7 @@
                 spellcheck="false"
                 cdkFocusInitial
                 [id]="verificationInputId"
+                [matTooltip]="'Type ' + verification.phrase + ' to confirm'"
                 [value]="typedPhrase()"
                 (input)="onPhraseInput($event)"
             />

@@ -1,6 +1,7 @@
 """
 RedisStreamToolEventEmitter: extends ``RedisStreamBatchEmitter`` with live
-``agent.tool_call`` / ``agent.tool_result`` envelopes published to the run's
+``agent.tool_call`` / ``agent.tool_result`` (and task, knowledge-search and
+``agent.llm_fallback``) envelopes published to the run's
 own result stream as they happen. The terminal ``agent.result`` payload is
 still owned by the parent.
 
@@ -14,9 +15,11 @@ from loguru import logger
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.llm.client import LLMChunk
+from app.logging_utils import format_exception_for_log
 from app.usage import TokenUsageAccumulator
 from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import LoopResult, ToolResult
+from shared.models.ai_providers import LLMData
 from shared.models.knowledge_new import FoundChunk, SearchUsage
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
@@ -34,9 +37,8 @@ def _truncate(text: str, max_chars: int) -> tuple[str, bool]:
 class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
     """Publishes live tool-call/tool-result events before the batch result.
 
-    Only ``on_tool_call``, ``on_tool_result``, and ``on_chunk`` are overridden.
     ``on_start``, ``on_warning``, ``on_final``, and ``on_error`` inherit the
-    batch behavior unchanged.
+    batch behavior unchanged; the other hooks publish live envelopes.
 
     Collaborators:
     - ``self._call_names`` — maps a tool-call id to its tool name so the
@@ -71,7 +73,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
                 "failed to publish live {} correlation_id={} error={}",
                 event_type,
                 self._correlation_id,
-                error,
+                format_exception_for_log(error),
             )
 
     async def on_task_start(self, task_name: str, task_order: int) -> None:
@@ -153,6 +155,29 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
                 "truncated": truncated,
                 "token_usage": self._usage.consume_delta(),
                 "task": self._current_task,
+            },
+        )
+
+    async def on_llm_fallback(
+        self, primary: LLMData, fallback: LLMData, error: BaseException
+    ) -> None:
+        """Publish a live ``agent.llm_fallback`` envelope.
+
+        Carries the error class name only: provider error text can echo request data.
+        """
+        await self._publish_live(
+            "agent.llm_fallback",
+            {
+                "task": self._current_task,
+                "primary": {
+                    "config_name": primary.config.custom_name,
+                    "model": primary.config.model,
+                },
+                "fallback": {
+                    "config_name": fallback.config.custom_name,
+                    "model": fallback.config.model,
+                },
+                "error_type": type(error).__name__,
             },
         )
 

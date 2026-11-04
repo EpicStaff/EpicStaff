@@ -74,7 +74,7 @@
             min-width: 70px; /* Prevent buttons from resizing */
             text-align: center;
 
-            &:hover {
+            &:is(:hover, :focus-visible) {
                 color: var(--white);
             }
 

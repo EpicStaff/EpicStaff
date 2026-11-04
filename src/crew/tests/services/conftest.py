@@ -15,17 +15,20 @@ from typing import Any
 import httpx
 import pytest
 import pytest_asyncio
+from loguru import logger
 
 import settings
 from clients.sandbox import SandboxClient
 from services.redis_service import AsyncPubsubSubscriber
 from services.run_python_code_service import RunPythonCodeService
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import CodeResultData, PythonCodeData
 from utils.singleton_meta import SingletonMeta
 
 SHARED_RESULT_CHANNEL = "code_results"
 CREW_RESULT_CHANNEL = "code_results:crew"
 SANDBOX_BASE_URL = "http://sandbox:8000"
+REJECTED_RETRY_AFTER_S = 0.05
 
 
 class InMemoryPubSub:
@@ -45,12 +48,16 @@ class InMemoryPubSub:
 
 
 class FakeSandbox:
-    """Plays sandbox_new's intake: records the body of every execution crew submits
-    over HTTP and answers on crew's result channel, either at once (`auto_reply`)
-    or when told to.
+    """Plays sandbox_new's HTTP API: records the body of every execution crew submits,
+    answers on crew's result channel, either at once (`auto_reply`) or when told to,
+    and reports each submitted execution as running on `GET /executions/{id}`.
 
     Setting `rejects_with` makes every submit answer 400 with that text, the way
-    sandbox_new refuses an execution it will not run.
+    sandbox_new refuses an execution it will not run; `full` makes it answer 503,
+    the way a sandbox at capacity does, and `rejections_left` does so for that many
+    submits only, each asking for a `REJECTED_RETRY_AFTER_S` wait; `unreachable` fails
+    every request before it gets an answer; `loses_executions` answers every status
+    check with 404, the way a sandbox that restarted does.
     """
 
     def __init__(self, pubsub: InMemoryPubSub):
@@ -58,12 +65,31 @@ class FakeSandbox:
         self.tasks: list[dict] = []
         self.auto_reply = False
         self.rejects_with: str | None = None
+        self.full = False
+        self.rejections_left = 0
+        self.unreachable = False
+        self.loses_executions = False
 
     async def handle(self, request: httpx.Request) -> httpx.Response:
+        if self.unreachable:
+            raise httpx.ConnectError("connection refused", request=request)
+        if request.method == "GET":
+            if self.loses_executions:
+                return httpx.Response(404, json={"detail": "not found"})
+            return httpx.Response(200, json={"status": "running"})
         task = json.loads(request.content)
         self.tasks.append(task)
         if self.rejects_with is not None:
             return httpx.Response(400, text=self.rejects_with)
+        if self.full:
+            return httpx.Response(503, headers={"Retry-After": "0"}, json={"detail": "full"})
+        if self.rejections_left > 0:
+            self.rejections_left -= 1
+            return httpx.Response(
+                503,
+                headers={"Retry-After": str(REJECTED_RETRY_AFTER_S)},
+                json={"detail": "full"},
+            )
         if self.auto_reply:
             await self.reply(task["execution_id"], result_data="ok")
         return httpx.Response(202, json={"status": "accepted"})
@@ -86,12 +112,36 @@ class FakeSandbox:
             ).model_dump_json(),
         )
 
-    async def wait_for_tasks(self, count: int) -> list[dict]:
-        for _ in range(1000):
-            if len(self.tasks) >= count:
-                return self.tasks
-            await asyncio.sleep(0)
-        raise AssertionError(f"crew submitted {len(self.tasks)} execution(s), expected {count}")
+    async def wait_for_tasks(self, count: int, timeout_s: float = 1.0) -> list[dict]:
+        # Bounded by time, not by event-loop turns: a retried submit sleeps for real between
+        # attempts, and a fast machine runs through any fixed number of turns before it wakes.
+        deadline = asyncio.get_running_loop().time() + timeout_s
+        while len(self.tasks) < count:
+            if asyncio.get_running_loop().time() > deadline:
+                raise AssertionError(
+                    f"crew submitted {len(self.tasks)} execution(s), expected {count}"
+                )
+            await asyncio.sleep(0.001)
+        return self.tasks
+
+
+@pytest.fixture
+def checkpoints():
+    """The BENCH checkpoints logged during the test, as their extra fields, in order.
+
+    Keys starting with "_" are dropped: a BENCH sink added earlier (the service's own
+    stdout sink) stores its rendered line in the shared extra under such a key.
+    """
+    logged: list[dict] = []
+    sink_id = logger.add(
+        lambda message: logged.append(
+            {key: value for key, value in message.record["extra"].items() if not key.startswith("_")}
+        ),
+        level=BENCH_LEVEL,
+        filter=lambda record: record["level"].no == BENCH_LEVEL,
+    )
+    yield logged
+    logger.remove(sink_id)
 
 
 @pytest.fixture(autouse=True)
@@ -119,7 +169,12 @@ def sandbox(pubsub) -> FakeSandbox:
 
 @pytest.fixture
 def sandbox_client(sandbox: FakeSandbox) -> SandboxClient:
-    return SandboxClient(base_url=SANDBOX_BASE_URL, transport=httpx.MockTransport(sandbox.handle))
+    # No retry budget: a full or unreachable sandbox fails the first submit.
+    return SandboxClient(
+        queue_timeout=0,
+        base_url=SANDBOX_BASE_URL,
+        transport=httpx.MockTransport(sandbox.handle),
+    )
 
 
 @pytest_asyncio.fixture

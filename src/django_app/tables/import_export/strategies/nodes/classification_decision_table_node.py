@@ -1,6 +1,8 @@
 import uuid
 
 from rbac.authorship import resolve_author
+from rest_framework import serializers
+from src.shared.models.system_one import LLM_PROMPT_KIND, SYSTEM_ONE_PROMPT_KIND
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -10,11 +12,15 @@ from tables.import_export.serializers.classification_decision_table_node import 
 )
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.utils import remap_python_code_venv
+from tables.import_export.utils import python_code_venv_ids, remap_python_code_venv
 from tables.models import ClassificationDecisionTableNode, PythonCode
 from tables.models.graph_models import (
     ClassificationConditionGroupSection,
     ClassificationDecisionTablePrompt,
+)
+from tables.validators.system_one_questions_validator import (
+    validate_input_map,
+    validate_system_one_questions,
 )
 
 
@@ -29,7 +35,21 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
         return {"id": instance.id, "graph": instance.graph_id}
 
     def extract_dependencies_from_instance(self, instance: ClassificationDecisionTableNode) -> dict:
-        deps = {EntityType.GRAPH: [instance.graph_id]}
+        return self._dependencies(instance, org_id=None)
+
+    def extract_org_scoped_dependencies(
+        self, instance: ClassificationDecisionTableNode, org_id: int
+    ) -> dict:
+        return self._dependencies(instance, org_id=org_id)
+
+    @staticmethod
+    def _dependencies(instance: ClassificationDecisionTableNode, *, org_id: int | None) -> dict:
+        deps = {
+            EntityType.GRAPH: [instance.graph_id],
+            EntityType.VENV: python_code_venv_ids(
+                instance.pre_python_code, instance.post_python_code, org_id=org_id
+            ),
+        }
         llm_config_ids = set()
         if instance.default_llm_config_id:
             llm_config_ids.add(instance.default_llm_config_id)
@@ -41,6 +61,14 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
         llm_config_ids.discard(None)
         if llm_config_ids:
             deps[EntityType.LLM_CONFIG] = list(llm_config_ids)
+        system_one_config_ids = set(
+            ClassificationDecisionTablePrompt.objects.filter(cdt_node=instance).values_list(
+                "system_one_config_id", flat=True
+            )
+        )
+        system_one_config_ids.discard(None)
+        if system_one_config_ids:
+            deps[EntityType.SYSTEM_ONE_CONFIG] = list(system_one_config_ids)
         return deps
 
     def export_entity(self, instance: ClassificationDecisionTableNode) -> dict:
@@ -90,11 +118,29 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
         prompt_id_mapping = {}
         for pc in prompt_configs_data:
             old_id = pc.get("id")
+            kind = pc.get("kind", LLM_PROMPT_KIND)
+            if kind not in (LLM_PROMPT_KIND, SYSTEM_ONE_PROMPT_KIND):
+                raise serializers.ValidationError({"kind": f"Unknown prompt kind '{kind}'."})
+            # The file is untrusted: the other kind's config is dropped so the
+            # database check constraint can never fail the import.
+            llm_config_id = system_one_config_id = None
+            if kind == SYSTEM_ONE_PROMPT_KIND:
+                system_one_config_id = id_mapper.get_or_none(
+                    EntityType.SYSTEM_ONE_CONFIG, pc.get("system_one_config")
+                )
+            else:
+                llm_config_id = id_mapper.get_or_none(EntityType.LLM_CONFIG, pc.get("llm_config"))
             prompt = ClassificationDecisionTablePrompt.objects.create(
                 cdt_node=node,
                 prompt_key=pc["prompt_key"],
                 prompt_text=pc.get("prompt_text", ""),
-                llm_config_id=id_mapper.get_or_none(EntityType.LLM_CONFIG, pc.get("llm_config")),
+                llm_config_id=llm_config_id,
+                kind=kind,
+                system_one_config_id=system_one_config_id,
+                questions=self._validated(
+                    validate_system_one_questions, pc.get("questions", {}), "questions"
+                ),
+                input_map=self._validated(validate_input_map, pc.get("input_map", {}), "input_map"),
                 output_schema=pc.get("output_schema", {}),
                 result_variable=pc.get("result_variable", "prompt_result"),
                 variable_mappings=pc.get("variable_mappings", {}),
@@ -116,6 +162,13 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
             group_serializer.save()
 
         return node
+
+    @staticmethod
+    def _validated(validator, value, field: str):
+        try:
+            return validator(value)
+        except serializers.ValidationError as error:
+            raise serializers.ValidationError({field: error.detail}) from error
 
     def _create_python_code(
         self, python_code_data: dict | None, id_mapper: IDMapper

@@ -64,7 +64,7 @@ $grid-above-btns-height: 24px;
     transition: background 0.15s ease;
 }
 
-.grid-header-icon-btn:hover {
+.grid-header-icon-btn:is(:hover, :focus-visible) {
     background: var(--red-440-alpha-8);
 }
 
@@ -84,13 +84,19 @@ $grid-above-btns-height: 24px;
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    width: 100%;
     padding: 0.45rem 0.75rem;
+    border: none;
+    background: none;
+    font-family: inherit;
     font-size: 0.8rem;
+    text-align: left;
     color: var(--white-alpha-85);
     cursor: pointer;
     transition: background 0.1s ease;
+    outline-offset: -2px;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background: var(--purple-alpha-20);
         color: var(--white);
     }
@@ -406,7 +412,7 @@ $group-gutter-width: 28px;
         color: var(--white-alpha-50);
     }
 
-    &:hover i {
+    &:is(:hover, :focus-visible) i {
         color: var(--purple-alpha-90);
     }
 }
@@ -641,4 +647,23 @@ $group-gutter-width: 28px;
     box-shadow:
         -4px 0px 4px 0px rgba(0, 0, 0, 0.25),
         4px 0px 4px 0px rgba(0, 0, 0, 0.25);
+}
+
+// The hidden-column menu's items are buttons on the global .chm-menu-item look: no browser button look, and the
+// hover look on keyboard focus too. The dropdown scrolls and clips at its sides, so the ring is drawn inside.
+button.chm-menu-item {
+    width: 100%;
+    border: none;
+    font-family: inherit;
+    text-align: left;
+    outline-offset: -2px;
+
+    &:not(:hover, :focus-visible) {
+        background: transparent;
+    }
+
+    &:focus-visible {
+        background: var(--purple-alpha-20);
+        color: var(--white);
+    }
 }
