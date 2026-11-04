@@ -388,7 +388,7 @@ describe('CdtSystemOneEntryComponent', () => {
         mount();
 
         typeInto(field('input[placeholder="Name"]'), 'company');
-        typeInto(field('input[placeholder="Domain Variable Name"]'), 'variables.company_name');
+        typeInto(field('input[placeholder="all fields"]'), '.company_name');
 
         expect(changes[changes.length - 1]).toEqual({ input_map: { company: 'variables.company_name' } });
     });
