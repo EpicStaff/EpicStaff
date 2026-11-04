@@ -1,3 +1,5 @@
+import json
+
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
 from django.utils.log import log_response
@@ -20,6 +22,10 @@ from utils.logger import logger
 
 # Keys DRF generates itself; naming them back at the client adds no information.
 _UNLABELLED_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})
+
+UPSTREAM_FAILURE_MESSAGE = (
+    "Something went wrong on the server. Try again or contact your administrator."
+)
 
 
 def flatten_error_detail(detail) -> str:
@@ -51,6 +57,44 @@ def _upstream_detail(exc: ClientError) -> str | None:
     return str(exc) or None
 
 
+# Pydantic starts the message of a failed validator with this; it means nothing to a user.
+_PYDANTIC_VALUE_ERROR_PREFIX = "Value error, "
+
+
+def _rejected_payload_message(upstream_body: str | None) -> str:
+    """Return what a proxied service's 400 says is wrong, in words for the user.
+
+    The services answer with `{"type": ..., "errors": [{"detail": ..., "attr": ...}]}`.
+    Each `detail` becomes one sentence, prefixed with its `attr` as `attr: detail`, the
+    way `flatten_error_detail` labels a field. A body of any other shape is not written
+    for a user, so it is logged and the generic message is shown instead.
+    """
+    try:
+        body = json.loads(upstream_body or "")
+    except ValueError:
+        body = None
+    errors = body.get("errors") if isinstance(body, dict) else None
+    sentences = [
+        _rejected_field_sentence(error)
+        for error in errors or []
+        if isinstance(error, dict)
+        and isinstance(error.get("detail"), str)
+        and error["detail"].strip()
+    ]
+    if not sentences:
+        logger.warning("Proxied service rejected a payload: {detail}", detail=upstream_body)
+        return UPSTREAM_FAILURE_MESSAGE
+    return " ".join(sentences)
+
+
+def _rejected_field_sentence(error: dict) -> str:
+    detail = error["detail"].strip().removeprefix(_PYDANTIC_VALUE_ERROR_PREFIX)
+    if not detail.endswith((".", "!", "?")):
+        detail = f"{detail}."
+    attr = error.get("attr")
+    return f"{attr}: {detail}" if isinstance(attr, str) and attr else detail
+
+
 def _client_error_as_api_exception(exc: ClientError) -> APIException:
     """Translate a transport error from a proxied microservice into a DRF exception.
 
@@ -61,22 +105,32 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
     of this gateway's dependency rather than anything the caller did, and is reported as
     a bad gateway: passing an upstream 401 or 409 through would tell the caller something
     false about their own request.
+
+    A rejected payload shows the upstream `detail` texts, which say what is wrong with
+    the caller's own input. Every other status gets a generic message: the upstream
+    text is written for this gateway, not for a user, so it goes to the log only.
     """
     detail = _upstream_detail(exc)
 
-    if isinstance(exc, ClientNotFoundError):
-        return NotFound(detail)
     if isinstance(exc, ClientValidationError):
-        return ValidationError(detail)
+        return ValidationError(_rejected_payload_message(detail))
+
+    logger.warning(
+        "Proxied service call failed: {error_type}: {detail}",
+        error_type=type(exc).__name__,
+        detail=detail,
+    )
+    if isinstance(exc, ClientNotFoundError):
+        return NotFound(UPSTREAM_FAILURE_MESSAGE)
     if isinstance(exc, ClientRateLimitError):
-        return Throttled(detail=detail)
+        return Throttled(detail=UPSTREAM_FAILURE_MESSAGE)
     if isinstance(exc, ClientConnectionError):
-        unreachable_error = APIException(detail)
+        unreachable_error = APIException(UPSTREAM_FAILURE_MESSAGE)
         unreachable_error.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         unreachable_error.default_code = "upstream_service_unreachable"
         return unreachable_error
 
-    upstream_error = APIException(detail)
+    upstream_error = APIException(UPSTREAM_FAILURE_MESSAGE)
     upstream_error.status_code = status.HTTP_502_BAD_GATEWAY
     upstream_error.default_code = "upstream_service_error"
     return upstream_error

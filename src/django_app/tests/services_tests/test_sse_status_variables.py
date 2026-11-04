@@ -146,6 +146,64 @@ async def test_other_statuses_pass_through_unchanged(fake_async_redis):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "status_data"),
+    [
+        (
+            "stop",
+            {
+                "reason": "token budget exceeded",
+                "error": "The flow stopped: it used up its token budget.",
+            },
+        ),
+        ("expired", {"error": "The flow stopped: it ran longer than allowed."}),
+    ],
+    ids=["token-budget-stop", "expired"],
+)
+async def test_why_a_flow_stopped_reaches_the_live_status_event(
+    fake_async_redis, status, status_data
+):
+    events = await _live_events(_view_for(6), [_status_message(6, status, status_data)])
+
+    assert [event["data"] for event in events] == [
+        {"session_id": 6, "status": status, "status_data": status_data}
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_why_a_flow_failed_to_start_reaches_the_first_status_event(
+    fake_async_redis, default_org
+):
+    # Django marks such a session failed without publishing a status, so the stream's
+    # first status event, read from the database, is where the client learns why.
+    not_running_text = (
+        "The flow couldn't start: the flow service isn't running. "
+        "Try again or contact your administrator."
+    )
+    graph = await sync_to_async(Graph.objects.create)(name="sse", org=default_org)
+    session = await sync_to_async(Session.objects.create)(
+        graph=graph,
+        status=Session.SessionStatus.ERROR,
+        variables={},
+        status_data={"reason": not_running_text, "error": not_running_text},
+    )
+
+    status_events = [
+        event async for event in _view_for(session.id).get_initial_data()
+        if event["event"] == "status"
+    ]
+
+    assert [event["data"] for event in status_events] == [
+        {
+            "session_id": session.id,
+            "status": "error",
+            "status_data": {"reason": not_running_text, "error": not_running_text},
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_another_sessions_end_status_is_dropped_without_reading_its_key(
     fake_async_redis, mocker
 ):

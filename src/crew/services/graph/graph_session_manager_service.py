@@ -30,12 +30,14 @@ from src.crew.services.graph.session_audit_provider import (
 )
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import SessionData, StopSessionMessage
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
+from src.shared.public_error import new_error_correlation_id
 from utils.singleton_meta import SingletonMeta
+
+TOKEN_BUDGET_STOP_MESSAGE = "The flow stopped: it used up its token budget."
+SESSION_EXPIRED_MESSAGE = "The flow stopped: it ran longer than allowed."
+SESSION_FAILED_MESSAGE = (
+    "The flow failed. Try again or contact your administrator (reference: {reference})."
+)
 
 
 def _extract_finish_token_total(message_data: dict) -> int:
@@ -238,6 +240,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                                 "Stopping session."
                             )
                             stop_event.reason = "token budget exceeded"
+                            stop_event.public_message = TOKEN_BUDGET_STOP_MESSAGE
                             # Reuse the existing manual-stop status/path
                             # (StopEvent default_status="stop") -- same
                             # mechanism as _handle_stop_session /
@@ -338,6 +341,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 reason=e.reason,
             )
             status_kwargs = {"reason": e.reason} if e.reason else {}
+            if e.public_message:
+                status_kwargs["error"] = e.public_message
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status=stop_event.status, **status_kwargs
             )
@@ -413,9 +418,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             )
             if error.correlation_id is None:
                 return error.public_message
-            return build_public_error_message(
-                PublicErrorMessage.SESSION_EXECUTION_FAILED, error.correlation_id
-            )
+            return SESSION_FAILED_MESSAGE.format(reference=error.correlation_id)
         correlation_id = new_error_correlation_id()
         logger.opt(exception=error).error(
             "Failed to start session {session_id}: {error} (correlation_id={correlation_id})",
@@ -423,9 +426,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             error=str(error),
             correlation_id=correlation_id,
         )
-        return build_public_error_message(
-            PublicErrorMessage.SESSION_EXECUTION_FAILED, correlation_id
-        )
+        return SESSION_FAILED_MESSAGE.format(reference=correlation_id)
 
     async def _store_final_variables(self, session_id: int, variables: dict) -> None:
         # A Redis outage must not lose the `end` status: the session still finished,
@@ -505,10 +506,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
                     stop_event = session_task.stop_event
                     stop_event.status = "expired"
+                    # The run publishes `expired` again when it stops, and that status
+                    # replaces this one's status_data, so it must carry the message too.
+                    stop_event.public_message = SESSION_EXPIRED_MESSAGE
                     stop_event.set()
 
                     await self.redis_service.aupdate_session_status(
-                        session_id=session_id, status="expired"
+                        session_id=session_id, status="expired", error=SESSION_EXPIRED_MESSAGE
                     )
 
                     logger.info(
@@ -519,7 +523,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         f"Can not fetch task from session_graph_pool for session ID: {session_id}. Setted status: expired"
                     )
                     await self.redis_service.aupdate_session_status(
-                        session_id=session_id, status="expired"
+                        session_id=session_id, status="expired", error=SESSION_EXPIRED_MESSAGE
                     )
             else:
                 logger.info(f"Handling timeout for session {session_id}")

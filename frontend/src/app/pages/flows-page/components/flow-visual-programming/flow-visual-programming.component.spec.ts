@@ -1480,7 +1480,7 @@ describe('FlowVisualProgrammingComponent', () => {
         it.each([
             [404, TEST_RUN_NODE_GONE_MESSAGE],
             [403, "You don't have permission to run tests on this flow."],
-            [500, 'Failed to start test run: Boom'],
+            [500, "Couldn't start the test run. Boom"],
         ])('reports a %i as a toast', (httpStatus, message) => {
             rejectWith(httpStatus, { message: 'Boom' });
 
@@ -1783,6 +1783,74 @@ describe('FlowVisualProgrammingComponent', () => {
             );
 
             expect(saveAndReadToast()).toContain('"Summarise #4" is missing instructions');
+        });
+
+        it('says a node has invalid settings, without pointing to the console, when checking the nodes fails', () => {
+            openFlow(graphDto({ agent_node_list: [liveAgent] }));
+            const agent = flowService.nodes().find((node): node is AgentNodeModel => node.type === NodeType.AGENT)!;
+            flowService.updateNode({ ...agent, data: { ...agent.data, tasks: [null as unknown as AgentNodeTaskUi] } });
+            vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+            expect(saveAndReadToast()).toBe("Couldn't save the flow: a node has invalid settings.");
+        });
+    });
+
+    describe('request error toasts', () => {
+        const UNREACHABLE = "The server couldn't be reached. Check your connection and try again.";
+
+        it.each([
+            {
+                case: 'a plain sentence when the server is unreachable',
+                error: new HttpErrorResponse({ status: 0, url: 'http://localhost/api/graphs/1/save-flow/' }),
+                message: `Couldn't save the flow. ${UNREACHABLE}`,
+            },
+            {
+                case: "the server's message",
+                error: new HttpErrorResponse({ status: 400, error: { message: 'Node "Summarise #4" is invalid.' } }),
+                message: `Couldn't save the flow. Node "Summarise #4" is invalid.`,
+            },
+            {
+                case: 'the status when the server sent no message',
+                error: new HttpErrorResponse({ status: 502, url: 'http://localhost/api/graphs/1/save-flow/' }),
+                message:
+                    "Couldn't save the flow. Something went wrong on the server. Try again or contact your administrator.",
+            },
+        ])('shows $case when the flow cannot be saved', ({ error, message }) => {
+            flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => error));
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(message);
+        });
+
+        it('shows a plain sentence when a node cannot be saved because the server is unreachable', () => {
+            const note = mapGraphNoteToModel(RESTORED_GRAPH.graph_note_list![0]);
+            flowService.setFlow({ nodes: [note], connections: [] });
+            flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
+
+            TestBed.inject(SidePanelService).requestSaveNode(note);
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(`Couldn't save the node. ${UNREACHABLE}`);
+        });
+
+        it.each([
+            {
+                case: 'a plain sentence when the server is unreachable',
+                error: new HttpErrorResponse({ status: 0, url: 'http://localhost/api/graphs/400/' }),
+                message: `Couldn't load the flow. ${UNREACHABLE}`,
+            },
+            {
+                case: "the server's reason",
+                error: new HttpErrorResponse({ status: 404, error: { detail: 'No Graph matches the given query.' } }),
+                message: "Couldn't load the flow. No Graph matches the given query.",
+            },
+        ])('shows $case when the flow cannot be loaded', ({ error, message }) => {
+            flowsApi['getGraphById'].mockReturnValue(throwError(() => error));
+
+            paramMap$.next(convertToParamMap({ id: '400' }));
+            fixture.detectChanges();
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(message);
         });
     });
 
@@ -2594,7 +2662,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
             expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
-                `Cannot save flow — fix the following node(s) first: "${livePython.node_name}" needs an execution timeout of at least ${TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds} seconds.`
+                `Couldn't save the flow: fix these nodes first: "${livePython.node_name}" needs an execution timeout of at least ${TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds} seconds.`
             );
         });
 
@@ -3231,6 +3299,15 @@ describe('FlowVisualProgrammingComponent', () => {
                 expect(toast['success']).toHaveBeenCalledWith('Extracted selection into subflow "Spam handling"');
             });
 
+            it('shows a plain sentence when the subflow cannot be saved because the server is unreachable', () => {
+                component.onExtractToSubflow(new Set([table(21).id]));
+                subflowSave.error(new HttpErrorResponse({ status: 0 }));
+
+                expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
+                    "Couldn't extract the selection into a subflow. The server couldn't be reached. Check your connection and try again."
+                );
+            });
+
             it('numbers the new subgraph node after the parent graph counter', () => {
                 component.onExtractToSubflow(new Set([table(21).id]));
                 answerSubflowSave();
@@ -3309,6 +3386,29 @@ describe('FlowVisualProgrammingComponent', () => {
                 );
                 expect(flowsStorage.bulkDelete).toHaveBeenCalledWith([9]);
                 expect(component.isSaving()).toBe(false);
+            });
+
+            it('shows a plain sentence when the subflow usage cannot be checked because the server is unreachable', () => {
+                flowsApi['getSubflowUsage'].mockReturnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
+
+                component.onUnpackSubflow(subgraphNodeOnCanvas()!.id);
+
+                expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
+                    "Couldn't check where the subflow is used. The server couldn't be reached. Check your connection and try again."
+                );
+                expect(subgraphNodeOnCanvas()).toBeDefined();
+            });
+
+            it("shows the server's reason when the subflow cannot be unpacked", () => {
+                flowsApi['getGraphById'].mockReturnValue(
+                    throwError(() => new HttpErrorResponse({ status: 500, error: { error: 'Database unavailable.' } }))
+                );
+
+                component.onUnpackSubflow(subgraphNodeOnCanvas()!.id);
+
+                expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
+                    "Couldn't unpack the subflow. Database unavailable."
+                );
             });
 
             it('numbers the inlined nodes after the parent graph counter and keeps their names', () => {

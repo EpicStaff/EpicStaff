@@ -363,7 +363,7 @@ async def test_subflow_that_cant_start_shows_one_card_and_the_session_cites_its_
         f'Subflow node "Run B #1" couldn\'t start {flow}. '
         f"Try again or contact your administrator (reference: {reference})."
     )
-    assert _session_error(error) == f"Session execution failed (reference: {reference})"
+    assert _session_error(error) == f"The flow failed. Try again or contact your administrator (reference: {reference})."
     # The start message is still sent, so the run stores the subflow's failed run as before.
     assert _top_level_kinds(messages) == ["subgraph_start", "error"]
 
@@ -383,7 +383,7 @@ async def test_subflow_that_fails_after_its_flow_ran_cites_a_reference(monkeypat
         'Subflow node "Run B #1" couldn\'t finish flow "Invoice parser". '
         f"Try again or contact your administrator (reference: {reference})."
     )
-    assert _session_error(error) == f"Session execution failed (reference: {reference})"
+    assert _session_error(error) == f"The flow failed. Try again or contact your administrator (reference: {reference})."
     assert "/var/lib/crew/internal" not in _error_details(card)
 
 

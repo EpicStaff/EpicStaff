@@ -159,6 +159,18 @@ class _RunState:
     consecutive_failures: int = 0
 
 
+@dataclass(frozen=True)
+class _ToolFailure:
+    """Why a tool call failed, for the log only.
+
+    ``detail`` is an exception class with a digest of its message, or a digest of the
+    error the tool returned: tool errors quote raw failures (server URLs, secrets).
+    """
+
+    kind: str
+    detail: str
+
+
 class DefaultAgentLoop(AgentLoop):
     """Canonical single-agent tool-use loop.
 
@@ -351,26 +363,32 @@ class DefaultAgentLoop(AgentLoop):
                     lambda: redact_value(args_str),  # noqa: B023
                 )
 
+                # The two rejections below quote no raw failure, so the run panel
+                # shows them as they are instead of the generic failure notice.
                 if failure_limit_hit:
+                    rejection = "Tool call not executed: consecutive tool failure limit reached."
                     result = ToolResult(
                         tool_call_id=call_id,
-                        content="Tool call not executed: consecutive tool failure limit reached.",
+                        content=rejection,
                         is_error=True,
+                        display_content=rejection,
                     )
 
                 elif max_tool_calls is not None and state.tool_invocations >= max_tool_calls:
                     budget_exhausted = True
+                    rejection = (
+                        f"Tool call budget exhausted: at most {max_tool_calls} tool "
+                        "call(s) may be executed for this task; this call was not executed."
+                    )
                     result = ToolResult(
                         tool_call_id=call_id,
-                        content=(
-                            f"Tool call budget exhausted: at most {max_tool_calls} tool "
-                            "call(s) may be executed for this task; this call was not executed."
-                        ),
+                        content=rejection,
                         is_error=True,
+                        display_content=rejection,
                     )
 
                 else:
-                    result = await self._execute_tool(
+                    result, failure = await self._execute_tool(
                         tools,
                         call_id,
                         name,
@@ -379,8 +397,19 @@ class DefaultAgentLoop(AgentLoop):
                     )
                     state.tool_invocations += 1
 
-                    if result.is_error:
+                    if failure is not None:
                         state.consecutive_failures += 1
+                        # The run panel shows only a generic notice, so the log is where a
+                        # failure is traced: it names the kind of failure, and its detail is
+                        # an exception class or a digest, never the raw text.
+                        logger.warning(
+                            "tool failed correlation_id={} id={} name={} kind={} detail={}",
+                            context.correlation_id,
+                            call_id,
+                            name,
+                            failure.kind,
+                            failure.detail,
+                        )
 
                     else:
                         state.consecutive_failures = 0
@@ -459,8 +488,13 @@ class DefaultAgentLoop(AgentLoop):
         name: str,
         args_str: str,
         timeout: float | None = None,
-    ) -> ToolResult:
-        """Coalesce all tool-execution failure modes into ``ToolResult(is_error=True)``."""
+    ) -> tuple[ToolResult, _ToolFailure | None]:
+        """Coalesce all tool-execution failure modes into ``ToolResult(is_error=True)``.
+
+        Returns:
+            The result the LLM receives, and, when it is an error, why the call failed,
+            for the log.
+        """
         try:
             args = json.loads(args_str) if args_str else {}
 
@@ -469,7 +503,7 @@ class DefaultAgentLoop(AgentLoop):
                 tool_call_id=call_id,
                 content=f"Invalid JSON arguments: {error}",
                 is_error=True,
-            )
+            ), _ToolFailure("invalid_arguments", format_exception_for_log(error))
 
         try:
             if timeout is None:
@@ -481,24 +515,28 @@ class DefaultAgentLoop(AgentLoop):
             if result.tool_call_id != call_id:
                 result = result.model_copy(update={"tool_call_id": call_id})
 
-            return result
+            if result.is_error:
+                return result, _ToolFailure("tool_error", redact_value(result.content))
+            return result, None
 
-        except KeyError:
-            return ToolResult(tool_call_id=call_id, content=f"Unknown tool: {name}", is_error=True)
+        except KeyError as error:
+            return ToolResult(
+                tool_call_id=call_id, content=f"Unknown tool: {name}", is_error=True
+            ), _ToolFailure("unknown_tool", format_exception_for_log(error))
 
         except TimeoutError:
             return ToolResult(
                 tool_call_id=call_id,
                 content=f"Tool '{name}' timed out after {timeout}s",
                 is_error=True,
-            )
+            ), _ToolFailure("timeout", f"{timeout}s")
 
         except Exception as error:
             return ToolResult(
                 tool_call_id=call_id,
                 content=f"Tool '{name}' raised: {error}",
                 is_error=True,
-            )
+            ), _ToolFailure("raised", format_exception_for_log(error))
 
     async def _finalize_without_tools(
         self,

@@ -170,6 +170,47 @@ async def test_on_tool_result_resolves_name_from_prior_call():
     assert payload["truncated"] is False
 
 
+_RAW_TOOL_ERROR = (
+    "MCP call failed for tool_name=search: Client error '401 Unauthorized' "
+    "for url 'http://mcp.internal:9000/mcp'"
+)
+
+
+async def test_failed_tool_result_shows_a_generic_notice_instead_of_the_raw_error():
+    emitter, published = _make_emitter()
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
+    await emitter.on_tool_result(
+        ToolResult(tool_call_id="call_1", content=_RAW_TOOL_ERROR, is_error=True)
+    )
+
+    result_fields = published[1]
+    payload = _decode_payload(result_fields)
+    assert set(payload) == {
+        "tool_call_id", "name", "content", "is_error", "truncated", "token_usage", "task",
+    }
+    assert payload["content"] == 'Tool "search" failed. The agent was told and may try another way.'
+    assert payload["is_error"] is True
+    assert payload["name"] == "search"
+    assert "mcp.internal" not in json.dumps(result_fields)
+
+
+async def test_failed_tool_result_with_display_content_shows_it():
+    emitter, published = _make_emitter()
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
+    await emitter.on_tool_result(
+        ToolResult(
+            tool_call_id="call_1",
+            content="Tool call not executed: consecutive tool failure limit reached.",
+            is_error=True,
+            display_content="Tool call not executed: consecutive tool failure limit reached.",
+        )
+    )
+
+    payload = _decode_payload(published[1])
+    assert payload["content"] == "Tool call not executed: consecutive tool failure limit reached."
+    assert payload["is_error"] is True
+
+
 async def test_on_tool_result_without_prior_call_has_null_name():
     emitter, published = _make_emitter()
     await emitter.on_tool_result(
@@ -654,11 +695,12 @@ async def test_on_knowledge_search_error_payload_shape():
         _make_knowledge_target(),
         "what is epicstaff",
         [],
-        error="connection refused",
+        error="ConnectError: All connections failed for url 'http://knowledge.internal:8000/search'",
     )
 
     assert len(published) == 1
     assert published[0]["type"] == "agent.knowledge_search"
+    assert "knowledge.internal" not in json.dumps(published[0])
     payload = _decode_payload(published[0])
     assert payload == {
         "collection_id": 10,
@@ -670,7 +712,7 @@ async def test_on_knowledge_search_error_payload_shape():
         "chunks": [],
         "answer": None,
         "token_usage": {},
-        "error": "connection refused",
+        "error": "Knowledge search failed. The agent was told and may try another way.",
     }
 
 

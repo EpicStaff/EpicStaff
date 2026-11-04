@@ -226,6 +226,11 @@ class ToolResult(BaseModel):
 
     ``is_error=True`` signals the loop to treat the content as an error
     message rather than a valid tool response.
+
+    ``content`` is what the LLM receives. An error's ``content`` can quote the
+    raw failure (exception text, server URLs), so the run panel never shows
+    it: live events show ``display_content`` when it is set, and a generic
+    failure notice otherwise.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -233,6 +238,7 @@ class ToolResult(BaseModel):
     tool_call_id: str
     content: str
     is_error: bool = False
+    display_content: str | None = None
 
 
 class ContextAttachment(BaseModel):

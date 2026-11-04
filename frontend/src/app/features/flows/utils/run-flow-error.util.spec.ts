@@ -20,6 +20,12 @@ describe('showRunFlowError', () => {
             error: new HttpErrorResponse({ status: 0, url: 'http://localhost/api/run-session/' }),
             message: "Couldn't run the flow. The server couldn't be reached. Check your connection and try again.",
         },
+        {
+            case: 'a plain sentence instead of the raw HTTP text when the server failed without a message',
+            error: new HttpErrorResponse({ status: 500, url: 'http://localhost/api/run-session/' }),
+            message:
+                "Couldn't run the flow. Something went wrong on the server. Try again or contact your administrator.",
+        },
     ])('shows $case, in full and for longer than a default toast', async ({ error, message }) => {
         const toastService = new ToastService();
 

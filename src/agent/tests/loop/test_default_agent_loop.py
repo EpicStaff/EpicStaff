@@ -12,11 +12,13 @@ import asyncio
 import inspect
 import json
 from collections.abc import AsyncIterator, Callable
+from unittest.mock import MagicMock
 
 import httpx
 import litellm
 import pytest
 from app.emitters.base import Emitter
+from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
 from app.logging_utils import redact_value
 from app.loop.agent_loop import _UNTRUSTED_CONTENT_NOTE, DefaultAgentLoop
@@ -1459,3 +1461,209 @@ async def test_no_payload_log_lines_are_emitted_below_debug_level():
         for message in messages
         if message.startswith(("loop iter=", "tool call ", "tool result "))
     ]
+
+
+# ---------------------------------------------------------------------------
+# Tool failures: the run panel gets a generic notice, the LLM the raw text
+# ---------------------------------------------------------------------------
+
+
+_INTERNAL_URL = "http://mcp.internal:9000/mcp"
+_RAW_MCP_ERROR = (
+    f"MCP call failed for tool_name=search: Client error '401 Unauthorized' for url '{_INTERNAL_URL}'"
+)
+
+
+def _make_live_emitter() -> tuple[RedisStreamToolEventEmitter, list[dict]]:
+    published: list[dict] = []
+    client = MagicMock()
+
+    async def capture_publish(stream: str, fields: dict, **options) -> None:
+        published.append(fields)
+
+    client.publish = capture_publish
+    emitter = RedisStreamToolEventEmitter(
+        client=client,
+        result_stream_prefix="agent.results",
+        correlation_id="test-corr",
+        result_stream_ttl_s=3600,
+    )
+    return emitter, published
+
+
+def _search_registry_returning_error() -> ToolRegistry:
+    async def failing_executor(args: dict) -> ToolResult:
+        return ToolResult(tool_call_id="", content=_RAW_MCP_ERROR, is_error=True)
+
+    registry = ToolRegistry()
+    registry.register(ToolSpec(name="search", description="search"), failing_executor)
+    return registry
+
+
+def _search_registry_raising() -> ToolRegistry:
+    def raising_tool(args):
+        raise RuntimeError(f"connect failed for url '{_INTERNAL_URL}'")
+
+    return StubToolRegistry({"search": raising_tool})
+
+
+def _tool_result_payloads(published: list[dict]) -> list[dict]:
+    return [
+        json.loads(fields["payload"])
+        for fields in published
+        if fields["type"] == "agent.tool_result"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("make_tools", "call_name", "call_args", "expected_llm_content", "expected_event_content"),
+    [
+        pytest.param(
+            _search_registry_returning_error,
+            "search",
+            "{}",
+            _RAW_MCP_ERROR,
+            'Tool "search" failed. The agent was told and may try another way.',
+            id="executor-error-result",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "search",
+            "{}",
+            f"Tool 'search' raised: connect failed for url '{_INTERNAL_URL}'",
+            'Tool "search" failed. The agent was told and may try another way.',
+            id="executor-raises",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "search",
+            "{bad json",
+            "Invalid JSON arguments: Expecting property name enclosed in double quotes: "
+            "line 1 column 2 (char 1)",
+            'Tool "search" failed. The agent was told and may try another way.',
+            id="invalid-json-arguments",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "nonexistent",
+            "{}",
+            "Unknown tool: nonexistent",
+            'Tool "nonexistent" failed. The agent was told and may try another way.',
+            id="unknown-tool",
+        ),
+    ],
+)
+async def test_failed_tool_shows_a_generic_notice_while_the_llm_keeps_the_raw_error(
+    make_tools, call_name, call_args, expected_llm_content, expected_event_content
+):
+    emitter, published = _make_live_emitter()
+    context = make_context()
+    llm = FakeLLMClient([tool_chunks("c1", call_name, call_args), text_chunks("done")])
+
+    await DefaultAgentLoop(llm).run(
+        context, make_tools(), emitter, MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+    tool_message = next(m for m in context.messages if m["role"] == "tool")
+    assert json.loads(tool_message["content"])["content"] == expected_llm_content
+
+    (event,) = _tool_result_payloads(published)
+    assert event["content"] == expected_event_content
+    assert event["is_error"] is True
+    assert _INTERNAL_URL not in json.dumps(published)
+
+
+async def test_budget_rejection_shows_its_own_text_in_the_run_panel():
+    emitter, published = _make_live_emitter()
+    context = make_context(max_tool_calls=0)
+    llm = FakeLLMClient([tool_chunks("c1", "search", "{}"), text_chunks("summary")])
+
+    await DefaultAgentLoop(llm).run(
+        context, _search_registry_raising(), emitter, MaxIterAndNoToolCalls(max_iter=5)
+    )
+
+    budget_text = (
+        "Tool call budget exhausted: at most 0 tool call(s) may be executed for this "
+        "task; this call was not executed."
+    )
+    (event,) = _tool_result_payloads(published)
+    assert event["content"] == budget_text
+    tool_message = next(m for m in context.messages if m["role"] == "tool")
+    assert json.loads(tool_message["content"])["content"] == budget_text
+
+
+def _slow_search_registry() -> ToolRegistry:
+    async def slow_executor(args: dict) -> ToolResult:
+        await asyncio.sleep(2)
+        return ToolResult(tool_call_id="", content="never", is_error=False)
+
+    registry = ToolRegistry()
+    registry.register(ToolSpec(name="search", description="search"), slow_executor)
+    return registry
+
+
+@pytest.mark.parametrize(
+    ("make_tools", "call_name", "call_args", "tool_timeout", "expected_line_start"),
+    [
+        pytest.param(
+            _search_registry_returning_error,
+            "search",
+            "{}",
+            None,
+            "tool failed correlation_id=test-corr id=c1 name=search kind=tool_error "
+            f"detail={redact_value(_RAW_MCP_ERROR)}",
+            id="tool-returned-an-error",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "search",
+            "{}",
+            None,
+            "tool failed correlation_id=test-corr id=c1 name=search kind=raised "
+            "detail=RuntimeError: <redacted len=",
+            id="tool-raised",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "search",
+            "{bad json",
+            None,
+            "tool failed correlation_id=test-corr id=c1 name=search kind=invalid_arguments "
+            "detail=JSONDecodeError: <redacted len=",
+            id="invalid-json-arguments",
+        ),
+        pytest.param(
+            _search_registry_raising,
+            "nonexistent",
+            "{}",
+            None,
+            "tool failed correlation_id=test-corr id=c1 name=nonexistent kind=unknown_tool "
+            "detail=KeyError: <redacted len=",
+            id="unknown-tool",
+        ),
+        pytest.param(
+            _slow_search_registry,
+            "search",
+            "{}",
+            1,
+            "tool failed correlation_id=test-corr id=c1 name=search kind=timeout detail=1s",
+            id="timeout",
+        ),
+    ],
+)
+async def test_failed_tool_is_logged_with_the_kind_of_failure_and_no_raw_text(
+    make_tools, call_name, call_args, tool_timeout, expected_line_start
+):
+    context = make_context(tool_timeout=tool_timeout)
+    llm = FakeLLMClient([tool_chunks("c1", call_name, call_args), text_chunks("done")])
+
+    with capture_logs_at("WARNING") as messages:
+        await DefaultAgentLoop(llm).run(
+            context, make_tools(), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5)
+        )
+
+    warning_line = log_line_starting_with(messages, "tool failed ")
+    assert warning_line.startswith(expected_line_start)
+    log_text = "\n".join(messages)
+    assert _INTERNAL_URL not in log_text
+    assert "Expecting property name" not in log_text

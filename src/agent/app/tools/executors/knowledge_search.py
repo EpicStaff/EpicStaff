@@ -53,6 +53,13 @@ async def _execute_search(
         outcome = await client.search_with_usage(target, query, timeout=timeout)
 
     except Exception as error:
+        # The LLM gets the raw text below; the log names the failure without it.
+        logger.warning(
+            "knowledge search failed rag_id={} rag_type={} error={}",
+            target.rag_id,
+            target.rag_type,
+            format_exception_for_log(error),
+        )
         await _notify_sink(sink, target, query, [], error=str(error))
         return ToolResult(
             tool_call_id="",

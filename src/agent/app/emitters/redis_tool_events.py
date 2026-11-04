@@ -24,12 +24,27 @@ from shared.redis_streams import RedisStreamClient, StreamEnvelope
 LIVE_ARGUMENTS_MAX_CHARS = 2000
 LIVE_CONTENT_MAX_CHARS = 2000
 
+TOOL_FAILED_MESSAGE = 'Tool "{name}" failed. The agent was told and may try another way.'
+KNOWLEDGE_SEARCH_FAILED_MESSAGE = (
+    "Knowledge search failed. The agent was told and may try another way."
+)
+
 
 def _truncate(text: str, max_chars: int) -> tuple[str, bool]:
     if len(text) <= max_chars:
         return text, False
 
     return text[:max_chars], True
+
+
+def _content_for_user(result: ToolResult, name: str | None) -> str:
+    if result.display_content is not None:
+        return result.display_content
+
+    if result.is_error:
+        return TOOL_FAILED_MESSAGE.format(name=name)
+
+    return result.content
 
 
 class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
@@ -136,6 +151,9 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
     async def on_tool_result(self, result: ToolResult) -> None:
         """Publish a live ``agent.tool_result`` envelope.
 
+        A failed result's ``content`` carries a generic notice instead of the
+        raw error the LLM received; see ``ToolResult``.
+
         Suppressed for knowledge tools — see ``on_tool_call``.
         """
         name = self._call_names.get(result.tool_call_id)
@@ -143,7 +161,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         if name in self._knowledge_tools:
             return
 
-        content, truncated = _truncate(result.content, LIVE_CONTENT_MAX_CHARS)
+        content, truncated = _truncate(_content_for_user(result, name), LIVE_CONTENT_MAX_CHARS)
         await self._publish_live(
             "agent.tool_result",
             {
@@ -178,9 +196,11 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         Naive search yields chunks; graph search yields a synthesised
         ``answer`` string. Metadata is reconstructed from ``target``/``query``
         since knowledge_new's REST response carries only ``result``. On
-        failure ``result`` is an empty list and ``error`` carries the message;
-        the ``error`` key is otherwise omitted so the success payload stays
-        byte-for-byte unchanged."""
+        failure ``result`` is an empty list and the payload's ``error`` key
+        carries a generic notice for the run panel, never the raw ``error``
+        (it can quote the knowledge service URL); the LLM still gets the raw
+        text through the tool result. The ``error`` key is otherwise omitted
+        so the success payload stays byte-for-byte unchanged."""
         chunks = result if isinstance(result, list) else []
         payload = {
             "collection_id": target.collection_id,
@@ -197,6 +217,6 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         }
 
         if error is not None:
-            payload["error"] = error
+            payload["error"] = KNOWLEDGE_SEARCH_FAILED_MESSAGE
 
         await self._publish_live("agent.knowledge_search", payload)

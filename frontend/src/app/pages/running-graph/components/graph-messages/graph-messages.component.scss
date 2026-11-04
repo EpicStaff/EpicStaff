@@ -651,6 +651,39 @@
     }
 }
 
+// Same look as the "Connection lost" notice: both say why the run stopped showing progress.
+.session-end-reason {
+    width: 100%;
+    max-width: 850px;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    background-color: var(--crimson-500-alpha-10);
+    border: 1px solid var(--crimson-500-alpha-20);
+    color: var(--crimson-500);
+
+    &__icon {
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+
+    &__text {
+        margin: 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
+    }
+}
+
+.messages-container--compact .session-end-reason {
+    width: calc(100% - 2rem);
+}
+
 .empty-list {
     margin: 10px;
     color: var(--color-text-secondary);

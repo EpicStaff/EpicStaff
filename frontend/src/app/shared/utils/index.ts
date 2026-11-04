@@ -16,6 +16,7 @@ export * from './generate-uuid.util';
 export * from './get-provider-icon';
 export * from './get-relative-time.util';
 export * from './http-error.util';
+export * from './http-error-reason.util';
 export * from './http-status.util';
 export * from './humanize-error-message.util';
 export * from './import-preview.util';

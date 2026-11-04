@@ -32,7 +32,12 @@ export enum MessageType {
     KEY_VALUE = 'key_value',
 }
 
-export type FinishStopReason = 'completed' | 'schema_satisfied' | 'max_iter_reached';
+export type FinishStopReason =
+    | 'completed'
+    | 'schema_satisfied'
+    | 'max_iter_reached'
+    | 'max_tool_calls_reached'
+    | 'max_consecutive_failures';
 
 export interface FinishOutputTokenUsage {
     prompt_tokens: number;
@@ -66,8 +71,19 @@ export interface ErrorMessageData {
     message_type: MessageType.ERROR; // Using snake_case from API
 }
 
+// The sandbox's run result (`CodeResultData` in the backend). `result_data` is the JSON text of what the code
+// returned, null when it didn't finish. The values are typed `unknown` because the record is read as it came.
+export interface PythonCodeExecutionData {
+    execution_id?: unknown;
+    result_data?: unknown;
+    stdout?: unknown;
+    stderr?: unknown;
+    returncode?: unknown;
+    [key: string]: unknown;
+}
+
 export interface PythonMessageData {
-    python_code_execution_data: Record<string, unknown>;
+    python_code_execution_data: PythonCodeExecutionData;
     message_type: MessageType.PYTHON;
 }
 
@@ -134,6 +150,8 @@ export interface ExtractedChunksMessageData {
     token_usage?: KnowledgeSearchTokenUsage;
     message_type: MessageType.EXTRACTED_CHUNKS;
     rag_search_config: RagSearchConfig;
+    /** Why the search failed, as a sentence for the user; missing when it succeeded. */
+    error?: string;
 }
 
 // State history item interface for subflow messages

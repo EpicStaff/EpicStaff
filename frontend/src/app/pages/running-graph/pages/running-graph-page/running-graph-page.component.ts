@@ -1,6 +1,8 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { GraphSessionStatus } from '@shared/models';
+import { httpErrorReason } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -78,8 +80,8 @@ export class RunningGraphComponent implements OnInit, OnDestroy {
                     this.graphData = graph;
                     this.cdr.markForCheck();
                 },
-                error: (err) => {
-                    this.toast.error(err.error?.detail || 'Failed to fetch graph');
+                error: (error: HttpErrorResponse) => {
+                    this.toast.error(`Couldn't load the flow. ${httpErrorReason(error)}`);
                     void this.router.navigate(['/sessions']);
                     this.cdr.markForCheck();
                 },
@@ -96,8 +98,8 @@ export class RunningGraphComponent implements OnInit, OnDestroy {
                     this.currentSessionStatus = GraphSessionStatus.STOP;
                     this.cdr.markForCheck();
                 },
-                error: (err) => {
-                    this.toast.error(err.error?.detail || 'Failed to stop session');
+                error: (error: HttpErrorResponse) => {
+                    this.toast.error(`Couldn't stop the session. ${httpErrorReason(error)}`);
                 },
             });
     }

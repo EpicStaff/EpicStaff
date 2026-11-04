@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NodeType } from '@shared/models';
-import { downloadBlob, showExportExclusionWarning } from '@shared/utils';
+import { downloadBlob, httpErrorReason, showExportExclusionWarning } from '@shared/utils';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { GraphContentDto } from '../../features/flows/models/graph.model';
@@ -11,6 +11,9 @@ import { ToastService } from '../../services/notifications';
 import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
 import { FlowService } from '../services/flow.service';
 import { FlowSelectionManagerService } from './flow-selection-manager.service';
+
+// The server's reason can name what in the file it refused, so it is shown in full and for longer than most toasts.
+const IMPORT_ERROR_TOAST_DURATION_MS = 10_000;
 
 /** Adds a partial import's `content` to the canvas; returns false when it could not (the editor was busy). */
 export type ImportedContentHandler = (content: GraphContentDto) => boolean;
@@ -251,11 +254,12 @@ export class FlowImportExportService {
                     }
                 },
                 error: (err: HttpErrorResponse) => {
-                    const rawMessage =
-                        (err.error as Record<string, string>)?.['message'] ??
-                        (err.error as Record<string, string>)?.['detail'] ??
-                        null;
-                    this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
+                    this.toastService.error(
+                        `Couldn't import the nodes. ${httpErrorReason(err)}`,
+                        IMPORT_ERROR_TOAST_DURATION_MS,
+                        'bottom-right',
+                        { fullText: true }
+                    );
                 },
             });
     }

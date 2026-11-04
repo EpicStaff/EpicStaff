@@ -63,11 +63,18 @@ class NodeExecutionError(Exception):
 
 
 class StopSession(Exception):  # noqa: N818
-    def __init__(self, *args, status: str | None = None, reason: str | None = None):
+    def __init__(
+        self,
+        *args,
+        status: str | None = None,
+        reason: str | None = None,
+        public_message: str | None = None,
+    ):
         self.status = status
-        # Optional human-readable reason surfaced via Session.status_data.
-        # None for the existing manual-stop/timeout paths, so their
-        # behavior is unchanged.
+        # Optional reason surfaced via Session.status_data and the session audit.
+        # None for the manual-stop/timeout paths.
         self.reason = reason
+        # Shown to the user as the session's `status_data.error`; None for a manual stop.
+        self.public_message = public_message
 
         super().__init__(*args)

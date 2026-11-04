@@ -8,8 +8,11 @@ event sink by a recorder.
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
+
 import pytest
 import settings
+from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
 from app.tools.executors.knowledge_search import (
     GraphKnowledgeSearchExecutor,
     KnowledgeSearchExecutor,
@@ -252,3 +255,48 @@ async def test_failing_sink_logs_class_name_and_digest_only():
     assert secret_marker not in warning_line
     assert "rag_id=1" in warning_line
     assert_masked_exception(warning_line, "RuntimeError")
+
+
+async def test_failed_search_logs_the_failure_kind_without_the_raw_error():
+    raw_error = "All connection attempts failed for url 'http://knowledge.internal:8000/search'"
+
+    with capture_logs_at("WARNING") as logs:
+        await _naive_executor(FakeKnowledgeClient(raises=ConnectionError(raw_error)))(
+            {"query": "test"}
+        )
+
+    warning_line = log_line_starting_with(logs, "knowledge search failed ")
+    assert warning_line.startswith(
+        "knowledge search failed rag_id=1 rag_type=naive error=ConnectionError: "
+    )
+    assert_masked_exception(warning_line, "ConnectionError")
+    assert "knowledge.internal" not in "\n".join(logs)
+
+
+async def test_failed_search_shows_a_generic_notice_while_the_llm_keeps_the_raw_error():
+    published: list[dict] = []
+    redis_client = MagicMock()
+
+    async def capture_publish(stream: str, fields: dict, **options) -> None:
+        published.append(fields)
+
+    redis_client.publish = capture_publish
+    emitter = RedisStreamToolEventEmitter(
+        client=redis_client,
+        result_stream_prefix="agent.results",
+        correlation_id="test-corr",
+        result_stream_ttl_s=3600,
+    )
+    raw_error = "All connection attempts failed for url 'http://knowledge.internal:8000/search'"
+    knowledge_client = FakeKnowledgeClient(raises=RuntimeError(raw_error))
+
+    result = await KnowledgeSearchExecutor(knowledge_client, _make_target(), emitter)(
+        {"query": "Python history"}
+    )
+
+    assert (result.content, result.is_error) == (f"Knowledge search failed: {raw_error}", True)
+    (fields,) = published
+    assert json.loads(fields["payload"])["error"] == (
+        "Knowledge search failed. The agent was told and may try another way."
+    )
+    assert "knowledge.internal" not in json.dumps(fields)

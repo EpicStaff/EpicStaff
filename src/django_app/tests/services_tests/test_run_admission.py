@@ -332,7 +332,7 @@ def test_a_run_refused_just_before_the_publish_is_stopped_and_never_published(
 
     session = Session.objects.get(graph=flow)
     assert session.status == Session.SessionStatus.STOP
-    assert session.status_data == {"reason": REFUSAL_MESSAGE}
+    assert session.status_data == {"reason": REFUSAL_MESSAGE, "error": REFUSAL_MESSAGE}
     assert session.finished_at is not None
     assert published == []
     assert revoked == [session.pk]

@@ -8,6 +8,13 @@ from tables.services.trigger_spec import TriggerSpec
 from utils.logger import logger
 
 GRAPH_NAME = "status-writes-schema"
+FLOW_START_FAILED_TEXT = (
+    "Something went wrong on the server. Try again or contact your administrator."
+)
+FLOW_SERVICE_NOT_RUNNING_TEXT = (
+    "The flow couldn't start: the flow service isn't running. "
+    "Try again or contact your administrator."
+)
 
 
 @pytest.fixture
@@ -100,9 +107,10 @@ def test_failure_before_publish_marks_session_error(graph, session_manager, monk
     session = _latest_session(graph)
     assert session.status == Session.SessionStatus.ERROR
     # The stored reason is readable by anyone who can see the session: no internals.
-    assert session.status_data["reason"] == (
-        "Something went wrong on the server. Try again or contact your administrator."
-    )
+    assert session.status_data == {
+        "reason": FLOW_START_FAILED_TEXT,
+        "error": FLOW_START_FAILED_TEXT,
+    }
     assert session.finished_at is not None
     assert session.status_updated_at >= session.created_at
 
@@ -115,7 +123,10 @@ def test_session_no_crew_received_is_marked_error(graph, session_manager, monkey
 
     session = Session.objects.get(pk=session_id)
     assert session.status == Session.SessionStatus.ERROR
-    assert "crew" in session.status_data["reason"]
+    assert session.status_data == {
+        "reason": FLOW_SERVICE_NOT_RUNNING_TEXT,
+        "error": FLOW_SERVICE_NOT_RUNNING_TEXT,
+    }
     assert session.finished_at is not None
 
 

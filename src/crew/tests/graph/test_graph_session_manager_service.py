@@ -50,13 +50,14 @@ from src.shared.models import (
     SubGraphData,
 )
 from src.shared.models.graph_nodes import GraphData, SubGraphNodeData
-from src.shared.public_error import PublicErrorMessage
 from tests.graph.rebuild_counting_dict import RebuildCountingDict
 from tests.graph.recording_audit_client import RecordingAuditClient
 
 _PUBLIC_ERROR_PATTERN = re.compile(
-    rf"{re.escape(PublicErrorMessage.SESSION_EXECUTION_FAILED)} \(reference: [0-9a-f]{{12}}\)"
+    r"The flow failed\. Try again or contact your administrator \(reference: [0-9a-f]{12}\)\."
 )
+TOKEN_BUDGET_STOP_TEXT = "The flow stopped: it used up its token budget."
+SESSION_EXPIRED_TEXT = "The flow stopped: it ran longer than allowed."
 
 
 def make_finish_chunk(
@@ -218,6 +219,7 @@ async def test_token_budget(
     assert stop_event.is_set() is stopped
     if stopped:
         assert stop_event.reason == status_calls[-1].kwargs["reason"] == "token budget exceeded"
+        assert status_calls[-1].kwargs["error"] == TOKEN_BUDGET_STOP_TEXT
         # A stopped session has no final variables to hand over.
         service.redis_service.aset_session_final_variables.assert_not_called()
 
@@ -329,6 +331,57 @@ async def test_handle_stop_session_publishes_status_when_in_pool(service):
     )
     assert running_session.stop_event.is_set()
     assert session_id not in service.session_graph_pool
+
+
+@pytest.mark.asyncio
+async def test_timeout_of_a_queued_or_unknown_session_reports_why_it_stopped(service):
+    data = json.dumps({"session_id": 997, "action": "timeout"})
+
+    await service._handle_session_timeout(data)
+
+    service.redis_service.aupdate_session_status.assert_called_once_with(
+        session_id=997, status="expired", error=SESSION_EXPIRED_TEXT
+    )
+
+
+@pytest.mark.asyncio
+async def test_timeout_of_a_running_session_reports_why_it_stopped_in_every_expired_status(
+    service, monkeypatch
+):
+    session_id = 996
+    stop_event = StopEvent()
+    service.session_graph_pool[session_id] = SimpleNamespace(stop_event=stop_event)
+
+    class TimedOutGraph:
+        async def astream(self, input, config, stream_mode):
+            await service._handle_session_timeout(
+                json.dumps({"session_id": session_id, "action": "timeout"})
+            )
+            yield make_finish_chunk(session_id, total_tokens=1)
+
+    _patch_builder(monkeypatch, TimedOutGraph())
+
+    await service.run_session(_session_data(session_id), stop_event)
+
+    status_calls = service.redis_service.aupdate_session_status.call_args_list
+    assert [call.kwargs for call in status_calls] == [
+        {"session_id": session_id, "status": "run"},
+        {"session_id": session_id, "status": "expired", "error": SESSION_EXPIRED_TEXT},
+        {"session_id": session_id, "status": "expired", "error": SESSION_EXPIRED_TEXT},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_manual_stop_while_a_node_runs_shows_no_error(service, monkeypatch):
+    _patch_builder(monkeypatch, _one_node_graph(RaisingNode(StopSession(status="stop"))))
+    stop_event = StopEvent()
+    stop_event.set()
+
+    await service.run_session(_session_data(48), stop_event)
+
+    assert _streamed_error_details(service) == []
+    status_call = service.redis_service.aupdate_session_status.call_args_list[-1]
+    assert status_call.kwargs == {"session_id": 48, "status": "stop"}
 
 
 @pytest.mark.asyncio
@@ -650,6 +703,9 @@ LLM_UNKNOWN_TEXT = (
 def _failed_agent_run(error_kind: str) -> Exception:
     payload = {"stop_reason": "llm_error", "error": RAW_PROVIDER_TEXT, "error_kind": error_kind}
     return agent_run_error(payload, COPYWRITER, COPYWRITER.llm, "run-1")
+FLOW_FAILED_TEXT = (
+    f"The flow failed. Try again or contact your administrator (reference: {FIXED_REFERENCE})."
+)
 PYTHON_SANDBOX_DOWN_TEXT = (
     "Python node \"Clean data #2\" couldn't run its code. "
     f"Try again or contact your administrator (reference: {FIXED_REFERENCE})."
@@ -673,7 +729,7 @@ PYTHON_SANDBOX_DOWN_TEXT = (
                 )
             ),
             KNOWLEDGE_SEARCH_FAILED_TEXT,
-            "Session execution failed (reference: 509c403ac7ac)",
+            "The flow failed. Try again or contact your administrator (reference: 509c403ac7ac).",
             id="public-text-with-reference-keeps-the-reference",
         ),
         pytest.param(
@@ -681,7 +737,7 @@ PYTHON_SANDBOX_DOWN_TEXT = (
                 RaisingNode(RuntimeError("could not connect to postgresql://flow:s3cret@db-internal:5432"))
             ),
             f"Node execution failed (reference: {FIXED_REFERENCE})",
-            f"Session execution failed (reference: {FIXED_REFERENCE})",
+            FLOW_FAILED_TEXT,
             id="generic-message-keeps-the-reference",
         ),
         pytest.param(
@@ -716,7 +772,7 @@ PYTHON_SANDBOX_DOWN_TEXT = (
                 python_code_executor_service=SandboxDownExecutor(),
             ),
             PYTHON_SANDBOX_DOWN_TEXT,
-            f"Session execution failed (reference: {FIXED_REFERENCE})",
+            FLOW_FAILED_TEXT,
             id="reference-from-a-node-inside-a-subflow-is-kept",
         ),
         pytest.param(
@@ -728,7 +784,7 @@ PYTHON_SANDBOX_DOWN_TEXT = (
         pytest.param(
             lambda: _one_node_graph(RaisingNode(_failed_agent_run("unknown"))),
             LLM_UNKNOWN_TEXT,
-            f"Session execution failed (reference: {FIXED_REFERENCE})",
+            FLOW_FAILED_TEXT,
             id="unexplained-llm-failure-keeps-its-reference",
         ),
     ],
@@ -1020,6 +1076,32 @@ async def test_every_audit_event_carries_the_sessions_retention_and_none_follow_
         f"No audit context for session {AUDITED_SESSION_ID}" in line
         for line in captured_logs[logs_before_late_message:]
     )
+
+
+@pytest.mark.asyncio
+async def test_node_stopped_while_running_is_closed_in_the_audit_trail_without_a_card(
+    service, monkeypatch, audit_client
+):
+    _patch_builder(monkeypatch, _one_node_graph(RaisingNode(StopSession(status="stop"))))
+
+    await service.run_session(_session_data(48), StopEvent())
+
+    def node_errors():
+        return [
+            (event.status, event.error, event.details)
+            for event in audit_client.events
+            if event.name == "failing #1 #900" and event.status == "failed"
+        ]
+
+    # Audit writes are separate tasks, so they land in no fixed order.
+    async with asyncio.timeout(1):
+        while not node_errors() or "Session Stopped" not in {
+            event.name for event in audit_client.events
+        }:
+            await asyncio.sleep(0)
+
+    assert _streamed_error_details(service) == []
+    assert node_errors() == [("failed", "unknown error", {"message_type": "error"})]
 
 
 ESCAPING_SESSION_ID = 63

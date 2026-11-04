@@ -473,24 +473,24 @@ export class PythonMessageComponent implements OnInit {
         }
     }
 
+    // The output is what the code returned: `result_data`, the JSON text of that value.
     hasOutput(): boolean {
-        const data = this.getExecutionData();
-        return !!data['output'];
+        return this.getOutput() !== '';
     }
 
     getOutput(): string {
-        const data = this.getExecutionData();
-        return typeof data['output'] === 'string' ? data['output'] : '';
+        const resultData = this.getExecutionData()['result_data'];
+        return typeof resultData === 'string' && resultData.trim() ? this.formatJson(resultData) : '';
     }
 
+    // The error is what the code wrote to stderr: the traceback, or the node's own message about the failure.
     hasError(): boolean {
-        const data = this.getExecutionData();
-        return !!data['error'];
+        return this.getError() !== '';
     }
 
     getError(): string {
-        const data = this.getExecutionData();
-        return typeof data['error'] === 'string' ? data['error'] : '';
+        const stderr = this.getExecutionData()['stderr'];
+        return typeof stderr === 'string' ? stderr.trim() : '';
     }
 
     toggleCollapse(): void {

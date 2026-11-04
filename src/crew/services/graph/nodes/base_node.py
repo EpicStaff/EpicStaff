@@ -3,10 +3,12 @@ from typing import Any, Literal, NoReturn
 
 from langgraph.types import StreamWriter
 from loguru import logger
+from models.graph_models import GraphMessage
 from models.state import State
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
 from services.graph.exceptions import NodeExecutionError, PublicNodeError, StopSession
+from src.crew.services.graph.session_audit_provider import emit_session_audit_event
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.public_error import (
     PublicErrorMessage,
@@ -15,6 +17,18 @@ from src.shared.public_error import (
 )
 from utils import map_variables_to_input, set_output_variables
 from utils.node_label import node_label_from_runtime_name
+
+
+def _write_to_audit_trail_only(graph_message: GraphMessage) -> None:
+    """Send a graph message to the audit trail without streaming it to the run panel.
+
+    The audit trail closes a node on its error message, so a stopped node still needs one.
+    """
+    try:
+        emit_session_audit_event(GraphMessage.encode_payload(graph_message.to_payload()))
+    except Exception as audit_exc:
+        # Audit must never break the session, as on the streamed path.
+        logger.warning("Audit dispatch failed, dropping: {}", audit_exc)
 
 
 class BaseNode(ABC):
@@ -134,12 +148,16 @@ class BaseNode(ABC):
 
         A `PublicNodeError` is shown as it is. Any other error may carry internal text, so it
         is logged and the user sees a generic message with a reference to the log line.
-        `StopSession` is re-raised unchanged, since the session ends a stop on its own path;
-        everything else is raised as a `NodeExecutionError` carrying what the user was shown.
+        `StopSession` is re-raised unchanged, and its error message goes to the audit trail
+        only: the node didn't fail, and the session ends a stop on its own path, where the
+        status says why it stopped. Everything else is raised as a `NodeExecutionError`
+        carrying what the user was shown.
         """
         if isinstance(error, StopSession):
             self.add_error_message(
-                writer=writer, public_details=str(error), execution_order=execution_order
+                writer=_write_to_audit_trail_only,
+                public_details=str(error),
+                execution_order=execution_order,
             )
             raise error
         if isinstance(error, PublicNodeError):

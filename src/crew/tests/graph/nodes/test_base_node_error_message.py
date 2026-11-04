@@ -152,13 +152,26 @@ async def test_public_error_citing_a_reference_passes_that_reference_on(captured
 
 
 @pytest.mark.asyncio
-async def test_stop_session_is_reraised_unchanged_with_an_empty_error_card(captured_logs):
-    stop = StopSession(reason="manual stop")
-
+@pytest.mark.parametrize(
+    "stop",
+    [
+        StopSession(status="stop"),
+        StopSession(
+            status="stop",
+            reason="token budget exceeded",
+            public_message="The flow stopped: it used up its token budget.",
+        ),
+        StopSession(
+            status="expired", public_message="The flow stopped: it ran longer than allowed."
+        ),
+    ],
+    ids=["manual-stop", "token-budget", "timeout"],
+)
+async def test_stop_session_is_reraised_unchanged_without_an_error_card(stop, captured_logs):
     error, details = await run_failing(RaisingNode(stop), expected_error=StopSession)
 
     assert error is stop
-    assert details == [""]
+    assert details == []
     assert captured_logs == []
 
 

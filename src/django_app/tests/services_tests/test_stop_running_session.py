@@ -4,6 +4,11 @@ from tables.models.graph_models import Graph
 from tables.models.session_models import Session
 from tables.services.session_manager_service import SessionManagerService
 
+FLOW_SERVICE_NOT_RUNNING_ON_STOP_TEXT = (
+    "The flow couldn't be stopped: the flow service isn't running. "
+    "Try again or contact your administrator."
+)
+
 
 @pytest.fixture
 def session(default_org):
@@ -41,5 +46,8 @@ def test_stop_no_crew_received_marks_session_error(session, monkeypatch):
 
     session.refresh_from_db()
     assert session.status == Session.SessionStatus.ERROR
-    assert "crew" in session.status_data["reason"]
+    assert session.status_data == {
+        "reason": FLOW_SERVICE_NOT_RUNNING_ON_STOP_TEXT,
+        "error": FLOW_SERVICE_NOT_RUNNING_ON_STOP_TEXT,
+    }
     assert session.finished_at is not None

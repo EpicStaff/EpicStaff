@@ -1,4 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -21,7 +22,7 @@ import {
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
-import { runtimeNodeNameToLabel } from '@shared/utils';
+import { httpErrorReason, runtimeNodeNameToLabel } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { exhaustMap, map, takeUntil } from 'rxjs/operators';
 
@@ -142,6 +143,13 @@ interface RootDrilldownView {
 
 const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
     GraphSessionStatus.ENDED,
+    GraphSessionStatus.ERROR,
+    GraphSessionStatus.STOP,
+    GraphSessionStatus.EXPIRED,
+]);
+
+// The statuses of a session that ended early, the ones whose reason the panel shows.
+const UNFINISHED_END_STATUSES = new Set<GraphSessionStatus>([
     GraphSessionStatus.ERROR,
     GraphSessionStatus.STOP,
     GraphSessionStatus.EXPIRED,
@@ -324,6 +332,15 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         }
 
         return this.isLoading || this.sseService.isStreaming();
+    }
+
+    /**
+     * Why the session ended early, shown after its last message; null for a session that ended normally or
+     * gave no reason (a manual stop). Waits for the last page so it never sits between two pages of messages.
+     */
+    get sessionEndReason(): string | null {
+        if (!UNFINISHED_END_STATUSES.has(this.sseService.status()) || this.hasMore) return null;
+        return this.sseService.statusReason();
     }
 
     public ngOnInit(): void {
@@ -515,11 +532,12 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                         this.sseService.startStream(this.sessionId!);
                     } else {
                         this.sseService.setStatus(session.status);
+                        this.sseService.setStatusData(session.status_data);
                     }
                     this.loadMoreMessages();
                 },
-                error: (err) => {
-                    this.toast.error(err.error?.detail || 'Failed to fetch session');
+                error: (error: HttpErrorResponse) => {
+                    this.toast.error(`Couldn't load the session. ${httpErrorReason(error)}`);
                     void this.router.navigate(['/sessions']);
                 },
             });
@@ -1042,6 +1060,19 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             const messageType = message.message_data?.message_type;
             const isCdtStepType = !!messageType && CDT_STEP_MESSAGE_TYPES.has(messageType);
 
+            // A node that opened a group and then failed sends an error instead of its finish. An error from
+            // outside a group closes it (and any still open inside it), so it shows where it was raised: left in
+            // the group, it and every card after it would be hidden there.
+            if (isMessageType(message, MessageType.ERROR)) {
+                const errorChain = this.getSubgraphRunChain(message);
+                while (stack.length > 0 && !this.isErrorInsideGroup(stack[stack.length - 1], errorChain)) {
+                    stack.pop();
+                }
+                if (pendingGroup?.pushed && !stack.includes(pendingGroup.key)) {
+                    pendingGroup = null;
+                }
+            }
+
             if (pendingGroup && !pendingGroup.pushed && isCdtStepType) {
                 pendingGroup.context.isGroupStart = true;
                 pendingGroup.context.groupKind = 'cdt';
@@ -1094,6 +1125,33 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 pendingGroup = null;
             }
         });
+    }
+
+    /**
+     * Whether an error with this run chain was raised inside the group opened by `groupKey`. A subflow group holds
+     * what ran in its run, so the chain names that run. A decision table runs no flow of its own: an error in the
+     * same run as the table's start card is the table's own, and closes it.
+     */
+    private isErrorInsideGroup(groupKey: string, errorChain: readonly string[]): boolean {
+        const groupStart = this.messageByKey.get(groupKey);
+        if (!groupStart) return false;
+        if (isMessageType(groupStart, MessageType.SUBGRAPH_START)) {
+            const runId = (groupStart.message_data as StartSubflowMessageData).subgraph_execution_id;
+            return !!runId && errorChain.includes(runId);
+        }
+        const startChain = this.getSubgraphRunChain(groupStart);
+        return !(
+            startChain.length === errorChain.length && startChain.every((runId, index) => runId === errorChain[index])
+        );
+    }
+
+    /**
+     * The subflow runs a message was sent from inside, innermost first (`subgraph_execution_ids`, which crew adds
+     * to every message as it leaves each run); empty for a message of the top-level flow.
+     */
+    private getSubgraphRunChain(message: GraphMessage): readonly string[] {
+        const chain = (message.message_data as unknown as Record<string, unknown>)['subgraph_execution_ids'];
+        return Array.isArray(chain) ? chain.filter((runId): runId is string => typeof runId === 'string') : [];
     }
 
     private syncDrillPaths(messages: GraphMessage[]): void {

@@ -62,7 +62,11 @@ from tables.services.run_admission import (
     assert_run_admitted,
     assert_still_admitted,
 )
-from tables.services.run_start_errors import user_facing_run_error
+from tables.services.run_start_errors import (
+    FLOW_SERVICE_NOT_RUNNING_MESSAGE,
+    FLOW_SERVICE_NOT_RUNNING_ON_STOP_MESSAGE,
+    user_facing_run_error,
+)
 from tables.services.secrets import (
     UndeclaredSecretError,
     secret_declaration_validator,
@@ -129,7 +133,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         if received_n == 0:
             logger.error("Session {} was stopped, but no crew instance is listening.", session.pk)
             self._mark_session_error(
-                session=session, reason="No crew instance received the stop session command."
+                session=session, reason=FLOW_SERVICE_NOT_RUNNING_ON_STOP_MESSAGE
             )
             try:
                 SessionCallbackService().enqueue(
@@ -274,9 +278,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         storage account issued for it.
         """
         now = timezone.now()
+        reason = user_facing_run_error(refusal)
         Session.objects.filter(pk=session.pk).update(
             status=Session.SessionStatus.STOP,
-            status_data={"reason": user_facing_run_error(refusal)},
+            status_data={"reason": reason, "error": reason},
             status_updated_at=now,
             finished_at=now,
         )
@@ -287,10 +292,16 @@ class SessionManagerService(metaclass=SingletonMeta):
         session_credential_service.revoke_for_session(session.pk)
 
     def _mark_session_error(self, session: Session, reason: str) -> None:
+        """Mark a session that never reached crew as failed, with `reason` shown to the user.
+
+        The text goes under both keys: `error` is where every failed session keeps the
+        text the run panel shows, and `reason` is what fanout_tool and API clients
+        already read.
+        """
         now = timezone.now()
         Session.objects.filter(pk=session.pk).update(
             status=Session.SessionStatus.ERROR,
-            status_data={"reason": reason},
+            status_data={"reason": reason, "error": reason},
             status_updated_at=now,
             finished_at=now,
         )
@@ -450,9 +461,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 logger.error(
                     "Session {} was published, but no crew instance is listening.", session.pk
                 )
-                self._mark_session_error(
-                    session=session, reason="No crew instance received the session."
-                )
+                self._mark_session_error(session=session, reason=FLOW_SERVICE_NOT_RUNNING_MESSAGE)
             logger.info("Session data published in Redis for session ID: {}.", session.pk)
 
         except RunAdmissionRefusedError as refusal:

@@ -220,7 +220,7 @@ async def test_file_extractor_storage_failure_cites_a_reference_and_logs_the_raw
         'File Extractor node "Extract PDF #2" couldn\'t reach file storage. '
         f"Try again or contact your administrator (reference: {reference})."
     )
-    assert session_error(error) == f"Session execution failed (reference: {reference})"
+    assert session_error(error) == f"The flow failed. Try again or contact your administrator (reference: {reference})."
     assert [result["stderr"] for result in shown_results] == [card]
     (logged,) = [record for record in captured_logs if f"correlation_id={reference}" in record]
     assert ("Storage error" in logged) or ("Missing required environment variables" in logged)
@@ -397,4 +397,4 @@ async def test_sandbox_failure_names_the_nodes_own_kind(node, expected):
     )
 
     assert cards == [expected]
-    assert session_error(error) == "Session execution failed (reference: 0a1b2c3d4e5f)"
+    assert session_error(error) == "The flow failed. Try again or contact your administrator (reference: 0a1b2c3d4e5f)."

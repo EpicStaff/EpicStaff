@@ -9,7 +9,6 @@ class PublicErrorMessage(StrEnum):
     TOOL_EXECUTION_FAILED = "Tool execution failed"
     KNOWLEDGE_SEARCH_FAILED = "Knowledge search failed"
     NODE_EXECUTION_FAILED = "Node execution failed"
-    SESSION_EXECUTION_FAILED = "Session execution failed"
 
 
 def new_error_correlation_id() -> str:

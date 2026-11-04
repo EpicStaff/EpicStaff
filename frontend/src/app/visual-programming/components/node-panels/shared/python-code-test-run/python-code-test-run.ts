@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { computed, DestroyRef, inject, Signal, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { httpErrorReason } from '@shared/utils';
 import { Subscription, switchMap } from 'rxjs';
 
 import {
@@ -88,9 +88,7 @@ export class PythonCodeTestRun {
                 next: (event: PollEvent) => this.onPollEvent(event),
                 error: (error: Error) => {
                     const message =
-                        error instanceof HttpErrorResponse
-                            ? extractHttpErrorMessage(error)
-                            : error.message || 'Unknown error';
+                        error instanceof HttpErrorResponse ? httpErrorReason(error) : error.message || 'Unknown error';
                     this.errorSignal.set(message);
                     this.isRunningSignal.set(false);
                     this.addLog('error', `Error: ${message}`);

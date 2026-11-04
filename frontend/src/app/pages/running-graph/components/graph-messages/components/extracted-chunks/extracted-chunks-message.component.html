@@ -27,6 +27,9 @@
                 @if (tokenUsageLabel(); as usageLabel) {
                     <p class="usage">{{ usageLabel }}</p>
                 }
+                @if (searchError; as error) {
+                    <p class="search-error">{{ error }}</p>
+                }
             </div>
             <div class="meta">
                 @if (ragTypeLabel) {
@@ -83,7 +86,8 @@
                 </div>
 
                 <div class="chunks">
-                    @if (ragKind === 'graph') {
+                    <!-- A failed search has no answer: the "no grounded answer" text would misstate why. -->
+                    @if (ragKind === 'graph' && !searchError) {
                         <article class="chunk-card">
                             @if (graphAnswer) {
                                 <app-copy-button [text]="graphAnswer" />
