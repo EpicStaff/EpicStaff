@@ -138,6 +138,7 @@
                             aria-orientation="vertical"
                             tabindex="0"
                             [attr.aria-label]="'Resize ' + (col.label ?? col.key) + ' column'"
+                            aria-description="Press Enter to fit all columns to the table width"
                             [attr.aria-valuenow]="width"
                             [attr.aria-valuetext]="width === null ? null : width + ' pixels'"
                             [attr.aria-valuemin]="minColumnWidth"
@@ -148,6 +149,7 @@
                             (pointercancel)="onResizeEnd()"
                             (lostpointercapture)="onResizeEnd()"
                             (keydown)="onResizeKeydown(col.key, $event)"
+                            (dblclick)="fitColumnsToTable()"
                         ></span>
                     }
                 </div>

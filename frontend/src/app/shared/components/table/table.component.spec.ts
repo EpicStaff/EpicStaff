@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { AppTableComponent } from './table.component';
 import { AppTableColumnDef, TableRow } from './table.model';
+import { AppTableCellDirective } from './table-cell.directive';
 
 function renderTable(columns: AppTableColumnDef[]) {
     const fixture = TestBed.createComponent(AppTableComponent);
@@ -610,5 +611,106 @@ describe('AppTableComponent horizontal scroll with pinned columns', () => {
         expect(scrollbar()).toBeNull();
         expect(wrapper.classList).not.toContain('table-wrapper--shadow-start');
         expect(wheel.defaultPrevented).toBe(false);
+    });
+});
+
+@Component({
+    imports: [AppTableComponent, AppTableCellDirective],
+    template: `
+        <app-table
+            layoutKey="fit-spec-table"
+            [columns]="columns"
+            [data]="rows"
+        >
+            <ng-template
+                appTableCell="name"
+                let-row
+            >
+                <span class="cell-text">{{ row.name }}</span>
+            </ng-template>
+            <ng-template
+                appTableCell="owner"
+                let-row
+            >
+                <span class="cell-text">{{ row.owner }}</span>
+            </ng-template>
+        </app-table>
+    `,
+})
+class FitColumnsHostComponent {
+    readonly columns: AppTableColumnDef[] = [
+        { key: 'name', label: 'Name', width: '200px', pinned: 'start' },
+        { key: 'owner', label: 'Owner' },
+        { key: 'sessions', label: 'Sessions' },
+        { key: 'actions', label: 'Actions', width: '130px', pinned: 'end' },
+    ];
+    readonly rows: TableRow[] = [
+        { id: 1, name: 'Alexandra Smith-Johnson', owner: 'Bo' },
+        { id: 2, name: 'Al', owner: 'Ed' },
+    ];
+}
+
+describe('AppTableComponent fit columns to the table', () => {
+    afterEach(() => {
+        localStorage.clear();
+        vi.restoreAllMocks();
+    });
+
+    /**
+     * jsdom does no layout. A cell sized to `max-content` measures 10px per character of its text plus 24px of
+     * padding; any other cell (the end-pinned Actions one) measures 130px. The wrapper is 600px wide.
+     */
+    function render() {
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            const width = this.style.width === 'max-content' ? (this.textContent ?? '').trim().length * 10 + 24 : 130;
+            return { width } as DOMRect;
+        });
+        const fixture = TestBed.createComponent(FitColumnsHostComponent);
+        fixture.detectChanges();
+        const element = fixture.nativeElement as HTMLElement;
+        Object.defineProperty(element.querySelector('.table-wrapper'), 'clientWidth', { value: 600 });
+        const handle = (label: string) =>
+            element.querySelector<HTMLElement>(`.resize-handle[aria-label="Resize ${label} column"]`)!;
+        const gridTemplate = () => element.querySelector<HTMLElement>('.table-header')!.style.gridTemplateColumns;
+        return { fixture, handle, gridTemplate };
+    }
+
+    it.each([
+        [
+            'double-clicking',
+            (handle: HTMLElement) => handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })),
+        ],
+        [
+            'pressing Enter on',
+            (handle: HTMLElement) =>
+                handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
+        ],
+    ])('%s any resize handle fits every resizable column into the table and stores the widths', (_case, trigger) => {
+        const { fixture, handle, gridTemplate } = render();
+
+        trigger(handle('Sessions'));
+        fixture.detectChanges();
+
+        // Content: Name 254 (its widest body cell), Owner 80 (minimum), Sessions 104 (its header), 438 in all.
+        // 600 - 130 (Actions) = 470 leaves 32px, shared 11 + 11 + 10.
+        expect(gridTemplate()).toBe('265px 91px minmax(114px, 1fr) 130px');
+        expect(handle('Owner').getAttribute('aria-valuenow')).toBe('91');
+        expect(JSON.parse(localStorage.getItem('app-table-layout:fit-spec-table') ?? 'null')).toEqual({
+            visibility: {},
+            widths: { name: 265, owner: 91, sessions: 114 },
+        });
+    });
+
+    it('leaves no cell sized to its content after measuring', () => {
+        const { fixture, handle } = render();
+
+        handle('Owner').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        fixture.detectChanges();
+
+        expect(
+            [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.table-cell')].filter(
+                (cell) => cell.style.width
+            )
+        ).toEqual([]);
     });
 });

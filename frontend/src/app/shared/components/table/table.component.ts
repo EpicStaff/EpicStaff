@@ -24,6 +24,7 @@ import { SelectComponent } from '../select/select.component';
 import { SelectTriggerDirective } from '../select/select-trigger.directive';
 import { AppTableActionVariant, AppTableColumnDef, AppTableRowAction, TableRow } from './table.model';
 import { AppTableCellDirective } from './table-cell.directive';
+import { fitColumnWidths } from './table-fit-columns';
 import {
     clampColumnWidth,
     MAX_COLUMN_WIDTH,
@@ -505,6 +506,11 @@ export class AppTableComponent {
     }
 
     onResizeKeydown(key: string, event: KeyboardEvent): void {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            this.fitColumnsToTable();
+            return;
+        }
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
         event.preventDefault();
         this.freezeColumnWidths();
@@ -513,6 +519,36 @@ export class AppTableComponent {
             key,
             currentWidth + (event.key === 'ArrowLeft' ? -RESIZE_KEYBOARD_STEP : RESIZE_KEYBOARD_STEP)
         );
+        this.persistLayout();
+    }
+
+    /**
+     * Sizes every resizable column to its widest cell's full content, then shares the table's width out among them
+     * (see `fitColumnWidths`), and stores the result like a manual resize.
+     */
+    fitColumnsToTable(): void {
+        const wrapper = this.wrapper()?.nativeElement;
+        if (!wrapper) return;
+        const columns = this.displayedColumns();
+        const resizableIndexes = columns.flatMap((col, index) => (this.isResizable(col) ? [index] : []));
+        // Header and body rows hold their cells in `displayedColumns()` order, after the checkbox cell.
+        const rows = [...wrapper.querySelectorAll<HTMLElement>('.table-header, .table-row')].map((row) => [
+            ...row.querySelectorAll<HTMLElement>(':scope > .table-cell:not(.checkbox)'),
+        ]);
+        const header = rows[0];
+        const fixedWidth = [
+            wrapper.querySelector<HTMLElement>('.table-header > .table-cell.checkbox'),
+            ...columns.map((col, index) => (col.pinned === 'end' ? header[index] : null)),
+        ].reduce((sum, cell) => sum + (cell?.getBoundingClientRect().width ?? 0), 0);
+        const contentWidths = this.measureContentWidths(rows, resizableIndexes);
+        const fitted = fitColumnWidths(contentWidths, wrapper.clientWidth - fixedWidth);
+        const widths = Object.fromEntries(
+            resizableIndexes.map((columnIndex, position) => [
+                columns[columnIndex].key,
+                clampColumnWidth(fitted[position]),
+            ])
+        );
+        this.layout.update((layout) => ({ ...layout, widths: { ...layout.widths, ...widths } }));
         this.persistLayout();
     }
 
@@ -619,6 +655,20 @@ export class AppTableComponent {
             insetStart: wrapper.clientLeft,
             insetEnd: wrapper.offsetWidth - wrapper.clientWidth - wrapper.clientLeft,
         });
+    }
+
+    /**
+     * The full width of each column's widest cell, header included. Cells clip their content with an ellipsis, so
+     * each is sized to `max-content` for the reading: all at once, so the browser lays the table out only once.
+     */
+    private measureContentWidths(rows: HTMLElement[][], columnIndexes: number[]): number[] {
+        const cells = rows.flatMap((row) => columnIndexes.map((index) => row[index]).filter(Boolean));
+        cells.forEach((cell) => cell.style.setProperty('width', 'max-content'));
+        const widths = columnIndexes.map((index) =>
+            Math.max(0, ...rows.map((row) => row[index]?.getBoundingClientRect().width ?? 0))
+        );
+        cells.forEach((cell) => cell.style.removeProperty('width'));
+        return widths;
     }
 
     private setColumnWidth(key: string, width: number): void {
