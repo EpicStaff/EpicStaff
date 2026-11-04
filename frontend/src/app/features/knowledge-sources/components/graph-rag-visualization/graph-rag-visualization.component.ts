@@ -272,7 +272,7 @@ export class GraphRagVisualizationComponent implements OnInit, OnDestroy {
         const edges = this.sceneService.getEdges();
 
         if (this.is3D()) {
-            const d3 = await import('d3-force-3d');
+            const d3 = await import('@vendor/d3-force-3d');
             const simNodes = nodes.map((n) => ({
                 index: n.index,
                 x: n.x,
