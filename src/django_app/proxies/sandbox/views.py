@@ -73,7 +73,7 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
         binding, venv = self.service_class().create(
             request.data,
             org_id=self.get_active_org_id(),
-            created_by=request.user,
+            created_by=resolve_author(request.user),
         )
         return Response(self._as_response(venv, binding), status=status.HTTP_201_CREATED)
 
