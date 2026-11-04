@@ -1,8 +1,9 @@
 import { AuthorshipFields } from '@shared/models';
 
 import { NumberedNodeDto } from './numbered-node-dto.model';
+import { StorageGrantFields } from './storage-grants.model';
 
-export interface GetFileExtractorNodeRequest extends AuthorshipFields, NumberedNodeDto {
+export interface GetFileExtractorNodeRequest extends AuthorshipFields, NumberedNodeDto, StorageGrantFields {
     id: number;
     created_at: string;
     node_name: string;

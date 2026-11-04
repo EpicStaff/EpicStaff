@@ -74,6 +74,31 @@ describe('forbiddenInterceptor', () => {
             );
         }));
 
+    it('does not force a session refresh or toast for a storage_grant_denied 403 (the tool editor shows it)', () =>
+        new Promise<void>((resolve, reject) => {
+            httpClient.put('/api/python-code-tool/7/', {}).subscribe({
+                next: () => reject(new Error('expected the request to error')),
+                error: (err: HttpErrorResponse) => {
+                    try {
+                        expect(err.status).toBe(403);
+                        expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
+                        expect(router.navigateByUrl).not.toHaveBeenCalled();
+                        expect(toastService.error).not.toHaveBeenCalled();
+                        resolve();
+                    } catch (e) {
+                        reject(e as Error);
+                    }
+                },
+            });
+
+            httpMock
+                .expectOne('/api/python-code-tool/7/')
+                .flush(
+                    { status_code: 403, code: 'storage_grant_denied', message: 'Needs Files: Read.' },
+                    { status: 403, statusText: 'Forbidden' }
+                );
+        }));
+
     it('does not force a session refresh or toast for an in_use_restricted 403 (bulk-delete single-item block)', () =>
         new Promise<void>((resolve, reject) => {
             httpClient.delete('/api/flows/1/').subscribe({

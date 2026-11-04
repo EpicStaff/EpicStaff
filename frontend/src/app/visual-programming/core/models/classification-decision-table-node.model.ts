@@ -1,6 +1,7 @@
 import { AuthorshipFields, DeclaredSecretRef } from '@shared/models';
 
 import { NumberedNodeDto } from './numbered-node-dto.model';
+import { CdtStorageGrantFields } from './storage-grants.model';
 
 export interface PromptConfigBackend {
     id: number;
@@ -73,7 +74,8 @@ export interface CDTPythonCodeBlock {
     execution_timeout?: number;
 }
 
-export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields, NumberedNodeDto {
+export interface GetClassificationDecisionTableNodeRequest
+    extends AuthorshipFields, NumberedNodeDto, CdtStorageGrantFields {
     id: number;
     created_at: string;
     graph: number;
@@ -95,7 +97,7 @@ export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFie
     metadata?: unknown;
 }
 
-export interface CreateClassificationDecisionTableNodeRequest {
+export interface CreateClassificationDecisionTableNodeRequest extends CdtStorageGrantFields {
     graph: number;
     node_name: string;
     pre_python_code: CDTPythonCodeBlock | null;

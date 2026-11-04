@@ -1,5 +1,14 @@
 import { CommonModule, NgStyle } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, EventEmitter, inject, Input, Output } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    EventEmitter,
+    inject,
+    Input,
+    Output,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
@@ -10,6 +19,7 @@ import { formatNodeLabel } from '@shared/utils';
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
 import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { CDT_HEADER_HEIGHT, CDT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
+import { NO_FILE_ACCESS_TOOLTIP } from '../../../core/helpers/storage-grants.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { ViewPort } from '../../../core/models/port.model';
@@ -74,6 +84,12 @@ export class ClassificationDecisionTableNodeComponent {
         const node = nodes.find((n) => n.id === idOrName || n.node_name === idOrName);
         return node ? formatNodeLabel(node) : idOrName;
     }
+
+    readonly noFileAccessTooltip = NO_FILE_ACCESS_TOOLTIP;
+
+    readonly hasNoFileAccessWhenTriggered = computed(() =>
+        this.flowService.nodeIdsWithoutFileAccess().has(this.node.id)
+    );
 
     get title(): string {
         return this.node.node_name || 'Classification Table';

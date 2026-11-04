@@ -1,6 +1,7 @@
 import { AuthorshipFields } from '@shared/models';
 
 import { NumberedNodeDto } from './numbered-node-dto.model';
+import { StorageGrantFields } from './storage-grants.model';
 import { InlineSurface } from './task-node.model';
 
 /**
@@ -33,7 +34,7 @@ export interface AgentNodeTaskWrite {
     context_task_ids?: number[];
 }
 
-export interface AgentNode extends AuthorshipFields, NumberedNodeDto {
+export interface AgentNode extends AuthorshipFields, NumberedNodeDto, StorageGrantFields {
     id: number;
     created_at: string;
     updated_at?: string;
@@ -49,7 +50,7 @@ export interface AgentNode extends AuthorshipFields, NumberedNodeDto {
     content_hash?: string;
 }
 
-export interface CreateAgentNodeRequest {
+export interface CreateAgentNodeRequest extends StorageGrantFields {
     temp_id?: string;
     id?: number;
     node_name: string;

@@ -1,6 +1,7 @@
 import { NodeType, toSecretIds, toSecretNames } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
+import { storageGrantsFromDto } from '../../../core/helpers/storage-grants.util';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
@@ -33,5 +34,6 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
         input_map: wn.input_map ?? {},
         output_variable_path: wn.output_variable_path,
         size: ui.size,
+        storageGrants: storageGrantsFromDto(wn),
     };
 }

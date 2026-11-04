@@ -9,6 +9,7 @@ import { KeyValueNodeData } from './key-value-node.model';
 import { GetKnowledgeRetrieverNodeRequest } from './knowledge-retriever-node.model';
 import { ViewPort } from './port.model';
 import { ScheduleTriggerNodeData } from './schedule-trigger.model';
+import { StorageGrants } from './storage-grants.model';
 import { TaskNodeData } from './task-node.model';
 import { TelegramTriggerNodeField } from './telegram-trigger.model';
 
@@ -30,6 +31,12 @@ export interface BaseNodeModel {
     /** Unique incrementing number per graph, displayed as the #N badge. */
     nodeNumber?: number;
     isBlocked?: boolean;
+    /**
+     * What this node's code may do with the flow's files in a run no person started. At the root and not in
+     * `data` on purpose: python and webhook `data` is sent as the code block, and panels rebuild `data` on
+     * every edit. `undefined` for a node the server has not stored yet.
+     */
+    storageGrants?: StorageGrants;
 }
 export interface StartNodeData {
     initialState: Record<string, unknown>;
@@ -127,6 +134,9 @@ export interface ClassificationDecisionTableNodeModel extends BaseNodeModel {
      * dropped the first time a user touched the grid.
      */
     explanations?: CdtExplanations;
+    /** Grants of the pre-code and the post-code slot; they replace `storageGrants`, which this node never uses. */
+    preStorageGrants?: StorageGrants;
+    postStorageGrants?: StorageGrants;
 }
 
 export interface EndNodeData {

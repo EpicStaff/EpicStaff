@@ -1,6 +1,7 @@
 import { NodeType, toSecretIds, toSecretNames } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
+import { storageGrantsFromDto } from '../../../core/helpers/storage-grants.util';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { PythonNode } from '../../../core/models/python-node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
@@ -31,5 +32,6 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
         input_map: pn.input_map ?? {},
         output_variable_path: pn.output_variable_path,
         size: ui.size,
+        storageGrants: storageGrantsFromDto(pn),
     };
 }

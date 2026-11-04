@@ -8,6 +8,7 @@ import {
     CustomInputComponent,
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
+    HintMessageComponent,
     SelectComponent,
     SelectItem,
     ValidationErrorsComponent,
@@ -43,6 +44,7 @@ import {
     STORED_GRAPH_OUTDATED_MESSAGE,
     StoredCodeState,
 } from '../shared/python-code-test-run/stored-python-code';
+import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 import {
     areValidParameterNames,
     diffNames,
@@ -68,6 +70,8 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
         ValidationErrorsComponent,
         SelectComponent,
         ExecutionTimeoutFieldComponent,
+        HintMessageComponent,
+        StorageGrantsFieldComponent,
     ],
     templateUrl: './python-node-panel.component.html',
     styleUrls: ['./python-node-panel.component.scss'],
@@ -365,6 +369,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             venv: [this.node().data.venv_id ?? null],
             execution_timeout: this.executionTimeout.control,
             test_input: this.fb.array([]),
+            storage_grants: [this.node().storageGrants],
         });
 
         this.initializeInputMap(form);
@@ -416,6 +421,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             node_name: this.form.value.node_name,
             input_map: inputMapValue,
             output_variable_path: this.form.value.output_variable_path || null,
+            storageGrants: this.form.get('storage_grants')?.value ?? undefined,
             data: {
                 ...this.node().data,
                 name: this.form.value.node_name || 'Python Code',

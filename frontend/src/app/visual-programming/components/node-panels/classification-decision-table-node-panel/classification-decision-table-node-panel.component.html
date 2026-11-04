@@ -163,14 +163,14 @@
                                 <div class="cdt-input-map-wrapper">
                                     <app-input-map
                                         [activeColor]="activeColor"
-                                        [readonly]="isReadOnly()"
+                                        [readonly]="isPreReadOnly()"
                                     ></app-input-map>
                                 </div>
                             </ng-container>
                             <app-node-secrets-field
                                 [activeColor]="activeColor"
                                 [value]="preSelectedSecretIds()"
-                                [readonly]="!canEditSecrets()"
+                                [readonly]="!canEditSecrets() || preStorageGrantLock() !== null"
                                 [names]="preSecretNames()"
                                 [tooltipText]="preSecretsTooltip()"
                                 panelWidth="346px"
@@ -182,19 +182,25 @@
                                 formControlName="pre_output_variable_path"
                                 placeholder="Enter output variable path (leave empty for null)"
                                 [activeColor]="activeColor"
-                                [readonly]="isReadOnly()"
+                                [readonly]="isPreReadOnly()"
                             ></app-custom-input>
                             <app-execution-timeout-field
                                 [field]="preExecutionTimeout"
-                                [readonly]="isReadOnly()"
+                                [readonly]="isPreReadOnly()"
                                 label="Pre-computation execution timeout"
                             />
                             <app-node-storage-section
+                                [readonly]="isPreReadOnly()"
                                 [useStorage]="preUseStorage()"
                                 (onToggleChange)="onPreStorageToggle($event)"
                                 (onInsertCode)="insertPreStorageCode($event)"
                                 (onRemoveCode)="removePreStorageCode($event)"
                             ></app-node-storage-section>
+                            <app-storage-grants-field
+                                formControlName="pre_storage_grants"
+                                legend="Access when started by a trigger"
+                                [readonly]="isPreReadOnly()"
+                            />
                         </div>
                         <app-column-resize-divider
                             ariaLabel="Resize inputs and code columns"
@@ -210,11 +216,14 @@
                             #preCodeColumn
                             class="code-editor-section"
                         >
+                            @if (preStorageGrantLock(); as lock) {
+                                <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                            }
                             <app-code-editor
                                 [pythonCode]="preCode"
                                 [secretNames]="preSecretNames()"
                                 [inputMapKeys]="preInputMapKeys()"
-                                [readOnly]="isReadOnly()"
+                                [readOnly]="isPreReadOnly()"
                                 (pythonCodeChange)="onPreCodeChange($event)"
                             ></app-code-editor>
                         </div>
@@ -236,14 +245,14 @@
                                 <div class="cdt-input-map-wrapper">
                                     <app-input-map
                                         [activeColor]="activeColor"
-                                        [readonly]="isReadOnly()"
+                                        [readonly]="isPostReadOnly()"
                                     ></app-input-map>
                                 </div>
                             </ng-container>
                             <app-node-secrets-field
                                 [activeColor]="activeColor"
                                 [value]="postSelectedSecretIds()"
-                                [readonly]="!canEditSecrets()"
+                                [readonly]="!canEditSecrets() || postStorageGrantLock() !== null"
                                 [names]="postSecretNames()"
                                 [tooltipText]="postSecretsTooltip()"
                                 panelWidth="346px"
@@ -255,19 +264,25 @@
                                 formControlName="post_output_variable_path"
                                 placeholder="Enter output variable path (leave empty for null)"
                                 [activeColor]="activeColor"
-                                [readonly]="isReadOnly()"
+                                [readonly]="isPostReadOnly()"
                             ></app-custom-input>
                             <app-execution-timeout-field
                                 [field]="postExecutionTimeout"
-                                [readonly]="isReadOnly()"
+                                [readonly]="isPostReadOnly()"
                                 label="Post-computation execution timeout"
                             />
                             <app-node-storage-section
+                                [readonly]="isPostReadOnly()"
                                 [useStorage]="postUseStorage()"
                                 (onToggleChange)="onPostStorageToggle($event)"
                                 (onInsertCode)="insertPostStorageCode($event)"
                                 (onRemoveCode)="removePostStorageCode($event)"
                             ></app-node-storage-section>
+                            <app-storage-grants-field
+                                formControlName="post_storage_grants"
+                                legend="Access when started by a trigger"
+                                [readonly]="isPostReadOnly()"
+                            />
                         </div>
                         <app-column-resize-divider
                             ariaLabel="Resize inputs and code columns"
@@ -283,11 +298,14 @@
                             #postCodeColumn
                             class="code-editor-section"
                         >
+                            @if (postStorageGrantLock(); as lock) {
+                                <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                            }
                             <app-code-editor
                                 [pythonCode]="postCode"
                                 [secretNames]="postSecretNames()"
                                 [inputMapKeys]="postInputMapKeys()"
-                                [readOnly]="isReadOnly()"
+                                [readOnly]="isPostReadOnly()"
                                 (pythonCodeChange)="onPostCodeChange($event)"
                             ></app-code-editor>
                         </div>

@@ -19,6 +19,7 @@ import {
     createColumnWidthState,
     CustomInputComponent,
     HelpTooltipComponent,
+    HintMessageComponent,
     JsonEditorComponent,
     MultiSelectComponent,
     SelectDropdownComponent,
@@ -70,6 +71,7 @@ import {
     InstructionsViewToggleComponent,
 } from '../shared/instructions-view-toggle/instructions-view-toggle.component';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
+import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 import { VariableHighlightTextareaComponent } from '../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 
 const LOCAL_SURFACE_VALUE = '__local_surface__';
@@ -86,6 +88,8 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         SelectDropdownTriggerDirective,
         MultiSelectComponent,
         HelpTooltipComponent,
+        HintMessageComponent,
+        StorageGrantsFieldComponent,
         AppSvgIconComponent,
         TooltipComponent,
         ValidationErrorsComponent,
@@ -331,6 +335,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     }
 
     onCreateLocalSurface(): void {
+        if (this.isReadOnly()) return;
         this.localSurfaceDialog
             .open({ mode: 'create', inlineSurface: null, llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -344,6 +349,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     }
 
     onEditLocalSurface(): void {
+        if (this.isReadOnly()) return;
         this.localSurfaceDialog
             .open({ mode: 'edit', inlineSurface: this.inlineSurface(), llmConfigId: this.selectedAgentLlmConfigId() })
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -475,6 +481,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
+            storage_grants: [this.node().storageGrants],
             remember_output: [data.remember_output ?? false],
             instructions: [data.instructions || '', Validators.required],
             agent_definition: [data.agent_definition ?? null, Validators.required],
@@ -499,6 +506,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
             node_name: this.form.value.node_name,
             input_map: inputMapValue,
             output_variable_path: this.form.value.output_variable_path || null,
+            storageGrants: this.form.get('storage_grants')?.value ?? undefined,
             data: {
                 ...this.node().data,
                 name: this.form.value.node_name || 'Task Node',

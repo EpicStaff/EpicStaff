@@ -12,6 +12,9 @@
 
 <ng-template #codeEditorCard>
     <div class="code-card-group">
+        @if (storageGrantLock(); as lock) {
+            <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+        }
         <app-code-editor
             class="code-editor-card"
             [class.code-editor-card--with-terminal]="showCodeTerminal()"
@@ -145,6 +148,11 @@
                         (onRemoveCode)="removeStorageCode($event)"
                     ></app-node-storage-section>
 
+                    <app-storage-grants-field
+                        formControlName="storage_grants"
+                        [readonly]="isReadOnly()"
+                    />
+
                     <!-- Expanded: the editor not shown in the big pane sits at the bottom of this column. -->
                     @if (isExpanded()) {
                         @if (expandedPane() === 'payload') {
@@ -177,6 +185,9 @@
                         <ng-container [ngTemplateOutlet]="testPayloadCard" />
                     } @else if (expandedPane() === 'code') {
                         <div class="code-editor-column">
+                            @if (storageGrantLock(); as lock) {
+                                <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                            }
                             <app-code-editor
                                 class="code-editor-section"
                                 [class.code-editor-section--with-terminal]="showCodeTerminal()"

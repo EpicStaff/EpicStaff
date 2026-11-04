@@ -2019,7 +2019,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 this.usePermissionRefusal.catchRefusal('restore'),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe({ error: () => this.toastService.error('Failed to restore version') });
+            .subscribe({
+                error: (err: HttpErrorResponse) => {
+                    // A refusal such as a missing Files permission carries its own explanation.
+                    const serverMessage: unknown = err?.error?.message;
+                    this.toastService.error(
+                        typeof serverMessage === 'string' && serverMessage ? serverMessage : 'Failed to restore version'
+                    );
+                },
+            });
     }
 
     /**

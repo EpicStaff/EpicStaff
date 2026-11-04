@@ -19,6 +19,52 @@ class StorageAction(StrEnum):
     DELETE = "delete"
 
 
+class StorageGrant(BaseModel):
+    """What one code-running node may do to the files attached to its flow in an unattended run.
+
+    Set per node (or per code slot of a node) by whoever configured the flow. A run
+    with no identity of its own (schedule, webhook and Telegram triggers) gets
+    exactly these actions on the attached files; a node with no grant (None) keeps
+    the run's default access.
+    """
+
+    read: bool = False
+    write: bool = False
+    delete: bool = False
+
+    model_config = ConfigDict(frozen=True)
+
+    @property
+    def actions(self) -> frozenset[StorageAction]:
+        """The actions this grant allows."""
+        return frozenset(
+            action
+            for action, allowed in (
+                (StorageAction.READ, self.read),
+                (StorageAction.WRITE, self.write),
+                (StorageAction.DELETE, self.delete),
+            )
+            if allowed
+        )
+
+    @property
+    def key(self) -> str:
+        """Stable identifier of the combination, the same wherever it is computed.
+
+        One letter per allowed action in the fixed order read, write, delete, `-` for a
+        missing one: "r-d" is read and delete, "---" is none.
+        """
+        return "".join(
+            letter if allowed else "-"
+            for letter, allowed in (("r", self.read), ("w", self.write), ("d", self.delete))
+        )
+
+    @classmethod
+    def from_key(cls, key: str) -> "StorageGrant":
+        """The grant a `key` names."""
+        return cls(read=key[0] == "r", write=key[1] == "w", delete=key[2] == "d")
+
+
 class StorageCredentials(BaseModel):
     """Temporary storage service account credentials.
 
@@ -97,5 +143,12 @@ class StorageScopedData(BaseModel):
 
     org_id: int | None = None
     """Organization ID — required if use_storage=True."""
+
+    storage_grant: StorageGrant | None = None
+    """The grant of the node or code slot that owns this code; None when it has none.
+
+    Picks which of the session's temporary accounts this code runs with (see
+    `SessionData.storage_credentials_by_grant`).
+    """
 
     model_config = ConfigDict(from_attributes=True)

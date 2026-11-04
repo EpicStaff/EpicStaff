@@ -29,6 +29,8 @@ from tables.services.node_number_service import NodeNumberService
 from tables.services.secrets import SecretUseDeniedError
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
 from tables.services.secrets.request_actor import actor_from_request
+from tables.services.storage_grants.actor import GrantActor
+from tables.services.storage_grants.write_checks import STEERING_PREFETCHES
 
 
 def _stored_secret_prefetches(model) -> list[Prefetch]:
@@ -119,7 +121,8 @@ class GraphBulkSaveService:
             db_map = {
                 obj.id: obj
                 for obj in config.model_class.objects.filter(graph=graph).prefetch_related(
-                    *_stored_secret_prefetches(config.model_class)
+                    *_stored_secret_prefetches(config.model_class),
+                    *STEERING_PREFETCHES.get(config.model_class, ()),
                 )
             }
             result = self._validate_node_list(graph, incoming, config, db_map, payload_temp_ids)
@@ -286,6 +289,15 @@ class GraphBulkSaveService:
                 )
             except SecretUseDeniedError as denial:
                 return BuildSaveableResult(error={"index": index, "errors": denial.field_errors()})
+
+        if config.storage_grant_check is not None:
+            # Not collected into the item's errors: a refusal is a 403 for the whole save,
+            # which the transaction rolls back, so no node of it is written.
+            config.storage_grant_check(
+                GrantActor.for_request(self._request) if self._request is not None else None,
+                instance,
+                s.validated_data,
+            )
 
         inner = config.saveable_factory.build(s, extra, instance)
         deferred = config.saveable_factory.build_deferred(inner, extra)

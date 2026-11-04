@@ -36,6 +36,7 @@ import {
     TextareaComponent,
     ToggleSwitchComponent,
     ValidationErrorsComponent,
+    WarningNoteComponent,
 } from '@shared/components';
 import { EnterSubmitDirective, HasPermissionDirective } from '@shared/directives';
 import { executionTimeoutMinimumRule } from '@shared/form-validators';
@@ -48,7 +49,12 @@ import {
     toSecretNames,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
-import { extractHttpErrorMessage, isClientError } from '@shared/utils';
+import {
+    extractHttpErrorMessage,
+    isClientError,
+    missingStorageGrantActions,
+    storageGrantLockMessage,
+} from '@shared/utils';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY, Observable, of, timer } from 'rxjs';
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
@@ -161,6 +167,7 @@ function writeParametersTableModeToStorage(enabled: boolean): void {
         HasPermissionDirective,
         NodeSecretsFieldComponent,
         ValidationErrorsComponent,
+        WarningNoteComponent,
     ],
     templateUrl: './create-custom-tool-dialog.component.html',
     styleUrls: ['./create-custom-tool-dialog.component.scss'],
@@ -184,6 +191,27 @@ export class CreateCustomToolDialogComponent {
     public readonly selectedTool = signal<GetPythonCodeToolRequest | null>(this.dialogData?.selectedTool ?? null);
     public readonly isEditMode = computed(() => this.selectedTool() !== null);
     public readonly isBuiltIn = computed(() => this.selectedTool()?.built_in === true);
+    /** Files actions that flows using this tool need its editor to hold and this user lacks. */
+    private readonly missingStorageGrantActions = computed(() => {
+        const lock = this.selectedTool()?.storage_grant_lock;
+        // Until the permissions are known, the server decides.
+        if (!lock || !this.permissionsService.isActivePermissionsLoaded()) return [];
+        return missingStorageGrantActions(lock.required_grants, (action) =>
+            this.permissionsService.can(ResourceCode.Files, action)
+        );
+    });
+    public readonly isStorageGrantLocked = computed(() => this.missingStorageGrantActions().length > 0);
+    public readonly storageGrantLockMessage = computed(() =>
+        this.isStorageGrantLocked()
+            ? storageGrantLockMessage(
+                  'tool',
+                  this.missingStorageGrantActions(),
+                  this.selectedTool()?.storage_grant_lock?.flow_names ?? []
+              )
+            : null
+    );
+    /** Built-in tools and tools locked by storage grants cannot be edited in place. */
+    public readonly isReadOnly = computed(() => this.isBuiltIn() || this.isStorageGrantLocked());
     public readonly dialogTitle = computed(() => {
         if (this.isBuiltIn()) {
             return 'Built-in Tool';
@@ -208,7 +236,7 @@ export class CreateCustomToolDialogComponent {
 
     public readonly jsonEditorOptions = computed<MonacoEditor.IStandaloneEditorConstructionOptions>(() => ({
         ...this.baseJsonEditorOptions,
-        readOnly: this.isBuiltIn(),
+        readOnly: this.isReadOnly(),
     }));
 
     public readonly form = this.fb.group({
@@ -424,7 +452,7 @@ export class CreateCustomToolDialogComponent {
         }
 
         const tableView = this.parametersTableView();
-        if (tableView && !this.isBuiltIn() && !tableView.isValid()) {
+        if (tableView && !this.isReadOnly() && !tableView.isValid()) {
             tableView.validate();
             this.confirmDialog
                 .confirm({
@@ -457,7 +485,7 @@ export class CreateCustomToolDialogComponent {
         writeParametersTableModeToStorage(false);
         this.parametersTableMode.set(false);
         this.parametersSwitchOn.set(false);
-        if (!this.isBuiltIn()) {
+        if (!this.isReadOnly()) {
             this.form.controls.variablesJson.setValue(
                 JSON.stringify(serializeVariables(this.tableVariables()), null, 2)
             );
@@ -614,11 +642,11 @@ export class CreateCustomToolDialogComponent {
     }
 
     public submit(): void {
-        if (this.isSaving()) {
+        if (this.isSaving() || this.isStorageGrantLocked()) {
             return;
         }
 
-        if (this.parametersTableMode() && !this.isBuiltIn()) {
+        if (this.parametersTableMode() && !this.isReadOnly()) {
             this.parametersTableView()?.validate();
             this.form.controls.variablesJson.setValue(
                 JSON.stringify(serializeVariables(this.tableVariables()), null, 2)
@@ -774,7 +802,7 @@ export class CreateCustomToolDialogComponent {
         if (this.form.invalid) {
             return 'Please fill in all required fields';
         }
-        if (this.parametersTableMode() && !this.isBuiltIn() && !(this.parametersTableView()?.isValid() ?? true)) {
+        if (this.parametersTableMode() && !this.isReadOnly() && !(this.parametersTableView()?.isValid() ?? true)) {
             return 'Please fix the parameter errors before saving';
         }
         if (!this.isJsonValid()) {
@@ -785,7 +813,7 @@ export class CreateCustomToolDialogComponent {
         }
         // A built-in tool's save forks it unchanged: its read-only timeout is neither sent nor fixable here.
         const executionTimeout = this.executionTimeout();
-        if (!this.isBuiltIn() && executionTimeout?.control.invalid) {
+        if (!this.isReadOnly() && executionTimeout?.control.invalid) {
             return `Execution timeout must be ${executionTimeoutMinimumRule(executionTimeout.limits.minSeconds)}`;
         }
         return null;

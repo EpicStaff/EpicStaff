@@ -1,6 +1,7 @@
 import { NodeType, toSecretIds, toSecretNames } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
+import { storageGrantsFromDto } from '../../../core/helpers/storage-grants.util';
 import { normalizeCdtSectionColor, reconcileCdtSections } from '../../../core/models/cdt-section.model';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../core/models/classification-decision-table-node.model';
@@ -105,5 +106,7 @@ export function mapClassificationDecisionTableNodeToModel(
         output_variable_path: null,
         size: ui.size,
         explanations: readCdtExplanations(n.metadata as Record<string, unknown> | undefined),
+        preStorageGrants: storageGrantsFromDto(n, 'pre'),
+        postStorageGrants: storageGrantsFromDto(n, 'post'),
     };
 }

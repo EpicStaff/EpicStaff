@@ -144,3 +144,18 @@ describe('extractHttpErrorMessage', () => {
         expect(extractHttpErrorMessage(errorResponse(400, body))).toBe('name: This field is required.');
     });
 });
+
+describe('extractHttpErrorMessage for a refused storage grant', () => {
+    it("gives the server's message so a failed save can show it", () => {
+        const message =
+            "This code runs with Files: Write, Files: Delete, which you don't have. Contact an admin to change it.";
+        const error = received(
+            new HttpErrorResponse({
+                status: 403,
+                error: { status_code: 403, code: 'storage_grant_denied', message, missing_grants: ['write', 'delete'] },
+            })
+        );
+
+        expect(extractHttpErrorMessage(error)).toBe(message);
+    });
+});

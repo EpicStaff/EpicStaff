@@ -3,6 +3,7 @@ from typing import TypedDict
 
 from django.db import transaction
 from rbac.authorship import record_last_edit
+from src.shared.models.storage_scope import StorageAction
 
 from tables.graph_versioning.manager import GraphVersioningManager
 from tables.import_export.constants import IMPORT_VERSION
@@ -10,6 +11,13 @@ from tables.models import (
     Graph,
     GraphVersion,
     Label,
+)
+from tables.services.storage_grants.actor import GrantActor
+from tables.services.storage_grants.flow_checks import (
+    actions_granted_in_flows,
+    actions_granted_in_snapshot,
+    assert_actor_holds,
+    snapshot_has_unconfigured_slot,
 )
 
 # Graph-level ``metadata`` in snapshots saved before the secret FKs landed can carry node data
@@ -238,6 +246,20 @@ class GraphVersioningService:
         Graph.increment_version_if_current(pk=graph.pk, expected=expected_save_version)
 
         prepared = self._prepare(version)
+        # Restoring replaces every node, so it hands out the grants of the version and
+        # discards those of the flow as it is: the user must hold both sets. A slot of the
+        # version that is not configured runs with every action, so it needs all three:
+        # the restore is refused rather than lowering it.
+        snapshot_nodes = prepared.filtered_snapshot["nodes"]
+        required = actions_granted_in_snapshot(snapshot_nodes) | actions_granted_in_flows(
+            [graph.id]
+        )
+        if snapshot_has_unconfigured_slot(snapshot_nodes):
+            required |= frozenset(StorageAction)
+        # A call with no acting user is internal (the restore endpoint always has one) and
+        # has no one whose permissions could be short.
+        if user is not None:
+            assert_actor_holds(GrantActor.for_user(user, graph.org_id), required)
         warnings = list(prepared.filter_warnings)
 
         auto_backup_id = None

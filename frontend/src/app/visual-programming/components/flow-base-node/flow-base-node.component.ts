@@ -28,6 +28,8 @@ import { CAPTION_TABLE_NAME_LIMIT, keyValueSummaryParts } from '../../core/const
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import { showsNodeNumber } from '../../core/helpers/node-number.util';
+import { NO_FILE_ACCESS_TOOLTIP } from '../../core/helpers/storage-grants.util';
+import { isTriggerNodeType } from '../../core/helpers/trigger-node-type.util';
 import {
     AgentNodeModel,
     ClassificationDecisionTableNodeModel,
@@ -261,6 +263,24 @@ export class FlowBaseNodeComponent implements OnInit {
             captionParts: keyValueSummaryParts(node.data.mode, tableName, keyCount, CAPTION_TABLE_NAME_LIMIT),
         };
     }
+
+    public readonly noFileAccessTooltip = NO_FILE_ACCESS_TOOLTIP;
+
+    public readonly hasNoFileAccessWhenTriggered = computed(() =>
+        this.flowService.nodeIdsWithoutFileAccess().has(this.node.id)
+    );
+
+    /** How many nodes get no file access when a trigger starts the flow, shown on a trigger node; `null` when none. */
+    public readonly noFileAccessSummary = computed<string | null>(() => {
+        if (!isTriggerNodeType(this.node.type)) return null;
+        const count = this.flowService.nodeIdsWithoutFileAccess().size;
+        return count === 0 ? null : `${count} ${count === 1 ? 'node' : 'nodes'} without file access`;
+    });
+
+    public readonly noFileAccessSummaryTooltip = computed(() => {
+        const count = this.flowService.nodeIdsWithoutFileAccess().size;
+        return `${count} ${count === 1 ? 'node has' : 'nodes have'} no file access when this flow is started by a trigger.`;
+    });
 
     public get hasMissingKeyValueTable(): boolean {
         return !!this.keyValueNode && this.keyValueNode.data.key_value_table === null;

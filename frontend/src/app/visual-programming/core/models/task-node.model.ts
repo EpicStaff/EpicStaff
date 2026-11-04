@@ -7,6 +7,7 @@ import {
     SurfaceStorageItem,
 } from '../../../features/agent-definitions/models/surface.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
+import { StorageGrantFields } from './storage-grants.model';
 
 /**
  * Write-shape entries used by `InlineSurface`'s tool/storage/knowledge lists.
@@ -43,7 +44,7 @@ export interface InlineSurface {
     updated_at?: string;
 }
 
-export interface TaskNode extends AuthorshipFields, NumberedNodeDto {
+export interface TaskNode extends AuthorshipFields, NumberedNodeDto, StorageGrantFields {
     id: number;
     created_at: string;
     updated_at: string;
@@ -64,7 +65,7 @@ export interface TaskNode extends AuthorshipFields, NumberedNodeDto {
     inline_surface: InlineSurface | null;
 }
 
-export interface CreateTaskNodeRequest {
+export interface CreateTaskNodeRequest extends StorageGrantFields {
     node_name: string;
     graph: number;
     input_map: Record<string, unknown>;

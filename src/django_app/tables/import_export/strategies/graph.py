@@ -39,6 +39,8 @@ from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.models.label_models import Label
 from tables.services.node_number_service import NodeNumberService, source_order_key
 from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
+from tables.services.storage_grants.actor import grant_actor_for
+from tables.services.storage_grants.capping import cap_grant_data
 
 # Every reverse relation on Graph that holds its content (nodes, notes, edges).
 GRAPH_CHILD_RELATIONS = (*NODE_RELATIONS.values(), "edge_list")
@@ -457,9 +459,17 @@ class GraphStrategy(EntityImportExportStrategy):
             zip(supported_nodes, kept_numbers, strict=True), key=lambda pair: pair[1] is None
         )
         created_nodes = []
+        # Imported flags are capped to what the importer may hand out, so a file cannot
+        # grant more than its importer could set by hand.
+        grant_actor = grant_actor_for(user, graph)
 
         for (entity_type, node_data), node_number in nodes_to_create:
             old_id = node_data.get("id")
+
+            strategy = entity_registry.get_strategy(entity_type)
+            node_data = cap_grant_data(
+                node_data, grant_actor, model=strategy.serializer_class.Meta.model
+            )
 
             # Node strategies resolve their parent graph via
             # id_mapper.get_or_none(GRAPH, node_data["graph"]). For a full-graph
@@ -473,7 +483,6 @@ class GraphStrategy(EntityImportExportStrategy):
             if not id_mapper.has_mapping(EntityType.GRAPH, node_data["graph"]):
                 id_mapper.map(EntityType.GRAPH, node_data["graph"], graph.id, was_created=False)
 
-            strategy = entity_registry.get_strategy(entity_type)
             node = strategy.create_entity(node_data, id_mapper, user=user, node_number=node_number)
             if node:
                 created_nodes.append(node)

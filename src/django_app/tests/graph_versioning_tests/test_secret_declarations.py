@@ -554,6 +554,15 @@ class TestRestoreDoesNotRequireSecretsUse:
             resource_type=ResourceType.SECRETS.value,
             permissions=int(Permission.READ),
         )
+        # The version holds a node with no storage grant, which a restore only applies for
+        # someone who holds every Files permission.
+        RolePermission.objects.create(
+            role=role,
+            resource_type=ResourceType.FILES.value,
+            permissions=int(
+                Permission.READ | Permission.CREATE | Permission.UPDATE | Permission.DELETE
+            ),
+        )
         user = get_user_model().objects.create_user(
             email="restore_nouse@example.com", password="StrongPass123!"
         )

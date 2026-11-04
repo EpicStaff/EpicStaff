@@ -19,6 +19,7 @@ import {
     CustomInputComponent,
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
+    HintMessageComponent,
     ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
@@ -48,6 +49,7 @@ import {
     StoredCodeState,
 } from '../shared/python-code-test-run/stored-python-code';
 import { RunTestPayloadButtonComponent } from '../shared/run-test-payload-button/run-test-payload-button.component';
+import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 import { TestPayloadSectionComponent } from '../shared/test-payload-section/test-payload-section.component';
 import { TriggerTestPayloadState, withTestPayload } from '../shared/test-payload-section/trigger-test-payload.state';
 
@@ -73,6 +75,8 @@ export const RUN_PYTHON_CODE_LABEL = 'Run python code';
         PythonTerminalComponent,
         NgTemplateOutlet,
         ExecutionTimeoutFieldComponent,
+        HintMessageComponent,
+        StorageGrantsFieldComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -293,6 +297,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             webhook_trigger: [this.node().data.webhook_trigger ?? null],
             execution_timeout: this.executionTimeout.control,
+            storage_grants: [this.node().storageGrants],
         });
         this.pythonCode = this.node().data.python_code.code || '';
         this.initialPythonCode = this.pythonCode;
@@ -312,6 +317,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
             node_name: this.form.value.node_name,
             input_map: {},
             output_variable_path: null,
+            storageGrants: this.form.get('storage_grants')?.value ?? undefined,
             data: {
                 ...this.node().data,
                 webhook_trigger: this.form.value.webhook_trigger ?? null,

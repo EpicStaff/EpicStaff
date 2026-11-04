@@ -1,17 +1,25 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { CustomInputComponent, ValidationErrorsComponent } from '@shared/components';
+import { CustomInputComponent, HintMessageComponent, ValidationErrorsComponent } from '@shared/components';
 
 import { FileExtractorNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { StorageGrantsFieldComponent } from '../shared/storage-grants-field/storage-grants-field.component';
 interface InputMapPair {
     key: string;
     value: string;
 }
 @Component({
     selector: 'app-file-extractor-node-panel',
-    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, ValidationErrorsComponent],
+    imports: [
+        ReactiveFormsModule,
+        CustomInputComponent,
+        HintMessageComponent,
+        InputMapComponent,
+        StorageGrantsFieldComponent,
+        ValidationErrorsComponent,
+    ],
     templateUrl: './file-extractor-node-panel.component.html',
     styleUrls: ['./file-extractor-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -34,6 +42,7 @@ export class FileExtractorNodePanelComponent extends BaseSidePanel<FileExtractor
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
+            storage_grants: [this.node().storageGrants],
         });
 
         this.initializeInputMap(form);
@@ -50,6 +59,7 @@ export class FileExtractorNodePanelComponent extends BaseSidePanel<FileExtractor
             node_name: this.form.value.node_name,
             input_map: inputMapValue,
             output_variable_path: this.form.value.output_variable_path || null,
+            storageGrants: this.form.get('storage_grants')?.value ?? undefined,
         };
     }
 

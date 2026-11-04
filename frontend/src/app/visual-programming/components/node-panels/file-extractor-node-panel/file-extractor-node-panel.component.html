@@ -34,6 +34,14 @@
                 [activeColor]="activeColor"
                 [readonly]="isReadOnly()"
             ></app-custom-input>
+
+            @if (storageGrantLock(); as lock) {
+                <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+            }
+            <app-storage-grants-field
+                formControlName="storage_grants"
+                [readonly]="isReadOnly()"
+            />
         </form>
     </div>
 </div>

@@ -167,6 +167,32 @@
                         <span>No LLM</span>
                     </div>
                 }
+                @if (hasNoFileAccessWhenTriggered()) {
+                    <div
+                        class="llm-warning-badge"
+                        [matTooltip]="noFileAccessTooltip"
+                        matTooltipPosition="above"
+                    >
+                        <app-svg-icon
+                            icon="alert-triangle"
+                            size="0.875rem"
+                        ></app-svg-icon>
+                        <span>No file access</span>
+                    </div>
+                }
+                @if (noFileAccessSummary(); as summary) {
+                    <div
+                        class="llm-warning-badge"
+                        [matTooltip]="noFileAccessSummaryTooltip()"
+                        matTooltipPosition="above"
+                    >
+                        <app-svg-icon
+                            icon="alert-triangle"
+                            size="0.875rem"
+                        ></app-svg-icon>
+                        <span>{{ summary }}</span>
+                    </div>
+                }
                 @if (hasMissingKeyValueTable) {
                     <div
                         class="llm-warning-badge"

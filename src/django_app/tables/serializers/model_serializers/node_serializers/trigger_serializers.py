@@ -25,6 +25,7 @@ from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
+from tables.serializers.utils.storage_grant_mixin import StorageGrantFlagsMixin
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerInputParser,
@@ -73,6 +74,7 @@ def _reject_cross_type_trigger_conflict(wt: WebhookTrigger | None, expected_kind
 
 
 class WebhookTriggerNodeSerializer(
+    StorageGrantFlagsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     BaseGraphEntityMixin,
@@ -95,6 +97,9 @@ class WebhookTriggerNodeSerializer(
             "python_code",
             "webhook_trigger",
             "use_storage",
+            "storage_grant_read",
+            "storage_grant_write",
+            "storage_grant_delete",
             "created_by",
             "test_payload",
             *BaseGraphEntityMixin.Meta.common_fields,

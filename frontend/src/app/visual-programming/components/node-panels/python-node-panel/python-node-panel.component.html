@@ -97,6 +97,11 @@
                         (onInsertCode)="insertStorageCode($event)"
                         (onRemoveCode)="removeStorageCode($event)"
                     ></app-node-storage-section>
+
+                    <app-storage-grants-field
+                        formControlName="storage_grants"
+                        [readonly]="isReadOnly()"
+                    />
                 </div>
 
                 @if (isExpanded()) {
@@ -117,6 +122,9 @@
                     class="code-editor-wrapper"
                 >
                     <div class="code-editor-column">
+                        @if (storageGrantLock(); as lock) {
+                            <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                        }
                         <app-code-editor
                             class="code-editor-section"
                             [pythonCode]="pythonCode"

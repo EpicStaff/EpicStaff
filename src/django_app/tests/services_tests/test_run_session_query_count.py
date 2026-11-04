@@ -117,7 +117,7 @@ def published(monkeypatch):
     monkeypatch.setattr(
         SessionManagerService().redis_service,
         "publish_session_data",
-        lambda *, session_data, org_id, storage_credentials=None: (
+        lambda *, session_data, org_id, storage_credentials=None, storage_credentials_by_grant=None: (
             published.append((session_data, org_id)) or 1
         ),
     )

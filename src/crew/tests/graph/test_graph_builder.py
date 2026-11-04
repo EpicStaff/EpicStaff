@@ -29,7 +29,7 @@ from src.shared.models import (
     SubGraphData,
     SubGraphNodeData,
 )
-from src.shared.models.storage_scope import StorageCredentials
+from src.shared.models.storage_scope import StorageCredentials, StorageGrant
 import asyncio
 import json
 import uuid
@@ -720,3 +720,212 @@ def test_compile_passes_knowledge_node_extra_headers(
     assert len(created_nodes) == 1
     assert created_nodes[0].embedder_extra_headers == {"X-Emb": "emb-resolved"}
     assert created_nodes[0].llm_extra_headers == {"X-Llm": "llm-resolved"}
+
+
+READ_ONLY = StorageGrant(read=True)
+FULL_ACCESS = StorageGrant(read=True, write=True, delete=True)
+WRITE_ONLY = StorageGrant(write=True)
+CREDENTIALS_FOR_READ_ONLY = StorageCredentials(access_key="read-only-key", secret_key="s1")
+CREDENTIALS_FOR_FULL_ACCESS = StorageCredentials(access_key="full-access-key", secret_key="s2")
+DEFAULT_CREDENTIALS = StorageCredentials(access_key="default-key", secret_key="s3")
+
+
+class RecordingExecutor(FakePythonCodeExecutorService):
+    """Records the storage credentials of every code run, in order."""
+
+    def __init__(self):
+        self.received_storage_credentials: list[StorageCredentials | None] = []
+
+    async def run_code(self, *args, storage_credentials=None, **kwargs):
+        self.received_storage_credentials.append(storage_credentials)
+        return await super().run_code(*args, storage_credentials=storage_credentials, **kwargs)
+
+
+def _granted_python_node(node_name: str, grant: StorageGrant | None) -> PythonNodeData:
+    return PythonNodeData(
+        node_name=node_name,
+        python_code=PythonCodeData(
+            code="def main(): return 'done'",
+            entrypoint="main",
+            use_storage=True,
+            storage_allowed_paths=["org_1/"],
+            storage_org_prefix="org_1",
+            org_id=1,
+            storage_grant=grant,
+        ),
+        input_map={},
+        output_variable_path=f"variables.{node_name}_output",
+    )
+
+
+def _chain(node_names: list[str]) -> list[EdgeData]:
+    keys = ["__start__", *node_names]
+    return [EdgeData(start_key=start, end_key=end) for start, end in zip(keys, keys[1:])]
+
+
+def test_python_nodes_run_with_the_account_of_their_own_grant(mock_services):
+    executor = RecordingExecutor()
+    session_data = SessionData(
+        id=901,
+        org_id=1,
+        audit_retention_days=0,
+        initial_state={},
+        storage_credentials=DEFAULT_CREDENTIALS,
+        storage_credentials_by_grant={
+            READ_ONLY.key: CREDENTIALS_FOR_READ_ONLY,
+            FULL_ACCESS.key: CREDENTIALS_FOR_FULL_ACCESS,
+        },
+        graph=GraphData(
+            name="grants",
+            python_node_list=[
+                _granted_python_node("reader", READ_ONLY),
+                _granted_python_node("admin", FULL_ACCESS),
+                _granted_python_node("ungranted", None),
+                _granted_python_node("unminted", WRITE_ONLY),
+            ],
+            edge_list=_chain(["reader", "admin", "ungranted", "unminted"]),
+            entrypoint="reader",
+            end_node=None,
+        ),
+    )
+    services = {**mock_services, "python_code_executor_service": executor}
+
+    _final_variables(_builder(services, session_id=901).compile_from_schema(session_data), {})
+
+    assert executor.received_storage_credentials == [
+        CREDENTIALS_FOR_READ_ONLY,
+        CREDENTIALS_FOR_FULL_ACCESS,
+        DEFAULT_CREDENTIALS,
+        DEFAULT_CREDENTIALS,
+    ]
+
+
+def test_a_session_without_grant_accounts_keeps_running_every_node_with_the_default(mock_services):
+    executor = RecordingExecutor()
+    session_data = SessionData(
+        id=902,
+        org_id=1,
+        audit_retention_days=0,
+        initial_state={},
+        storage_credentials=DEFAULT_CREDENTIALS,
+        graph=GraphData(
+            name="attended",
+            python_node_list=[
+                _granted_python_node("reader", READ_ONLY),
+                _granted_python_node("ungranted", None),
+            ],
+            edge_list=_chain(["reader", "ungranted"]),
+            entrypoint="reader",
+            end_node=None,
+        ),
+    )
+    services = {**mock_services, "python_code_executor_service": executor}
+
+    _final_variables(_builder(services, session_id=902).compile_from_schema(session_data), {})
+
+    assert executor.received_storage_credentials == [DEFAULT_CREDENTIALS, DEFAULT_CREDENTIALS]
+
+
+def test_a_node_inside_a_subgraph_runs_with_the_account_of_its_grant(mock_services):
+    executor = RecordingExecutor()
+    inner_graph = GraphData(
+        name="inner",
+        python_node_list=[_granted_python_node("inner_reader", READ_ONLY)],
+        edge_list=_chain(["inner_reader"]),
+        entrypoint="inner_reader",
+        end_node=None,
+    )
+    session_data = SessionData(
+        id=903,
+        org_id=1,
+        audit_retention_days=0,
+        initial_state={},
+        storage_credentials=DEFAULT_CREDENTIALS,
+        storage_credentials_by_grant={READ_ONLY.key: CREDENTIALS_FOR_READ_ONLY},
+        unique_subgraph_list=[SubGraphData(id=1, data=inner_graph, initial_state={})],
+        graph=GraphData(
+            name="outer",
+            subgraph_node_list=[
+                _subgraph_node_data("sub_node", 1, "variables.sub_output"),
+            ],
+            edge_list=_chain(["sub_node"]),
+            entrypoint="sub_node",
+            end_node=None,
+        ),
+    )
+    services = {**mock_services, "python_code_executor_service": executor}
+
+    _final_variables(_builder(services, session_id=903).compile_from_schema(session_data), {})
+
+    assert executor.received_storage_credentials == [CREDENTIALS_FOR_READ_ONLY]
+
+
+class RecordingAgentService:
+    def __init__(self):
+        self.received_storage_credentials: list[StorageCredentials | None] = []
+
+    async def run_task(self, node_data, stop_event, on_event=None, storage_credentials=None):
+        self.received_storage_credentials.append(storage_credentials)
+        return {"final_text": "done"}
+
+    async def run_agent_node(self, node_data, stop_event, on_event=None, storage_credentials=None):
+        self.received_storage_credentials.append(storage_credentials)
+        return {"final_text": "done"}
+
+
+@pytest.mark.parametrize(
+    ("session_data", "node_list_name"),
+    [
+        pytest.param(_task_node_session_data, "task_node_list", id="task-node"),
+        pytest.param(_agent_node_session_data, "agent_node_list", id="agent-node"),
+    ],
+)
+def test_agent_and_task_nodes_pass_their_grants_account_to_the_agent_service(
+    mock_services, mock_llm_data, monkeypatch, session_data, node_list_name
+):
+    monkeypatch.setattr(
+        mock_services["redis_service"], "aioredis_client", FakeAsyncRedis(decode_responses=True)
+    )
+    data = session_data(mock_llm_data)
+    getattr(data.graph, node_list_name)[0].storage_grant = FULL_ACCESS
+    data.storage_credentials = DEFAULT_CREDENTIALS
+    data.storage_credentials_by_grant = {FULL_ACCESS.key: CREDENTIALS_FOR_FULL_ACCESS}
+    agent_service = RecordingAgentService()
+
+    _final_variables(
+        _builder(
+            mock_services, session_id=data.id, agent_task_service=agent_service
+        ).compile_from_schema(data),
+        {},
+    )
+
+    assert agent_service.received_storage_credentials == [CREDENTIALS_FOR_FULL_ACCESS]
+
+
+def test_classification_table_slots_run_with_the_account_of_their_own_grant(
+    mock_services, monkeypatch
+):
+    from src.crew.services.graph.subgraphs import classification_decision_table_node as module
+    from src.shared.models import ClassificationDecisionTableNodeData
+
+    executor = RecordingExecutor()
+    monkeypatch.setattr(module, "RunPythonCodeService", lambda redis_service=None: executor)
+    node_data = ClassificationDecisionTableNodeData(node_name="cdt")
+    subgraph = module.ClassificationDecisionTableNodeSubgraph(
+        session_id=1,
+        node_data=node_data,
+        graph_builder=None,
+        stop_event=StopEvent(),
+        storage_credentials=DEFAULT_CREDENTIALS,
+        storage_credentials_by_grant={READ_ONLY.key: CREDENTIALS_FOR_READ_ONLY},
+    )
+    state = {"variables": DotDict({}), "system_variables": {}}
+
+    async def run_slots():
+        for grant in (READ_ONLY, None):
+            code = _granted_python_node("slot", grant).python_code
+            await subgraph._execute_computation(code, {}, None, state, label="Pre-computation")
+
+    asyncio.run(run_slots())
+
+    assert executor.received_storage_credentials == [CREDENTIALS_FOR_READ_ONLY, DEFAULT_CREDENTIALS]

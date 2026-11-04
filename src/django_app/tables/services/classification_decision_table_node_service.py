@@ -30,6 +30,8 @@ from tables.services.classification_decision_table_node_children import (
 )
 from tables.services.secrets.request_actor import actor_from_request
 from tables.services.secrets.secret_use_checks import check_cdt_node_write
+from tables.services.storage_grants.actor import GrantActor
+from tables.services.storage_grants.write_checks import check_storage_grant_write
 from tables.utils.helpers import generate_file_name
 
 
@@ -96,6 +98,12 @@ class ClassificationDecisionTableNodeService:
 
         # After every validation, so a malformed payload reports its own errors first.
         check_cdt_node_write(actor_from_request(request), instance, serializer.validated_data)
+        check_storage_grant_write(
+            GrantActor.for_request(request) if request is not None else None,
+            instance,
+            serializer.validated_data,
+            model=ClassificationDecisionTableNode,
+        )
 
         node = serializer.save()
 

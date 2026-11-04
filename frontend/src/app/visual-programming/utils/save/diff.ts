@@ -1,5 +1,6 @@
 import { NodeType } from '@shared/models';
 
+import { storageGrantsToPayload } from '../../core/helpers/storage-grants.util';
 import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConnectionModel } from '../../core/models/connection.model';
@@ -127,6 +128,7 @@ function toPythonComparable(node: PythonNodeModel): unknown {
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         test_input: node.test_input ?? {},
+        ...storageGrantsToPayload(node.storageGrants),
         metadata: toNodeMetadata(node),
     };
 }
@@ -142,6 +144,7 @@ function toTaskComparable(node: TaskNodeModel): unknown {
         output_variable_path: node.output_variable_path || null,
         surface_list: node.data.surface_list ?? [],
         inline_surface: node.data.inline_surface ?? null,
+        ...storageGrantsToPayload(node.storageGrants),
         metadata: toNodeMetadata(node),
     };
 }
@@ -171,6 +174,7 @@ function toAgentComparable(node: AgentNodeModel): unknown {
                 return aKey.localeCompare(bKey);
             }),
         })),
+        ...storageGrantsToPayload(node.storageGrants),
         metadata: toNodeMetadata(node),
     };
 }
@@ -180,6 +184,7 @@ function toFileExtractorComparable(node: FileExtractorNodeModel): unknown {
         node_name: node.node_name,
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
+        ...storageGrantsToPayload(node.storageGrants),
         metadata: toNodeMetadata(node),
     };
 }
@@ -189,6 +194,7 @@ function toAudioToTextComparable(node: AudioToTextNodeModel): unknown {
         node_name: node.node_name,
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
+        ...storageGrantsToPayload(node.storageGrants),
         metadata: toNodeMetadata(node),
     };
 }
@@ -223,6 +229,7 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
         webhook_trigger: node.data.webhook_trigger,
         test_payload: node.data.test_payload ?? {},
         use_storage: node.data.use_storage ?? false,
+        ...storageGrantsToPayload(node.storageGrants),
         metadata: toNodeMetadata(node),
     };
 }
@@ -356,11 +363,13 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
         pre_output_variable_path:
             tableData?.pre_computation?.output_variable_path || tableData?.pre_output_variable_path || null,
         pre_use_storage: tableData?.pre_use_storage ?? false,
+        ...storageGrantsToPayload(node.preStorageGrants, 'pre'),
         post_computation_code: postCode,
         post_input_map: tableData?.post_computation?.input_map || tableData?.post_input_map || {},
         post_output_variable_path:
             tableData?.post_computation?.output_variable_path || tableData?.post_output_variable_path || null,
         post_use_storage: tableData?.post_use_storage ?? false,
+        ...storageGrantsToPayload(node.postStorageGrants, 'post'),
         pre_secret_ids: [...(tableData?.pre_computation?.secret_ids || [])].sort(),
         post_secret_ids: [...(tableData?.post_computation?.secret_ids || [])].sort(),
         pre_execution_timeout: tableData?.pre_computation?.execution_timeout,

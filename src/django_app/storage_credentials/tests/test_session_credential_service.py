@@ -106,7 +106,7 @@ def _asyncio_run_stub(*credentials: tuple[str, str]):
 
     def run(coroutine):
         coroutine.close()
-        return next(remaining)
+        return [next(remaining)]
 
     return run
 

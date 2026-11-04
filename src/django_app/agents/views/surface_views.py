@@ -12,6 +12,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.services.recycle_bin.sources import RecycleBinSource
+from tables.services.storage_grants.actor import GrantActor
+from tables.services.storage_grants.tool_lock import check_surface_write
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 
 from agents.models.surface_models import Surface
@@ -84,6 +86,12 @@ class SurfaceViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.Mod
             instance, data=request.data, partial=True, context=ctx
         )
         write_serializer.is_valid(raise_exception=True)
+        check_surface_write(
+            GrantActor.for_request(request),
+            instance,
+            write_serializer.validated_data,
+            org_id=self.get_active_org_id(),
+        )
         instance = write_serializer.save()
         instance.refresh_from_db()
 

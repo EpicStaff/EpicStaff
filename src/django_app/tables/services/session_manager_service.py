@@ -369,7 +369,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 if parent_session_id is not None
                 else ActingIdentity.for_request(user, api_key)
             )
-            storage_credentials = session_credential_service.issue_for_session(
+            storage_accounts = session_credential_service.issue_session_accounts(
                 session_data=session_data,
                 session_orm=session,
                 org=graph.org,
@@ -382,7 +382,8 @@ class SessionManagerService(metaclass=SingletonMeta):
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
                 org_id=graph.org_id,
-                storage_credentials=storage_credentials,
+                storage_credentials=storage_accounts.default,
+                storage_credentials_by_grant=storage_accounts.by_grant,
             )
             logger.log(
                 BENCH_LEVEL,

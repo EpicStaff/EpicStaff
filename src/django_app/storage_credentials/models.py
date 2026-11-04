@@ -9,7 +9,9 @@ from tables.models import (
 
 
 class TemporaryStorageAccount(models.Model):
-    session = models.OneToOneField(
+    # A session has one account, or several when its nodes carry different storage
+    # grants (see `SessionCredentialService.issue_for_session`).
+    session = models.ForeignKey(
         Session,
         on_delete=models.CASCADE,
         null=True,
@@ -70,6 +72,9 @@ class TemporaryStorageAccount(models.Model):
     # at mint from the kind of principal acting (a plugin credential never purges, even
     # though the person it acts for is recorded above for revocation).
     may_purge_storage_bin = models.BooleanField(default=False)
+    # The actions the account's policy allows on the shared (attached) folders, for audit.
+    # Null for accounts issued before this was recorded.
+    shared_actions = models.JSONField(null=True, blank=True)
     access_key = models.CharField(max_length=255, unique=True)
     issued_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 

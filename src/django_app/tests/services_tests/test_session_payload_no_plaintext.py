@@ -14,6 +14,7 @@ from tables.models import (
 from tables.models.graph_models import AgentNode, Edge, StartNode
 from rbac.models import Organization
 from src.shared.models.storage_scope import StorageCredentials
+from storage_credentials.services.session_credential_service import SessionStorageCredentials
 from tables.services.secrets import secret_service
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
@@ -116,16 +117,24 @@ class TestSessionPayloadSecrets:
 
         with patch(
             "storage_credentials.services.session_credential_service."
-            "session_credential_service.issue_for_session",
-            return_value=StorageCredentials(
-                access_key="AK-run-session", secret_key="SK-run-session"
+            "session_credential_service.issue_session_accounts",
+            return_value=SessionStorageCredentials(
+                default=StorageCredentials(
+                    access_key="AK-run-session", secret_key="SK-run-session"
+                ),
+                by_grant={
+                    "r--": StorageCredentials(
+                        access_key="AK-read-grant", secret_key="SK-read-grant"
+                    )
+                },
             ),
         ):
             service.run_session(
                 graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
             )
 
-        assert json.loads(published[0])["storage_credentials"] == {
+        payload = json.loads(published[0])
+        assert payload["storage_credentials"] == {
             "access_key": "AK-run-session",
             "secret_key": "SK-run-session",
             "shared_actions": None,
@@ -133,7 +142,9 @@ class TestSessionPayloadSecrets:
             "free_bytes": None,
             "purgeable_bytes": None,
         }
+        assert payload["storage_credentials_by_grant"]["r--"]["access_key"] == "AK-read-grant"
         assert "SK-run-session" not in _stored_sessions(graph), "storage secret key was persisted"
+        assert "SK-read-grant" not in _stored_sessions(graph), "grant account key was persisted"
 
     def test_storage_credentials_live_only_on_the_published_copy(
         self, graph_with_secret_backed_llm, monkeypatch
@@ -160,8 +171,13 @@ class TestSessionPayloadSecrets:
             session_data=session_data,
             org_id=graph.org_id,
             storage_credentials=credentials,
+            storage_credentials_by_grant={"rwd": credentials},
         )
 
+        assert session_data.storage_credentials_by_grant == {}
+        assert json.loads(published[0])["storage_credentials_by_grant"]["rwd"]["access_key"] == (
+            "AK-published-only"
+        )
         assert session_data.storage_credentials is None, (
             "publish_session_data mutated the caller's object; the credentials "
             "must exist only on the published copy"

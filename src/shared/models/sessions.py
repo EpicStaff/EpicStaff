@@ -14,6 +14,9 @@ class SessionData(BaseModel):
     initial_state: dict[str, Any] = {}
     output_state: dict[str, Any] = {}
     storage_credentials: StorageCredentials | None = None
+    # Accounts for the nodes of an unattended run that carry a storage grant, by
+    # `StorageGrant.key`. Like `storage_credentials`, only the published copy holds them.
+    storage_credentials_by_grant: dict[str, StorageCredentials] = {}
     run_type: str = ""
     # Per-run token hard stop from the run-session API; None falls back to crew's CREW_TOKEN_BUDGET.
     token_budget: int | None = Field(default=None, gt=0)

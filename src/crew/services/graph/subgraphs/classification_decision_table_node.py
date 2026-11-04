@@ -9,6 +9,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 from litellm.types.utils import CostPerToken
 from loguru import logger
+from services.graph.storage_credentials_picker import pick_storage_credentials
 from services.run_python_code_service import RunPythonCodeService
 from src.crew.models.graph_models import (
     GraphMessage,
@@ -129,6 +130,7 @@ class ClassificationDecisionTableNodeSubgraph:
         redis_service=None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
         storage_credentials: StorageCredentials | None = None,
+        storage_credentials_by_grant: dict[str, StorageCredentials] | None = None,
     ):
         self.node_data = node_data
         self._graph_builder = graph_builder
@@ -140,6 +142,7 @@ class ClassificationDecisionTableNodeSubgraph:
             custom_session_message_writer or CustomSessionMessageWriter()
         )
         self.storage_credentials = storage_credentials
+        self.storage_credentials_by_grant = storage_credentials_by_grant or {}
 
     async def _publish_message(self, graph_message: GraphMessage):
         """Add a GraphMessage directly to the graph message stream.
@@ -251,7 +254,12 @@ class ClassificationDecisionTableNodeSubgraph:
             python_code_data=python_code,
             inputs=inputs,
             stop_event=self.stop_event,
-            storage_credentials=self.storage_credentials,
+            # Each code slot runs with the account of its own grant.
+            storage_credentials=pick_storage_credentials(
+                python_code.storage_grant,
+                self.storage_credentials,
+                self.storage_credentials_by_grant,
+            ),
         )
 
         if result["returncode"] != 0:

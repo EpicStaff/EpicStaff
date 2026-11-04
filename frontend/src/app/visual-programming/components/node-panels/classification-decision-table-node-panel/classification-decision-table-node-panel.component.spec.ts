@@ -6,7 +6,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
 import { ExecutionTimeoutFieldComponent, ExecutionTimeoutFormField } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
 import { of } from 'rxjs';
 
@@ -32,6 +32,7 @@ import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
 import { buildUuidToBackendIdMap, getConnectionDiff, getNodeDiff } from '../../../utils/save/diff';
 import { buildBulkSavePayload } from '../../../utils/save/payload';
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
@@ -764,5 +765,83 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
 
         expect(fields().preExecutionTimeout.control.disabled).toBe(true);
         expect(fields().postExecutionTimeout.control.disabled).toBe(true);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — storage grant lock per slot', () => {
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+
+    /** A user holding exactly these Files actions (and everything outside Files). */
+    function open(files: ActionCode[]): void {
+        configurePanelTestBed({
+            providers: [
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            resource === ResourceCode.Files ? files.includes(action) : true,
+                        canEditSecrets: () => true,
+                        isActivePermissionsLoaded: () => true,
+                    },
+                },
+            ],
+        });
+        const node = {
+            ...tableNode(),
+            // Pre-code runs with Write; post-code with Read only.
+            preStorageGrants: { read: false, write: true, delete: false },
+            postStorageGrants: { read: true, write: false, delete: false },
+        };
+        TestBed.inject(FlowService).setFlow({ nodes: [node], connections: [] });
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+    }
+
+    function showTab(tab: 'precomputation' | 'postcomputation'): void {
+        fixture.componentInstance.setActiveTab(tab);
+        fixture.detectChanges();
+    }
+
+    function banner(): string | null {
+        const element = (fixture.nativeElement as HTMLElement).querySelector('app-hint-message');
+        return element ? (element.textContent ?? '').trim() : null;
+    }
+
+    function editorReadOnly(): boolean {
+        return fixture.debugElement.query(By.directive(CodeEditorStubComponent)).componentInstance.readOnly();
+    }
+
+    function storageSwitchReadOnly(): boolean {
+        return fixture.debugElement.query(By.directive(NodeStorageSectionComponent)).componentInstance.readonly();
+    }
+
+    it('locks the pre-code slot, its code editor and its storage switch when the user lacks Write', () => {
+        open([ActionCode.Read]);
+        showTab('precomputation');
+
+        expect(banner()).toBe(
+            "This code runs with Files: Create, Files: Update, which you don't have. Contact an admin to change it."
+        );
+        expect(editorReadOnly()).toBe(true);
+        expect(storageSwitchReadOnly()).toBe(true);
+    });
+
+    it('leaves the post-code slot editable when only the pre-code slot exceeds the permissions', () => {
+        open([ActionCode.Read]);
+        showTab('postcomputation');
+
+        expect(banner()).toBeNull();
+        expect(editorReadOnly()).toBe(false);
+        expect(storageSwitchReadOnly()).toBe(false);
+    });
+
+    it('locks neither slot for a user who holds every permission', () => {
+        open([ActionCode.Read, ActionCode.Create, ActionCode.Update, ActionCode.Delete]);
+        showTab('precomputation');
+
+        expect(banner()).toBeNull();
+        expect(editorReadOnly()).toBe(false);
+        expect(storageSwitchReadOnly()).toBe(false);
     });
 });

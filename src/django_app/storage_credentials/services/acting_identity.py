@@ -106,6 +106,17 @@ class ActingIdentity:
         return cls.denied_everything()
 
     @property
+    def trigger_rooted(self) -> bool:
+        """Whether nobody started this run's chain: a trigger with no user and no API key.
+
+        True for a root run with no acting identity, and for a sub-flow whose root session
+        was started by a trigger. Such a run is unattended: its nodes' storage grants,
+        not a person's permissions, decide what their code may do.
+        """
+        root = self.bounded_by if self.bounded_by is not None else self
+        return root.principal is None and not root.denied and root.bounded_by is None
+
+    @property
     def recorded_user(self) -> User | None:
         """The user to record on the account: set only when no API key is involved.
 
@@ -136,6 +147,9 @@ class ActingIdentity:
         if self.api_key is not None or not isinstance(self.principal, get_user_model()):
             return False
         if self.bounded_by is not None and not self.bounded_by._is_user_session_or_trigger():
+            return False
+        if self.trigger_rooted:
+            # An unattended chain never purges, even when its sub-flow acts as a user.
             return False
         return StorageAction.DELETE in self.shared_actions(org_id)
 

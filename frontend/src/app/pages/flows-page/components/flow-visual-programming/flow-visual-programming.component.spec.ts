@@ -684,6 +684,31 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(liveCanvas()).toBeDefined();
         });
 
+        it('shows the server message when a restore is refused for missing Files permissions', () => {
+            enterPreview(VERSION_A);
+            flowsApi['restoreGraphVersion'].mockReturnValue(
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 403,
+                            error: {
+                                status_code: 403,
+                                code: 'storage_grant_denied',
+                                message: 'You lack Files permissions: read, update.',
+                                missing_grants: ['read', 'update'],
+                            },
+                        })
+                )
+            );
+            unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
+
+            component.onVersionRestoreRequested(VERSION_A);
+            fixture.detectChanges();
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith('You lack Files permissions: read, update.');
+            expect(toast['success']).not.toHaveBeenCalled();
+        });
+
         // F-09 / F-10: someone else saved or restored the flow while this tab was previewing.
         it('warns about a concurrent change when saving the live flow after a preview', () => {
             makeLiveFlowDirty();

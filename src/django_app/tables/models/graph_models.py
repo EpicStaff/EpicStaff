@@ -28,6 +28,33 @@ from tables.models.knowledge_models.graphrag_models import AgentGraphRag
 from tables.models.label_models import Label
 
 
+def storage_grant_consistency_constraint(*, prefix: str = "", name: str) -> models.CheckConstraint:
+    """All three grant flags of a node or code slot are unset together, or all set."""
+    flags = [f"{prefix}storage_grant_{action}" for action in ("read", "write", "delete")]
+    return models.CheckConstraint(
+        condition=(
+            models.Q(**{f"{flag}__isnull": True for flag in flags})
+            | models.Q(**{f"{flag}__isnull": False for flag in flags})
+        ),
+        name=name,
+    )
+
+
+class StorageGrantFields(models.Model):
+    """What an unattended run's code of this node may do to the flow's attached files.
+
+    NULL on all three means not configured: the node keeps the run's default access.
+    A node created through the API without them gets all False.
+    """
+
+    storage_grant_read = models.BooleanField(null=True, blank=True, default=None)
+    storage_grant_write = models.BooleanField(null=True, blank=True, default=None)
+    storage_grant_delete = models.BooleanField(null=True, blank=True, default=None)
+
+    class Meta:
+        abstract = True
+
+
 class GraphManager(ActiveManager):
     def get_transitive_subflows(self, graph_id):
         """Return a queryset of all transitively referenced subgraphs using a recursive CTE."""
@@ -167,7 +194,7 @@ class CrewNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class PythonNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
+class PythonNode(GraphAuthorModel, StorageGrantFields, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="python_node_list")
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
     test_input = models.JSONField(default=dict, blank=True)
@@ -176,7 +203,10 @@ class PythonNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            storage_grant_consistency_constraint(name="python_node_storage_grant_all_or_none"),
+        ]
 
     def generate_hash(self):
         """
@@ -238,7 +268,7 @@ class KnowledgeNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class FileExtractorNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
+class FileExtractorNode(GraphAuthorModel, StorageGrantFields, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="file_extractor_node_list"
     )
@@ -246,7 +276,12 @@ class FileExtractorNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            storage_grant_consistency_constraint(
+                name="file_extractor_node_storage_grant_all_or_none"
+            ),
+        ]
 
 
 class KeyValueNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
@@ -274,7 +309,7 @@ class KeyValueNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class AudioTranscriptionNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
+class AudioTranscriptionNode(GraphAuthorModel, StorageGrantFields, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="audio_transcription_node_list"
     )
@@ -282,7 +317,12 @@ class AudioTranscriptionNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            storage_grant_consistency_constraint(
+                name="audio_transcription_node_storage_grant_all_or_none"
+            ),
+        ]
 
 
 class EndNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
@@ -597,6 +637,7 @@ class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
 
 class WebhookTriggerNode(
     GraphAuthorModel,
+    StorageGrantFields,
     BaseGraphEntity,
     TestPayloadMixin,
     BaseGlobalNode,
@@ -619,7 +660,12 @@ class WebhookTriggerNode(
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            storage_grant_consistency_constraint(
+                name="webhook_trigger_node_storage_grant_all_or_none"
+            ),
+        ]
 
     def generate_hash(self):
         """
@@ -821,6 +867,14 @@ class ClassificationDecisionTableNode(
     )
     pre_use_storage = models.BooleanField(default=False)
     post_use_storage = models.BooleanField(default=False)
+    # One grant per code slot (see StorageGrantFields); NULL on all three of a slot
+    # means not configured.
+    pre_storage_grant_read = models.BooleanField(null=True, blank=True, default=None)
+    pre_storage_grant_write = models.BooleanField(null=True, blank=True, default=None)
+    pre_storage_grant_delete = models.BooleanField(null=True, blank=True, default=None)
+    post_storage_grant_read = models.BooleanField(null=True, blank=True, default=None)
+    post_storage_grant_write = models.BooleanField(null=True, blank=True, default=None)
+    post_storage_grant_delete = models.BooleanField(null=True, blank=True, default=None)
     prompts = models.JSONField(default=dict, blank=True)
     default_llm_config = models.ForeignKey(
         "LLMConfig",
@@ -858,6 +912,12 @@ class ClassificationDecisionTableNode(
         base_manager_name = "all_objects"
         constraints = [
             soft_delete_consistency_constraint(),
+            storage_grant_consistency_constraint(
+                prefix="pre_", name="cdt_node_pre_storage_grant_all_or_none"
+            ),
+            storage_grant_consistency_constraint(
+                prefix="post_", name="cdt_node_post_storage_grant_all_or_none"
+            ),
         ]
 
 
@@ -1098,7 +1158,7 @@ class SessionStorageFile(models.Model):
         ]
 
 
-class TaskNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
+class TaskNode(GraphAuthorModel, StorageGrantFields, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph",
         on_delete=models.CASCADE,
@@ -1138,10 +1198,13 @@ class TaskNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            storage_grant_consistency_constraint(name="task_node_storage_grant_all_or_none"),
+        ]
 
 
-class AgentNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
+class AgentNode(GraphAuthorModel, StorageGrantFields, BaseNode, SoftDeleteFields):
     """Node representing an agent that executes an ordered list of sub-tasks (AgentNodeTask) with shared surfaces."""
 
     graph = models.ForeignKey(
@@ -1169,7 +1232,10 @@ class AgentNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            storage_grant_consistency_constraint(name="agent_node_storage_grant_all_or_none"),
+        ]
 
 
 class AgentNodeTask(TimestampMixin, SoftDeleteFields):

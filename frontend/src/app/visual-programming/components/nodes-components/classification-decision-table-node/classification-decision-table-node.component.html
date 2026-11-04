@@ -59,6 +59,14 @@
                 ⚠ {{ errorsBadgeLabel }}
             </div>
         }
+        @if (hasNoFileAccessWhenTriggered()) {
+            <div
+                class="file-access-badge"
+                [matTooltip]="noFileAccessTooltip"
+            >
+                ⚠ No file access
+            </div>
+        }
     </div>
 
     <div class="decision-table__groups">

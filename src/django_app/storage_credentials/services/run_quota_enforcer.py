@@ -43,12 +43,13 @@ class RunQuotaEnforcer:
             return
         run_label = f"execution {execution_id} (session {session_id})"
         logger.warning("Org {} is over its storage quota after writes of {}", org_id, run_label)
-        account = self._account_of_run(org_id, access_key, session_id, execution_id)
-        if account is None:
+        accounts = self._accounts_of_run(org_id, access_key, session_id, execution_id)
+        if not accounts:
             logger.info("No temporary storage account left for {}; nothing to do", run_label)
             return
 
-        purge_bin_for_run(account, org_id, run_label)
+        # The accounts of a session differ only in the shared actions they allow.
+        purge_bin_for_run(accounts[0], org_id, run_label)
         if not is_over_quota(org_id):
             return
 
@@ -57,13 +58,18 @@ class RunQuotaEnforcer:
             run_label,
             org_id,
         )
-        session_credential_service.revoke_access_keys([account.access_key])
+        # The whole run is cut off: its other accounts could keep writing past the quota.
+        session_credential_service.revoke_access_keys([account.access_key for account in accounts])
 
     @staticmethod
-    def _account_of_run(
+    def _accounts_of_run(
         org_id: int, access_key: str | None, session_id: int | None, execution_id: str
-    ) -> TemporaryStorageAccount | None:
-        """The account the ids name, only if its run belongs to org `org_id`."""
+    ) -> list[TemporaryStorageAccount]:
+        """The accounts of the run the ids name, only if the run belongs to org `org_id`.
+
+        A graph session has one account per distinct storage grant of its nodes, so naming
+        any of them names all.
+        """
         if access_key is not None:
             accounts = TemporaryStorageAccount.objects.filter(
                 Q(session__graph__org_id=org_id)
@@ -80,7 +86,16 @@ class RunQuotaEnforcer:
                 python_code_result__execution_id=execution_id,
                 python_code_result__org_id=org_id,
             )
-        return accounts.select_related("issued_for_user", "issued_for_root_user").first()
+        account = accounts.select_related("issued_for_user", "issued_for_root_user").first()
+        if account is None:
+            return []
+        if account.session_id is None:
+            return [account]
+        return list(
+            TemporaryStorageAccount.objects.filter(session_id=account.session_id)
+            .select_related("issued_for_user", "issued_for_root_user")
+            .order_by("pk")
+        )
 
 
 run_quota_enforcer = RunQuotaEnforcer()

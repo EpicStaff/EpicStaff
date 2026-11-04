@@ -40,6 +40,7 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
+from src.shared.models.storage_scope import StorageGrant
 from storage_credentials.exceptions import (
     CredentialScopeValidationError,
     TemporaryCredentialIssueError,
@@ -89,6 +90,7 @@ from tables.services.rag_registry import resolve_rag_in_collection
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from tables.services.secrets.declaration_validator import binned_secret_names
+from tables.services.storage_grants.flags import storage_grant_of
 from utils.graph_utils import (
     SINGLE_LOOKUP_RESOLVER,
     NodeNameResolver,
@@ -439,8 +441,10 @@ class ConverterService(metaclass=SingletonMeta):
         storage_org_prefix: str | None = None,
         session_id: int | None = None,
         org_id: int | None = None,
+        storage_grant: StorageGrant | None = None,
     ):
         return PythonCodeData(
+            storage_grant=storage_grant,
             venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
             code=python_code.code,
             entrypoint=python_code.entrypoint,
@@ -694,6 +698,7 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None,
         extra_storage_paths: list[str] | None,
         org_id: int | None,
+        storage_grant: StorageGrant | None = None,
     ) -> PythonCodeData:
         org_id = self._org_id_for_graph(graph_id, org_id)
         writable_paths = list(extra_storage_paths or [])
@@ -713,6 +718,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            storage_grant=storage_grant,
         )
 
     def convert_python_node_to_pydantic(
@@ -741,6 +747,7 @@ class ConverterService(metaclass=SingletonMeta):
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
             org_id=org_id,
+            storage_grant=storage_grant_of(python_node),
         )
         return PythonNodeData(
             node_name=resolver(python_node.id),
@@ -841,6 +848,7 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_org_prefix=pre_storage_org_prefix,
                 session_id=session_id,
                 org_id=org_id,
+                storage_grant=storage_grant_of(node, prefix="pre_"),
             )
 
         post_python_code_data = None
@@ -852,6 +860,7 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_org_prefix=post_storage_org_prefix,
                 session_id=session_id,
                 org_id=org_id,
+                storage_grant=storage_grant_of(node, prefix="post_"),
             )
 
         return ClassificationDecisionTableNodeData(
@@ -937,6 +946,7 @@ class ConverterService(metaclass=SingletonMeta):
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
             org_id=org_id,
+            storage_grant=storage_grant_of(webhook_trigger_node),
         )
         return WebhookTriggerNodeData(
             node_name=resolver(webhook_trigger_node.id),
@@ -1017,6 +1027,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            storage_grant=storage_grant_of(file_extractor_node),
         )
 
     def convert_key_value_node_to_pydantic(
@@ -1058,6 +1069,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            storage_grant=storage_grant_of(audio_transcription_node),
         )
 
     def convert_subgraph_node_to_pydantic(

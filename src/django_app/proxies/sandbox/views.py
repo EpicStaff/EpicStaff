@@ -11,6 +11,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
+from tables.services.storage_grants.actor import GrantActor
+from tables.services.storage_grants.tool_lock import check_venv_write
 
 from proxies.sandbox.models import SandboxVenvBinding
 from proxies.sandbox.services import VenvService
@@ -79,6 +81,8 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
 
     def partial_update(self, request: Request, pk: str) -> Response:
         binding = self._get_binding_or_404(pk)
+        # The libraries of a venv are part of what code run with a storage grant executes.
+        check_venv_write(GrantActor.for_request(request), binding, org_id=self.get_active_org_id())
         venv = self.service_class().update(binding, request.data)
         return Response(self._as_response(venv, binding))
 
