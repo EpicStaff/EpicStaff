@@ -235,6 +235,10 @@ function buildCdtNodePayload(
                     output_schema: cfg.output_schema ?? {},
                     result_variable: cfg.result_variable ?? '',
                     variable_mappings: cfg.variable_mappings ?? {},
+                    kind: cfg.kind ?? 'llm',
+                    system_one_config: cfg.system_one_config ?? null,
+                    questions: cfg.questions ?? {},
+                    input_map: cfg.input_map ?? {},
                 }) satisfies CreatePromptConfigRequest
         ),
         default_llm_config: tableData.default_llm_config ?? null,

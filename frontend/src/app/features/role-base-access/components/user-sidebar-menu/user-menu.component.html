@@ -106,22 +106,6 @@
     </section>
 
     <section class="menu-section">
-        @for (tour of tours(); track tour.key) {
-            <button
-                type="button"
-                class="nav-item"
-                appTooltipOnOverflow=".nav-label"
-                [matTooltip]="tour.label"
-                (click)="onTourClick(tour.key)"
-            >
-                <app-svg-icon
-                    size="16px"
-                    [icon]="tour.icon"
-                    class="nav-icon"
-                />
-                <span class="nav-label text-body-small-large">{{ tour.label }}</span>
-            </button>
-        }
         <button
             type="button"
             class="nav-item"

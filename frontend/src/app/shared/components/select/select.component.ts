@@ -103,6 +103,11 @@ export class SelectComponent implements ControlValueAccessor {
     items = input<SelectItem[]>([]);
     placeholder = input<string>('Select option');
     invalid = input<boolean>(false);
+    /**
+     * Ids of what describes the trigger, e.g. the `app-validation-errors` saying why it is invalid. The reason is said
+     * through it alone: a button takes no `aria-invalid`.
+     */
+    ariaDescribedby = input<string | null>(null);
     disabled = input<boolean>(false);
     hideTrigger = input<boolean>(false);
     panelClass = input<string | string[]>('');

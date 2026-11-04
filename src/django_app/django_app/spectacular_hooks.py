@@ -96,6 +96,7 @@ TAG_MAP = [
     ("api/permissions", "Permissions"),
     # Config / Defaults
     ("api/tool-labels", "Tool Labels"),
+    ("api/agent-labels", "Agent Labels"),
     ("api/labels", "Labels"),
     ("api/secrets", "Secrets"),
     ("api/storage", "Storage"),
@@ -180,6 +181,7 @@ TAGS_ORDER = [
     "Admin: API Keys",
     "Permissions",
     "Tool Labels",
+    "Agent Labels",
     "Labels",
     "Secrets",
     "Storage",

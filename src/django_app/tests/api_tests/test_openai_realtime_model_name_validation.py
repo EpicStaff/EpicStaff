@@ -1,21 +1,18 @@
-"""Coverage for `OpenAIRealtimeModelNameValidationMixin.validate_model_name`
-on the live API (OpenAIRealtimeConfigSerializer), exercised
-end-to-end through the real view (`auth_client`), not an isolated serializer
-instantiation -- this is a genuine DRF `request` in serializer context, so it
-exercises the request-based org-resolution branch (as opposed to the
-import-path tests in tests/import_export_tests/, which exercise the
-data-based branch).
-
-`openai_realtime_builtin_model` (tests/fixtures.py) seeds the registry the
-validator checks against -- the shared test DB has no builtin OpenAI
-realtime models by default.
+"""`OpenAIRealtimeConfig` model_name validation over the live API (request branch
+of `OpenAIRealtimeModelNameValidationMixin`; the `context["org_id"]` branch is
+covered in tests/import_export_tests/).
 """
 
 import pytest
 from django.urls import reverse
+from rest_framework.test import APIRequestFactory
 
 from tables.models.llm_models import RealtimeModel
 from tables.models.realtime_models import OpenAIRealtimeConfig
+from tables.serializers.model_serializers.realtime_serializers import (
+    OpenAIRealtimeConfigSerializer,
+)
+from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 DEAD_MODEL_NAME = "gpt-4o-realtime-preview-2024-12-17"
 VALID_MODEL_NAME = "gpt-realtime-1.5"
@@ -91,3 +88,108 @@ def test_create_with_org_custom_model_name_succeeds(auth_client, default_org, op
         url, {"custom_name": "cfg", "model_name": "org-custom-model"}, format="json"
     )
     assert resp.status_code == 201, resp.data
+
+
+@pytest.mark.django_db
+def test_create_with_foreign_org_custom_model_name_rejected(
+    auth_client, default_org, openai_provider, beta
+):
+    RealtimeModel.objects.create(
+        name="foreign-org-custom-model",
+        provider=openai_provider,
+        is_custom=True,
+        org=beta,
+    )
+    url = reverse("openairealtimeconfig-list")
+    resp = auth_client.post(
+        url,
+        {
+            "custom_name": "cfg",
+            "model_name": "foreign-org-custom-model",
+            "org": beta.id,
+        },
+        format="json",
+    )
+    assert resp.status_code == 400, resp.data
+    assert "model_name" in resp.data["message"]
+    assert not OpenAIRealtimeConfig.objects.filter(custom_name="cfg").exists()
+
+
+@pytest.mark.django_db
+def test_create_with_foreign_org_in_body_uses_user_org_not_body_org(
+    auth_client, default_org, openai_realtime_builtin_model, beta
+):
+    url = reverse("openairealtimeconfig-list")
+    resp = auth_client.post(
+        url,
+        {"custom_name": "cfg", "model_name": VALID_MODEL_NAME, "org": beta.id},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["org"] == default_org.id
+
+    instance = OpenAIRealtimeConfig.objects.get(id=resp.data["id"])
+    assert instance.org_id == default_org.id
+
+
+@pytest.mark.django_db
+def test_create_with_non_numeric_org_in_body_does_not_cause_error(
+    auth_client, default_org, openai_realtime_builtin_model
+):
+    url = reverse("openairealtimeconfig-list")
+    resp = auth_client.post(
+        url,
+        {"custom_name": "cfg", "model_name": VALID_MODEL_NAME, "org": "not-a-number"},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["org"] == default_org.id
+
+
+@pytest.mark.django_db
+def test_error_identical_for_nonexistent_vs_foreign_custom_model(
+    auth_client, default_org, openai_provider, beta
+):
+    RealtimeModel.objects.create(
+        name="secret-model", provider=openai_provider, is_custom=True, org=beta
+    )
+    url = reverse("openairealtimeconfig-list")
+
+    foreign_resp = auth_client.post(
+        url, {"custom_name": "cfg-a", "model_name": "secret-model"}, format="json"
+    )
+    nonexistent_resp = auth_client.post(
+        url, {"custom_name": "cfg-b", "model_name": "completely-made-up-model"}, format="json"
+    )
+
+    assert foreign_resp.status_code == 400, foreign_resp.data
+    assert nonexistent_resp.status_code == 400, nonexistent_resp.data
+    foreign_message = foreign_resp.data["message"].replace("secret-model", "<name>")
+    nonexistent_message = nonexistent_resp.data["message"].replace(
+        "completely-made-up-model", "<name>"
+    )
+    assert foreign_message == nonexistent_message
+
+
+@pytest.mark.django_db
+def test_request_org_wins_over_context_org_id(admin_acme, acme, beta, openai_provider):
+    RealtimeModel.objects.create(
+        name="acme-only-model", provider=openai_provider, is_custom=True, org=acme
+    )
+    RealtimeModel.objects.create(
+        name="beta-only-model", provider=openai_provider, is_custom=True, org=beta
+    )
+    request = APIRequestFactory().post("/", HTTP_X_ORGANIZATION_ID=str(acme.id))
+    request.user = admin_acme
+    context = {"request": request, "org_id": beta.id}
+
+    acme_serializer = OpenAIRealtimeConfigSerializer(
+        data={"custom_name": "cfg-acme", "model_name": "acme-only-model"}, context=context
+    )
+    beta_serializer = OpenAIRealtimeConfigSerializer(
+        data={"custom_name": "cfg-beta", "model_name": "beta-only-model"}, context=context
+    )
+
+    assert acme_serializer.is_valid(), acme_serializer.errors
+    assert not beta_serializer.is_valid()
+    assert "model_name" in beta_serializer.errors

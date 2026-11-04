@@ -2,7 +2,7 @@ import { getDebugNode, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
-import { LlmConfigStorageService } from '@shared/services';
+import { LlmConfigStorageService, SystemOneConfigStorageService } from '@shared/services';
 import { of } from 'rxjs';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
@@ -70,6 +70,10 @@ describe('FlowBaseNodeComponent key-value summary', () => {
                 { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(readOnly) } },
                 { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
                 { provide: LlmConfigStorageService, useValue: { isConfigsLoaded: signal(false), configs: signal([]) } },
+                {
+                    provide: SystemOneConfigStorageService,
+                    useValue: { isConfigsLoaded: signal(false), configs: signal([]), getAllConfigs: () => of([]) },
+                },
                 {
                     provide: KeyValueTablesStorageService,
                     useValue: {
@@ -180,6 +184,10 @@ describe('FlowBaseNodeComponent node number', () => {
                 { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
                 {
                     provide: LlmConfigStorageService,
+                    useValue: { isConfigsLoaded: signal(false), configs: signal([]), getAllConfigs: () => of([]) },
+                },
+                {
+                    provide: SystemOneConfigStorageService,
                     useValue: { isConfigsLoaded: signal(false), configs: signal([]), getAllConfigs: () => of([]) },
                 },
                 {

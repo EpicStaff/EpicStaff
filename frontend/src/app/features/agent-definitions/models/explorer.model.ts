@@ -11,7 +11,7 @@ export type ExplorerSelection =
     | AgentSelection
     | { kind: 'surface'; id: number; ownerAgentId?: number }
     | { kind: 'agent-doc'; id: number; instructionIndex: number }
-    | { kind: 'draft-agent'; id: null }
+    | { kind: 'draft-agent'; id: null; groupId?: number | null }
     | { kind: 'draft-surface'; id: null }
     | { kind: 'storage'; path: string }
     | { kind: null; id: null };
@@ -36,3 +36,8 @@ export const EXPLORER_SECTIONS: ExplorerSectionDef[] = [
     },
     { id: 'storage', headerLabel: 'Storage', filterLabel: 'Storage', resourceCode: ResourceCode.Files },
 ];
+
+export interface GroupAssignTarget {
+    kind: 'agent' | 'surface';
+    id: number;
+}

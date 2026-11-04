@@ -27,7 +27,9 @@ import {
     TabButtonComponent,
     TextareaComponent,
     ToggleSwitchComponent,
+    ValidationErrorsComponent,
 } from '@shared/components';
+import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
 import { catchError, EMPTY, filter, map, Observable, of, switchMap, tap } from 'rxjs';
@@ -117,6 +119,11 @@ const DURATION_UNITS: Record<DurationField, DurationUnit> = {
         description: 'A Support conversation closes after this long without a message.',
     },
 };
+// The number fields checked against a deployment cap.
+const CAPPED_CONTROLS: (BudgetField | DurationControl)[] = [
+    ...BUDGET_FIELDS,
+    ...DURATION_FIELDS.map((field) => DURATION_UNITS[field].control),
+];
 
 type TextField = 'name' | 'bot_display_name' | 'operator_display_name';
 const TEXT_FIELD_LABELS: Record<TextField, string> = {
@@ -194,6 +201,7 @@ export interface ChatBindingsDialogData {
         TabButtonComponent,
         TextareaComponent,
         ToggleSwitchComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: './chat-bindings-dialog.component.html',
     styleUrls: ['./chat-bindings-dialog.component.scss'],
@@ -276,7 +284,7 @@ export class ChatBindingsDialogComponent {
     protected readonly styleOptions = STYLE_OPTIONS;
     // Public because the spec drives it; the template binds it too.
     readonly form = new FormGroup({
-        name: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern(/\S/)] }),
+        name: new FormControl('', { nonNullable: true, validators: [Validators.required, notWhitespaceValidator()] }),
         bot_display_name: new FormControl('', { nonNullable: true, validators: this.publicName() }),
         operator_display_name: new FormControl(CHAT_BINDING_DEFAULTS.operator_display_name, {
             nonNullable: true,
@@ -402,12 +410,18 @@ export class ChatBindingsDialogComponent {
         const defaults = this.limits()?.defaults;
         untracked(() => {
             if (defaults && this.isCreating()) this.fillUntouched(defaults);
-            const capped = [...BUDGET_FIELDS, ...DURATION_FIELDS.map((field) => DURATION_UNITS[field].control)];
-            capped.forEach((name) => this.form.controls[name].updateValueAndValidity());
+            CAPPED_CONTROLS.forEach((name) => this.form.controls[name].updateValueAndValidity());
         });
     });
 
     constructor() {
+        // A number field turns red while a typed value is out of its range, so its reason shows then too, not on blur.
+        for (const name of CAPPED_CONTROLS) {
+            const control = this.form.controls[name];
+            control.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+                if (control.dirty) control.markAsTouched();
+            });
+        }
         // On create the bot name follows the binding name until the user edits it.
         this.form.controls.name.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((name) => {
             const botName = this.form.controls.bot_display_name;
@@ -519,28 +533,13 @@ export class ChatBindingsDialogComponent {
         this.form.controls.graph_id.updateValueAndValidity();
     }
 
-    textFieldError(field: TextField): string {
-        const control = this.form.controls[field];
-        // The server's word on what was sent; gone with the next edit of the field.
-        const refusal: unknown = control.errors?.['serverRefusal'];
-        if (typeof refusal === 'string') return refusal;
-        if (!control.touched) return '';
-        const publicNameError: unknown = control.errors?.['publicName'];
-        if (typeof publicNameError === 'string') return publicNameError;
-        return control.invalid ? 'Required' : '';
-    }
-
-    // Not a signal: the template re-reads it because the error callback also writes isSubmitting.
-    budgetCapMessage(field: BudgetField): string {
-        const max: unknown = this.form.controls[field].errors?.['budgetAboveCap'];
-        return typeof max === 'number' ? `At most ${formatNumber(max, this.locale)} on this deployment` : '';
-    }
-
-    // Same as `budgetCapMessage`, in the unit the duration is typed in.
-    durationCapMessage(field: DurationField): string {
-        const { control, name } = DURATION_UNITS[field];
-        const max: unknown = this.form.controls[control].errors?.['durationAboveCap'];
-        return typeof max === 'number' ? `At most ${formatNumber(max, this.locale)} ${name} on this deployment` : '';
+    /**
+     * Whether a field shows its invalid state: when `app-validation-errors` says its errors under it. Not a signal:
+     * the template re-reads it, as the control's state is not one.
+     */
+    protected showsError(name: BindingControl): boolean {
+        const control = this.form.controls[name];
+        return control.invalid && control.touched;
     }
 
     /** The id of the warning about existing conversations, which describes Save while it applies. */
@@ -570,17 +569,23 @@ export class ChatBindingsDialogComponent {
     /**
      * A `budget_above_cap` or `duration_above_cap` refusal on the field it names, with the deployment's max (a
      * duration's in its unit); false for any other body, and for a malformed one (unknown field, no numeric max), which
-     * the banner says instead. A control error clears itself on the next edit of that field.
+     * the banner says instead. A control error clears itself on the next edit of that field; touched, so it shows.
      */
     private showCapRefusal(body: ChatErrorBody | null): boolean {
         if (typeof body?.max !== 'number') return false;
         const budgetField = BUDGET_FIELDS.find((field) => field === body.field);
         const durationField = DURATION_FIELDS.find((field) => field === body.field);
         if (body.code === 'budget_above_cap' && budgetField) {
-            this.form.controls[budgetField].setErrors({ budgetAboveCap: body.max });
+            const control = this.form.controls[budgetField];
+            control.setErrors({ budgetAboveCap: this.budgetCapError(body.max) });
+            control.markAsTouched();
         } else if (body.code === 'duration_above_cap' && durationField) {
-            const { control, seconds } = DURATION_UNITS[durationField];
-            this.form.controls[control].setErrors({ durationAboveCap: Math.floor(body.max / seconds) });
+            const { control: name, seconds } = DURATION_UNITS[durationField];
+            const control = this.form.controls[name];
+            control.setErrors({
+                durationAboveCap: this.durationCapError(durationField, Math.floor(body.max / seconds)),
+            });
+            control.markAsTouched();
         } else {
             return false;
         }
@@ -592,7 +597,7 @@ export class ChatBindingsDialogComponent {
     private showFieldRefusals(byField: ReadonlyMap<TextField, string>): void {
         byField.forEach((message, field) => {
             const control = this.form.controls[field];
-            // A control error clears itself on the next edit of that field.
+            // The server's word on what was sent, said under the field; clears itself on the next edit of that field.
             control.setErrors({ serverRefusal: message });
             control.markAsTouched();
         });
@@ -727,29 +732,36 @@ export class ChatBindingsDialogComponent {
         };
     }
 
-    /**
-     * A typed duration above the deployment cap, as `withinCap` does for budgets; the error holds the max in the
-     * control's unit, as `showCapRefusal` puts the server's.
-     */
+    /** A typed duration above the deployment cap, as `withinCap` does for budgets, worded in the control's unit. */
     private withinDurationCap(field: DurationField): ValidatorFn {
         return (control: AbstractControl<number | null>): ValidationErrors | null => {
             if (!control.dirty || typeof control.value !== 'number') return null;
             const cap = this.limits()?.caps[field];
             if (cap === undefined) return null;
             const max = Math.floor(cap / DURATION_UNITS[field].seconds);
-            return control.value > max ? { durationAboveCap: max } : null;
+            return control.value > max ? { durationAboveCap: this.durationCapError(field, max) } : null;
         };
     }
 
-    /** Same error key as the server's `budget_above_cap`, so `budgetCapMessage` shows both. */
+    /** Same error as `showCapRefusal` puts for the server's `budget_above_cap`. */
     private withinCap(field: BudgetField): ValidatorFn {
         return (control: AbstractControl<number | null>): ValidationErrors | null => {
             // Only a typed budget is checked: the PATCH never sends an untouched one, so a stored budget above a
             // lowered cap must not block other edits. Runs during form construction too, before `limits` exists.
             if (!control.dirty || typeof control.value !== 'number') return null;
             const cap = this.limits()?.caps[field];
-            return cap !== undefined && control.value > cap ? { budgetAboveCap: cap } : null;
+            return cap !== undefined && control.value > cap ? { budgetAboveCap: this.budgetCapError(cap) } : null;
         };
+    }
+
+    // Worded here, so `app-validation-errors` says it as it is.
+    private budgetCapError(max: number): string {
+        return `At most ${formatNumber(max, this.locale)} on this deployment.`;
+    }
+
+    // Same as `budgetCapError`, in the unit the duration is typed in.
+    private durationCapError(field: DurationField, max: number): string {
+        return `At most ${formatNumber(max, this.locale)} ${DURATION_UNITS[field].name} on this deployment.`;
     }
 }
 

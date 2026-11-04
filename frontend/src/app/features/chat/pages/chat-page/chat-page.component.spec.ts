@@ -240,8 +240,8 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
     }
 
-    const composerInput = (): HTMLInputElement =>
-        (fixture.nativeElement as HTMLElement).querySelector('.composer input') as HTMLInputElement;
+    const composerInput = (): HTMLTextAreaElement =>
+        (fixture.nativeElement as HTMLElement).querySelector('.composer textarea') as HTMLTextAreaElement;
 
     function typeInComposer(value: string): void {
         const input = composerInput();
@@ -395,7 +395,7 @@ describe('ChatPageComponent', () => {
         expect(host.querySelector('app-tab-button button[aria-pressed="true"]')?.textContent?.trim()).toBe('Visitor');
 
         typeInComposer('hi');
-        host.querySelector('.composer app-custom-input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        host.querySelector('.composer textarea')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
         expect(chatApi.sendAsVisitor).toHaveBeenCalledWith('c-9', 'vt-9', 'hi', {});
         expect(chatApi.reply).not.toHaveBeenCalled();
     });
@@ -1298,7 +1298,7 @@ describe('ChatPageComponent', () => {
         const host: HTMLElement = fixture.nativeElement;
         typeInComposer('on my way');
         expect(host.querySelector('form')).toBeNull();
-        host.querySelector('.composer app-custom-input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        host.querySelector('.composer textarea')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
         expect(chatApi.reply).toHaveBeenCalledWith('c-1', 'on my way');
         fixture.detectChanges();
         expect(text('.message__content')).toEqual(['on my way']);

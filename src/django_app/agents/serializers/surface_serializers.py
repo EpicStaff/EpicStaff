@@ -48,6 +48,7 @@ from tables.constants.knowledge_constants import (
 )
 from tables.models.graph_models import StorageFile
 from tables.models.knowledge_models.collection_models import SourceCollection
+from tables.models.label_models import Label
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool
 from tables.validators.finite_number_validator import validate_finite_number
@@ -458,6 +459,7 @@ class SurfaceReadSerializer(LastEditFieldsSerializerMixin, serializers.ModelSeri
             "name",
             "instructions",
             "owner_agent",
+            "group",
             "python_tools",
             "mcp_tools",
             "storage_items",
@@ -487,6 +489,12 @@ class SurfaceWriteSerializer(AuthorStampingSerializerMixin, serializers.Serializ
             required=False,
             allow_null=True,
             default=None,
+        )
+        # No default: a PATCH that omits `group` must leave it untouched.
+        self.fields["group"] = OrgScopedPrimaryKeyRelatedField(
+            queryset=Label.objects.filter(scope=Label.Scope.AGENT),
+            required=False,
+            allow_null=True,
         )
 
     def validate(self, attrs):

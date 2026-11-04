@@ -23,7 +23,7 @@ const RESULT_CONTENT: Record<QuickStartResultStatus, TourContent> = {
         title: 'You’re all set',
         body: [
             'Review or change your models any time under Settings → Default LLMs.',
-            'You can replay this tour from your account menu.',
+            'You can replay this tour from Help in the sidebar.',
         ],
     },
     updated: {

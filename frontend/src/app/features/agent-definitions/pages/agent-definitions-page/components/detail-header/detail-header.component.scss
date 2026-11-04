@@ -95,3 +95,39 @@
     margin-left: auto;
     flex-shrink: 0;
 }
+
+.crumbs__group {
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    font: inherit;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+
+    &:hover,
+    &[aria-expanded='true'] {
+        color: var(--color-text-primary);
+    }
+
+    // The picker hands focus back on close, which browsers can show as keyboard focus after a
+    // mouse pick; the focus monitor tells the two apart, so the ring shows for the keyboard only.
+    &:focus-visible {
+        outline: none;
+    }
+
+    &.cdk-keyboard-focused {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+.crumbs__caret {
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+}
+
+// The picker's panel opens in an overlay; its host only anchors the component.
+app-label-dropdown {
+    display: none;
+}

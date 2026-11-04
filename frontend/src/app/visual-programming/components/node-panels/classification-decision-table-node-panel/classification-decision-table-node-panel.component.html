@@ -309,15 +309,25 @@
                                         text="Define reusable prompts referenced in decision table rules."
                                     />
                                 </span>
-                                <button
-                                    #addPromptButton
+                                <div
                                     *appIfFlowEditable
-                                    type="button"
-                                    class="add-prompt-header-btn"
-                                    (click)="addPrompt()"
+                                    class="prompt-section-actions"
                                 >
-                                    <i class="ti ti-plus"></i> Add Prompt
-                                </button>
+                                    <app-button
+                                        #addPromptButton
+                                        type="outline-secondary"
+                                        mod="small"
+                                        leftIcon="plus"
+                                        (click)="addPrompt()"
+                                        >LLM prompt</app-button
+                                    >
+                                    <app-button
+                                        mod="small"
+                                        leftIcon="plus"
+                                        (click)="addSystemOnePrompt()"
+                                        >System One</app-button
+                                    >
+                                </div>
                             </div>
 
                             <!-- Prompt List -->
@@ -345,6 +355,9 @@
                                                         icon="play"
                                                         size="8px"
                                                     ></app-svg-icon>
+                                                    @if (prompt.kind === 'system_one') {
+                                                        <span class="prompt-kind-tag">S1</span>
+                                                    }
                                                     <!-- The row's action for the keyboard; its click reaches the row's handler. -->
                                                     <button
                                                         type="button"
@@ -381,122 +394,144 @@
 
                                             @if (editingPromptId() === prompt.id) {
                                                 <div class="prompt-card-body">
-                                                    <div class="prompt-field">
-                                                        <label class="field-label"
-                                                            >Name <span class="required-star">*</span></label
-                                                        >
-                                                        <input
-                                                            type="text"
-                                                            class="field-input"
-                                                            [ngModel]="pendingPromptName()"
-                                                            [ngModelOptions]="{ standalone: true }"
-                                                            [readonly]="isReadOnly()"
-                                                            aria-label="Name"
-                                                            (ngModelChange)="pendingPromptName.set($event)"
-                                                            (blur)="commitPromptRename(prompt.id)"
-                                                            (keydown.enter)="commitPromptRename(prompt.id)"
-                                                            placeholder="Enter prompt name..."
-                                                        />
-                                                    </div>
-
-                                                    <div class="prompt-field">
-                                                        <label class="field-label"
-                                                            >LLM Override <span class="required-star">*</span></label
-                                                        >
-                                                        <app-llm-model-selector
-                                                            [ngModel]="getLlmIdAsNumber(prompt.llm_config)"
-                                                            [ngModelOptions]="{ standalone: true }"
-                                                            [readonly]="isReadOnly()"
-                                                            (modelSelected)="onPromptLlmChange(prompt.id, $event)"
-                                                            placeholder="Inherit default LLM"
-                                                        ></app-llm-model-selector>
-                                                    </div>
-
-                                                    <div class="prompt-field">
-                                                        <label class="field-label">Result Variable</label>
-                                                        <input
-                                                            type="text"
-                                                            class="field-input"
-                                                            [ngModel]="prompt.result_variable"
-                                                            [ngModelOptions]="{ standalone: true }"
-                                                            [readonly]="isReadOnly()"
-                                                            aria-label="Result Variable"
-                                                            (ngModelChange)="
-                                                                updatePrompt(prompt.id, 'result_variable', $event)
-                                                            "
-                                                            placeholder="e.g. classification"
-                                                        />
-                                                    </div>
-
-                                                    @if (
-                                                        sideEditorPromptId() !== prompt.id ||
-                                                        sideEditorView() !== 'prompt'
-                                                    ) {
+                                                    <ng-template #promptName>
                                                         <div class="prompt-field">
-                                                            <div class="field-label-row">
-                                                                <label class="field-label">Prompt</label>
-                                                                <button
-                                                                    type="button"
-                                                                    class="field-expand-icon"
-                                                                    aria-label="Expand prompt"
-                                                                    matTooltip="Expand"
-                                                                    (click)="openSideEditor(prompt.id, 'prompt')"
-                                                                >
-                                                                    <app-svg-icon
-                                                                        icon="editor-expand"
-                                                                        size="0.875rem"
-                                                                    />
-                                                                </button>
-                                                            </div>
-                                                            <div class="prompt-textarea-wrapper">
-                                                                <div
-                                                                    class="prompt-highlight-overlay"
-                                                                    aria-hidden="true"
-                                                                    [innerHTML]="
-                                                                        getHighlightedPromptText(prompt.prompt_text)
-                                                                    "
-                                                                ></div>
-                                                                <textarea
-                                                                    class="prompt-textarea prompt-textarea--transparent"
-                                                                    rows="8"
-                                                                    aria-label="Prompt"
-                                                                    [ngModel]="prompt.prompt_text"
-                                                                    [readonly]="isReadOnly()"
-                                                                    [ngModelOptions]="{ standalone: true }"
-                                                                    (ngModelChange)="
-                                                                        onPromptTextChange(prompt.id, $event)
-                                                                    "
-                                                                    placeholder="Enter prompt template. Use curly braces for variable interpolation."
-                                                                ></textarea>
-                                                            </div>
-                                                        </div>
-                                                    }
-
-                                                    @if (
-                                                        sideEditorPromptId() !== prompt.id ||
-                                                        sideEditorView() !== 'schema'
-                                                    ) {
-                                                        <div class="prompt-field">
-                                                            <label class="field-label">Output Schema</label>
-                                                            <app-json-editor
-                                                                [jsonData]="
-                                                                    getPromptSchemaText(prompt.id, prompt.output_schema)
-                                                                "
-                                                                (jsonChange)="onSchemaChange(prompt.id, $event)"
-                                                                [showHeader]="true"
-                                                                [allowCopy]="true"
-                                                                [allowExpand]="true"
-                                                                (expand)="openSideEditor(prompt.id, 'schema')"
-                                                                [editorHeight]="220"
-                                                                [exampleHint]="outputSchemaExampleHint"
+                                                            <label class="field-label"
+                                                                >Name <span class="required-star">*</span></label
+                                                            >
+                                                            <input
+                                                                type="text"
+                                                                class="field-input"
+                                                                [ngModel]="pendingPromptName()"
+                                                                [ngModelOptions]="{ standalone: true }"
                                                                 [readonly]="isReadOnly()"
-                                                            ></app-json-editor>
-                                                            @if (getPromptSchemaError(prompt.id)) {
-                                                                <div class="prompt-schema-error">
-                                                                    {{ getPromptSchemaError(prompt.id) }}
-                                                                </div>
-                                                            }
+                                                                aria-label="Name"
+                                                                (ngModelChange)="pendingPromptName.set($event)"
+                                                                (blur)="commitPromptRename(prompt.id)"
+                                                                (keydown.enter)="commitPromptRename(prompt.id)"
+                                                                placeholder="Enter prompt name..."
+                                                            />
                                                         </div>
+                                                    </ng-template>
+
+                                                    @if (prompt.kind === 'system_one') {
+                                                        <app-cdt-system-one-entry
+                                                            [prompt]="prompt"
+                                                            [readOnly]="isReadOnly()"
+                                                            (promptChange)="updatePromptFields(prompt.id, $event)"
+                                                        >
+                                                            <div
+                                                                promptName
+                                                                class="prompt-name--paired"
+                                                            >
+                                                                <ng-container *ngTemplateOutlet="promptName" />
+                                                            </div>
+                                                        </app-cdt-system-one-entry>
+                                                    } @else {
+                                                        <ng-container *ngTemplateOutlet="promptName" />
+                                                        <div class="prompt-field">
+                                                            <label class="field-label"
+                                                                >LLM Override
+                                                                <span class="required-star">*</span></label
+                                                            >
+                                                            <app-llm-model-selector
+                                                                [ngModel]="getLlmIdAsNumber(prompt.llm_config)"
+                                                                [ngModelOptions]="{ standalone: true }"
+                                                                [readonly]="isReadOnly()"
+                                                                (modelSelected)="onPromptLlmChange(prompt.id, $event)"
+                                                                placeholder="Inherit default LLM"
+                                                            ></app-llm-model-selector>
+                                                        </div>
+
+                                                        <div class="prompt-field">
+                                                            <label class="field-label">Result Variable</label>
+                                                            <input
+                                                                type="text"
+                                                                class="field-input"
+                                                                [ngModel]="prompt.result_variable"
+                                                                [ngModelOptions]="{ standalone: true }"
+                                                                [readonly]="isReadOnly()"
+                                                                aria-label="Result Variable"
+                                                                (ngModelChange)="
+                                                                    updatePrompt(prompt.id, 'result_variable', $event)
+                                                                "
+                                                                placeholder="e.g. classification"
+                                                            />
+                                                        </div>
+
+                                                        @if (
+                                                            sideEditorPromptId() !== prompt.id ||
+                                                            sideEditorView() !== 'prompt'
+                                                        ) {
+                                                            <div class="prompt-field">
+                                                                <div class="field-label-row">
+                                                                    <label class="field-label">Prompt</label>
+                                                                    <button
+                                                                        type="button"
+                                                                        class="field-expand-icon"
+                                                                        aria-label="Expand prompt"
+                                                                        matTooltip="Expand"
+                                                                        (click)="openSideEditor(prompt.id, 'prompt')"
+                                                                    >
+                                                                        <app-svg-icon
+                                                                            icon="editor-expand"
+                                                                            size="0.875rem"
+                                                                        />
+                                                                    </button>
+                                                                </div>
+                                                                <div class="prompt-textarea-wrapper">
+                                                                    <div
+                                                                        class="prompt-highlight-overlay"
+                                                                        aria-hidden="true"
+                                                                        [innerHTML]="
+                                                                            getHighlightedPromptText(prompt.prompt_text)
+                                                                        "
+                                                                    ></div>
+                                                                    <textarea
+                                                                        class="prompt-textarea prompt-textarea--transparent"
+                                                                        rows="8"
+                                                                        aria-label="Prompt"
+                                                                        [ngModel]="prompt.prompt_text"
+                                                                        [readonly]="isReadOnly()"
+                                                                        [ngModelOptions]="{ standalone: true }"
+                                                                        (ngModelChange)="
+                                                                            onPromptTextChange(prompt.id, $event)
+                                                                        "
+                                                                        placeholder="Enter prompt template. Use curly braces for variable interpolation."
+                                                                    ></textarea>
+                                                                </div>
+                                                            </div>
+                                                        }
+
+                                                        @if (
+                                                            sideEditorPromptId() !== prompt.id ||
+                                                            sideEditorView() !== 'schema'
+                                                        ) {
+                                                            <div class="prompt-field">
+                                                                <label class="field-label">Output Schema</label>
+                                                                <app-json-editor
+                                                                    [jsonData]="
+                                                                        getPromptSchemaText(
+                                                                            prompt.id,
+                                                                            prompt.output_schema
+                                                                        )
+                                                                    "
+                                                                    (jsonChange)="onSchemaChange(prompt.id, $event)"
+                                                                    [showHeader]="true"
+                                                                    [allowCopy]="true"
+                                                                    [allowExpand]="true"
+                                                                    (expand)="openSideEditor(prompt.id, 'schema')"
+                                                                    [editorHeight]="220"
+                                                                    [exampleHint]="outputSchemaExampleHint"
+                                                                    [readonly]="isReadOnly()"
+                                                                ></app-json-editor>
+                                                                @if (getPromptSchemaError(prompt.id)) {
+                                                                    <div class="prompt-schema-error">
+                                                                        {{ getPromptSchemaError(prompt.id) }}
+                                                                    </div>
+                                                                }
+                                                            </div>
+                                                        }
                                                     }
                                                 </div>
                                             }
