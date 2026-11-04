@@ -133,6 +133,11 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         # The collection must live in the active org (404 otherwise).
         self.get_in_active_org_or_404(SourceCollection, collection_id)
 
+        if NaiveRagService.get_or_none_naive_rag_by_collection(collection_id) is not None:
+            assert_org_permission(
+                request.user, self.get_active_org_id(), self.rbac_resource_type, Permission.UPDATE
+            )
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
