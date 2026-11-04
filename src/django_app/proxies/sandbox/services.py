@@ -16,6 +16,7 @@ from collections.abc import Iterable
 
 from django.db.models import Q, QuerySet
 from loguru import logger
+from packaging.utils import canonicalize_name
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     PythonNode,
@@ -25,7 +26,7 @@ from tables.models.python_models import PythonCodeTool
 
 from proxies.models import AbstractBinding
 from proxies.sandbox.clients import SandboxCustomLibraryClient, SandboxVenvClient
-from proxies.sandbox.errors import VenvInUseError
+from proxies.sandbox.errors import UnknownCustomLibraryError, VenvInUseError
 from proxies.sandbox.models import SandboxCustomLibraryBinding, SandboxVenvBinding
 
 __all__ = ["CustomLibraryService", "VenvService"]
@@ -114,7 +115,12 @@ class VenvService:
 
         Returns:
             The new binding and the environment the sandbox stored.
+
+        Raises:
+            UnknownCustomLibraryError: Some declared stored library is not this
+                organization's. Rendered as 400.
         """
+        self._assert_custom_libraries_owned(data, org_id)
         with self.client_class() as client:
             venv = client.create(data)
 
@@ -131,7 +137,13 @@ class VenvService:
         return binding, venv
 
     def update(self, binding: SandboxVenvBinding, data: dict) -> dict:
-        """Apply a partial change to the environment this binding points at."""
+        """Apply a partial change to the environment this binding points at.
+
+        Raises:
+            UnknownCustomLibraryError: Some declared stored library is not this
+                organization's. Rendered as 400.
+        """
+        self._assert_custom_libraries_owned(data, binding.org_id)
         with self.client_class() as client:
             return client.update(binding.resource_id, data)
 
@@ -175,6 +187,47 @@ class VenvService:
                     logger.exception(
                         "Could not remove venv {} created by work that rolled back", venv_id
                     )
+
+    def _assert_custom_libraries_owned(self, data: dict, org_id: int | None) -> None:
+        """Refuse a venv that names a stored library the organization does not have.
+
+        A stored library is named, not pointed at by id, and the sandbox knows
+        nothing about organizations: left unchecked, a venv could name another
+        organization's private package and have the build install it.
+
+        Raises:
+            UnknownCustomLibraryError: Some name is not this organization's.
+        """
+        declared = self._declared_custom_library_names(data)
+        if not declared:
+            return
+        unknown = declared - self._owned_custom_library_names(org_id)
+        if unknown:
+            raise UnknownCustomLibraryError(
+                f"This organization has no custom library named {self._name_list(sorted(unknown))}."
+            )
+
+    @staticmethod
+    def _declared_custom_library_names(data: dict) -> set[str]:
+        """The stored libraries a payload names, under the spelling the sandbox stores.
+
+        An entry without the marking is a package index lookup and names no stored
+        library, whatever it is called.
+        """
+        return {
+            canonicalize_name(library["name"])
+            for library in data.get("libs") or []
+            if isinstance(library, dict) and library.get("is_custom") and library.get("name")
+        }
+
+    @staticmethod
+    def _owned_custom_library_names(org_id: int | None) -> set[str]:
+        """Every stored library this organization may name. Without an org, none."""
+        if org_id is None:
+            return set()
+        bindings = SandboxCustomLibraryBinding.objects.filter(org_id=org_id)
+        _page, pairs = CustomLibraryService().list_page(bindings)
+        return {canonicalize_name(library["name"]) for library, _ in pairs if library.get("name")}
 
     def _describe_owners(self, code_ids: list[int]) -> str:
         live, binned = self._owner_names(code_ids)
