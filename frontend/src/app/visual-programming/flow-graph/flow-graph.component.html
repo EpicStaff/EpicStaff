@@ -10,11 +10,13 @@
         (contextmenu)="onContextMenu($event)"
         (click)="onFlowClick($event)"
         (pointerdown)="onFlowPointerDown($event)"
+        (pointermove)="onFlowPointerMove($event)"
         (mousedown)="onFlowMouseDown($event)"
         (pointerup)="onFlowPointerUp($event)"
+        [class.note-draw-mode]="noteDrawState()?.active"
         fDraggable
         [fMultiSelectTrigger]="selectionManager.multiSelectTrigger"
-        [fCanvasMoveTrigger]="selectionManager.canvasMoveTrigger"
+        [fCanvasMoveTrigger]="canvasMoveTrigger"
         [fNodeMoveTrigger]="editGestureTrigger"
         [fNodeResizeTrigger]="editGestureTrigger"
         [fNodeRotateTrigger]="editGestureTrigger"
@@ -136,6 +138,8 @@
                     (fNodePositionChange)="onNodePositionChanged($event, node)"
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"
+                    (noteDoubleClicked)="onNoteDoubleClick($event)"
+                    (reselectAreaClicked)="onReselectNoteArea($event)"
                     (deleteClicked)="onDeleteNode($event)"
                     (unpackClicked)="onUnpackSubflow(node)"
                 >
@@ -265,6 +269,25 @@
                 [style.z-index]="node.id === hoveredNodeId() ? 1 : 0"
                 [class.is-active]="node.id === hoveredNodeId()"
             ></app-flow-node-variables-overlay>
+        }
+
+        <!-- Note linked-region highlight (hover or selected) -->
+        @if (activeNoteLinkedRegion(); as region) {
+            <app-note-region-highlight
+                [region]="region"
+                [resizable]="isNoteRegionResizable()"
+                (resizeStart)="onRegionResizeStart($event.event, $event.direction)"
+            />
+        }
+
+        <!-- Live draw rectangle (area-selection in progress) -->
+        @if (noteDrawRect(); as rect) {
+            <div
+                class="note-draw-overlay"
+                [style.transform]="'translate(' + rect.x + 'px,' + rect.y + 'px)'"
+                [style.width.px]="rect.width"
+                [style.height.px]="rect.height"
+            ></div>
         }
     </div>
 

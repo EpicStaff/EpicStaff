@@ -44,12 +44,15 @@ import {
     ToolNodeModel,
 } from '../../core/models/node.model';
 import { CustomPortId } from '../../core/models/port.model';
+import { NOTE_COLORS } from '../../core/utils/note-colors.util';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
+import { FontSizeSelectComponent } from '../font-size-select/font-size-select.component';
 import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
+import { NoteColorPickerComponent } from '../note-color-picker/note-color-picker.component';
 
 @Component({
     selector: 'app-flow-base-node',
@@ -66,6 +69,8 @@ import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.co
         GoToButtonComponent,
         AppSvgIconComponent,
         MatTooltipModule,
+        FontSizeSelectComponent,
+        NoteColorPickerComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
@@ -88,6 +93,8 @@ export class FlowBaseNodeComponent implements OnInit {
     @Output() editClicked = new EventEmitter<NodeModel>();
     @Output() deleteClicked = new EventEmitter<NodeModel>();
     readonly unpackClicked = output<void>();
+    readonly noteDoubleClicked = output<NodeModel>();
+    readonly reselectAreaClicked = output<NodeModel>();
     public isExpanded = signal(false);
     public isToggleDisabled = signal(false);
     multiSelectActive = input<boolean>(false);
@@ -150,6 +157,18 @@ export class FlowBaseNodeComponent implements OnInit {
         event.stopPropagation();
         if (this.isBlockedSubgraph) return;
         this.unpackClicked.emit();
+    }
+
+    public onNoteDoubleClick(event: MouseEvent): void {
+        event.preventDefault();
+        event.stopPropagation();
+        this.noteDoubleClicked.emit(this.node);
+    }
+
+    public onReselectAreaClick(event: MouseEvent): void {
+        event.preventDefault();
+        event.stopPropagation();
+        this.reselectAreaClicked.emit(this.node);
     }
 
     trackByPort(index: number, port: { id: string }): string {
@@ -314,6 +333,28 @@ export class FlowBaseNodeComponent implements OnInit {
 
     onNodeSizeChanged(size: { width: number; height: number }): void {
         this.fNodeSizeChange.emit(size);
+    }
+
+    public onNoteFontSizeChange(fontSize: number): void {
+        const note = this.noteNode;
+        if (!note) return;
+        const updated: GraphNoteModel = { ...note, data: { ...note.data, fontSize } };
+        this.flowService.updateNode(updated);
+    }
+
+    public onNoteColorChange(backgroundColor: string): void {
+        const note = this.noteNode;
+        if (!note) return;
+        const updated: GraphNoteModel = { ...note, data: { ...note.data, backgroundColor } };
+        this.flowService.updateNode(updated);
+    }
+
+    public get noteBackgroundColor(): string {
+        return this.noteNode?.data.backgroundColor || NOTE_COLORS[0];
+    }
+
+    public get noteFontSize(): number {
+        return this.noteNode?.data.fontSize || 14;
     }
 
     get isScheduleTriggerActive(): boolean {

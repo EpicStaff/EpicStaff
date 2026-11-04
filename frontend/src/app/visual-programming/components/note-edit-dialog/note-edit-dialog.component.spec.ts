@@ -1,9 +1,11 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AuthorshipDetailsSource } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { Subject } from 'rxjs';
 
+import { ProfileService } from '../../../services/auth/profile.service';
 import { GraphNoteModel } from '../../core/models/node.model';
 import { NoteEditDialogComponent, NoteEditDialogData } from './note-edit-dialog.component';
 
@@ -28,11 +30,16 @@ const AUTHORSHIP: AuthorshipDetailsSource = {
     last_edited_at: new Date(2026, 2, 13, 9, 5, 0).toISOString(),
 };
 
+const profileServiceStub = {
+    currentUserSignal: signal<{ id: number } | null>(null),
+};
+
 function render(data: NoteEditDialogData): HTMLElement {
     TestBed.configureTestingModule({
         providers: [
             { provide: DIALOG_DATA, useValue: data },
             { provide: DialogRef, useValue: { close: vi.fn(), keydownEvents: new Subject<KeyboardEvent>() } },
+            { provide: ProfileService, useValue: profileServiceStub },
         ],
     });
     const fixture = TestBed.createComponent(NoteEditDialogComponent);
@@ -52,7 +59,7 @@ const footerColumns = (footer: Element): string[][] =>
 describe('NoteEditDialogComponent', () => {
     it('shows who created and who last edited the note in a footer below the text', () => {
         const host = render({ node: NOTE, authorship: AUTHORSHIP });
-        const footer = host.querySelector('.dialog-content + app-authorship-footer');
+        const footer = host.querySelector('.body + app-authorship-footer');
 
         expect(footer).not.toBeNull();
         expect(footerColumns(footer!)).toEqual([
