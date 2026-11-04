@@ -1,4 +1,5 @@
 import json
+import math
 import uuid
 from dataclasses import asdict
 
@@ -1845,7 +1846,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         """Mark a RealtimeAgentChat as ended.
 
         Called server-to-server by the `realtime` service
-        (`voice_call_service._patch_agent_chat`) once a call ends. That caller
+        (`AgentChatEndClient.end_chat`) once a call or browser chat ends. That caller
         has no logged-in user/org context and identifies the target chat by
         its opaque `connection_key` alone, so this action cannot be scoped
         through `self.get_queryset()` (which requires an active org via
@@ -1866,12 +1867,37 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         except RealtimeAgentChat.DoesNotExist:
             return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        chat.ended_at = timezone.now()
-        chat.duration_seconds = request.data.get("duration_seconds")
-        chat.end_reason = request.data.get("end_reason", "completed")
-        chat.save(update_fields=["ended_at", "duration_seconds", "end_reason"])
+        # The first end wins: a repeated call must not overwrite the earlier, more
+        # accurate duration and reason. Revoking again stays harmless and retries an
+        # account whose first revocation failed.
+        # The conditional UPDATE makes the check atomic across concurrent calls.
+        end_reason = request.data.get("end_reason", RealtimeAgentChat.EndReason.COMPLETED)
+        if end_reason not in RealtimeAgentChat.EndReason.values:
+            logger.warning(
+                "Unknown end_reason {!r} for realtime chat {}; storing 'error'",
+                end_reason,
+                chat.id,
+            )
+            end_reason = RealtimeAgentChat.EndReason.ERROR
 
-        session_credential_service.revoke_for_realtime_chat(chat.id)
+        try:
+            duration_seconds = float(request.data.get("duration_seconds"))
+            if not math.isfinite(duration_seconds):
+                duration_seconds = None
+        except (TypeError, ValueError):
+            duration_seconds = None
+
+        try:
+            RealtimeAgentChat.objects.filter(pk=chat.pk, ended_at__isnull=True).update(
+                ended_at=timezone.now(),
+                duration_seconds=duration_seconds,
+                end_reason=end_reason,
+            )
+        except Exception:
+            # Revoking the storage account matters more than the metadata.
+            logger.exception("Failed to record the end of realtime chat {}", chat.id)
+        finally:
+            session_credential_service.revoke_for_realtime_chat(chat.id)
 
         return Response({"detail": "Updated"})
 

@@ -229,6 +229,21 @@ async def test_both_recordings_and_the_call_end_are_saved_before_execute_returns
     assert _end_call(django)["end_reason"] == "completed"
 
 
+async def test_call_end_request_is_sent_to_django_with_the_system_key(django):
+    twilio = ScriptedTwilio([_start()])
+    service, _ = _service(twilio)
+
+    await service.execute()
+
+    (end,) = [request for request in django if request.url.path.endswith("/realtime-agent-chats/end/")]
+    assert end.method == "POST"
+    assert str(end.url) == "http://django_app:8000/api/realtime-agent-chats/end/"
+    assert end.headers["x-api-key"] == "test-key"
+    body = json.loads(end.content)
+    assert set(body) == {"connection_key", "duration_seconds", "end_reason"}
+    assert (body["connection_key"], body["end_reason"]) == ("test_key", "completed")
+
+
 async def test_call_is_ended_after_the_max_duration(django, monkeypatch):
     """Defense in depth: a leaked stream token cannot meter provider costs forever."""
     import application.voice_call_service as voice_call_service_module
@@ -247,7 +262,7 @@ async def test_call_is_ended_after_the_max_duration(django, monkeypatch):
 
     await service.execute()
 
-    assert _end_call(django)["end_reason"] == "max_duration_exceeded"
+    assert _end_call(django)["end_reason"] == "timeout"
     # We stopped reading ourselves, so the call is hung up actively.
     assert twilio.events == ["close"]
     assert factory.provider.closed

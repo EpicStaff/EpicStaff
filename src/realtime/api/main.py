@@ -5,6 +5,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from xml.sax.saxutils import quoteattr
 
 import httpx
+from application.agent_chat_end_client import AgentChatEndClient
 from application.conversation_service import ConversationService
 from application.tool_manager_service import ToolManagerService
 from application.voice_call_service import VoiceCallService
@@ -350,6 +351,10 @@ async def root(
         factory=factory,
         summ_client=summ_client,
         transcription_client_factory=transcription_client_factory,
+        chat_end_client=AgentChatEndClient(
+            django_api_base_url=config.DJANGO_API_BASE_URL,
+            django_api_key=config.DJANGO_API_KEY,
+        ),
     )
 
     websocket.state.user = user_info

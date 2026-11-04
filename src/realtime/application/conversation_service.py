@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 
 from domain.models.chat_mode import ChatMode
 from domain.ports.i_chat_mode_controller import IChatModeController
@@ -21,6 +22,7 @@ from src.shared.public_error import (
 from utils.shorten import shorten_dict
 from utils.tokenizer import Tokenizer
 
+from application.agent_chat_end_client import AgentChatEndClient
 from application.tool_manager_service import ToolManagerService
 
 
@@ -42,6 +44,7 @@ class ConversationService(IChatModeController):
         factory: RealtimeAgentClientFactory,
         summ_client: ISummarizationClient,
         transcription_client_factory: ITranscriptionClientFactory,
+        chat_end_client: AgentChatEndClient,
     ):
         self.client_websocket = client_websocket
         self.realtime_agent_chat_data = realtime_agent_chat_data
@@ -51,6 +54,8 @@ class ConversationService(IChatModeController):
         self.factory = factory
         self.summ_client = summ_client
         self.transcription_client_factory = transcription_client_factory
+        self._chat_end_client = chat_end_client
+        self._end_reason = "completed"
         # Each word is a separate trigger: a transcript matches when it contains ANY of
         # them (OR), not the whole wake phrase in order.
         self._wake_words = self._parse_wake_words(realtime_agent_chat_data.wake_word)
@@ -99,14 +104,14 @@ class ConversationService(IChatModeController):
     # ------------------------------------------------------------------
 
     async def execute(self):
+        start_time = time.monotonic()
+        rt_agent_client_task = None
+        rt_transcription_client_task = None
         try:
             subprotocols = self.client_websocket.scope.get("subprotocols", [])
             await self.client_websocket.accept(
                 subprotocol=subprotocols[0] if subprotocols else None
             )
-
-            rt_agent_client_task = None
-            rt_transcription_client_task = None
 
             rt_tools = await self.tool_manager_service.get_realtime_tool_models(
                 connection_key=self.realtime_agent_chat_data.connection_key
@@ -188,6 +193,7 @@ class ConversationService(IChatModeController):
                         await rt_agent_client.replay_audio_buffer()
                     except Exception as e:
                         logger.error(f"RT agent reconnect failed: {e}")
+                        self._end_reason = "error"
                         break
 
                 try:
@@ -227,16 +233,34 @@ class ConversationService(IChatModeController):
             logger.info("Client disconnected")
         except Exception:
             logger.exception("Unexpected exception")
+            self._end_reason = "error"
         finally:
-            if rt_agent_client_task is not None and not rt_agent_client_task.done():
-                rt_agent_client_task.cancel()
+            try:
+                if rt_agent_client_task is not None and not rt_agent_client_task.done():
+                    rt_agent_client_task.cancel()
 
-            if rt_transcription_client_task is not None and not rt_transcription_client_task.done():
-                rt_transcription_client_task.cancel()
+                if (
+                    rt_transcription_client_task is not None
+                    and not rt_transcription_client_task.done()
+                ):
+                    rt_transcription_client_task.cancel()
 
-            if self.client_websocket in self.connections:
-                await rt_agent_client.close()
-                del self.connections[self.client_websocket]
+                if self.client_websocket in self.connections:
+                    try:
+                        await rt_agent_client.close()
+                    except Exception:
+                        logger.exception("Failed to close the realtime agent client")
+                    finally:
+                        del self.connections[self.client_websocket]
+            finally:
+                # The connection_key is single-use (the WebSocket handler deletes it on
+                # attach) and the frontend re-runs init-realtime for every reconnect, so
+                # the chat's storage account can never be needed again once we get here.
+                await self._chat_end_client.end_chat(
+                    connection_key=self.realtime_agent_chat_data.connection_key,
+                    duration=time.monotonic() - start_time,
+                    end_reason=self._end_reason,
+                )
 
     # ------------------------------------------------------------------
     # Helpers
