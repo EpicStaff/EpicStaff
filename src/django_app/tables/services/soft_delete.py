@@ -29,11 +29,31 @@ def keeps_references(model: type[models.Model]) -> bool:
     return getattr(model, "soft_delete_keeps_references", False)
 
 
+def is_kept_link(relation) -> bool:
+    """Rows reached through the reverse `relation` keep their link while its target is binned.
+
+    Set by the child model's `soft_delete_kept_link_fields`: a record of the parent's
+    use (a flow's sessions) follows the parent into the recycle bin without being
+    changed, and comes back with it on restore. The child model hides those rows from
+    users while the parent is binned; a purge (Django's Collector) applies the FK's
+    own on_delete then.
+
+    Only CASCADE or SET_NULL FKs may be listed. A listed PROTECT/RESTRICT FK is skipped
+    here too, so binning its target would silently lose that protection.
+    """
+    kept_link_fields = getattr(relation.related_model, "soft_delete_kept_link_fields", ())
+    return relation.field.name in kept_link_fields
+
+
 class DeleteService:
     """
     Centralized deletion service.
 
     Rules (in priority order):
+
+    Child reached through a field in its soft_delete_kept_link_fields
+        -> left as it is, link included; not walked into, and not checked by
+           the organization guard since nothing is written
 
     Normal model + PROTECT
         -> ProtectedError
@@ -260,6 +280,9 @@ class _DeleteContext:
         obj: models.Model,
     ):
         for relation in self._get_reverse_relations(obj):
+            if is_kept_link(relation):
+                continue
+
             if self._may_change_children(obj, relation):
                 self.org_guard.check_reverse_relation(obj, relation)
 
@@ -554,14 +577,16 @@ class _DeleteContext:
         # ------------------------------------------------------
         # SET_NULL if it is possible
         # ------------------------------------------------------
-        # Only for plain (non-SoftDeleteFields) models: a SoftDeleteFields
-        # child that reached this method did so only because a post_save
-        # listener excluded it from batching (see
-        # _is_soft_delete_cascade_relation), not because CASCADE onto it
-        # should be treated as a nullable-fallback like Session.graph.
-        # It must still fall through to the CASCADE handler below so it
-        # gets soft-deleted (and its post_save receiver fires), instead of
-        # having its FK silently nulled out.
+        # A plain (non-SoftDeleteFields) row under a nullable CASCADE FK has
+        # no bin of its own, so it outlives the deleted parent with the FK
+        # cleared: a restore of the parent does not reconnect it. A row that
+        # must come back with its parent declares the FK in
+        # soft_delete_kept_link_fields and never reaches this method.
+        # A SoftDeleteFields child that reached this method did so only
+        # because a post_save listener excluded it from batching (see
+        # _is_soft_delete_cascade_relation). It must still fall through to
+        # the CASCADE handler below so it gets soft-deleted (and its
+        # post_save receiver fires), instead of having its FK nulled out.
 
         if field.null and not issubclass(field.model, SoftDeleteFields):
             self._set_null(

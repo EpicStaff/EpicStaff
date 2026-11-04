@@ -153,7 +153,7 @@
     overflow: hidden;
     @include mixins.editor-pane-corner;
 
-    &:hover app-copy-button {
+    &:is(:hover, :focus-within) app-copy-button {
         opacity: 1;
     }
 }

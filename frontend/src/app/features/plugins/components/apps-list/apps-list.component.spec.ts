@@ -43,6 +43,15 @@ describe('AppsListComponent', () => {
     let element: HTMLElement;
 
     beforeEach(() => {
+        // jsdom has no ResizeObserver; the organization's overflow tooltip needs one.
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        );
         TestBed.configureTestingModule({ providers: [provideRouter([{ path: '**', children: [] }])] });
         fixture = TestBed.createComponent(HostComponent);
         host = fixture.componentInstance;

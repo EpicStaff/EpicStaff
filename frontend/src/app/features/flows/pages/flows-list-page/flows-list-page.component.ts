@@ -2,16 +2,20 @@ import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
     computed,
     DestroyRef,
     effect,
+    ElementRef,
     inject,
+    Injector,
     OnDestroy,
     OnInit,
     signal,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -30,6 +34,7 @@ import {
     HasPermissionDirective,
     HideInlineSubtitleOnOverflowDirective,
     ResizableSidebarDirective,
+    TooltipWhenCollapsedDirective,
 } from '@shared/directives';
 import { ActionCode, LabelTreeNode, ResourceCode } from '@shared/models';
 import {
@@ -55,6 +60,7 @@ import {
     extractHttpErrorMessage,
     ImportFileData,
     JsonObject,
+    pluralize,
     showExportExclusionWarning,
 } from '@shared/utils';
 import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
@@ -114,6 +120,7 @@ const FILTER_PANEL_WIDTH_OPTIONS = { defaultWidth: 360, minWidth: 280, maxWidth:
         LabelSidebarComponent,
         HideInlineSubtitleOnOverflowDirective,
         CollapseOnOverflowDirective,
+        TooltipWhenCollapsedDirective,
         ImportFlowOptionsPopoverComponent,
         OverlayModule,
         HasPermissionDirective,
@@ -165,6 +172,9 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
     public selectMode = this.flowStorageService.selectMode;
     public selectedFlowIds = this.flowStorageService.selectedFlowIds;
+    protected readonly exportSelectedLabel = computed(
+        () => `Export ${pluralize(this.selectedFlowIds().length, 'flow', 'flows')}`
+    );
     public isDeleting = this.flowStorageService.isDeleting;
 
     public readonly filterState = this.flowStorageService.filter;
@@ -180,6 +190,10 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         FILTER_PANEL_WIDTH_KEY,
         FILTER_PANEL_WIDTH_OPTIONS
     );
+
+    private readonly filterToggle = viewChild.required<ElementRef<HTMLButtonElement>>('filterToggle');
+    private readonly filterSidebar = viewChild(FlowsFilterSidebarComponent);
+    private readonly injector = inject(Injector);
 
     private readonly sortDropdownOrders: readonly FlowSortOrder[] = FLOWS_SORT_MENU_ITEMS.map((i) => i.value);
 
@@ -361,7 +375,21 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
     // --- Filter sidebar ---
     public toggleFilterSidebar(): void {
-        this.showFilterSidebar.update((v) => !v);
+        const opening = !this.showFilterSidebar();
+        this.showFilterSidebar.set(opening);
+        // The panel comes after the page content, so without this Tab would walk the whole list to reach it.
+        if (opening) afterNextRender(() => this.filterSidebar()?.focus(), { injector: this.injector });
+    }
+
+    public closeFilterSidebar(): void {
+        this.showFilterSidebar.set(false);
+        this.filterToggle().nativeElement.focus();
+    }
+
+    /** Escape inside the filter panel closes only the panel; page-level Escape handlers never see it. */
+    public closeFilterSidebarOnEscape(event: Event): void {
+        event.stopPropagation();
+        this.closeFilterSidebar();
     }
 
     // --- Sort menu ---
@@ -407,6 +435,11 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
     public closeImportOptions(): void {
         this.importOptionsOpen.set(false);
+    }
+
+    public onImportFromOptions(): void {
+        this.closeImportOptions();
+        this.onImportClick();
     }
 
     public onImportClick(): void {
@@ -473,7 +506,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
                     width: 'calc(100vw - 2rem)',
                     height: 'calc(100vh - 2rem)',
-                    autoFocus: false,
+                    // On the dialog itself, not its first button: Enter imports from there.
+                    autoFocus: 'dialog',
                     data: {
                         importResult: buildPreviewImportResult(fileData),
                         reviewItems: inspection.review_items,

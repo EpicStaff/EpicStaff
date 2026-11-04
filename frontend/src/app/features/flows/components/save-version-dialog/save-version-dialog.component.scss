@@ -31,7 +31,7 @@
         justify-content: center;
         border-radius: 4px;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--white-alpha-10);
             color: var(--color-text-primary);
         }

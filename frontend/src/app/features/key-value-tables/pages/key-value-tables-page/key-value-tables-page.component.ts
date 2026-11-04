@@ -1,13 +1,13 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService, ConfirmationResult } from '@shared/components';
 import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SidebarWidthService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage, recycleBinNotice } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, movedToRecycleBinMessage, recycleBinNotice } from '@shared/utils';
 import { catchError, filter, finalize, Observable, of, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -30,6 +30,8 @@ import { KeyValueTablesStorageService } from '../../services/key-value-tables-st
     styleUrls: ['./key-value-tables-page.component.scss'],
 })
 export class KeyValueTablesPageComponent {
+    private readonly tableList = viewChild.required(KeyValueTableListComponent);
+
     readonly selectedTableId = signal<number | null>(null);
     // A delete is on its way (usage, confirmation, delete): a second request for any table is ignored until it ends,
     // so a held Enter or a reopened menu cannot open two dialogs or send two deletes. The Delete items stay enabled:
@@ -61,6 +63,10 @@ export class KeyValueTablesPageComponent {
                 if (selectedId === null || !tables.some((table) => table.id === selectedId)) {
                     this.selectedTableId.set(tables[0]?.id ?? null);
                 }
+                if (this.focusSelectedAfterReload) {
+                    this.focusSelectedAfterReload = false;
+                    this.tableList().focusTable(this.selectedTableId());
+                }
             },
             error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),
         });
@@ -78,6 +84,8 @@ export class KeyValueTablesPageComponent {
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
+    // A delete takes the row whose ⋮ had the focus: the next list moves it to the row selected in its place.
+    private focusSelectedAfterReload = false;
 
     onCreate(): void {
         this.dialog
@@ -120,8 +128,9 @@ export class KeyValueTablesPageComponent {
             )
             .subscribe({
                 next: () => {
-                    this.toastService.success(`Table "${table.name}" deleted`);
+                    this.toastService.success(movedToRecycleBinMessage(1, 'key-value table', 'key-value tables'));
                     this.selectedTableId.set(null);
+                    this.focusSelectedAfterReload = true;
                     this.keyValueTablesStorage.triggerRefresh();
                 },
                 error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),

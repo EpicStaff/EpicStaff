@@ -45,12 +45,20 @@ const unsavedScheduleNode: ScheduleTriggerNodeModel = {
     },
     position: { x: 0, y: 0 },
     ports: null,
-    color: '',
-    icon: '',
     size: { width: 200, height: 100 },
     input_map: {},
     output_variable_path: null,
 };
+
+/** jsdom has no ResizeObserver, which the overflow tooltips rendered here (as in app-select) need. */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
 
 describe('ScheduleTriggerNodePanelComponent with backendId null', () => {
     afterEach(() => vi.useRealTimers());
@@ -214,8 +222,13 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
         return fixture.nativeElement.querySelector(selector);
     }
 
+    /** The weekday buttons show only a letter; the full day name is their accessible name. */
+    function mondayButton(fixture: ReturnType<typeof open>): HTMLElement {
+        return element(fixture, 'button[aria-label="Monday"]')!;
+    }
+
     function clickMonday(fixture: ReturnType<typeof open>): void {
-        element(fixture, '[data-tooltip="Monday"]')!.click();
+        mondayButton(fixture).click();
         fixture.detectChanges();
     }
 
@@ -225,7 +238,8 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
         expect(element(fixture, 'app-custom-input input')).not.toBeNull();
         expect(element(fixture, 'app-radio-button')).not.toBeNull();
         clickMonday(fixture);
-        expect(element(fixture, '[data-tooltip="Monday"]')!.classList).toContain('round-btn--active');
+        expect(mondayButton(fixture).classList).toContain('round-btn--active');
+        expect(mondayButton(fixture).getAttribute('aria-pressed')).toBe('true');
         fixture.destroy();
     });
 
@@ -236,7 +250,8 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
         expect(element(fixture, 'app-custom-input .readonly-value')!.textContent).toContain('Schedule #1');
         expect(element(fixture, 'app-radio-button')).toBeNull();
         clickMonday(fixture);
-        expect(element(fixture, '[data-tooltip="Monday"]')!.classList).not.toContain('round-btn--active');
+        expect(mondayButton(fixture).classList).not.toContain('round-btn--active');
+        expect(mondayButton(fixture).getAttribute('aria-pressed')).toBe('false');
         // What the panel shell and the canvas take on close, Ctrl+S and a full save.
         expect(fixture.componentInstance.onSave()).toBeNull();
         expect(fixture.componentInstance.captureForValidation()).toBeNull();

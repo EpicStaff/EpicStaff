@@ -1,3 +1,5 @@
+import { NODE_COLORS, NodeType } from '@shared/models';
+
 import { BasePort } from '../../models/port.model';
 
 export const DEFAULT_SCHEDULE_TRIGGER_NODE_PORTS: BasePort[] = [
@@ -20,6 +22,6 @@ export const DEFAULT_SCHEDULE_TRIGGER_NODE_PORTS: BasePort[] = [
             'key-value-in',
         ],
         position: 'right',
-        color: '#FF5C00',
+        color: NODE_COLORS[NodeType.SCHEDULE_TRIGGER],
     },
 ];

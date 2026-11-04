@@ -189,7 +189,7 @@
                 padding: 0;
                 transition: all 0.15s cubic-bezier(0.25, 0.8, 0.25, 1);
 
-                &:hover {
+                &:is(:hover, :focus-visible) {
                     background-color: var(--graphite-600);
                 }
 
@@ -287,6 +287,8 @@
 
     .f-selection-area {
         background-color: var(--vp-selection-area-color);
+        border: 1px solid var(--vp-selection-area-border-color);
+        box-sizing: border-box;
     }
 
     .f-minimap {
@@ -516,11 +518,9 @@ app-nodes-search {
         background 0.15s,
         color 0.15s,
         border 0.15s;
-    outline: none;
     height: 36px;
 
-    &:hover,
-    &:focus {
+    &:is(:hover, :focus-visible) {
         background: var(--graphite-822);
         color: var(--white);
     }
@@ -579,12 +579,10 @@ app-nodes-search {
         background 0.15s,
         color 0.15s,
         border 0.15s;
-    outline: none;
     height: 36px;
     white-space: nowrap;
 }
-.show-inputs-btn:hover,
-.show-inputs-btn:focus {
+.show-inputs-btn:is(:hover, :focus-visible) {
     background: var(--graphite-822);
     color: var(--white);
 }
@@ -624,23 +622,21 @@ app-nodes-search {
     transition:
         background-color 0.2s ease,
         border-color 0.2s ease;
-    outline: none;
 
-    &:hover:not(:disabled) {
+    &:is(:hover, :focus-visible):not([aria-disabled='true']) {
         background-color: var(--gray-750);
     }
 
-    &:active:not(:disabled) {
+    &:active:not([aria-disabled='true']) {
         transform: scale(0.95);
         background-color: var(--accent-color);
         border-color: transparent;
     }
 
-    &:disabled {
+    &[aria-disabled='true'] {
         --arrange-icon-left: var(--graphite-750);
         --arrange-icon-right: var(--fog-alpha-16);
         cursor: not-allowed;
-        pointer-events: all;
     }
 }
 
@@ -648,7 +644,7 @@ app-nodes-search {
     color: var(--fog-alpha-70);
     font-size: 1.25rem;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--fog-200);
     }
 }
@@ -657,7 +653,7 @@ app-nodes-search {
     color: var(--fog-alpha-70);
     font-size: 1.125rem;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         color: var(--fog-200);
     }
 }

@@ -25,10 +25,10 @@ class AgentDefinitionViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
     rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
     recycle_bin_resource_key = RecycleBinSource.AGENT
     queryset = AgentDefinition.objects.select_related(
-        "org", "llm_config", "fcm_llm_config", "realtime_agent"
+        "org", "llm_config", "fallback_llm_config", "fcm_llm_config", "realtime_agent"
     ).prefetch_related("default_surfaces__surface", "owned_surfaces", *authorship_prefetches())
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["llm_config", "fcm_llm_config"]
+    filterset_fields = ["llm_config", "fallback_llm_config", "fcm_llm_config"]
 
     def get_serializer_class(self):
         if self.action in ["list", "retrieve"]:

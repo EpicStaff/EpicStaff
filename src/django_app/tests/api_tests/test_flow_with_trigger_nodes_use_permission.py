@@ -1,11 +1,13 @@
 """Copying, importing or restoring a flow that holds trigger nodes needs flows:USE.
 
 Copy, import (including replace_existing), partial import, create-graph from a
-version and version restore refuse a caller without USE with 403
-`flow_with_trigger_nodes_requires_use_permission` and write nothing, when the
-source (the flow, the file, the snapshot) holds a webhook, Telegram or schedule
-trigger node. Without trigger nodes, or with USE, they work as before. Another
-org's flow or version is still a 404.
+version, version restore and a recycle-bin restore refuse a caller without USE with
+403 `flow_with_trigger_nodes_requires_use_permission` and write nothing, when the
+source (the flow, the file, the snapshot, the binned flow) holds a webhook, Telegram
+or schedule trigger node, or the binned webhook trigger has live trigger nodes
+attached. A bulk recycle-bin restore reports such an item as failed and restores
+the rest. Without trigger nodes, or with USE, they work as before. Another org's
+flow, version or binned item is still a 404.
 """
 
 import pytest
@@ -14,6 +16,7 @@ from rest_framework import status
 
 from rbac.models.enums import Permission, ResourceType
 from tables.graph_versioning.services import GraphVersioningService
+from tables.exceptions import FlowWithTriggerNodesRequiresUsePermissionError
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
@@ -30,6 +33,7 @@ from tables.models.graph_models import (
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
+from tables.services.soft_delete import DeleteService
 from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -191,6 +195,18 @@ def _restore(client, version, query=""):
     )
 
 
+FLOWS_URL = "/api/graphs/"
+WEBHOOK_TRIGGERS_URL = "/api/webhook-triggers/"
+
+
+def _bin_restore(client, base_url, binned):
+    return client.post(f"{base_url}{binned.pk}/restore/", format="json")
+
+
+def _bin_bulk_restore(client, base_url, body):
+    return client.post(f"{base_url}recycle-bin/restore/", body, format="json")
+
+
 # ── every operation that recreates trigger nodes, for every kind of caller ───
 #
 # Each `_prepare_*` builds, in `org`, a source that holds trigger nodes and
@@ -231,16 +247,32 @@ def _prepare_restore(org):
     return lambda client: _restore(client, version)
 
 
+def _prepare_bin_restore_flow(org):
+    flow = _flow_with_triggers(org)
+    flow.delete()
+    return lambda client: _bin_restore(client, FLOWS_URL, flow)
+
+
+def _prepare_bin_restore_webhook_trigger(org):
+    trigger = _add_webhook_trigger_node(_plain_flow(org)).webhook_trigger
+    trigger.delete()
+    return lambda client: _bin_restore(client, WEBHOOK_TRIGGERS_URL, trigger)
+
+
 OPERATIONS = [
     pytest.param(_prepare_copy, status.HTTP_201_CREATED, id="copy"),
     pytest.param(_prepare_import, status.HTTP_200_OK, id="import"),
     pytest.param(_prepare_partial_import, status.HTTP_200_OK, id="partial-import"),
     pytest.param(_prepare_create_graph, status.HTTP_201_CREATED, id="create-graph"),
     pytest.param(_prepare_restore, status.HTTP_200_OK, id="restore"),
+    pytest.param(_prepare_bin_restore_flow, status.HTTP_200_OK, id="bin-restore-flow"),
+    pytest.param(
+        _prepare_bin_restore_webhook_trigger, status.HTTP_200_OK, id="bin-restore-webhook-trigger"
+    ),
 ]
 # Operations on an existing flow or version, which another org's caller must not see.
 OPERATIONS_ON_A_STORED_SOURCE = [
-    param for param in OPERATIONS if param.id in {"copy", "partial-import", "create-graph", "restore"}
+    param for param in OPERATIONS if param.id != "import"
 ]
 AUTHENTICATION = [
     pytest.param(False, id="session"),
@@ -535,3 +567,172 @@ class TestFlowInAnotherEntitysImportFile:
 
         assert response.status_code == status.HTTP_200_OK, response.content
         assert _row_counts()["graphs"] == before["graphs"] + 1
+
+
+# ── /api/graphs/ and /api/webhook-triggers/ recycle-bin restores ─────────────
+
+
+def _is_binned(row):
+    return not type(row).all_objects.get(pk=row.pk).active
+
+
+def _binned_trigger_count(graph):
+    return sum(
+        model.all_objects.filter(graph=graph, active=False).count() for model in TRIGGER_MODELS
+    )
+
+
+def _failed_ids(response):
+    return [failure["id"] for failure in response.data["failed"]]
+
+
+def _restored_ids(response):
+    return [restored["id"] for restored in response.data["restored"]]
+
+
+@pytest.mark.django_db
+class TestRecycleBinRestoreFlow:
+    @pytest.mark.parametrize("add_trigger_node", ADD_TRIGGER_NODE)
+    def test_a_single_trigger_of_any_type_is_enough(self, editor_client, acme, add_trigger_node):
+        flow = _plain_flow(acme)
+        add_trigger_node(flow)
+        flow.delete()
+
+        response = _bin_restore(editor_client, FLOWS_URL, flow)
+
+        _assert_refused(response)
+        assert _is_binned(flow)
+        assert _binned_trigger_count(flow) == 1
+
+    def test_flow_without_triggers_restores_without_use(self, editor_client, acme):
+        flow = _plain_flow(acme)
+        flow.delete()
+
+        response = _bin_restore(editor_client, FLOWS_URL, flow)
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert not _is_binned(flow)
+
+    def test_a_trigger_binned_before_the_flow_does_not_count(self, editor_client, acme):
+        """It stays in the bin when the flow comes back, so nothing starts runs."""
+        flow = _plain_flow(acme)
+        DeleteService.delete(_add_schedule_trigger_node(flow))
+        flow.delete()
+
+        response = _bin_restore(editor_client, FLOWS_URL, flow)
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert _trigger_count(flow) == 0
+
+    def test_with_use_restores_the_triggers(self, runner_client, acme):
+        flow = _flow_with_triggers(acme)
+        flow.delete()
+
+        response = _bin_restore(runner_client, FLOWS_URL, flow)
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert _trigger_count(flow) == 3
+
+
+@pytest.mark.django_db
+class TestRecycleBinRestoreWebhookTrigger:
+    def test_trigger_without_attached_nodes_restores_without_use(self, editor_client, acme):
+        trigger = WebhookTrigger.objects.create(path="unused-path", org=acme)
+        trigger.delete()
+
+        response = _bin_restore(editor_client, WEBHOOK_TRIGGERS_URL, trigger)
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert not _is_binned(trigger)
+
+    def test_nodes_of_a_binned_flow_do_not_count(self, editor_client, acme):
+        """They are not live, so restoring the trigger brings nothing live."""
+        flow = _plain_flow(acme)
+        trigger = _add_webhook_trigger_node(flow).webhook_trigger
+        flow.delete()
+        trigger.delete()
+
+        response = _bin_restore(editor_client, WEBHOOK_TRIGGERS_URL, trigger)
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+
+
+@pytest.mark.django_db
+class TestRecycleBinBulkRestore:
+    @pytest.mark.parametrize(
+        "select_all", [pytest.param(False, id="ids"), pytest.param(True, id="all")]
+    )
+    def test_without_use_a_flow_with_triggers_fails_and_the_rest_restores(
+        self, editor_client, acme, select_all
+    ):
+        with_triggers = _flow_with_triggers(acme)
+        plain = _plain_flow(acme, name="Plain")
+        with_triggers.delete()
+        plain.delete()
+        body = {"all": True} if select_all else {"ids": [with_triggers.pk, plain.pk]}
+
+        response = _bin_bulk_restore(editor_client, FLOWS_URL, body)
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert _restored_ids(response) == [plain.pk]
+        assert response.data["failed"] == [
+            {
+                "id": with_triggers.pk,
+                "name": with_triggers.name,
+                "message": FlowWithTriggerNodesRequiresUsePermissionError.default_detail,
+            }
+        ]
+        assert _is_binned(with_triggers)
+        assert _binned_trigger_count(with_triggers) == 3
+        assert not _is_binned(plain)
+
+    def test_with_use_restores_the_flow_with_triggers(self, runner_client, acme):
+        flow = _flow_with_triggers(acme)
+        flow.delete()
+
+        response = _bin_bulk_restore(runner_client, FLOWS_URL, {"ids": [flow.pk]})
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert _restored_ids(response) == [flow.pk]
+        assert _trigger_count(flow) == 3
+
+    def test_without_use_a_webhook_trigger_with_attached_nodes_fails(self, editor_client, acme):
+        attached = _add_webhook_trigger_node(_plain_flow(acme)).webhook_trigger
+        unused = WebhookTrigger.objects.create(path="unused-path", org=acme)
+        attached.delete()
+        unused.delete()
+
+        response = _bin_bulk_restore(
+            editor_client, WEBHOOK_TRIGGERS_URL, {"ids": [attached.pk, unused.pk]}
+        )
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert _failed_ids(response) == [attached.pk]
+        assert _restored_ids(response) == [unused.pk]
+        assert _is_binned(attached)
+
+    def test_with_use_restores_a_webhook_trigger_with_attached_nodes(self, runner_client, acme):
+        trigger = _add_webhook_trigger_node(_plain_flow(acme)).webhook_trigger
+        trigger.delete()
+
+        response = _bin_bulk_restore(runner_client, WEBHOOK_TRIGGERS_URL, {"ids": [trigger.pk]})
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert _restored_ids(response) == [trigger.pk]
+
+    @pytest.mark.parametrize(
+        "base_url",
+        [
+            pytest.param(FLOWS_URL, id="flow"),
+            pytest.param(WEBHOOK_TRIGGERS_URL, id="webhook-trigger"),
+        ],
+    )
+    def test_another_orgs_item_is_404(self, editor_client, beta, base_url):
+        flow = _plain_flow(beta)
+        binned = flow if base_url == FLOWS_URL else _add_webhook_trigger_node(flow).webhook_trigger
+        binned.delete()
+
+        response = _bin_bulk_restore(editor_client, base_url, {"ids": [binned.pk]})
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
+        assert _is_binned(binned)

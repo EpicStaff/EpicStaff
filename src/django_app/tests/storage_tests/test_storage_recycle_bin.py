@@ -241,6 +241,7 @@ class TestStorageBinApi:
             "days_left",
             "details",
             "contents",
+            "hidden_contents",
             "contents_total",
         }
         folder_details = {detail["label"]: detail["value"] for detail in entries[0]["details"]}
@@ -457,6 +458,7 @@ class TestStorageBinApi:
         assert response.status_code == 200, response.content
         assert response.json() == {
             "contents": [{"name": f"f{index}.txt", "kind": "file"} for index in range(3)],
+            "hidden_contents": [],
             "contents_total": 3,
         }
         assert admin_client.get(f"{BIN}{child.pk}/contents/").status_code == 404

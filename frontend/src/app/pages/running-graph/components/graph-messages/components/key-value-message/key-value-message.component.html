@@ -1,12 +1,14 @@
 @if (data(); as data) {
     <div
-        class="key-value-container"
+        class="session-message key-value-container"
         [style.border-left-color]="accent()"
     >
         <button
             type="button"
-            class="key-value-header"
+            class="message-toggle key-value-header"
             [attr.aria-expanded]="isExpanded()"
+            appTooltipOnOverflow=".title"
+            [matTooltip]="data.table_name"
             (click)="toggle()"
         >
             <span class="play-arrow">
@@ -22,9 +24,7 @@
                 />
             </span>
             <span class="header-text">
-                <span
-                    class="title"
-                    [title]="data.table_name"
+                <span class="title"
                     >{{ titlePrefix() }} <span class="table-name">{{ data.table_name }}</span></span
                 >
                 @for (chip of chips(); track chip.label) {
@@ -40,6 +40,7 @@
         <div
             class="collapsible-content grid-collapsible"
             [class.expanded]="isExpanded()"
+            [inert]="!isExpanded()"
         >
             <div class="key-value-content">
                 @if (rows().length) {

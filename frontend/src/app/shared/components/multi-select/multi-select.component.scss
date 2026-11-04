@@ -118,7 +118,7 @@
         cursor: pointer;
         transition: background-color 0.2s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--accent-color-hover);
         }
     }
@@ -153,7 +153,8 @@
         color: var(--color-ks-text);
         transition: border-color 0.2s ease;
 
-        &:hover:not(&--readonly) {
+        // Its checkbox and action button take the keyboard focus; the row shows it as it shows the hover.
+        &:is(:hover, :focus-within):not(&--readonly) {
             background: var(--color-ks-hover-row);
         }
 
@@ -238,7 +239,7 @@
         cursor: pointer;
         transition: background-color 0.2s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: var(--color-ghost-btn-hover);
         }
     }
@@ -274,4 +275,15 @@
             font-weight: 500;
         }
     }
+}
+
+// The trigger is a plain button with no look of its own beyond its label and icon. :where() keeps this reset
+// below any caller's restyling of the trigger.
+:where(.multi-select__btn) {
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
 }

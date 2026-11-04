@@ -33,7 +33,8 @@
             >
                 @for (entityType of entityTypes(); track entityType) {
                     @if (getEntityTypeCount(entityType) > 0) {
-                        <div
+                        <button
+                            type="button"
                             class="summary-item"
                             (click)="tabClick.emit(entityType)"
                         >
@@ -41,13 +42,13 @@
                                 [entityType]="entityType"
                                 [color]="getIconColorForEntityType(entityType)"
                             ></app-entity-icon>
-                            <p class="summary-label">
+                            <span class="summary-label">
                                 <span class="summary-count">
                                     {{ getEntityTypeCount(entityType) }}
                                 </span>
                                 {{ getEntityTypeLabel(entityType) }}
-                            </p>
-                        </div>
+                            </span>
+                        </button>
                     }
                 }
             </div>

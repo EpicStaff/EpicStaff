@@ -30,8 +30,7 @@
         cursor: pointer;
 
         &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: -1px;
+            outline-offset: -2px;
         }
     }
 
@@ -84,7 +83,7 @@
         color: var(--color-text-secondary);
         cursor: pointer;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             color: var(--color-text-primary);
         }
     }

@@ -96,6 +96,8 @@ export class FlowBaseNodeComponent implements OnInit {
     @Output() portMouseleave = new EventEmitter<void>();
 
     public NodeType = NodeType;
+    protected readonly nodeColors = NODE_COLORS;
+    protected readonly nodeIcons = NODE_ICONS;
     public readonly eResizeHandleType = EFResizeHandleType;
 
     public portConnections = computed((): Record<string, CustomPortId[]> => {
@@ -139,9 +141,7 @@ export class FlowBaseNodeComponent implements OnInit {
             event.preventDefault();
             event.stopPropagation();
         }
-        if (this.isBlockedSubgraph) {
-            return;
-        }
+        // A subflow node whose flow was deleted opens too: its panel is where another flow is chosen.
         this.editClicked.emit(this.node);
     }
 

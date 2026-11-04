@@ -1,0 +1,85 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.config-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    align-items: start;
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    &__label {
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
+    }
+}
+
+.question {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--color-card-background);
+    border: 1px solid var(--fog-alpha-8);
+    border-radius: 8px;
+
+    &__header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 8.5rem auto;
+        column-gap: 0.5rem;
+
+        // Labels fill row 1; the controls start row 2 once their column is behind the cursor.
+        > app-tooltip:nth-child(1),
+        > .question__name {
+            grid-column: 1;
+        }
+
+        > app-tooltip:nth-child(2),
+        > .question__type {
+            grid-column: 2;
+        }
+    }
+
+    &__type {
+        min-width: 0;
+    }
+
+    // The input's height follows its line-height, while app-select's trigger is a fixed 40px.
+    &__name ::ng-deep .text-input {
+        height: 40px;
+    }
+
+    app-delete-button {
+        grid-column: 3;
+        align-self: start;
+        margin-top: 0.5rem;
+    }
+
+    &__meanings {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+
+    &__note {
+        margin: 0;
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+    }
+}
+
+.add-question {
+    align-self: flex-start;
+}

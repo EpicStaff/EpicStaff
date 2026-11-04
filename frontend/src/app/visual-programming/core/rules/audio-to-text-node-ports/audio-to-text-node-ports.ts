@@ -1,3 +1,5 @@
+import { NODE_COLORS, NodeType } from '@shared/models';
+
 import { BasePort } from '../../models/port.model';
 
 export const DEFAULT_AUDIO_TO_TEXT_NODE_PORTS: BasePort[] = [
@@ -23,7 +25,7 @@ export const DEFAULT_AUDIO_TO_TEXT_NODE_PORTS: BasePort[] = [
             'key-value-out',
         ],
         position: 'left',
-        color: '#ff7be9ff',
+        color: NODE_COLORS[NodeType.AUDIO_TO_TEXT],
     },
 
     {
@@ -45,6 +47,6 @@ export const DEFAULT_AUDIO_TO_TEXT_NODE_PORTS: BasePort[] = [
             'key-value-in',
         ],
         position: 'right',
-        color: '#ff7be9ff',
+        color: NODE_COLORS[NodeType.AUDIO_TO_TEXT],
     },
 ];

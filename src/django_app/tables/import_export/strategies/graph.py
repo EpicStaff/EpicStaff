@@ -78,6 +78,12 @@ class GraphStrategy(EntityImportExportStrategy):
             )
         )
         deps[EntityType.LLM_CONFIG].discard(None)
+        deps[EntityType.SYSTEM_ONE_CONFIG] = set(
+            ClassificationDecisionTablePrompt.objects.filter(cdt_node__graph=instance).values_list(
+                "system_one_config_id", flat=True
+            )
+        )
+        deps[EntityType.SYSTEM_ONE_CONFIG].discard(None)
 
         deps[EntityType.AGENT_DEFINITION] = set(
             instance.agent_node_list.values_list("agent_definition_id", flat=True)
@@ -116,8 +122,9 @@ class GraphStrategy(EntityImportExportStrategy):
             )
         )
 
-        # Every environment the flow's own code runs in. Collected here rather than
-        # from the node strategies: a full export walks this method, not theirs.
+        # Every environment the flow's own code runs in, collected in one pass over
+        # the graph. A full export walks this method and never the node strategies,
+        # which collect the same environments for a partial export of single nodes.
         deps[EntityType.VENV] = (
             set(instance.python_node_list.values_list("python_code__venv_id", flat=True))
             | set(instance.webhook_trigger_node_list.values_list("python_code__venv_id", flat=True))

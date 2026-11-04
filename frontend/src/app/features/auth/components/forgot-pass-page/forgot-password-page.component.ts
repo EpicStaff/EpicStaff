@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -29,6 +29,7 @@ const SECONDS_PER_MINUTE = 60;
     templateUrl: './forgot-password-page.component.html',
     styleUrls: ['./forgot-password-page.component.scss'],
     imports: [
+        RouterLink,
         ReactiveFormsModule,
         AppSvgIconComponent,
         ButtonComponent,
@@ -39,7 +40,6 @@ const SECONDS_PER_MINUTE = 60;
 })
 export class ForgotPasswordPageComponent {
     private authService = inject(AuthService);
-    private router = inject(Router);
     private toast = inject(ToastService);
     private destroyRef = inject(DestroyRef);
 
@@ -54,7 +54,8 @@ export class ForgotPasswordPageComponent {
 
     onRequestReset(): void {
         this.emailControl.markAsTouched();
-        if (this.emailControl.invalid) return;
+        // Enter submits the form while the button waits too, so the in-flight guard lives here.
+        if (this.emailControl.invalid || this.loading()) return;
         const email = this.emailControl.getRawValue().toString();
 
         this.loading.set(true);
@@ -78,10 +79,6 @@ export class ForgotPasswordPageComponent {
                 },
                 error: (err: HttpErrorResponse) => this.toast.error(this.describeRequestError(err)),
             });
-    }
-
-    navToLogin(): void {
-        void this.router.navigate(['/login']);
     }
 
     private describeRequestError(err: HttpErrorResponse): string {

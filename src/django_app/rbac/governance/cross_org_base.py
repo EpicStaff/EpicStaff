@@ -1,12 +1,7 @@
-from collections.abc import Iterable
-
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
 
-from rbac.access.cross_org_resolver import (
-    CrossOrgPermissionResolver,
-    OrgScope,
-)
+from rbac.access.cross_org_resolver import CrossOrgPermissionResolver
 from rbac.access.resolver import PermissionResolver
 from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models.enums import Permission
@@ -26,12 +21,10 @@ class CrossOrgResourceService:
       explicit `?org_ids=` selection with a 403 fail-loud on a forbidden id.
     - `resolve_for_write` — resolve the caller's permissions in a row's org,
       turning an invisible row into the resource's own 404 (no existence leak).
-    - `authorize_any_org` — like `resolve_for_write`, for a row scoped
-      through a set of orgs rather than a single org column.
     - `assert_visible` — the visibility check (404 on failure).
     - `assert_can` — the verb check (403 on failure).
     - `delegated_scope_q` — optional extra `Q` filter `apply_org_scope`
-      applies for non-superadmins (e.g. an owner-membership join).
+      applies for non-superadmins.
 
     Subclasses set `rbac_resource_type` (a `ResourceType`) and
     `not_found_exception` (the resource's 404 exception class).
@@ -91,35 +84,6 @@ class CrossOrgResourceService:
         if effective.can(resource, Permission.READ) or effective.can(resource, action):
             return
         raise self.not_found_exception()
-
-    def authorize_any_org(
-        self,
-        actor,
-        org_ids: Iterable[int],
-        action: Permission,
-        scopes: list[OrgScope] | None = None,
-    ) -> None:
-        """Authorize a row scoped through a set of orgs rather than one column.
-
-        Visibility decides the 404, the permission bit decides the 403 — the
-        same split as `resolve_for_write`, which is this method with one org,
-        applied existentially: the row is visible when at least one reachable
-        org grants READ or `action`, and authorized when at least one grants
-        `action`.
-        """
-        if getattr(actor, "is_superadmin", False):
-            return
-        if scopes is None:
-            scopes = self._org_access.resolve_all(user=actor)
-        requested: set[int] = set(org_ids)
-        reachable: list[OrgScope] = [s for s in scopes if s.org.id in requested]
-        if not reachable:
-            raise self.not_found_exception()
-        resource: str = self.rbac_resource_type.value
-        if not any(scope.effective.can(resource, action) for scope in reachable):
-            if not any(scope.effective.can(resource, Permission.READ) for scope in reachable):
-                raise self.not_found_exception()
-            raise PermissionDenied("You do not have permission to perform this action.")
 
     def assert_can(self, effective, action) -> None:
         if not effective.can(self.rbac_resource_type.value, action):

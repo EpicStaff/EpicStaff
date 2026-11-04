@@ -6,22 +6,32 @@
         <span class="dialog__header-title"> Editing Fields </span>
 
         <div class="dialog__actions">
-            <app-svg-icon
-                icon="close"
-                size="1.5rem"
+            <button
+                type="button"
                 class="dialog__action"
-                (click)="onCancel()"
+                aria-label="Close"
                 matTooltip="Close"
                 matTooltipPosition="above"
-            />
-            <app-svg-icon
-                icon="check"
-                size="1.5rem"
+                (click)="onCancel()"
+            >
+                <app-svg-icon
+                    icon="close"
+                    size="1.5rem"
+                />
+            </button>
+            <button
+                type="button"
                 class="dialog__action dialog__action--save"
-                (click)="onSave()"
+                aria-label="Confirm"
                 matTooltip="Confirm"
                 matTooltipPosition="above"
-            />
+                (click)="onSave()"
+            >
+                <app-svg-icon
+                    icon="check"
+                    size="1.5rem"
+                />
+            </button>
         </div>
     </div>
 

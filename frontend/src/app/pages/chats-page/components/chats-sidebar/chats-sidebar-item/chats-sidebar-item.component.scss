@@ -9,22 +9,39 @@
     position: relative;
     min-width: 0;
 
-    &:hover {
+    &:is(:hover, :has(.agent-role:focus-visible)) {
         background-color: var(--graphite-650);
+    }
+
+    // The name button opens the chat, so the row shows its keyboard focus.
+    &:has(.agent-role:focus-visible) {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
     }
 
     &.active {
         background-color: color-mix(in srgb, var(--accent-color) 18%, transparent);
     }
 
+    // The button opening the chat, drawn as the plain name it was; the row shows its focus.
     .agent-role {
         flex: 1;
         min-width: 0;
+        padding: 0;
+        border: none;
+        background: none;
+        font-family: inherit;
+        text-align: left;
+        cursor: inherit;
         font-size: 0.875rem;
         color: var(--color-text-primary);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     .settings-btn {
@@ -45,13 +62,13 @@
             background-color 0.15s ease,
             color 0.15s ease;
 
-        &:hover {
+        &:is(:hover, :focus-visible) {
             background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
             color: var(--color-text-primary);
         }
     }
 
-    &:hover .settings-btn,
+    &:is(:hover, :focus-within) .settings-btn,
     &.active .settings-btn {
         opacity: 1;
     }

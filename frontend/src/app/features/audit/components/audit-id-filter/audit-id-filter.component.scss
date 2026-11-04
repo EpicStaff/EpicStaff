@@ -18,9 +18,10 @@ input[type='text'] {
         color: var(--color-input-text-placeholder);
     }
 
-    &:focus-visible {
-        outline: 2px solid var(--accent-color);
-        outline-offset: 1px;
+    // A text field shows its focus with its border, not with the ring.
+    &:focus {
+        outline: none;
+        border-color: var(--accent-color);
     }
 }
 

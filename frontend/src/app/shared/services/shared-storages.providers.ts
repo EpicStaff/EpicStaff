@@ -7,6 +7,7 @@ import { ExecutionTimeoutLimitsStorageService } from './execution-timeout-limits
 import { LlmConfigStorageService } from './llms/llm-config-storage.service';
 import { LlmModelsStorageService } from './llms/llm-models-storage.service';
 import { LlmProvidersStorageService } from './llms/llm-providers-storage.service';
+import { SystemOneConfigStorageService } from './llms/system-one-config-storage.service';
 import { RealtimeConfigStorageService } from './realtime-llms/realtime-config-storage.service';
 import { RealtimeModelsStorageService } from './realtime-llms/realtime-models-storage.service';
 import { SecretsStorageService } from './secrets/secrets-storage.service';
@@ -24,6 +25,7 @@ export function provideSharedStorages(): Provider[] {
         { provide: APP_STORAGE, useExisting: RealtimeConfigStorageService, multi: true },
         { provide: APP_STORAGE, useExisting: RealtimeModelsStorageService, multi: true },
         { provide: APP_STORAGE, useExisting: SecretsStorageService, multi: true },
+        { provide: APP_STORAGE, useExisting: SystemOneConfigStorageService, multi: true },
         { provide: APP_STORAGE, useExisting: TranscriptionConfigStorageService, multi: true },
         { provide: APP_STORAGE, useExisting: TranscriptionModelsStorageService, multi: true },
     ];

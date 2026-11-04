@@ -44,7 +44,7 @@
     color: var(--accent-color);
     cursor: pointer;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 }
@@ -185,7 +185,7 @@
     cursor: pointer;
     flex-shrink: 0;
 
-    &:hover {
+    &:is(:hover, :focus-visible) {
         background-color: var(--color-ghost-btn-hover);
     }
 }

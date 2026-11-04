@@ -98,6 +98,18 @@ FEATURES = (
         ("auditor", "opensearch"),
         ("AUDITOR_LOG_LEVEL",),
     ),
+    Feature(
+        "Plugins", "PLUGINS_ENABLED", "plugins", ("es_plugins", "plugins_db", "plugins_egress"), ()
+    ),
+)
+# Default none in every target: django_app, nginx, es_plugins and plugins_db refuse none while
+# plugins are on, so the wizard generates them even for local files.
+PLUGIN_SECRETS = (
+    "PLUGINS_GATEWAY_SECRET",
+    "PLUGINS_NODE_KEY",
+    "PLUGINS_DB_SUPERUSER_PASSWORD",
+    "PLUGINS_DB_ADMIN_PASSWORD",
+    "PLUGINS_DB_BACKUP_PASSWORD",
 )
 GENERATED_SECRETS = (
     "DB_PASSWORD",
@@ -114,6 +126,8 @@ GENERATED_SECRETS = (
     "AUDIT_JWT_SECRET",
     "OPENSEARCH_PASSWORD",
     "AVATAR_URL_SIGNING_SECRET",
+    "CHAT_INTERNAL_API_KEY",
+    *PLUGIN_SECRETS,
 )
 PRODUCTION_USERNAMES = {
     "DB_USER": "epicstaff",
@@ -174,16 +188,20 @@ SETUP_ACTIONS = {
     "quit": "Quit",
 }
 SERVER_SIZES = {
-    "small": "Small: 1-3 CPU cores (the defaults)",
-    "medium": "Medium: 4-7 CPU cores",
-    "large": "Large: 8 or more CPU cores",
+    "small": "Small: 1-3 CPUs",
+    "medium": "Medium: 4-7 CPUs",
+    "large": "Large: 8 or more CPUs (Django as in the defaults)",
 }
-# Postgres has ~97 usable connections and the other services take ~40; django_app holds up to
-# DJANGO_SGI_WORKERS x DJANGO_DB_POOL_MAX_SIZE + 4. chatdb is a separate Postgres (6 workers max).
+# crewdb has ~197 usable connections (max_connections=200 in docker-compose.yaml, less 3 for
+# superusers) and the other services take ~50; django_app holds up to DJANGO_SGI_WORKERS x
+# DJANGO_DB_POOL_MAX_SIZE + 8, so at pool 15 it fits 9 workers (test_envtool.py checks every size).
+# chatdb is a separate Postgres with the default max_connections of 100 (6 workers max).
+# Under a burst each session costs Django ~0.11 CPU-seconds and the sandbox ~0.13, so Django
+# needs about 40% of the cores: 3 servers on 4-7 cores leave the sandbox, Postgres and crew room.
 SERVER_SIZE_VALUES = {
     "small": {"DJANGO_SGI_WORKERS": "1", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "1"},
-    "medium": {"DJANGO_SGI_WORKERS": "2", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "2"},
-    "large": {"DJANGO_SGI_WORKERS": "3", "DJANGO_DB_POOL_MAX_SIZE": "12", "CHAT_WORKERS": "4"},
+    "medium": {"DJANGO_SGI_WORKERS": "3", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "2"},
+    "large": {"DJANGO_SGI_WORKERS": "6", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "4"},
 }
 # Sandbox limit -> (description, how long crew waits for the result). Crew must wait longer than
 # the sandbox may run, with room for library installation.
@@ -191,6 +209,16 @@ CODE_TIME_LIMITS = {
     "5m": ("5 minutes", "15m"),
     "30m": ("30 minutes (the default)", "40m"),
     "2h": ("2 hours (flows also need a time to live above 2 hours)", "130m"),
+}
+# Production has no retention default on purpose: the operator chooses one, org admins may
+# override it per organization up to the RETENTION_*_MAX_DAYS caps.
+RETENTION_DAYS = ("RETENTION_SESSIONS_DAYS", "RETENTION_CONVERSATIONS_DAYS", "RETENTION_AUDIT_DAYS")
+RETENTION_CHOICES = {
+    "0": "Keep forever",
+    "30": "30 days",
+    "90": "90 days",
+    "180": "180 days",
+    "365": "365 days",
 }
 # Only the levels every service accepts: Django has no TRACE or SUCCESS, uvicorn (auditor,
 # webhook) no BENCH. TRACE, BENCH and SUCCESS stay per-service settings in the file.
@@ -207,6 +235,15 @@ LOG_CHOICES = {
 DEBUG_REMINDER = "Verbose logging is on: set the *_LOG_LEVEL values back to INFO when you are done."
 CLEAR_SCREEN = "\033[2J\033[H"
 BOLD, DIM, RED, GREEN, YELLOW, CYAN = "1", "2", "31", "32", "33", "36"
+# The rules django_app's plugin start-up checks apply: a lower-case DNS label, and a last label
+# browsers read as a number makes the host an IP address.
+DNS_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
+NUMERIC_LABEL = re.compile(r"[0-9]+|0[xX][0-9A-Fa-f]*")
+# The local host the plugin development guide uses: bare localhost is refused with plugins on.
+LOCAL_PLUGINS_HOST = {
+    "NGINX_SERVER_NAME": "epicstaff.localhost",
+    "DJANGO_FRONTEND_BASE_URL": "http://epicstaff.localhost",
+}
 FIXED_PRODUCTION_VALUES = {
     "DJANGO_AUTH_URL": "http://django:8000",
 }
@@ -305,6 +342,37 @@ def validate_image_tag(tag: str) -> str:
     return tag
 
 
+def plugins_host_problem(public_url: str) -> str | None:
+    """Why django_app would refuse plugins with EpicStaff served at `public_url`, if it would."""
+    parts = urlsplit(public_url)
+    host = parts.hostname or ""
+    if not host or NUMERIC_LABEL.fullmatch(host.rsplit(".", 1)[-1]):
+        return "plugins need EpicStaff served under a host name, not an IP address"
+    if parts.scheme != "https" and not host.endswith(".localhost"):
+        return "plugins need HTTPS; plain HTTP works only for a .localhost host"
+    return None
+
+
+def validate_plugins_domain(domain: str, public_url: str) -> str:
+    domain = domain.strip().lower().rstrip(".")
+    labels = domain.split(".")
+    if len(labels) < 2 or len(domain) > 253 or not all(map(DNS_LABEL.fullmatch, labels)):
+        raise ValueError("Enter a domain name such as plugins.example.com.")
+    if domain.endswith(".invalid"):
+        raise ValueError(f"{domain} is a placeholder: enter the real domain.")
+    parts = urlsplit(public_url)
+    if parts.scheme != "https" and not domain.endswith(".localhost"):
+        raise ValueError("Over plain HTTP the plugin domain must end in .localhost.")
+    host = parts.hostname or ""
+    if host == domain or host.endswith(f".{domain}"):
+        # A plugin identifier could then name EpicStaff's own host.
+        raise ValueError(
+            f"{host} is under {domain}: use a domain beside it, such as plugins.example.com "
+            "for epicstaff.example.com."
+        )
+    return domain
+
+
 def production_values(public_url: str, serving_mode: str, image_tag: str) -> dict[str, str]:
     """Every production value that follows from the wizard's answers (secrets and features aside)."""
     public_url = normalize_public_url(public_url)
@@ -332,7 +400,7 @@ def production_required(schema: dict) -> list[str]:
 
 def production_coverage_gaps(schema: dict) -> list[str]:
     """Production-required variables the wizard neither generates, asks for nor fills."""
-    covered = set(GENERATED_SECRETS) | {feature.flag for feature in FEATURES}
+    covered = set(GENERATED_SECRETS) | set(RETENTION_DAYS) | {feature.flag for feature in FEATURES}
     covered |= production_values("https://host", "nginx-tls", "v1").keys()
     return [name for name in production_required(schema) if name not in covered]
 
@@ -541,17 +609,22 @@ class Screen:
         question: str,
         choices: dict[str, str] | None = None,
         validate: Callable[[str], str] | None = None,
+        default: str | None = None,
     ) -> str:
         """Prompt until the answer is usable. `choices` maps each answer to its description and
-        accepts the answer itself or its number."""
+        accepts the answer itself or its number; an empty answer takes `default`, if any."""
         error = None
         while True:
             self.draw(error)
-            print(style(question, BOLD))
+            if default is None:
+                print(style(question, BOLD))
+            else:
+                shown = list(choices).index(default) + 1
+                print(f"{style(question, BOLD)} {style(f'Enter for {shown}', DIM)}")
             if choices:
                 for number, description in enumerate(choices.values(), start=1):
                     print(f"  {style(str(number), CYAN)}  {description}")
-            answer = input(style("> ", CYAN)).strip()
+            answer = input(style("> ", CYAN)).strip() or (default or "")
             if not answer:
                 error = None
                 continue
@@ -594,6 +667,32 @@ def ask_features(screen: Screen, current: dict[str, bool]) -> dict[str, bool]:
     }
 
 
+def ask_plugins_domain(screen: Screen, public_url: str) -> str:
+    return screen.ask(
+        "Plugin domain",
+        "Parent domain of the plugin hosts, served with a wildcard DNS record *.<domain>, "
+        "e.g. plugins.example.com for epicstaff.example.com",
+        validate=lambda domain: validate_plugins_domain(domain, public_url),
+    )
+
+
+def plugins_allowed(screen: Screen, public_url: str) -> bool:
+    problem = plugins_host_problem(public_url)
+    if problem:
+        screen.notes.append(f"Plugins stay off: {problem}.")
+    return problem is None
+
+
+def missing_plugin_secrets(current: dict[str, str]) -> dict[str, str]:
+    """Generated values for the plugin secrets `current` leaves empty or none; set ones stay,
+    as plugins_db was initialised with them."""
+    return {
+        name: generate_secret(name)
+        for name in PLUGIN_SECRETS
+        if current.get(name, "").strip().lower() in ("", Env.NONE_VALUE)
+    }
+
+
 def ask_production_values(
     screen: Screen, schema: dict
 ) -> tuple[dict[str, str], dict[str, bool], str]:
@@ -611,15 +710,65 @@ def ask_production_values(
         "Served", "How do users reach it?", choices=SERVING_MODE_CHOICES, validate=matching_mode
     )
     enabled = ask_features(screen, {feature.flag: False for feature in FEATURES})
+    enabled["PLUGINS_ENABLED"] = enabled["PLUGINS_ENABLED"] and plugins_allowed(screen, public_url)
+    plugins_domain = ask_plugins_domain(screen, public_url) if enabled["PLUGINS_ENABLED"] else None
     image_tag = screen.ask(
         "Release", "Release tag to pull (IMAGE_TAG), e.g. v1.3.0", validate=validate_image_tag
     )
     values = production_values(public_url, serving_mode, image_tag)
+    if plugins_domain:
+        values["PLUGINS_BASE_DOMAIN"] = plugins_domain
+    retention = screen.ask(
+        "Retention",
+        "How long to keep finished sessions, chat conversations and audit events? "
+        "Organization admins can change it for their organization",
+        choices=RETENTION_CHOICES,
+    )
+    values |= dict.fromkeys(RETENTION_DAYS, retention)
+    cpu_count = detect_cpu_count()
+    size = server_size_for(cpu_count)
+    detected = (
+        f"Detected {cpu_count} CPU{'' if cpu_count == 1 else 's'}"
+        if cpu_count
+        else "Could not detect the CPUs"
+    )
+    size_note = (
+        f"{detected}: using the {size.capitalize()} server size "
+        "(change it under advanced settings)."
+    )
+    screen.notes.append(size_note)
     if screen.ask_yes_no(
         "Advanced", "Adjust advanced settings (server size, code time limit, logging)?", False
     ):
-        values |= ask_advanced(screen, schema, enabled)
+        # The operator picks the size now: keep only the part that stays true whatever they pick.
+        screen.notes[screen.notes.index(size_note)] = f"{detected}."
+        values |= ask_advanced(screen, schema, enabled, detected_size=size)
+    else:
+        values |= advanced_values(size, None, None, enabled, schema)
     return values, enabled, serving_mode
+
+
+def detect_cpu_count() -> int | None:
+    """Return the CPUs this process may run on, or None when unknown.
+
+    Counts logical CPUs (hyperthreads included). Uses the affinity mask where the OS has one
+    (Linux, where it also reflects a container's cpuset), else every CPU. A CPU quota
+    (`docker run --cpus`) is not visible this way.
+    """
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            return len(os.sched_getaffinity(0))
+        except OSError:
+            # Some sandboxes refuse the call; the wizard must not fail after all its questions.
+            pass
+    return os.cpu_count()
+
+
+def server_size_for(cpu_count: int | None) -> str:
+    """Return the SERVER_SIZES preset for `cpu_count` CPUs, small when the count is unknown."""
+    if cpu_count is None or cpu_count < 4:
+        return "small"
+    return "medium" if cpu_count < 8 else "large"
 
 
 def advanced_values(
@@ -661,9 +810,16 @@ def advanced_values(
 
 
 def ask_advanced(
-    screen: Screen, schema: dict, enabled: dict[str, bool], current: dict[str, str] | None = None
+    screen: Screen,
+    schema: dict,
+    enabled: dict[str, bool],
+    current: dict[str, str] | None = None,
+    detected_size: str | None = None,
 ) -> dict[str, str]:
-    """Ask the three advanced questions; with `current` (an existing file) each can keep its value."""
+    """Ask the three advanced questions; with `current` (an existing file) each can keep its value.
+
+    `detected_size` is the server size an empty answer keeps.
+    """
     keep = {}
     if current is not None:
         workers = f"{current.get('DJANGO_SGI_WORKERS')} Django workers"
@@ -674,7 +830,10 @@ def ask_advanced(
             "log": {"keep": f"Keep current (Django logs at {current.get('DJANGO_LOG_LEVEL')})"},
         }
     size = screen.ask(
-        "Server size", "How big is the server?", choices=keep.get("size", {}) | SERVER_SIZES
+        "Server size",
+        "How big is the server?",
+        choices=keep.get("size", {}) | SERVER_SIZES,
+        default=detected_size,
     )
     code_limit = screen.ask(
         "Code time limit",
@@ -729,8 +888,17 @@ def create_env_file(
     carried: dict[str, str],
 ) -> None:
     if target == "dev":
-        overrides: dict[str, str] = {}
-        enabled = ask_features(screen, {feature.flag: True for feature in FEATURES})
+        overrides = missing_plugin_secrets({})
+        defaults = target_defaults(schema, "dev")
+        enabled = ask_features(
+            screen,
+            {
+                feature.flag: str(defaults[feature.flag]).lower() in Env.BOOLEAN_TRUE_VALUES
+                for feature in FEATURES
+            },
+        )
+        if enabled["PLUGINS_ENABLED"]:
+            overrides |= LOCAL_PLUGINS_HOST
     else:
         overrides, enabled, serving_mode = ask_production_values(screen, schema)
         overrides |= {name: generate_secret(name) for name in GENERATED_SECRETS}
@@ -761,9 +929,17 @@ def create_env_file(
                 "If your load balancer adds X-Forwarded-For, set DJANGO_NUM_PROXIES=2 in the",
                 "file; otherwise login throttling treats every user as the balancer.",
             ]
+        plugins_domain = overrides.get("PLUGINS_BASE_DOMAIN", "")
+        if enabled["PLUGINS_ENABLED"] and not plugins_domain.endswith(".localhost"):
+            steps.append(
+                f"Point *.{plugins_domain} at this server (wildcard DNS record and certificate)."
+            )
         if overrides.get("DJANGO_LOG_LEVEL") == "DEBUG":
             steps.append(DEBUG_REMINDER)
         print_panel("Next steps", steps)
+    elif enabled["PLUGINS_ENABLED"]:
+        url = LOCAL_PLUGINS_HOST["DJANGO_FRONTEND_BASE_URL"]
+        print_panel("Next steps", [f"Open EpicStaff at {url}: plugins need a .localhost host."])
 
 
 def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev"]) -> None:
@@ -782,10 +958,26 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
         current[feature.flag] = flag_on and profile_on
         was_on[feature.flag] = flag_on or profile_on
     enabled = ask_features(screen, current)
+    plugin_values: dict[str, str] = {}
+    if enabled["PLUGINS_ENABLED"]:
+        public_url = old.get("DJANGO_FRONTEND_BASE_URL", "")
+        if target == "dev" and plugins_host_problem(public_url):
+            plugin_values |= LOCAL_PLUGINS_HOST
+            public_url = LOCAL_PLUGINS_HOST["DJANGO_FRONTEND_BASE_URL"]
+        enabled["PLUGINS_ENABLED"] = plugins_allowed(screen, public_url)
+    if enabled["PLUGINS_ENABLED"]:
+        plugin_values |= missing_plugin_secrets(old)
+        old_domain = old.get("PLUGINS_BASE_DOMAIN", "")
+        try:
+            domain = validate_plugins_domain(old_domain, public_url)
+        except ValueError:
+            domain = ask_plugins_domain(screen, public_url)
+        if domain != old_domain:
+            plugin_values["PLUGINS_BASE_DOMAIN"] = domain
+    values = feature_values(enabled, old.get("COMPOSE_PROFILES", ""), local=target == "dev")
+    values |= plugin_values
     screen.draw()
-    rewrite_env_values(
-        env_file, feature_values(enabled, old.get("COMPOSE_PROFILES", ""), local=target == "dev")
-    )
+    rewrite_env_values(env_file, values)
     print(f"{style('✓', GREEN)} Updated {style(str(env_file), BOLD)}")
     commands = ["cd src", "docker compose up -d"]
     for feature in FEATURES:
@@ -862,7 +1054,7 @@ def run_setup(
             overrides = (
                 {name: generate_secret(name) for name in GENERATED_SECRETS}
                 if target == "prod"
-                else None
+                else missing_plugin_secrets({})
             )
             day = datetime.now().astimezone().date()
             added, needs_value = update_env_file(schema, target, env_file, day, overrides)
