@@ -151,16 +151,20 @@ def test_creating_a_library_binds_it_to_the_active_org(auth_client, regular_user
         "created_at": "2026-11-04T10:00:00Z",
         "updated_at": "2026-11-04T10:00:00Z",
     }
+    upload = SimpleUploadedFile(
+        "mylib-1.0-py3-none-any.whl", b"PK\x03\x04zip", content_type="application/octet-stream"
+    )
 
-    response = auth_client.post("/api/custom-libraries/", {"name": "My_Lib"}, format="json")
+    response = auth_client.post("/api/custom-libraries/", {"file": upload}, format="multipart")
 
     assert response.status_code == status.HTTP_201_CREATED
     binding = SandboxCustomLibraryBinding.objects.get(resource_id="11")
     assert response.data["id"] == binding.pk
     assert response.data["owner"]["email"] == regular_user.email
     assert binding.created_by == regular_user
-    # The payload travels untouched: the sandbox owns what a library name may be.
-    assert sandbox_client.create.call_args.args[0] == {"name": "My_Lib"}
+    # No name travels: the sandbox reads it off the wheel it was handed.
+    sent = sandbox_client.create.call_args.args[0]
+    assert sent.name == "mylib-1.0-py3-none-any.whl"
 
 
 @pytest.mark.django_db
@@ -180,8 +184,11 @@ def test_a_caller_that_is_not_a_person_creates_a_library_without_an_owner(
     }
     raw_key, _key = env_api_key
     api_client.credentials(HTTP_X_API_KEY=raw_key, HTTP_X_ORGANIZATION_ID=str(default_org.id))
+    upload = SimpleUploadedFile(
+        "mylib-1.0-py3-none-any.whl", b"PK\x03\x04zip", content_type="application/octet-stream"
+    )
 
-    response = api_client.post("/api/custom-libraries/", {"name": "mylib"}, format="json")
+    response = api_client.post("/api/custom-libraries/", {"file": upload}, format="multipart")
 
     assert response.status_code == status.HTTP_201_CREATED
     assert response.data["owner"] is None
@@ -189,19 +196,11 @@ def test_a_caller_that_is_not_a_person_creates_a_library_without_an_owner(
 
 
 @pytest.mark.django_db
-def test_renaming_a_library_answers_with_the_name_the_sandbox_stored(
-    auth_client, library, sandbox_client
-):
-    sandbox_client.update.return_value = upstream_library(library, name="renamed")
+def test_creating_a_library_without_a_file_is_refused_here(auth_client, sandbox_client):
+    response = auth_client.post("/api/custom-libraries/", {}, format="multipart")
 
-    response = auth_client.patch(
-        f"/api/custom-libraries/{library.pk}/", {"name": "Renamed"}, format="json"
-    )
-
-    assert response.status_code == status.HTTP_200_OK
-    assert response.data["id"] == library.pk
-    assert response.data["name"] == "renamed"
-    assert sandbox_client.update.call_args.args == ("7", {"name": "Renamed"})
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert sandbox_client.create.call_count == 0
 
 
 @pytest.mark.django_db
@@ -218,7 +217,6 @@ def test_deleting_a_library_takes_its_binding_with_it(auth_client, library, sand
     ("method", "suffix"),
     [
         ("get", "/"),
-        ("patch", "/"),
         ("delete", "/"),
         ("get", "/wheels/"),
         ("post", "/wheels/"),
@@ -319,20 +317,19 @@ def test_reading_libraries_does_not_let_anyone_publish_one(reader_client, librar
         == status.HTTP_200_OK
     )
 
-    upload = SimpleUploadedFile("mylib-1.0-py3-none-any.whl", b"PK\x03\x04", content_type="x")
+    def wheel() -> SimpleUploadedFile:
+        return SimpleUploadedFile("mylib-1.0-py3-none-any.whl", b"PK\x03\x04", content_type="x")
+
     refused = [
-        reader_client.post("/api/custom-libraries/", {"name": "new"}, format="json"),
-        reader_client.patch(
-            f"/api/custom-libraries/{library.pk}/", {"name": "new"}, format="json"
-        ),
+        reader_client.post("/api/custom-libraries/", {"file": wheel()}, format="multipart"),
         reader_client.delete(f"/api/custom-libraries/{library.pk}/"),
         reader_client.post(
-            f"/api/custom-libraries/{library.pk}/wheels/", {"file": upload}, format="multipart"
+            f"/api/custom-libraries/{library.pk}/wheels/", {"file": wheel()}, format="multipart"
         ),
         reader_client.delete(f"/api/custom-libraries/{library.pk}/wheels/9/"),
     ]
 
-    assert [response.status_code for response in refused] == [status.HTTP_403_FORBIDDEN] * 5
+    assert [response.status_code for response in refused] == [status.HTTP_403_FORBIDDEN] * 4
     assert sandbox_client.method_calls == [("list_wheels", ("7",), {})]
 
 

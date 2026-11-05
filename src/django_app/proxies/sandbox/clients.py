@@ -100,12 +100,11 @@ class SandboxCustomLibraryClient(SandboxClient):
         response = self.get(url=f"/custom-libraries/{library_id}")
         return response.json()
 
-    def create(self, data: dict) -> dict:
-        response = self.post(url="/custom-libraries", json=data)
-        return response.json()
-
-    def update(self, library_id: str, data: dict) -> dict:
-        response = self.patch(url=f"/custom-libraries/{library_id}", json=data)
+    def create(self, file: UploadedFile) -> dict:
+        response = self.post(
+            url="/custom-libraries",
+            files={"file": (file.name, file, file.content_type)},
+        )
         return response.json()
 
     def remove(self, library_id: str) -> None:

@@ -163,17 +163,20 @@ class SandboxCustomLibraryBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
         return Response(self._as_response(self.service_class().retrieve(binding), binding))
 
     def create(self, request: Request) -> Response:
+        """Create a library from an uploaded wheel, which names it.
+
+        Raises:
+            ValidationError: The request carries no file.
+        """
+        file = request.FILES.get("file")
+        if file is None:
+            raise ValidationError({"file": "No file was uploaded."})
         binding, library = self.service_class().create(
-            request.data,
+            file,
             org_id=self.get_active_org_id(),
             created_by=resolve_author(request.user),
         )
         return Response(self._as_response(library, binding), status=status.HTTP_201_CREATED)
-
-    def partial_update(self, request: Request, pk: str) -> Response:
-        binding = self._get_binding_or_404(pk)
-        library = self.service_class().update(binding, request.data)
-        return Response(self._as_response(library, binding))
 
     def destroy(self, request: Request, pk: str) -> Response:
         """Delete a library no venv names any more.

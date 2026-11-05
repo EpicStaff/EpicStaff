@@ -329,18 +329,21 @@ class CustomLibraryService:
 
     def create(
         self,
-        data: dict,
+        file,
         *,
         org_id: int | None,
         created_by=None,
     ) -> tuple[SandboxCustomLibraryBinding, dict]:
-        """Create the library upstream, then the binding that owns it locally.
+        """Create the library upstream from a wheel, then the binding that owns it.
+
+        No name is ever passed: the sandbox reads it off the wheel's own filename, so
+        the registered name and the distribution it serves can never come apart.
 
         Returns:
             The new binding and the library the sandbox stored.
         """
         with self.client_class() as client:
-            library = client.create(data)
+            library = client.create(file)
 
         # TODO: bind the library and the binding in one transaction -- if this write
         # fails the upstream library is orphaned (compensation/atomic deferred).
@@ -350,11 +353,6 @@ class CustomLibraryService:
             resource_id=str(library["id"]),
         )
         return binding, library
-
-    def update(self, binding: SandboxCustomLibraryBinding, data: dict) -> dict:
-        """Apply a partial change to the library this binding points at."""
-        with self.client_class() as client:
-            return client.update(binding.resource_id, data)
 
     def delete(self, binding: SandboxCustomLibraryBinding) -> None:
         """Delete a library no venv names any more, upstream and here.
