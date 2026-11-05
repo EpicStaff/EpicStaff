@@ -23,8 +23,9 @@ export const DIFF_MARK_TOOLTIP_POSITIONS: ConnectedPosition[] = [
 
 /**
  * The tooltip of a version diff mark, shown in a CDK overlay above the marked field or row: the current canvas value,
- * the parts a restore replaces struck through, or a fixed hint instead. Visual only: the mark gives screen readers the
- * same words another way, so the tooltip is hidden from them. Every value is shown as text.
+ * the parts a restore replaces struck through, or a fixed hint instead; below it, sentences for changes that have no
+ * value to show. Visual only: the mark gives screen readers the same words another way, so the tooltip is hidden from
+ * them. Every value is shown as text.
  */
 @Component({
     selector: 'app-diff-mark-tooltip',
@@ -35,13 +36,17 @@ export const DIFF_MARK_TOOLTIP_POSITIONS: ConnectedPosition[] = [
         >
             @if (hint(); as shownHint) {
                 <span class="diff-field-mark__tooltip-hint">{{ shownHint }}</span>
-            } @else {
+            } @else if (segments(); as shownSegments) {
                 <span class="diff-field-mark__tooltip-label">{{ currentValueLabel }}</span>
                 <span class="diff-field-mark__tooltip-value">
-                    @for (segment of segments(); track $index) {
+                    @for (segment of shownSegments; track $index) {
                         <span [class.diff-field-mark__struck]="segment.struck">{{ segment.text }}</span>
                     }
                 </span>
+            }
+            <!-- No style of its own: the tooltip's flex column stacks the lines; the class names them for tests. -->
+            @for (line of lines(); track $index) {
+                <span class="diff-field-mark__tooltip-line">{{ line }}</span>
             }
         </div>
     `,
@@ -50,8 +55,10 @@ export const DIFF_MARK_TOOLTIP_POSITIONS: ConnectedPosition[] = [
 export class DiffMarkTooltipComponent {
     /** Shown instead of the value when set. */
     readonly hint = input<string | null>(null);
-    /** The current canvas value. */
-    readonly segments = input<readonly DisplaySegment[]>([]);
+    /** The current canvas value; `null` when no value is shown, only `lines`. */
+    readonly segments = input<readonly DisplaySegment[] | null>([]);
+    /** Sentences below the value, one per line: changes with no value to show ("Restore adds a linked region"). */
+    readonly lines = input<readonly string[]>([]);
 
     protected readonly currentValueLabel = CURRENT_VALUE_LABEL;
 }

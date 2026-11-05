@@ -4,7 +4,7 @@ import { DEFAULT_KEY_VALUE_MODE, MISSING_END_OUTPUT_MAP } from '../../core/const
 import { findCdtSection } from '../../core/models/cdt-section.model';
 import { ComputationConfig } from '../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../core/models/decision-table.model';
-import { AgentNodeModel, BaseNodeModel, NodeModel } from '../../core/models/node.model';
+import { AgentNodeModel, BaseNodeModel, NodeModel, NoteLinkedRegion } from '../../core/models/node.model';
 import { ScheduleTriggerNodeData } from '../../core/models/schedule-trigger.model';
 import { InlineSurface } from '../../core/models/task-node.model';
 import { FieldName } from './field-display';
@@ -103,6 +103,7 @@ const PYTHON_CODE_IGNORED = {
     id: 'backend id of the code row',
     name: 'a copy of node_name',
     secret_ids: 'secrets are compared by their resolved names',
+    global_kwargs: 'no panel shows or edits it, so a change could not be marked anywhere',
 };
 
 const INLINE_SURFACE_IGNORED = {
@@ -125,8 +126,15 @@ export const SEMANTIC_PROJECTIONS = {
         ignored: {},
     },
     [NodeType.NOTE]: {
-        project: (node) => ({ content: storedText(node.data.content) }),
-        ignored: { node_name: 'notes are diffed by content only', 'data.backgroundColor': 'layout' },
+        project: (node) => ({
+            content: storedText(node.data.content),
+            linked_region: wholePixelRegion(node.data.linkedRegion),
+        }),
+        ignored: {
+            node_name: 'not shown on the note',
+            'data.backgroundColor': 'layout',
+            'data.fontSize': 'cosmetic',
+        },
     },
     [NodeType.PYTHON]: {
         project: (node, context) => ({
@@ -380,6 +388,21 @@ function uniqueKey(baseKey: string, isTaken: (key: string) => boolean): string {
     let key = baseKey;
     for (let repeat = 2; isTaken(key); repeat++) key = `${baseKey}#${repeat}`;
     return key;
+}
+
+/**
+ * The canvas area a note is linked to, in whole pixels: a drag leaves fractional flow coordinates, and a sub-pixel
+ * difference is not a change anyone can see. A note saved without a region stores `null`; a new note and a version
+ * older than regions have none at all: both are `null`.
+ */
+function wholePixelRegion(region: NoteLinkedRegion | null | undefined): Projection | null {
+    if (!region) return null;
+    return {
+        x: Math.round(region.x),
+        y: Math.round(region.y),
+        width: Math.round(region.width),
+        height: Math.round(region.height),
+    };
 }
 
 /** Secrets are compared by their resolved names; on the version side, the names a restore re-links. */

@@ -770,6 +770,84 @@ describe('buildFlowDiff', () => {
         expect(diffVersion(snapshot, { liveFlow }).summary.changed).toBe(0);
     });
 
+    // Font size is cosmetic; no panel shows or edits global kwargs, so a change of them could not be marked anywhere.
+    it('ignores a note font size and the global kwargs of Python and Webhook code', () => {
+        let liveFlow = updateNode(loadLive(), NodeType.NOTE, (node) => ({
+            ...node,
+            data: { ...node.data, fontSize: 24 },
+        }));
+        liveFlow = updateNode(liveFlow, NodeType.PYTHON, (node) => ({
+            ...node,
+            data: { ...node.data, global_kwargs: { retries: 3 } },
+        }));
+        liveFlow = updateNode(liveFlow, NodeType.WEBHOOK_TRIGGER, (node) => ({
+            ...node,
+            data: { ...node.data, python_code: { ...node.data.python_code, global_kwargs: { retries: 3 } } },
+        }));
+
+        expect(diffVersion(snapshot, { liveFlow }).summary.changed).toBe(0);
+    });
+
+    describe('note linked region', () => {
+        const region = { x: 100, y: 40, width: 300, height: 200 };
+        const moved = { x: 120, y: 40, width: 300, height: 200 };
+
+        type StoredRegion = typeof region | null | undefined;
+
+        /** `null`: loaded from a save without a region; `undefined`: a new note. */
+        function canvasWith(linkedRegion: StoredRegion): FlowModel {
+            return updateNode(loadLive(), NodeType.NOTE, (node) => ({
+                ...node,
+                data: { ...node.data, linkedRegion: linkedRegion as typeof region | undefined },
+            }));
+        }
+
+        /** `undefined`: a version older than regions, with no `linkedRegion` key in its metadata. */
+        function versionWith(linkedRegion: StoredRegion): GraphVersionSnapshot {
+            return withSnapshotNode(snapshot, ID.note, {
+                metadata: linkedRegion === undefined ? {} : { linkedRegion },
+            });
+        }
+
+        it.each([
+            { name: 'a restore adds one', canvas: undefined, version: region, current: null, versionValue: region },
+            { name: 'a restore removes it', canvas: region, version: null, current: region, versionValue: null },
+            { name: 'a restore moves it', canvas: region, version: moved, current: region, versionValue: moved },
+            {
+                name: 'a restore resizes it by one pixel',
+                canvas: region,
+                version: { ...region, width: 301 },
+                current: region,
+                versionValue: { ...region, width: 301 },
+            },
+        ])('$name: one change of the note', ({ canvas, version, current, versionValue }) => {
+            const entry = entryOf(diffVersion(versionWith(version), { liveFlow: canvasWith(canvas) }), UUID.note);
+
+            expect(entry.status).toBe('changed');
+            expect(entry.fields).toEqual([
+                expect.objectContaining({ path: 'linked_region', status: 'changed', current, version: versionValue }),
+            ]);
+        });
+
+        // A note saved without a region stores `null`; a new canvas note and an old version have none at all.
+        it.each([
+            { name: 'the same region on both sides', canvas: region, version: region },
+            { name: 'stored as none, none on a new canvas note', canvas: undefined, version: null },
+            { name: 'stored as none, none in a version older than regions', canvas: null, version: undefined },
+            // A drag leaves fractional flow coordinates; a sub-pixel difference is not a change.
+            {
+                name: 'a sub-pixel difference',
+                canvas: { x: 100.2, y: 40, width: 299.8, height: 200 },
+                version: { x: 99.9, y: 40.3, width: 300.1, height: 200 },
+            },
+        ])('$name: unchanged', ({ canvas, version }) => {
+            const entry = entryOf(diffVersion(versionWith(version), { liveFlow: canvasWith(canvas) }), UUID.note);
+
+            expect(entry.fields).toEqual([]);
+            expect(entry.status).toBe('unchanged');
+        });
+    });
+
     it('reads a webhook of a version saved before the storage flag as storage off', () => {
         const oldVersion = withSnapshotNode(snapshot, ID.webhook, { use_storage: undefined });
 

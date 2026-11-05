@@ -39,7 +39,7 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
             cdkOverlayOrigin
             #noteOrigin="cdkOverlayOrigin"
             [style.--note-bg]="node.data.backgroundColor || defaultNoteColor"
-            [attr.tabindex]="contentChange() !== null ? 0 : null"
+            [attr.tabindex]="hasChange() ? 0 : null"
             (mouseenter)="openTooltip()"
             (mouseleave)="closeTooltip()"
             (keydown.escape)="onEscape($event)"
@@ -57,12 +57,15 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
         <ng-template
             cdkConnectedOverlay
             [cdkConnectedOverlayOrigin]="noteOrigin"
-            [cdkConnectedOverlayOpen]="isTooltipOpen() && contentChange() !== null"
+            [cdkConnectedOverlayOpen]="isTooltipOpen() && hasChange()"
             [cdkConnectedOverlayPositions]="tooltipPositions"
             (overlayKeydown)="onOverlayKeydown($event)"
             (detach)="closeTooltip()"
         >
-            <app-diff-mark-tooltip [segments]="segments()" />
+            <app-diff-mark-tooltip
+                [segments]="segments()"
+                [lines]="linkedRegionLines()"
+            />
         </ng-template>
     `,
     styles: [
@@ -114,16 +117,30 @@ export class GraphNoteComponent implements AfterViewInit {
      * `null` anywhere else. The note shows the version text; hover and keyboard focus show the current canvas text.
      */
     readonly contentChange = input<DiffFieldMarkChange | null>(null);
+    /**
+     * What a restore does to the canvas area the note is linked to, on the same notes as `contentChange`. The tooltip
+     * names it in a line of its own; the area itself is not marked.
+     */
+    readonly linkedRegionChange = input<DiffFieldMarkChange | null>(null);
 
     private readonly noteOrigin = viewChild.required<CdkOverlayOrigin>('noteOrigin');
 
-    protected readonly segments = computed<DisplaySegment[]>(() => {
+    protected readonly hasChange = computed(() => this.contentChange() !== null || this.linkedRegionChange() !== null);
+    /** The current canvas text, or `null` when a restore keeps it. */
+    protected readonly segments = computed<DisplaySegment[] | null>(() => {
         const change = this.contentChange();
-        return change ? fieldValueSegments('content', change.current, change.version) : [];
+        return change ? fieldValueSegments('content', change.current, change.version) : null;
     });
-    private readonly description = computed(() =>
-        this.contentChange() === null ? null : currentValueDescription(this.segments())
-    );
+    protected readonly linkedRegionLines = computed<string[]>(() => {
+        const change = this.linkedRegionChange();
+        return change ? [linkedRegionChangeText(change)] : [];
+    });
+    private readonly description = computed(() => {
+        if (!this.hasChange()) return null;
+        const segments = this.segments();
+        const parts = segments ? [currentValueDescription(segments)] : [];
+        return [...parts, ...this.linkedRegionLines()].join('\n');
+    });
     protected readonly isTooltipOpen = signal(false);
 
     /** The description lives outside the note (as matTooltip does it); the visual tooltip is hidden from readers. */
@@ -176,7 +193,7 @@ export class GraphNoteComponent implements AfterViewInit {
     }
 
     protected openTooltip(): void {
-        if (this.contentChange() !== null) this.isTooltipOpen.set(true);
+        if (this.hasChange()) this.isTooltipOpen.set(true);
     }
 
     protected closeTooltip(): void {
@@ -196,4 +213,11 @@ export class GraphNoteComponent implements AfterViewInit {
         event.stopPropagation();
         this.closeTooltip();
     }
+}
+
+/** A region has no name: the line says only whether a restore adds, removes or changes (moves, resizes) it. */
+function linkedRegionChangeText(change: DiffFieldMarkChange): string {
+    if (change.current === null) return 'Restore adds a linked region';
+    if (change.version === null) return 'Restore removes the linked region';
+    return 'Restore changes the linked region';
 }

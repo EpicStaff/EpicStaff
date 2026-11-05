@@ -22,6 +22,12 @@ function contentChange(current: string, version: string): FieldChange {
     return { path: 'content', field: 'content', status: 'changed', current, version };
 }
 
+const REGION = { x: 100, y: 40, width: 300, height: 200 };
+
+function linkedRegionChange(current: typeof REGION | null, version: typeof REGION | null): FieldChange {
+    return { path: 'linked_region', field: 'linked_region', status: 'changed', current, version };
+}
+
 let fixture: ComponentFixture<FlowBaseNodeComponent>;
 
 /** Renders the note on a diff canvas (`status` set) or off one (`null`: the Preview tab, the live editor). */
@@ -57,6 +63,9 @@ const tooltipValue = (): string =>
             part.classList.contains('diff-field-mark__struck') ? `[${part.textContent}]` : part.textContent
         )
         .join('');
+/** The tooltip's lines below the value. */
+const tooltipLines = (): string[] =>
+    Array.from(tooltip()!.querySelectorAll('.diff-field-mark__tooltip-line')).map((line) => line.textContent!);
 /** What a screen reader reads as the note's description. */
 const description = (): string | null | undefined =>
     document.getElementById(note().getAttribute('aria-describedby') ?? '')?.textContent;
@@ -168,6 +177,46 @@ describe('GraphNoteComponent on a version diff canvas', () => {
         );
     });
 
+    // A region has no name to show: the line says what a restore does to it, and the region itself gets no mark.
+    it.each([
+        { name: 'adds', current: null, version: REGION, line: 'Restore adds a linked region' },
+        { name: 'removes', current: REGION, version: null, line: 'Restore removes the linked region' },
+        {
+            name: 'moves',
+            current: REGION,
+            version: { ...REGION, x: 120 },
+            line: 'Restore changes the linked region',
+        },
+    ])('says that a restore $name the linked region, with no current text when the text stays', (testCase) => {
+        render('changed', [linkedRegionChange(testCase.current, testCase.version)]);
+
+        dispatch(new Event('mouseenter'));
+
+        expect(tooltipLines()).toEqual([testCase.line]);
+        expect(tooltip()!.querySelector('.diff-field-mark__tooltip-label')).toBeNull();
+        expect(tooltip()!.querySelector('.diff-field-mark__tooltip-value')).toBeNull();
+        expect(note().getAttribute('tabindex')).toBe('0');
+        expect(description()).toBe(testCase.line);
+    });
+
+    it('shows the current canvas text and the linked region line when a restore changes both', () => {
+        render('changed', [contentChange('Old text', 'Call the customer'), linkedRegionChange(REGION, null)]);
+
+        dispatch(new Event('mouseenter'));
+
+        expect(tooltipValue()).toBe('[Old text]');
+        expect(tooltipLines()).toEqual(['Restore removes the linked region']);
+        expect(description()).toBe('Current canvas: Old text\nRestore removes the linked region');
+    });
+
+    it('shows no linked region line when only the text changes', () => {
+        render('changed', [contentChange('Old text', 'Call the customer')]);
+
+        dispatch(new Event('mouseenter'));
+
+        expect(tooltipLines()).toEqual([]);
+    });
+
     // The status gate itself: the diff never reports a field change on these, so each is given one here.
     it.each<{ kind: string; status: NodeDiffStatus | null }>([
         { kind: 'an unchanged note', status: 'unchanged' },
@@ -175,7 +224,7 @@ describe('GraphNoteComponent on a version diff canvas', () => {
         { kind: 'a note a restore removes', status: 'deleted' },
         { kind: 'a note off a diff canvas (Preview tab, live editor)', status: null },
     ])('shows no tooltip on $kind, and keeps it out of the tab order', ({ status }) => {
-        render(status, [contentChange('Old text', 'Call the customer')]);
+        render(status, [contentChange('Old text', 'Call the customer'), linkedRegionChange(REGION, null)]);
 
         dispatch(new Event('mouseenter'));
         focusBy('keyboard');

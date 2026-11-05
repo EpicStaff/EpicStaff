@@ -39,6 +39,7 @@ export const FIELD_DISPLAY = {
     variables: { label: 'Variables' },
     output_map: { label: 'Output map' },
     content: { label: 'Content', kind: 'text' },
+    linked_region: { label: 'Linked region' },
     python_code: { label: 'Python code' },
     'python_code.code': { label: 'Code', kind: 'text' },
     'python_code.entrypoint': { label: 'Entrypoint' },

@@ -50,7 +50,7 @@ import { FlowService } from '../../services/flow.service';
 import { FlowDiffStateService } from '../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
-import { FieldChange, fieldChangeFor, NodeDiffStatus, showsFieldMarks } from '../../utils/diff';
+import { FieldChange, fieldChangeFor, FieldName, NodeDiffStatus, showsFieldMarks } from '../../utils/diff';
 import { FontSizeSelectComponent } from '../font-size-select/font-size-select.component';
 import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
@@ -200,8 +200,12 @@ export class FlowBaseNodeComponent implements OnInit {
      * restore changes (an added or removed note is marked as a whole by the badge); `null` anywhere else.
      */
     protected get noteContentChange(): FieldChange | null {
-        const diff = this.flowDiffState.nodeDiff(this.node.id);
-        return showsFieldMarks(diff) ? fieldChangeFor(diff, 'content') : null;
+        return this.noteFieldChange('content');
+    }
+
+    /** What a restore does to the canvas area a note is linked to, for the same tooltip; `null` as above. */
+    protected get noteLinkedRegionChange(): FieldChange | null {
+        return this.noteFieldChange('linked_region');
     }
 
     protected get hasMissingReferences(): boolean {
@@ -211,6 +215,11 @@ export class FlowBaseNodeComponent implements OnInit {
     /** The hover/selected-only summary tab above a Key-Value node is drawn, in the badge's top-left corner. */
     protected get showsSummaryTab(): boolean {
         return this.keyValueNode !== null;
+    }
+
+    private noteFieldChange(field: FieldName): FieldChange | null {
+        const diff = this.flowDiffState.nodeDiff(this.node.id);
+        return showsFieldMarks(diff) ? fieldChangeFor(diff, field) : null;
     }
 
     private typeClass(): string {
