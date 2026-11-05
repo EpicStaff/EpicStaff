@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tables.models.user import User
 
 from rbac.access.gates import IsSuperadmin, RestrictApiKeyToUserKeyReads
 from rbac.governance.users import UserManagementService
@@ -57,6 +58,10 @@ class UserAdminViewSet(viewsets.ViewSet):
     custom_exception_handler envelope; the view layer does not catch
     or translate them.
     """
+
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = User.objects.none()
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, IsSuperadmin]

@@ -51,6 +51,9 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
     - POST /graph-rag/{id}/documents/initialize/ - Re-add all docs from collection
     """
 
+    # Read only by `utils.request_target.org_row`, which names the RAG in user-action and
+    # plugin-activity records; this view scopes through `get_in_active_org_or_404`.
+    org_filter_path = _GRAPH_RAG_ORG_PATH
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
     rbac_action_map = {

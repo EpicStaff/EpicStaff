@@ -21,13 +21,14 @@ TARGET_TYPE_LABELS = {
     "agentnodetask": "agent task",
     "naiverag": "naive RAG",
     "graphrag": "graph RAG",
+    "naiveragdocumentconfig": "document chunking settings",
     # A venv lives in the sandbox; this side keeps only the binding that stands for it.
     "sandboxvenvbinding": "venv",
 }
-# The foreign key a record names as the parent of a model the edit tracker gives no owner,
-# keyed by the model's `app_label.model_name`. An agent-specific surface belongs to its agent,
-# a flow version and a session to their flow, a document to its collection. A one-to-one
-# parent also names a child that has no name of its own (see `describe`).
+# The relation a record names as the parent of a model the edit tracker gives no owner,
+# keyed by the model's `app_label.model_name`; `__` follows several relations. An
+# agent-specific surface belongs to its agent, a flow version and a session to their flow, a
+# document and a RAG to their collection.
 TARGET_PARENT_FIELDS = {
     "agents.surface": "owner_agent",
     "tables.graphversion": "graph",
@@ -38,7 +39,22 @@ TARGET_PARENT_FIELDS = {
     "tables.twiliochannel": "channel",
     "tables.realtimeagentchat": "rt_agent_definition",
     "tables.conversationrecording": "rt_agent_chat",
+    "tables.naiverag": "base_rag_type__source_collection",
+    "tables.graphrag": "base_rag_type__source_collection",
+    "tables.naiveragdocumentconfig": "document",
 }
+# Models with no name of their own whose rows a reader knows by their parent's: an agent's
+# voice settings, a channel's Twilio settings, a collection's RAG (one of each type), a
+# document's chunking settings in that RAG.
+TARGET_NAMED_AFTER_PARENT = frozenset(
+    {
+        "tables.realtimeagentdefinition",
+        "tables.twiliochannel",
+        "tables.naiverag",
+        "tables.graphrag",
+        "tables.naiveragdocumentconfig",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -51,8 +67,7 @@ class TargetDescription:
 def describe(instance: models.Model) -> TargetDescription:
     """Describe a saved model instance the way a user-action record shows it.
 
-    A row with no name of its own that belongs one-to-one to its parent (an agent's voice
-    settings) takes the parent's name.
+    A row of a model in `TARGET_NAMED_AFTER_PARENT` is named after its parent.
     """
     name = next(
         (
@@ -62,15 +77,10 @@ def describe(instance: models.Model) -> TargetDescription:
         ),
         None,
     )
-    if name is None and _has_one_to_one_parent(instance):
+    if name is None and instance._meta.label_lower in TARGET_NAMED_AFTER_PARENT:
         parent = target_parent(instance)
         name = describe(parent).name if parent is not None else None
     return TargetDescription(type=target_type(type(instance)), id=str(instance.pk), name=name)
-
-
-def _has_one_to_one_parent(instance: models.Model) -> bool:
-    field_name = TARGET_PARENT_FIELDS.get(instance._meta.label_lower)
-    return field_name is not None and instance._meta.get_field(field_name).one_to_one
 
 
 def describe_user(user) -> TargetDescription:
@@ -80,8 +90,15 @@ def describe_user(user) -> TargetDescription:
 
 def target_parent(instance: models.Model) -> models.Model | None:
     """The object a record of `instance` names as its parent, or None when it has none."""
-    field_name = TARGET_PARENT_FIELDS.get(instance._meta.label_lower)
-    return getattr(instance, field_name) if field_name else None
+    path = TARGET_PARENT_FIELDS.get(instance._meta.label_lower)
+    if path is None:
+        return None
+    parent = instance
+    for field_name in path.split("__"):
+        parent = getattr(parent, field_name)
+        if parent is None:
+            return None
+    return parent
 
 
 def target_type(model: type[models.Model]) -> str:

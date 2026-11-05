@@ -96,6 +96,9 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
     - GET /naive-rag/{id}/ - Get NaiveRag details with configs
     """
 
+    # Read only by `utils.request_target.org_row`, which names the RAG in user-action and
+    # plugin-activity records; this view scopes through `get_in_active_org_or_404`.
+    org_filter_path = _NAIVE_RAG_ORG_PATH
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
     rbac_action_map = {
@@ -284,6 +287,9 @@ class NaiveRagDocumentConfigViewSet(
     - POST /api/naive-rag/{naive_rag_id}/document-configs/bulk-delete/ - Bulk delete configs
     """
 
+    # Read only by `utils.request_target.org_row`, which names the config in user-action and
+    # plugin-activity records; this view scopes in `get_queryset`.
+    org_filter_path = _DOC_CONFIG_ORG_PATH
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
     rbac_action_map = {

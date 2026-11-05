@@ -9,6 +9,7 @@ from rbac.access.gates import (
     HasResourcePermissionAnywhere,
 )
 from rbac.governance.api_keys import ApiKeyManagementService
+from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.schemas.api_keys import (
     API_KEYS_MANAGEMENT_DELETE,
@@ -27,6 +28,10 @@ class ApiKeyAdminViewSet(CrossOrgAdminViewSet):
     credentials. `DenyApiKeyAuth` is stricter than the base API-key gate,
     which still runs in front of it.
     """
+
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = ApiKey.objects.none()
 
     pagination_class = CrossOrgAdminPagination
     permission_classes = [

@@ -28,7 +28,7 @@ from user_audit.middleware import (
     UserActionMiddleware,
 )
 from user_audit.read_only import handler_reads_only
-from utils.request_target import url_path_pattern
+from utils.request_target import model_of, url_path_pattern
 
 pytestmark = pytest.mark.django_db
 
@@ -197,9 +197,10 @@ def _url_patterns(patterns, prefix=""):
             yield prefix + str(pattern.pattern), pattern.callback
 
 
-def _write_handlers():
+def _write_handlers(*, include_generic_actions=False):
     """(route key, view class, handler name, DRF actions or None) of every write method a
-    view serves, skipping DRF's generic actions and the `.json` format-suffix twins."""
+    view serves, skipping the `.json` format-suffix twins, and DRF's generic actions unless
+    asked for."""
     for route, callback in _url_patterns(get_resolver().url_patterns):
         view_class = getattr(callback, "cls", None)
         if view_class is None or "(?P<format>" in route:
@@ -210,7 +211,7 @@ def _write_handlers():
         else:
             handlers = [(method, method) for method in WRITE_METHODS if hasattr(view_class, method)]
         for method, name in handlers:
-            if actions is not None and name in GENERIC_ACTIONS:
+            if actions is not None and name in GENERIC_ACTIONS and not include_generic_actions:
                 continue
             yield f"{method.upper()} {url_path_pattern(route)}", view_class, name, route, actions
 
@@ -257,6 +258,30 @@ def test_fallback_recorded_routes_name_their_target_in_the_url():
     assert unnamed == [], (
         "The fallback names a target only from a <pk> or <id> URL kwarg. Record these routes "
         "with an explicit hook and move them to HOOK_RECORDED_ROUTES."
+    )
+
+
+def test_every_view_the_fallback_records_names_its_model():
+    """The fallback types and names its target through `model_of`, so a view it records
+    must declare its model: a class `queryset` (`Model.objects.none()` when the view only
+    defines `get_queryset`) or `serializer_class`."""
+    unresolvable = sorted(
+        {
+            f"{key} ({view_class.__name__})"
+            for key, view_class, name, _route, actions in _write_handlers(
+                include_generic_actions=True
+            )
+            if (key in FALLBACK_RECORDED_ROUTES or (actions is not None and name in GENERIC_ACTIONS))
+            and not handler_reads_only(view_class, name)
+            and not _excluded(view_class, name)
+            and model_of(view_class) is None
+        }
+    )
+
+    assert unresolvable == [], (
+        "The fallback cannot tell what these routes change. Give the view a class "
+        "`queryset = Model.objects.none()` (it may keep its get_queryset), or record the "
+        "route with an explicit hook and list it in HOOK_RECORDED_ROUTES."
     )
 
 

@@ -173,7 +173,8 @@ class CollectionManagementService:
             collection_name: New collection name (unchanged if None)
             description: New description (unchanged if None)
             user: Acting user; becomes the last editor if the name or description changed.
-                Never becomes the author, even of a collection that has none.
+                Never becomes the author, even of a collection that has none. The change is
+                recorded as a `renamed` (or `updated`) user action; a no-op records nothing.
 
         Returns:
             SourceCollection: Updated collection
@@ -199,6 +200,15 @@ class CollectionManagementService:
         changed = (collection.collection_name, collection.description) != state_before
         if changed:
             record_last_edit(collection, user)
+            renamed = collection.collection_name != state_before[0]
+            record_user_action(
+                action=UserAction.RENAMED if renamed else UserAction.UPDATED,
+                org_id=collection.org_id,
+                target=collection,
+                previous_name=state_before[0] if renamed else None,
+            )
+        else:
+            mark_request_handled()
 
         logger.info(f"Updated collection {collection_id} fields: {update_fields or 'none'}")
 

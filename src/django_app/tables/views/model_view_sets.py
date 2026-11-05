@@ -1334,6 +1334,9 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     bulk_delete=extend_schema(**GRAPH_VERSION_BULK_DELETE_POST),
 )
 class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, viewsets.ModelViewSet):
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = GraphVersion.objects.none()
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {

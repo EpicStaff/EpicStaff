@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from rbac.governance.roles import RoleManagementService
+from rbac.models import Role
 from rbac.models.enums import Permission, ResourceType
 from rbac.schemas.roles import (
     ROLES_CREATE_POST,
@@ -29,6 +30,10 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
     The door gate is HasResourcePermissionAnywhere(ROLES); precise per-org
     authorization + the ceiling rule are enforced in RoleManagementService.
     """
+
+    # Names the served model for user-action and plugin-activity records (`model_of`); never
+    # queried, every action reads through its own lookup.
+    queryset = Role.objects.none()
 
     pagination_class = CrossOrgAdminPagination
 

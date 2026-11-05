@@ -1,5 +1,6 @@
 """Write routes whose URL does not name what they change (`HOOK_RECORDED_ROUTES`) record
 each changed object by an explicit hook, and a request that changed nothing records nothing.
+The last section covers rows the fallback names through their URL.
 
 Presentation tests through the real endpoints. Only the object store (in-memory backend),
 the knowledge service client and Twilio's HTTP API are replaced.
@@ -10,6 +11,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.http import HttpResponse
+from django.test import RequestFactory
+from django.urls import ResolverMatch
 from rest_framework import status
 
 from rbac.models import OrganizationUser
@@ -18,6 +22,7 @@ from tables.models import (
     DocumentContent,
     DocumentMetadata,
     Graph,
+    GraphVersion,
     Session,
     SourceCollection,
     StorageFile,
@@ -39,10 +44,13 @@ from tables.models.webhook_models import (
     TwilioChannel,
     WebhookTrigger,
 )
+from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.secrets import secret_service
 from tables.services.storage_service.manager import StorageManager
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tables.views.knowledge_views.naive_rag_views import NaiveRagViewSet
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
+from user_audit.middleware import UserActionMiddleware
 
 pytestmark = pytest.mark.django_db
 
@@ -334,7 +342,7 @@ def test_naive_rag_create_records_the_rag_created_under_its_collection(
     assert response.status_code == status.HTTP_200_OK, response.content
     rag = NaiveRag.objects.get(base_rag_type__source_collection=collection)
     [event] = _hook_events(sent_events)
-    assert _target(event) == ("created", "naive RAG", str(rag.pk), None)
+    assert _target(event) == ("created", "naive RAG", str(rag.pk), "Manuals")
     assert _parent(event) == ("source collection", str(collection.pk), "Manuals")
 
 
@@ -372,7 +380,7 @@ def test_graph_rag_create_records_the_rag_created_under_its_collection(
     assert response.status_code == status.HTTP_200_OK, response.content
     rag = GraphRag.objects.get(base_rag_type__source_collection=collection)
     [event] = _hook_events(sent_events)
-    assert _target(event) == ("created", "graph RAG", str(rag.pk), None)
+    assert _target(event) == ("created", "graph RAG", str(rag.pk), "Manuals")
     assert _parent(event) == ("source collection", str(collection.pk), "Manuals")
 
 
@@ -749,3 +757,124 @@ def test_password_change_records_the_password_reset_of_the_user(
     assert [(event.org_id, *_target(event)) for event in _hook_events(sent_events)] == [
         (acme.id, "password_reset", "user", str(admin_acme.pk), admin_acme.email)
     ]
+
+
+# ---- collections, flow versions and RAG rows named by the fallback through their URL ----
+
+
+@pytest.mark.parametrize(
+    "body, expected",
+    [
+        ({"collection_name": "Manuals"}, []),
+        ({"collection_name": "Handbooks"}, [("renamed", "Handbooks", "Manuals")]),
+        ({"description": "Product manuals"}, [("updated", "Manuals", None)]),
+    ],
+    ids=["unchanged", "renamed", "description-changed"],
+)
+def test_collection_update_records_only_a_real_change(
+    body, expected, admin_client, collection, sent_events, django_capture_on_commit_callbacks
+):
+    response = _send(
+        admin_client,
+        "patch",
+        f"/api/source-collections/{collection.collection_id}/",
+        django_capture_on_commit_callbacks,
+        body,
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert [
+        (event.action, event.target_name, event.previous_name)
+        for event in _hook_events(sent_events)
+    ] == expected
+    assert {event.target_type for event in sent_events} <= {"source collection"}
+
+
+def test_fallback_types_a_view_that_defines_only_get_queryset(
+    admin_client, flow, sent_events, django_capture_on_commit_callbacks
+):
+    version = GraphVersion.objects.create(graph=flow, name="Before refactor", snapshot={})
+
+    response = _send(
+        admin_client,
+        "patch",
+        f"/api/graph-versions/{version.pk}/",
+        django_capture_on_commit_callbacks,
+        {"name": "After refactor"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    [event] = sent_events
+    assert (event.target_type, event.target_id) == ("flow version", str(version.pk))
+
+
+def test_fallback_names_a_document_config_after_its_document(
+    admin_client, collection, sent_events, django_capture_on_commit_callbacks
+):
+    rag = _naive_rag(collection)
+    config = _document_config(rag, collection)
+
+    response = _send(
+        admin_client,
+        "put",
+        f"/api/naive-rag/{rag.pk}/document-configs/{config.pk}/",
+        django_capture_on_commit_callbacks,
+        {"chunk_size": 1200},
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    [event] = sent_events
+    assert _target(event) == (
+        "updated",
+        "document chunking settings",
+        str(config.pk),
+        "guide.txt",
+    )
+    assert _parent(event) == ("document", str(config.document_id), "guide.txt")
+
+
+def test_fallback_names_a_graph_rag_after_its_collection(
+    admin_client, acme, collection, sent_events, django_capture_on_commit_callbacks
+):
+    rag = GraphRagService.create_or_update_graph_rag(
+        collection.collection_id, _embedder(acme).id, _llm_config(acme).id
+    )
+
+    response = _send(
+        admin_client,
+        "put",
+        f"/api/graph-rag/{rag.pk}/index-config/",
+        django_capture_on_commit_callbacks,
+        {"chunk_size": rag.index_config.chunk_size + 100},
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    [event] = sent_events
+    assert _target(event) == ("update_index_config", "graph RAG", str(rag.pk), "Manuals")
+    assert _parent(event) == ("source collection", str(collection.pk), "Manuals")
+
+
+def test_fallback_never_names_a_rag_of_another_org(
+    admin_acme, acme, beta, sent_events, django_capture_on_commit_callbacks
+):
+    beta_collection = SourceCollection.objects.create(collection_name="Beta secrets", org=beta)
+    beta_rag = _naive_rag(beta_collection)
+    view = NaiveRagViewSet.as_view({"delete": "destroy"})
+    request = RequestFactory().delete(f"/api/naive-rag/{beta_rag.pk}/")
+    request.user = admin_acme
+    request._rbac_active_org_id = acme.id
+
+    def get_response(request_in_view):
+        request_in_view.resolver_match = ResolverMatch(
+            view, (), {"pk": str(beta_rag.pk)}, route="api/^naive-rag/(?P<pk>[^/.]+)/$"
+        )
+        return HttpResponse()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        UserActionMiddleware(get_response)(request)
+
+    [event] = sent_events
+    assert (_target(event), _parent(event)) == (
+        ("deleted", "naive RAG", str(beta_rag.pk), None),
+        (None, None, None),
+    )
