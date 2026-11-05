@@ -35,8 +35,21 @@ class FakeKnowledgeService:
         return KnowledgeClient(transport=httpx.MockTransport(self))
 
 
+class _StreamedBody(httpx.SyncByteStream):
+    """A body that arrives over the wire, so it is unread until the client reads it."""
+
+    def __init__(self, data: bytes):
+        self._data = data
+
+    def __iter__(self):
+        yield self._data
+
+
 def _error(status_code: int, code: str) -> httpx.Response:
-    return httpx.Response(status_code, json={"code": code, "detail": "refused"})
+    body = json.dumps({"code": code, "detail": "refused"}).encode()
+    return httpx.Response(
+        status_code, headers={"content-type": "application/json"}, stream=_StreamedBody(body)
+    )
 
 
 class _BreaksAfterFirstChunk(httpx.SyncByteStream):
@@ -64,23 +77,24 @@ def test_download_writes_the_whole_archive_into_the_destination():
 
 
 @pytest.mark.parametrize(
-    ("response", "expected_error"),
+    ("status_code", "code", "expected_error"),
     [
-        pytest.param(_error(409, "graph_artifacts_not_ready"), ClientValidationError, id="409"),
-        pytest.param(_error(404, "not_found"), ClientResourceNotFoundError, id="404"),
-        pytest.param(_error(503, "unavailable"), ClientBadGatewayError, id="503"),
+        pytest.param(409, "graph_artifacts_not_ready", ClientValidationError, id="409"),
+        pytest.param(404, "not_found", ClientResourceNotFoundError, id="404"),
+        pytest.param(503, "unavailable", ClientBadGatewayError, id="503"),
     ],
 )
 def test_a_refused_download_raises_with_the_services_reason_and_writes_nothing(
-    response, expected_error
+    status_code, code, expected_error
 ):
     destination = io.BytesIO()
+    service = FakeKnowledgeService(_error(status_code, code))
 
     with pytest.raises(expected_error) as raised:
-        FakeKnowledgeService(response).client().download_graph_artifacts(7, destination)
+        service.client().download_graph_artifacts(7, destination)
 
     # The body of a streamed response is only there once read; the reason must survive.
-    assert response.json()["code"] in raised.value.detail
+    assert code in raised.value.detail
     assert destination.getvalue() == b""
 
 
