@@ -8,7 +8,8 @@
     },
     "openai_api_key": {
       "type": "string",
-      "description": "OpenAI API key for Vision API access."
+      "description": "OpenAI API key used for Vision API access. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "input_type": "user_input"
     },
     "model": {
       "type": "string",
