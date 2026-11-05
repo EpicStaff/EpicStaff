@@ -1,6 +1,7 @@
 import { NodeType } from '@shared/models';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
+import { TEST_EXECUTION_TIMEOUT_LIMITS } from '../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { convertDecisionTableToCdt } from '../../core/helpers/dt-to-cdt-converter';
 import { Edge } from '../../core/models/edge.model';
 import { FlowModel } from '../../core/models/flow.model';
@@ -59,7 +60,13 @@ function unionOf(
     versionWarningReferences: ReadonlyMap<string, readonly MissingReference[]> = new Map()
 ): UnionFlowModel {
     return buildUnionFlowModel(
-        buildFlowDiff({ versionFlow, liveFlow, versionWarningReferences, versionKeyValueTableNames: new Map() })
+        buildFlowDiff({
+            versionFlow,
+            liveFlow,
+            versionWarningReferences,
+            versionKeyValueTableNames: new Map(),
+            executionTimeoutLimits: TEST_EXECUTION_TIMEOUT_LIMITS,
+        })
     );
 }
 

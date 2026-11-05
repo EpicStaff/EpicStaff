@@ -167,7 +167,7 @@ const FIELD_CASES: FieldCase[] = [
     },
     {
         panel: WEBHOOK,
-        change: fieldChange('python_code.execution_timeout', 90, null),
+        change: fieldChange('python_code.execution_timeout', 90, 120),
         marked: 'app-execution-timeout-field',
         tooltip: '[00:01:30]',
     },

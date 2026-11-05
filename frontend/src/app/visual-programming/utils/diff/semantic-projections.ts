@@ -1,4 +1,4 @@
-import { CustomPythonCode, NodeType } from '@shared/models';
+import { CustomPythonCode, effectiveExecutionTimeoutSeconds, ExecutionTimeoutLimits, NodeType } from '@shared/models';
 
 import { DEFAULT_KEY_VALUE_MODE, MISSING_END_OUTPUT_MAP } from '../../core/constants/default-node-data';
 import { findCdtSection } from '../../core/models/cdt-section.model';
@@ -15,6 +15,7 @@ import {
     sortedNumbers,
     sortedStrings,
     sortWeekdays,
+    storedText,
     stripNodeNumberSuffix,
 } from './normalize';
 
@@ -63,6 +64,11 @@ export function keyPrefixOf(field: string): string | undefined {
 export interface ProjectionContext {
     /** Match key of the node with this canvas id on the same side; `null` when there is no such node. */
     nodeKey(canvasId: string | null | undefined): string | null;
+    /**
+     * The deployment's execution timeout limits: the default the backend stores for code saved without a timeout of
+     * its own (a new node on the canvas, a version saved before code had one), and the maximum it caps a timeout at.
+     */
+    executionTimeoutLimits: ExecutionTimeoutLimits;
 }
 
 export interface NodeProjection<TNode extends NodeModel> {
@@ -119,23 +125,23 @@ export const SEMANTIC_PROJECTIONS = {
         ignored: {},
     },
     [NodeType.NOTE]: {
-        project: (node) => ({ content: node.data.content }),
+        project: (node) => ({ content: storedText(node.data.content) }),
         ignored: { node_name: 'notes are diffed by content only', 'data.backgroundColor': 'layout' },
     },
     [NodeType.PYTHON]: {
-        project: (node) => ({
+        project: (node, context) => ({
             node_name: nodeName(node),
             // Only here: the webhook and table load mappers drop the venv, so their models never hold one.
-            python_code: { ...pythonCode(node.data), venv_id: node.data.venv_id ?? null },
+            python_code: { ...pythonCode(node.data, context), venv_id: node.data.venv_id ?? null },
             use_storage: node.data.use_storage ?? false,
             ...inputOutput(node),
         }),
         ignored: { test_input: TEST_AID, ...prefixKeys('data.', PYTHON_CODE_IGNORED) },
     },
     [NodeType.WEBHOOK_TRIGGER]: {
-        project: (node) => ({
+        project: (node, context) => ({
             node_name: nodeName(node),
-            python_code: pythonCode(node.data.python_code),
+            python_code: pythonCode(node.data.python_code, context),
             use_storage: node.data.use_storage ?? false,
             webhook_trigger: node.data.webhook_trigger,
         }),
@@ -267,17 +273,25 @@ export const SEMANTIC_PROJECTIONS = {
             const prompts = table.prompts ?? {};
             return {
                 node_name: nodeName(node),
-                pre_computation: computation(table.pre_computation, {
-                    code: table.pre_computation_code,
-                    inputMap: table.pre_input_map,
-                    outputVariablePath: table.pre_output_variable_path,
-                }),
+                pre_computation: computation(
+                    table.pre_computation,
+                    {
+                        code: table.pre_computation_code,
+                        inputMap: table.pre_input_map,
+                        outputVariablePath: table.pre_output_variable_path,
+                    },
+                    context
+                ),
                 pre_use_storage: table.pre_use_storage ?? false,
-                post_computation: computation(table.post_computation, {
-                    code: table.post_computation_code,
-                    inputMap: table.post_input_map,
-                    outputVariablePath: table.post_output_variable_path,
-                }),
+                post_computation: computation(
+                    table.post_computation,
+                    {
+                        code: table.post_computation_code,
+                        inputMap: table.post_input_map,
+                        outputVariablePath: table.post_output_variable_path,
+                    },
+                    context
+                ),
                 post_use_storage: table.post_use_storage ?? false,
                 condition_groups: keyedBy(
                     comparedConditionGroups(NodeType.CLASSIFICATION_TABLE, table.condition_groups ?? []),
@@ -369,13 +383,24 @@ function uniqueKey(baseKey: string, isTaken: (key: string) => boolean): string {
 }
 
 /** Secrets are compared by their resolved names; on the version side, the names a restore re-links. */
-function pythonCode(code: CustomPythonCode): Projection {
+function pythonCode(code: CustomPythonCode, context: ProjectionContext): Projection {
     return {
-        code: code.code,
+        code: storedText(code.code),
         entrypoint: code.entrypoint,
         secret_names: sortedStrings(code.secret_names),
-        execution_timeout: code.execution_timeout ?? null,
+        execution_timeout: storedExecutionTimeout(code.execution_timeout, context),
     };
+}
+
+/**
+ * The timeout the backend stores for the code: its own capped at the maximum, or the default when it has none. The
+ * backend always stores one, so a missing timeout only means the value was never read back: on the canvas, code
+ * created since the flow was loaded (a save does not bring the stored value back); in a version, code saved before
+ * code had a timeout, which a restore gives the default. A timeout above a maximum lowered since is saved, and
+ * restored, as the maximum.
+ */
+function storedExecutionTimeout(seconds: number | null | undefined, context: ProjectionContext): number {
+    return effectiveExecutionTimeoutSeconds(seconds, context.executionTimeoutLimits);
 }
 
 /**
@@ -496,13 +521,14 @@ function computation(
         code: string | null | undefined;
         inputMap: Record<string, string> | undefined;
         outputVariablePath: string | null | undefined;
-    }
+    },
+    context: ProjectionContext
 ): Projection {
     return {
-        code: block?.code || flat.code || null,
+        code: emptyToNull(storedText(block?.code || flat.code || '')),
         input_map: block?.input_map || flat.inputMap || {},
         output_variable_path: block?.output_variable_path || flat.outputVariablePath || null,
         secret_names: sortedStrings(block?.secret_names),
-        execution_timeout: block?.execution_timeout ?? null,
+        execution_timeout: storedExecutionTimeout(block?.execution_timeout, context),
     };
 }

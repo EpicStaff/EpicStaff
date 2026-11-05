@@ -929,15 +929,8 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
 
     it.each([
         { kind: 'a timeout of its own', current: 90, version: 600, shown: '[00:01:30]' },
-        // The field shows the default timeout then (120 seconds in these limits), and so does the tooltip.
-        { kind: 'no timeout of its own', current: null, version: 600, shown: '[00:02:00]' },
-        // A restore pins the default: the same clock, so nothing is struck.
-        {
-            kind: 'no timeout of its own, the version pinning the default',
-            current: null,
-            version: 120,
-            shown: '00:02:00',
-        },
+        // The diff gives a node without a timeout of its own the default (120 seconds in these limits).
+        { kind: 'no timeout of its own', current: 120, version: 600, shown: '[00:02:00]' },
     ])(
         'shows the current execution timeout of a node with $kind as the clock the field shows',
         ({ current, version, shown }) => {

@@ -1,6 +1,7 @@
 import { NodeType } from '@shared/models';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
+import { TEST_EXECUTION_TIMEOUT_LIMITS } from '../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { NodeModel, ScheduleTriggerNodeModel } from '../../core/models/node.model';
 import { ScheduleTriggerNodeData } from '../../core/models/schedule-trigger.model';
 import { buildFlowModelFromGraphDto } from '../load';
@@ -81,6 +82,7 @@ function expectedSavedPath(type: NodeType): string {
 
 const stubContext: ProjectionContext = {
     nodeKey: (canvasId) => (canvasId ? `key:${canvasId}` : null),
+    executionTimeoutLimits: TEST_EXECUTION_TIMEOUT_LIMITS,
 };
 
 function recordReads<T extends object>(target: T, reads: Set<string>, path = ''): T {

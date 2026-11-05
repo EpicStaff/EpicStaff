@@ -206,7 +206,7 @@ function cellSegments(
     { shownText, format }: Pick<GroupFieldColumn, 'shownText' | 'format'>
 ): DisplaySegment[] {
     const shown = (value: unknown): unknown => (shownText && typeof value === 'string' ? shownText(value) : value);
-    return fieldValueSegments(null, shown(current), shown(version), undefined, format);
+    return fieldValueSegments(null, shown(current), shown(version), format);
 }
 
 /** The indexes of one longest strictly increasing run of `values` (patience sorting, O(n log n)). */

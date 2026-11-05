@@ -14,6 +14,14 @@ export function orNull<T>(value: T | null | undefined): T | null {
     return value ?? null;
 }
 
+/**
+ * Text as the backend stores it: without its surrounding whitespace, which a DRF `CharField` trims on every write
+ * (code, note content). The canvas keeps the text as typed, also after a save, so `"x\n"` there is the `"x"` stored.
+ */
+export function storedText(text: string): string {
+    return text.trim();
+}
+
 /** An empty string and a missing value are the same thing for optional text settings. */
 export function emptyToNull(value: string | null | undefined): string | null {
     return value ? value : null;

@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NodeType } from '@shared/models';
 
+import { TEST_EXECUTION_TIMEOUT_LIMITS } from '../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { PANEL_COMPONENT_MAP } from '../../core/enums/node-panel.map';
 import { ConditionGroup } from '../../core/models/decision-table.model';
 import {
@@ -156,7 +157,10 @@ function withKeyValueEntries(entries: KeyValueNodeModel['data']['entries']): Nod
 /** What the version diff compares of `node` (by default the live graph fixture's node of the type: the version side). */
 function projectionOf(type: NodeType, node: NodeModel = liveNodeOfType(type)): Record<string, unknown> {
     const projection = SEMANTIC_PROJECTIONS[type] as { project: (...args: unknown[]) => Record<string, unknown> };
-    return projection.project(node, { nodeKey: (canvasId: unknown) => canvasId });
+    return projection.project(node, {
+        nodeKey: (canvasId: unknown) => canvasId,
+        executionTimeoutLimits: TEST_EXECUTION_TIMEOUT_LIMITS,
+    });
 }
 
 /** A canvas value other than the version's, of the same shape, so the panel has something to show as changed. */

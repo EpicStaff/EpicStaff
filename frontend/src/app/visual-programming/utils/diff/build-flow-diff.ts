@@ -35,8 +35,8 @@ export function buildFlowDiff(input: FlowDiffInput): FlowDiff {
         const { key, matchedBy, versionNode, currentNode } = match;
         if (versionNode && currentNode) {
             const fields = diffProjections(
-                projectNode(currentNode, projectionContext(matching.currentKeyById)),
-                projectNode(versionNode, projectionContext(matching.versionKeyById))
+                projectNode(currentNode, projectionContext(matching.currentKeyById, input)),
+                projectNode(versionNode, projectionContext(matching.versionKeyById, input))
             );
             return {
                 key,
@@ -92,6 +92,9 @@ export function buildFlowDiff(input: FlowDiffInput): FlowDiff {
     return { nodes, edges, summary, matchRate };
 }
 
-function projectionContext(keyById: ReadonlyMap<string, string>): ProjectionContext {
-    return { nodeKey: (canvasId) => (canvasId ? (keyById.get(canvasId) ?? null) : null) };
+function projectionContext(keyById: ReadonlyMap<string, string>, input: FlowDiffInput): ProjectionContext {
+    return {
+        nodeKey: (canvasId) => (canvasId ? (keyById.get(canvasId) ?? null) : null),
+        executionTimeoutLimits: input.executionTimeoutLimits,
+    };
 }

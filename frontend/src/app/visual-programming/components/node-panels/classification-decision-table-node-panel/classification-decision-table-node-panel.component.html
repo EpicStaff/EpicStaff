@@ -243,11 +243,7 @@
                                     [readonly]="isReadOnly()"
                                 ></app-custom-input>
                             </app-diff-field-mark>
-                            <!-- A table without its own timeout shows the default, so the tooltip does too. -->
-                            <app-diff-field-mark
-                                [diffField]="'pre_computation.execution_timeout'"
-                                [diffDefaultValue]="preExecutionTimeout.limits.defaultSeconds"
-                            >
+                            <app-diff-field-mark [diffField]="'pre_computation.execution_timeout'">
                                 <app-execution-timeout-field
                                     [field]="preExecutionTimeout"
                                     [readonly]="isReadOnly()"
@@ -349,11 +345,7 @@
                                     [readonly]="isReadOnly()"
                                 ></app-custom-input>
                             </app-diff-field-mark>
-                            <!-- A table without its own timeout shows the default, so the tooltip does too. -->
-                            <app-diff-field-mark
-                                [diffField]="'post_computation.execution_timeout'"
-                                [diffDefaultValue]="postExecutionTimeout.limits.defaultSeconds"
-                            >
+                            <app-diff-field-mark [diffField]="'post_computation.execution_timeout'">
                                 <app-execution-timeout-field
                                     [field]="postExecutionTimeout"
                                     [readonly]="isReadOnly()"

@@ -114,11 +114,6 @@ export class DiffFieldMarkComponent {
     /** A change worked out by the caller, e.g. one key of a map field; used instead of `diffField`. */
     readonly diffChange = input<DiffFieldMarkChange | null>(null);
     /**
-     * What the field shows for a side that is `null` or `undefined` (no value of its own), e.g. the default execution
-     * timeout, so the tooltip shows that instead of "empty". An empty text or list is not replaced. Not set: "empty".
-     */
-    readonly diffDefaultValue = input<unknown>(undefined);
-    /**
      * Shown on hover and focus, and read as the description, instead of the current value: for a value too long
      * for a tooltip, e.g. code ("Expand editor to see the changes."). Not set: the current value.
      */
@@ -155,13 +150,7 @@ export class DiffFieldMarkComponent {
         // A given change is not a stored field value, so the field's own formatter (`FIELD_DISPLAY`) does not apply
         // to it; `diffFormat` does, as the caller sets it for that change.
         const field = this.diffChange() === null ? this.diffField() : null;
-        return fieldValueSegments(
-            field,
-            change.current,
-            change.version,
-            this.diffDefaultValue(),
-            this.diffFormat() ?? undefined
-        );
+        return fieldValueSegments(field, change.current, change.version, this.diffFormat() ?? undefined);
     });
     private readonly description = computed(() => {
         if (this.change() === null) return null;

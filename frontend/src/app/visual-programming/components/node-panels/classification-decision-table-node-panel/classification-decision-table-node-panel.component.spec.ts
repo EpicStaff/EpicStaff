@@ -874,7 +874,7 @@ describe('ClassificationDecisionTableNodePanelComponent — the pre- and post-co
             flagged: ['Pre-computation (restore changes this tab)'],
         },
         {
-            changed: changeOf('pre_computation.execution_timeout', 90, null),
+            changed: changeOf('pre_computation.execution_timeout', 90, 120),
             flagged: ['Pre-computation (restore changes this tab)'],
         },
         {
@@ -912,7 +912,7 @@ describe('ClassificationDecisionTableNodePanelComponent — the pre- and post-co
         },
         {
             tab: 'postcomputation' as const,
-            change: changeOf('post_computation.execution_timeout', 30, null),
+            change: changeOf('post_computation.execution_timeout', 30, 120),
             description: 'Current canvas: 00:00:30',
         },
         {

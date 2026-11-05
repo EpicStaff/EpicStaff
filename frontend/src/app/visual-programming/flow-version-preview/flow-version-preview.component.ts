@@ -15,6 +15,7 @@ import {
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, SpinnerComponent, TabButtonComponent } from '@shared/components';
 import { NodeType } from '@shared/models';
+import { ExecutionTimeoutLimitsStorageService } from '@shared/services';
 import { filter, fromEvent } from 'rxjs';
 
 import {
@@ -161,6 +162,7 @@ export class FlowVersionPreviewComponent {
                 liveFlow: untracked(() => this.liveFlow()),
                 versionWarningReferences: versionSide.warningReferences,
                 versionKeyValueTableNames: versionSide.keyValueTableNames,
+                executionTimeoutLimits: this.executionTimeoutLimits.limits(),
             });
             const union = buildUnionFlowModel(diff);
             const snapshotIdToCanvasId = new Map<number, string>();
@@ -267,6 +269,7 @@ export class FlowVersionPreviewComponent {
     private readonly destroyRef = inject(DestroyRef);
     private readonly sidePanelService = inject(SidePanelService);
     private readonly nodeAuthorshipStore = inject(VersionPreviewNodeAuthorshipStore);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
 
     constructor() {
         fromEvent<KeyboardEvent>(inject(DOCUMENT), 'keydown', { capture: true })

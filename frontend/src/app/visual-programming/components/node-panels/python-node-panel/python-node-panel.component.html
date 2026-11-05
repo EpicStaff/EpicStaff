@@ -102,11 +102,7 @@
                         <app-missing-reference-note [fields]="['python_code.venv_id']" />
                     </div>
 
-                    <!-- A node without its own timeout shows the default, so the tooltip does too. -->
-                    <app-diff-field-mark
-                        [diffField]="'python_code.execution_timeout'"
-                        [diffDefaultValue]="executionTimeout.limits.defaultSeconds"
-                    >
+                    <app-diff-field-mark [diffField]="'python_code.execution_timeout'">
                         <app-execution-timeout-field
                             [field]="executionTimeout"
                             [readonly]="isReadOnly()"

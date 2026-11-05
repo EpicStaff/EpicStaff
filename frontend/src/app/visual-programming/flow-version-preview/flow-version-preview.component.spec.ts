@@ -15,6 +15,7 @@ import {
 import { FlowsApiService } from '../../features/flows/services/flows-api.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
+import { provideLoadedExecutionTimeoutLimits } from '../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { FlowModel } from '../core/models/flow.model';
 import { FlowGraphComponent } from '../flow-graph/flow-graph.component';
 import { CdtExplanationStoreService } from '../services/cdt-explanation-store.service';
@@ -218,6 +219,8 @@ describe('FlowVersionPreviewComponent', () => {
                 { provide: PermissionsService, useValue: { can: () => true } },
                 // The live editor's store, which the flow page around the preview provides.
                 NodeAuthorshipStore,
+                // Loaded by the flow editor route before the page (and so the preview) opens.
+                provideLoadedExecutionTimeoutLimits(),
             ],
         });
         // jsdom cannot lay out the Foblex canvas; the handlers under test do not need it.

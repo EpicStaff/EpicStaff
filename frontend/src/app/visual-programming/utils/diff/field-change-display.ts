@@ -297,8 +297,6 @@ export function fieldChangeFor(
 
 /**
  * The current value of a field as the tooltip shows it, the parts a restore replaces struck:
- * - `defaultValue` (when given) stands in for a side that is `null` or `undefined` (no value of its own), as the
- *   field shows it in that case (e.g. the default timeout). An empty text or list is a value and is not replaced;
  * - a field with a display formatter (`displayFormat`, else the field's own in `FIELD_DISPLAY`) shows the formatted
  *   text, struck as a whole when the formatted sides differ;
  * - any other value: `struckSegments`.
@@ -308,16 +306,11 @@ export function fieldValueSegments(
     field: FieldName | null,
     current: unknown,
     version: unknown,
-    defaultValue?: unknown,
     displayFormat?: (value: unknown) => string
 ): DisplaySegment[] {
-    const shown = (value: unknown): unknown => (value == null && defaultValue !== undefined ? defaultValue : value);
     const format = displayFormat ?? (field ? fieldFormat(field) : undefined);
-    if (!format) return struckSegments(shown(current), shown(version));
-    const textOf = (value: unknown): string => {
-        const shown = value == null && defaultValue !== undefined ? defaultValue : value;
-        return isEmpty(shown) ? EMPTY_TEXT : format(shown);
-    };
+    if (!format) return struckSegments(current, version);
+    const textOf = (value: unknown): string => (isEmpty(value) ? EMPTY_TEXT : format(value));
     const currentText = textOf(current);
     return [{ text: currentText, struck: currentText !== textOf(version) }];
 }

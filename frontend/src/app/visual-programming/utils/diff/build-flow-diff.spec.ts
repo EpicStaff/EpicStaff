@@ -1,4 +1,4 @@
-import { NodeType } from '@shared/models';
+import { ExecutionTimeoutLimits, NodeType } from '@shared/models';
 
 import { RestoreWarning } from '../../../features/flows/models/graph.model';
 import { GraphVersionSnapshot, SnapshotNode } from '../../../features/flows/models/graph-version-preview.model';
@@ -30,10 +30,15 @@ const snapshot: GraphVersionSnapshot = liveGraphSnapshot;
 /** What the backend resolves the fixture's declared secret names to: every name but the deleted one. */
 const RESOLVED_SECRETS: Record<string, number> = Object.fromEntries(SNAPSHOT_SECRETS_BY_NAME);
 
+/** The deployment's execution timeout limits, in seconds: the backend stores the default for code saved without one. */
+const TIMEOUT_LIMITS: ExecutionTimeoutLimits = { minSeconds: 5, defaultSeconds: 120, maxSeconds: 600 };
+const DEFAULT_TIMEOUT = TIMEOUT_LIMITS.defaultSeconds;
+
 /** A flow-to-flow comparison has no preview filtering to account for. */
 const NO_VERSION_INPUTS = {
     versionWarningReferences: new Map(),
     versionKeyValueTableNames: new Map(),
+    executionTimeoutLimits: TIMEOUT_LIMITS,
 } as const;
 
 function loadLive(): FlowModel {
@@ -55,6 +60,7 @@ function diffVersion(
         liveFlow: options.liveFlow ?? loadLive(),
         versionWarningReferences: buildVersionWarningReferences(options.warnings ?? [], snapshotIdToCanvasId),
         versionKeyValueTableNames: buildVersionKeyValueTableNames(version.nodes, snapshotIdToCanvasId),
+        executionTimeoutLimits: TIMEOUT_LIMITS,
     });
 }
 
@@ -283,7 +289,7 @@ describe('buildFlowDiff', () => {
             NodeType.PYTHON,
             UUID.python,
             (node) => ({ ...node, data: { ...node.data, execution_timeout: 90 } }),
-            { path: 'python_code.execution_timeout', current: 90, version: null }
+            { path: 'python_code.execution_timeout', current: 90, version: DEFAULT_TIMEOUT }
         ),
         fieldCase(
             NodeType.WEBHOOK_TRIGGER,
@@ -292,7 +298,7 @@ describe('buildFlowDiff', () => {
                 ...node,
                 data: { ...node.data, python_code: { ...node.data.python_code, execution_timeout: 90 } },
             }),
-            { path: 'python_code.execution_timeout', current: 90, version: null }
+            { path: 'python_code.execution_timeout', current: 90, version: DEFAULT_TIMEOUT }
         ),
         fieldCase(
             NodeType.CLASSIFICATION_TABLE,
@@ -307,14 +313,178 @@ describe('buildFlowDiff', () => {
                     },
                 },
             }),
-            { path: 'post_computation.execution_timeout', current: 90, version: null }
+            { path: 'post_computation.execution_timeout', current: 90, version: DEFAULT_TIMEOUT }
         ),
     ])('$type: a changed execution timeout is a change', (testCase) => {
+        // The fixture's version was saved before code had a timeout: a restore gives it the default.
         const diff = diffVersion(snapshot, { liveFlow: testCase.edit(loadLive()) });
 
         expect(entryOf(diff, testCase.nodeUuid).fields).toEqual([
             expect.objectContaining({ path: testCase.path, current: testCase.current, version: testCase.version }),
         ]);
+    });
+
+    // The canvas keeps a node it saved as it sent it: the text as typed and no timeout of its own. The backend stores
+    // text without its surrounding whitespace (a DRF CharField trims it) and gives code saved without a timeout the
+    // deployment default, and a version is taken from what it stores. A restore of that version changes nothing.
+    describe('a node saved just before the version was taken', () => {
+        const typedCode = 'def main():\n    return\n';
+        const storedCode = 'def main():\n    return';
+
+        it.each([
+            {
+                name: 'Python',
+                nodeUuid: UUID.python,
+                canvas: (flow: FlowModel) =>
+                    updateNode(flow, NodeType.PYTHON, (node) => ({
+                        ...node,
+                        data: { ...node.data, code: typedCode, execution_timeout: undefined },
+                    })),
+                version: withSnapshotNode(snapshot, ID.python, {
+                    python_code: { code: storedCode, entrypoint: 'main', execution_timeout: DEFAULT_TIMEOUT },
+                }),
+            },
+            {
+                name: 'Webhook',
+                nodeUuid: UUID.webhook,
+                canvas: (flow: FlowModel) =>
+                    updateNode(flow, NodeType.WEBHOOK_TRIGGER, (node) => ({
+                        ...node,
+                        data: {
+                            ...node.data,
+                            python_code: { ...node.data.python_code, code: typedCode, execution_timeout: undefined },
+                        },
+                    })),
+                version: withSnapshotNode(snapshot, ID.webhook, {
+                    python_code: { code: storedCode, entrypoint: 'main', execution_timeout: DEFAULT_TIMEOUT },
+                }),
+            },
+            {
+                name: 'Classification table',
+                nodeUuid: UUID.classificationTable,
+                canvas: (flow: FlowModel) =>
+                    updateNode(flow, NodeType.CLASSIFICATION_TABLE, (node) => ({
+                        ...node,
+                        data: {
+                            ...node.data,
+                            table: {
+                                ...node.data.table,
+                                pre_computation_code: typedCode,
+                                pre_computation: {
+                                    ...node.data.table.pre_computation!,
+                                    code: typedCode,
+                                    execution_timeout: undefined,
+                                },
+                            },
+                        },
+                    })),
+                version: withSnapshotNode(snapshot, ID.classificationTable, {
+                    pre_python_code: {
+                        code: storedCode,
+                        entrypoint: 'main',
+                        global_kwargs: {},
+                        execution_timeout: DEFAULT_TIMEOUT,
+                    },
+                }),
+            },
+            {
+                name: 'Note',
+                nodeUuid: UUID.note,
+                canvas: (flow: FlowModel) =>
+                    updateNode(flow, NodeType.NOTE, (node) => ({
+                        ...node,
+                        data: { ...node.data, content: 'hello\n' },
+                    })),
+                version: snapshot,
+            },
+        ])('$name: unchanged', ({ nodeUuid, canvas, version }) => {
+            const entry = entryOf(diffVersion(version, { liveFlow: canvas(loadLive()) }), nodeUuid);
+
+            expect(entry.fields).toEqual([]);
+            expect(entry.status).toBe('unchanged');
+        });
+
+        it('Classification table loaded again: its stored timeouts match the version', () => {
+            const liveFlow = updateNode(loadLive(), NodeType.CLASSIFICATION_TABLE, (node) => ({
+                ...node,
+                data: {
+                    ...node.data,
+                    table: {
+                        ...node.data.table,
+                        pre_computation: { ...node.data.table.pre_computation!, execution_timeout: 300 },
+                    },
+                },
+            }));
+            const version = withSnapshotNode(snapshot, ID.classificationTable, {
+                pre_python_code: {
+                    code: 'def main(): pass',
+                    entrypoint: 'main',
+                    global_kwargs: {},
+                    execution_timeout: 300,
+                },
+            });
+
+            expect(entryOf(diffVersion(version, { liveFlow }), UUID.classificationTable).fields).toEqual([]);
+        });
+
+        it.each([
+            { name: 'a timeout of its own', canvasTimeout: undefined, versionTimeout: 300, current: DEFAULT_TIMEOUT },
+            { name: 'no timeout of its own', canvasTimeout: 300, versionTimeout: undefined, current: 300 },
+        ])('a version with $name still differs from the canvas', ({ canvasTimeout, versionTimeout, current }) => {
+            const liveFlow = updateNode(loadLive(), NodeType.PYTHON, (node) => ({
+                ...node,
+                data: { ...node.data, execution_timeout: canvasTimeout },
+            }));
+            const version = withSnapshotNode(snapshot, ID.python, {
+                python_code: { code: 'def main(): pass', entrypoint: 'main', execution_timeout: versionTimeout },
+            });
+
+            expect(entryOf(diffVersion(version, { liveFlow }), UUID.python).fields).toEqual([
+                expect.objectContaining({
+                    path: 'python_code.execution_timeout',
+                    current,
+                    version: versionTimeout ?? DEFAULT_TIMEOUT,
+                }),
+            ]);
+        });
+
+        // The backend saves and restores a timeout above the maximum (lowered since it was set) as the maximum.
+        it.each([
+            { name: 'canvas above the maximum, version at it', canvasTimeout: 900, versionTimeout: 600, fields: [] },
+            {
+                name: 'version above the maximum',
+                canvasTimeout: 300,
+                versionTimeout: 900,
+                fields: [
+                    expect.objectContaining({ path: 'python_code.execution_timeout', current: 300, version: 600 }),
+                ],
+            },
+        ])('a timeout above the maximum counts as the maximum: $name', ({ canvasTimeout, versionTimeout, fields }) => {
+            const liveFlow = updateNode(loadLive(), NodeType.PYTHON, (node) => ({
+                ...node,
+                data: { ...node.data, execution_timeout: canvasTimeout },
+            }));
+            const version = withSnapshotNode(snapshot, ID.python, {
+                python_code: { code: 'def main(): pass', entrypoint: 'main', execution_timeout: versionTimeout },
+            });
+
+            expect(entryOf(diffVersion(version, { liveFlow }), UUID.python).fields).toEqual(fields);
+        });
+
+        it('changed code is a change, compared without the whitespace the backend drops', () => {
+            const liveFlow = updateNode(loadLive(), NodeType.PYTHON, (node) => ({
+                ...node,
+                data: { ...node.data, code: '\ndef main(): return 1\n' },
+            }));
+
+            expect(entryOf(diffVersion(snapshot, { liveFlow }), UUID.python).fields).toEqual([
+                expect.objectContaining({
+                    path: 'python_code.code',
+                    current: 'def main(): return 1',
+                    version: 'def main(): pass',
+                }),
+            ]);
+        });
     });
 
     // The fixture's Python node is a version saved before venvs: it has libraries and no venv, which reads as no venv.

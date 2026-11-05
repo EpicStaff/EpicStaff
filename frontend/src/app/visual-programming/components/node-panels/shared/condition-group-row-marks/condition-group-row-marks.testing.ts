@@ -1,5 +1,6 @@
 import { NodeType } from '@shared/models';
 
+import { TEST_EXECUTION_TIMEOUT_LIMITS } from '../../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import {
     ClassificationDecisionTableNodeModel,
@@ -26,7 +27,10 @@ export function conditionGroupsDiff(
     canvasGroups: ConditionGroup[],
     versionGroups: ConditionGroup[]
 ): UnionNodeDiffState {
-    const context = { nodeKey: (canvasId: string | null | undefined) => canvasId ?? null };
+    const context = {
+        nodeKey: (canvasId: string | null | undefined) => canvasId ?? null,
+        executionTimeoutLimits: TEST_EXECUTION_TIMEOUT_LIMITS,
+    };
     const canvasNode = tableNodeWith(type, canvasGroups);
     return {
         status: 'changed',

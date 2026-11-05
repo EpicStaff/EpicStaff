@@ -283,28 +283,8 @@ describe('fieldValueSegments', () => {
         expect(fieldValueSegments(field, 90, 120)).toEqual([struck('00:01:30')]);
     });
 
-    it.each<{ kind: string; current: unknown; version: unknown; segments: DisplaySegment[] }>([
-        { kind: 'no own timeout on the canvas', current: null, version: 90, segments: [struck('00:02:00')] },
-        { kind: 'no own timeout in the version', current: 90, version: null, segments: [struck('00:01:30')] },
-        // The field reads the same either way: nothing is struck.
-        {
-            kind: 'no own timeout, the version setting the default',
-            current: null,
-            version: 120,
-            segments: [kept('00:02:00')],
-        },
-        {
-            kind: 'the default set on the canvas, none in the version',
-            current: 120,
-            version: null,
-            segments: [kept('00:02:00')],
-        },
-    ])('shows the default the field shows for $kind', ({ current, version, segments }) => {
-        expect(fieldValueSegments('python_code.execution_timeout', current, version, 120)).toEqual(segments);
-    });
-
-    it('says "empty" for a side without a value when the field has no default', () => {
-        expect(fieldValueSegments('python_code.execution_timeout', null, 90)).toEqual([struck('empty')]);
+    it('says "empty" for a side without a value', () => {
+        expect(fieldValueSegments('output_variable_path', null, 'variables.result')).toEqual([struck('empty')]);
     });
 
     it('splits a field without a formatter, or a change with no field, by character', () => {
@@ -328,15 +308,13 @@ describe('fieldValueSegments with a display format of its own', () => {
         { kind: 'no value on the canvas', current: null, version: 42, segments: [struck('empty')] },
         { kind: 'the same name on both sides', current: 41, version: 41, segments: [kept('Billing')] },
     ])('shows a linked entity by name: $kind', ({ current, version, segments }) => {
-        expect(fieldValueSegments(null, current, version, undefined, flowName)).toEqual(segments);
+        expect(fieldValueSegments(null, current, version, flowName)).toEqual(segments);
     });
 
     it("replaces the field's own formatter", () => {
         const asSeconds = (value: unknown): string => `${String(value)} s`;
 
-        expect(fieldValueSegments('python_code.execution_timeout', 90, 120, undefined, asSeconds)).toEqual([
-            struck('90 s'),
-        ]);
+        expect(fieldValueSegments('python_code.execution_timeout', 90, 120, asSeconds)).toEqual([struck('90 s')]);
     });
 });
 

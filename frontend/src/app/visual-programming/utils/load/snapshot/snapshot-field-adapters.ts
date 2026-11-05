@@ -72,6 +72,7 @@ export function toLiveClassificationPythonCode(
         global_kwargs: code.global_kwargs,
         content_hash: code.content_hash,
         secrets,
+        execution_timeout: code.execution_timeout,
     };
 }
 

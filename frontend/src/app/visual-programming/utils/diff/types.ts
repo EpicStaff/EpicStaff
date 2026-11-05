@@ -1,4 +1,4 @@
-import { NodeType } from '@shared/models';
+import { ExecutionTimeoutLimits, NodeType } from '@shared/models';
 
 import { FlowModel } from '../../core/models/flow.model';
 import { NodeModel } from '../../core/models/node.model';
@@ -157,4 +157,6 @@ export interface FlowDiffInput {
      * then a missing reference.
      */
     versionKeyValueTableNames: VersionKeyValueTableNames;
+    /** The deployment's execution timeout limits (default and maximum, in seconds). */
+    executionTimeoutLimits: ExecutionTimeoutLimits;
 }
