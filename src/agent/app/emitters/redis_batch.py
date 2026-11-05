@@ -24,6 +24,7 @@ _RESULT_PASSTHROUGH_KEYS = {
     "iterations",
     "stop_reason",
     "error_kind",
+    "failed_llm",
     "token_usage",
     "warnings",  # service-authored advisory templates; never tenant free text
 }
@@ -133,6 +134,7 @@ class RedisStreamBatchEmitter(Emitter):
                 "token_usage": result.token_usage.model_dump(),
                 "error": result.error,
                 "error_kind": result.error_kind,
+                "failed_llm": result.failed_llm,
                 "warnings": self._warnings,
                 "tasks": (
                     [task.model_dump() for task in result.tasks]
@@ -160,13 +162,14 @@ class RedisStreamBatchEmitter(Emitter):
     async def on_error(self, error: Exception) -> None:
         """Publish a single ``agent.error`` envelope carrying the error message.
 
-        A failed agent loop also sends its ``stop_reason`` and ``error_kind``, so crew can
-        explain the failure without showing the raw ``error`` text.
+        A failed agent loop also sends its ``stop_reason``, ``error_kind`` and
+        ``failed_llm``, so crew can explain the failure without showing the raw ``error`` text.
         """
         payload = {"error": str(error), "warnings": self._warnings}
         if isinstance(error, AgentLoopFailedError):
             payload["stop_reason"] = error.stop_reason
             payload["error_kind"] = error.error_kind
+            payload["failed_llm"] = error.failed_llm
         envelope = StreamEnvelope(
             type="agent.error",
             correlation_id=self._correlation_id,

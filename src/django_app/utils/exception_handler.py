@@ -29,6 +29,8 @@ _UNLABELLED_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})
 UPSTREAM_FAILURE_MESSAGE = (
     "Something went wrong on the server. Try again or contact your administrator."
 )
+UPSTREAM_NOT_FOUND_MESSAGE = "The requested item wasn't found. It may have been deleted."
+UPSTREAM_RATE_LIMITED_MESSAGE = "Too many requests right now. Wait a moment and try again."
 
 
 def flatten_error_detail(detail) -> str:
@@ -110,8 +112,9 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
     false about their own request.
 
     A rejected payload shows the upstream `detail` texts, which say what is wrong with
-    the caller's own input. Every other status gets a generic message: the upstream
-    text is written for this gateway, not for a user, so it goes to the log only.
+    the caller's own input. A missing resource and rate limiting get a fixed message of
+    their own; every other status gets a generic one. The upstream text is written for
+    this gateway, not for a user, so it goes to the log only.
     """
     detail = _upstream_detail(exc)
 
@@ -124,9 +127,9 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
         detail=detail,
     )
     if isinstance(exc, ClientNotFoundError):
-        return NotFound(UPSTREAM_FAILURE_MESSAGE)
+        return NotFound(UPSTREAM_NOT_FOUND_MESSAGE)
     if isinstance(exc, ClientRateLimitError):
-        return Throttled(detail=UPSTREAM_FAILURE_MESSAGE)
+        return Throttled(detail=UPSTREAM_RATE_LIMITED_MESSAGE)
     if isinstance(exc, ClientConnectionError):
         unreachable_error = APIException(UPSTREAM_FAILURE_MESSAGE)
         unreachable_error.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -168,6 +171,21 @@ def _is_database_pool_exhausted(exc: Exception) -> bool:
     )
 
 
+# Set on an exception whose traceback its own code has already logged.
+_TRACEBACK_LOGGED_ATTRIBUTE = "_traceback_logged"
+
+
+def mark_traceback_logged(error: BaseException) -> None:
+    """Record that `error`'s traceback is already in the log, for code that re-raises it.
+
+    Code that logs an unexpected error itself (under a reference it shows the user) and
+    re-raises it calls this, so the 500 this handler answers with logs only its status
+    line instead of the same traceback a second time. Re-raise the same object: wrapping
+    it (`raise OtherError(...) from error`) drops the mark.
+    """
+    setattr(error, _TRACEBACK_LOGGED_ATTRIBUTE, True)
+
+
 def _log_unhandled_exception(exc: Exception, request, response) -> None:
     """Log the traceback of an exception answered with the generic 500.
 
@@ -176,15 +194,17 @@ def _log_unhandled_exception(exc: Exception, request, response) -> None:
     traceback, and marks the response as logged so that line is not repeated.
     It goes through stdlib `log_response` rather than loguru on purpose: only
     that call marks the response as logged, so a loguru call would leave
-    Django to repeat the line.
+    Django to repeat the line. An exception marked by `mark_traceback_logged`
+    gets the status line only.
     """
     path = request.path if request is not None else "unknown path"
+    already_logged = getattr(exc, _TRACEBACK_LOGGED_ATTRIBUTE, False)
     log_response(
         "Internal Server Error: %s",
         path,
         response=response,
         request=request,
-        exception=exc,
+        exception=None if already_logged else exc,
     )
 
 

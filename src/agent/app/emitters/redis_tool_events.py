@@ -27,6 +27,7 @@ LIVE_ARGUMENTS_MAX_CHARS = 2000
 LIVE_CONTENT_MAX_CHARS = 2000
 
 TOOL_FAILED_MESSAGE = 'Tool "{name}" failed. The agent was told and may try another way.'
+UNNAMED_TOOL_FAILED_MESSAGE = "A tool failed. The agent was told and may try another way."
 KNOWLEDGE_SEARCH_FAILED_MESSAGE = (
     "Knowledge search failed. The agent was told and may try another way."
 )
@@ -44,6 +45,9 @@ def _content_for_user(result: ToolResult, name: str | None) -> str:
         return result.display_content
 
     if result.is_error:
+        # A result whose call was never announced has no name to show.
+        if not name:
+            return UNNAMED_TOOL_FAILED_MESSAGE
         return TOOL_FAILED_MESSAGE.format(name=name)
 
     return result.content

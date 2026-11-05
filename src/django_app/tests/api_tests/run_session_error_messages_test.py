@@ -38,8 +38,10 @@ from tables.services.session_manager_service import SessionManagerService
 from tests.fixtures import *
 from utils.logger import logger
 
+REFERENCE = "0a1b2c3d4e5f"
 FLOW_START_FAILED_MESSAGE = (
-    "Something went wrong on the server. Try again or contact your administrator."
+    "Something went wrong on the server. "
+    f"Try again or contact your administrator (reference: {REFERENCE})."
 )
 
 
@@ -68,6 +70,13 @@ def captured_log_records():
 
 def _tracebacks(records: list[dict]) -> list[dict]:
     return [record for record in records if record["exception"] is not None]
+
+
+@pytest.fixture
+def fixed_reference(monkeypatch):
+    monkeypatch.setattr(
+        "tables.services.session_manager_service.new_error_correlation_id", lambda: REFERENCE
+    )
 
 
 @pytest.fixture
@@ -303,7 +312,7 @@ def test_error_with_its_own_status_keeps_that_status_and_text(
 
 @pytest.mark.django_db
 def test_unexpected_failure_returns_a_generic_message_without_internals(
-    auth_client, redis_client_mock, session_data, graph, monkeypatch
+    auth_client, redis_client_mock, session_data, graph, monkeypatch, fixed_reference
 ):
     # With DEBUG on the handler leaves the exception to Django instead of rendering the 500.
     monkeypatch.setattr("utils.exception_handler.DEBUG", False)
@@ -367,7 +376,15 @@ def test_refusal_is_logged_as_a_warning_without_a_traceback(
 @pytest.mark.django_db
 @pytest.mark.parametrize("fails", ["before_the_session_exists", "after_the_session_exists"])
 def test_unexpected_failure_logs_its_traceback_once(
-    auth_client, redis_client_mock, session_data, graph, monkeypatch, captured_log_records, fails
+    auth_client,
+    redis_client_mock,
+    session_data,
+    graph,
+    monkeypatch,
+    captured_log_records,
+    caplog,
+    fixed_reference,
+    fails,
 ):
     monkeypatch.setattr("utils.exception_handler.DEBUG", False)
     _connect_start_to_end(graph)
@@ -387,7 +404,16 @@ def test_unexpected_failure_logs_its_traceback_once(
     response = auth_client.post(reverse("run-session"), session_data, format="json")
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR, response.content
-    assert len(_tracebacks(captured_log_records)) == 1
+    # Django's request logger is stdlib logging, so loguru's sink alone can't see it.
+    stdlib_tracebacks = [record for record in caplog.records if record.exc_info]
+    assert stdlib_tracebacks == []
+    [traceback_record] = _tracebacks(captured_log_records)
+    # The reference a stored session reason cites finds this line.
+    assert f"correlation_id={REFERENCE}" in traceback_record["message"]
+    # The request's status line is still logged, once, without the traceback.
+    assert [record.getMessage() for record in caplog.records if record.name == "django.request"] == [
+        "Internal Server Error: /api/run-session/"
+    ]
 
 
 def _decision_table_routing_to_end(graph: Graph, *, next_node_id: int | None = None):

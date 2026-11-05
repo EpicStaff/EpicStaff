@@ -284,6 +284,71 @@ async def test_missing_model_at_a_custom_base_url_points_at_the_url_too(service,
     )
 
 
+CUSTOM_URL = "https://llm.example.com/v1"
+
+
+@ENVELOPE_TYPES
+@pytest.mark.parametrize(
+    ("primary_base_url", "fallback_base_url", "failed_llm", "expected_text"),
+    [
+        pytest.param(
+            None, CUSTOM_URL, "fallback",
+            'The provider has no model "claude-sonnet". Check the model name and base URL in the LLM settings.',
+            id="fallback-at-a-custom-url",
+        ),
+        pytest.param(
+            CUSTOM_URL, None, "fallback",
+            'The provider has no model "claude-sonnet". Check the model name in the LLM settings.',
+            id="fallback-while-only-the-primary-has-a-custom-url",
+        ),
+        pytest.param(
+            None, CUSTOM_URL, "primary",
+            'The provider has no model "gpt-4o". Check the model name in the LLM settings.',
+            id="primary",
+        ),
+        pytest.param(
+            None, CUSTOM_URL, None,
+            'The provider has no model "gpt-4o". Check the model name in the LLM settings.',
+            id="older-agent-service-without-the-field",
+        ),
+    ],
+)
+async def test_llm_failure_names_the_llm_that_failed(
+    service, client, envelope_type, primary_base_url, fallback_base_url, failed_llm, expected_text
+):
+    node = _task_node(
+        llm=LLMData(provider="openai", config=LLMConfigData(model="gpt-4o", base_url=primary_base_url)),
+        fallback_llm=LLMData(
+            provider="anthropic", config=LLMConfigData(model="claude-sonnet", base_url=fallback_base_url)
+        ),
+    )
+    envelope_type, payload = _llm_failure(envelope_type, "model_not_found")
+    if failed_llm is not None:
+        payload["failed_llm"] = failed_llm
+
+    result, _ = await _run(
+        service, client, replies=[(envelope_type, payload)], run=lambda: _start_task(service, node, StopEvent())
+    )
+
+    assert str(result) == expected_text
+
+
+async def test_unexplained_fallback_failure_names_the_fallback_model(service, client, fixed_reference):
+    node = _task_node(fallback_llm=LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet")))
+    envelope_type, payload = _llm_failure("agent.error", "unknown")
+    payload["failed_llm"] = "fallback"
+
+    result, _ = await _run(
+        service, client, replies=[(envelope_type, payload)], run=lambda: _start_task(service, node, StopEvent())
+    )
+
+    assert str(result) == (
+        'The LLM request for model "claude-sonnet" failed. '
+        f"Try again or contact your administrator (reference: {REFERENCE})."
+    )
+    assert result.correlation_id == REFERENCE
+
+
 @ENVELOPE_TYPES
 @pytest.mark.parametrize(
     "error_kind", ["unknown", None, "kind_from_a_newer_agent"], ids=["unknown", "missing", "unrecognized"]
@@ -534,7 +599,7 @@ async def test_task_request_carries_the_agent_spec_and_task(service, client):
 async def test_request_spec_carries_the_agents_fallback_llm(service, client, fallback_llm):
     node = _task_node(fallback_llm=fallback_llm)
 
-    _, agent = await _run(service, client, run=lambda: service.run_task(node, StopEvent()))
+    _, agent = await _run(service, client, run=lambda: _start_task(service, node, StopEvent()))
 
     (spec,) = AgentRequest(correlation_id="unused", **agent.request).agents
     assert spec.fallback_llm == fallback_llm

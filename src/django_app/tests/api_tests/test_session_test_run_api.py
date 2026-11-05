@@ -12,6 +12,7 @@ from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.models import Graph, PythonCode, WebhookTrigger
 from tables.models.graph_models import (
+    Edge,
     GraphOrganization,
     PythonNode,
     StartNode,
@@ -237,15 +238,18 @@ class TestTriggerTestRunThatFailsToStart:
     def test_failed_start_returns_400_and_keeps_an_error_test_run_session(
         self, acme, acme_client, acme_graph, webhook_node, redis_client_mock
     ):
-        # A python node reading a secret it did not declare makes run_session
-        # abort after the Session row exists.
+        # A python node the trigger reaches, reading a secret it did not declare,
+        # makes run_session abort after the Session row exists.
         secret_service.create(text="sk-test-run", org=acme, name="TEST_RUN_KEY")
-        PythonNode.objects.create(
+        python_node = PythonNode.objects.create(
             graph=acme_graph,
             node_name="Reads undeclared secret",
             python_code=PythonCode.objects.create(
                 code='def main(**kwargs):\n    return get_secret("TEST_RUN_KEY")\n'
             ),
+        )
+        Edge.objects.create(
+            graph=acme_graph, start_node_id=webhook_node.id, end_node_id=python_node.id
         )
 
         response = acme_client.post(

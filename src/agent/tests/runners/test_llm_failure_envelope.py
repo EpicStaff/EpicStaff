@@ -48,12 +48,18 @@ class SlowLLMClient(LLMClient):
         return self._never()
 
 
-def _agent(max_execution_time: float | None = None) -> AgentSpec:
+FALLBACK_LLM = LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet-4-5"))
+
+
+def _agent(
+    max_execution_time: float | None = None, fallback_llm: LLMData | None = None
+) -> AgentSpec:
     return AgentSpec(
         id=12,
         name="Copywriter",
         instructions="Write copy.",
         llm=LLMData(provider="openai", config=LLMConfigData(model="gpt-4o")),
+        fallback_llm=fallback_llm,
         max_iter=3,
         schema_max_retries=0,
         max_execution_time=max_execution_time,
@@ -132,6 +138,28 @@ async def test_llm_failure_reaches_crew_with_its_kind(runner_class, request_, re
     assert envelope_type == "agent.error"
     assert payload["stop_reason"] == "llm_error"
     assert payload["error_kind"] == "authentication"
+    assert payload["failed_llm"] == "primary"
+
+
+@pytest.mark.parametrize(
+    ("runner_class", "request_"),
+    [
+        (SingleTaskRunner, _single_task(fallback_llm=FALLBACK_LLM)),
+        (SingleTaskRunner, _single_task(OUTPUT_SCHEMA, fallback_llm=FALLBACK_LLM)),
+        (ListOfTasksRunner, _list_of_tasks(fallback_llm=FALLBACK_LLM)),
+    ],
+    ids=["single-task", "schema-enforcer", "list-of-tasks"],
+)
+async def test_a_failed_fallback_reaches_crew_as_the_llm_that_failed(runner_class, request_):
+    rate_limited = litellm.RateLimitError(message="slow down", llm_provider="openai", model="gpt-4o")
+    llm = FakeLLMClient([rate_limited, _authentication_error()])
+
+    envelope_type, payload = await _terminal_envelope(runner_class, request_, llm)
+
+    assert envelope_type == "agent.error"
+    assert payload["stop_reason"] == "llm_error"
+    assert payload["error_kind"] == "authentication"
+    assert payload["failed_llm"] == "fallback"
 
 
 @RUNNER_PATHS
@@ -145,6 +173,7 @@ async def test_loop_failure_outside_the_llm_call_reaches_crew_without_a_kind(
     assert envelope_type == "agent.error"
     assert payload["stop_reason"] == "internal_error"
     assert payload["error_kind"] is None
+    assert payload["failed_llm"] is None
 
 
 @pytest.mark.parametrize(

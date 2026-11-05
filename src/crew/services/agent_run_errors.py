@@ -11,7 +11,7 @@ import re
 from loguru import logger
 from services.graph.exceptions import PublicNodeError
 from src.shared.models import AgentDefinitionData, LLMData
-from src.shared.models.agent_service import LLMErrorKind, StopReason
+from src.shared.models.agent_service import FailedLLM, LLMErrorKind, StopReason
 from src.shared.public_error import (
     PublicErrorMessage,
     build_public_error_message,
@@ -107,9 +107,10 @@ def agent_run_error(
     logged with it, that the message cites and the failed session repeats.
 
     Args:
-        payload: The envelope payload. ``stop_reason`` and ``error_kind`` are optional, so
-            an agent service that doesn't send them still fails readably.
-        agent_definition: The node's agent.
+        payload: The envelope payload. ``stop_reason``, ``error_kind`` and ``failed_llm``
+            are optional, so an agent service that doesn't send them still fails readably.
+        agent_definition: The node's agent; its fallback LLM is named when ``failed_llm``
+            says the fallback failed.
         llm: The agent's LLM, already checked to be set by the node.
         run_correlation_id: The id crew dispatched the run under.
     """
@@ -141,12 +142,15 @@ def agent_run_error(
 
     # An llm_error without a kind comes from an agent service older than error_kind.
     kind = _known_kind(error_kind)
+    llm_that_failed = _llm_that_failed(payload.get("failed_llm"), agent_definition, llm)
     if kind is LLMErrorKind.UNKNOWN:
         reference = _log_unexplained_failure(raw_error, run_correlation_id)
-        return AgentTaskError(llm_error_text(kind, llm, reference), correlation_id=reference)
+        return AgentTaskError(
+            llm_error_text(kind, llm_that_failed, reference), correlation_id=reference
+        )
 
     _log_explained_failure(kind.value, run_correlation_id)
-    return AgentTaskError(llm_error_text(kind, llm))
+    return AgentTaskError(llm_error_text(kind, llm_that_failed))
 
 
 def llm_error_text(kind: LLMErrorKind, llm: LLMData, reference: str | None = None) -> str:
@@ -172,6 +176,16 @@ def _agent_time_limit_error(agent_name: str, limit_s: float) -> AgentTaskTimeout
 def _format_seconds(seconds: float) -> str:
     # Whole numbers print as ints, so a large limit never reads as 1e+06.
     return str(int(seconds)) if float(seconds).is_integer() else str(seconds)
+
+
+def _llm_that_failed(
+    failed_llm: object, agent_definition: AgentDefinitionData, primary_llm: LLMData
+) -> LLMData:
+    # A payload without failed_llm comes from an agent service older than the field, which
+    # only ever reported the primary.
+    if failed_llm == FailedLLM.FALLBACK and agent_definition.fallback_llm is not None:
+        return agent_definition.fallback_llm
+    return primary_llm
 
 
 def _known_kind(error_kind: object) -> LLMErrorKind:

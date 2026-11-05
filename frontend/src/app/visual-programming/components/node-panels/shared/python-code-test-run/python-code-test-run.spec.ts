@@ -6,6 +6,7 @@ import {
     PollEvent,
     PythonCodeResult,
     PythonCodeRunService,
+    PythonRunError,
     RunPythonCodeRequest,
 } from '../../../../services/python-code-run.service';
 import { parseTestInputValues, PythonCodeTestRun } from './python-code-test-run';
@@ -153,6 +154,29 @@ describe('PythonCodeTestRun', () => {
         expect(codeRun.status()).toBe('error');
     });
 
+    it('logs the reason the wait for the result gave, such as running out of time', () => {
+        const message =
+            'No result within the execution timeout of 90 s and a grace period. The code may still be running on the server.';
+        startAndPoll();
+        poll$.error(new PythonRunError(message));
+
+        expect(messages().at(-1)).toBe(`error: Error: ${message}`);
+        expect(codeRun.error()).toBe(message);
+        expect(codeRun.status()).toBe('error');
+    });
+
+    it('logs a plain sentence, not the raw message, for an error nobody expected', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        startAndPoll();
+        poll$.error(new TypeError('Cannot read properties of undefined'));
+
+        expect(messages().at(-1)).toBe('error: Error: Something went wrong. Try again.');
+        expect(codeRun.error()).toBe('Something went wrong. Try again.');
+        expect(codeRun.status()).toBe('error');
+
+        consoleError.mockRestore();
+    });
+
     it('ignores a run while one is in flight', () => {
         codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
         codeRun.run({ target: { type: 'python_node', id: 6 }, variables: {} }, EXECUTION_TIMEOUT_SECONDS);
@@ -190,7 +214,7 @@ describe('PythonCodeTestRun', () => {
 
     it('reset clears the result and error of a finished run', () => {
         codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
-        start$.error(new Error('boom'));
+        start$.error(new HttpErrorResponse({ status: 500 }));
         expect(codeRun.status()).toBe('error');
 
         codeRun.reset();

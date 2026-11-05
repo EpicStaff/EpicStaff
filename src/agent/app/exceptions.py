@@ -8,7 +8,7 @@ target specific failure modes.  ``RequestHandler`` maps these onto
 re-delivery.
 """
 
-from shared.models.agent_service import LLMErrorKind, LoopResult
+from shared.models.agent_service import FailedLLM, LLMErrorKind, LoopResult
 
 
 class AgentServiceError(Exception):
@@ -18,14 +18,16 @@ class AgentServiceError(Exception):
 class AgentLoopFailedError(AgentServiceError):
     """Raised where a runner turns a failed ``LoopResult`` into an error.
 
-    Keeps the result's ``stop_reason`` and ``error_kind`` so the ``agent.error`` envelope
-    still tells crew why the loop failed; the message is raw text for logs only.
+    Keeps the result's ``stop_reason``, ``error_kind`` and ``failed_llm`` so the
+    ``agent.error`` envelope still tells crew why the loop failed and which LLM failed; the
+    message is raw text for logs only.
     """
 
     def __init__(self, message: str, *, result: LoopResult) -> None:
         super().__init__(message)
         self.stop_reason: str = result.stop_reason
         self.error_kind: LLMErrorKind | None = result.error_kind
+        self.failed_llm: FailedLLM | None = result.failed_llm
 
 
 class UnknownRunTypeError(AgentServiceError):

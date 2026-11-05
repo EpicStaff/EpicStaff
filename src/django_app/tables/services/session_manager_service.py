@@ -21,6 +21,7 @@ from src.shared.models import (
     SubGraphNodeData,
     TaskNodeData,
 )
+from src.shared.public_error import new_error_correlation_id
 from src.shared.retention import DataType
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.exceptions import GraphEntryPointException, SubGraphValidationError
@@ -71,6 +72,7 @@ from tables.services.run_admission import (
 from tables.services.run_start_errors import (
     FLOW_SERVICE_NOT_RUNNING_MESSAGE,
     FLOW_SERVICE_NOT_RUNNING_ON_STOP_MESSAGE,
+    run_start_failure_reason,
     user_facing_run_error,
 )
 from tables.services.secrets import (
@@ -95,6 +97,7 @@ from tables.validators.key_value_node_validator import KeyValueNodeValidator
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.validators.subgraph_node_validator import SubGraphNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
+from utils.exception_handler import mark_traceback_logged
 from utils.graph_utils import (
     NodeNameResolver,
     flow_location,
@@ -335,9 +338,11 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         Logs every failure here, once: an `APIException` (a run check such as a
         validator, or an error with its own status such as a storage outage) as a
-        warning with its text, anything else with its traceback. Callers don't log
-        the traceback again. `RunAdmissionRefusedError` is not logged here: a trigger
-        that keeps firing while refused would flood the log, so callers log it through
+        warning with its text, anything else with its traceback, under the reference
+        the session's stored reason cites. Callers don't log the traceback again; the
+        exception is marked so the global exception handler doesn't either.
+        `RunAdmissionRefusedError` is not logged here: a trigger that keeps firing
+        while refused would flood the log, so callers log it through
         `log_trigger_refusal_once`, or answer it with a 409.
 
         Once crew has received the session, nothing raises: the run is live, and a caller
@@ -348,9 +353,13 @@ class SessionManagerService(metaclass=SingletonMeta):
                 nothing is written; refused again just before the publish, the session
                 is stopped and nothing is published.
         """
+        # Drawn before the run starts: the session's reason cites it, and that reason is
+        # written inside _start_session, before the traceback is logged here.
+        failure_reference = new_error_correlation_id()
         try:
             return self._start_session(
                 graph_id,
+                failure_reference=failure_reference,
                 variables=variables,
                 user=user,
                 trigger=trigger,
@@ -369,14 +378,20 @@ class SessionManagerService(metaclass=SingletonMeta):
                 "Run of graph {} not started: {}", graph_id, user_facing_run_error(error)
             )
             raise
-        except Exception:
-            logger.exception("Run of graph {} failed to start", graph_id)
+        except Exception as error:
+            logger.exception(
+                "Run of graph {} failed to start (correlation_id={})",
+                graph_id,
+                failure_reference,
+            )
+            mark_traceback_logged(error)
             raise
 
     def _start_session(
         self,
         graph_id: int,
         *,
+        failure_reference: str,
         variables: dict | None,
         user,
         trigger: TriggerSpec,
@@ -458,9 +473,11 @@ class SessionManagerService(metaclass=SingletonMeta):
             self._stop_refused_session(session=session, refusal=refusal)
             raise
         except Exception as error:
-            # Logged by run_session. The reason is shown to whoever reads the session,
-            # so it never carries an unexpected error's internals.
-            self._mark_session_error(session=session, reason=user_facing_run_error(error))
+            # Logged by run_session under failure_reference. The reason is shown to
+            # whoever reads the session, so it never carries an unexpected error's internals.
+            self._mark_session_error(
+                session=session, reason=run_start_failure_reason(error, failure_reference)
+            )
             raise
 
         logger.log(

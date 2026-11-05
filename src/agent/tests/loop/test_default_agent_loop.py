@@ -26,7 +26,7 @@ from app.loop.agent_loop import _UNTRUSTED_CONTENT_NOTE, DefaultAgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.tools.registry import ToolRegistry, ToolSpec
-from shared.models.agent_service import AgentSpec, LLMErrorKind, LoopResult, ToolResult
+from shared.models.agent_service import AgentSpec, FailedLLM, LLMErrorKind, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
 from tests.log_capture import assert_masked_exception, log_line_starting_with, capture_logs_at
@@ -1582,6 +1582,61 @@ async def test_fallback_failure_names_both_configs_and_error_classes(fallback, e
     assert result.stop_reason == "llm_error"
     assert result.error == expected_error
     assert _called_models(llm) == [_PRIMARY_MODEL, _FALLBACK_MODEL]
+
+
+@pytest.mark.parametrize(
+    ("fallback", "responses", "expected_stop_reason", "expected_failed_llm"),
+    [
+        pytest.param(
+            None,
+            lambda: [_provider_error(litellm.RateLimitError)],
+            "llm_error",
+            FailedLLM.PRIMARY,
+            id="primary-without-fallback",
+        ),
+        pytest.param(
+            _FALLBACK_LLM,
+            lambda: [_provider_error(litellm.BadRequestError)],
+            "llm_error",
+            FailedLLM.PRIMARY,
+            id="primary-error-that-does-not-switch",
+        ),
+        pytest.param(
+            _FALLBACK_LLM,
+            lambda: [_provider_error(litellm.RateLimitError), _provider_error(litellm.AuthenticationError)],
+            "llm_error",
+            FailedLLM.FALLBACK,
+            id="fallback-failed-right-after-the-switch",
+        ),
+        pytest.param(
+            _FALLBACK_LLM,
+            lambda: [
+                _provider_error(litellm.RateLimitError),
+                tool_chunks("c1", "ping", "{}"),
+                _provider_error(litellm.BadRequestError),
+            ],
+            "llm_error",
+            FailedLLM.FALLBACK,
+            id="fallback-failed-on-a-later-call",
+        ),
+        pytest.param(
+            _FALLBACK_LLM,
+            lambda: [RuntimeError("not an LLM error")],
+            "internal_error",
+            None,
+            id="not-an-llm-failure",
+        ),
+    ],
+)
+async def test_failed_result_says_which_llm_failed(fallback, responses, expected_stop_reason, expected_failed_llm):
+    llm = FakeLLMClient(responses())
+
+    result = await _run(
+        llm, _context_with_fallback(fallback=fallback), RecordingEmitter(), tools={"ping": lambda args: "pong"}
+    )
+
+    assert result.stop_reason == expected_stop_reason
+    assert result.failed_llm == expected_failed_llm
 
 
 async def test_cancelled_run_does_not_call_the_fallback():

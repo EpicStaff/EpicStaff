@@ -51,9 +51,12 @@ describe('httpErrorReason', () => {
         expect(httpErrorReason(error)).toBe(reason);
     });
 
-    it('keeps the message of an error thrown on the way, which has no status', () => {
+    it('gives a plain sentence for an error thrown on the way, which has no status, and keeps its message out', () => {
         const thrown = new TypeError('Cannot read properties of undefined');
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-        expect(httpErrorReason(thrown)).toBe('Cannot read properties of undefined');
+        expect(httpErrorReason(thrown)).toBe('Something went wrong. Try again.');
+
+        consoleError.mockRestore();
     });
 });

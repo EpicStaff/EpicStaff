@@ -100,6 +100,19 @@ class LLMErrorKind(StrEnum):
     UNKNOWN = "unknown"
 
 
+class FailedLLM(StrEnum):
+    """Which of the agent's LLMs a failed LLM call went to.
+
+    Travels as ``failed_llm`` on the ``agent.result`` and ``agent.error`` payloads of an
+    ``llm_error``, so crew names the model that actually failed. Optional on the wire: a
+    payload without it comes from an agent service older than this field and is read as
+    ``PRIMARY``.
+    """
+
+    PRIMARY = "primary"
+    FALLBACK = "fallback"
+
+
 class SearchConfigEntry(BaseModel):
     """One RAG strategy available within a source collection.
 
@@ -319,6 +332,8 @@ class LoopResult(BaseModel):
     Raw exception text, for logs only: it must never be shown to the user.
     """
     error_kind: LLMErrorKind | None = None
+    """Set only when stop_reason is llm_error."""
+    failed_llm: FailedLLM | None = None
     """Set only when stop_reason is llm_error."""
     tasks: list[TaskRunSummary] | None = None
     """Per-task summaries for ``LIST_OF_TASKS`` runs; ``None`` for ``SINGLE_TASK`` runs."""

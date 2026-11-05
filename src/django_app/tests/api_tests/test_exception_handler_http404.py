@@ -4,7 +4,7 @@ import pytest
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.http import Http404
 
-from utils.exception_handler import custom_exception_handler
+from utils.exception_handler import custom_exception_handler, mark_traceback_logged
 
 
 @pytest.fixture(params=[True, False], ids=["debug_on", "debug_off"])
@@ -64,3 +64,22 @@ def test_unknown_exception_text_is_logged_not_returned(monkeypatch, caplog):
         for record in caplog.records
         if record.name == "django.request"
     ] == [("Internal Server Error: unknown path", error)]
+
+
+def test_exception_whose_traceback_is_already_logged_gets_only_its_status_line(
+    monkeypatch, caplog
+):
+    monkeypatch.setattr("utils.exception_handler.DEBUG", False)
+    error = RuntimeError("redis is down")
+    mark_traceback_logged(error)
+
+    with caplog.at_level(logging.ERROR, logger="django.request"):
+        response = custom_exception_handler(error, {})
+
+    assert response.status_code == 500
+    assert b'"code": "RuntimeError"' in response.content
+    assert [
+        (record.getMessage(), record.exc_info)
+        for record in caplog.records
+        if record.name == "django.request"
+    ] == [("Internal Server Error: unknown path", None)]

@@ -196,6 +196,19 @@ async def test_failed_tool_result_shows_a_generic_notice_instead_of_the_raw_erro
     assert "mcp.internal" not in json.dumps(result_fields)
 
 
+@pytest.mark.parametrize("announced_call", [None, {"id": "call_1", "name": "", "arguments": "{}"}], ids=["never-announced", "empty-name"])
+async def test_failed_tool_result_without_a_tool_name_shows_an_unnamed_notice(announced_call):
+    emitter, published = _make_emitter()
+    if announced_call is not None:
+        await emitter.on_tool_call(announced_call)
+    await emitter.on_tool_result(
+        ToolResult(tool_call_id="call_1", content=_RAW_TOOL_ERROR, is_error=True)
+    )
+
+    payload = _decode_payload(published[-1])
+    assert payload["content"] == "A tool failed. The agent was told and may try another way."
+
+
 async def test_failed_tool_result_with_display_content_shows_it():
     emitter, published = _make_emitter()
     await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})

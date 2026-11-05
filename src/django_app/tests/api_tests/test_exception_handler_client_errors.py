@@ -10,6 +10,8 @@ from utils.logger import logger
 UPSTREAM_FAILURE_TEXT = (
     "Something went wrong on the server. Try again or contact your administrator."
 )
+NOT_FOUND_TEXT = "The requested item wasn't found. It may have been deleted."
+RATE_LIMITED_TEXT = "Too many requests right now. Wait a moment and try again."
 
 
 def _status_error(error_type, status_code, body):
@@ -104,24 +106,24 @@ def test_upstream_validation_error_of_an_unexpected_shape_shows_a_generic_messag
 
 
 @pytest.mark.parametrize(
-    "error_type,status_code,expected_status,expected_code",
+    "error_type,status_code,expected_status,expected_code,expected_message",
     [
-        (errors.ClientNotFoundError, 404, 404, "not_found"),
-        (errors.ClientRateLimitError, 429, 429, "throttled"),
-        (errors.ClientUnauthorizedError, 401, 502, "upstream_service_error"),
-        (errors.ClientForbiddenError, 403, 502, "upstream_service_error"),
-        (errors.ClientMethodNotAllowedError, 405, 502, "upstream_service_error"),
-        (errors.ClientConflictError, 409, 502, "upstream_service_error"),
-        (errors.ClientServerError, 500, 502, "upstream_service_error"),
-        (errors.ClientNotImplementedError, 501, 502, "upstream_service_error"),
-        (errors.ClientBadGatewayError, 502, 502, "upstream_service_error"),
-        (errors.ClientUnavailableError, 503, 502, "upstream_service_error"),
-        (errors.ClientGatewayTimeoutError, 504, 502, "upstream_service_error"),
-        (errors.ClientHTTPStatusError, 418, 502, "upstream_service_error"),
+        (errors.ClientNotFoundError, 404, 404, "not_found", NOT_FOUND_TEXT),
+        (errors.ClientRateLimitError, 429, 429, "throttled", RATE_LIMITED_TEXT),
+        (errors.ClientUnauthorizedError, 401, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientForbiddenError, 403, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientMethodNotAllowedError, 405, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientConflictError, 409, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientServerError, 500, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientNotImplementedError, 501, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientBadGatewayError, 502, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientUnavailableError, 503, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientGatewayTimeoutError, 504, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
+        (errors.ClientHTTPStatusError, 418, 502, "upstream_service_error", UPSTREAM_FAILURE_TEXT),
     ],
 )
-def test_upstream_failure_shows_a_generic_message_and_logs_the_upstream_body(
-    captured_logs, error_type, status_code, expected_status, expected_code
+def test_upstream_failure_shows_a_fixed_message_and_logs_the_upstream_body(
+    captured_logs, error_type, status_code, expected_status, expected_code, expected_message
 ):
     exc = _status_error(error_type, status_code, "Venv 42 does not exist on sandbox-db:5432.")
 
@@ -131,7 +133,7 @@ def test_upstream_failure_shows_a_generic_message_and_logs_the_upstream_body(
     assert response.data == {
         "status_code": expected_status,
         "code": expected_code,
-        "message": UPSTREAM_FAILURE_TEXT,
+        "message": expected_message,
     }
     assert any("Venv 42 does not exist on sandbox-db:5432." in record for record in captured_logs)
 
@@ -169,9 +171,9 @@ def test_timeout_renders_as_502_with_a_generic_message(exc):
 @pytest.mark.parametrize(
     "error_type,status_code,expected_status,expected_message",
     [
-        (errors.ClientNotFoundError, 404, 404, UPSTREAM_FAILURE_TEXT),
+        (errors.ClientNotFoundError, 404, 404, NOT_FOUND_TEXT),
         (errors.ClientValidationError, 400, 400, UPSTREAM_FAILURE_TEXT),
-        (errors.ClientRateLimitError, 429, 429, UPSTREAM_FAILURE_TEXT),
+        (errors.ClientRateLimitError, 429, 429, RATE_LIMITED_TEXT),
         (errors.ClientServerError, 500, 502, UPSTREAM_FAILURE_TEXT),
     ],
 )

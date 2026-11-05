@@ -40,6 +40,11 @@ import json
 import linecache as __sys_linecache
 import traceback as __sys_traceback
 
+# User code has always been able to use these modules without importing them.
+import errno
+import os
+import socket
+
 # The user's code shares these globals and can rebind any name in them, builtins
 # included (type = "pdf", str = 1). Everything that runs after it reaches modules,
 # builtins and functions only through these private aliases, never by a public name.

@@ -1,4 +1,3 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { computed, DestroyRef, inject, Signal, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { httpErrorReason } from '@shared/utils';
@@ -8,6 +7,7 @@ import {
     PollEvent,
     PythonCodeResult,
     PythonCodeRunService,
+    PythonRunError,
     RunPythonCodeRequest,
 } from '../../../../services/python-code-run.service';
 import { TerminalStatus } from '../../python-node-panel/python-terminal/python-terminal.component';
@@ -87,8 +87,8 @@ export class PythonCodeTestRun {
             .subscribe({
                 next: (event: PollEvent) => this.onPollEvent(event),
                 error: (error: Error) => {
-                    const message =
-                        error instanceof HttpErrorResponse ? httpErrorReason(error) : error.message || 'Unknown error';
+                    // The service's own failures are written for the user; anything else is read like an HTTP one.
+                    const message = error instanceof PythonRunError ? error.message : httpErrorReason(error);
                     this.errorSignal.set(message);
                     this.isRunningSignal.set(false);
                     this.addLog('error', `Error: ${message}`);

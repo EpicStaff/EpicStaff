@@ -127,6 +127,30 @@ def test_globals_are_injected(tmp_path):
     assert outcome.result == 6
 
 
+def test_common_modules_are_usable_without_importing_them(tmp_path):
+    code = (
+        "def main():\n"
+        "    return {\n"
+        "        'os': os.fspath('a'),\n"
+        "        'errno': errno.EACCES,\n"
+        "        'socket': socket.AF_INET == socket.AddressFamily.AF_INET,\n"
+        "        'json': json.loads('[1]'),\n"
+        "        'sys': sys.maxsize > 0,\n"
+        "    }\n"
+    )
+
+    outcome = run(tmp_path, code)
+
+    assert (outcome.returncode, outcome.stderr) == (0, "")
+    assert outcome.result == {
+        "os": "a",
+        "errno": 13,
+        "socket": True,
+        "json": [1],
+        "sys": True,
+    }
+
+
 @pytest.mark.parametrize(
     ("code", "expected"),
     [
@@ -462,12 +486,7 @@ def test_sys_exit_in_the_users_code_keeps_its_exit_code(tmp_path):
     ],
 )
 def test_a_network_denial_keeps_its_policy_message(tmp_path, monkeypatch, mode, expected):
-    code = (
-        "import errno\n"
-        "\n"
-        "def main():\n"
-        "    raise PermissionError(errno.EACCES, 'Permission denied')\n"
-    )
+    code = "def main():\n    raise PermissionError(errno.EACCES, 'Permission denied')\n"
     source = wrap_code(
         code=code, result_file_path=tmp_path / "output.txt", entrypoint="main", func_kwargs={}
     )
@@ -492,8 +511,6 @@ def test_a_network_denial_keeps_its_policy_message(tmp_path, monkeypatch, mode, 
 
 def test_a_network_denial_is_recognised_when_the_users_code_rebinds_names_it_uses(tmp_path):
     code = (
-        "import errno\n"
-        "\n"
         "denial = PermissionError(errno.EACCES, 'Permission denied')\n"
         "errno = None\n"
         "socket = None\n"
@@ -529,11 +546,11 @@ def test_a_network_denial_is_recognised_when_the_users_code_rebinds_names_it_use
 
 
 def test_an_access_error_is_not_a_network_denial_without_a_network_policy(tmp_path):
-    code = "import errno\n\ndef main():\n    raise PermissionError(errno.EACCES, 'Permission denied')"
+    code = "def main():\n    raise PermissionError(errno.EACCES, 'Permission denied')"
 
     outcome = run(tmp_path, code)
 
-    assert outcome.stderr == "PermissionError on line 4: [Errno 13] Permission denied"
+    assert outcome.stderr == "PermissionError on line 2: [Errno 13] Permission denied"
 
 
 def test_storage_mutations_are_written_when_a_path_is_given(tmp_path):
