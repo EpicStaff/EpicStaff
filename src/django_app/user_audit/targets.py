@@ -14,6 +14,11 @@ TARGET_TYPE_LABELS = {
     "openairealtimeconfig": "OpenAI realtime config",
     "elevenlabsrealtimeconfig": "ElevenLabs realtime config",
     "documentmetadata": "document",
+    "realtimeagentdefinition": "voice settings",
+    "twiliochannel": "Twilio settings",
+    "realtimeagentchat": "voice chat",
+    "conversationrecording": "call recording",
+    "agentnodetask": "agent task",
     "naiverag": "naive RAG",
     "graphrag": "graph RAG",
     # A venv lives in the sandbox; this side keeps only the binding that stands for it.
@@ -21,12 +26,18 @@ TARGET_TYPE_LABELS = {
 }
 # The foreign key a record names as the parent of a model the edit tracker gives no owner,
 # keyed by the model's `app_label.model_name`. An agent-specific surface belongs to its agent,
-# a flow version and a session to their flow, a document to its collection.
+# a flow version and a session to their flow, a document to its collection. A one-to-one
+# parent also names a child that has no name of its own (see `describe`).
 TARGET_PARENT_FIELDS = {
     "agents.surface": "owner_agent",
     "tables.graphversion": "graph",
     "tables.session": "graph",
     "tables.documentmetadata": "source_collection",
+    "tables.agentnodetask": "agent_node",
+    "tables.realtimeagentdefinition": "agent_definition",
+    "tables.twiliochannel": "channel",
+    "tables.realtimeagentchat": "rt_agent_definition",
+    "tables.conversationrecording": "rt_agent_chat",
 }
 
 
@@ -38,7 +49,11 @@ class TargetDescription:
 
 
 def describe(instance: models.Model) -> TargetDescription:
-    """Describe a saved model instance the way a user-action record shows it."""
+    """Describe a saved model instance the way a user-action record shows it.
+
+    A row with no name of its own that belongs one-to-one to its parent (an agent's voice
+    settings) takes the parent's name.
+    """
     name = next(
         (
             str(getattr(instance, field_name))
@@ -47,7 +62,15 @@ def describe(instance: models.Model) -> TargetDescription:
         ),
         None,
     )
+    if name is None and _has_one_to_one_parent(instance):
+        parent = target_parent(instance)
+        name = describe(parent).name if parent is not None else None
     return TargetDescription(type=target_type(type(instance)), id=str(instance.pk), name=name)
+
+
+def _has_one_to_one_parent(instance: models.Model) -> bool:
+    field_name = TARGET_PARENT_FIELDS.get(instance._meta.label_lower)
+    return field_name is not None and instance._meta.get_field(field_name).one_to_one
 
 
 def describe_user(user) -> TargetDescription:

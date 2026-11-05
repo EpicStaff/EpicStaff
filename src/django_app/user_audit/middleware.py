@@ -13,6 +13,7 @@ import io
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.handlers.asgi import ASGIRequest
+from django.db.models import Model
 from rbac.views.auth import (
     ApiKeyValidateView,
     CookieTokenRefreshView,
@@ -33,9 +34,10 @@ from src.shared.models import UserAction
 from tables.views.audit_token_views import AuditTokenView
 from utils.logger import logger
 from utils.request_target import (
+    id_from_response,
+    id_from_url,
     model_of,
-    target_from_response,
-    target_from_url,
+    org_row,
     url_path_pattern,
 )
 
@@ -43,7 +45,7 @@ from user_audit.actor import actor_from_request
 from user_audit.context import UserActionContext, user_action_context
 from user_audit.read_only import handler_reads_only
 from user_audit.recorder import record_for_user_orgs, record_user_action
-from user_audit.targets import TARGET_NAME_FIELDS, TargetDescription, target_type
+from user_audit.targets import TargetDescription, target_type
 
 # A request answered with a status at or above this changed nothing worth recording.
 FIRST_FAILURE_STATUS = 400
@@ -194,7 +196,8 @@ def _record_unhandled_change(
         route: The resolved URL route, None when the request resolved to no view.
         match: The resolved URL, whose `pk` or `id` names the target.
         response_data: A DRF response's data. For DRF's generic `create`, whose URL names
-            no object, only its `pk` or `id` is read, to name the created object.
+            no object, only its id (`pk`, `id` or the model's primary key) is read, to name
+            the created object.
     """
     request = context.request
     try:
@@ -218,10 +221,12 @@ def _record_unhandled_change(
         route_text = f"{request.method} {url_path_pattern(route)}" if route is not None else None
         org_id = getattr(request, "_rbac_active_org_id", None)
         if org_id is not None:
+            target, target_description = _fallback_target(view_class, match, org_id, created_data)
             record_user_action(
                 action=action,
                 org_id=org_id,
-                target_description=_url_target(view_class, match, org_id, created_data),
+                target=target,
+                target_description=target_description,
                 route=route_text,
                 actor=actor,
             )
@@ -231,12 +236,22 @@ def _record_unhandled_change(
         logger.exception("Failed to record {} {} as a user action", request.method, request.path)
 
 
-def _url_target(view_class, match, org_id: int, created_data) -> TargetDescription | None:
-    target = target_from_url(
-        view_class, match, org_id, label_fields=TARGET_NAME_FIELDS
-    ) or target_from_response(view_class, created_data, org_id, label_fields=TARGET_NAME_FIELDS)
+def _fallback_target(
+    view_class, match, org_id: int, created_data
+) -> tuple[Model | None, TargetDescription | None]:
+    """The changed row, loaded only when `org_id` owns it (see `org_row`), so it is named
+    and given its parent like a hook's target. Failing that, the bare type and id the URL
+    names; a create's response id that does not resolve names nothing."""
     model = model_of(view_class)
-    if target is None or model is None:
-        return None
-    target_id, name = target
-    return TargetDescription(type=target_type(model), id=target_id, name=name)
+    if model is None:
+        return None, None
+    url_id = id_from_url(match)
+    value = url_id if url_id is not None else id_from_response(model, created_data)
+    if value is None:
+        return None, None
+    row = org_row(view_class, value, org_id)
+    if row is not None:
+        return row, None
+    if url_id is None:
+        return None, None
+    return None, TargetDescription(type=target_type(model), id=str(url_id), name=None)

@@ -8,6 +8,7 @@ fallback), which know the request only by its route and URL kwargs, never by its
 import re
 from collections.abc import Mapping
 
+from django.core.exceptions import ValidationError
 from django.db.models import Model
 
 # URL kwargs a detail route names its object by.
@@ -61,33 +62,50 @@ def target_from_url(
         label_fields: The columns the label may come from; the first one the model has
             is read, and an empty value is no label.
     """
-    kwargs = match.kwargs if match is not None else {}
-    value = next((kwargs[name] for name in TARGET_URL_KWARGS if name in kwargs), None)
+    value = id_from_url(match)
     if value is None:
         return None
     return str(value), _label_of_row(view_class, value, org_id, label_fields)
 
 
-def target_from_response(
-    view_class, data, org_id: int, label_fields: tuple[str, ...] = TARGET_LABEL_FIELDS
-) -> tuple[str, str | None] | None:
-    """The object a create response names by its `pk` or `id`, when `org_id` has that row.
+def id_from_url(match):
+    """The `pk` or `id` URL kwarg a detail route names its object by, or None."""
+    kwargs = match.kwargs if match is not None else {}
+    return next((kwargs[name] for name in TARGET_URL_KWARGS if name in kwargs), None)
 
-    Reads only that key of the response, never the rest of it. None when the response
-    names no id, or the view's model has no such row in `org_id` (or no organization).
+
+def id_from_response(model: type[Model], data):
+    """The id a create response names its object by, or None.
+
+    Reads only that key of the response: `pk`, `id`, or the model's own primary key (a
+    one-to-one child such as voice settings is keyed by its parent, `agent_definition`).
     """
     if not isinstance(data, Mapping):
         return None
-    value = next((data[name] for name in TARGET_URL_KWARGS if name in data), None)
+    primary_key = model._meta.pk
+    keys = (*TARGET_URL_KWARGS, primary_key.name, primary_key.attname)
+    return next((data[key] for key in keys if key in data), None)
+
+
+def org_row(view_class, value, org_id: int) -> Model | None:
+    """The row of the view's model whose primary key is `value`, only when `org_id` owns it.
+
+    Scoped the way the view scopes it: through its `org_filter_path` (a child resource
+    such as `agent_definition__org_id`), else the model's own `org`. A row reachable by
+    neither, and an id of another organization's row, give None.
+    """
     model = model_of(view_class)
-    if value is None or model is None or "org" not in _field_names(model):
+    if model is None:
+        return None
+    org_path = getattr(view_class, "org_filter_path", None) or (
+        "org_id" if "org" in _field_names(model) else None
+    )
+    if org_path is None:
         return None
     try:
-        if not model._base_manager.filter(pk=value, org_id=org_id).exists():
-            return None
-    except (TypeError, ValueError):
+        return model._base_manager.filter(pk=value, **{org_path: org_id}).first()
+    except (TypeError, ValueError, ValidationError):
         return None
-    return str(value), _label_of_row(view_class, value, org_id, label_fields)
 
 
 def _field_names(model) -> set[str]:
@@ -95,23 +113,14 @@ def _field_names(model) -> set[str]:
 
 
 def _label_of_row(view_class, value, org_id: int, label_fields: tuple[str, ...]) -> str | None:
-    """The row's label, read in `org_id` only, so a label never comes from another
-    organization's row; None for a model without an organization."""
-    model = model_of(view_class)
-    if model is None:
+    """The row's label, read in `org_id` only (see `org_row`), so a label never comes from
+    another organization's row."""
+    row = org_row(view_class, value, org_id)
+    if row is None:
         return None
-    field_names = _field_names(model)
+    field_names = _field_names(type(row))
     label_field = next((name for name in label_fields if name in field_names), None)
-    if "org" not in field_names or label_field is None:
-        return None
-    try:
-        label = (
-            model._base_manager.filter(pk=value, org_id=org_id)
-            .values_list(label_field, flat=True)
-            .first()
-        )
-    except (TypeError, ValueError):
-        return None
+    label = getattr(row, label_field) if label_field is not None else None
     return label if isinstance(label, str) and label else None
 
 

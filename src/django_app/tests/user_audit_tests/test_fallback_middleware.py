@@ -9,12 +9,18 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from agents.models import AgentDefinition
 from rbac.models import OrganizationUser
 from tables.models import AuditFilterPreset, Graph, Provider, SourceCollection, StorageFile
 from tables.models.default_models import DefaultModels
 from tables.services.quickstart_service import QuickstartService
 from tables.services.storage_service.upload import admission, archive_upload, file_upload
-from tables.views.model_view_sets import AuditFilterPresetViewSet, GraphViewSet
+from tables.models.realtime_models import RealtimeAgentDefinition
+from tables.views.model_view_sets import (
+    AuditFilterPresetViewSet,
+    GraphViewSet,
+    RealtimeAgentDefinitionViewSet,
+)
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 from tests.storage_tests.storage_writes import stream_upload
@@ -296,6 +302,90 @@ def test_fallback_names_no_create_target_it_cannot_find_in_the_org(
         None,
         None,
     )
+
+
+@pytest.fixture
+def voice_agent(acme):
+    return AgentDefinition.objects.create(name="Support agent", org=acme)
+
+
+def _voice_settings_event(sent_events) -> tuple:
+    [event] = sent_events
+    return (
+        event.action,
+        event.target_type,
+        event.target_id,
+        event.target_name,
+        event.parent_type,
+        event.parent_id,
+        event.parent_name,
+    )
+
+
+def test_fallback_names_a_created_child_row_after_its_one_to_one_parent(
+    admin_client, voice_agent, sent_events, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.post(
+            "/api/realtime-agent-definitions/",
+            {"agent_definition": voice_agent.id},
+            format="json",
+        )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert _voice_settings_event(sent_events) == (
+        "created",
+        "voice settings",
+        str(voice_agent.id),
+        "Support agent",
+        "agent",
+        str(voice_agent.id),
+        "Support agent",
+    )
+
+
+def test_fallback_names_a_child_row_its_url_names(
+    admin_client, voice_agent, sent_events, django_capture_on_commit_callbacks
+):
+    RealtimeAgentDefinition.objects.create(agent_definition=voice_agent)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.patch(
+            f"/api/realtime-agent-definitions/{voice_agent.id}/", {"voice": "echo"}, format="json"
+        )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert _voice_settings_event(sent_events)[:4] == (
+        "updated",
+        "voice settings",
+        str(voice_agent.id),
+        "Support agent",
+    )
+
+
+@pytest.mark.parametrize("named_by", ["url", "create-response"])
+def test_fallback_never_resolves_a_child_row_of_another_org(
+    named_by, admin_acme, acme, beta, sent_events, django_capture_on_commit_callbacks
+):
+    beta_agent = AgentDefinition.objects.create(name="Beta secret agent", org=beta)
+    RealtimeAgentDefinition.objects.create(agent_definition=beta_agent)
+    action = "partial_update" if named_by == "url" else "create"
+    view = RealtimeAgentDefinitionViewSet.as_view({"post": action})
+    kwargs = {"pk": str(beta_agent.id)} if named_by == "url" else {}
+
+    def get_response(request_in_view):
+        request_in_view.resolver_match = ResolverMatch(
+            view, (), kwargs, route="api/^realtime-agent-definitions/$"
+        )
+        return Response({"agent_definition": beta_agent.id}, status=status.HTTP_200_OK)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        UserActionMiddleware(get_response)(_checked_request(admin_acme, acme.id))
+
+    expected_target = (
+        ("voice settings", str(beta_agent.id), None) if named_by == "url" else (None, None, None)
+    )
+    assert _voice_settings_event(sent_events)[1:] == (*expected_target, None, None, None)
 
 
 def test_fallback_ignores_unverified_org_header(
