@@ -53,7 +53,7 @@ from manager.domain.models import (
     Venv,
     Wheel,
 )
-from manager.domain.services import offer_wheels
+from manager.domain.services import offer_wheels, order_by_version
 from manager.domain.types import NotRunReason
 
 _VENV_BUILD_FAILED_MESSAGE = "Execution environment failed to build; the job was not run."
@@ -544,8 +544,9 @@ class WheelCRUDOrchestrator:
         self.file_storage = file_storage
 
     async def list(self, library_id: int) -> list[Wheel]:
+        """This library's versions, newest first."""
         async with self.uow:
-            return await self.uow.wheel_repo.list(library_id)
+            return order_by_version(await self.uow.wheel_repo.list(library_id))
 
     async def retrieve(self, library_id: int, id: int) -> Wheel:
         async with self.uow:

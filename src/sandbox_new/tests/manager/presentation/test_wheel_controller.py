@@ -148,7 +148,8 @@ def test_list_returns_every_version_of_the_library(client, path):
     response = client.get(path)
 
     assert response.status_code == status_codes.HTTP_200_OK
-    assert [version["status"] for version in response.json()] == ["completed", "declared"]
+    # Newest first, and the archive has no version decided yet, so it leads.
+    assert [version["status"] for version in response.json()] == ["declared", "completed"]
 
 
 def test_retrieve_answers_200(client, path):

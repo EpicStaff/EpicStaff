@@ -322,3 +322,27 @@ async def test_an_unbuilt_version_is_removed_even_while_a_venv_names_the_library
     await orchestrator.remove(library.id, wheel.id)
 
     assert await orchestrator.list(library.id) == []
+
+
+async def test_the_listed_versions_come_back_newest_first(orchestrator, uow, library):
+    """What the repository hands over in storage order is listed the way it is read."""
+    uow.wheel_repo.seed(
+        Wheel(
+            library_id=library.id,
+            wheel_filename="my_library-1.0.0-py3-none-any.whl",
+            upload_sha256="d" * 64,
+            version="1.0.0",
+            status=WheelStatus.COMPLETED,
+        ),
+        Wheel(
+            library_id=library.id,
+            wheel_filename="my_library-2.0.0-py3-none-any.whl",
+            upload_sha256="e" * 64,
+            version="2.0.0",
+            status=WheelStatus.COMPLETED,
+        ),
+    )
+
+    listed = await orchestrator.list(library.id)
+
+    assert [wheel.version for wheel in listed] == ["2.0.0", "1.0.0"]
