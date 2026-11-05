@@ -1,8 +1,12 @@
 import json
+import os
+import shutil
+import tempfile
 
 from rbac.access.resolver import PermissionResolver
 from rest_framework.exceptions import ValidationError
-from tables.import_export.constants import MAIN_ENTITY_KEY
+from tables.import_export.archive import ImportArchive, detect_file_kind
+from tables.import_export.constants import ARCHIVE_IMPORT_VERSION, MAIN_ENTITY_KEY
 from tables.import_export.export_format_strategies import JsonExportFormatStrategy
 from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import entity_registry
@@ -11,6 +15,32 @@ from tables.import_export.services.import_service import ImportService, ImportSe
 from tables.import_export.services.inspect_service import InspectService
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.import_export.version_conversions.exceptions import UnsupportedImportVersionError
+
+_ZIP_HEAD_SIZE = 4
+
+
+def _file_version(envelope: dict) -> int:
+    # Files from before the version field default to 1, as the converter treats them.
+    return envelope.get("version", 1)
+
+
+def ensure_job_import_version(envelope: dict) -> None:
+    """Refuse a file older than archives in an import job.
+
+    A plain JSON export of any version is imported synchronously; a version-6
+    JSON that carries a knowledge collection is refused there with
+    `archive_required`, because only an archive holds the collection's files.
+
+    Raises:
+        ValidationError: {"code": "use_sync_import"} for a version before archives.
+    """
+    if _file_version(envelope) < ARCHIVE_IMPORT_VERSION:
+        raise ValidationError(
+            {
+                "code": "use_sync_import",
+                "detail": "This export is older than archives; import it directly.",
+            }
+        )
 
 
 class ViewSetImportExportService:
@@ -61,17 +91,21 @@ class ViewSetImportExportService:
             data = json.load(file)
         except json.JSONDecodeError as e:
             raise ValidationError("Invalid JSON file") from e
+        return self._validate_envelope(data, self.entity_type)
 
+    @staticmethod
+    def _validate_envelope(data, main_entity) -> dict:
+        """Check the file's main entity and bring it to the current version."""
         if not isinstance(data, dict):
             raise ValidationError("Invalid import file: expected a JSON object")
 
         if data.get(MAIN_ENTITY_KEY) is None:
             raise ValidationError(f"Missing '{MAIN_ENTITY_KEY}' in import file")
 
-        main_entity = data[MAIN_ENTITY_KEY]
-        if main_entity != self.entity_type:
+        file_main_entity = data[MAIN_ENTITY_KEY]
+        if file_main_entity != main_entity:
             raise ValidationError(
-                f"Provided wrong entity. Got: {main_entity}. Expected: {self.entity_type.value}"
+                f"Provided wrong entity. Got: {file_main_entity}. Expected: {main_entity.value}"
             )
 
         try:
@@ -95,6 +129,60 @@ class ViewSetImportExportService:
 
         return summary
 
+    def import_archive(
+        self,
+        path: str,
+        *,
+        org_id: int | None,
+        user,
+        settings: ImportSettings,
+        main_entity,
+    ) -> dict:
+        """Import the export archive at `path`; returns the import summary.
+
+        Used by the import job, which owns the file and deletes it afterwards.
+
+        Raises:
+            ValidationError: The archive is unsafe or unreadable, its main entity is
+                not `main_entity`, or it is older than archives.
+        """
+        with ImportArchive.open(path) as archive:
+            envelope = archive.envelope()
+            if isinstance(envelope, dict):
+                ensure_job_import_version(envelope)
+            data = self._validate_envelope(envelope, main_entity)
+            effective_permissions = PermissionResolver().resolve(user=user, org_id=org_id)
+            id_mapper, registry = self.import_service.import_data(
+                data,
+                main_entity,
+                settings=settings,
+                org_id=org_id,
+                user=user,
+                effective_permissions=effective_permissions,
+                archive=archive,
+            )
+        return id_mapper.get_detailed_summary(registry)
+
     def inspect_entity(self, file, org_id: int | None = None) -> dict:
-        data = self._parse_and_validate(file)
+        """Review a `.json` export or the `export.json` of a `.zip` one.
+
+        Only the envelope is read; the files an archive carries are not.
+        """
+        head = file.read(_ZIP_HEAD_SIZE)
+        file.seek(0)
+        if detect_file_kind(head) == "zip":
+            data = self._validate_envelope(self._read_archive_envelope(file), self.entity_type)
+        else:
+            data = self._parse_and_validate(file)
         return InspectService().inspect(data, org_id=org_id)
+
+    @staticmethod
+    def _read_archive_envelope(file) -> dict:
+        # ImportArchive checks a file on disk; an upload may only be in memory.
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as copy:
+            shutil.copyfileobj(file, copy)
+        try:
+            with ImportArchive.open(copy.name) as archive:
+                return archive.envelope()
+        finally:
+            os.unlink(copy.name)
