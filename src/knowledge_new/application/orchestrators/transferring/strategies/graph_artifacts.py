@@ -1,6 +1,9 @@
-import io
 import tarfile
+import tempfile
+from collections.abc import Mapping
+from pathlib import Path
 
+import anyio
 import pyarrow.parquet as pq
 from application.commands import (
     ExportGraphArtifacts,
@@ -117,17 +120,38 @@ class GraphDocumentIdRewriteOrchestrator(AbstractDocumentIdRewriteOrchestrator):
             raise GraphArtifactsNotReadyError(rag_id=command.rag_id)
 
         # Rewrite both tables before uploading either, so an unknown id in the second
-        # one leaves the first unchanged.
-        rewritten: list[tuple[str, bytes]] = []
-        for table_name, column in _DOCUMENT_ID_TABLES:
-            key = f"{slot_prefix}{table_name}"
-            data = b"".join([chunk async for chunk in self.artifact_store.iter_object(key)])
-            table = rewrite_document_ids(
-                pq.read_table(io.BytesIO(data)), column, command.document_id_map
-            )
-            buffer = io.BytesIO()
-            pq.write_table(table, buffer)
-            rewritten.append((key, buffer.getvalue()))
+        # one leaves the first unchanged. Each table goes through temp files, so the
+        # bytes of a large table are never held in memory.
+        with tempfile.TemporaryDirectory(prefix="graph-rewrite-") as directory:
+            rewritten: list[tuple[str, Path]] = []
+            for position, (table_name, column) in enumerate(_DOCUMENT_ID_TABLES):
+                key = f"{slot_prefix}{table_name}"
+                original = Path(directory, f"{position}-original.parquet")
+                output = Path(directory, f"{position}-rewritten.parquet")
+                await self._download(key, original)
+                await anyio.to_thread.run_sync(
+                    _rewrite_table_file, original, output, column, command.document_id_map
+                )
+                await anyio.Path(original).unlink()
+                rewritten.append((key, output))
 
-        for key, data in rewritten:
-            await self.artifact_store.put(key, io.BytesIO(data), len(data))
+            for key, path in rewritten:
+                await self._upload(key, path)
+
+    async def _download(self, key: str, path: Path) -> None:
+        async with await anyio.open_file(path, "wb") as file:
+            async for chunk in self.artifact_store.iter_object(key):
+                await file.write(chunk)
+
+    async def _upload(self, key: str, path: Path) -> None:
+        size = (await anyio.Path(path).stat()).st_size
+        async with await anyio.open_file(path, "rb") as file:
+            # The store reads a plain binary stream, as the restore hands it a tar member.
+            await self.artifact_store.put(key, file.wrapped, size)
+
+
+def _rewrite_table_file(
+    source: Path, destination: Path, column: str, document_id_map: Mapping[str, int]
+) -> None:
+    table = rewrite_document_ids(pq.read_table(source), column, document_id_map)
+    pq.write_table(table, destination)
