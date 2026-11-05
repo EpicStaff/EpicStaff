@@ -31,11 +31,13 @@ from tables.import_export.services.partial_export_service import (
     GraphPartialExportService,
     NodeRef,
 )
+from tables.import_export.serializers.surface_knowledge import create_knowledge
 from tables.import_export.services.partial_import_service import PartialImportService
 from tables.import_export.strategies.source_collection import SourceCollectionStrategy
 from tables.import_export.strategies.surface import SurfaceStrategy
 from tables.models import AgentNode, Graph, KnowledgeNode, TaskNode
 from tables.models.knowledge_models import (
+    KnowledgeNodeNaiveRagSearchConfig,
     BaseRagType,
     GraphRag,
     NaiveRag,
@@ -98,9 +100,7 @@ def _import_archive(entity_type, entity_id, org, tmp_path) -> IDMapper:
     with ExportArchiveWriter() as writer:
         writer.write_envelope(export_data)
         for entry in export_data.get(EntityType.SOURCE_COLLECTION, []):
-            SourceCollectionStrategy().write_archive_members(
-                SourceCollection.objects.get(pk=entry["id"]), writer
-            )
+            SourceCollectionStrategy().write_archive_members(entry, writer)
     path = tmp_path / f"export-{uuid.uuid4()}.zip"
     os.replace(writer.path, path)
     with ImportArchive.open(str(path)) as archive:
@@ -299,6 +299,120 @@ def test_owned_surface_knowledge_travels_with_its_agent(
     assert _knowledge_of(imported_owned.knowledge.all()) == [
         (_imported_collection(id_mapper, collection).collection_id, 7, Decimal("0.55"), 13, False)
     ]
+
+
+def _import_edited_json(entity_type, entity_id, org, edit, before_import=None) -> IDMapper:
+    """Export without knowledge, let `edit` change the file, run `before_import`,
+    and import the file into `org`."""
+    export_data = json.loads(json.dumps(_export(entity_type, entity_id)))
+    edit(export_data)
+    if before_import is not None:
+        before_import()
+    id_mapper, _ = ImportService(entity_registry).import_data(
+        export_data, main_entity=entity_type, org_id=org.id
+    )
+    return id_mapper
+
+
+def _drop_collection_names(export_data):
+    for surface in export_data[EntityType.SURFACE]:
+        for entry in surface["knowledge"]:
+            del entry["collection_name"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("rename_to", "edit", "relinked"),
+    [
+        pytest.param(None, lambda data: None, True, id="same id and name"),
+        pytest.param("Something else", lambda data: None, False, id="same id, other name"),
+        pytest.param(
+            "Something else", _drop_collection_names, True, id="file without names: id only"
+        ),
+    ],
+)
+def test_a_link_relinks_by_id_only_when_the_name_matches_too(
+    surface, collection, default_org, rename_to, edit, relinked
+):
+    def rename():
+        # After the export: the file keeps the name the collection had then.
+        if rename_to is not None:
+            collection.collection_name = rename_to
+            collection.save()
+
+    id_mapper = _import_edited_json(
+        EntityType.SURFACE, surface.id, default_org, edit, before_import=rename
+    )
+
+    imported = Surface.objects.get(pk=id_mapper.get(EntityType.SURFACE, surface.id))
+    expected = [collection.collection_id] if relinked else []
+    assert list(imported.knowledge.values_list("collection_id", flat=True)) == expected
+
+
+@pytest.mark.django_db
+def test_a_knowledge_node_is_not_relinked_to_another_collection_with_its_id(
+    collection, graph, default_org
+):
+    rag_type, rag_id = _naive_link(collection)
+    KnowledgeNode.objects.create(
+        graph=graph, source_collection=collection, rag_type=rag_type, rag_id=rag_id
+    )
+    export_data = json.loads(json.dumps(_export(EntityType.GRAPH, graph.id)))
+    collection.collection_name = "Something else"
+    collection.save()
+
+    id_mapper, _ = ImportService(entity_registry).import_data(
+        export_data, main_entity=EntityType.GRAPH, org_id=default_org.id
+    )
+
+    node = KnowledgeNode.objects.get(graph=_imported_graph(id_mapper, graph))
+    assert (node.source_collection_id, node.rag_id) == (None, None)
+
+
+@pytest.mark.django_db
+def test_a_search_config_takes_only_its_own_fields_and_a_collection_is_linked_once(
+    collection, default_org
+):
+    target = Surface.objects.create(org=default_org, name="target", instructions="x")
+    taken_id = (
+        SurfaceNaiveSearchConfig.all_objects.order_by("-pk").values_list("pk", flat=True).first()
+        or 0
+    )
+    entry = {
+        "collection": collection.collection_id,
+        "collection_name": collection.collection_name,
+        "naive_search_config": {"id": taken_id + 1000, "search_limit": 9, "not_a_field": 1},
+    }
+
+    create_knowledge(
+        SurfaceKnowledge, {"surface": target}, [entry, dict(entry)], IDMapper(), default_org.id
+    )
+
+    [row] = target.knowledge.all()
+    assert row.naive_search_config.search_limit == 9
+    assert row.naive_search_config.pk != taken_id + 1000
+
+
+@pytest.mark.django_db
+def test_a_knowledge_node_search_config_takes_only_its_own_fields(graph, default_org):
+    node = KnowledgeNode.objects.create(graph=graph)
+    KnowledgeNodeNaiveRagSearchConfig.objects.create(knowledge_node=node, search_limit=4)
+    export_data = json.loads(json.dumps(_export(EntityType.GRAPH, graph.id)))
+    [node_entry] = [
+        entry
+        for entry in export_data[EntityType.GRAPH][0]["nodes"]
+        if entry.get("naive_search_config")
+    ]
+    taken_id = KnowledgeNodeNaiveRagSearchConfig.all_objects.order_by("-pk").first().pk
+    node_entry["naive_search_config"].update(id=taken_id + 1000, not_a_field=1)
+
+    id_mapper, _ = ImportService(entity_registry).import_data(
+        export_data, main_entity=EntityType.GRAPH, org_id=default_org.id
+    )
+
+    imported = KnowledgeNode.objects.get(graph=_imported_graph(id_mapper, graph))
+    assert imported.naive_search_config.search_limit == 4
+    assert imported.naive_search_config.pk != taken_id + 1000
 
 
 # --- inline surfaces of agent and task nodes ---------------------------------------------

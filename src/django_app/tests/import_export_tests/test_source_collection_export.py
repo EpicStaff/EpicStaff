@@ -65,7 +65,7 @@ def export_archive():
     def _export(strategy, collection) -> dict[str, bytes]:
         with ExportArchiveWriter() as writer:
             writer.write_envelope({})
-            strategy.write_archive_members(collection, writer)
+            strategy.write_archive_members(strategy.export_entity(collection), writer)
         paths.append(writer.path)
         # The import's own reader must accept what the export produced.
         ImportArchive.open(writer.path).close()

@@ -88,7 +88,8 @@ def archive_of(tmp_path):
         with ExportArchiveWriter() as writer:
             writer.write_envelope(export_data)
             if members:
-                strategy_module.SourceCollectionStrategy().write_archive_members(collection, writer)
+                for entry in export_data[EntityType.SOURCE_COLLECTION]:
+                    strategy_module.SourceCollectionStrategy().write_archive_members(entry, writer)
         path = tmp_path / f"export-{len(list(tmp_path.iterdir()))}.zip"
         os.replace(writer.path, path)
         return str(path)

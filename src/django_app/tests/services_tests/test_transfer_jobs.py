@@ -31,10 +31,17 @@ from tables.services.organization_deletion import TablesOrganizationDeletion
 from tables.services.transfer_jobs.archive_store import TransferArchiveStore
 from tables.services.transfer_jobs.consumer import TransferJobConsumer
 from tables.services.transfer_jobs.queue import enqueue_transfer_job
+from tables.clients.errors import (
+    ClientBadGatewayError,
+    ClientNotAvailableError,
+    ClientTimeoutError,
+    ClientValidationError,
+)
 from tables.services.transfer_jobs.runner import (
     EXPORT_ARCHIVE_NAME,
     IMPORT_ARCHIVE_NAME,
     TransferJobRunner,
+    public_error,
     sweep_transfer_jobs,
 )
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY
@@ -280,6 +287,78 @@ def test_a_job_that_is_not_queued_is_left_alone(runner, flow, regular_user):
     )
 
 
+@pytest.mark.parametrize(
+    ("swept", "expected_status"),
+    [
+        pytest.param("failed", TransferJob.Status.FAILED, id="failed by the sweep"),
+        pytest.param("deleted", None, id="deleted by the sweep"),
+    ],
+)
+def test_an_export_the_sweep_took_over_keeps_its_outcome_and_leaves_no_archive(
+    runner, backend, flow, regular_user, monkeypatch, swept, expected_status
+):
+    job = _export_job(flow, regular_user)
+    export = ExportService.export_entities
+
+    def export_while_the_sweep_runs(self, *args, **kwargs):
+        jobs = TransferJob.objects.filter(pk=job.pk)
+        if swept == "failed":
+            jobs.update(status=TransferJob.Status.FAILED, error={"code": "job_interrupted"})
+        else:
+            jobs.delete()
+        return export(self, *args, **kwargs)
+
+    monkeypatch.setattr(ExportService, "export_entities", export_while_the_sweep_runs)
+
+    runner.run(job.id)
+
+    row = TransferJob.objects.filter(pk=job.pk).first()
+    assert (row.status if row else None) == expected_status
+    if row is not None:
+        assert row.error == {"code": "job_interrupted"}
+    # Nobody can download it any more, so it is not kept.
+    assert backend.objects == {}
+
+
+@pytest.mark.parametrize(
+    ("error", "kind", "code"),
+    [
+        pytest.param(
+            ClientValidationError("refused"),
+            TransferJob.Kind.IMPORT,
+            "invalid_archive",
+            id="index refused on import",
+        ),
+        pytest.param(
+            ClientValidationError("not ready"),
+            TransferJob.Kind.EXPORT,
+            "collection_changed",
+            id="index rebuilding on export",
+        ),
+        pytest.param(
+            ClientNotAvailableError("down"),
+            TransferJob.Kind.IMPORT,
+            "knowledge_service_unavailable",
+            id="unreachable",
+        ),
+        pytest.param(
+            ClientTimeoutError("slow"),
+            TransferJob.Kind.EXPORT,
+            "knowledge_service_unavailable",
+            id="timeout",
+        ),
+        pytest.param(
+            ClientBadGatewayError("bad"),
+            TransferJob.Kind.EXPORT,
+            "knowledge_service_unavailable",
+            id="bad gateway",
+        ),
+    ],
+)
+def test_knowledge_service_failures_name_what_the_creator_can_do(error, kind, code):
+    assert public_error(error, kind)["code"] == code
+
+
 # --- sweep -------------------------------------------------------------------------------
 
 
@@ -351,6 +430,21 @@ def test_deleting_an_organization_removes_its_transfer_archives(
     assert not TransferJob.objects.filter(pk=job.pk).exists()
 
 
+def test_sweep_fails_jobs_that_never_started(store, flow, regular_user):
+    now = timezone.now()
+    lost = _export_job(flow, regular_user)
+    waiting = _export_job(flow, regular_user)
+    TransferJob.objects.filter(pk=lost.pk).update(created_at=now - timedelta(hours=2, seconds=1))
+    TransferJob.objects.filter(pk=waiting.pk).update(created_at=now - timedelta(hours=1))
+
+    assert sweep_transfer_jobs(now, store=store)["not_started"] == 1
+
+    lost.refresh_from_db()
+    waiting.refresh_from_db()
+    assert (lost.status, lost.error["code"]) == (TransferJob.Status.FAILED, "job_not_started")
+    assert waiting.status == TransferJob.Status.QUEUED
+
+
 # --- consumer ----------------------------------------------------------------------------
 
 
@@ -387,7 +481,9 @@ def test_consumer_runs_each_enqueued_job_and_acknowledges_it(
     enqueue_transfer_job(first, redis_client=redis_client)
     enqueue_transfer_job(second, redis_client=redis_client)
 
-    assert consumer.process_new(block_milliseconds=None) == 2
+    # One entry per read: a long job must not hold the next one behind it.
+    assert consumer.process_new(block_milliseconds=None) == 1
+    assert consumer.process_new(block_milliseconds=None) == 1
 
     assert runner.job_ids == [first.id, second.id]
     assert _pending(redis_client) == 0
