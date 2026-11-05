@@ -6,8 +6,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
 import { ExecutionTimeoutFieldComponent, ExecutionTimeoutFormField } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { NodeType, ResourceCode } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
+import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 import { of } from 'rxjs';
 
 import { ImportExportService } from '../../../../core/services/import-export.service';
@@ -32,6 +33,7 @@ import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
 import { buildUuidToBackendIdMap, getConnectionDiff, getNodeDiff } from '../../../utils/save/diff';
 import { buildBulkSavePayload } from '../../../utils/save/payload';
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
@@ -118,8 +120,6 @@ function tableNode(): ClassificationDecisionTableNodeModel {
         data: { name: 'Triage', table: { condition_groups: CANVAS_ROWS, prompts: {} } },
         position: { x: 0, y: 0 },
         ports: generatePortsForClassificationDecisionTableNode(NODE_ID, CANVAS_ROWS),
-        color: '',
-        icon: '',
         size: { width: 300, height: 200 },
         input_map: {},
         output_variable_path: null,
@@ -135,8 +135,6 @@ function pythonNode(id: string): NodeModel {
         data: {},
         position: { x: 400, y: 0 },
         ports: generatePortsForNode(id, NodeType.PYTHON),
-        color: '',
-        icon: '',
         size: { width: 200, height: 100 },
         input_map: {},
         output_variable_path: null,
@@ -764,5 +762,269 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
 
         expect(fields().preExecutionTimeout.control.disabled).toBe(true);
         expect(fields().postExecutionTimeout.control.disabled).toBe(true);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — code that reads secrets', () => {
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+
+    /** Only the pre-computation code reads a secret. */
+    function open(canUseSecrets: boolean): void {
+        configurePanelTestBed({
+            providers: [
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode) => resource !== ResourceCode.Secrets || canUseSecrets,
+                        canEditSecrets: () => canUseSecrets,
+                    },
+                },
+            ],
+        });
+        const node = tableNode();
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...node,
+            data: {
+                ...node.data,
+                table: {
+                    ...node.data.table,
+                    pre_computation: { code: 'def main(): pass', secret_ids: [7], secret_names: ['STRIPE_KEY'] },
+                    post_computation: { code: 'def main(): pass' },
+                },
+            },
+        } as ClassificationDecisionTableNodeModel);
+        fixture.detectChanges();
+    }
+
+    function showTab(tab: 'precomputation' | 'postcomputation'): void {
+        fixture.componentInstance.activeTab.set(tab);
+        fixture.detectChanges();
+    }
+
+    function codeEditorReadOnly(): boolean {
+        return (
+            fixture.debugElement.query(By.directive(CodeEditorStubComponent))
+                .componentInstance as CodeEditorStubComponent
+        ).readOnly();
+    }
+
+    function storageReadOnly(): boolean {
+        return (
+            fixture.debugElement.query(By.directive(NodeStorageSectionComponent))
+                .componentInstance as NodeStorageSectionComponent
+        ).readonly();
+    }
+
+    function showsLockHint(): boolean {
+        return (fixture.nativeElement as HTMLElement).textContent?.includes(SECRET_CODE_NEEDS_USE_MESSAGE) ?? false;
+    }
+
+    it('locks only the block whose code reads secrets, with its storage toggle, without Secrets:Use', () => {
+        open(false);
+
+        showTab('precomputation');
+        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([true, true, true]);
+
+        showTab('postcomputation');
+        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([false, false, false]);
+    });
+
+    it('leaves both blocks editable with Secrets:Use', () => {
+        open(true);
+
+        showTab('precomputation');
+        expect([codeEditorReadOnly(), storageReadOnly(), showsLockHint()]).toEqual([false, false, false]);
+    });
+
+    it('locks the storage toggles in a version preview', () => {
+        configurePanelTestBed({ isPreview: true });
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', tableNode());
+        fixture.detectChanges();
+
+        showTab('postcomputation');
+        expect(storageReadOnly()).toBe(true);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — stored code fields', () => {
+    it('saves the stored entrypoint and global kwargs of each block, which it does not edit', () => {
+        configurePanelTestBed();
+        const node = tableNode();
+        const stored = { code: 'def run(): pass', entrypoint: 'run', global_kwargs: { retries: 3 } };
+        const fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...node,
+            data: { ...node.data, table: { ...node.data.table, pre_computation: stored, post_computation: stored } },
+        } as ClassificationDecisionTableNodeModel);
+        fixture.detectChanges();
+
+        const { pre_computation, post_computation } = fixture.componentInstance.createUpdatedNode().data.table;
+
+        expect([pre_computation?.entrypoint, pre_computation?.global_kwargs]).toEqual(['run', { retries: 3 }]);
+        expect([post_computation?.entrypoint, post_computation?.global_kwargs]).toEqual(['run', { retries: 3 }]);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — System One entries in the Prompt Library', () => {
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+    let panel: ClassificationDecisionTableNodePanelComponent;
+
+    function open(prompts: ClassificationDecisionTableNodeModel['data']['table']['prompts'] = {}): void {
+        configurePanelTestBed();
+        const node = tableNode();
+        const flowService = TestBed.inject(FlowService);
+        flowService.setFlow({
+            nodes: [{ ...node, data: { ...node.data, table: { ...node.data.table, prompts } } }],
+            connections: [],
+        });
+        TestBed.inject(SavedFlowStateService).setSavedFlow(flowService.getFlowState());
+
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', flowService.nodes()[0]);
+        fixture.detectChanges();
+        panel = fixture.componentInstance;
+        panel.activeTab.set('prompts');
+        fixture.detectChanges();
+    }
+
+    function headerButton(label: string): HTMLButtonElement {
+        const button = [
+            ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+                '.prompt-section-header button'
+            ),
+        ].find((candidate) => candidate.textContent?.trim() === label);
+        if (!button) throw new Error(`no header button ${label}`);
+        return button;
+    }
+
+    function click(button: HTMLElement): void {
+        button.click();
+        fixture.detectChanges();
+    }
+
+    function sentPromptConfigs(): Record<string, unknown>[] {
+        const node = panel.onSaveSilently()!;
+        const current: FlowModel = { nodes: [node], connections: [] };
+        const idMap = buildUuidToBackendIdMap(current.nodes);
+        const payload = buildBulkSavePayload(
+            1,
+            getNodeDiff({ nodes: [], connections: [] }, current),
+            getConnectionDiff({ nodes: [], connections: [] }, current, idMap),
+            current,
+            idMap,
+            1
+        );
+        const [item] = payload['classification_decision_table_node_list'] as Record<string, unknown>[];
+        return item['prompt_configs'] as Record<string, unknown>[];
+    }
+
+    it('offers both kinds of entry, with the LLM button keeping its behaviour', () => {
+        open();
+
+        // Not through `click()`: it would render the LLM card, whose JSON editor needs Monaco.
+        headerButton('LLM prompt').click();
+
+        expect(Object.keys(panel.prompts())).toEqual(['prompt_1']);
+        expect(panel.prompts()['prompt_1'].kind).toBeUndefined();
+    });
+
+    const SYSTEM_ONE_ENTRY = {
+        prompt_text: '',
+        llm_config: null,
+        output_schema: null,
+        variable_mappings: {},
+        kind: 'system_one' as const,
+    };
+
+    it('adds a System One entry with the empty System One shape, named System One', () => {
+        open();
+
+        click(headerButton('System One'));
+
+        expect(panel.prompts()['System One']).toEqual({
+            kind: 'system_one',
+            system_one_config: null,
+            questions: {},
+            input_map: {},
+            prompt_text: '',
+            llm_config: null,
+            output_schema: null,
+            result_variable: 'system_one_1',
+            variable_mappings: {},
+        });
+        expect(panel.editingPromptId()).toBe('System One');
+    });
+
+    it('names a further entry after the first free number and keeps its result variable an identifier', () => {
+        open({
+            'System One': { ...SYSTEM_ONE_ENTRY, result_variable: 'system_one_1' },
+            'System One 3': { ...SYSTEM_ONE_ENTRY, result_variable: 'system_one_2' },
+        });
+
+        click(headerButton('System One'));
+
+        expect(Object.keys(panel.prompts())).toEqual(['System One', 'System One 3', 'System One 2']);
+        expect(panel.prompts()['System One 2'].result_variable).toBe('system_one_3');
+    });
+
+    it('does not reuse a result variable that another entry already holds', () => {
+        open({ checker: { ...SYSTEM_ONE_ENTRY, result_variable: 'system_one_1' } });
+
+        click(headerButton('System One'));
+
+        expect(panel.prompts()['System One'].result_variable).toBe('system_one_2');
+    });
+
+    it('puts the Name field beside the System One config and keeps it renamable', () => {
+        open();
+        click(headerButton('System One'));
+        const nameInput = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+            'app-cdt-system-one-entry .prompt-name--paired .field-input'
+        )!;
+
+        nameInput.value = 'Fit check';
+        nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        nameInput.dispatchEvent(new Event('blur'));
+
+        expect(Object.keys(panel.prompts())).toEqual(['Fit check']);
+    });
+
+    it('sends the new System One entry as a System One entry, with no config and no questions yet', () => {
+        open();
+
+        click(headerButton('System One'));
+
+        expect(sentPromptConfigs()).toEqual([
+            expect.objectContaining({
+                prompt_key: 'System One',
+                kind: 'system_one',
+                system_one_config: null,
+                questions: {},
+                input_map: {},
+                llm_config: null,
+            }),
+        ]);
+    });
+
+    it('shows the new entry as a System One card with its own body instead of the LLM fields', () => {
+        open();
+
+        click(headerButton('System One'));
+        const card = (fixture.nativeElement as HTMLElement).querySelector('.prompt-card')!;
+
+        expect(card.querySelector('.prompt-kind-tag')?.textContent?.trim()).toBe('S1');
+        expect(card.querySelector('app-cdt-system-one-entry')).not.toBeNull();
+        expect(card.textContent).not.toContain('LLM Override');
+    });
+
+    it('stores what the System One card emits on the entry', () => {
+        open();
+        click(headerButton('System One'));
+
+        panel.updatePromptFields('System One', { system_one_config: 7 });
+
+        expect(sentPromptConfigs()[0]).toMatchObject({ system_one_config: 7 });
     });
 });

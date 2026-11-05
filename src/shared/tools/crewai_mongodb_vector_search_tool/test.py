@@ -1,9 +1,11 @@
-from main import main
+import main as tool
 
-main(
+# The sandbox injects tool configuration values as module globals.
+tool.openai_api_key = "YOUR_OPENAI_API_KEY"
+tool.connection_string = "mongodb://localhost:27017"
+
+print(tool.main(
     query="Tell me about OpenAI",
-    openai_api_key="YOUR_OPENAI_API_KEY",
-    connection_string="mongodb://localhost:27017",
     database_name="test_db",
     collection_name="test_collection",
     vector_index_name="vector_index",
@@ -14,4 +16,4 @@ main(
     limit=4,
     oversampling_factor=10,
     include_embeddings=False,
-)
+))

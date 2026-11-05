@@ -5,6 +5,21 @@
         message="Check your connection and try again."
         (retry)="store.retrySurfaces()"
     />
+} @else if (store.surfaceGroupBlocks(); as blocks) {
+    @for (block of blocks; track block.groupId) {
+        <app-explorer-group-block
+            [block]="block"
+            section="surfaces"
+            [selected]="store.selectedNode()"
+            (selectNode)="onSelect($event)"
+            (menuAction)="onMenuAction($event)"
+            (menuOpen)="onMenuOpen($event)"
+            (attachSurface)="onAttachSurface($event)"
+        />
+    }
+    @if (blocks.length === 0 || store.sharedSurfaces().length === 0) {
+        <div class="section-state">No shared surfaces yet</div>
+    }
 } @else if (store.surfacesTree().length === 0) {
     <div class="section-state">No shared surfaces yet</div>
 } @else {

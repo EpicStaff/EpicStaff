@@ -11,6 +11,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
+from tables.services.secrets.request_actor import actor_from_request
+from tables.services.secrets.secret_use_checks import check_venv_write
 
 from proxies.sandbox.models import SandboxVenvBinding
 from proxies.sandbox.services import VenvService
@@ -78,8 +80,25 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
         return Response(self._as_response(venv, binding), status=status.HTTP_201_CREATED)
 
     def partial_update(self, request: Request, pk: str) -> Response:
+        """Change a venv's name or libraries.
+
+        Changing the libraries of a venv that code declaring secrets runs in needs
+        secrets:USE (`check_venv_write`), checked before anything is sent to the sandbox.
+
+        Raises:
+            Http404: No venv with this id in the active org.
+            SecretUseDeniedError: The libraries change and the caller lacks secrets:USE.
+                Rendered as a 400 under `libs`.
+        """
         binding = self._get_binding_or_404(pk)
-        venv = self.service_class().update(binding, request.data)
+        service = self.service_class()
+        check_venv_write(
+            actor_from_request(request),
+            binding,
+            request.data,
+            read_current_libs=lambda: service.retrieve(binding).get("libs"),
+        )
+        venv = service.update(binding, request.data)
         return Response(self._as_response(venv, binding))
 
     def destroy(self, request: Request, pk: str) -> Response:

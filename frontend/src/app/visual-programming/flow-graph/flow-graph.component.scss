@@ -8,6 +8,25 @@
     overflow: hidden;
 }
 
+// Crosshair cursor while the user draws a note area region.
+.visual-programming-flow.note-draw-mode {
+    cursor: crosshair !important;
+
+    // Suppress the default "grab" cursor on every child so the crosshair stays consistent.
+    * {
+        cursor: crosshair !important;
+    }
+}
+
+// Live rectangle drawn while the user drags out a note region.
+.note-draw-overlay {
+    position: absolute;
+    pointer-events: none;
+    border: 1.5px dashed var(--gold-460);
+    background: var(--gold-460-alpha-18);
+    z-index: 9999;
+}
+
 // Must stay z-index/transform/isolation-free: it is moved inside `f-canvas`'s
 // stacking context, and any stacking context of its own would trap its
 // children's z-index instead of letting it compete with `.f-nodes-container`.
@@ -287,6 +306,8 @@
 
     .f-selection-area {
         background-color: var(--vp-selection-area-color);
+        border: 1px solid var(--vp-selection-area-border-color);
+        box-sizing: border-box;
     }
 
     .f-minimap {

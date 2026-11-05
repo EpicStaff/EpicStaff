@@ -47,7 +47,7 @@
         (keydown)="onKeyDown($event)"
         [disabled]="isDisabled()"
         [attr.aria-invalid]="isInvalid()"
-        [attr.aria-describedby]="message() ? messageId : null"
+        [attr.aria-describedby]="describedBy()"
     />
 
     @if (stepsShown()) {

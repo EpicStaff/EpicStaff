@@ -9,12 +9,12 @@ import websockets
 from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
-from starlette.websockets import WebSocketDisconnect
 from src.shared.public_error import (
     PublicErrorMessage,
     build_public_error_message,
     new_error_correlation_id,
 )
+from starlette.websockets import WebSocketDisconnect
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (

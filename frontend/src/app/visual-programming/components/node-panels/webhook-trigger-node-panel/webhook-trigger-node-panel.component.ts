@@ -19,11 +19,13 @@ import {
     CustomInputComponent,
     ExecutionTimeoutFieldComponent,
     ExecutionTimeoutFormField,
+    HintMessageComponent,
     ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
 import { ResourceCode, toSecretIds, WebhookTriggerModel } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
+import { SECRET_CODE_NEEDS_USE_MESSAGE } from '@shared/utils';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
@@ -73,6 +75,7 @@ export const RUN_PYTHON_CODE_LABEL = 'Run python code';
         PythonTerminalComponent,
         NgTemplateOutlet,
         ExecutionTimeoutFieldComponent,
+        HintMessageComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -164,6 +167,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         return state === 'not-created' || state === 'changed';
     });
 
+    protected readonly secretCodeLockedMessage = SECRET_CODE_NEEDS_USE_MESSAGE;
     pythonCode: string = '';
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
@@ -179,6 +183,11 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
               ? "Secrets assigned to this webhook's code."
               : "Secrets already assigned to this webhook's code. You don't have permission to change which secrets are selected."
     );
+    /** The code reads secrets and the user lacks Secrets:Use: the code and storage flag (which edits the code) are locked, the rest is not. */
+    protected readonly isSecretCodeLocked = computed(
+        () => !this.isReadOnly() && this.flowReadOnly.isSecretCodeLocked(this.node().data.python_code.secret_ids ?? [])
+    );
+    protected readonly isCodeReadOnly = computed(() => this.isReadOnly() || this.isSecretCodeLocked());
     public readonly selectedSecretIds = signal<number[]>([]);
     public readonly secretNames = computed(() =>
         this.canEditSecrets()
@@ -316,9 +325,11 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
                 ...this.node().data,
                 webhook_trigger: this.form.value.webhook_trigger ?? null,
                 python_code: {
+                    // Keeps the stored fields the panel does not edit (global_kwargs).
+                    ...this.node().data.python_code,
                     name: this.node().data.python_code.name || 'Python Code',
                     code: this.pythonCode,
-                    entrypoint: 'main',
+                    entrypoint: this.node().data.python_code.entrypoint || 'main',
                     secret_ids: this.selectedSecretIds(),
                     secret_names: this.secretNames(),
                     execution_timeout: this.executionTimeout.value,

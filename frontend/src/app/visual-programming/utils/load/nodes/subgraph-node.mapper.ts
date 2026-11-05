@@ -24,8 +24,6 @@ export function mapSubGraphNodeToModel(sn: SubGraphNode): SubGraphNodeModel {
         data: subgraphDetail,
         position: ui.position,
         ports: null,
-        color: ui.color,
-        icon: ui.icon,
         input_map: sn.input_map ?? {},
         output_variable_path: sn.output_variable_path,
         size: ui.size,

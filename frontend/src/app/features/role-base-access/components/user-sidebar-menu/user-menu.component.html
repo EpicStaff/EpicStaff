@@ -1,5 +1,10 @@
 <div class="user-menu-panel">
-    <section class="menu-section user-header">
+    <button
+        type="button"
+        class="menu-section user-header"
+        [class.active]="isProfileRoute()"
+        (click)="onProfileClick()"
+    >
         <app-user-avatar
             [name]="user().display_name || user().email"
             [avatarUrl]="user().avatar_url"
@@ -20,6 +25,31 @@
                 {{ user().email }}
             </div>
         </div>
+    </button>
+
+    <section class="menu-section">
+        @if (canVisitWorkspace()) {
+            <button
+                type="button"
+                class="nav-item"
+                [class.active]="isWorkspaceRoute()"
+                appTooltipOnOverflow=".nav-label"
+                matTooltip="Workspace"
+                (click)="onWorkspaceClick()"
+            >
+                <app-svg-icon
+                    size="16px"
+                    icon="workspace"
+                    class="nav-icon"
+                />
+                <span class="nav-label text-body-small-large">Workspace</span>
+                <app-svg-icon
+                    size="16px"
+                    icon="chevron-right"
+                    class="nav-chevron"
+                />
+            </button>
+        }
     </section>
 
     <section class="menu-section">
@@ -60,68 +90,6 @@
     </section>
 
     <section class="menu-section">
-        <div class="section-label text-body-small">Navigation</div>
-        @if (canVisitWorkspace()) {
-            <button
-                type="button"
-                class="nav-item"
-                [class.active]="isWorkspaceRoute()"
-                appTooltipOnOverflow=".nav-label"
-                matTooltip="Workspace"
-                (click)="onWorkspaceClick()"
-            >
-                <app-svg-icon
-                    size="16px"
-                    icon="workspace"
-                    class="nav-icon"
-                />
-                <span class="nav-label text-body-small-large">Workspace</span>
-                <app-svg-icon
-                    size="16px"
-                    icon="chevron-right"
-                    class="nav-chevron"
-                />
-            </button>
-        }
-        <button
-            type="button"
-            class="nav-item"
-            [class.active]="isProfileRoute()"
-            appTooltipOnOverflow=".nav-label"
-            matTooltip="My Profile"
-            (click)="onProfileClick()"
-        >
-            <app-svg-icon
-                size="16px"
-                icon="profile"
-                class="nav-icon"
-            />
-            <span class="nav-label text-body-small-large">My Profile</span>
-            <app-svg-icon
-                size="16px"
-                icon="chevron-right"
-                class="nav-chevron"
-            />
-        </button>
-    </section>
-
-    <section class="menu-section">
-        @for (tour of tours(); track tour.key) {
-            <button
-                type="button"
-                class="nav-item"
-                appTooltipOnOverflow=".nav-label"
-                [matTooltip]="tour.label"
-                (click)="onTourClick(tour.key)"
-            >
-                <app-svg-icon
-                    size="16px"
-                    [icon]="tour.icon"
-                    class="nav-icon"
-                />
-                <span class="nav-label text-body-small-large">{{ tour.label }}</span>
-            </button>
-        }
         <button
             type="button"
             class="nav-item"

@@ -7,6 +7,15 @@
         @include menu-item();
         justify-content: flex-start;
 
+        &[aria-disabled='true'] {
+            color: var(--color-text-disabled);
+            cursor: not-allowed;
+
+            &:hover {
+                background: transparent;
+            }
+        }
+
         // The hover look and the ring, drawn inside: the items sit tight in the panel.
         &:focus-visible {
             background: var(--transparent-white-8);

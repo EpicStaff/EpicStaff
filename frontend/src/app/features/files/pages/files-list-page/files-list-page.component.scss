@@ -60,26 +60,39 @@
         justify-content: space-between;
         margin-bottom: 0;
         background: transparent;
-        padding: 0 1.5rem 0 0;
+        padding: 4px 3.75rem 0 1.5rem;
         border-bottom: 1px solid var(--color-divider-subtle);
 
         .tabs-left {
             display: flex;
             align-items: center;
             gap: 0.25rem;
+            margin-bottom: -1px;
         }
 
         app-tab-button {
             border-radius: 4px;
             transition: background-color 0.15s ease;
 
-            ::ng-deep .tab-btn.sm {
-                padding: 0.5rem 1rem;
+            &:not(:first-child) {
+                position: relative;
+                margin-left: 32px;
+
+                &::before {
+                    content: '/';
+                    position: absolute;
+                    top: 50%;
+                    right: calc(100% + 10px);
+                    transform: translateY(-55%);
+                    font-size: 1.625rem;
+                    line-height: 1;
+                    color: var(--transparent-white-8);
+                    pointer-events: none;
+                }
             }
 
-            // The first tab's underline starts at the page's left edge; its label keeps the page inset.
-            &:first-child ::ng-deep .tab-btn.sm {
-                padding-left: calc(header.$page-inset-left + 0.5rem);
+            ::ng-deep .tab-btn.sm {
+                padding: 0.5rem;
             }
         }
 

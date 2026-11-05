@@ -14,14 +14,49 @@
     >
         <div class="popover__header">Import options</div>
 
-        <div class="popover__section">
-            <div class="popover__row">
+        <div class="popover__row">
+            <span class="popover__label">
+                Preserve Flow UUIDs
+                <app-help-tooltip
+                    size="1.25rem"
+                    class="help-icon"
+                    text="Imported flows keep their UUIDs from the source system. If a flow already uses that UUID, the import gets a new one, unless that flow is in this organization and Replace existing is on."
+                    tooltipClass="builtin-copy-tooltip"
+                    position="right"
+                />
+            </span>
+            <div class="toggle-group">
+                <div
+                    class="toggle-slider"
+                    [class.right]="settings().preserveUuids"
+                ></div>
+                <button
+                    type="button"
+                    class="toggle-btn"
+                    [attr.aria-pressed]="!settings().preserveUuids"
+                    (click)="setPreserveUuids(false)"
+                >
+                    No
+                </button>
+                <button
+                    type="button"
+                    class="toggle-btn"
+                    [attr.aria-pressed]="settings().preserveUuids"
+                    (click)="setPreserveUuids(true)"
+                >
+                    Yes
+                </button>
+            </div>
+        </div>
+
+        @if (settings().preserveUuids && canReplaceExisting()) {
+            <div class="popover__row popover__row--nested">
                 <span class="popover__label">
-                    Preserve Flow UUIDs
+                    Replace existing
                     <app-help-tooltip
-                        size="0.875rem"
+                        size="1.25rem"
                         class="help-icon"
-                        text="Imported flows keep their UUIDs from the source system. If a flow already uses that UUID, the import gets a new one, unless that flow is in this organization and Replace existing is on."
+                        text="Overwrite the flow in this organization with the same UUID instead of adding a copy; subflows in the file overwrite theirs too, for every flow that uses them. It keeps its id, sessions, versions and webhook/Telegram credentials, and flows that use it as a subflow keep working. Nodes come from the file, so schedules are switched off. A 'Before import' version is saved for rollback."
                         tooltipClass="builtin-copy-tooltip"
                         position="right"
                     />
@@ -29,74 +64,33 @@
                 <div class="toggle-group">
                     <div
                         class="toggle-slider"
-                        [class.right]="settings().preserveUuids"
+                        [class.right]="settings().replaceExisting"
                     ></div>
                     <button
                         type="button"
                         class="toggle-btn"
-                        [class.text-active]="!settings().preserveUuids"
-                        [attr.aria-pressed]="!settings().preserveUuids"
-                        (click)="setPreserveUuids(false)"
+                        [attr.aria-pressed]="!settings().replaceExisting"
+                        (click)="setReplaceExisting(false)"
                     >
                         No
                     </button>
                     <button
                         type="button"
                         class="toggle-btn"
-                        [class.text-active]="settings().preserveUuids"
-                        [attr.aria-pressed]="settings().preserveUuids"
-                        (click)="setPreserveUuids(true)"
+                        [attr.aria-pressed]="settings().replaceExisting"
+                        (click)="setReplaceExisting(true)"
                     >
                         Yes
                     </button>
                 </div>
             </div>
-
-            @if (settings().preserveUuids && canReplaceExisting()) {
-                <div class="popover__row popover__row--nested">
-                    <span class="popover__label">
-                        Replace existing
-                        <app-help-tooltip
-                            size="0.875rem"
-                            class="help-icon"
-                            text="Overwrite the flow in this organization with the same UUID instead of adding a copy; subflows in the file overwrite theirs too, for every flow that uses them. It keeps its id, sessions, versions and webhook/Telegram credentials, and flows that use it as a subflow keep working. Nodes come from the file, so schedules are switched off. A 'Before import' version is saved for rollback."
-                            tooltipClass="builtin-copy-tooltip"
-                            position="right"
-                        />
-                    </span>
-                    <div class="toggle-group">
-                        <div
-                            class="toggle-slider"
-                            [class.right]="settings().replaceExisting"
-                        ></div>
-                        <button
-                            type="button"
-                            class="toggle-btn"
-                            [class.text-active]="!settings().replaceExisting"
-                            [attr.aria-pressed]="!settings().replaceExisting"
-                            (click)="setReplaceExisting(false)"
-                        >
-                            No
-                        </button>
-                        <button
-                            type="button"
-                            class="toggle-btn"
-                            [class.text-active]="settings().replaceExisting"
-                            [attr.aria-pressed]="settings().replaceExisting"
-                            (click)="setReplaceExisting(true)"
-                        >
-                            Yes
-                        </button>
-                    </div>
-                </div>
-            }
-        </div>
+        }
 
         <div class="popover__row">
             <span class="popover__label">
                 Import labels
                 <app-help-tooltip
-                    size="0.875rem"
+                    size="1.25rem"
                     class="help-icon"
                     text="Include flow labels and categories during import. A replaced flow gets exactly the labels from the file."
                     tooltipClass="builtin-copy-tooltip"
@@ -111,7 +105,6 @@
                 <button
                     type="button"
                     class="toggle-btn"
-                    [class.text-active]="!settings().importLabels"
                     [attr.aria-pressed]="!settings().importLabels"
                     (click)="setImportLabels(false)"
                 >
@@ -120,7 +113,6 @@
                 <button
                     type="button"
                     class="toggle-btn"
-                    [class.text-active]="settings().importLabels"
                     [attr.aria-pressed]="settings().importLabels"
                     (click)="setImportLabels(true)"
                 >
@@ -130,13 +122,31 @@
         </div>
 
         <div class="popover__footer">
-            <button
-                type="button"
-                class="popover__reset"
+            <app-button
+                type="outline-primary"
+                mod="small"
                 (click)="resetDefaults()"
             >
                 Reset to defaults
-            </button>
+            </app-button>
+            <div class="popover__actions">
+                <app-button
+                    type="outline-primary"
+                    mod="small"
+                    class="popover__action"
+                    (click)="close()"
+                >
+                    Cancel
+                </app-button>
+                <app-button
+                    type="primary"
+                    mod="small"
+                    class="popover__action"
+                    (click)="requestImport()"
+                >
+                    Import
+                </app-button>
+            </div>
         </div>
     </div>
 </ng-template>

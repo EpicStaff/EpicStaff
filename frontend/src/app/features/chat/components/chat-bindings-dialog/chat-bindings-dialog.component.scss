@@ -94,9 +94,17 @@
         }
 
         // A lone stepper lines up with the left column of a paired row
-        > app-input-number {
+        > app-input-number,
+        > .bindings-dialog__field--stepper > app-input-number {
             max-width: calc(50% - 8px);
         }
+    }
+
+    // A field and the errors said under it, one item of the tab's column or a row's cell.
+    &__field {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
     }
 
     &__row {
@@ -230,7 +238,8 @@
             grid-template-columns: 1fr;
         }
 
-        &__tab > app-input-number {
+        &__tab > app-input-number,
+        &__tab > .bindings-dialog__field--stepper > app-input-number {
             max-width: none;
         }
 

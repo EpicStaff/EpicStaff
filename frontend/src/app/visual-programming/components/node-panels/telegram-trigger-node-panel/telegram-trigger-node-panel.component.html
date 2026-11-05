@@ -47,9 +47,11 @@
                                 [required]="true"
                                 [items]="secretItems()"
                                 [showSearch]="true"
+                                [showCreate]="canCreateSecrets()"
                                 [readonly]="isReadOnly()"
                                 searchPlaceholder="Search a secret..."
                                 (changed)="notifyExternalChange()"
+                                (onCreate)="triggerCreateSecrets()"
                             />
                             <!-- How to pick a secret: only useful while the key can be changed. -->
                             @if (!isReadOnly() && !form.get('telegram_bot_api_key_secret_id')?.value) {

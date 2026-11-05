@@ -1,6 +1,7 @@
 import { computed, DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
+import { isSecretCodeLocked } from '@shared/utils';
 import { Subject, throttleTime } from 'rxjs';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
@@ -58,6 +59,11 @@ export class FlowReadOnlyService {
     /** Whether a node of this type may not be created or changed in this editor. */
     public isNodeTypeReadOnly(type: NodeType): boolean {
         return this.isReadOnly() || (isTriggerNodeType(type) && !this.canEditTriggerNodes());
+    }
+
+    /** Whether Python code reading these secrets may not be changed or copied here (see `isSecretCodeLocked`). */
+    public isSecretCodeLocked(secretIds: readonly number[]): boolean {
+        return isSecretCodeLocked(secretIds, this.perms.can(ResourceCode.Secrets, ActionCode.Use));
     }
 
     /** Say why a write interaction was blocked, at most once per 3 seconds. */

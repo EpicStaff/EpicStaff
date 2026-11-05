@@ -54,6 +54,8 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         [attr.autocomplete]="effectiveAutocomplete"
                         [attr.spellcheck]="spellcheck"
                         [attr.aria-label]="ariaLabel() || null"
+                        [attr.aria-describedby]="ariaDescribedby()"
+                        [attr.aria-invalid]="errorMessage || invalid() ? true : null"
                         [matTooltip]="fieldName"
                         [placeholder]="placeholder"
                         [(ngModel)]="value"
@@ -63,7 +65,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         [class.transparent]="transparent()"
                         [class.has-toggle]="hasToggle"
                         [class.masked]="isMasked"
-                        [class.error]="errorMessage"
+                        [class.error]="errorMessage || invalid()"
                         [attr.disabled]="isDisabled || null"
                         [style.--active-color]="activeColor"
                     />
@@ -241,10 +243,14 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     @Input() activeColor: string = '#685fff';
     @Input() errorMessage: string = '';
     @Input() cautionMessage: string = '';
+    /** Shows the invalid state when the error is said elsewhere (e.g. `app-validation-errors` under the input). */
+    readonly invalid = input<boolean>(false);
     transparent = input<boolean>(false);
     readonly = input<boolean>(false);
     readonlyEmptyPlaceholder = input<string>('—');
     readonly ariaLabel = input<string>('');
+    /** Ids of what describes the input, e.g. the `app-validation-errors` saying why it is invalid. */
+    readonly ariaDescribedby = input<string | null>(null);
 
     @Output() blur = new EventEmitter<void>();
 
