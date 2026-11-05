@@ -23,6 +23,12 @@
     min-width: 170px;
     max-width: min(280px, calc(100vw - 16px));
 
+    &__separator {
+        flex-shrink: 0;
+        height: 1px;
+        background-color: var(--color-divider-subtle);
+    }
+
     &__item {
         overflow: hidden;
         text-overflow: ellipsis;

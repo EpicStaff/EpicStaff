@@ -1,16 +1,27 @@
+<!-- The tab switch is the toolbar's first row, beside the column's toggle. -->
 <app-conversation-list-toolbar
-    [order]="order()"
     [isMineOnly]="isMineOnly()"
     [canFilterMine]="canUse()"
+    [tab]="tab()"
     [searchError]="store.searchError()"
     [canCollapse]="canCollapse()"
     [isCompact]="isCompact()"
     [columnId]="bodyIdPrefix"
+    [canStartTest]="canBuildDesks()"
+    [testStartBlockedReason]="testStartBlockedReason()"
     (searchChange)="search.set($event)"
-    (orderChange)="setOrder($event)"
     (mineOnlyChange)="setMineOnly($event)"
     (compactToggle)="compactToggle.emit()"
-/>
+    (testStartRequested)="testStartRequested.emit()"
+>
+    <app-conversation-list-tabs
+        [tab]="tab()"
+        [inboxCount]="waitingCount()"
+        [canTest]="canBuildDesks()"
+        [isCompact]="isCompact()"
+        (tabChange)="setTab($event)"
+    />
+</app-conversation-list-toolbar>
 
 <!-- The one scroller of the column: section headers stick to its top, each until its own section ends. -->
 <div
@@ -44,7 +55,11 @@
                     [hidden]="!item.isExpanded"
                 >
                     @if (item.isExpanded) {
-                        @if (state.isLoading && !state.rows.length) {
+                        <!--
+                            Only a first page has no cursor: while a later one loads, a section showing none of the
+                            list's rows (Bot Testing's Bot as Closed pages) says it is empty instead.
+                        -->
+                        @if (state.isLoading && !state.nextCursor && !state.rows.length) {
                             <app-spinner
                                 class="conversation-list__loading"
                                 [text]="isCompact() ? '' : 'Loading conversations…'"
@@ -109,14 +124,15 @@
                                     }
                                 </div>
                             }
-                            @if (state.nextCursor && !state.isLoading) {
+                            <!-- A list pages under the last open section showing it (see the store's `view`). -->
+                            @if (item.pagesList && state.nextCursor && !state.isLoading) {
                                 <div
                                     #sentinel
                                     class="conversation-list__sentinel"
                                     aria-hidden="true"
                                     [attr.data-section]="section.id"
                                 ></div>
-                            } @else if (state.isLoading) {
+                            } @else if (item.pagesList && state.isLoading) {
                                 <app-spinner
                                     class="conversation-list__loading-more"
                                     [size]="16"

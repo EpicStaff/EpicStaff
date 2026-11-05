@@ -393,6 +393,15 @@
         </form>
 
         <div class="bindings-dialog__actions">
+            <!-- Before Rotate key, which pushes Cancel / Save to the right: both sit apart on the left. -->
+            @if (canRequestDelete) {
+                <app-button
+                    type="outline-danger"
+                    leftIcon="trash"
+                    (click)="requestDelete()"
+                    >Delete desk</app-button
+                >
+            }
             @if (!isCreating() && canUpdate()) {
                 <app-button
                     class="bindings-dialog__rotate"

@@ -5,7 +5,8 @@ export const COMPACT_COLUMN_WIDTH = 64;
 /** 40px desk avatars, 10px either side of them and the rail's 1px divider. */
 const DESK_RAIL_COMPACT_WIDTH = 61;
 const DESK_RAIL_MIN_WIDTH = 180;
-const CONVERSATIONS_MIN_WIDTH = 280;
+// The designer's minimum. The Inbox / Bot Testing switch fills the toolbar's row: 397px wide here (see the default).
+const CONVERSATIONS_MIN_WIDTH = 422;
 
 export const DESK_RAIL_WIDTH_KEY = 'chat-desk-rail';
 export const DESK_RAIL_NARROW_WIDTH_KEY = 'chat-desk-rail-narrow';
@@ -27,8 +28,14 @@ export const DESK_RAIL_NARROW_WIDTH_OPTIONS = {
 
 export const CONVERSATIONS_WIDTH_KEY = 'chat-conversations';
 
+/**
+ * The column before the user resizes it. The Inbox / Bot Testing switch fills the toolbar's first row, so it is the
+ * column less the toolbar's 12px padding either side and the column's 1px divider: 402px here.
+ */
+const CONVERSATIONS_DEFAULT_WIDTH = 427;
+
 export const CONVERSATIONS_WIDTH_OPTIONS = {
-    defaultWidth: 340,
+    defaultWidth: CONVERSATIONS_DEFAULT_WIDTH,
     minWidth: CONVERSATIONS_MIN_WIDTH,
     maxWidth: 480,
     collapse: {

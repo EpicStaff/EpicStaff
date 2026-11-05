@@ -1173,6 +1173,32 @@ describe('ChatBindingsDialogComponent', () => {
         expect(text('.bindings-dialog__actions app-button')).toContain('Rotate key');
     });
 
+    it('offers Delete desk only on an existing desk whose opener allows it, and closes asking the opener to delete, deleting nothing', () => {
+        const deleteButton = (): HTMLButtonElement | undefined =>
+            Array.from(
+                (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('app-button button')
+            ).find((button) => button.textContent?.trim() === 'Delete desk');
+        try {
+            dialogData.canDelete = true;
+            open(null);
+            expect(deleteButton()).toBeUndefined();
+
+            dialogData.canDelete = false;
+            open(binding({}));
+            expect(deleteButton()).toBeUndefined();
+
+            dialogData.canDelete = true;
+            open(binding({}));
+            expect(text('.bindings-dialog__actions app-button').slice(0, 2)).toEqual(['Delete desk', 'Rotate key']);
+            deleteButton()!.click();
+            expect(TestBed.inject(DialogRef).close).toHaveBeenCalledWith({ deleteRequested: true });
+            expect(chatApi.deleteBinding).not.toHaveBeenCalled();
+            expect(TestBed.inject(ConfirmationDialogService).confirmDelete).not.toHaveBeenCalled();
+        } finally {
+            delete dialogData.canDelete;
+        }
+    });
+
     it('rotates the key after a danger confirm and diffs later saves against the rotated binding', () => {
         const confirmation = TestBed.inject(ConfirmationDialogService);
         vi.mocked(confirmation.confirm).mockReturnValue(of(true));

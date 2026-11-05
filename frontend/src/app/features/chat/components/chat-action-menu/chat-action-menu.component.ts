@@ -10,6 +10,8 @@ export interface ChatActionMenuItem<Id extends string = string> {
     id: Id;
     label: string;
     disabled?: boolean;
+    /** Set apart from the items above by a divider line, e.g. a destructive action at the end. */
+    separated?: boolean;
 }
 
 // Under the button, flush with its end: the button sits at the end of a bar.

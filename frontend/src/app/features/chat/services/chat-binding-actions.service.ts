@@ -12,6 +12,8 @@ import { ToastService } from '../../../services/notifications';
 import {
     ChatBindingsDialogComponent,
     ChatBindingsDialogData,
+    ChatBindingsDialogResult,
+    isChatBindingDeleteRequest,
 } from '../components/chat-bindings-dialog/chat-bindings-dialog.component';
 import {
     MY_DESK_ALIAS_TITLE_ID,
@@ -25,6 +27,9 @@ import { ChatDesksStorageService } from './chat-desks-storage.service';
 const CONTRACT_REFUSALS = new Set(['contract_failed', 'unknown_flow']);
 
 type DialogSize = Pick<DialogConfig, 'width' | 'maxWidth' | 'positionStrategy'>;
+
+/** How a desk's settings closed: as usual (edits may have been saved), or with Delete desk, for the opener to run. */
+export type ChatBindingSettingsOutcome = 'closed' | 'delete-requested';
 
 /**
  * The desk actions offered by the chat area's header, the desk rail and a desk's toolbar, with their confirmations and
@@ -50,7 +55,9 @@ export class ChatBindingActionsService {
      * create that showed an identity secret closes without a result.
      */
     create(): Observable<ChatBinding | null> {
-        return this.openDialog(null).pipe(
+        return this.openDialog({ binding: null }).pipe(
+            // Create offers no Delete desk: there is no desk to delete yet.
+            map((result) => (isChatBindingDeleteRequest(result) ? null : result)),
             tap((created) => {
                 this.desksStorage.reload();
                 if (created) void this.router.navigate([DESKS_ROUTE, created.id]);
@@ -58,9 +65,18 @@ export class ChatBindingActionsService {
         );
     }
 
-    /** Opens a desk's settings. Emits once when the dialog closes; the caller reloads, as edits may have been saved. */
-    openSettings(binding: ChatBinding): Observable<void> {
-        return this.openDialog(binding).pipe(map(() => undefined));
+    /**
+     * Opens a desk's settings, with Delete desk when `canDelete` (the caller then deletes the desk). Emits once when the
+     * dialog closes: `'delete-requested'` after Delete desk, else `'closed'`, and the caller reloads, as edits may have
+     * been saved.
+     */
+    openSettings(
+        binding: ChatBinding,
+        { canDelete = false }: { canDelete?: boolean } = {}
+    ): Observable<ChatBindingSettingsOutcome> {
+        return this.openDialog({ binding, canDelete }).pipe(
+            map((result) => (isChatBindingDeleteRequest(result) ? 'delete-requested' : 'closed'))
+        );
     }
 
     /**
@@ -126,13 +142,13 @@ export class ChatBindingActionsService {
         );
     }
 
-    private openDialog(binding: ChatBinding | null): Observable<ChatBinding | null> {
+    private openDialog(data: ChatBindingsDialogData): Observable<ChatBindingsDialogResult | null> {
         return this.dialog
             .open<
-                ChatBinding,
+                ChatBindingsDialogResult,
                 ChatBindingsDialogData
-            >(ChatBindingsDialogComponent, { ...this.dialogSize('720px'), data: { binding } })
-            .closed.pipe(map((saved) => saved ?? null));
+            >(ChatBindingsDialogComponent, { ...this.dialogSize('720px'), data })
+            .closed.pipe(map((result) => result ?? null));
     }
 
     /**

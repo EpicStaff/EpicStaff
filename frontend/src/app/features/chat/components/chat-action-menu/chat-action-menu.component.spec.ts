@@ -75,6 +75,23 @@ describe('ChatActionMenuComponent', () => {
         expect(trigger().getAttribute('aria-expanded')).toBe('false');
     });
 
+    it('sets a separated item apart with a divider above it, and draws none above a separated first item', () => {
+        const separators = (): Element[] =>
+            Array.from(document.querySelectorAll('.chat-action-menu [role="separator"]'));
+        fixture.componentInstance.items.set([
+            { id: 'resolve', label: 'Resolve' },
+            { id: 'delete', label: 'Delete Conversation', separated: true },
+        ]);
+        toggle();
+        expect(separators()).toHaveLength(1);
+        expect(separators()[0].nextElementSibling?.textContent?.trim()).toBe('Delete Conversation');
+
+        toggle();
+        fixture.componentInstance.items.set([{ id: 'delete', label: 'Delete Conversation', separated: true }]);
+        toggle();
+        expect(separators()).toEqual([]);
+    });
+
     it('closes on Escape and on a click outside, choosing nothing', () => {
         toggle();
         document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));

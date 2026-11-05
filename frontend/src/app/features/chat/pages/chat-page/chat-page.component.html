@@ -65,62 +65,15 @@
                     @if (canUpdate()) {
                         <button
                             type="button"
-                            class="header-action header-action--ghost"
+                            class="desk-settings"
                             aria-label="Settings"
                             matTooltip="Settings"
-                            [appCollapseOnOverflow]="true"
-                            appTooltipWhenCollapsed
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
                             (click)="openSettings()"
                         >
                             <app-svg-icon
                                 icon="settings"
-                                size="1.25rem"
+                                size="14px"
                             />
-                            <span class="btn-label">Settings</span>
-                        </button>
-                    }
-                    @if (canDelete()) {
-                        <button
-                            type="button"
-                            class="header-action header-action--ghost"
-                            aria-label="Delete"
-                            matTooltip="Delete"
-                            [appCollapseOnOverflow]="true"
-                            appTooltipWhenCollapsed
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
-                            (click)="deleteDesk()"
-                        >
-                            <app-svg-icon
-                                icon="trash"
-                                size="1.25rem"
-                            />
-                            <span class="btn-label">Delete</span>
-                        </button>
-                    }
-                    @if (canBuildDesks()) {
-                        <button
-                            type="button"
-                            class="header-action header-action--primary"
-                            aria-label="Test"
-                            matTooltip="Test"
-                            [appCollapseOnOverflow]="true"
-                            appTooltipWhenCollapsed
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
-                            [disabled]="!canStartTest()"
-                            (click)="startTest()"
-                        >
-                            <app-svg-icon
-                                icon="player-play-filled"
-                                size="1.25rem"
-                            />
-                            <span class="btn-label">Test</span>
                         </button>
                     }
                 </div>
@@ -145,7 +98,7 @@
             [attr.inert]="isPhone() && selected() ? '' : null"
         >
             @if (isPhone()) {
-                <!-- The list screen's nav bar: which desk (tap to switch), its status, Test and the other actions. -->
+                <!-- The list screen's nav bar: which desk (tap to switch), its status and the other actions. -->
                 <div class="phone-bar">
                     <h2 class="phone-bar__heading">
                         <button
@@ -177,21 +130,6 @@
                         />
                     }
                     <div class="phone-bar__actions">
-                        @if (routeBinding() && canBuildDesks()) {
-                            <button
-                                type="button"
-                                class="phone-bar__icon-button phone-bar__icon-button--primary"
-                                aria-label="Test"
-                                matTooltip="Test"
-                                [disabled]="!canStartTest()"
-                                (click)="startTest()"
-                            >
-                                <app-svg-icon
-                                    icon="player-play-filled"
-                                    size="1.25rem"
-                                />
-                            </button>
-                        }
                         @if (deskMenuItems().length) {
                             <app-chat-action-menu
                                 label="Desk actions"
@@ -209,7 +147,9 @@
                 [canCollapse]="!isPhone()"
                 [isCompact]="isConversationsCompact()"
                 (selectedChange)="selectConversation($event)"
+                [testStartBlockedReason]="testStartBlockedReason()"
                 (compactToggle)="toggleConversations()"
+                (testStartRequested)="startTest()"
             />
             @if (!isPhone()) {
                 <div
@@ -239,6 +179,8 @@
                         [conversation]="conversation"
                         [listTitle]="title()"
                         [isAllBindings]="isAllBindings()"
+                        [canDelete]="canDeleteFromThread()"
+                        (deleteRequested)="deleteDesk()"
                     />
                 </div>
             } @else {

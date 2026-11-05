@@ -78,7 +78,7 @@
     color: var(--color-text-secondary);
 }
 
-// Why Waiting does not follow the sort order: it is a queue.
+// How a section that is not newest first is ordered: Waiting is a queue, Closed a record of what was closed.
 .conversation-list__section-note {
     margin: 0;
     padding: 4px 12px;

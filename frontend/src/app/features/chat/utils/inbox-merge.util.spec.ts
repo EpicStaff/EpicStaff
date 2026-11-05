@@ -142,14 +142,13 @@ describe('inboxOrder', () => {
         bot('c', '2026-10-10T10:00:00Z'),
     ];
 
-    it('orders Waiting longest wait first, then by id, in either order', () => {
+    it('orders Waiting longest wait first, then by id ascending', () => {
         const queue = [
             waiting('c', '2026-10-10T10:00:00Z'),
             waiting('b', '2026-10-10T09:00:00Z'),
             waiting('a', '2026-10-10T10:00:00Z'),
         ];
-        expect(ids([...queue].sort(inboxOrder('waiting', 'newest')))).toEqual(['b', 'a', 'c']);
-        expect(ids([...queue].sort(inboxOrder('waiting', 'oldest')))).toEqual(['b', 'a', 'c']);
+        expect(ids([...queue].sort(inboxOrder('waiting')))).toEqual(['b', 'a', 'c']);
     });
 
     it('orders Waiting by when the wait started, not by the latest message', () => {
@@ -157,16 +156,12 @@ describe('inboxOrder', () => {
             waiting('a', '2026-10-10T09:00:00Z', { last_message_at: '2026-10-10T12:00:00Z' }),
             waiting('b', '2026-10-10T10:00:00Z', { last_message_at: '2026-10-10T10:00:00Z' }),
         ];
-        expect(ids(queue.sort(inboxOrder('waiting', 'newest')))).toEqual(['a', 'b']);
+        expect(ids(queue.sort(inboxOrder('waiting')))).toEqual(['a', 'b']);
     });
 
     for (const section of ['in_progress', 'bot', 'test'] as const) {
         it(`orders ${section} newest message first, then by id descending`, () => {
-            expect(ids([...latest].sort(inboxOrder(section, 'newest')))).toEqual(['c', 'a', 'b']);
-        });
-
-        it(`orders ${section} oldest message first, then by id ascending`, () => {
-            expect(ids([...latest].sort(inboxOrder(section, 'oldest')))).toEqual(['b', 'a', 'c']);
+            expect(ids([...latest].sort(inboxOrder(section)))).toEqual(['c', 'a', 'b']);
         });
     }
 });
@@ -178,9 +173,8 @@ describe('inboxOrder for Closed', () => {
         closed('c', '2026-10-10T10:00:00Z'),
     ];
 
-    it('orders Closed most recently closed first, then by id descending, in either order', () => {
-        expect(ids([...rows].sort(inboxOrder('closed', 'newest')))).toEqual(['c', 'a', 'b']);
-        expect(ids([...rows].sort(inboxOrder('closed', 'oldest')))).toEqual(['c', 'a', 'b']);
+    it('orders Closed most recently closed first, then by id descending', () => {
+        expect(ids([...rows].sort(inboxOrder('closed')))).toEqual(['c', 'a', 'b']);
     });
 });
 
@@ -196,16 +190,16 @@ describe('microseconds', () => {
         const sorted = [
             waiting('a', '2026-10-10T10:00:00.123456+00:00'),
             waiting('b', '2026-10-10T10:00:00.123400Z'),
-        ].sort(inboxOrder('waiting', 'newest'));
+        ].sort(inboxOrder('waiting'));
         expect(ids(sorted)).toEqual(['b', 'a']);
         const newestFirst = [bot('a', '2026-10-10T10:00:00.123400Z'), bot('b', '2026-10-10T10:00:00.123456+00:00')];
-        expect(ids(newestFirst.sort(inboxOrder('bot', 'newest')))).toEqual(['b', 'a']);
+        expect(ids(newestFirst.sort(inboxOrder('bot')))).toEqual(['b', 'a']);
     });
 });
 
 describe('placeRow', () => {
     const queue = [waiting('a', '2026-10-10T08:00:00Z'), waiting('b', '2026-10-10T09:00:00Z')];
-    const queueOrder = inboxOrder('waiting', 'newest');
+    const queueOrder = inboxOrder('waiting');
 
     it('inserts a row inside the fetched window in order', () => {
         const next = placeRow(queue, waiting('x', '2026-10-10T08:30:00Z'), queueOrder, queue[1]);

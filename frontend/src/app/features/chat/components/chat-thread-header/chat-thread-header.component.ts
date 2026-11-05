@@ -1,4 +1,4 @@
-import { Component, computed, ElementRef, inject, input, viewChild } from '@angular/core';
+import { Component, computed, ElementRef, inject, input, output, viewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
@@ -21,6 +21,9 @@ import { isClosed } from '../../utils/conversation-close.util';
 import { operatorName, visitorName } from '../../utils/conversation-row.util';
 import { ChatActionMenuComponent, ChatActionMenuItem } from '../chat-action-menu/chat-action-menu.component';
 import { ChatUsageRingComponent } from '../chat-usage-ring/chat-usage-ring.component';
+
+/** The ⋯ menu's actions: the conversation's own, and Delete Conversation, which the page carries out. */
+type ThreadMenuAction = ConversationAction | 'delete';
 
 /**
  * The open conversation's header: its mode (or Closed), title, Test chip, today's usage against its desk's limits and
@@ -49,6 +52,9 @@ export class ChatThreadHeaderComponent {
     /** The list the phone's Back returns to: the desk name or All desks; empty while not known. */
     readonly listTitle = input('');
     readonly isAllBindings = input(false);
+    /** Offers Delete Conversation at the end of the ⋯ menu; the page decides when, and what it deletes. */
+    readonly canDelete = input(false);
+    readonly deleteRequested = output<void>();
 
     private readonly threadBack = viewChild<ElementRef<HTMLButtonElement>>('threadBack');
 
@@ -82,10 +88,13 @@ export class ChatThreadHeaderComponent {
     );
     /** The holder's main action, a button beside the title (see `primaryConversationAction`). */
     readonly primaryAction = computed(() => primaryConversationAction(this.actionContext()));
-    /** The conversation's other actions, in its ⋯ menu (see `conversationMenuItems`). */
-    readonly conversationMenuItems = computed((): ChatActionMenuItem<ConversationAction>[] =>
-        conversationMenuItems(this.actionContext())
-    );
+    /**
+     * The ⋯ menu: the conversation's other actions (see `conversationMenuItems`), then Delete Conversation, set apart.
+     */
+    readonly conversationMenuItems = computed((): ChatActionMenuItem<ThreadMenuAction>[] => [
+        ...conversationMenuItems(this.actionContext()),
+        ...(this.canDelete() ? [{ id: 'delete' as const, label: 'Delete Conversation', separated: true }] : []),
+    ]);
 
     protected readonly isActionPending = inject(ChatConversationActionsService).isPending;
     protected readonly isPhone = inject(PhoneLayoutService).isPhone;
@@ -96,13 +105,14 @@ export class ChatThreadHeaderComponent {
     private readonly permissionsService = inject(PermissionsService);
     private readonly profileService = inject(ProfileService);
 
-    runConversationAction(action: ConversationAction): void {
+    runConversationAction(action: ThreadMenuAction): void {
         const conversation = this.conversation();
-        const run: Record<ConversationAction, () => void> = {
+        const run: Record<ThreadMenuAction, () => void> = {
             'take-over': () => this.conversationActions.takeOver(conversation),
             release: () => this.conversationActions.release(conversation),
             resolve: () => this.conversationActions.resolve(conversation),
             close: () => this.conversationActions.closeConversation(conversation),
+            delete: () => this.deleteRequested.emit(),
         };
         run[action]();
     }

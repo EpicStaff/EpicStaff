@@ -21,14 +21,21 @@ import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
-import { ChatConversation, ChatInboxOrder, ChatInboxSection } from '../../models/chat.model';
+import { ChatConversation } from '../../models/chat.model';
 import { ChatConversationActionsService } from '../../services/chat-conversation-actions.service';
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
 import { isDeskBuilder } from '../../utils/chat-permissions.util';
+import {
+    ConversationListSection,
+    ConversationListTab,
+    tabOfConversation,
+    tabOfSection,
+} from '../../utils/conversation-list-tab.util';
 import { ConversationDeskRules, deskRulesOf, visitorName } from '../../utils/conversation-row.util';
 import { tickingNow } from '../../utils/ticking-now.util';
+import { ConversationListTabsComponent } from '../conversation-list-tabs/conversation-list-tabs.component';
 import { ConversationListToolbarComponent } from '../conversation-list-toolbar/conversation-list-toolbar.component';
 import { ConversationRowComponent, ConversationRowMove } from '../conversation-row/conversation-row.component';
 import { ConversationSectionHeaderComponent } from '../conversation-section-header/conversation-section-header.component';
@@ -37,6 +44,7 @@ import {
     ConversationListQuery,
     ConversationListStore,
     listsSection,
+    sectionHolds,
 } from './conversation-list.store';
 import { ConversationListMotion } from './conversation-list-motion';
 
@@ -48,17 +56,19 @@ const SENTINEL_MARGIN = '0px 0px 200px 0px';
 let nextListId = 0;
 
 /** See `ConversationListComponent.lookUp`. */
-export type ConversationLookup = ChatConversation | 'loading' | 'hidden' | 'missing';
+export type ConversationLookup = ChatConversation | 'loading' | 'missing';
 
 /**
- * The conversations column: a toolbar (search, Mine, sort) over one scroll with a section per inbox section (Waiting
- * for a person, In progress, Tests, Closed, Bot), each under a sticky header that collapses it. Loads, pages as each section's
- * end scrolls into view, keeps the rows live, and moves the selection with ↑/↓ (one row is the Tab stop).
+ * The conversations column: the Inbox / Bot Testing switch and a toolbar (search, Mine or New Test Chat) over
+ * one scroll. Inbox has a section per inbox section (Waiting for a person, In progress, Closed, Bot); Bot Testing has
+ * Bot and Closed, the open and the closed tests. Each sits under a sticky header that collapses it. Loads, pages as a
+ * list's end scrolls into view, keeps the rows live, and moves the selection with ↑/↓ (one row is the Tab stop).
  */
 @Component({
     selector: 'app-conversation-list',
     imports: [
         SpinnerComponent,
+        ConversationListTabsComponent,
         ConversationListToolbarComponent,
         ConversationRowComponent,
         ConversationSectionHeaderComponent,
@@ -76,8 +86,12 @@ export class ConversationListComponent {
     readonly selectedId = input<string | null>(null);
     readonly canCollapse = input(false);
     readonly isCompact = input(false);
+    /** Why a test cannot start now (no desk open, one starting); null when New Test Chat may start one. */
+    readonly testStartBlockedReason = input<string | null>(null);
     readonly selectedChange = output<ChatConversation>();
     readonly compactToggle = output<void>();
+    /** New Test Chat was pressed: the page starts the test, as the column has no desk actions of its own. */
+    readonly testStartRequested = output<void>();
 
     private readonly toolbar = viewChild.required(ConversationListToolbarComponent);
     private readonly scroller = viewChild.required<ElementRef<HTMLElement>>('scroller');
@@ -94,26 +108,36 @@ export class ConversationListComponent {
     protected readonly now = tickingNow(NOW_TICK_MS);
     /** Take over, and Mine: both are about conversations the user holds. */
     protected readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
-    private readonly canBuildDesks = computed(() => isDeskBuilder(this.permissionsService));
+    /** Bot Testing: tests are for whoever builds desks (chats create or update), not for support staff. */
+    protected readonly canBuildDesks = computed(() => isDeskBuilder(this.permissionsService));
+    /**
+     * The tab in this column: the remembered choice, which is Inbox for a user who cannot build desks. Showing a
+     * conversation of the other tab (a test that started, a link) moves here only; the remembered choice stays.
+     */
+    protected readonly tab = linkedSignal(
+        (): ConversationListTab => (this.canBuildDesks() ? this.preferences.tab() : 'inbox')
+    );
     /** The search as applied: trimmed, once typing settles. Never remembered. */
     protected readonly search = signal('');
-    protected readonly order = computed(() => this.preferences.order());
     /**
      * Mine in this column: the remembered choice, which does not apply to a user who has since lost chats use. Revealing
      * a section Mine hides sets it aside here only; the remembered choice stays.
      */
     protected readonly isMineOnly = linkedSignal(() => this.canUse() && this.preferences.isMineOnly());
-    // Under Mine, whose conversations are listed. A number, so a refreshed profile of the same user lists nothing anew.
-    private readonly holderId = computed(() =>
+    // Under Mine, whose conversations Inbox lists. A number, so a refreshed profile of the same user lists nothing anew.
+    private readonly inboxHolderId = computed(() =>
         this.isMineOnly() ? (this.profileService.currentUserSignal()?.id ?? null) : null
     );
     /**
-     * The Waiting count for what is listed — this desk or every desk, and Mine — from the stream's waiting set. None
-     * while searching: the set cannot tell what the search matches.
+     * The Waiting count for what Inbox lists — this desk or every desk, and Mine — from the stream's waiting set, on
+     * either tab. None while Inbox is searched: the set cannot tell what the search matches. A search on Bot Testing
+     * says nothing about Inbox, so the number stays.
      */
     protected readonly waitingCount = computed(() => {
         const query = this.store.query();
-        return query.search ? null : this.chatInboxStream.waitingCountFor(query.bindingId, query.holderId);
+        return query.search && query.tab === 'inbox'
+            ? null
+            : this.chatInboxStream.waitingCountFor(query.bindingId, this.inboxHolderId());
     });
     /** Every desk's name by id, on All desks only: each row says which desk it came in on. */
     protected readonly deskNames = computed((): ReadonlyMap<string, string> | null =>
@@ -137,17 +161,17 @@ export class ConversationListComponent {
     });
 
     /**
-     * Every `ready` means the stream is live from now, so a load after it is complete. Another desk, search, sort or
-     * Mine lists something else: every section starts over.
+     * Every `ready` means the stream is live from now, so a load after it is complete. Another tab, desk, search or Mine
+     * lists something else: every section starts over. Mine applies to Inbox only.
      */
     private readonly reloadOnReadyOrQuery = effect(() => {
         this.chatInboxStream.readyEpoch();
+        const tab = this.tab();
         const query: ConversationListQuery = {
+            tab,
             bindingId: this.bindingId(),
             search: this.search(),
-            order: this.order(),
-            holderId: this.holderId(),
-            showsTests: this.canBuildDesks(),
+            holderId: tab === 'inbox' ? this.inboxHolderId() : null,
         };
         untracked(() => this.store.load(query));
     });
@@ -210,13 +234,17 @@ export class ConversationListComponent {
     }
 
     /**
-     * Shows a section and scrolls it to the top, e.g. Tests when a test conversation starts: opens it, and drops the
-     * search or Mine when they would keep the new conversation out of the list. Mine is dropped for this column only:
-     * the remembered choice stays for the next visit.
+     * Shows a section and scrolls it to the top, e.g. `test_bot` when a test conversation starts: moves to its tab,
+     * opens it, and drops the search or Mine when they would keep the new conversation out of the list. The tab and
+     * Mine change for this column only: the remembered choices stay for the next visit. A tab the user cannot see
+     * changes nothing, the search included.
      */
-    reveal(section: ChatInboxSection): void {
+    reveal(section: ConversationListSection): void {
+        const tab = tabOfSection(section);
+        if (!this.showTab(tab)) return;
         if (this.store.isSearching()) this.toolbar().clearSearch();
-        if (!listsSection(this.store.query(), section)) this.isMineOnly.set(false);
+        const query: ConversationListQuery = { ...this.store.query(), tab, holderId: this.inboxHolderId() };
+        if (tab === 'inbox' && !listsSection(query, section)) this.isMineOnly.set(false);
         this.store.openForColumn(section);
         afterNextRender(() => this.sectionElement(section)?.scrollIntoView({ block: 'start' }), {
             injector: this.injector,
@@ -225,26 +253,37 @@ export class ConversationListComponent {
 
     /**
      * What the column can say about a conversation the page was asked to open: its row once listed; `loading` while
-     * what the column shows may still bring it; `hidden` once that has loaded without it while the column hides some
-     * rows (see `showEverything`); `missing` once everything it can list has loaded without it. Reads signals only,
-     * so an effect that calls it follows the answer.
+     * what it shows may still bring it; `missing` once that has loaded without it (or nothing is open to wait for).
+     * Missing says nothing about why: Mine, a search, a folded section, the other tab or a page not fetched yet. Reads
+     * signals only, so an effect that calls it follows the answer.
      */
     lookUp(id: string): ConversationLookup {
         const row = this.store.findRow(id);
         if (row) return row;
-        if (this.store.isLoaded()) return this.store.hidesSome() ? 'hidden' : 'missing';
-        // Nothing open shows nothing to wait for.
-        return this.store.view().some(({ isExpanded }) => isExpanded) ? 'loading' : 'hidden';
+        const isWaiting = !this.store.isLoaded() && this.store.view().some(({ isExpanded }) => isExpanded);
+        return isWaiting ? 'loading' : 'missing';
     }
 
     /**
-     * Lists everything the column can, for a conversation it may be hiding: the search cleared, Mine set aside and
-     * every section opened, all for this column only. The remembered choices stay: the user asked for none of this.
+     * Brings a conversation the page opened (a link, a reload, history) into the column when it is not shown: its tab,
+     * its section opened, the search cleared, and Mine set aside only when Mine keeps it out. For this column only:
+     * the remembered choices stay. A conversation already shown changes nothing, so opening a row found by a search
+     * keeps the search, and so does one no section lists (a test without a message yet). A test for someone who cannot
+     * build desks stays out.
      */
-    showEverything(): void {
+    revealConversation(conversation: ChatConversation): void {
+        if (this.store.visibleRows().some((row) => row.id === conversation.id)) return;
+        const section = CONVERSATION_SECTIONS.find(({ id }) => sectionHolds(id, conversation, null))?.id;
+        if (!section) return;
+        const tab = tabOfConversation(conversation);
+        if (!this.showTab(tab)) return;
         if (this.store.isSearching()) this.toolbar().clearSearch();
-        this.isMineOnly.set(false);
-        for (const { id } of CONVERSATION_SECTIONS) this.store.openForColumn(id);
+        const holderId = this.inboxHolderId();
+        const query: ConversationListQuery = { ...this.store.query(), tab, holderId };
+        if (tab === 'inbox' && (!listsSection(query, section) || !sectionHolds(section, conversation, holderId))) {
+            this.isMineOnly.set(false);
+        }
+        this.store.openForColumn(section);
     }
 
     /** Focuses a conversation's row, or the row Tab lands on when that one is no longer shown. */
@@ -261,7 +300,7 @@ export class ConversationListComponent {
      * view, with the focus on it, and opening one folds the open one above it, which would pull the header out of view:
      * the column scrolls so the header stays where it was pressed.
      */
-    protected toggle(section: ChatInboxSection): void {
+    protected toggle(section: ConversationListSection): void {
         const scroller = this.scroller().nativeElement;
         const sectionTop = this.sectionTopInScroller(section);
         this.store.toggle(section);
@@ -276,8 +315,10 @@ export class ConversationListComponent {
         );
     }
 
-    protected setOrder(order: ChatInboxOrder): void {
-        this.preferences.setOrder(order);
+    /** The user's own choice: remembered. */
+    protected setTab(tab: ConversationListTab): void {
+        this.preferences.setTab(tab);
+        this.showTab(tab);
     }
 
     /** The user's own choice: remembered, and it ends a Mine set aside by a reveal. */
@@ -309,11 +350,18 @@ export class ConversationListComponent {
         this.selectedChange.emit(target);
     }
 
+    // Bot Testing is not there for someone who cannot build desks. Says whether the column is on `tab` now.
+    private showTab(tab: ConversationListTab): boolean {
+        if (tab === 'testing' && !this.canBuildDesks()) return false;
+        this.tab.set(tab);
+        return true;
+    }
+
     private rowElements(): HTMLElement[] {
         return this.rowItems().map(({ nativeElement }) => nativeElement);
     }
 
-    private sectionElement(section: ChatInboxSection): HTMLElement | null {
+    private sectionElement(section: ConversationListSection): HTMLElement | null {
         return (
             this.sectionElements().find(({ nativeElement }) => sectionOf(nativeElement) === section)?.nativeElement ??
             null
@@ -321,7 +369,7 @@ export class ConversationListComponent {
     }
 
     // Where the section starts in the scroller's content, in the units of `scrollTop`.
-    private sectionTopInScroller(section: ChatInboxSection): number | null {
+    private sectionTopInScroller(section: ConversationListSection): number | null {
         const element = this.sectionElement(section);
         if (!element) return null;
         const scroller = this.scroller().nativeElement;
@@ -330,7 +378,7 @@ export class ConversationListComponent {
 }
 
 /** The section a section wrapper or a sentinel belongs to, from its `data-section`. */
-function sectionOf(element: Element): ChatInboxSection | null {
+function sectionOf(element: Element): ConversationListSection | null {
     const value = (element as HTMLElement).dataset['section'];
     return CONVERSATION_SECTIONS.find(({ id }) => id === value)?.id ?? null;
 }

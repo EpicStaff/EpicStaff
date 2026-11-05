@@ -1,0 +1,106 @@
+@use '../../../../../styles/count-badge';
+
+// Takes the width its row leaves (beside the column's toggle), and the whole width when stacked under it.
+:host {
+    display: block;
+    flex: 1 1 auto;
+    align-self: stretch;
+    min-width: 0;
+}
+
+// Two equal segments filling the row; the second has no left border, so the first's right border divides them.
+.conversation-list-tabs {
+    display: flex;
+
+    :host(.conversation-list-tabs--compact) & {
+        flex-direction: column;
+    }
+}
+
+.conversation-list-tabs__tab {
+    position: relative;
+    display: inline-flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 0;
+    height: 40px;
+    padding: 12px 8px;
+    box-sizing: border-box;
+    // Figma's Line is #2B2D30; the nearest token is --color-ks-line (#2c2c2e).
+    border: 1px solid var(--color-ks-line);
+    background: transparent;
+    color: var(--color-text-primary);
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    line-height: var(--text-body-medium-line-height);
+    cursor: pointer;
+
+    &--first {
+        border-radius: 8px 0 0 8px;
+    }
+
+    &--last {
+        border-left: none;
+        border-radius: 0 8px 8px 0;
+    }
+
+    &:hover:not([aria-disabled='true']) {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &--selected,
+    &--selected:hover:not([aria-disabled='true']) {
+        background-color: var(--accent-color);
+    }
+
+    &:focus-visible {
+        // Above the neighbouring segment, so the ring is not cut where they meet.
+        z-index: 1;
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+
+    // Disabled through aria-disabled, not the attribute: it stays focusable, so the keyboard reaches its tooltip.
+    &[aria-disabled='true'] {
+        color: var(--color-text-disabled);
+        cursor: default;
+    }
+
+    // Stacked icon-only: the shared border runs across, and the ends round at the top and bottom instead.
+    :host(.conversation-list-tabs--compact) & {
+        height: 32px;
+        padding: 0;
+    }
+
+    :host(.conversation-list-tabs--compact) &--first {
+        border-radius: 8px 8px 0 0;
+    }
+
+    :host(.conversation-list-tabs--compact) &--last {
+        border-left: 1px solid var(--color-ks-line);
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+    }
+}
+
+.conversation-list-tabs__icon {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.conversation-list-tabs__badge {
+    @include count-badge.pill;
+    position: absolute;
+    top: -8px;
+    right: -12px;
+}
+
+.conversation-list-tabs__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

@@ -1,3 +1,4 @@
+@use '../../../../../styles/column-toggle';
 @use '../../../../../styles/header-action-buttons';
 @use '../../../../../styles/touch';
 
@@ -63,6 +64,14 @@
         }
     }
 
+    // Icon only, bordered like the column toggles: 28px square, a 14px icon in the muted text colour, accent border on
+    // hover. Under .header-actions, so the narrow screens' button padding there does not squeeze it.
+    .header-actions .desk-settings {
+        @include column-toggle.button;
+        // Figma's Line is #2B2D30; the nearest token is --color-ks-line (#2c2c2e).
+        border-color: var(--color-ks-line);
+    }
+
     // A small outlined control, like the desk status beside the title: 28px tall, 8px either side.
     .operator-name {
         flex-shrink: 0;
@@ -104,10 +113,6 @@
             font-size: var(--text-body-small-large-size);
             font-weight: var(--text-body-small-large-weight);
             line-height: var(--text-body-small-large-line-height);
-        }
-
-        &--primary {
-            @include header-action-buttons.primary;
         }
     }
 }
@@ -342,10 +347,6 @@
         border-radius: 8px;
         color: var(--color-text-secondary);
         cursor: pointer;
-
-        &--primary {
-            color: var(--accent-color);
-        }
 
         &:is(:hover, :focus-visible):not(:disabled) {
             background-color: var(--color-ghost-btn-hover);

@@ -1,0 +1,64 @@
+<div
+    class="conversation-list-tabs"
+    role="group"
+    aria-label="Conversations to show"
+>
+    <button
+        type="button"
+        class="conversation-list-tabs__tab conversation-list-tabs__tab--first"
+        [class.conversation-list-tabs__tab--selected]="tab() === 'inbox'"
+        [attr.aria-pressed]="tab() === 'inbox'"
+        [attr.aria-label]="isCompact() ? inboxName() : null"
+        [matTooltip]="inboxName()"
+        [matTooltipDisabled]="!isCompact()"
+        matTooltipPosition="right"
+        (click)="select('inbox')"
+    >
+        <span class="conversation-list-tabs__icon">
+            <app-svg-icon
+                icon="inbox"
+                size="12px"
+            />
+            @if (isCompact() && inboxBadge(); as text) {
+                <span
+                    class="conversation-list-tabs__badge"
+                    aria-hidden="true"
+                    >{{ text }}</span
+                >
+            }
+        </span>
+        @if (!isCompact()) {
+            <span class="conversation-list-tabs__label">
+                Inbox
+                @if (inboxCount() !== null) {
+                    ({{ inboxCount() }})
+                }
+            </span>
+        }
+    </button>
+    <!--
+        Disabled through aria-disabled, not the attribute: a disabled button can be neither focused nor hovered, and
+        its tooltip is the only place that says why.
+    -->
+    <button
+        type="button"
+        class="conversation-list-tabs__tab conversation-list-tabs__tab--last"
+        [class.conversation-list-tabs__tab--selected]="tab() === 'testing'"
+        [attr.aria-disabled]="canTest() ? null : 'true'"
+        [attr.aria-pressed]="tab() === 'testing'"
+        [attr.aria-label]="isCompact() ? 'Bot Testing' : null"
+        [matTooltip]="testingTooltip()"
+        [matTooltipDisabled]="!testingTooltip()"
+        [matTooltipPosition]="isCompact() ? 'right' : 'below'"
+        (click)="select('testing')"
+    >
+        <app-svg-icon
+            class="conversation-list-tabs__icon"
+            icon="flask"
+            size="12px"
+        />
+        @if (!isCompact()) {
+            <span class="conversation-list-tabs__label">Bot Testing</span>
+        }
+    </button>
+</div>

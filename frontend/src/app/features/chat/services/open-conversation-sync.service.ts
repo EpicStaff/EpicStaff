@@ -84,10 +84,10 @@ export class OpenConversationSyncService {
 
     /**
      * What the conversations column said about the open id it was asked for: its row, which opens if it is this desk's;
-     * or `missing`, as the column lists only the first pages of each section (an older closed conversation is past
-     * them). A missing id is asked for once: it opens if it is this desk's. Another desk's, or a 404, leaves the URL
-     * with a message. Any other failure says nothing about the conversation (a network blip on a phone's reload): the
-     * link stays, the failure is toasted, and the next `ready` lets it ask again.
+     * or `missing`, as the column lists only what its choices show, and only the first pages of each section (an older
+     * closed conversation is past them). A missing id is asked for once: it opens if it is this desk's. Another desk's,
+     * or a 404, leaves the URL with a message. Any other failure says nothing about the conversation (a network blip on
+     * a phone's reload): the link stays, the failure is toasted, and the next `ready` lets it ask again.
      */
     resolve(id: string, found: ChatConversation | 'missing'): void {
         if (found !== 'missing') {

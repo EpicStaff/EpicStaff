@@ -300,28 +300,37 @@ describe('ChatPageComponent and the URL', () => {
         expect(toast.error).not.toHaveBeenCalled();
     });
 
-    it('reopens on a reload a test conversation that Mine hides: the column sets Mine aside and opens Tests', async () => {
+    it('reopens on a reload a test conversation Inbox cannot list: the server says what it is, the column moves to Bot Testing', async () => {
         TestBed.inject(ConversationListPreferencesService).setMineOnly(true);
         listing([], (section) => (section === 'test' ? [row('t-7', { is_test: true })] : []));
+        chatApi.getConversation.mockReturnValueOnce(of(row('t-7', { is_test: true })));
 
         await open(`${LIST}?conversation=t-7`);
 
         expect(page().selected()?.id).toBe('t-7');
+        expect(host().querySelector('app-conversation-list-tabs button[aria-pressed="true"]')?.textContent).toContain(
+            'Bot Testing'
+        );
+        expect(currentRow()).not.toBeNull();
         expect(toast.error).not.toHaveBeenCalled();
         expect(location.path()).toBe(`${LIST}?conversation=t-7`);
-        // For this column only: Mine and the open section stay remembered.
+        // For this column only: the tab, Mine and the open section stay remembered.
         const preferences = TestBed.inject(ConversationListPreferencesService);
+        expect(preferences.tab()).toBe('inbox');
         expect(preferences.isMineOnly()).toBe(true);
         expect(preferences.expanded()).toBe('bot');
     });
 
-    it('reopens a conversation while every section is folded: the column opens them first', async () => {
+    it('reopens a conversation while every section is folded: fetched by id, its section opened for this column', async () => {
         TestBed.inject(ConversationListPreferencesService).setExpanded(null);
         const remembered = localStorage.getItem(PREFERENCES_KEY);
+        chatApi.getConversation.mockReturnValueOnce(of(BOT_ROWS[2]));
 
         await open(`${LIST}?conversation=c-3`);
 
         expect(page().selected()?.id).toBe('c-3');
+        expect(openSections()).toEqual(['bot']);
+        expect(currentRow()).not.toBeNull();
         expect(toast.error).not.toHaveBeenCalled();
         expect(localStorage.getItem(PREFERENCES_KEY)).toBe(remembered);
     });
@@ -348,14 +357,16 @@ describe('ChatPageComponent and the URL', () => {
                 ...overrides,
             });
 
-        it('reopens on a reload through the folded Closed section, read-only, the remembered section untouched', async () => {
+        it('reopens on a reload a conversation of the folded Closed section, read-only, the remembered section untouched', async () => {
             listing(BOT_ROWS, (section) => (section === 'closed' ? [closed('c-8')] : undefined));
+            chatApi.getConversation.mockReturnValueOnce(of(closed('c-8')));
             const remembered = localStorage.getItem(PREFERENCES_KEY);
 
             await open(`${LIST}?conversation=c-8`);
 
             expect(page().selected()?.id).toBe('c-8');
-            expect(chatApi.getConversation).not.toHaveBeenCalled();
+            expect(chatApi.getConversation).toHaveBeenCalledWith('c-8');
+            expect(openSections()).toEqual(['closed', 'bot']);
             expect(toast.error).not.toHaveBeenCalled();
             expect(host().querySelector('.thread-closed')?.textContent).toContain('Resolved by Mike');
             expect(host().querySelector('app-chat-thread-composer')).toBeNull();
@@ -377,9 +388,10 @@ describe('ChatPageComponent and the URL', () => {
             expect(chatApi.getMessages).toHaveBeenCalledWith('c-old');
         });
 
-        it('opens every section for a link that arrives while a search runs, clearing the search, and finds it', async () => {
+        it('opens its section for a link the search keeps out, clearing the search, and lists it', async () => {
             respond = (params) =>
                 of({ results: params.section === 'closed' && !params.q ? [closed('x-9')] : [], next_cursor: null });
+            chatApi.getConversation.mockReturnValueOnce(of(closed('x-9')));
             await open(LIST);
             const field = host().querySelector<HTMLInputElement>('app-conversation-list-toolbar input')!;
             field.value = 'ada';
@@ -389,11 +401,11 @@ describe('ChatPageComponent and the URL', () => {
 
             await harness.navigateByUrl(`${LIST}?conversation=x-9`);
 
-            expect(field.value).toBe('');
-            expect(openSections()).toEqual(['waiting', 'in_progress', 'test', 'closed', 'bot']);
             await settle();
+            expect(field.value).toBe('');
+            expect(openSections()).toEqual(['closed', 'bot']);
             expect(page().selected()?.id).toBe('x-9');
-            expect(chatApi.getConversation).not.toHaveBeenCalled();
+            expect(currentRow()).not.toBeNull();
             expect(toast.error).not.toHaveBeenCalled();
         });
     });
@@ -484,7 +496,13 @@ describe('ChatPageComponent and the URL', () => {
             );
             await open('/chat-bindings/b-1');
 
-            (host().querySelector('.phone-bar [aria-label="Test"]') as HTMLButtonElement).click();
+            (
+                Array.from(host().querySelectorAll<HTMLButtonElement>('app-conversation-list-tabs button')).find(
+                    (button) => button.textContent?.trim() === 'Bot Testing'
+                ) as HTMLButtonElement
+            ).click();
+            await settle();
+            (host().querySelector('.conversation-list-toolbar__new-test button') as HTMLButtonElement).click();
             await settle();
 
             expect(location.urlChanges).toEqual(['/chat-bindings/b-1?conversation=t-1']);
@@ -506,9 +524,10 @@ describe('ChatPageComponent and the URL', () => {
         });
 
         it('still pushes after a reload names a conversation the list has not resolved, and back does not reopen it', async () => {
-            // Bot never answers (a slow network): the reloaded id stays unresolved; Waiting, open, has a row to tap.
+            // A slow network: neither the list nor the server answers for the reloaded id; Waiting has a row to tap.
             TestBed.inject(ConversationListPreferencesService).setExpanded('waiting');
             listing([], (section) => (section === 'bot' ? null : section === 'waiting' ? [row('c-9')] : []));
+            chatApi.getConversation.mockReturnValueOnce(NEVER);
             await open(`${LIST}?conversation=c-1`);
             expect(page().selected()).toBeNull();
 

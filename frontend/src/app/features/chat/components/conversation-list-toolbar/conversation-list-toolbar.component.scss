@@ -2,7 +2,7 @@
 @use '../../../../../styles/column-toggle';
 @use '../../../../../styles/touch';
 
-// Fills the column at any width: the field takes the row beside the column's toggle, the controls wrap below it.
+// Fills the column at any width: the tab switch takes the first row, the field the next.
 :host {
     display: flex;
     flex-direction: column;
@@ -11,19 +11,40 @@
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 
-.conversation-list-toolbar__search-row {
+// The switch (projected; it stretches itself) takes the row. Compact, the expand button stacks above it.
+.conversation-list-toolbar__head {
     display: flex;
     align-items: center;
     gap: 8px;
 
     :host(.conversation-list-toolbar--compact) & {
-        justify-content: center;
+        flex-direction: column;
     }
 }
 
+// The field taking the rest, then Mine (Inbox) or New Test Chat (Bot Testing); all 28px tall (the small search), a
+// touch target on phones.
+.conversation-list-toolbar__search-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.conversation-list-toolbar__search {
+    flex: 1;
+    min-width: 0;
+}
+
+// The desk rail's toggle, 40px square, with the tab switch's corners and border. Hover and focus stay the shared ones.
 .conversation-list-toolbar__compact-toggle {
     @include column-toggle.button;
     position: relative;
+    width: 40px;
+    height: 40px;
+    box-sizing: border-box;
+    // Figma's Line is #2B2D30; the nearest token is --color-ks-line (#2c2c2e), as on the tab switch.
+    border-color: var(--color-ks-line);
+    border-radius: 8px;
 }
 
 .conversation-list-toolbar__filtered-dot {
@@ -42,16 +63,10 @@
     color: var(--color-status-error);
 }
 
-.conversation-list-toolbar__controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-}
-
 // Small ghost buttons; a pressed toggle takes the accent.
 .conversation-list-toolbar__button {
     display: inline-flex;
+    flex-shrink: 0;
     align-items: center;
     gap: 4px;
     height: 28px;
@@ -82,9 +97,34 @@
     }
 }
 
-// The sort sits at the row's end, away from the filter.
-.conversation-list-toolbar__sort {
-    margin-left: auto;
+// Mine beside the field: the small ghost button with the column's line border, primary text and a wider icon gap.
+// Pressed, it keeps the accent border.
+.conversation-list-toolbar__mine {
+    gap: 8px;
+    // Figma's Line is #2B2D30; the nearest token is --color-ks-line (#2c2c2e).
+    border-color: var(--color-ks-line);
+    color: var(--color-text-primary);
+
+    &.conversation-list-toolbar__button--pressed {
+        border-color: var(--accent-color);
+    }
+}
+
+// The shared small outlined accent button (28px, 0 8px, radius 4px, accent border, accent 12px text and icon on no
+// fill) as Figma has it here: 500 text (the body-small-large weight) and 8px between the plus and the label, through
+// the button's own custom properties. Its label keeps the shared 1.25 line height (Figma: 100%), which leaves room for
+// descenders and does not change the 28px box.
+.conversation-list-toolbar__new-test {
+    flex-shrink: 0;
+    --button-small-font-weight: var(--text-body-small-large-weight);
+    --button-small-gap: 8px;
+}
+
+// The design keeps New Test Chat in its accent colours while it cannot start a test (no desk open, or one starting):
+// its tooltip says why, and a press does nothing.
+:host .conversation-list-toolbar__new-test ::ng-deep .btn:is(:disabled, [aria-disabled='true']) {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
 }
 
 @include bp.phone {
@@ -103,5 +143,10 @@
     .conversation-list-toolbar__button {
         height: touch.$target-size;
         padding: 0 12px;
+    }
+
+    // As tall as the field beside it: the shared button is 28px, too small for a finger.
+    :host .conversation-list-toolbar__new-test ::ng-deep .btn {
+        height: touch.$target-size;
     }
 }

@@ -1,22 +1,26 @@
 import { computed, Injectable, signal } from '@angular/core';
 
-import { ChatInboxOrder, ChatInboxSection } from '../models/chat.model';
+import { ConversationListTab, InboxSection, TestingSection } from '../utils/conversation-list-tab.util';
 
 const STORAGE_KEY = 'chat:conversationList';
-const SECTIONS: readonly ChatInboxSection[] = ['waiting', 'in_progress', 'test', 'closed', 'bot'];
-const ORDERS: readonly ChatInboxOrder[] = ['newest', 'oldest'];
+const TABS: readonly ConversationListTab[] = ['inbox', 'testing'];
+const SECTIONS: readonly InboxSection[] = ['waiting', 'in_progress', 'closed', 'bot'];
+const TESTING_SECTIONS: readonly TestingSection[] = ['test_bot', 'test_closed'];
 
 /** What the conversations column remembers per browser, as one JSON object. The search is never remembered. */
 interface ConversationListPreferences {
-    expanded: ChatInboxSection | null;
-    order: ChatInboxOrder;
+    tab: ConversationListTab;
+    // Inbox's open section, and Bot Testing's: each tab remembers its own.
+    expanded: InboxSection | null;
+    testingExpanded: TestingSection | null;
     // Only the conversations the user holds.
     isMineOnly: boolean;
 }
 
 const defaults = (): ConversationListPreferences => ({
+    tab: 'inbox',
     expanded: 'waiting',
-    order: 'newest',
+    testingExpanded: 'test_bot',
     isMineOnly: false,
 });
 
@@ -28,17 +32,21 @@ const defaults = (): ConversationListPreferences => ({
 export class ConversationListPreferencesService {
     private readonly preferences = signal<ConversationListPreferences>(this.read());
 
+    readonly tab = computed(() => this.preferences().tab);
     readonly expanded = computed(() => this.preferences().expanded);
-    /** In progress, Tests and Bot; Waiting is always longest wait first, Closed most recently closed first. */
-    readonly order = computed(() => this.preferences().order);
+    readonly testingExpanded = computed(() => this.preferences().testingExpanded);
     readonly isMineOnly = computed(() => this.preferences().isMineOnly);
 
-    setExpanded(expanded: ChatInboxSection | null): void {
+    setTab(tab: ConversationListTab): void {
+        this.save({ tab });
+    }
+
+    setExpanded(expanded: InboxSection | null): void {
         this.save({ expanded });
     }
 
-    setOrder(order: ChatInboxOrder): void {
-        this.save({ order });
+    setTestingExpanded(testingExpanded: TestingSection | null): void {
+        this.save({ testingExpanded });
     }
 
     setMineOnly(isMineOnly: boolean): void {
@@ -72,10 +80,16 @@ export class ConversationListPreferencesService {
         const fields = value as Record<string, unknown>;
         const fallback = defaults();
         const expanded = fields['expanded'];
+        const testingExpanded = fields['testingExpanded'];
         return {
+            tab: TABS.find((tab) => tab === fields['tab']) ?? fallback.tab,
+            // Only Inbox's sections: `test` is a tab of its own, so a stored `test` means the default.
             expanded:
                 expanded === null ? null : (SECTIONS.find((section) => section === expanded) ?? fallback.expanded),
-            order: ORDERS.find((order) => order === fields['order']) ?? fallback.order,
+            testingExpanded:
+                testingExpanded === null
+                    ? null
+                    : (TESTING_SECTIONS.find((section) => section === testingExpanded) ?? fallback.testingExpanded),
             isMineOnly: typeof fields['isMineOnly'] === 'boolean' ? fields['isMineOnly'] : fallback.isMineOnly,
         };
     }
