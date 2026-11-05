@@ -10,6 +10,8 @@ import os
 import shutil
 import tempfile
 import zipfile
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import BinaryIO, Literal, Self
 
 from django.conf import settings
@@ -34,6 +36,27 @@ _ENCRYPTED_FLAG = 0x1
 def detect_file_kind(head: bytes) -> Literal["zip", "json"]:
     """Tell an archive export from a plain JSON export by its first bytes."""
     return "zip" if head.startswith(_ZIP_SIGNATURE) else "json"
+
+
+@contextmanager
+def temporary_archive(fill: Callable[[BinaryIO], None]) -> Iterator[str]:
+    """Give the path of a temporary `.zip` that `fill` wrote; delete it afterwards.
+
+    `ImportArchive` reads a file on disk, while an archive arrives as an upload or
+    from storage. The file is closed before its path is handed out.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as file:
+        path = file.name
+        try:
+            fill(file)
+        except BaseException:
+            file.close()
+            os.unlink(path)
+            raise
+    try:
+        yield path
+    finally:
+        os.unlink(path)
 
 
 class InvalidArchiveError(ValidationError):

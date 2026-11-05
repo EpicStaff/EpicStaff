@@ -86,6 +86,10 @@ DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py cache_redis
 echo "Starting recycle bin purge consumer..."
 DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py run_recycle_bin_purge &
 
+# Start the transfer job consumer in the background: export and import jobs, and their sweep
+echo "Starting transfer job consumer..."
+DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py run_transfer_jobs &
+
 # Start session callback sender in the background
 echo "Starting session callback sender..."
 python manage.py send_session_callbacks &

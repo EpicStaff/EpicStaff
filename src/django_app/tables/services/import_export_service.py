@@ -1,11 +1,9 @@
 import json
-import os
 import shutil
-import tempfile
 
 from rbac.access.resolver import PermissionResolver
 from rest_framework.exceptions import ValidationError
-from tables.import_export.archive import ImportArchive, detect_file_kind
+from tables.import_export.archive import ImportArchive, detect_file_kind, temporary_archive
 from tables.import_export.constants import ARCHIVE_IMPORT_VERSION, MAIN_ENTITY_KEY
 from tables.import_export.export_format_strategies import JsonExportFormatStrategy
 from tables.import_export.permissions import ExportAccessPolicy
@@ -179,10 +177,8 @@ class ViewSetImportExportService:
     @staticmethod
     def _read_archive_envelope(file) -> dict:
         # ImportArchive checks a file on disk; an upload may only be in memory.
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as copy:
-            shutil.copyfileobj(file, copy)
-        try:
-            with ImportArchive.open(copy.name) as archive:
-                return archive.envelope()
-        finally:
-            os.unlink(copy.name)
+        with (
+            temporary_archive(lambda copy: shutil.copyfileobj(file, copy)) as path,
+            ImportArchive.open(path) as archive,
+        ):
+            return archive.envelope()
