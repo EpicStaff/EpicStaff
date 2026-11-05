@@ -1,21 +1,49 @@
 <section class="llm-library">
-    <header class="header">
+    <header
+        #header
+        class="header"
+        [class.header--icons]="toolbarLayout() === 'icons'"
+        [class.header--stacked]="isStacked()"
+    >
         <div class="header-left">
             <h3 class="title">LLM Library</h3>
             <p class="subtitle">Configure large language models for text generation and AI assistants.</p>
         </div>
 
-        <div class="header-right">
+        <div
+            class="header-right"
+            [style.min-width.px]="toolbarMinWidth()"
+        >
             <app-search
-                placeholder="Search configurations..."
+                appearance="toolbar"
+                iconSize="16px"
+                placeholder="Search providers..."
                 [searchTerm]="searchQuery()"
                 (searchTermChange)="onSearchChange($event)"
             />
 
+            <div
+                #capabilitiesControl
+                class="filter"
+            >
+                <app-select
+                    appearance="toolbar"
+                    triggerIcon="filter"
+                    tooltip="Capabilities"
+                    placeholder="All capabilities"
+                    [iconOnly]="toolbarIcons().capabilities"
+                    [items]="capabilities()"
+                    (changed)="selectedCapability.set($event)"
+                />
+            </div>
+
             <!-- One condition for both modes: entering select mode must not recreate it (and close its menu). -->
             @if (selectMode() || !hasNoConfigs()) {
+                <!-- Toolbar look: at 0 selected a plain "Select" that toggles select mode; the menu comes with a selection. -->
                 <app-bulk-select-dropdown
                     *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
+                    appearance="toolbar"
+                    [iconOnly]="toolbarIcons().select"
                     [selectMode]="selectMode()"
                     [selectedCount]="selectedCount()"
                     [allSelected]="allVisibleSelected()"
@@ -23,24 +51,19 @@
                     (selectModeEntered)="enterSelectMode()"
                     (selectAllToggled)="toggleSelectAll()"
                     (cleared)="exitSelectMode()"
+                    (selectionCleared)="clearSelection()"
                 />
             }
 
-            <div class="filter">
-                <app-select
-                    tooltip="Capabilities"
-                    [items]="capabilities()"
-                    placeholder="All Capabilities"
-                    (changed)="selectedCapability.set($event)"
-                />
-            </div>
-
-            @if (selectMode()) {
+            @if (hasSelection()) {
                 <app-button
+                    #actionControl
                     type="danger"
+                    appearance="toolbar"
                     leftIcon="trash"
                     iconSize="14px"
-                    [disabled]="selectedCount() === 0 || isDeleting()"
+                    [iconOnly]="toolbarIcons().action"
+                    [disabled]="isDeleting()"
                     (click)="deleteSelected()"
                 >
                     Delete
@@ -48,10 +71,13 @@
             } @else {
                 <app-button
                     #addButton
-                    class="add-btn"
+                    #actionControl
                     *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
-                    (click)="onAddModel()"
+                    appearance="toolbar"
                     leftIcon="plus"
+                    iconSize="16px"
+                    [iconOnly]="toolbarIcons().action"
+                    (click)="onAddModel()"
                 >
                     Add Configuration
                 </app-button>

@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { DebugElement, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -295,6 +296,76 @@ describe('LlmLibrarySectionComponent "View Details"', () => {
     });
 });
 
+describe('LlmLibrarySectionComponent toolbar layout', () => {
+    /** Observers that report a header width on demand; the header buttons' own observers are left alone. */
+    const headerObservers: { callback: ResizeObserverCallback; element: Element }[] = [];
+
+    class MeasuringResizeObserver {
+        constructor(private readonly callback: ResizeObserverCallback) {}
+        observe(element: Element): void {
+            if (element.tagName === 'HEADER') headerObservers.push({ callback: this.callback, element });
+        }
+        unobserve(): void {}
+        disconnect(): void {}
+    }
+
+    beforeEach(() => {
+        headerObservers.length = 0;
+        vi.stubGlobal('ResizeObserver', MeasuringResizeObserver);
+    });
+
+    function setHeaderWidth(fixture: ComponentFixture<LlmLibrarySectionComponent>, width: number): void {
+        for (const { callback, element } of headerObservers) {
+            callback([{ target: element, contentRect: { width } } as ResizeObserverEntry], {} as ResizeObserver);
+        }
+        fixture.detectChanges();
+    }
+
+    /** Where the toolbar is, and which of its controls show only icons (Select's look stands for Capabilities'). */
+    function layoutOf(fixture: ComponentFixture<LlmLibrarySectionComponent>): string {
+        const element = fixture.nativeElement as HTMLElement;
+        const stacked = !!element.querySelector('.header--stacked');
+        const selectIcon = !!element.querySelector('.bulk-select--icon-only');
+        const actionIcon = !!element.querySelector('.header-right > app-button .btn--icon-only');
+        if (!stacked) return selectIcon && actionIcon ? 'icons' : 'labels';
+        if (selectIcon) return 'stacked-icons';
+        return actionIcon ? 'stacked-action-icon' : 'stacked';
+    }
+
+    // The controls are not measured here (no layout in jsdom): the switches come from the estimated widths.
+    it.each([
+        [false, 1060, 'labels'],
+        [false, 1059, 'icons'],
+        [false, 768, 'icons'],
+        [false, 767, 'stacked'],
+        [false, 455, 'stacked'],
+        [false, 454, 'stacked-action-icon'],
+        [false, 315, 'stacked-action-icon'],
+        [false, 314, 'stacked-icons'],
+        [true, 1081, 'labels'],
+        [true, 1080, 'icons'],
+        [true, 859, 'icons'],
+        [true, 858, 'stacked'],
+        [true, 476, 'stacked'],
+        [true, 475, 'stacked-action-icon'],
+        [true, 396, 'stacked-action-icon'],
+        [true, 395, 'stacked-icons'],
+    ])('with a selection: %s, at a %spx header lays the toolbar out as %s', (withSelection, width, layout) => {
+        const model = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const { fixture } = render([model], { grantedActions: [ActionCode.Create, ActionCode.Delete] });
+        // Runs the render hook that starts observing the header.
+        TestBed.tick();
+        if (withSelection) {
+            fixture.componentInstance.enterSelectMode();
+            fixture.componentInstance.onCardSelectedChange(model, true);
+        }
+
+        setHeaderWidth(fixture, width);
+
+        expect(layoutOf(fixture)).toBe(layout);
+    });
+});
+
 describe('LlmLibrarySectionComponent select mode', () => {
     function headerButtonLabels(fixture: ComponentFixture<LlmLibrarySectionComponent>): string[] {
         return Array.from(
@@ -310,22 +381,185 @@ describe('LlmLibrarySectionComponent select mode', () => {
         fixture.detectChanges();
     }
 
-    it('swaps "Add Configuration" for a red "Delete" with a trash icon next to the select dropdown', () => {
-        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
-            grantedActions: [ActionCode.Create, ActionCode.Delete],
-        });
-        expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
+    function tickCard(
+        fixture: ComponentFixture<LlmLibrarySectionComponent>,
+        model: LlmLibraryModel,
+        selected: boolean
+    ): void {
+        const card = fixture.debugElement
+            .queryAll(By.directive(LlmLibraryCardComponent))
+            .find((debugElement) => (debugElement.componentInstance as LlmLibraryCardComponent).model() === model)!;
+        (card.componentInstance as LlmLibraryCardComponent).selectedChange.emit(selected);
+        fixture.detectChanges();
+    }
+
+    function selectLabel(fixture: ComponentFixture<LlmLibrarySectionComponent>): string {
+        const main = (fixture.nativeElement as HTMLElement).querySelector(
+            'app-bulk-select-dropdown .bulk-select__main'
+        )!;
+        return main.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    }
+
+    it('keeps "Add Configuration" in select mode until a card is ticked, then shows "Select (1)" and a red "Delete"', () => {
+        const model = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const { fixture } = render([model], { grantedActions: [ActionCode.Create, ActionCode.Delete] });
 
         enterSelectMode(fixture);
 
         expect(fixture.componentInstance.selectMode()).toBe(true);
+        expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
+        expect(selectLabel(fixture)).toBe('Select');
+
+        tickCard(fixture, model, true);
+
+        expect(selectLabel(fixture)).toBe('Select (1)');
         expect(headerButtonLabels(fixture)).toEqual(['Delete']);
         const deleteButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
             '.header-right > app-button button'
         )!;
         expect(deleteButton.classList).toContain('btn-danger');
         expect(deleteButton.querySelector('app-svg-icon.btn-icon.left use')?.getAttribute('href')).toBe('#icon-trash');
-        expect(deleteButton.disabled).toBe(true);
+        expect(deleteButton.disabled).toBe(false);
+    });
+
+    it('leaves select mode on a second click of "Select" with nothing ticked', () => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+            grantedActions: [ActionCode.Delete],
+        });
+        enterSelectMode(fixture);
+        expect(fixture.componentInstance.selectMode()).toBe(true);
+
+        enterSelectMode(fixture);
+
+        expect(fixture.componentInstance.selectMode()).toBe(false);
+        expect((fixture.nativeElement as HTMLElement).querySelector('.llm-card__checkbox')).toBeNull();
+    });
+
+    it('goes back to a plain "Select" in select mode after "Clear Selection"', () => {
+        const model = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const { fixture } = render([model], { grantedActions: [ActionCode.Create, ActionCode.Delete] });
+        enterSelectMode(fixture);
+        tickCard(fixture, model, true);
+
+        chooseMenuItem(fixture, 'Clear Selection');
+
+        expect(fixture.componentInstance.selectedKeys().size).toBe(0);
+        expect(fixture.componentInstance.selectMode()).toBe(true);
+        expect(selectLabel(fixture)).toBe('Select');
+        expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
+    });
+
+    describe('with nothing ticked', () => {
+        function pressEscape(fixture: ComponentFixture<LlmLibrarySectionComponent>): void {
+            document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            fixture.detectChanges();
+        }
+
+        function clickOn(fixture: ComponentFixture<LlmLibrarySectionComponent>, element: Element): void {
+            (element as HTMLElement).click();
+            fixture.detectChanges();
+        }
+
+        function cardElement(fixture: ComponentFixture<LlmLibrarySectionComponent>): Element {
+            return (fixture.nativeElement as HTMLElement).querySelector('app-llm-library-card')!;
+        }
+
+        it('stays in select mode right after the click that enters it', () => {
+            const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+                grantedActions: [ActionCode.Delete],
+            });
+
+            enterSelectMode(fixture);
+
+            expect(fixture.componentInstance.selectMode()).toBe(true);
+        });
+
+        it('leaves select mode on a click outside the cards and the Select control', () => {
+            const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+                grantedActions: [ActionCode.Delete],
+            });
+            enterSelectMode(fixture);
+
+            clickOn(fixture, (fixture.nativeElement as HTMLElement).querySelector('.title')!);
+
+            expect(fixture.componentInstance.selectMode()).toBe(false);
+            expect((fixture.nativeElement as HTMLElement).querySelector('.llm-card__checkbox')).toBeNull();
+        });
+
+        it.each([
+            ['a card', (fixture: ComponentFixture<LlmLibrarySectionComponent>) => cardElement(fixture)],
+            [
+                'an overlay',
+                () => {
+                    const pane = document.createElement('div');
+                    TestBed.inject(OverlayContainer).getContainerElement().appendChild(pane);
+                    return pane;
+                },
+            ],
+        ])('stays in select mode on a click in %s', (_place, elementOf) => {
+            const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+                grantedActions: [ActionCode.Delete],
+            });
+            enterSelectMode(fixture);
+
+            clickOn(fixture, elementOf(fixture));
+
+            expect(fixture.componentInstance.selectMode()).toBe(true);
+        });
+
+        it('leaves select mode on Escape and puts the focus on Select', () => {
+            const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+                grantedActions: [ActionCode.Delete],
+            });
+            enterSelectMode(fixture);
+
+            pressEscape(fixture);
+
+            expect(fixture.componentInstance.selectMode()).toBe(false);
+            expect(document.activeElement).toBe(
+                (fixture.nativeElement as HTMLElement).querySelector('app-bulk-select-dropdown .bulk-select__main')
+            );
+        });
+
+        it('leaves Escape to what is above the page when that takes it', () => {
+            const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+                grantedActions: [ActionCode.Delete],
+            });
+            enterSelectMode(fixture);
+            const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+            escape.preventDefault();
+
+            document.body.dispatchEvent(escape);
+            fixture.detectChanges();
+
+            expect(fixture.componentInstance.selectMode()).toBe(true);
+        });
+
+        it('changes nothing on an outside click or Escape once a card is ticked', () => {
+            const model = libraryModel(ModelTypes.LLM, SHARED_ID);
+            const { fixture } = render([model], { grantedActions: [ActionCode.Delete] });
+            enterSelectMode(fixture);
+            tickCard(fixture, model, true);
+
+            clickOn(fixture, (fixture.nativeElement as HTMLElement).querySelector('.title')!);
+            pressEscape(fixture);
+
+            expect(fixture.componentInstance.selectMode()).toBe(true);
+            expect(fixture.componentInstance.selectedKeys().size).toBe(1);
+        });
+    });
+
+    it('ends select mode when the last ticked card is unticked', () => {
+        const model = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const { fixture } = render([model], { grantedActions: [ActionCode.Create, ActionCode.Delete] });
+        enterSelectMode(fixture);
+        tickCard(fixture, model, true);
+
+        tickCard(fixture, model, false);
+
+        expect(fixture.componentInstance.selectMode()).toBe(false);
+        expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
+        expect((fixture.nativeElement as HTMLElement).querySelector('.llm-card__checkbox')).toBeNull();
     });
 
     it('gives LLM, embedding and voice cards a secondary (light box, dark tick) selection checkbox', () => {
@@ -342,15 +576,27 @@ describe('LlmLibrarySectionComponent select mode', () => {
         checkboxes.forEach((checkbox) => expect(checkbox.classList).toContain('secondary'));
     });
 
-    it('selects both an LLM and an embedding card sharing an id with "Select All"', () => {
-        const { fixture } = render(
-            [libraryModel(ModelTypes.LLM, SHARED_ID), libraryModel(ModelTypes.EMBEDDING, SHARED_ID)],
-            { grantedActions: [ActionCode.Delete] }
-        );
-        enterSelectMode(fixture);
-
-        document.querySelector<HTMLButtonElement>('.bulk-select-menu__item')!.click();
+    /** Chooses `item` in the menu of "Select (N)", which needs a ticked card. */
+    function chooseMenuItem(fixture: ComponentFixture<LlmLibrarySectionComponent>, item: string): void {
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('app-bulk-select-dropdown .bulk-select__main')!
+            .click();
         fixture.detectChanges();
+        Array.from(document.querySelectorAll<HTMLButtonElement>('.bulk-select-menu__item'))
+            .find((button) => button.textContent?.trim() === item)!
+            .click();
+        fixture.detectChanges();
+    }
+
+    it('selects both an LLM and an embedding card sharing an id with "Select All"', () => {
+        const llmModel = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const { fixture } = render([llmModel, libraryModel(ModelTypes.EMBEDDING, SHARED_ID)], {
+            grantedActions: [ActionCode.Delete],
+        });
+        enterSelectMode(fixture);
+        tickCard(fixture, llmModel, true);
+
+        chooseMenuItem(fixture, 'Select All');
 
         expect(fixture.componentInstance.selectedKeys()).toEqual(
             new Set([`llm:${SHARED_ID}`, `embedding:${SHARED_ID}`])
@@ -364,8 +610,9 @@ describe('LlmLibrarySectionComponent select mode', () => {
         expect((fixture.nativeElement as HTMLElement).querySelector('app-bulk-select-dropdown')).toBeNull();
     });
 
-    it('orders the header as search, Select, capabilities, then Add Configuration or Delete', () => {
-        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+    it('orders the header as search, capabilities, Select, then Add Configuration or Delete', () => {
+        const model = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const { fixture } = render([model], {
             grantedActions: [ActionCode.Create, ActionCode.Delete],
         });
         /** Header items in DOM order: buttons by their label, the filter by its class, the rest by tag. */
@@ -376,11 +623,12 @@ describe('LlmLibrarySectionComponent select mode', () => {
                 return child.tagName.toLowerCase();
             });
 
-        expect(headerOrder()).toEqual(['app-search', 'app-bulk-select-dropdown', 'filter', 'Add Configuration']);
+        expect(headerOrder()).toEqual(['app-search', 'filter', 'app-bulk-select-dropdown', 'Add Configuration']);
 
         enterSelectMode(fixture);
+        tickCard(fixture, model, true);
 
-        expect(headerOrder()).toEqual(['app-search', 'app-bulk-select-dropdown', 'filter', 'Delete']);
+        expect(headerOrder()).toEqual(['app-search', 'filter', 'app-bulk-select-dropdown', 'Delete']);
     });
 });
 
@@ -551,9 +799,19 @@ describe('LlmLibrarySectionComponent System One configs', () => {
             systemOneConfigs: [TYPESAFE_CONFIG],
             grantedActions: [ActionCode.Delete],
         });
-        (fixture.nativeElement as HTMLElement)
-            .querySelector<HTMLButtonElement>('app-bulk-select-dropdown .bulk-select__main')!
-            .click();
+        const selectButton = (): HTMLButtonElement =>
+            (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+                'app-bulk-select-dropdown .bulk-select__main'
+            )!;
+        selectButton().click();
+        fixture.detectChanges();
+        // The menu comes with a selection: tick one card first.
+        (
+            fixture.debugElement.query(By.directive(LlmLibraryCardComponent))
+                .componentInstance as LlmLibraryCardComponent
+        ).selectedChange.emit(true);
+        fixture.detectChanges();
+        selectButton().click();
         fixture.detectChanges();
         document.querySelector<HTMLButtonElement>('.bulk-select-menu__item')!.click();
         fixture.detectChanges();

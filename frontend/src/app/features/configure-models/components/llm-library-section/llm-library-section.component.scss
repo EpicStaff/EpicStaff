@@ -4,18 +4,34 @@
     gap: 24px;
     color: var(--color-text-primary);
 
+    // Layouts picked in the component from measured widths (toolbarLayout): beside the title with labels; beside
+    // it icon-only, the title shrinking to 372px and its subtitle wrapping; under the title (--stacked) in two rows.
     .header {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
         gap: 24px;
-        flex-wrap: wrap;
+        padding-bottom: 24px;
+        border-bottom: 1px solid var(--graphite-750);
+
+        // 16px from the subtitle to the search.
+        &--stacked {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 16px;
+        }
     }
 
     .header-left {
         display: flex;
+        flex: 0 1 auto;
         flex-direction: column;
         gap: 6px;
+        min-width: 372px;
+    }
+
+    .header--stacked .header-left {
+        min-width: 0;
     }
 
     .title {
@@ -31,22 +47,44 @@
         color: var(--fog-alpha-60);
     }
 
+    // A zero basis: the toolbar takes the room the title leaves. Its min-width (bound in the template) is what its
+    // controls need with the search at 201px, so the title gives way down to its own minimum first.
     .header-right {
         display: flex;
+        flex: 1 1 0;
         align-items: center;
-        gap: 12px;
-        flex-shrink: 0;
+        justify-content: flex-end;
+        gap: 8px;
 
-        // app-search claims the full row width and app-button may shrink to zero, clipping
-        // its label; without this the overflow is taken out of the buttons.
+        // With labels the search gives way from 278px down to 201px before the controls go icon-only.
+        > app-search {
+            flex: 0 1 278px;
+            min-width: 201px;
+        }
+
         > app-button,
-        > app-bulk-select-dropdown {
+        > app-bulk-select-dropdown,
+        > .filter {
             flex-shrink: 0;
         }
     }
 
-    .add-btn {
-        min-width: 180px;
+    // Icon-only beside the title: the search takes all the room the icons leave.
+    .header--icons .header-right > app-search {
+        flex: 1 1 201px;
+    }
+
+    // Row 1 the search, full width; row 2 the controls at their natural widths from the left. The component drops
+    // labels from that row (the action's first) before it would wrap to a third.
+    .header--stacked .header-right {
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+
+        > app-search {
+            flex: 1 1 100%;
+            min-width: 0;
+        }
     }
 
     .filter {
@@ -98,10 +136,6 @@
         .grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
-
-        .header {
-            flex-direction: column;
-        }
     }
 }
 
@@ -109,10 +143,6 @@
     .llm-library {
         .grid {
             grid-template-columns: 1fr;
-        }
-
-        .header-right {
-            flex-wrap: wrap;
         }
     }
 }

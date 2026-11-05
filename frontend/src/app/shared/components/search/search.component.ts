@@ -15,6 +15,11 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 export class SearchComponent {
     width = input<string>('100%');
     mod = input<'default' | 'small'>('default');
+    /**
+     * `toolbar`: the look of a list page's toolbar (LLM Library): the 10px radius, the dim outline and icon,
+     * the icon 16px in and 16px before the text. For the 12px glyph of the design, pair it with `iconSize="16px"`.
+     */
+    appearance = input<'default' | 'toolbar'>('default');
     placeholder = input<string>('Search...');
     icon = input<string>('search');
     iconSize = input<string>('1.1rem');

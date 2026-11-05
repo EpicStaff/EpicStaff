@@ -22,4 +22,33 @@ describe('RouteTabsComponent', () => {
         expect(anchoredTab.getAttribute('data-tour')).toBe('quickstart-tab');
         expect(plainTab.hasAttribute('data-tour')).toBe(false);
     });
+
+    function renderScrollable(scrollable: boolean): HTMLElement {
+        TestBed.configureTestingModule({ providers: [provideRouter([])] });
+        const fixture = TestBed.createComponent(RouteTabsComponent);
+        fixture.componentRef.setInput('tabs', [{ routerLink: 'secrets', label: 'Secrets', isPermitted: () => true }]);
+        fixture.componentRef.setInput('scrollable', scrollable);
+        fixture.detectChanges();
+        return fixture.nativeElement as HTMLElement;
+    }
+
+    it.each([false, true])('takes the scrollable look only when asked (scrollable: %s)', (scrollable) => {
+        expect(renderScrollable(scrollable).classList.contains('route-tabs--scrollable')).toBe(scrollable);
+    });
+
+    it('scrolls the strip sideways with a vertical wheel while it has room to, then leaves the wheel to the page', () => {
+        const strip = renderScrollable(true).querySelector<HTMLElement>('.tabs-wrapper')!;
+        Object.defineProperty(strip, 'clientWidth', { value: 100 });
+        Object.defineProperty(strip, 'scrollWidth', { value: 300 });
+
+        const towardsEnd = new WheelEvent('wheel', { deltaY: 50, cancelable: true });
+        strip.dispatchEvent(towardsEnd);
+        expect(strip.scrollLeft).toBe(50);
+        expect(towardsEnd.defaultPrevented).toBe(true);
+
+        strip.scrollLeft = 0;
+        const towardsStart = new WheelEvent('wheel', { deltaY: -50, cancelable: true });
+        strip.dispatchEvent(towardsStart);
+        expect(towardsStart.defaultPrevented).toBe(false);
+    });
 });

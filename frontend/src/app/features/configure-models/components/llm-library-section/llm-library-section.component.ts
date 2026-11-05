@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { ComponentType } from '@angular/cdk/portal';
 import {
     afterNextRender,
@@ -6,12 +7,16 @@ import {
     Component,
     computed,
     DestroyRef,
+    effect,
+    ElementRef,
     inject,
     Injector,
     OnInit,
     Signal,
     signal,
+    untracked,
     viewChild,
+    viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -122,6 +127,63 @@ const SYSTEM_ONE_LABEL = 'System One Configs';
 const LLM_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'LLM config', plural: 'LLM configs' };
 const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding config', plural: 'embedding configs' };
 const SYSTEM_ONE_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'System One config', plural: 'System One configs' };
+/** Design minimums while the toolbar sits beside the title, and the gaps (title to toolbar, between controls). */
+const TITLE_MIN_WIDTH = 372;
+const SEARCH_MIN_WIDTH = 201;
+const HEADER_GAP = 24;
+const CONTROL_GAP = 8;
+
+/** A toolbar control (after the search) in one of its looks; the action is Add, or Delete with a selection. */
+type ToolbarControlLook =
+    | 'capabilities'
+    | 'capabilities-icon'
+    | 'select'
+    | 'select-icon'
+    | 'selected'
+    | 'selected-icon'
+    | 'add'
+    | 'add-icon'
+    | 'delete'
+    | 'delete-icon';
+
+/**
+ * Widths of each look until it has been on screen once and measured: the icon looks are the design's fixed sizes,
+ * the labelled ones estimates for Inter 14px.
+ */
+const ESTIMATED_CONTROL_WIDTHS: Record<ToolbarControlLook, number> = {
+    capabilities: 163,
+    'capabilities-icon': 67,
+    select: 96,
+    'select-icon': 40,
+    selected: 177,
+    'selected-icon': 131,
+    add: 180,
+    'add-icon': 40,
+    delete: 120,
+    'delete-icon': 40,
+};
+
+/**
+ * Beside the title with labels; beside it icon-only; or under it (`stacked`), its second row giving up labels from
+ * the end: first the action (Add or Delete) goes icon-only, then all of them.
+ */
+type ToolbarLayout = 'labels' | 'icons' | 'stacked' | 'stacked-action-icon' | 'stacked-icons';
+
+interface ToolbarIcons {
+    capabilities: boolean;
+    select: boolean;
+    action: boolean;
+}
+
+interface ToolbarControlLooks {
+    capabilities: ToolbarControlLook;
+    select: ToolbarControlLook;
+    action: ToolbarControlLook;
+}
+
+const ALL_LABELS: ToolbarIcons = { capabilities: false, select: false, action: false };
+const ALL_ICONS: ToolbarIcons = { capabilities: true, select: true, action: true };
+const ACTION_ICON: ToolbarIcons = { capabilities: false, select: false, action: true };
 
 @Component({
     selector: 'app-llm-library-section',
@@ -140,9 +202,22 @@ const SYSTEM_ONE_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'System One co
     templateUrl: './llm-library-section.component.html',
     styleUrls: ['./llm-library-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: {
+        '(document:click)': 'onDocumentClick($event)',
+        '(document:keydown.escape)': 'onDocumentEscape($event)',
+    },
 })
 export class LlmLibrarySectionComponent implements OnInit {
     private readonly addButton = viewChild('addButton', { read: ButtonComponent });
+    private readonly header = viewChild<ElementRef<HTMLElement>>('header');
+    private readonly capabilitiesControl = viewChild<ElementRef<HTMLElement>>('capabilitiesControl');
+    private readonly selectControl = viewChild(BulkSelectDropdownComponent, { read: ElementRef });
+    private readonly actionControl = viewChild<ButtonComponent, ElementRef<HTMLElement>>('actionControl', {
+        read: ElementRef,
+    });
+    private readonly bulkSelect = viewChild(BulkSelectDropdownComponent);
+    private readonly bulkSelectElement = viewChild(BulkSelectDropdownComponent, { read: ElementRef });
+    private readonly cardElements = viewChildren(LlmLibraryCardComponent, { read: ElementRef });
 
     private readonly llmLibraryService = inject(LLMLibraryService);
     private readonly llmConfigStorageService = inject(LlmConfigStorageService);
@@ -157,6 +232,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
     private readonly dialog = inject(Dialog);
     private readonly injector = inject(Injector);
+    private readonly overlayContainer = inject(OverlayContainer);
 
     readonly voiceProviders: VoiceProvider[] = [
         {
@@ -205,6 +281,44 @@ export class LlmLibrarySectionComponent implements OnInit {
         const groups = llmLibraryBulkDeleteGroups(this.selectedKeys(), this.bulkDeleteSources());
         return groups.reduce((sum, group) => sum + group.items.length, 0);
     });
+    /** Delete replaces Add Configuration, and Select shows its count, only while something is selected. */
+    public readonly hasSelection = computed(() => this.selectedCount() > 0);
+    /** Select mode with nothing ticked yet: a click outside the cards or Escape leaves it. */
+    private readonly isSelectModeEmpty = computed(() => this.selectMode() && !this.hasSelection());
+    /** Null until measured: the first frame keeps the labels in the row. */
+    private readonly headerWidth = signal<number | null>(null);
+    /** Natural width of each control look, taken while it was on screen; estimates until then. */
+    private readonly controlWidths = signal<Partial<Record<ToolbarControlLook, number>>>({});
+    /**
+     * Every switch comes from the measured widths and the design's numbers: the labelled toolbar beside a 372px title
+     * (search at 201px), else the icon-only one, else under the title with as many labels as its row fits.
+     */
+    protected readonly toolbarLayout = computed<ToolbarLayout>(() => {
+        const width = this.headerWidth();
+        if (width === null) return 'labels';
+        const besideTitle = width - TITLE_MIN_WIDTH - HEADER_GAP;
+        if (this.toolbarRowWidth(ALL_LABELS) <= besideTitle) return 'labels';
+        if (this.toolbarRowWidth(ALL_ICONS) <= besideTitle) return 'icons';
+        if (this.controlsRowWidth(ALL_LABELS) <= width) return 'stacked';
+        if (this.controlsRowWidth(ACTION_ICON) <= width) return 'stacked-action-icon';
+        return 'stacked-icons';
+    });
+    protected readonly isStacked = computed(() => this.toolbarLayout().startsWith('stacked'));
+    protected readonly toolbarIcons = computed<ToolbarIcons>(() => {
+        switch (this.toolbarLayout()) {
+            case 'icons':
+            case 'stacked-icons':
+                return ALL_ICONS;
+            case 'stacked-action-icon':
+                return ACTION_ICON;
+            default:
+                return ALL_LABELS;
+        }
+    });
+    /** Beside the title, what the toolbar needs: the title gives way (to its 372px minimum) before it does. */
+    protected readonly toolbarMinWidth = computed(() =>
+        this.isStacked() ? null : this.toolbarRowWidth(this.toolbarIcons())
+    );
 
     readonly configTypeSections: { type: ModelTypes; label: string; key: SectionKey }[] = [
         { type: ModelTypes.LLM, label: 'LLM', key: 'llm' },
@@ -303,7 +417,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     );
 
     public capabilities = computed<SelectItem[]>(() => [
-        { name: 'All Capabilities', value: null },
+        { name: 'All capabilities', value: null },
         ...this.configs().flatMap((config) => config.tags.map((tag) => ({ name: tag.name, value: tag.name }))),
     ]);
 
@@ -363,6 +477,27 @@ export class LlmLibrarySectionComponent implements OnInit {
         };
         return sources;
     });
+
+    private readonly resizeObserver =
+        typeof ResizeObserver === 'undefined' ? null : new ResizeObserver((entries) => this.onResize(entries));
+    private observedElements: HTMLElement[] = [];
+    /** The header and the toolbar controls on screen, observed as they come and go. */
+    private readonly observeToolbar = effect(() => {
+        const elements = [this.header(), this.capabilitiesControl(), this.selectControl(), this.actionControl()]
+            .filter((element): element is ElementRef<HTMLElement> => !!element)
+            .map((element) => element.nativeElement);
+        untracked(() => {
+            for (const element of this.observedElements) {
+                if (!elements.includes(element)) this.resizeObserver?.unobserve(element);
+            }
+            for (const element of elements) this.resizeObserver?.observe(element);
+            this.observedElements = elements;
+        });
+    });
+
+    constructor() {
+        this.destroyRef.onDestroy(() => this.resizeObserver?.disconnect());
+    }
 
     ngOnInit() {
         this.loadAll();
@@ -559,6 +694,36 @@ export class LlmLibrarySectionComponent implements OnInit {
         this.selectedKeys.set(new Set());
     }
 
+    /** Clears the selection and stays in select mode; the × (`exitSelectMode`) leaves it too. */
+    public clearSelection(): void {
+        this.selectedKeys.set(new Set());
+    }
+
+    /**
+     * Leaves an empty select mode on a click outside the cards and the Select control. Clicks in overlays (the
+     * capabilities panel, a card menu, dialogs, tooltips) leave it alone: they belong to what is open above the page.
+     * A target already gone from the page (a control the click itself swapped) says nothing about where it landed.
+     */
+    public onDocumentClick(event: MouseEvent): void {
+        if (!this.isSelectModeEmpty()) return;
+        const target = event.target;
+        if (!(target instanceof Node) || !target.isConnected) return;
+        if (this.overlayContainer.getContainerElement().contains(target)) return;
+        if (this.bulkSelectElement()?.nativeElement.contains(target)) return;
+        if (this.cardElements().some((card) => card.nativeElement.contains(target))) return;
+        this.exitSelectMode();
+    }
+
+    /** Escape leaves an empty select mode, unless something above the page (a menu, a dialog) takes it. */
+    public onDocumentEscape(event: Event): void {
+        if (!this.isSelectModeEmpty() || event.defaultPrevented) return;
+        const target = event.target;
+        if (target instanceof Node && this.overlayContainer.getContainerElement().contains(target)) return;
+        this.exitSelectMode();
+        // The card checkboxes that may have had the focus are gone with select mode.
+        this.bulkSelect()?.focus();
+    }
+
     public toggleSelectAll(): void {
         this.selectedKeys.set(this.allVisibleSelected() ? new Set() : new Set(this.visibleSelectionKeys()));
     }
@@ -614,6 +779,7 @@ export class LlmLibrarySectionComponent implements OnInit {
         return { target: source.target, label: source.label, items: [{ id: model.id, name: model.customName }] };
     }
 
+    /** Unticking the last selected card ends select mode; entering it from the Select menu starts at 0 and stays. */
     private setSelected(kind: LlmLibrarySelectionKind, id: number, selected: boolean): void {
         const key = llmLibrarySelectionKey(kind, id);
         const next = new Set(this.selectedKeys());
@@ -623,6 +789,61 @@ export class LlmLibrarySectionComponent implements OnInit {
             next.delete(key);
         }
         this.selectedKeys.set(next);
+        if (!selected && this.selectedCount() === 0) {
+            this.exitSelectMode();
+        }
+    }
+
+    /**
+     * The header's own width (not the viewport's: the sidebar and the settings layout around it do not matter), and
+     * each control's natural width in the look it shows. Controls are recorded against the looks they were rendered
+     * with, before a new header width can change those looks.
+     */
+    private onResize(entries: ResizeObserverEntry[]): void {
+        const looks = this.controlLooks(this.toolbarIcons());
+        const measured: Partial<Record<ToolbarControlLook, number>> = {};
+        let headerWidth: number | null = null;
+        for (const entry of entries) {
+            const target = entry.target;
+            if (target === this.header()?.nativeElement) {
+                headerWidth = entry.contentRect.width;
+                continue;
+            }
+            const width = entry.borderBoxSize?.[0]?.inlineSize ?? target.getBoundingClientRect().width;
+            if (width <= 0) continue;
+            if (target === this.capabilitiesControl()?.nativeElement) measured[looks.capabilities] = width;
+            else if (target === this.selectControl()?.nativeElement) measured[looks.select] = width;
+            else if (target === this.actionControl()?.nativeElement) measured[looks.action] = width;
+        }
+        if (Object.keys(measured).length > 0) this.controlWidths.update((widths) => ({ ...widths, ...measured }));
+        if (headerWidth !== null) this.headerWidth.set(headerWidth);
+    }
+
+    private controlLooks(icons: ToolbarIcons): ToolbarControlLooks {
+        const selection = this.hasSelection();
+        const selectLook: ToolbarControlLook = selection ? 'selected' : 'select';
+        const actionLook: ToolbarControlLook = selection ? 'delete' : 'add';
+        return {
+            capabilities: icons.capabilities ? 'capabilities-icon' : 'capabilities',
+            select: icons.select ? `${selectLook}-icon` : selectLook,
+            action: icons.action ? `${actionLook}-icon` : actionLook,
+        } as ToolbarControlLooks;
+    }
+
+    /** The controls after the search, in the given looks, with the gaps between them; absent ones count nothing. */
+    private controlsRowWidth(icons: ToolbarIcons): number {
+        const looks = this.controlLooks(icons);
+        const widths = this.controlWidths();
+        const present: ToolbarControlLook[] = [looks.capabilities];
+        if (this.selectControl()) present.push(looks.select);
+        if (this.actionControl()) present.push(looks.action);
+        const total = present.reduce((sum, look) => sum + (widths[look] ?? ESTIMATED_CONTROL_WIDTHS[look]), 0);
+        return total + CONTROL_GAP * (present.length - 1);
+    }
+
+    /** The whole toolbar beside the title: the search at its minimum, then the controls. */
+    private toolbarRowWidth(icons: ToolbarIcons): number {
+        return SEARCH_MIN_WIDTH + CONTROL_GAP + this.controlsRowWidth(icons);
     }
 
     private applyDefaultModelsOutdated(outcomes: BulkDeleteOutcome[]): void {

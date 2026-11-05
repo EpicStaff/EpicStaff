@@ -39,8 +39,10 @@
                 [class.selector__btn--open]="open()"
                 [class.selector__btn--placeholder]="!selectedItem() && !(allowCustomValue() && selectedValue())"
                 [class.selector__btn--transparent]="transparent()"
+                [class.selector__btn--toolbar]="appearance() === 'toolbar'"
+                [class.selector__btn--icon-only]="showsOnlyIcon()"
                 [attr.aria-expanded]="open()"
-                [matTooltip]="tooltip()"
+                [matTooltip]="triggerTooltip()"
                 (click)="toggle()"
             >
                 @if (loading()) {
@@ -60,6 +62,13 @@
                             class="selector__dot"
                             [style.background-color]="dotColor"
                         ></span>
+                    }
+                    @if (showsOnlyIcon()) {
+                        <app-svg-icon
+                            class="selector__trigger-icon"
+                            [icon]="triggerIcon()!"
+                            size="16px"
+                        />
                     }
                     <span
                         class="selector__text"

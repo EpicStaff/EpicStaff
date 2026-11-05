@@ -16,9 +16,11 @@ import { BulkSelectDropdownComponent } from './bulk-select-dropdown.component';
             [disabled]="disabled()"
             [mod]="mod()"
             [appearance]="appearance()"
+            [iconOnly]="iconOnly()"
             (selectModeEntered)="onSelectModeEntered()"
             (selectAllToggled)="onSelectAllToggled()"
             (cleared)="onCleared()"
+            (selectionCleared)="onSelectionCleared()"
         />
     `,
 })
@@ -28,10 +30,17 @@ class ListHostComponent {
     readonly allSelected = signal(false);
     readonly disabled = signal(false);
     readonly mod = signal<'default' | 'small'>('default');
-    readonly appearance = signal<'filled' | 'outline'>('filled');
+    readonly appearance = signal<'filled' | 'outline' | 'toolbar'>('filled');
+    readonly iconOnly = signal(false);
     selectModeEnteredCount = 0;
     selectAllToggledCount = 0;
     clearedCount = 0;
+    selectionClearedCount = 0;
+
+    onSelectionCleared(): void {
+        this.selectionClearedCount += 1;
+        this.selectedCount.set(0);
+    }
 
     onSelectModeEntered(): void {
         this.selectModeEnteredCount += 1;
@@ -142,6 +151,109 @@ describe('BulkSelectDropdownComponent', () => {
         expect(mainButton(element).getAttribute('aria-expanded')).toBe('false');
         expect(label(element)).toBe('Selected (2)');
         expect(element.querySelector('.bulk-select__count')?.textContent?.trim()).toBe('(2)');
+        expect(isSelectedLook(element)).toBe(true);
+        expect(clearButton(element)).not.toBeNull();
+    });
+
+    it('toggles select mode with a plain "Select" in the toolbar look while nothing is selected', () => {
+        const { fixture, host, element, overlay } = render();
+        host.appearance.set('toolbar');
+        fixture.detectChanges();
+        expect(mainButton(element).getAttribute('aria-pressed')).toBe('false');
+        expect(mainButton(element).hasAttribute('aria-haspopup')).toBe(false);
+        expect(element.querySelector('.bulk-select__chevron')).toBeNull();
+
+        mainButton(element).click();
+        fixture.detectChanges();
+
+        expect(host.selectMode()).toBe(true);
+        expect(menuItem(overlay)).toBeNull();
+        expect(label(element)).toBe('Select');
+        expect(mainButton(element).getAttribute('aria-pressed')).toBe('true');
+
+        mainButton(element).click();
+        fixture.detectChanges();
+
+        expect(host.selectMode()).toBe(false);
+        expect(host.clearedCount).toBe(1);
+        expect(mainButton(element).getAttribute('aria-pressed')).toBe('false');
+    });
+
+    function menuItemLabels(overlay: HTMLElement): string[] {
+        return Array.from(
+            overlay.querySelectorAll('.bulk-select-menu__item'),
+            (item) => item.textContent?.trim() ?? ''
+        );
+    }
+
+    function openToolbarMenu(allSelected: boolean): Rendered {
+        const rendered = render();
+        const { fixture, host, element } = rendered;
+        host.appearance.set('toolbar');
+        host.selectMode.set(true);
+        host.selectedCount.set(1);
+        host.allSelected.set(allSelected);
+        fixture.detectChanges();
+        mainButton(element).click();
+        fixture.detectChanges();
+        return rendered;
+    }
+
+    it('opens "Select All" and "Clear Selection" from "Select (N)" in the toolbar look', () => {
+        const { host, fixture, overlay } = openToolbarMenu(false);
+
+        expect(menuItemLabels(overlay)).toEqual(['Select All', 'Clear Selection']);
+        expect(overlay.querySelector('.bulk-select-menu__divider')).not.toBeNull();
+
+        overlay.querySelectorAll<HTMLButtonElement>('.bulk-select-menu__item')[0].click();
+        fixture.detectChanges();
+        expect(host.selectAllToggledCount).toBe(1);
+    });
+
+    it('turns "Select All" off, without flipping it, once everything is selected (toolbar look)', () => {
+        const { host, fixture, overlay } = openToolbarMenu(true);
+        const selectAll = overlay.querySelectorAll<HTMLButtonElement>('.bulk-select-menu__item')[0];
+
+        expect(selectAll.textContent?.trim()).toBe('Select All');
+        expect(selectAll.getAttribute('aria-disabled')).toBe('true');
+
+        selectAll.click();
+        fixture.detectChanges();
+        expect(host.selectAllToggledCount).toBe(0);
+    });
+
+    it('clears the selection and keeps select mode with "Clear Selection" (toolbar look)', () => {
+        const { host, fixture, element, overlay } = openToolbarMenu(false);
+
+        overlay.querySelectorAll<HTMLButtonElement>('.bulk-select-menu__item')[1].click();
+        fixture.detectChanges();
+
+        expect(host.selectionClearedCount).toBe(1);
+        expect(host.clearedCount).toBe(0);
+        expect(host.selectMode()).toBe(true);
+        expect(label(element)).toBe('Select');
+        expect(mainButton(element).getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('names the icon-only plain "Select" of the toolbar look', () => {
+        const { fixture, host, element } = render();
+        host.appearance.set('toolbar');
+        host.iconOnly.set(true);
+        fixture.detectChanges();
+
+        expect(mainButton(element).getAttribute('aria-label')).toBe('Select');
+    });
+
+    // Icon-only hides the word from view only: it stays the button's name.
+    it.each([false, true])('reads "Select (N)" in the toolbar look (icon-only: %s)', (iconOnly) => {
+        const { fixture, host, element } = render();
+        host.appearance.set('toolbar');
+        host.iconOnly.set(iconOnly);
+        host.selectMode.set(true);
+        host.selectedCount.set(2);
+        fixture.detectChanges();
+
+        expect(label(element)).toBe('Select (2)');
         expect(isSelectedLook(element)).toBe(true);
         expect(clearButton(element)).not.toBeNull();
     });

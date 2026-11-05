@@ -231,7 +231,8 @@ button:is(:disabled, [aria-disabled='true']) {
     gap: 0.5rem;
 }
 
-.btn--only-icon {
+.btn--only-icon,
+.btn--icon-only {
     padding-left: 0.6rem !important;
     padding-right: 0.6rem !important;
 
@@ -248,5 +249,30 @@ button:is(:disabled, [aria-disabled='true']) {
         right: auto;
         transform: none;
         margin: 0;
+    }
+}
+
+// Toolbar (the LLM Library header): the icon in line with the label, 16px in and 8px before it; with the icon
+// alone, a 40px square. The destructive action takes the 8px radius of the selected Select beside it.
+.btn--toolbar {
+    gap: 0.5rem;
+    padding: 0 1rem;
+    border-radius: var(--radius-xl);
+
+    .btn-icon.left,
+    .btn-icon.right {
+        position: static;
+        transform: none;
+    }
+
+    &.btn-danger {
+        padding: 0 1.75rem 0 1.5rem;
+        border-radius: var(--radius-lg);
+    }
+
+    &:is(.btn--only-icon, .btn--icon-only) {
+        width: 40px;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
     }
 }

@@ -1,3 +1,5 @@
+@use '../../../../styles/a11y-mixins' as a11y;
+
 :host {
     flex-grow: 1;
     flex-shrink: 0;
@@ -84,6 +86,45 @@
         &:disabled {
             cursor: not-allowed;
             opacity: 0.7;
+        }
+
+        // After the rules above on purpose: equal specificity, so source order lets the toolbar look win.
+        // Full width as the default trigger: in a hug-width host that is its content.
+        &--toolbar {
+            gap: 1rem;
+            padding: 0 0.75rem 0 1rem;
+            border-color: var(--graphite-750);
+            border-radius: var(--radius-xl);
+            background-color: transparent;
+            color: var(--color-text-primary);
+            font-size: var(--text-body-medium-size);
+            font-weight: var(--text-body-medium-weight);
+            line-height: var(--text-body-medium-line-height);
+            transition: background-color 0.15s ease;
+
+            &.selector__btn--placeholder {
+                color: var(--color-text-primary);
+            }
+
+            &:is(:hover, :focus-visible),
+            &.selector__btn--open {
+                border-color: var(--graphite-750);
+                background-color: var(--color-secondary-btn-background-hover);
+            }
+
+            .selector__chevron {
+                position: static;
+                flex-shrink: 0;
+            }
+        }
+
+        // 16 + 16px funnel + 5 + 16px chevron + 12, with the border: the 67px of the design.
+        &--icon-only {
+            gap: 0.3125rem;
+
+            .selector__text {
+                @include a11y.visually-hidden;
+            }
         }
     }
 
