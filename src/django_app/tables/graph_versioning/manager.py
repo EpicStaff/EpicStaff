@@ -22,6 +22,7 @@ from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
     _DEPENDENCY_MODELS,
     _EXCLUDED_GRAPH_SCALARS,
+    _ORG_CHECKED_DEPENDENCY_TYPES,
     _VENV_CODE_FIELDS_BY_NODE_TYPE,
 )
 from tables.graph_versioning.handlers import HANDLER_REGISTRY, _MissingSets
@@ -732,8 +733,8 @@ class GraphVersioningManager:
 
         Args:
             dependencies: Recorded dependency ids, keyed by ``EntityType.value``.
-            org_id: Organization the restore happens in — a venv binding outside it
-                reads as missing.
+            org_id: Organization the restore happens in — a venv binding or System One
+                config outside it reads as missing.
         """
         available_deps: dict[str, list[int]] = {}
         missing_deps: dict[str, list[int]] = {}
@@ -750,7 +751,7 @@ class GraphVersioningManager:
 
             candidates = model.objects.filter(id__in=ids)
 
-            if entity_type_value == EntityType.VENV.value:
+            if entity_type_value in _ORG_CHECKED_DEPENDENCY_TYPES:
                 candidates = candidates.filter(org_visible_q(model, org_id))
 
             existing_ids = set(candidates.values_list("id", flat=True))
@@ -945,6 +946,35 @@ class GraphVersioningManager:
                         "field": code_field,
                         "missing_id": venv_id,
                         "reason": "venv not found or not in org",
+                    }
+                )
+
+        return warnings
+
+    def _clean_system_one_config_refs(
+        self, snapshot_nodes: list[dict], allowed_config_ids: set
+    ) -> list[dict]:
+        """Null any CDT prompt's System One config that isn't in ``allowed_config_ids``
+        (deleted or of another organization). The entry keeps its kind and questions; like
+        an entry whose config was deleted, a run fails on it until a config is chosen."""
+        warnings: list[dict] = []
+
+        for node in snapshot_nodes:
+            if node.get("node_type") != NodeType.CLASSIFICATION_DECISION_TABLE_NODE:
+                continue
+            for prompt in node.get("prompt_configs") or []:
+                config_id = prompt.get("system_one_config")
+                if config_id is None or config_id in allowed_config_ids:
+                    continue
+                prompt["system_one_config"] = None
+                warnings.append(
+                    {
+                        "type": "system_one_config_ref_cleared",
+                        "node_name": node.get("node_name") or node.get("node_type"),
+                        "node_id": node.get("id"),
+                        "prompt_key": prompt.get("prompt_key"),
+                        "missing_id": config_id,
+                        "reason": "System One config not found or not in org",
                     }
                 )
 
@@ -1146,9 +1176,10 @@ class GraphVersioningManager:
             missing: Recorded dependency ids that no longer resolve, keyed by
                 ``EntityType.value``.
             available: Recorded dependency ids that still resolve for this
-                organization, keyed the same way. Venv references are checked against
-                this rather than against ``missing``: a snapshot can name a venv that
-                its recorded dependencies never listed.
+                organization, keyed the same way. Venv and System One config references
+                are checked against this rather than against ``missing``: a snapshot can
+                name one that its recorded dependencies never listed, and it is cleared
+                unless ``resolve_venv_availability`` (venvs only) added it here.
         """
         filtered_snapshot = deepcopy(snapshot)
         warnings: list[dict] = []
@@ -1171,6 +1202,13 @@ class GraphVersioningManager:
             self._clean_venv_refs(
                 filtered_snapshot["nodes"],
                 set(available.get(EntityType.VENV.value, [])),
+            )
+        )
+
+        warnings.extend(
+            self._clean_system_one_config_refs(
+                filtered_snapshot["nodes"],
+                set(available.get(EntityType.SYSTEM_ONE_CONFIG.value, [])),
             )
         )
 
