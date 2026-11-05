@@ -46,6 +46,7 @@ ENTITY_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     EntityType.VENV: ResourceType.VENVS,
     EntityType.PYTHON_CODE_TOOL: ResourceType.TOOLS,
     EntityType.MCP_TOOL: ResourceType.TOOLS,
+    EntityType.SOURCE_COLLECTION: ResourceType.KNOWLEDGE_SOURCES,
 }
 
 # Dependencies a flow or tool export bundles only when the caller may export
@@ -57,6 +58,7 @@ EXPORT_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     # A subgraph reference is gated like any other dependency (uniform rule); the
     # flow endpoints already require flows EXPORT, so the endpoints never deny it.
     EntityType.GRAPH: ResourceType.FLOWS,
+    EntityType.SOURCE_COLLECTION: ResourceType.KNOWLEDGE_SOURCES,
 }
 
 # Every other ENTITY_RESOURCE_MAP type is always bundled: its resource has no
