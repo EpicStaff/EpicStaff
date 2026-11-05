@@ -158,6 +158,11 @@
         padding: 24px 2.5rem 2rem;
     }
 
+    // The inactive tab stays in the page, keeping what it loaded.
+    &__tab--hidden {
+        display: none;
+    }
+
     &__list {
         display: flex;
         flex-direction: column;
