@@ -1,6 +1,7 @@
 import { HttpRequest, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
@@ -102,6 +103,12 @@ describe('VenvsListPageComponent', () => {
         host = fixture.nativeElement as HTMLElement;
         http = TestBed.inject(HttpTestingController);
         fixture.detectChanges();
+
+        // The custom libraries tab loads its list with the page; these tests are about the venvs.
+        for (const request of http.match((candidate) => candidate.url === `${API_URL}custom-libraries/`)) {
+            request.flush({ count: 0, limit: 1000, offset: 0, next: null, previous: null, result: [] });
+        }
+        fixture.detectChanges();
     });
 
     afterEach(() => {
@@ -199,5 +206,88 @@ describe('VenvsListPageComponent', () => {
 
         // A poll without the search would answer with every venv and undo the narrowing.
         expect(answerList([venv(1, 'alpha', 'completed')]).params.get('search')).toBe('alp');
+    });
+});
+
+describe('VenvsListPageComponent custom libraries tab', () => {
+    let fixture: ComponentFixture<VenvsListPageComponent>;
+    let host: HTMLElement;
+    let http: HttpTestingController;
+
+    function render(canReadCustomLibraries: boolean): void {
+        TestBed.configureTestingModule({
+            imports: [VenvsListPageComponent],
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: API_URL } },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode) =>
+                            resource === ResourceCode.CustomLibraries ? canReadCustomLibraries : true,
+                        canAny: () => true,
+                    },
+                },
+                { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
+            ],
+        });
+
+        fixture = TestBed.createComponent(VenvsListPageComponent);
+        host = fixture.nativeElement as HTMLElement;
+        http = TestBed.inject(HttpTestingController);
+        fixture.detectChanges();
+
+        const pending = http.match((request) => request.url === `${API_URL}venvs/`);
+        pending[0].flush({ count: 0, limit: 1000, offset: 0, next: null, previous: null, result: [] });
+        fixture.detectChanges();
+
+        // The libraries list is fetched with the page, not with its tab.
+        for (const request of http.match((candidate) => candidate.url === `${API_URL}custom-libraries/`)) {
+            request.flush({ count: 0, limit: 1000, offset: 0, next: null, previous: null, result: [] });
+        }
+        fixture.detectChanges();
+    }
+
+    function tab(label: string): HTMLElement | undefined {
+        return Array.from(host.querySelectorAll<HTMLElement>('.tabs-left app-tab-button')).find((button) =>
+            button.textContent!.includes(label)
+        );
+    }
+
+    beforeEach(() => {
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        );
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('hides the tab from a caller who may not read custom libraries', () => {
+        render(false);
+
+        expect(tab('Custom Libraries')).toBeUndefined();
+        expect(http.match((request) => request.url === `${API_URL}custom-libraries/`)).toHaveLength(0);
+    });
+
+    it('swaps the list, the create button and the venv toolbar when the tab is opened', () => {
+        render(true);
+        expect(host.querySelector('.search')).not.toBeNull();
+
+        tab('Custom Libraries')!.querySelector('button')!.click();
+        fixture.detectChanges();
+
+        // Nothing is fetched on the way in: the list was loaded with the page.
+        expect(http.match((request) => request.url === `${API_URL}custom-libraries/`)).toHaveLength(0);
+        expect(host.querySelector('.custom-libraries__empty')).not.toBeNull();
+        expect(host.querySelector('.search')).toBeNull();
+        expect(host.querySelector('.header-actions')!.textContent).toContain('Create custom library');
     });
 });
