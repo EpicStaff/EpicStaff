@@ -58,7 +58,9 @@ from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 NODE_ENTITY_TYPES = frozenset(NODE_TYPE_TO_ENTITY_TYPE.values())
-EXPORT_ONLY_ENTITY_TYPES = frozenset({EntityType.SESSION})
+# Knowledge collections export already, but their import is not built yet; once it is,
+# move SOURCE_COLLECTION to SOURCE_FACTORIES.
+EXPORT_ONLY_ENTITY_TYPES = frozenset({EntityType.SESSION, EntityType.SOURCE_COLLECTION})
 # Needs the sandbox service to export or import at all; covered separately.
 OUT_OF_PROCESS_ENTITY_TYPES = frozenset({EntityType.VENV})
 

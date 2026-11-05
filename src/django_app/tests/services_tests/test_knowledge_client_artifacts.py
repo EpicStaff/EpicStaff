@@ -13,26 +13,7 @@ from tables.clients.errors import (
     ClientTimeoutError,
     ClientValidationError,
 )
-from tables.clients.knowledge import KnowledgeClient
-
-
-class FakeKnowledgeService:
-    """Answers each request with the next queued response and records what it received."""
-
-    def __init__(self, *responses):
-        self._responses = list(responses)
-        self.requests: list[tuple[str, str, bytes]] = []
-
-    def __call__(self, request: httpx.Request):
-        # Reading the body consumes a streamed upload exactly as the real server would.
-        self.requests.append((request.method, request.url.path, request.read()))
-        response = self._responses.pop(0)
-        if isinstance(response, Exception):
-            raise response
-        return response
-
-    def client(self) -> KnowledgeClient:
-        return KnowledgeClient(transport=httpx.MockTransport(self))
+from tests.knowledge_service_fake import FakeKnowledgeService
 
 
 class _StreamedBody(httpx.SyncByteStream):
@@ -144,9 +125,7 @@ def test_a_refused_archive_is_reported_and_the_id_map_is_never_sent():
 
 
 def test_a_refused_id_map_is_reported():
-    service = FakeKnowledgeService(
-        httpx.Response(204), _error(400, "invalid_artifact_archive")
-    )
+    service = FakeKnowledgeService(httpx.Response(204), _error(400, "invalid_artifact_archive"))
 
     with pytest.raises(ClientValidationError):
         service.client().upload_graph_artifacts(9, io.BytesIO(b"tar"), {11: 51})
