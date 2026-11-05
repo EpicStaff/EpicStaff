@@ -390,7 +390,7 @@ class StorageFileSync:
         source_path: str | None = None,
         user: object | None,
     ) -> None:
-        """Record the move or copy that put a storage entry at `entry_path` as a user action.
+        """Record the move, copy or upload that put a storage entry at `entry_path` as a user action.
 
         Names the entry by the path it is stored at, the part a move or copy changes, and
         keeps a move's `source_path` as its previous name. Records nothing for a `user`

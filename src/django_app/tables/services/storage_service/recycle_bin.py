@@ -41,6 +41,7 @@ from tables.services.recycle_bin.restore_service import RestoreResult
 from tables.services.storage_service.dataclasses import PurgedBinEntry
 from tables.services.storage_service.db_sync import _ancestor_paths, _name_of, _parent_of
 from tables.services.storage_service.naming import ensure_unique_file_name, split_file_name
+from user_audit.context import mark_request_handled
 from user_audit.recorder import record_user_action
 from user_audit.targets import describe
 from utils.logger import logger
@@ -289,6 +290,8 @@ class StorageRecycleBinService:
         Raises:
             NotInRecycleBinError: an id isn't in this org's bin; nothing is restored.
         """
+        # Each restored entry records itself; a request that restored none records nothing.
+        mark_request_handled()
         result = BulkRestoreResult()
         for row_id in self._target_ids(org_id, row_ids):
             row = StorageFile.all_objects.filter(org_id=org_id, pk=row_id).first()
@@ -377,6 +380,8 @@ class StorageRecycleBinService:
         Raises:
             NotInRecycleBinError: an id isn't in this org's bin; nothing is purged.
         """
+        # Each purged entry records itself; a request that purged none records nothing.
+        mark_request_handled()
         result = BulkPurgeResult()
         for row_id in self._target_ids(org_id, row_ids):
             row = StorageFile.deleted_objects.filter(org_id=org_id, pk=row_id).first()

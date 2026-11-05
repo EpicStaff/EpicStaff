@@ -409,7 +409,8 @@ from tables.views.secret_use import (
     ModelEndpointsGuardedViewSetMixin,
     SecretUseCheckedViewSetMixin,
 )
-from user_audit.read_only import reads_only
+from user_audit.context import mark_request_handled
+from user_audit.read_only import not_a_user_change, reads_only
 from user_audit.recorder import record_user_action
 from utils.logger import logger
 
@@ -736,6 +737,8 @@ class PythonCodeToolViewSet(
         if not body.is_valid():
             return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
         ids = body.validated_data["ids"]
+        # Each binned tool records itself; a request that binned none records nothing.
+        mark_request_handled()
 
         with transaction.atomic():
             # Built-in tools are silently excluded, never rejected — they are
@@ -1819,6 +1822,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         url_path="end",
         permission_classes=[IsSystemApiKeyAuthenticated],
     )
+    @not_a_user_change
     def end(self, request):
         """Mark a RealtimeAgentChat as ended.
 
@@ -2553,6 +2557,8 @@ class McpToolViewSet(
         if not body.is_valid():
             return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
         ids = body.validated_data["ids"]
+        # Each binned tool records itself; a request that binned none records nothing.
+        mark_request_handled()
 
         with transaction.atomic():
             # McpTool has no built-in concept — every matching id is deletable.

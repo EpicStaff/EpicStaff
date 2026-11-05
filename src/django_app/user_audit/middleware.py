@@ -3,8 +3,9 @@
 A successful change request (copy, import, version restore, ...) that neither a
 `LastEditTracker` nor an explicit `record_user_action` call described is recorded once,
 with its action (a custom DRF action keeps its name; DRF's generic ones read like the
-recorder's own verbs), its route and the object its URL names. The record never reads
-the request or response body.
+recorder's own verbs), its route and the object its URL names, or for DRF's generic
+`create` the object its response names by id. The record never reads the request body,
+nor any of the response but that id.
 """
 
 import io
@@ -15,18 +16,28 @@ from django.core.handlers.asgi import ASGIRequest
 from rbac.views.auth import (
     ApiKeyValidateView,
     CookieTokenRefreshView,
+    FirstSetupView,
     LoginView,
     LogoutView,
+    PasswordResetRequestView,
+    ResetUserView,
     SseTicketView,
     SwaggerTokenView,
     TokenIntrospectView,
     WsTicketView,
 )
+from rbac.views.profile import PasswordChangeRequestView, ProfileTourCompleteView
 from rest_framework.permissions import SAFE_METHODS
+from rest_framework.response import Response
 from src.shared.models import UserAction
 from tables.views.audit_token_views import AuditTokenView
 from utils.logger import logger
-from utils.request_target import model_of, target_from_url, url_path_pattern
+from utils.request_target import (
+    model_of,
+    target_from_response,
+    target_from_url,
+    url_path_pattern,
+)
 
 from user_audit.actor import actor_from_request
 from user_audit.context import UserActionContext, user_action_context
@@ -49,9 +60,17 @@ FALLBACK_EXCLUDED_VIEWS = frozenset(
         ApiKeyValidateView,
         SwaggerTokenView,
         AuditTokenView,
+        PasswordResetRequestView,
+        PasswordChangeRequestView,
         # Record their own signed_in, sign_in_failed and signed_out.
         LoginView,
         LogoutView,
+        # Instance setup and user wipe: superadmin or anonymous instance operations that
+        # belong to no organization's trail.
+        FirstSetupView,
+        ResetUserView,
+        # The caller's own UI state, like FALLBACK_EXCLUDED_ACTIONS.
+        ProfileTourCompleteView,
     }
 )
 # DRF actions that change only the caller's own preferences, never anything the org shares.
@@ -101,6 +120,7 @@ class UserActionMiddleware:
                 action=getattr(view, "actions", {}).get(request.method.lower()),
                 route=match.route if match is not None else None,
                 match=match,
+                response_data=response.data if isinstance(response, Response) else None,
             )
         return response
 
@@ -152,7 +172,14 @@ class UserActionASGI:
 
 
 def _record_unhandled_change(
-    context: UserActionContext, *, status: int, view_class, action: str | None, route, match
+    context: UserActionContext,
+    *,
+    status: int,
+    view_class,
+    action: str | None,
+    route,
+    match,
+    response_data=None,
 ) -> None:
     """Record the request once when it changed something and nothing recorded it yet.
 
@@ -166,6 +193,8 @@ def _record_unhandled_change(
         action: The view's DRF action name for the method, if it has one.
         route: The resolved URL route, None when the request resolved to no view.
         match: The resolved URL, whose `pk` or `id` names the target.
+        response_data: A DRF response's data. For DRF's generic `create`, whose URL names
+            no object, only its `pk` or `id` is read, to name the created object.
     """
     request = context.request
     try:
@@ -183,6 +212,7 @@ def _record_unhandled_change(
         actor = actor_from_request(request)
         if actor is None:
             return
+        created_data = response_data if action == "create" else None
         action = action or METHOD_ACTIONS.get(request.method, request.method.lower())
         action = GENERIC_ACTIONS.get(action) or CUSTOM_ACTION_VERBS.get(action, action)
         route_text = f"{request.method} {url_path_pattern(route)}" if route is not None else None
@@ -191,7 +221,7 @@ def _record_unhandled_change(
             record_user_action(
                 action=action,
                 org_id=org_id,
-                target_description=_url_target(view_class, match, org_id),
+                target_description=_url_target(view_class, match, org_id, created_data),
                 route=route_text,
                 actor=actor,
             )
@@ -201,8 +231,10 @@ def _record_unhandled_change(
         logger.exception("Failed to record {} {} as a user action", request.method, request.path)
 
 
-def _url_target(view_class, match, org_id: int) -> TargetDescription | None:
-    target = target_from_url(view_class, match, org_id, label_fields=TARGET_NAME_FIELDS)
+def _url_target(view_class, match, org_id: int, created_data) -> TargetDescription | None:
+    target = target_from_url(
+        view_class, match, org_id, label_fields=TARGET_NAME_FIELDS
+    ) or target_from_response(view_class, created_data, org_id, label_fields=TARGET_NAME_FIELDS)
     model = model_of(view_class)
     if target is None or model is None:
         return None

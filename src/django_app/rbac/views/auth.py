@@ -14,7 +14,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from src.shared.models import UserAction
 from user_audit.actor import Actor, actor_from_request
 from user_audit.recorder import record_for_user_orgs
-from user_audit.targets import TargetDescription
+from user_audit.targets import describe_user
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.exceptions import (
@@ -90,10 +90,6 @@ def _require_json_body(request) -> None:
 
 def _user_actor(user) -> Actor:
     return Actor(user_id=user.pk, email=user.email, api_key_name=None)
-
-
-def _user_target(user) -> TargetDescription:
-    return TargetDescription(type="user", id=str(user.pk), name=user.email)
 
 
 class LoginView(TokenObtainPairView):
@@ -422,7 +418,7 @@ class PasswordResetConfirmView(APIView):
         record_for_user_orgs(
             action=UserAction.PASSWORD_RESET,
             actor=_user_actor(user),
-            target_description=_user_target(user),
+            target_description=describe_user(user),
         )
         return Response(
             {"detail": "Password has been reset."},
@@ -468,7 +464,7 @@ class AdminPasswordResetView(APIView):
         record_for_user_orgs(
             action=UserAction.PASSWORD_RESET,
             actor=actor_from_request(request),
-            target_description=_user_target(target),
+            target_description=describe_user(target),
             org_user_id=target.pk,
         )
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -17,6 +17,7 @@ from tables.serializers.serializers import (
 from tables.services.delete_services import BaseDeleteService
 from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usage
 from tables.services.trigger_nodes import trigger_node_access
+from user_audit.context import mark_request_handled
 from user_audit.read_only import reads_only
 from utils.logger import logger
 
@@ -137,6 +138,8 @@ class BulkDeleteActionMixin:
 
         dry_run = query.validated_data["dry_run"]
         ids = body.validated_data["ids"]
+        # Each deleted row records itself; a dry run or a delete of nothing records nothing.
+        mark_request_handled()
         service = self.get_delete_service()
         result = service.preview(ids) if dry_run else service.delete(ids)
         logger.info(

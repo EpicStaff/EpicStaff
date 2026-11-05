@@ -1,10 +1,12 @@
-"""What a resolved request names: its route as a URL path pattern, and the object in its URL.
+"""What a resolved request names: its route as a URL path pattern, and the object in its URL
+or, for a create, the id its response names.
 
 Shared by the records written after a response (plugin activity, the user-action
 fallback), which know the request only by its route and URL kwargs, never by its body.
 """
 
 import re
+from collections.abc import Mapping
 
 from django.db.models import Model
 
@@ -66,13 +68,39 @@ def target_from_url(
     return str(value), _label_of_row(view_class, value, org_id, label_fields)
 
 
+def target_from_response(
+    view_class, data, org_id: int, label_fields: tuple[str, ...] = TARGET_LABEL_FIELDS
+) -> tuple[str, str | None] | None:
+    """The object a create response names by its `pk` or `id`, when `org_id` has that row.
+
+    Reads only that key of the response, never the rest of it. None when the response
+    names no id, or the view's model has no such row in `org_id` (or no organization).
+    """
+    if not isinstance(data, Mapping):
+        return None
+    value = next((data[name] for name in TARGET_URL_KWARGS if name in data), None)
+    model = model_of(view_class)
+    if value is None or model is None or "org" not in _field_names(model):
+        return None
+    try:
+        if not model._base_manager.filter(pk=value, org_id=org_id).exists():
+            return None
+    except (TypeError, ValueError):
+        return None
+    return str(value), _label_of_row(view_class, value, org_id, label_fields)
+
+
+def _field_names(model) -> set[str]:
+    return {field.name for field in model._meta.concrete_fields}
+
+
 def _label_of_row(view_class, value, org_id: int, label_fields: tuple[str, ...]) -> str | None:
     """The row's label, read in `org_id` only, so a label never comes from another
     organization's row; None for a model without an organization."""
     model = model_of(view_class)
     if model is None:
         return None
-    field_names = {field.name for field in model._meta.concrete_fields}
+    field_names = _field_names(model)
     label_field = next((name for name in label_fields if name in field_names), None)
     if "org" not in field_names or label_field is None:
         return None

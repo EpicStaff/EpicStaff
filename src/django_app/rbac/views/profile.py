@@ -6,7 +6,12 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from src.shared.models import UserAction
 from tables.models.user import TOUR_KEY_MAX_LENGTH, TOURS_MAX_PER_USER
+from user_audit.actor import actor_from_request
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_for_user_orgs
+from user_audit.targets import describe_user
 
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.identity.refresh_cookie import (
@@ -47,6 +52,21 @@ def _extract_active_org_id(request):
         return None  # Soft-fail: profile is the boot endpoint.
 
 
+def _record_profile_update(request, user, *, changed: bool) -> None:
+    """Record the user as updated in each of their orgs, or mark a no-op request handled.
+
+    A profile belongs to no org, so the change goes to every org the user is a member of.
+    """
+    if changed:
+        record_for_user_orgs(
+            action=UserAction.UPDATED,
+            actor=actor_from_request(request),
+            target_description=describe_user(user),
+        )
+    else:
+        mark_request_handled()
+
+
 class ProfileView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
@@ -75,7 +95,10 @@ class ProfileView(APIView):
     def patch(self, request):
         _require_user_context(request)
         cleaned = self._validator.validate_profile_patch(request.data)
+        values_before = {field: getattr(request.user, field) for field in cleaned}
         user = self._service.update_profile(request.user, cleaned)
+        changed = any(getattr(user, field) != value for field, value in values_before.items())
+        _record_profile_update(request, user, changed=changed)
         user = self._service.get_profile(user)
         if "display_name" in cleaned:
             profile_updated.send(sender=type(user), user=user)
@@ -111,6 +134,7 @@ class ProfileAvatarView(APIView):
         _require_user_context(request)
         uploaded = self._validator.validate_avatar_upload(request.data)
         user = self._service.update_avatar(request.user, uploaded)
+        _record_profile_update(request, user, changed=True)
         user = self._service.get_profile(user)
         profile_updated.send(sender=type(user), user=user)
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
@@ -121,7 +145,9 @@ class ProfileAvatarView(APIView):
     )
     def delete(self, request):
         _require_user_context(request)
+        had_avatar = bool(request.user.avatar)
         self._service.clear_avatar(request.user)
+        _record_profile_update(request, request.user, changed=had_avatar)
         user = self._service.get_profile(request.user)
         profile_updated.send(sender=type(user), user=user)
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -220,6 +246,11 @@ class PasswordChangeConfirmView(APIView):
         cleaned = self._validator.validate_password_change_confirm(request.data)
         tokens = self._service.password_change_confirm(
             request.user, cleaned["ticket"], cleaned["new_password"]
+        )
+        record_for_user_orgs(
+            action=UserAction.PASSWORD_RESET,
+            actor=actor_from_request(request),
+            target_description=describe_user(request.user),
         )
         # Preserve remember-me across the rotated cookie.
         remember_me = read_remember_me_claim(get_refresh_from_cookie(request))

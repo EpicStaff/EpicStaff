@@ -316,6 +316,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         org_id = self.get_active_org_id()
         serializer = StorageBulkDeleteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        # Each binned entry records itself; a path with nothing live at it records nothing.
+        mark_request_handled()
 
         for path in serializer.validated_data["paths"]:
             try:

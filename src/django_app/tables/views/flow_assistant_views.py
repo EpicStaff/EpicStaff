@@ -28,6 +28,7 @@ from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from src.shared.models import UserAction
 from tables.exceptions import LLMConfigInvalidError, LLMConfigMissingError
 from tables.models.flow_assistant_models import FlowAssistantConversation
 from tables.models.graph_models import Graph
@@ -54,6 +55,9 @@ from tables.services.llm_clients import (
 )
 from tables.services.secrets import SecretResolutionError
 from tables.utils.mixins import SSEMixin
+from user_audit.context import mark_request_handled
+from user_audit.read_only import not_a_user_change
+from user_audit.recorder import record_user_action
 from utils.logger import logger
 
 
@@ -127,7 +131,6 @@ class FlowAssistantConfigView(APIView):
         return Response(serializer.data)
 
     def patch(self, request, graph_id: int):
-        # Cached on the request, so the user-action fallback records the change in this org.
         org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
@@ -135,9 +138,10 @@ class FlowAssistantConfigView(APIView):
             resource_type=ResourceType.FLOWS,
             action=Permission.UPDATE,
         )
-        _get_graph_in_org_or_404(graph_id=graph_id, org_id=org_id)
+        graph = _get_graph_in_org_or_404(graph_id=graph_id, org_id=org_id)
         service = FlowAssistantService()
         assistant = service.get_or_create(graph_id)
+        llm_config_before = assistant.llm_config_id
 
         serializer = FlowAssistantSerializer(
             instance=assistant,
@@ -147,6 +151,11 @@ class FlowAssistantConfigView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        # The assistant has no name of its own: its settings are recorded on the flow.
+        if assistant.llm_config_id != llm_config_before:
+            record_user_action(action=UserAction.UPDATED, org_id=org_id, target=graph)
+        else:
+            mark_request_handled()
         return Response(serializer.data)
 
 
@@ -186,6 +195,7 @@ class FlowAssistantConversationsView(APIView):
         serializer = SessionSummarySerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
 
+    @not_a_user_change
     def post(self, request, graph_id: int):
         organization_user = resolve_organization_user(request)
         assert_org_permission(
@@ -230,6 +240,7 @@ class FlowAssistantConversationView(APIView):
         serializer = FlowAssistantConversationSerializer(conversation)
         return Response(serializer.data)
 
+    @not_a_user_change
     def delete(self, request, graph_id: int, conversation_id: int):
         organization_user = resolve_organization_user(request)
         assert_org_permission(
@@ -253,6 +264,7 @@ class FlowAssistantSendMessageView(APIView):
 
     permission_classes = [IsAuthenticated, DenyPluginCredential]
 
+    @not_a_user_change
     def post(self, request, graph_id: int, conversation_id: int):
         organization_user = resolve_organization_user(request)
         assert_org_permission(
@@ -460,6 +472,7 @@ class FlowAssistantCancelView(APIView):
 
     permission_classes = [IsAuthenticated, DenyPluginCredential]
 
+    @not_a_user_change
     def post(self, request, graph_id: int, conversation_id: int):
         organization_user = resolve_organization_user(request)
         assert_org_permission(

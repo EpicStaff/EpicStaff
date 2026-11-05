@@ -35,11 +35,14 @@ pytestmark = pytest.mark.django_db
 WRITE_METHODS = ("post", "put", "patch", "delete")
 
 # Every write route that changes something, other than DRF's generic create, update,
-# partial_update and destroy, which change their row by definition. The fallback or a
-# layer-2 hook records each one, provided the request has a checked org (the admin and
-# internal routes mostly have none). A new write route belongs here when it changes
-# something, and gets `@reads_only` on its handler when it does not.
-CHANGING_WRITE_ROUTES = frozenset(
+# partial_update and destroy, which change their row by definition, is in one of the two
+# sets below. A write route that changes nothing gets `@reads_only` on its handler, one
+# that only keeps a run's own state `@not_a_user_change`.
+#
+# Routes the middleware's fallback may record: their URL names the changed object by
+# `<pk>` or `<id>`, which the fallback resolves to a type and name. Many are recorded by a
+# hook first; the fallback covers the rest, provided the request has a checked org.
+FALLBACK_RECORDED_ROUTES = frozenset(
     {
         "POST api/admin/api-keys/<pk>/revoke/",
         "POST api/admin/organizations/<pk>/deactivate/",
@@ -50,136 +53,138 @@ CHANGING_WRITE_ROUTES = frozenset(
         "POST api/admin/users/<pk>/revoke-superadmin/",
         "DELETE api/agent-definitions/<pk>/purge/",
         "POST api/agent-definitions/<pk>/restore/",
-        "POST api/agent-definitions/recycle-bin/purge/",
-        "POST api/agent-definitions/recycle-bin/restore/",
         "POST api/audit-filter-presets/<pk>/copy/",
-        "POST api/audit-filter-presets/import/",
-        "POST api/auth/admin/password-reset/",
-        "POST api/auth/first-setup/",
-        "POST api/auth/password-reset/confirm/",
-        "POST api/auth/password-reset/request/",
-        "POST api/auth/reset-user/",
         "PUT api/classification-decision-table-node/<pk>/explanations/",
-        "PUT api/default-models/",
-        "POST api/documents/bulk-delete/",
-        "POST api/documents/copy/",
-        "POST api/documents/source-collection/<collection_id>/from-storage/",
-        "POST api/documents/source-collection/<collection_id>/upload/",
-        "POST api/elevenlabs-realtime-configs/bulk-delete/",
-        "POST api/embedding-configs/bulk-delete/",
-        "PATCH api/flow-assistants/<graph_id>/",
-        "POST api/flow-assistants/<graph_id>/conversations/",
-        "DELETE api/flow-assistants/<graph_id>/conversations/<conversation_id>/",
-        "POST api/flow-assistants/<graph_id>/conversations/<conversation_id>/cancel/",
-        "POST api/flow-assistants/<graph_id>/conversations/<conversation_id>/messages/",
-        "POST api/gemini-realtime-configs/bulk-delete/",
         "DELETE api/graph-rag/<pk>/documents/<document_id>/",
         "POST api/graph-rag/<pk>/documents/bulk-delete/",
         "POST api/graph-rag/<pk>/documents/initialize/",
         "PUT api/graph-rag/<pk>/index-config/",
-        "POST api/graph-rag/collections/<collection_id>/graph-rag/",
         "POST api/graph-versions/<pk>/create-graph/",
         "POST api/graph-versions/<pk>/restore/",
-        "POST api/graph-versions/bulk-delete/",
         "POST api/graphs/<pk>/copy/",
         "POST api/graphs/<pk>/partial-import/",
         "DELETE api/graphs/<pk>/purge/",
         "POST api/graphs/<pk>/restore/",
         "POST api/graphs/<pk>/save/",
-        "POST api/graphs/bulk-delete/",
-        "POST api/graphs/import/",
-        "POST api/graphs/recycle-bin/purge/",
-        "POST api/graphs/recycle-bin/restore/",
-        "DELETE api/graphs/uuid/<graph_uuid>/",
-        "POST api/init-realtime/",
-        # Crew's key-value calls share one handler; `read` changes nothing, but none of
-        # them is recorded: the system key's requests have no checked org.
-        "POST api/internal/sessions/<session_id>/key-value-tables/<table_id>/delete/",
-        "POST api/internal/sessions/<session_id>/key-value-tables/<table_id>/read/",
-        "POST api/internal/sessions/<session_id>/key-value-tables/<table_id>/write/",
-        # Records the chat service's desk changes itself, under the user who made them.
-        "POST api/internal/user-actions/",
         "DELETE api/key-value-tables/<pk>/purge/",
         "POST api/key-value-tables/<pk>/restore/",
-        "POST api/key-value-tables/recycle-bin/purge/",
-        "POST api/key-value-tables/recycle-bin/restore/",
-        "POST api/llm-configs/bulk-delete/",
         "POST api/mcp-tools/<pk>/copy/",
         "DELETE api/mcp-tools/<pk>/purge/",
         "POST api/mcp-tools/<pk>/restore/",
-        "POST api/mcp-tools/bulk-delete/",
-        "POST api/mcp-tools/import/",
+        "POST api/python-code-tool/<pk>/copy/",
+        "DELETE api/python-code-tool/<pk>/purge/",
+        "POST api/python-code-tool/<pk>/restore/",
+        "DELETE api/realtime-channels/<pk>/purge/",
+        "POST api/realtime-channels/<pk>/restore/",
+        "DELETE api/secrets/<pk>/purge/",
+        "POST api/secrets/<pk>/restore/",
+        "POST api/source-collections/<pk>/copy/",
+        "DELETE api/source-collections/<pk>/purge/",
+        "POST api/source-collections/<pk>/restore/",
+        "DELETE api/surfaces/<pk>/purge/",
+        "POST api/surfaces/<pk>/restore/",
+        "POST api/telegram-trigger-nodes/<pk>/register-webhook/",
+        "DELETE api/webhook-triggers/<pk>/purge/",
+        "POST api/webhook-triggers/<pk>/restore/",
+    }
+)
+
+# Routes whose URL does not name what they change, so a fallback record would name no
+# target: an explicit hook records each changed object, and marks a request that changed
+# nothing handled so the fallback stays out.
+HOOK_RECORDED_ROUTES = frozenset(
+    {
+        # RecycleBinBulkService and StorageRecycleBinService: RestoreService and
+        # PurgeService record each item; RecycleBinEmptyView purges through them.
+        "POST api/agent-definitions/recycle-bin/purge/",
+        "POST api/agent-definitions/recycle-bin/restore/",
+        "POST api/graphs/recycle-bin/purge/",
+        "POST api/graphs/recycle-bin/restore/",
+        "POST api/key-value-tables/recycle-bin/purge/",
+        "POST api/key-value-tables/recycle-bin/restore/",
         "POST api/mcp-tools/recycle-bin/purge/",
         "POST api/mcp-tools/recycle-bin/restore/",
+        "POST api/python-code-tool/recycle-bin/purge/",
+        "POST api/python-code-tool/recycle-bin/restore/",
+        "POST api/realtime-channels/recycle-bin/purge/",
+        "POST api/realtime-channels/recycle-bin/restore/",
+        "POST api/secrets/recycle-bin/purge/",
+        "POST api/secrets/recycle-bin/restore/",
+        "POST api/source-collections/recycle-bin/purge/",
+        "POST api/source-collections/recycle-bin/restore/",
+        "POST api/storage/recycle-bin/purge/",
+        "POST api/storage/recycle-bin/restore/",
+        "POST api/surfaces/recycle-bin/purge/",
+        "POST api/surfaces/recycle-bin/restore/",
+        "POST api/webhook-triggers/recycle-bin/purge/",
+        "POST api/webhook-triggers/recycle-bin/restore/",
+        "POST api/recycle-bin/empty/",
+        # BulkDeleteMixin: DeleteService records each binned row, BaseDeleteService each
+        # row it deletes for good.
+        "POST api/elevenlabs-realtime-configs/bulk-delete/",
+        "POST api/embedding-configs/bulk-delete/",
+        "POST api/gemini-realtime-configs/bulk-delete/",
+        "POST api/graph-versions/bulk-delete/",
+        "POST api/graphs/bulk-delete/",
+        "POST api/llm-configs/bulk-delete/",
+        "POST api/openai-realtime-configs/bulk-delete/",
+        # move_to_recycle_bin (DeleteService) records each binned row.
+        "POST api/mcp-tools/bulk-delete/",
+        "POST api/python-code-tool/bulk-delete/",
+        "POST api/source-collections/bulk-delete/",
+        "DELETE api/graphs/uuid/<graph_uuid>/",
+        # SessionViewSet.bulk_delete records each deleted session under its flow.
+        "POST api/sessions/bulk_delete/",
+        # ImportService records each main entity the file creates.
+        "POST api/audit-filter-presets/import/",
+        "POST api/graphs/import/",
+        "POST api/mcp-tools/import/",
+        "POST api/python-code-tool/import/",
+        # DocumentManagementService records each uploaded, copied or deleted document
+        # under its collection.
+        "POST api/documents/bulk-delete/",
+        "POST api/documents/copy/",
+        "POST api/documents/source-collection/<collection_id>/from-storage/",
+        "POST api/documents/source-collection/<collection_id>/upload/",
+        # record_rag_change records the collection a RAG change belongs to; a created RAG
+        # is recorded under its collection by NaiveRagService and GraphRagService.
+        "POST api/graph-rag/collections/<collection_id>/graph-rag/",
+        "POST api/naive-rag/collections/<collection_id>/naive-rag/",
         "DELETE api/naive-rag/<naive_rag_id>/document-configs/<document_config_id>/process-chunking/cancel/",
         "POST api/naive-rag/<naive_rag_id>/document-configs/<document_config_id>/process-chunking/",
         "POST api/naive-rag/<naive_rag_id>/document-configs/bulk-delete/",
         "PUT api/naive-rag/<naive_rag_id>/document-configs/bulk-update/",
         "POST api/naive-rag/<naive_rag_id>/document-configs/initialize/",
-        "POST api/naive-rag/collections/<collection_id>/naive-rag/",
-        # Sends mail: no change to the org's data, but an act, not a read.
-        "POST api/notify/email/",
-        "POST api/openai-realtime-configs/bulk-delete/",
         "POST api/process-rag-indexing/",
         "DELETE api/process-rag-indexing/<rag_type>/<rag_id>/cancel/",
-        "PATCH api/profile/",
-        "POST api/profile/api-keys/",
-        "DELETE api/profile/api-keys/<key_id>/",
-        "POST api/profile/api-keys/<key_id>/revoke/",
-        "DELETE api/profile/avatar/",
-        "POST api/profile/avatar/",
-        "POST api/profile/password-change/confirm/",
-        "POST api/profile/password-change/request/",
-        "POST api/profile/tours/<tour_key>/complete/",
-        "POST api/python-code-tool/<pk>/copy/",
-        "DELETE api/python-code-tool/<pk>/purge/",
-        "POST api/python-code-tool/<pk>/restore/",
-        "POST api/python-code-tool/bulk-delete/",
-        "POST api/python-code-tool/import/",
-        "POST api/python-code-tool/recycle-bin/purge/",
-        "POST api/python-code-tool/recycle-bin/restore/",
-        "POST api/quickstart/",
-        "POST api/quickstart/apply/",
-        "POST api/realtime-agent-chats/end/",
-        "DELETE api/realtime-channels/<pk>/purge/",
-        "POST api/realtime-channels/<pk>/restore/",
-        "POST api/realtime-channels/recycle-bin/purge/",
-        "POST api/realtime-channels/recycle-bin/restore/",
-        "POST api/recycle-bin/empty/",
-        "POST api/run-python-code/",
-        "POST api/run-session/",
-        "POST api/run-session/test/",
-        "DELETE api/secrets/<pk>/purge/",
-        "POST api/secrets/<pk>/restore/",
-        "POST api/secrets/recycle-bin/purge/",
-        "POST api/secrets/recycle-bin/restore/",
-        "POST api/sessions/<session_id>/stop/",
-        "POST api/sessions/bulk_delete/",
-        "POST api/source-collections/<pk>/copy/",
-        "DELETE api/source-collections/<pk>/purge/",
-        "POST api/source-collections/<pk>/restore/",
-        "POST api/source-collections/bulk-delete/",
-        "POST api/source-collections/recycle-bin/purge/",
-        "POST api/source-collections/recycle-bin/restore/",
+        # StorageFileSync and StorageAPIView record each storage entry and flow they change.
         "POST api/storage/add-to-graph/",
         "POST api/storage/copy/",
         "DELETE api/storage/delete/",
         "POST api/storage/mkdir/",
         "POST api/storage/move/",
-        "POST api/storage/recycle-bin/purge/",
-        "POST api/storage/recycle-bin/restore/",
         "DELETE api/storage/remove-from-graph/",
         "POST api/storage/rename/",
-        "DELETE api/surfaces/<pk>/purge/",
-        "POST api/surfaces/<pk>/restore/",
-        "POST api/surfaces/recycle-bin/purge/",
-        "POST api/surfaces/recycle-bin/restore/",
-        "POST api/telegram-trigger-nodes/<pk>/register-webhook/",
+        # Record the flow, the default models and the voice channel they update.
+        "PATCH api/flow-assistants/<graph_id>/",
+        "PUT api/default-models/",
         "POST api/twilio/configure-webhook/",
-        "DELETE api/webhook-triggers/<pk>/purge/",
-        "POST api/webhook-triggers/<pk>/restore/",
-        "POST api/webhook-triggers/recycle-bin/purge/",
-        "POST api/webhook-triggers/recycle-bin/restore/",
+        # QuickstartService records what it creates and applies.
+        "POST api/quickstart/",
+        "POST api/quickstart/apply/",
+        # Record the user in each of their orgs: the profile views, ApiKeyService, and
+        # the password resets in rbac.views.auth.
+        "PATCH api/profile/",
+        "DELETE api/profile/avatar/",
+        "POST api/profile/avatar/",
+        "POST api/profile/password-change/confirm/",
+        "POST api/profile/api-keys/",
+        "DELETE api/profile/api-keys/<key_id>/",
+        "POST api/profile/api-keys/<key_id>/revoke/",
+        "POST api/auth/admin/password-reset/",
+        "POST api/auth/password-reset/confirm/",
+        # Records the chat service's desk changes itself, under the user who made them.
+        "POST api/internal/user-actions/",
     }
 )
 
@@ -225,28 +230,45 @@ READ_ONLY_HANDLERS = sorted(
 
 
 def test_every_write_route_is_classified():
+    classified = FALLBACK_RECORDED_ROUTES | HOOK_RECORDED_ROUTES
     unclassified = sorted(
         key
         for key, view_class, name, _route, _actions in _write_handlers()
         if not handler_reads_only(view_class, name)
         and not _excluded(view_class, name)
-        and key not in CHANGING_WRITE_ROUTES
+        and key not in classified
     )
 
     assert unclassified == [], (
-        "Each new write route either changes something (add it to CHANGING_WRITE_ROUTES) "
-        "or only reads (mark its handler with user_audit.read_only.reads_only)."
+        "Classify each new write route. If it changes nothing, mark its handler with "
+        "user_audit.read_only.reads_only (or not_a_user_change for a run's own state). If "
+        "its URL names the changed object by <pk> or <id>, add it to "
+        "FALLBACK_RECORDED_ROUTES. Otherwise the fallback would record it with no target: "
+        "record each changed object with user_audit.recorder.record_user_action (and call "
+        "mark_request_handled when nothing changed), then add it to HOOK_RECORDED_ROUTES."
     )
 
 
-def test_changing_write_routes_lists_only_live_unmarked_routes():
+def test_fallback_recorded_routes_name_their_target_in_the_url():
+    unnamed = sorted(
+        route for route in FALLBACK_RECORDED_ROUTES if "<pk>" not in route and "<id>" not in route
+    )
+
+    assert unnamed == [], (
+        "The fallback names a target only from a <pk> or <id> URL kwarg. Record these routes "
+        "with an explicit hook and move them to HOOK_RECORDED_ROUTES."
+    )
+
+
+def test_classified_routes_list_only_live_unmarked_routes():
     live = {
         key
         for key, view_class, name, _route, _actions in _write_handlers()
         if not handler_reads_only(view_class, name) and not _excluded(view_class, name)
     }
 
-    assert sorted(CHANGING_WRITE_ROUTES - live) == []
+    assert sorted((FALLBACK_RECORDED_ROUTES | HOOK_RECORDED_ROUTES) - live) == []
+    assert FALLBACK_RECORDED_ROUTES.isdisjoint(HOOK_RECORDED_ROUTES)
 
 
 @pytest.mark.parametrize(

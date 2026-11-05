@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from django.db import models
 
 # The first of these a model has, and has filled, names the target.
-TARGET_NAME_FIELDS = ("name", "node_name", "custom_name", "collection_name", "path")
+TARGET_NAME_FIELDS = ("name", "node_name", "custom_name", "collection_name", "file_name", "path")
 # Labels a reader knows a model by, where its verbose_name is an internal word.
 TARGET_TYPE_LABELS = {
     "graph": "flow",
@@ -13,13 +13,21 @@ TARGET_TYPE_LABELS = {
     "llmmodel": "LLM model",
     "openairealtimeconfig": "OpenAI realtime config",
     "elevenlabsrealtimeconfig": "ElevenLabs realtime config",
+    "documentmetadata": "document",
+    "naiverag": "naive RAG",
+    "graphrag": "graph RAG",
     # A venv lives in the sandbox; this side keeps only the binding that stands for it.
     "sandboxvenvbinding": "venv",
 }
 # The foreign key a record names as the parent of a model the edit tracker gives no owner,
 # keyed by the model's `app_label.model_name`. An agent-specific surface belongs to its agent,
-# a flow version to its flow.
-TARGET_PARENT_FIELDS = {"agents.surface": "owner_agent", "tables.graphversion": "graph"}
+# a flow version and a session to their flow, a document to its collection.
+TARGET_PARENT_FIELDS = {
+    "agents.surface": "owner_agent",
+    "tables.graphversion": "graph",
+    "tables.session": "graph",
+    "tables.documentmetadata": "source_collection",
+}
 
 
 @dataclass(frozen=True)
@@ -40,6 +48,11 @@ def describe(instance: models.Model) -> TargetDescription:
         None,
     )
     return TargetDescription(type=target_type(type(instance)), id=str(instance.pk), name=name)
+
+
+def describe_user(user) -> TargetDescription:
+    """Describe a user by email, the name every reader of the record knows them by."""
+    return TargetDescription(type="user", id=str(user.pk), name=user.email)
 
 
 def target_parent(instance: models.Model) -> models.Model | None:

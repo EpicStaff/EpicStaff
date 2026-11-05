@@ -7,7 +7,7 @@ from loguru import logger
 from src.shared.models import UserAction
 from tables.models.user import User
 from user_audit.recorder import record_user_action
-from user_audit.targets import TargetDescription
+from user_audit.targets import describe_user
 
 from rbac.exceptions import (
     EmailAlreadyExistsError,
@@ -169,7 +169,7 @@ class UserManagementService(CrossOrgResourceService):
             record_user_action(
                 action=UserAction.CREATED,
                 org_id=org.pk,
-                target_description=TargetDescription(type="user", id=str(user.pk), name=user.email),
+                target_description=describe_user(user),
             )
 
         logger.info(

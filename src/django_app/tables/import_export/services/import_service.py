@@ -7,6 +7,9 @@ from rbac.authorship import record_last_edits
 from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
 from rest_framework.exceptions import PermissionDenied
+from src.shared.models import UserAction
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 
 from tables.import_export.constants import DEPENDENCY_ORDER
 from tables.import_export.enums import EntityType, NodeType
@@ -37,9 +40,14 @@ class ImportService:
         `effective_permissions=None` means a trusted internal caller: both permission
         checks (CREATE on each new resource, and USE for trigger nodes) are skipped.
         `strategy_kwargs` reach every strategy's `import_entity` as keyword arguments.
+
+        Each main entity the file creates is recorded as a `created` user action by name
+        (`updated` for one written over an existing row); dependencies it pulls in and
+        entities it reuses are not. An import that creates nothing records nothing.
         """
         if settings is None:
             settings = ImportSettings()
+        mark_request_handled()
 
         id_mapper = IDMapper()
         denied_resources = set()
@@ -159,6 +167,16 @@ class ImportService:
         # create_entity call can resolve it. Don't overwrite that mapping.
         if not id_mapper.has_mapping(entity_type, old_id):
             id_mapper.map(entity_type, old_id, instance.id, was_created)
+        if is_main and id_mapper.was_created(entity_type, old_id):
+            record_user_action(
+                action=(
+                    UserAction.UPDATED
+                    if id_mapper.was_replaced(entity_type, old_id)
+                    else UserAction.CREATED
+                ),
+                org_id=org_id,
+                target=instance,
+            )
         return denied
 
     def _resolve_graph_order(self, graphs: list[dict]) -> list[dict]:

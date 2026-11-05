@@ -31,6 +31,7 @@ from tables.models.knowledge_models.naive_rag_models import (
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
+from user_audit.context import mark_request_handled
 from user_audit.recorder import record_user_action
 
 _GRAPH_RAG_CLEANUP_TIMEOUT_SECONDS = 5.0
@@ -346,6 +347,8 @@ class CollectionManagementService:
         Returns:
             dict: Deletion summary
         """
+        # Each binned collection records itself; a request that binned none records nothing.
+        mark_request_handled()
         if not collection_ids:
             return {
                 "deleted_count": 0,
