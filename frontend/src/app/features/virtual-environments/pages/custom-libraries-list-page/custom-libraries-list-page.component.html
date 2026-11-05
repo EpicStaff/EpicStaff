@@ -1,0 +1,27 @@
+@if (isLoading()) {
+    <div class="custom-libraries__list">
+        @for (placeholder of [0, 1, 2, 3]; track placeholder) {
+            <div class="custom-libraries__skeleton">
+                <span class="custom-libraries__skeleton-bar custom-libraries__skeleton-bar--name"></span>
+                <span class="custom-libraries__skeleton-bar custom-libraries__skeleton-bar--meta"></span>
+            </div>
+        }
+    </div>
+} @else if (libraries().length === 0) {
+    <div class="custom-libraries__list">
+        <div class="custom-libraries__empty text-body">
+            <p>No custom libraries yet. Create one to install your own packages in a venv.</p>
+        </div>
+    </div>
+} @else {
+    <div class="custom-libraries__list">
+        @for (library of libraries(); track library.id) {
+            <app-custom-library-card
+                [library]="library"
+                [canDelete]="canDelete()"
+                (openRequested)="onOpen(library)"
+                (deleteRequested)="onDelete(library)"
+            />
+        }
+    </div>
+}
