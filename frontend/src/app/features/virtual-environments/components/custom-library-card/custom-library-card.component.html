@@ -1,0 +1,40 @@
+<article
+    class="custom-library-card"
+    tabindex="0"
+    [attr.aria-label]="'Open ' + displayName()"
+    (click)="onCardClick()"
+    (keydown.enter)="onCardClick()"
+>
+    <span
+        class="custom-library-card__name text-body-medium"
+        appTooltipOnOverflow
+        matTooltipPosition="above"
+        [matTooltip]="displayName()"
+        >{{ displayName() }}</span
+    >
+
+    <div class="custom-library-card__trailing text-body-small">
+        @if (meta(); as meta) {
+            <span class="custom-library-card__meta"
+                >{{ meta.lead }}<span class="custom-library-card__meta-date">{{ meta.date }}</span
+                >{{ meta.trail }}</span
+            >
+        }
+
+        @if (canDelete()) {
+            <button
+                type="button"
+                class="custom-library-card__icon-btn"
+                aria-label="Delete"
+                matTooltip="Delete"
+                matTooltipPosition="above"
+                (click)="$event.stopPropagation(); onDelete()"
+            >
+                <app-svg-icon
+                    icon="close"
+                    size="16px"
+                />
+            </button>
+        }
+    </div>
+</article>
