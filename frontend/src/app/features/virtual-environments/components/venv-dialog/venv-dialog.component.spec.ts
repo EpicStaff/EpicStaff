@@ -119,7 +119,15 @@ describe('VenvDialogComponent library rows', () => {
 
     it('fills Version with the installed version and Specification with the stored specifier set', () => {
         open({
-            venv: storedVenv([{ name: 'requests', version: '2.31.0', specification: '>=2.0,<3.0', description: null }]),
+            venv: storedVenv([
+                {
+                    name: 'requests',
+                    version: '2.31.0',
+                    specification: '>=2.0,<3.0',
+                    description: null,
+                    is_custom: false,
+                },
+            ]),
         });
 
         expect(cell(0, 'Version').value).toBe('2.31.0');
@@ -127,14 +135,22 @@ describe('VenvDialogComponent library rows', () => {
     });
 
     it('leaves Version empty for a library the build has not resolved yet', () => {
-        open({ venv: storedVenv([{ name: 'requests', version: null, specification: '>=2.0', description: null }]) });
+        open({
+            venv: storedVenv([
+                { name: 'requests', version: null, specification: '>=2.0', description: null, is_custom: false },
+            ]),
+        });
 
         expect(cell(0, 'Version').value).toBe('');
     });
 
     it('sends a stored specifier set back unchanged when nothing in the row was edited', () => {
         const specification = '!=1.2,>=1.0,<=1.8';
-        open({ venv: storedVenv([{ name: 'requests', version: '1.5', specification, description: null }]) });
+        open({
+            venv: storedVenv([
+                { name: 'requests', version: '1.5', specification, description: null, is_custom: false },
+            ]),
+        });
 
         save();
 
@@ -142,9 +158,11 @@ describe('VenvDialogComponent library rows', () => {
         expect(request.request.method).toBe('PATCH');
         expect(request.request.body).toEqual({
             name: 'ml base',
-            libs: [{ name: 'requests', version: '1.5', specification, description: null }],
+            libs: [{ name: 'requests', version: '1.5', specification, description: null, is_custom: false }],
         });
-        request.flush(storedVenv([{ name: 'requests', version: '1.5', specification, description: null }]));
+        request.flush(
+            storedVenv([{ name: 'requests', version: '1.5', specification, description: null, is_custom: false }])
+        );
     });
 
     it.each([
@@ -152,25 +170,37 @@ describe('VenvDialogComponent library rows', () => {
             shape: 'name only: the resolver picks a version',
             version: '',
             specification: '',
-            expected: { name: 'requests', version: null, specification: '', description: null },
+            expected: { name: 'requests', version: null, specification: '', description: null, is_custom: false },
         },
         {
             shape: 'name and version: that version is pinned',
             version: '2.31.0',
             specification: '',
-            expected: { name: 'requests', version: '2.31.0', specification: '', description: null },
+            expected: { name: 'requests', version: '2.31.0', specification: '', description: null, is_custom: false },
         },
         {
             shape: 'name and specification: the resolver picks inside the set',
             version: '',
             specification: '!=1.2,>=1.0,<=1.8',
-            expected: { name: 'requests', version: null, specification: '!=1.2,>=1.0,<=1.8', description: null },
+            expected: {
+                name: 'requests',
+                version: null,
+                specification: '!=1.2,>=1.0,<=1.8',
+                description: null,
+                is_custom: false,
+            },
         },
         {
             shape: 'name, version and specification: the version wins, the set is kept',
             version: '1.5',
             specification: '!=1.2,>=1.0,<=1.8',
-            expected: { name: 'requests', version: '1.5', specification: '!=1.2,>=1.0,<=1.8', description: null },
+            expected: {
+                name: 'requests',
+                version: '1.5',
+                specification: '!=1.2,>=1.0,<=1.8',
+                description: null,
+                is_custom: false,
+            },
         },
     ])('posts $shape', ({ version, specification, expected }) => {
         open({});
@@ -188,7 +218,7 @@ describe('VenvDialogComponent library rows', () => {
         save();
 
         expect(savedBody().libs).toEqual([
-            { name: 'requests', version: '2.31.0', specification: '>=2.0', description: null },
+            { name: 'requests', version: '2.31.0', specification: '>=2.0', description: null, is_custom: false },
         ]);
     });
 

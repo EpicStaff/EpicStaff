@@ -55,6 +55,7 @@
                         <col />
                         <col class="venv-dialog__col-version" />
                         <col class="venv-dialog__col-spec" />
+                        <col class="venv-dialog__col-custom" />
                         <col class="venv-dialog__col-action" />
                     </colgroup>
                     <thead>
@@ -80,6 +81,16 @@
                                         position="top"
                                         size="14px"
                                         tooltipClass="venv-specifier-tooltip"
+                                    />
+                                </span>
+                            </th>
+                            <th class="venv-dialog__cell--center">
+                                <span class="venv-dialog__col-header">
+                                    Custom
+                                    <app-help-tooltip
+                                        text="Resolve this name against an uploaded custom library instead of PyPI."
+                                        position="top"
+                                        size="14px"
                                     />
                                 </span>
                             </th>
@@ -161,6 +172,12 @@
                                         [matTooltip]="specificationError ?? ''"
                                         [matTooltipDisabled]="!specificationError"
                                         [class.venv-dialog__cell-input--invalid]="!!specificationError"
+                                    />
+                                </td>
+                                <td class="venv-dialog__cell--center">
+                                    <app-checkbox
+                                        formControlName="isCustom"
+                                        ariaLabel="Custom library"
                                     />
                                 </td>
                                 <td class="venv-dialog__cell--center">

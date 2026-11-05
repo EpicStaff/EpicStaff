@@ -139,12 +139,22 @@
         width: 200px;
     }
 
+    &__col-custom {
+        width: 96px;
+    }
+
     &__col-action {
         width: 40px;
     }
 
     &__libs-table &__cell--center {
         text-align: center;
+    }
+
+    &__cell--center app-checkbox {
+        height: 100%;
+        align-items: center;
+        justify-content: center;
     }
 
     &__col-header {

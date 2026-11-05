@@ -15,6 +15,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
+    CheckboxComponent,
     CustomInputComponent,
     HelpTooltipComponent,
     ValidationErrorsComponent,
@@ -53,6 +54,8 @@ interface LibraryRowGroup {
     version: FormControl<string>;
     // The whole PEP 440 specifier set, stored and sent verbatim.
     specification: FormControl<string>;
+    // Resolve this name against an uploaded custom library instead of PyPI.
+    isCustom: FormControl<boolean>;
 }
 
 @Component({
@@ -66,6 +69,7 @@ interface LibraryRowGroup {
         AppSvgIconComponent,
         MatTooltipModule,
         TooltipOnOverflowDirective,
+        CheckboxComponent,
     ],
     templateUrl: './venv-dialog.component.html',
     styleUrls: ['./venv-dialog.component.scss'],
@@ -190,6 +194,7 @@ export class VenvDialogComponent {
                 nonNullable: true,
                 validators: [Validators.pattern(VENV_LIBRARY_SPECIFICATION_PATTERN)],
             }),
+            isCustom: new FormControl(lib?.is_custom ?? false, { nonNullable: true }),
         });
     }
 
@@ -204,6 +209,7 @@ export class VenvDialogComponent {
                     specification: row.specification.trim(),
                     version: version || null,
                     description: row.description.trim() || null,
+                    is_custom: row.isCustom,
                 };
             }),
         };
