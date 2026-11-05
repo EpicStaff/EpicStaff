@@ -26,6 +26,7 @@ import {
     AuthorshipDetailsSource,
     BulkSelectDropdownComponent,
     ButtonComponent,
+    CheckboxComponent,
     EmbeddingModelConfigDialogComponent,
     FetchErrorStateComponent,
     LlmModelConfigDialogComponent,
@@ -34,6 +35,7 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
+import { PROVIDER_ICON_PATHS, PROVIDER_MONOCHROME_ICON_PATHS, providerDisplayName } from '@shared/constants';
 import { HasPermissionDirective } from '@shared/directives';
 import {
     ActionCode,
@@ -58,6 +60,7 @@ import { forkJoin, Observable, of } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
+import { SYSTEM_ONE_PROVIDERS } from '../../constants/system-one-providers.constant';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
@@ -68,6 +71,14 @@ import {
     llmLibrarySelectionKey,
     LlmLibrarySelectionKind,
 } from '../../utils/llm-library-bulk-delete.util';
+import {
+    compareProviderCreationOrder,
+    LLM_LIBRARY_CARD_GAP,
+    llmLibraryCardsPerRow,
+    packLlmLibraryRows,
+    ProviderCreationOrder,
+    providerCreationOrder,
+} from '../../utils/llm-library-layout.util';
 import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
 import {
     LlmLibraryCardComponent,
@@ -113,7 +124,8 @@ function toSystemOneCardModel(config: SystemOneConfig, llmConfigName: string | u
 
 interface VoiceProvider {
     key: RealtimeProvider;
-    label: string;
+    /** The provider's name, as its group heading shows it. */
+    name: string;
     deleteLabel: BulkDeleteLabel;
     storage: {
         configs: Signal<RealtimeConfig[]>;
@@ -123,7 +135,49 @@ interface VoiceProvider {
 
 type SectionKey = 'llm' | 'embedding' | 'realtime' | 'transcription' | 'system_one' | RealtimeProvider;
 
-const SYSTEM_ONE_LABEL = 'System One Configs';
+/** The collapsible sections of the page, in their order. */
+type LibrarySectionKey = 'llm' | 'embedding' | 'voice' | 'system_one';
+
+/** A card on the page: what selects it and what its buttons do. */
+interface LibraryCard {
+    selectionKey: string;
+    kind: LlmLibrarySelectionKind;
+    id: number;
+    model: LlmLibraryModel;
+    edit(): void;
+    remove(): void;
+    viewDetails(trigger: HTMLElement): void;
+}
+
+/** A provider's cards under its heading; System One has one group with no heading (`name` null). */
+interface LibraryProviderGroup {
+    id: string;
+    name: string | null;
+    icon: string;
+    /** The icon is a multi-colour logo, painted in the text colour by a filter. */
+    isTinted: boolean;
+    order: ProviderCreationOrder;
+    cards: LibraryCard[];
+}
+
+interface LibrarySectionError {
+    key: SectionKey;
+    title: string;
+}
+
+interface LibrarySection {
+    key: LibrarySectionKey;
+    title: string;
+    errors: LibrarySectionError[];
+    /** Provider groups packed into rows (see `packLlmLibraryRows`). */
+    rows: LibraryProviderGroup[][];
+    /** The providers, comma-separated, as a collapsed heading lists them; empty for System One. */
+    providerList: string;
+    /** Every card shown in the section, by selection key. */
+    selectionKeys: string[];
+}
+
+const SYSTEM_ONE_LABEL = 'System One';
 const LLM_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'LLM config', plural: 'LLM configs' };
 const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding config', plural: 'embedding configs' };
 const SYSTEM_ONE_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'System One config', plural: 'System One configs' };
@@ -151,7 +205,7 @@ type ToolbarControlLook =
  * the labelled ones estimates for Inter 14px.
  */
 const ESTIMATED_CONTROL_WIDTHS: Record<ToolbarControlLook, number> = {
-    capabilities: 163,
+    capabilities: 157,
     'capabilities-icon': 67,
     select: 96,
     'select-icon': 40,
@@ -198,6 +252,7 @@ const ACTION_ICON: ToolbarIcons = { capabilities: false, select: false, action: 
         BulkSelectDropdownComponent,
         SearchComponent,
         FetchErrorStateComponent,
+        CheckboxComponent,
     ],
     templateUrl: './llm-library-section.component.html',
     styleUrls: ['./llm-library-section.component.scss'],
@@ -218,6 +273,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     private readonly bulkSelect = viewChild(BulkSelectDropdownComponent);
     private readonly bulkSelectElement = viewChild(BulkSelectDropdownComponent, { read: ElementRef });
     private readonly cardElements = viewChildren(LlmLibraryCardComponent, { read: ElementRef });
+    private readonly sectionHeaders = viewChildren<ElementRef<HTMLElement>>('sectionHeader');
 
     private readonly llmLibraryService = inject(LLMLibraryService);
     private readonly llmConfigStorageService = inject(LlmConfigStorageService);
@@ -237,28 +293,28 @@ export class LlmLibrarySectionComponent implements OnInit {
     readonly voiceProviders: VoiceProvider[] = [
         {
             key: 'openai',
-            label: 'OpenAI Voice Configs',
+            name: 'OpenAI',
             deleteLabel: { singular: 'OpenAI voice config', plural: 'OpenAI voice configs' },
             storage: this.openaiRealtimeStorage,
         },
         {
             key: 'elevenlabs',
-            label: 'ElevenLabs Voice Configs',
+            name: 'ElevenLabs',
             deleteLabel: { singular: 'ElevenLabs voice config', plural: 'ElevenLabs voice configs' },
             storage: this.elevenLabsRealtimeStorage,
         },
         {
             key: 'gemini',
-            label: 'Gemini Voice Configs',
+            name: 'Gemini',
             deleteLabel: { singular: 'Gemini voice config', plural: 'Gemini voice configs' },
             storage: this.geminiRealtimeStorage,
         },
     ];
 
     public providerGroups = this.llmLibraryService.providerGroups;
-    public configs = this.llmConfigStorageService.configs;
     public searchQuery = signal('');
-    public selectedCapability = signal<unknown>(null);
+    /** The section the Capabilities filter shows; null shows all of them. */
+    public readonly selectedSectionFilter = signal<LibrarySectionKey | null>(null);
     public status = signal<LoadingState>(LoadingState.IDLE);
     public sectionErrors = signal<Record<SectionKey, boolean>>({
         llm: false,
@@ -320,27 +376,24 @@ export class LlmLibrarySectionComponent implements OnInit {
         this.isStacked() ? null : this.toolbarRowWidth(this.toolbarIcons())
     );
 
-    readonly configTypeSections: { type: ModelTypes; label: string; key: SectionKey }[] = [
-        { type: ModelTypes.LLM, label: 'LLM', key: 'llm' },
-        { type: ModelTypes.EMBEDDING, label: 'Embedding', key: 'embedding' },
+    readonly configTypeSections: { type: ModelTypes; title: string; errorLabel: string; key: 'llm' | 'embedding' }[] = [
+        { type: ModelTypes.LLM, title: 'LLM', errorLabel: 'LLM', key: 'llm' },
+        { type: ModelTypes.EMBEDDING, title: 'Embeddings', errorLabel: 'Embedding', key: 'embedding' },
     ];
 
     filteredGroups = computed<LlmLibraryProviderGroup[]>(() => {
         const query = this.searchQuery().toLowerCase();
-        const cap = this.selectedCapability() as string;
 
         return this.providerGroups()
             .map((group) => {
                 const filteredModels = group.models.filter((model) => {
-                    const matchesSearch =
+                    return (
                         !query ||
                         model.customName.toLowerCase().includes(query) ||
                         model.modelName.toLowerCase().includes(query) ||
-                        group.providerName.toLowerCase().includes(query);
-
-                    const matchesCap = cap === null || model.tags.some((t) => t.name.includes(cap));
-
-                    return matchesSearch && matchesCap;
+                        group.providerName.toLowerCase().includes(query) ||
+                        providerDisplayName(group.providerName).toLowerCase().includes(query)
+                    );
                 });
 
                 return { ...group, models: filteredModels };
@@ -351,23 +404,19 @@ export class LlmLibrarySectionComponent implements OnInit {
     filteredVoiceProviders = computed(() => {
         const query = this.searchQuery().toLowerCase();
         const errors = this.sectionErrors();
-        return this.voiceProviders
-            .map((provider) => ({
-                ...provider,
-                hasError: errors[provider.key],
-                cards: provider.storage
-                    .configs()
-                    .filter((c) => {
-                        if (!query) return true;
-                        return (
-                            c.custom_name.toLowerCase().includes(query) ||
-                            c.model_name.toLowerCase().includes(query) ||
-                            provider.label.toLowerCase().includes(query)
-                        );
-                    })
-                    .map((config) => ({ config, model: toVoiceCardModel(config) })),
-            }))
-            .filter((provider) => provider.hasError || provider.cards.length > 0);
+        return this.voiceProviders.map((provider) => ({
+            provider,
+            hasError: errors[provider.key],
+            configs: provider.storage
+                .configs()
+                .filter(
+                    (config) =>
+                        !query ||
+                        config.custom_name.toLowerCase().includes(query) ||
+                        config.model_name.toLowerCase().includes(query) ||
+                        `${provider.name} voice`.toLowerCase().includes(query)
+                ),
+        }));
     });
 
     filteredSystemOne = computed(() => {
@@ -392,60 +441,93 @@ export class LlmLibrarySectionComponent implements OnInit {
                     model.modelName.toLowerCase().includes(query) ||
                     SYSTEM_ONE_LABEL.toLowerCase().includes(query)
             );
-        return { hasError, cards, isVisible: hasError || cards.length > 0 };
+        return { hasError, cards };
     });
 
-    groupedByType = computed(() => {
-        const all = this.filteredGroups();
+    /** Cards a row holds at the page's width: the header spans the same width as the sections. */
+    protected readonly cardsPerRow = computed(() => llmLibraryCardsPerRow(this.headerWidth()));
+
+    /** LLM, Embeddings, Voice and System One, each left out when it has no card and no error to show. */
+    protected readonly sections = computed<LibrarySection[]>(() => {
         const errors = this.sectionErrors();
-        return this.configTypeSections
-            .map((section) => ({
-                ...section,
-                hasError: errors[section.key],
-                groups: all
-                    .filter((g) => g.configType === section.type)
-                    .sort((a, b) => a.providerName.localeCompare(b.providerName)),
-            }))
-            .filter((section) => section.hasError || section.groups.length > 0);
-    });
-
-    hasNoConfigs = computed(
-        () =>
-            this.groupedByType().length === 0 &&
-            this.filteredVoiceProviders().length === 0 &&
-            !this.filteredSystemOne().isVisible
-    );
-
-    public capabilities = computed<SelectItem[]>(() => [
-        { name: 'All capabilities', value: null },
-        ...this.configs().flatMap((config) => config.tags.map((tag) => ({ name: tag.name, value: tag.name }))),
-    ]);
-
-    /** Keys of every card currently rendered (not hidden behind a section/provider error). */
-    private readonly visibleSelectionKeys = computed<ReadonlySet<string>>(() => {
-        const keys = new Set<string>();
-        for (const section of this.groupedByType()) {
-            if (section.hasError) continue;
-            for (const group of section.groups) {
-                for (const model of group.models) {
-                    keys.add(llmLibrarySelectionKey(this.kindForModel(model), model.id));
-                }
+        const cardsPerRow = this.cardsPerRow();
+        const modelGroups = this.filteredGroups();
+        const sections = this.configTypeSections.map(({ type, title, errorLabel, key }) => {
+            if (errors[key]) {
+                return this.buildSection(
+                    key,
+                    title,
+                    [{ key, title: `Failed to load ${errorLabel} configurations` }],
+                    [],
+                    cardsPerRow
+                );
             }
-        }
-        for (const provider of this.filteredVoiceProviders()) {
-            if (provider.hasError) continue;
-            for (const card of provider.cards) {
-                keys.add(llmLibrarySelectionKey(provider.key, card.config.id));
-            }
-        }
+            const createdAt = this.configCreationTimes(type);
+            const groups = modelGroups
+                .filter((group) => group.configType === type)
+                .map((group) => this.toModelGroup(group, createdAt));
+            return this.buildSection(key, title, [], groups, cardsPerRow);
+        });
+
+        const voice = this.filteredVoiceProviders();
+        sections.push(
+            this.buildSection(
+                'voice',
+                'Voice',
+                voice
+                    .filter(({ hasError }) => hasError)
+                    .map(({ provider }) => ({
+                        key: provider.key,
+                        title: `Failed to load ${provider.name} voice configurations`,
+                    })),
+                voice
+                    .filter(({ hasError, configs }) => !hasError && configs.length > 0)
+                    .map(({ provider, configs }) => this.toVoiceGroup(provider, configs)),
+                cardsPerRow
+            )
+        );
+
         const systemOne = this.filteredSystemOne();
-        if (!systemOne.hasError) {
-            for (const card of systemOne.cards) {
-                keys.add(llmLibrarySelectionKey('system_one', card.config.id));
-            }
-        }
-        return keys;
+        sections.push(
+            this.buildSection(
+                'system_one',
+                SYSTEM_ONE_LABEL,
+                systemOne.hasError ? [{ key: 'system_one', title: 'Failed to load System One configurations' }] : [],
+                systemOne.hasError ? [] : this.toSystemOneGroups(systemOne.cards),
+                cardsPerRow
+            )
+        );
+
+        const shown = this.selectedSectionFilter();
+        return sections.filter(
+            (section) =>
+                (shown === null || section.key === shown) &&
+                (section.errors.length > 0 || section.selectionKeys.length > 0)
+        );
     });
+
+    /** Sections collapsed by the user; all start open, and the state lasts as long as the page. */
+    protected readonly collapsedSections = signal<ReadonlySet<LibrarySectionKey>>(new Set());
+
+    hasNoConfigs = computed(() => this.sections().length === 0);
+
+    /** The Capabilities filter: all sections, or one of them. */
+    public readonly capabilities: SelectItem[] = [
+        { name: 'All capabilities', value: null },
+        { name: 'LLM', value: 'llm' },
+        { name: 'Embedding', value: 'embedding' },
+        { name: 'Voice', value: 'voice' },
+        { name: SYSTEM_ONE_LABEL, value: 'system_one' },
+    ];
+
+    public onSectionFilterChange(value: unknown): void {
+        this.selectedSectionFilter.set(value as LibrarySectionKey | null);
+    }
+
+    /** Keys of every card currently rendered (not hidden behind a section/provider error), collapsed or not. */
+    private readonly visibleSelectionKeys = computed<ReadonlySet<string>>(
+        () => new Set(this.sections().flatMap((section) => section.selectionKeys))
+    );
 
     public readonly allVisibleSelected = computed(() => {
         const visible = this.visibleSelectionKeys();
@@ -623,22 +705,40 @@ export class LlmLibrarySectionComponent implements OnInit {
         this.bulkDeleteService.run([group]).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
-    public isSystemOneSelected(config: SystemOneConfig): boolean {
-        return this.selectedKeys().has(llmLibrarySelectionKey('system_one', config.id));
+    public toggleSection(key: LibrarySectionKey): void {
+        this.collapsedSections.update((collapsed) => {
+            const next = new Set(collapsed);
+            if (!next.delete(key)) next.add(key);
+            return next;
+        });
     }
 
-    public onSystemOneSelectedChange(config: SystemOneConfig, selected: boolean): void {
+    /** How many of the section's cards are ticked. */
+    public tickedCount(section: LibrarySection): number {
+        const selected = this.selectedKeys();
+        return section.selectionKeys.filter((key) => selected.has(key)).length;
+    }
+
+    /**
+     * The section's box ticks all its cards when none is ticked, and unticks them all otherwise. The box is set to
+     * match, since a click on a "-" box ticks it in the browser while it should clear.
+     */
+    public onSectionCheckboxChange(section: LibrarySection, checkbox: CheckboxComponent): void {
         if (this.isDeleting()) return;
-        this.setSelected('system_one', config.id, selected);
-    }
-
-    public isVoiceSelected(provider: VoiceProvider, config: RealtimeConfig): boolean {
-        return this.selectedKeys().has(llmLibrarySelectionKey(provider.key, config.id));
-    }
-
-    public onVoiceSelectedChange(provider: VoiceProvider, config: RealtimeConfig, selected: boolean): void {
-        if (this.isDeleting()) return;
-        this.setSelected(provider.key, config.id, selected);
+        const tickAll = this.tickedCount(section) === 0;
+        checkbox.checked.set(tickAll);
+        const next = new Set(this.selectedKeys());
+        for (const key of section.selectionKeys) {
+            if (tickAll) {
+                next.add(key);
+            } else {
+                next.delete(key);
+            }
+        }
+        this.selectedKeys.set(next);
+        if (!tickAll && this.selectedCount() === 0) {
+            this.exitSelectMode();
+        }
     }
 
     public onSearchChange(value: string): void {
@@ -711,6 +811,8 @@ export class LlmLibrarySectionComponent implements OnInit {
         if (this.overlayContainer.getContainerElement().contains(target)) return;
         if (this.bulkSelectElement()?.nativeElement.contains(target)) return;
         if (this.cardElements().some((card) => card.nativeElement.contains(target))) return;
+        // A section's box ticks its cards, and its heading only collapses it: neither is a click away.
+        if (this.sectionHeaders().some((header) => header.nativeElement.contains(target))) return;
         this.exitSelectMode();
     }
 
@@ -728,13 +830,13 @@ export class LlmLibrarySectionComponent implements OnInit {
         this.selectedKeys.set(this.allVisibleSelected() ? new Set() : new Set(this.visibleSelectionKeys()));
     }
 
-    public isModelSelected(model: LlmLibraryModel): boolean {
-        return this.selectedKeys().has(llmLibrarySelectionKey(this.kindForModel(model), model.id));
+    public isCardSelected(card: LibraryCard): boolean {
+        return this.selectedKeys().has(card.selectionKey);
     }
 
-    public onCardSelectedChange(model: LlmLibraryModel, selected: boolean): void {
+    public onCardSelectedChange(card: LibraryCard, selected: boolean): void {
         if (this.isDeleting()) return;
-        this.setSelected(this.kindForModel(model), model.id, selected);
+        this.setSelected(card.kind, card.id, selected);
     }
 
     public deleteSelected(): void {
@@ -756,13 +858,114 @@ export class LlmLibrarySectionComponent implements OnInit {
             .subscribe();
     }
 
-    protected readonly systemOneLabel = SYSTEM_ONE_LABEL;
+    protected readonly cardGap = LLM_LIBRARY_CARD_GAP;
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
 
     /** The deleted card (or the bulk Delete button, gone with select mode) had the focus: it goes to Add Configuration. */
     private focusAddAfterDelete(): void {
         afterNextRender(() => this.addButton()?.focus(), { injector: this.injector });
+    }
+
+    /** Groups in the order their providers were added, packed into rows. */
+    private buildSection(
+        key: LibrarySectionKey,
+        title: string,
+        errors: LibrarySectionError[],
+        groups: LibraryProviderGroup[],
+        cardsPerRow: number
+    ): LibrarySection {
+        const ordered = [...groups].sort((first, second) => compareProviderCreationOrder(first.order, second.order));
+        return {
+            key,
+            title,
+            errors,
+            rows: packLlmLibraryRows(ordered, (group) => group.cards.length, cardsPerRow),
+            providerList: ordered.flatMap((group) => (group.name === null ? [] : [group.name])).join(', '),
+            selectionKeys: ordered.flatMap((group) => group.cards.map((card) => card.selectionKey)),
+        };
+    }
+
+    /** Creation time of each config of the type, by id (the library models do not carry it). */
+    private configCreationTimes(type: ModelTypes): Map<number, string | null> {
+        const configs: { id: number; created_at: string | null }[] =
+            type === ModelTypes.EMBEDDING
+                ? this.embeddingConfigStorage.configs()
+                : this.llmConfigStorageService.configs();
+        return new Map(configs.map((config) => [config.id, config.created_at]));
+    }
+
+    /** The provider's one-colour logo where it has one, else its own logo, tinted. */
+    private providerIcon(name: string, ownIcon: string): Pick<LibraryProviderGroup, 'icon' | 'isTinted'> {
+        const monochrome = PROVIDER_MONOCHROME_ICON_PATHS[name.toLowerCase()];
+        return monochrome ? { icon: monochrome, isTinted: false } : { icon: ownIcon, isTinted: true };
+    }
+
+    private toModelGroup(group: LlmLibraryProviderGroup, createdAt: Map<number, string | null>): LibraryProviderGroup {
+        return {
+            id: group.id,
+            name: providerDisplayName(group.providerName),
+            ...this.providerIcon(group.providerName, group.providerIconPath),
+            order: providerCreationOrder(
+                group.models.map((model) => ({ id: model.id, createdAt: createdAt.get(model.id) ?? null }))
+            ),
+            cards: group.models.map((model) => {
+                const kind = this.kindForModel(model);
+                return {
+                    selectionKey: llmLibrarySelectionKey(kind, model.id),
+                    kind,
+                    id: model.id,
+                    model,
+                    edit: () => this.onEdit(model),
+                    remove: () => this.onDelete(model),
+                    viewDetails: (trigger: HTMLElement) => this.onViewDetails({ model, trigger }),
+                };
+            }),
+        };
+    }
+
+    private toVoiceGroup(provider: VoiceProvider, configs: RealtimeConfig[]): LibraryProviderGroup {
+        return {
+            id: `voice-${provider.key}`,
+            name: provider.name,
+            ...this.providerIcon(provider.name, PROVIDER_ICON_PATHS[provider.key] ?? PROVIDER_ICON_PATHS['default']),
+            order: providerCreationOrder(configs.map((config) => ({ id: config.id, createdAt: config.created_at }))),
+            cards: configs.map((config) => ({
+                selectionKey: llmLibrarySelectionKey(provider.key, config.id),
+                kind: provider.key,
+                id: config.id,
+                model: toVoiceCardModel(config),
+                edit: () => this.onEditConfig(provider, config),
+                remove: () => this.onDeleteConfig(provider, config),
+                viewDetails: (trigger: HTMLElement) => this.onViewConfigDetails(config, trigger),
+            })),
+        };
+    }
+
+    /** One group per System One provider that has cards (TypeSafe, LLM), in the order they were added. */
+    private toSystemOneGroups(cards: { config: SystemOneConfig; model: LlmLibraryModel }[]): LibraryProviderGroup[] {
+        return SYSTEM_ONE_PROVIDERS.map((provider) => ({
+            provider,
+            providerCards: cards.filter(({ config }) => config.provider === provider.key),
+        }))
+            .filter(({ providerCards }) => providerCards.length > 0)
+            .map(({ provider, providerCards }) => ({
+                id: `system_one-${provider.key}`,
+                name: provider.label,
+                ...this.providerIcon(provider.key, PROVIDER_ICON_PATHS['default']),
+                order: providerCreationOrder(
+                    providerCards.map(({ config }) => ({ id: config.id, createdAt: config.created_at }))
+                ),
+                cards: providerCards.map(({ config, model }) => ({
+                    selectionKey: llmLibrarySelectionKey('system_one', config.id),
+                    kind: 'system_one',
+                    id: config.id,
+                    model,
+                    edit: () => this.onEditSystemOne(config),
+                    remove: () => this.onDeleteSystemOne(config),
+                    viewDetails: (trigger: HTMLElement) => this.onViewSystemOneDetails(config, trigger),
+                })),
+            }));
     }
 
     private kindForModel(model: LlmLibraryModel): LlmLibrarySelectionKind {

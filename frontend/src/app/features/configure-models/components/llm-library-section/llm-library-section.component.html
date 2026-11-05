@@ -1,4 +1,7 @@
-<section class="llm-library">
+<section
+    class="llm-library"
+    [class.llm-library--select-mode]="selectMode()"
+>
     <header
         #header
         class="header"
@@ -25,6 +28,7 @@
             <div
                 #capabilitiesControl
                 class="filter"
+                [class.filter--labelled]="!toolbarIcons().capabilities"
             >
                 <app-select
                     appearance="toolbar"
@@ -32,8 +36,8 @@
                     tooltip="Capabilities"
                     placeholder="All capabilities"
                     [iconOnly]="toolbarIcons().capabilities"
-                    [items]="capabilities()"
-                    (changed)="selectedCapability.set($event)"
+                    [items]="capabilities"
+                    (changed)="onSectionFilterChange($event)"
                 />
             </div>
 
@@ -87,114 +91,123 @@
 
     @if (status() !== 'loaded') {
         <app-loading-spinner message="Loading Configurations data" />
+    } @else if (hasNoConfigs()) {
+        <p class="empty-hint">No configurations yet.</p>
     } @else {
-        @for (section of groupedByType(); track section.type) {
-            <div class="section">
-                <h4 class="section-title">{{ section.label }} Configs:</h4>
-
-                @if (section.hasError) {
-                    <app-fetch-error-state
-                        mod="small"
-                        title="Failed to load {{ section.label }} configurations"
-                        message="Check your connection and try again."
-                        (retry)="retrySection(section.key)"
-                    />
-                } @else {
-                    @for (group of section.groups; track group.id) {
-                        <div class="provider-group">
-                            <div class="provider-header">
-                                <app-svg-icon
-                                    [icon]="group.providerIconPath"
-                                    size="22px"
-                                    [ariaLabel]="group.providerName"
-                                />
-                                <span class="provider-name">{{ group.providerName }}</span>
-                            </div>
-
-                            <div class="grid">
-                                @for (model of group.models; track model.configType + '-' + model.id) {
-                                    <app-llm-library-card
-                                        [model]="model"
-                                        [selectMode]="selectMode()"
-                                        [selected]="isModelSelected(model)"
-                                        [isDeleting]="isDeleting()"
-                                        (selectedChange)="onCardSelectedChange(model, $event)"
-                                        (editClick)="onEdit($event)"
-                                        (deleteClick)="onDelete($event)"
-                                        (viewDetailsClick)="onViewDetails($event)"
-                                    ></app-llm-library-card>
-                                }
-                            </div>
-                        </div>
-                    }
-                }
-            </div>
-        }
-
-        @for (provider of filteredVoiceProviders(); track provider.key) {
-            <div class="section">
-                <h4 class="section-title">{{ provider.label }}:</h4>
-
-                @if (provider.hasError) {
-                    <app-fetch-error-state
-                        mod="small"
-                        title="Failed to load {{ provider.label }}"
-                        message="Check your connection and try again."
-                        (retry)="retrySection(provider.key)"
-                    />
-                } @else {
-                    <div class="grid">
-                        @for (card of provider.cards; track card.config.id) {
-                            <app-llm-library-card
-                                [model]="card.model"
-                                [selectMode]="selectMode()"
-                                [selected]="isVoiceSelected(provider, card.config)"
-                                [isDeleting]="isDeleting()"
-                                (selectedChange)="onVoiceSelectedChange(provider, card.config, $event)"
-                                (editClick)="onEditConfig(provider, card.config)"
-                                (deleteClick)="onDeleteConfig(provider, card.config)"
-                                (viewDetailsClick)="onViewConfigDetails(card.config, $event.trigger)"
+        <div
+            class="sections"
+            [style.--llm-card-gap.px]="cardGap"
+            [style.--llm-cards-per-row]="cardsPerRow()"
+        >
+            @for (section of sections(); track section.key) {
+                @let expanded = !collapsedSections().has(section.key);
+                @let total = section.selectionKeys.length;
+                <section
+                    class="library-section"
+                    [class.library-section--collapsed]="!expanded"
+                >
+                    <div
+                        #sectionHeader
+                        class="section-header"
+                    >
+                        <button
+                            type="button"
+                            class="section-toggle"
+                            [attr.aria-expanded]="expanded"
+                            [attr.aria-controls]="'llm-library-section-' + section.key"
+                            (click)="toggleSection(section.key)"
+                        >
+                            <app-svg-icon
+                                class="section-chevron"
+                                [icon]="expanded ? 'chevron-up' : 'chevron-down'"
+                                size="20px"
                             />
+                            <span class="section-title">{{ section.title }}</span>
+                            @if (!selectMode()) {
+                                <span class="section-count">{{ total }}</span>
+                                @if (!expanded && section.providerList) {
+                                    <span class="section-providers">{{ section.providerList }}</span>
+                                }
+                            }
+                        </button>
+
+                        @if (selectMode()) {
+                            @let ticked = tickedCount(section);
+                            <app-checkbox
+                                #sectionBox
+                                class="section-checkbox"
+                                color="secondary"
+                                [ariaLabel]="'Select all ' + section.title + ' configs'"
+                                [checked]="ticked > 0 && ticked === total"
+                                [indeterminate]="ticked > 0 && ticked < total"
+                                [disabled]="isDeleting() || total === 0"
+                                (changed)="onSectionCheckboxChange(section, sectionBox)"
+                            />
+                            <span class="section-selection">
+                                <span
+                                    class="section-selection__ticked"
+                                    [class.section-selection__ticked--none]="ticked === 0"
+                                    >{{ ticked }}</span
+                                ><span class="section-selection__total"> / {{ total }}</span>
+                            </span>
                         }
                     </div>
-                }
-            </div>
-        }
 
-        @if (filteredSystemOne(); as systemOne) {
-            @if (systemOne.isVisible) {
-                <div class="section">
-                    <h4 class="section-title">{{ systemOneLabel }}:</h4>
-
-                    @if (systemOne.hasError) {
-                        <app-fetch-error-state
-                            mod="small"
-                            title="Failed to load {{ systemOneLabel }}"
-                            message="Check your connection and try again."
-                            (retry)="retrySection('system_one')"
-                        />
-                    } @else {
-                        <div class="grid">
-                            @for (card of systemOne.cards; track card.config.id) {
-                                <app-llm-library-card
-                                    [model]="card.model"
-                                    [selectMode]="selectMode()"
-                                    [selected]="isSystemOneSelected(card.config)"
-                                    [isDeleting]="isDeleting()"
-                                    (selectedChange)="onSystemOneSelectedChange(card.config, $event)"
-                                    (editClick)="onEditSystemOne(card.config)"
-                                    (deleteClick)="onDeleteSystemOne(card.config)"
-                                    (viewDetailsClick)="onViewSystemOneDetails(card.config, $event.trigger)"
+                    <!-- Inert while collapsed, as only its zero height hides it. -->
+                    <div
+                        class="grid-collapsible"
+                        [id]="'llm-library-section-' + section.key"
+                        [class.expanded]="expanded"
+                        [attr.inert]="expanded ? null : ''"
+                    >
+                        <div class="section-body">
+                            @for (error of section.errors; track error.key) {
+                                <app-fetch-error-state
+                                    mod="small"
+                                    [title]="error.title"
+                                    message="Check your connection and try again."
+                                    (retry)="retrySection(error.key)"
                                 />
                             }
-                        </div>
-                    }
-                </div>
-            }
-        }
 
-        @if (hasNoConfigs()) {
-            <p class="empty-hint">No configurations yet.</p>
-        }
+                            @for (row of section.rows; track $index) {
+                                <div class="provider-row">
+                                    @for (group of row; track group.id) {
+                                        <div class="provider-group">
+                                            @if (group.name !== null) {
+                                                <div class="provider-header">
+                                                    <app-svg-icon
+                                                        class="provider-icon"
+                                                        [class.provider-icon--tinted]="group.isTinted"
+                                                        [icon]="group.icon"
+                                                        size="20px"
+                                                    />
+                                                    <span class="provider-name">{{ group.name }}</span>
+                                                </div>
+                                            }
+
+                                            <div class="cards">
+                                                @for (card of group.cards; track card.selectionKey) {
+                                                    <app-llm-library-card
+                                                        [model]="card.model"
+                                                        [selectMode]="selectMode()"
+                                                        [selected]="isCardSelected(card)"
+                                                        [isDeleting]="isDeleting()"
+                                                        (selectedChange)="onCardSelectedChange(card, $event)"
+                                                        (editClick)="card.edit()"
+                                                        (deleteClick)="card.remove()"
+                                                        (viewDetailsClick)="card.viewDetails($event.trigger)"
+                                                    />
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </section>
+            }
+        </div>
     }
 </section>

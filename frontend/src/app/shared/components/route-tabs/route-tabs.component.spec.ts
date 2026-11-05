@@ -51,4 +51,16 @@ describe('RouteTabsComponent', () => {
         strip.dispatchEvent(towardsStart);
         expect(towardsStart.defaultPrevented).toBe(false);
     });
+
+    it('turns a wheel reported in lines (Firefox) into pixels', () => {
+        const strip = renderScrollable(true).querySelector<HTMLElement>('.tabs-wrapper')!;
+        Object.defineProperty(strip, 'clientWidth', { value: 100 });
+        Object.defineProperty(strip, 'scrollWidth', { value: 300 });
+
+        strip.dispatchEvent(
+            new WheelEvent('wheel', { deltaY: 3, deltaMode: WheelEvent.DOM_DELTA_LINE, cancelable: true })
+        );
+
+        expect(strip.scrollLeft).toBe(48);
+    });
 });

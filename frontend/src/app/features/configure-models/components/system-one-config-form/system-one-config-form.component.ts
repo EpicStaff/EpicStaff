@@ -27,10 +27,7 @@ import { SystemOneConfig, SystemOneConfigWrite, SystemOneProvider } from '@share
 import { LlmConfigStorageService, SecretsStorageService, SystemOneConfigStorageService } from '@shared/services';
 import { extractHttpErrorMessage, isClientError, trackPickedSecrets } from '@shared/utils';
 
-const PROVIDERS: { key: SystemOneProvider; label: string }[] = [
-    { key: 'typesafe', label: 'TypeSafe' },
-    { key: 'llm', label: 'LLM' },
-];
+import { SYSTEM_ONE_PROVIDERS } from '../../constants/system-one-providers.constant';
 
 const JEV_ITEMS: SelectItem[] = JEV_MODEL_VERSIONS.map((version) => ({ name: version, value: version }));
 
@@ -70,7 +67,7 @@ export class SystemOneConfigFormComponent implements OnInit {
         this.llmConfigStorage.configs().map((config) => ({ name: config.custom_name, value: config.id }))
     );
 
-    protected readonly providers = PROVIDERS;
+    protected readonly providers = SYSTEM_ONE_PROVIDERS;
     protected readonly jevItems = JEV_ITEMS;
     protected readonly form = new FormGroup({
         custom_name: new FormControl('', { nonNullable: true, validators: Validators.required }),

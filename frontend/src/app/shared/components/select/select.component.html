@@ -117,6 +117,7 @@
         [cdkTrapFocusAutoCapture]="true"
         [attr.data-tour]="dropdownDataAnchor()"
         [class.selector__dropdown--boxed]="variant() === 'boxed'"
+        [class.selector__dropdown--toolbar]="appearance() === 'toolbar'"
     >
         @if (showSearch()) {
             <div class="selector__search-wrapper">

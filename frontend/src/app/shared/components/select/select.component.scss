@@ -230,8 +230,33 @@
         scrollbar-gutter: stable;
     }
 
-    &__dropdown--boxed &__search {
-        background-color: var(--color-ks-line);
+    // Toolbar look (the LLM Library filter): the same panel and rows as the bulk-select menu beside it
+    // (bulk-select-dropdown .bulk-select-menu); the picked option keeps the plain text colour, since the trigger
+    // already shows it (aria-pressed still marks it).
+    &__dropdown--toolbar {
+        max-height: none;
+        border-color: var(--color-line);
+        border-radius: var(--radius-lg);
+        background-color: var(--color-background-body);
+        box-shadow: var(--shadow-panel-elevated);
+    }
+
+    &__dropdown--toolbar &__option--default {
+        height: 40px;
+        padding: 0 16px;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        border-bottom-color: var(--graphite-750);
+    }
+
+    &__dropdown--toolbar &__option--exists:is(:hover, :focus-visible) {
+        background: var(--color-ghost-btn-hover);
+    }
+
+    &__dropdown--toolbar &__option--selected {
+        color: var(--color-text-primary);
+        font-weight: var(--text-body-weight);
     }
 
     &__option-body {

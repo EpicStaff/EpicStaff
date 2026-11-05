@@ -50,8 +50,15 @@ export class RouteTabsComponent {
         const canScroll =
             event.deltaY < 0 ? strip.scrollLeft > 0 : strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1;
         if (!canScroll) return;
-        strip.scrollLeft += event.deltaY;
+        strip.scrollLeft += this.wheelDeltaInPixels(event, strip);
         event.preventDefault();
+    }
+
+    /** Firefox reports a mouse wheel in lines (deltaMode 1), Chrome in pixels; a line is taken as 16px. */
+    private wheelDeltaInPixels(event: WheelEvent, strip: HTMLElement): number {
+        if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16;
+        if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * strip.clientWidth;
+        return event.deltaY;
     }
 
     /** Sideways only, unlike `Element.scrollIntoView`, which may scroll the page too. */

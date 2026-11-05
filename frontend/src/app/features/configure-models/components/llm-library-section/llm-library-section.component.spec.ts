@@ -334,22 +334,22 @@ describe('LlmLibrarySectionComponent toolbar layout', () => {
 
     // The controls are not measured here (no layout in jsdom): the switches come from the estimated widths.
     it.each([
-        [false, 1060, 'labels'],
-        [false, 1059, 'icons'],
+        [false, 1054, 'labels'],
+        [false, 1053, 'icons'],
         [false, 768, 'icons'],
         [false, 767, 'stacked'],
-        [false, 455, 'stacked'],
-        [false, 454, 'stacked-action-icon'],
-        [false, 315, 'stacked-action-icon'],
-        [false, 314, 'stacked-icons'],
-        [true, 1081, 'labels'],
-        [true, 1080, 'icons'],
+        [false, 449, 'stacked'],
+        [false, 448, 'stacked-action-icon'],
+        [false, 309, 'stacked-action-icon'],
+        [false, 308, 'stacked-icons'],
+        [true, 1075, 'labels'],
+        [true, 1074, 'icons'],
         [true, 859, 'icons'],
         [true, 858, 'stacked'],
-        [true, 476, 'stacked'],
-        [true, 475, 'stacked-action-icon'],
-        [true, 396, 'stacked-action-icon'],
-        [true, 395, 'stacked-icons'],
+        [true, 470, 'stacked'],
+        [true, 469, 'stacked-action-icon'],
+        [true, 390, 'stacked-action-icon'],
+        [true, 389, 'stacked-icons'],
     ])('with a selection: %s, at a %spx header lays the toolbar out as %s', (withSelection, width, layout) => {
         const model = libraryModel(ModelTypes.LLM, SHARED_ID);
         const { fixture } = render([model], { grantedActions: [ActionCode.Create, ActionCode.Delete] });
@@ -357,7 +357,11 @@ describe('LlmLibrarySectionComponent toolbar layout', () => {
         TestBed.tick();
         if (withSelection) {
             fixture.componentInstance.enterSelectMode();
-            fixture.componentInstance.onCardSelectedChange(model, true);
+            fixture.detectChanges();
+            (
+                fixture.debugElement.query(By.directive(LlmLibraryCardComponent))
+                    .componentInstance as LlmLibraryCardComponent
+            ).selectedChange.emit(true);
         }
 
         setHeaderWidth(fixture, width);
@@ -751,10 +755,10 @@ describe('LlmLibrarySectionComponent System One configs', () => {
             .map((card) => (card.nativeElement as HTMLElement).querySelector('.llm-card__model')!.textContent!.trim());
     }
 
-    it('lists them under "System One Configs:", showing the Jev version or the LLM config used', () => {
+    it('lists them under "System One", showing the Jev version or the LLM config used', () => {
         const { fixture } = render([], { systemOneConfigs: [TYPESAFE_CONFIG, LLM_BACKED_CONFIG] });
 
-        expect(groupTitles(fixture)).toEqual(['System One Configs:']);
+        expect(groupTitles(fixture)).toEqual(['System One']);
         const cards = fixture.debugElement.queryAll(By.directive(LlmLibraryCardComponent));
         expect(
             cards.map((card) =>
@@ -766,7 +770,7 @@ describe('LlmLibrarySectionComponent System One configs', () => {
     it('leaves the group out when there are none', () => {
         const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)]);
 
-        expect(groupTitles(fixture)).not.toContain('System One Configs:');
+        expect(groupTitles(fixture)).not.toContain('System One');
     });
 
     it('narrows them by name with the shared search', () => {
@@ -869,5 +873,134 @@ describe('LlmLibrarySectionComponent System One configs', () => {
             .click();
 
         expect(systemOneStorage.getAllConfigs).toHaveBeenCalledExactlyOnceWith(true);
+    });
+});
+
+describe('LlmLibrarySectionComponent sections', () => {
+    function sectionElement(fixture: ComponentFixture<LlmLibrarySectionComponent>, title: string): HTMLElement {
+        return Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.library-section')
+        ).find((section) => section.querySelector('.section-title')!.textContent!.trim() === title)!;
+    }
+
+    /** Title, then the count and the providers, or in select mode "ticked / total". */
+    function headingText(section: HTMLElement): string {
+        return Array.from(
+            section.querySelectorAll('.section-title, .section-count, .section-providers, .section-selection'),
+            (part) => part.textContent!.replace(/\s+/g, ' ').trim()
+        ).join(' ');
+    }
+
+    function toggle(fixture: ComponentFixture<LlmLibrarySectionComponent>, title: string): HTMLButtonElement {
+        return sectionElement(fixture, title).querySelector<HTMLButtonElement>('.section-toggle')!;
+    }
+
+    function sectionBox(fixture: ComponentFixture<LlmLibrarySectionComponent>, title: string): HTMLInputElement {
+        return sectionElement(fixture, title).querySelector<HTMLInputElement>('.section-checkbox input')!;
+    }
+
+    function tick(
+        fixture: ComponentFixture<LlmLibrarySectionComponent>,
+        model: LlmLibraryModel,
+        selected: boolean
+    ): void {
+        const card = fixture.debugElement
+            .queryAll(By.directive(LlmLibraryCardComponent))
+            .find((debugElement) => (debugElement.componentInstance as LlmLibraryCardComponent).model() === model)!;
+        (card.componentInstance as LlmLibraryCardComponent).selectedChange.emit(selected);
+        fixture.detectChanges();
+    }
+
+    function enterSelectMode(fixture: ComponentFixture<LlmLibrarySectionComponent>): void {
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('app-bulk-select-dropdown .bulk-select__main')!
+            .click();
+        fixture.detectChanges();
+    }
+
+    it('heads LLM, Embeddings, Voice and System One, in that order, each with its card count', () => {
+        const { fixture } = render(
+            [
+                libraryModel(ModelTypes.LLM, SHARED_ID),
+                libraryModel(ModelTypes.LLM, 4),
+                libraryModel(ModelTypes.EMBEDDING, SHARED_ID),
+            ],
+            { voiceConfigs: [OPENAI_VOICE_CONFIG, GEMINI_VOICE_CONFIG], systemOneConfigs: [TYPESAFE_CONFIG] }
+        );
+
+        expect(
+            Array.from(
+                (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.library-section'),
+                headingText
+            )
+        ).toEqual(['LLM 2', 'Embeddings 1', 'Voice 2', 'System One 1']);
+    });
+
+    it('groups every voice provider under the one Voice section', () => {
+        const { fixture } = render([], { voiceConfigs: Object.values(VOICE_CONFIGS) });
+
+        const voice = sectionElement(fixture, 'Voice');
+
+        expect(Array.from(voice.querySelectorAll('.provider-name'), (name) => name.textContent!.trim())).toEqual([
+            'OpenAI',
+            'ElevenLabs',
+            'Gemini',
+        ]);
+        expect((fixture.nativeElement as HTMLElement).querySelectorAll('.library-section')).toHaveLength(1);
+    });
+
+    it('starts open and lists the providers in the heading only while collapsed', () => {
+        const { fixture } = render([], { voiceConfigs: Object.values(VOICE_CONFIGS) });
+        expect(toggle(fixture, 'Voice').getAttribute('aria-expanded')).toBe('true');
+        expect(headingText(sectionElement(fixture, 'Voice'))).toBe('Voice 3');
+
+        toggle(fixture, 'Voice').click();
+        fixture.detectChanges();
+
+        expect(toggle(fixture, 'Voice').getAttribute('aria-expanded')).toBe('false');
+        expect(headingText(sectionElement(fixture, 'Voice'))).toBe('Voice 3 OpenAI, ElevenLabs, Gemini');
+
+        toggle(fixture, 'Voice').click();
+        fixture.detectChanges();
+
+        expect(headingText(sectionElement(fixture, 'Voice'))).toBe('Voice 3');
+    });
+
+    it('stays in select mode when a section box is ticked right after entering it', () => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID), libraryModel(ModelTypes.LLM, 4)], {
+            grantedActions: [ActionCode.Delete],
+        });
+        enterSelectMode(fixture);
+
+        sectionBox(fixture, 'LLM').click();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.selectMode()).toBe(true);
+        expect(fixture.componentInstance.selectedKeys()).toEqual(new Set([`llm:${SHARED_ID}`, 'llm:4']));
+        expect(headingText(sectionElement(fixture, 'LLM'))).toBe('LLM 2 / 2');
+    });
+
+    it("ticks a section's cards from its box, and unticks them all from a box with some ticked", () => {
+        const llmFirst = libraryModel(ModelTypes.LLM, SHARED_ID);
+        const llmSecond = libraryModel(ModelTypes.LLM, 4);
+        const embedding = libraryModel(ModelTypes.EMBEDDING, SHARED_ID);
+        const { fixture } = render([llmFirst, llmSecond, embedding], { grantedActions: [ActionCode.Delete] });
+        enterSelectMode(fixture);
+        tick(fixture, embedding, true);
+
+        sectionBox(fixture, 'LLM').click();
+        fixture.detectChanges();
+        tick(fixture, llmSecond, false);
+
+        expect(headingText(sectionElement(fixture, 'LLM'))).toBe('LLM 1 / 2');
+        expect(sectionBox(fixture, 'LLM').indeterminate).toBe(true);
+
+        sectionBox(fixture, 'LLM').click();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.selectedKeys()).toEqual(new Set([`embedding:${SHARED_ID}`]));
+        expect(headingText(sectionElement(fixture, 'LLM'))).toBe('LLM 0 / 2');
+        expect(sectionBox(fixture, 'LLM').checked).toBe(false);
+        expect(headingText(sectionElement(fixture, 'Embeddings'))).toBe('Embeddings 1 / 1');
     });
 });

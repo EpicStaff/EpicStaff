@@ -39,7 +39,7 @@
                 <button
                     *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
                     type="button"
-                    class="llm-card__action llm-card__action--delete"
+                    class="llm-card__action"
                     [attr.aria-label]="'Delete ' + model().customName"
                     matTooltip="Delete"
                     matTooltipPosition="above"
@@ -69,11 +69,12 @@
         <div class="llm-card__bottom">
             @if (temperature !== null) {
                 <div class="llm-card__temp">
-                    <i
-                        class="ti ti-thermometer"
+                    <app-svg-icon
+                        icon="thermometer"
+                        size="16px"
                         aria-hidden="true"
-                    ></i>
-                    {{ temperature }}°
+                    />
+                    <span>{{ temperature }}°</span>
                 </div>
             }
 
@@ -81,7 +82,7 @@
                 <div class="llm-card__deprecated">
                     <app-svg-icon
                         icon="warning"
-                        size="12px"
+                        size="16px"
                         aria-hidden="true"
                     />
                     <span>Deprecated</span>
